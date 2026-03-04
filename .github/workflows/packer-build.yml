@@ -1,0 +1,115 @@
+# ------------------------------------------------------------------
+# TrueNorth Range — Packer Image Builds
+# ------------------------------------------------------------------
+name: Packer Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      template:
+        description: "Packer template to build"
+        required: true
+        type: choice
+        options:
+          - all
+          - ubuntu-2204
+          - windows-server-2022
+          - windows-10-workstation
+          - kali-linux
+          - pfsense
+          - security-onion
+      validate_only:
+        description: "Validate only (skip build)"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PACKER_DIR: infra/proxmox/packer
+
+jobs:
+  validate:
+    name: Validate Templates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: latest
+
+      - name: Packer init
+        run: packer init "${{ env.PACKER_DIR }}"
+
+      - name: Validate all templates
+        run: |
+          cd "${{ env.PACKER_DIR }}"
+          FAILED=0
+          for hcl in *.pkr.hcl; do
+            echo "Validating $hcl..."
+            if packer validate -syntax-only "$hcl"; then
+              echo "  ✓ $hcl valid"
+            else
+              echo "  ✗ $hcl INVALID"
+              FAILED=1
+            fi
+          done
+          exit $FAILED
+
+  build:
+    name: "Build: ${{ inputs.template }}"
+    runs-on: ubuntu-latest
+    needs: validate
+    if: ${{ !inputs.validate_only }}
+    environment: proxmox
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: latest
+
+      - name: Packer init
+        run: packer init "${{ env.PACKER_DIR }}"
+
+      - name: Build template(s)
+        env:
+          PKR_VAR_proxmox_url: ${{ secrets.PROXMOX_URL }}
+          PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
+          PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
+          PKR_VAR_proxmox_node: ${{ secrets.PROXMOX_NODE }}
+          PKR_VAR_proxmox_storage: ${{ secrets.PROXMOX_STORAGE }}
+          PKR_VAR_proxmox_iso_storage: ${{ secrets.PROXMOX_ISO_STORAGE }}
+          PKR_VAR_proxmox_bridge: ${{ secrets.PROXMOX_BRIDGE }}
+          PKR_VAR_proxmox_skip_tls_verify: "true"
+        run: |
+          cd "${{ env.PACKER_DIR }}"
+
+          if [ "${{ inputs.template }}" = "all" ]; then
+            TEMPLATES=(ubuntu-2204 windows-server-2022 windows-10-workstation kali-linux pfsense security-onion)
+          else
+            TEMPLATES=("${{ inputs.template }}")
+          fi
+
+          for tpl in "${TEMPLATES[@]}"; do
+            HCL="${tpl}.pkr.hcl"
+            if [ ! -f "$HCL" ]; then
+              echo "::error::Template $HCL not found"
+              exit 1
+            fi
+            echo "══════════════════════════════════════════"
+            echo "Building: $tpl"
+            echo "══════════════════════════════════════════"
+            packer build -force -on-error=cleanup "$HCL"
+            echo "✓ $tpl built successfully"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Packer Build Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Template:** ${{ inputs.template }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Status:** ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Triggered by:** ${{ github.actor }}" >> "$GITHUB_STEP_SUMMARY"
