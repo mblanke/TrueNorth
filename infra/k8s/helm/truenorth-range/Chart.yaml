@@ -1,0 +1,32 @@
+apiVersion: v2
+name: truenorth-range
+description: TrueNorth Range — Cyber Range Orchestration Platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - cyber-range
+  - orchestration
+  - security
+  - training
+home: https://truenorthrange.io
+maintainers:
+  - name: TrueNorth Range Team
+    email: platform@truenorthrange.io
+dependencies:
+  - name: postgresql
+    version: "15.*"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "19.*"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: minio
+    version: "14.*"
+    repository: https://charts.bitnami.com/bitnami
+    condition: minio.enabled
+  - name: keycloak
+    version: "21.*"
+    repository: https://charts.bitnami.com/bitnami
+    condition: keycloak.enabled

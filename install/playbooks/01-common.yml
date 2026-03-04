@@ -1,0 +1,6 @@
+---
+# Playbook 01: Common configuration for all hosts
+- name: Common -- base packages, NTP, DNS, SSH hardening
+  hosts: all
+  roles:
+    - common

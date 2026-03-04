@@ -1,0 +1,72 @@
+title: Lateral Movement via PsExec
+id: tn-detect-005
+status: stable
+description: |
+  Detects lateral movement using PsExec or similar remote execution tools.
+  Identifies the PSEXESVC service installation, named pipe creation, and
+  characteristic process creation patterns associated with PsExec usage.
+author: TrueNorth Range
+date: 2026/02/25
+severity: high
+mitre_technique:
+  - T1570       # Lateral Tool Transfer
+  - T1021.002   # Remote Services: SMB/Windows Admin Shares
+  - T1569.002   # System Services: Service Execution
+
+data_source:
+  - windows_security
+  - sysmon
+  - windows_system
+
+logsource:
+  category: process_creation
+  product: windows
+
+detection:
+  selection_service_install:
+    EventID: 7045
+    ServiceName|contains: "PSEXE"
+  selection_process:
+    Image|endswith: "\\PSEXESVC.exe"
+  selection_named_pipe:
+    EventID: 17
+    PipeName|contains:
+      - "\\PSEXESVC"
+      - "\\RemCom"
+  selection_cmdline:
+    CommandLine|contains:
+      - "psexec"
+      - "\\\\*\\admin$"
+      - "\\\\*\\c$"
+    Image|endswith:
+      - "\\psexec.exe"
+      - "\\psexec64.exe"
+      - "\\paexec.exe"
+  condition: selection_service_install or selection_process or selection_named_pipe or selection_cmdline
+
+level: high
+
+query: |
+  (EventID:7045 AND ServiceName:*PSEXE*) OR
+  (Image:*\\PSEXESVC.exe) OR
+  (EventID:17 AND PipeName:(*\\PSEXESVC* OR *\\RemCom*)) OR
+  (CommandLine:(*psexec* OR *\\admin$* OR *\\c$*) AND Image:(*psexec*.exe OR *paexec*.exe))
+
+sample_log:
+  timestamp: "2026-02-25T14:30:00Z"
+  event_id: 7045
+  source: System
+  computer: "FILE-SERVER-01"
+  description: "A service was installed in the system"
+  fields:
+    ServiceName: "PSEXESVC"
+    ImagePath: "%SystemRoot%\\PSEXESVC.exe"
+    ServiceType: "user mode service"
+    StartType: "demand start"
+    AccountName: "LocalSystem"
+
+false_positive_notes: |
+  - Legitimate use of PsExec by IT administrators for remote management
+  - SCCM/MECM may trigger similar patterns for remote software deployment
+  - Some backup solutions use admin shares for data access
+  - Filter on known admin source IPs to reduce noise

@@ -1,0 +1,392 @@
+{
+  "id": "truenorth",
+  "realm": "truenorth",
+  "enabled": true,
+  "displayName": "TrueNorth Range",
+  "displayNameHtml": "<strong>TrueNorth Range</strong>",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 300,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 3600,
+  "failureFactor": 5,
+  "accessTokenLifespan": 1800,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 86400,
+  "ssoSessionMaxLifespan": 86400,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespan": 5184000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "actionTokenGeneratedByAdminLifespan": 43200,
+  "actionTokenGeneratedByUserLifespan": 300,
+  "defaultSignatureAlgorithm": "RS256",
+  "oauth2DeviceCodeLifespan": 600,
+  "oauth2DevicePollingInterval": 5,
+  "smtpServer": {
+    "host": "",
+    "port": "",
+    "from": "noreply@truenorth.local",
+    "fromDisplayName": "TrueNorth Range",
+    "ssl": "",
+    "starttls": "",
+    "auth": ""
+  },
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Full platform administrator with unrestricted access",
+        "composite": false
+      },
+      {
+        "name": "instructor",
+        "description": "Can create and manage exercises, view trainee progress",
+        "composite": false
+      },
+      {
+        "name": "trainee",
+        "description": "Can participate in exercises and view own results",
+        "composite": false
+      },
+      {
+        "name": "observer",
+        "description": "Read-only access to exercise execution and telemetry",
+        "composite": false
+      },
+      {
+        "name": "range_ops",
+        "description": "Manage range infrastructure: provision, snapshot, teardown",
+        "composite": false
+      }
+    ],
+    "client": {
+      "truenorth-api": [
+        {
+          "name": "manage-ranges",
+          "description": "Create, update, delete ranges"
+        },
+        {
+          "name": "manage-scenarios",
+          "description": "Create, update, delete scenarios"
+        },
+        {
+          "name": "manage-exercises",
+          "description": "Create, start, stop, score exercises"
+        },
+        {
+          "name": "view-telemetry",
+          "description": "View telemetry and SIEM data"
+        }
+      ]
+    }
+  },
+  "defaultRoles": [
+    "trainee"
+  ],
+  "defaultDefaultClientScopes": [
+    "web-origins",
+    "acr",
+    "profile",
+    "roles",
+    "email"
+  ],
+  "defaultOptionalClientScopes": [
+    "offline_access",
+    "address",
+    "phone",
+    "microprofile-jwt"
+  ],
+  "clients": [
+    {
+      "clientId": "truenorth-web",
+      "name": "TrueNorth Web SPA",
+      "description": "Angular single-page application for the control plane UI",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:4200",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:4200/*",
+        "https://range.truenorth.local/*",
+        "https://*.truenorth.io/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4200",
+        "https://range.truenorth.local",
+        "https://*.truenorth.io"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4200/*##https://range.truenorth.local/*##https://*.truenorth.io/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ]
+    },
+    {
+      "clientId": "truenorth-api",
+      "name": "TrueNorth API (Confidential)",
+      "description": "Backend API service client with service account",
+      "enabled": true,
+      "publicClient": false,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": true,
+      "protocol": "openid-connect",
+      "secret": "CHANGE_ME_IN_PRODUCTION",
+      "redirectUris": [
+        "http://localhost:8000/*"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "access.token.lifespan": "1800"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ]
+    },
+    {
+      "clientId": "truenorth-cli",
+      "name": "TrueNorth CLI",
+      "description": "CLI tool using device authorization flow",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "true",
+        "oauth2.device.code.lifespan": "600",
+        "oauth2.device.polling.interval": "5"
+      },
+      "redirectUris": [
+        "urn:ietf:wg:oauth:2.0:oob"
+      ],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ]
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "browser",
+      "description": "Browser-based authentication with optional OTP",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 10
+        },
+        {
+          "authenticator": "auth-spnego",
+          "authenticatorFlow": false,
+          "requirement": "DISABLED",
+          "priority": 20
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "authenticatorFlow": false,
+          "requirement": "ALTERNATIVE",
+          "priority": 25
+        },
+        {
+          "authenticatorFlow": true,
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "flowAlias": "browser-forms",
+          "authenticationExecutions": [
+            {
+              "authenticator": "auth-username-password-form",
+              "authenticatorFlow": false,
+              "requirement": "REQUIRED",
+              "priority": 10
+            },
+            {
+              "authenticator": "auth-otp-form",
+              "authenticatorFlow": false,
+              "requirement": "OPTIONAL",
+              "priority": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "alias": "direct grant",
+      "description": "Direct grant (Resource Owner Password Credentials)",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "direct-grant-validate-username",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 10
+        },
+        {
+          "authenticator": "direct-grant-validate-password",
+          "authenticatorFlow": false,
+          "requirement": "REQUIRED",
+          "priority": 20
+        },
+        {
+          "authenticator": "direct-grant-validate-otp",
+          "authenticatorFlow": false,
+          "requirement": "OPTIONAL",
+          "priority": 30
+        }
+      ]
+    }
+  ],
+  "browserFlow": "browser",
+  "directGrantFlow": "direct grant",
+  "userFederationProviders": [
+    {
+      "providerName": "ldap",
+      "displayName": "Corporate LDAP (Disabled)",
+      "config": {
+        "enabled": ["false"],
+        "priority": ["0"],
+        "editMode": ["READ_ONLY"],
+        "syncRegistrations": ["false"],
+        "vendor": ["ad"],
+        "connectionUrl": ["ldap://ldap.corp.truenorth.local:389"],
+        "bindDn": ["cn=svc-keycloak,ou=Service Accounts,dc=corp,dc=truenorth,dc=local"],
+        "bindCredential": ["CHANGEME"],
+        "usersDn": ["ou=Users,dc=corp,dc=truenorth,dc=local"],
+        "usernameLDAPAttribute": ["sAMAccountName"],
+        "rdnLDAPAttribute": ["cn"],
+        "uuidLDAPAttribute": ["objectGUID"],
+        "userObjectClasses": ["person, organizationalPerson, user"],
+        "searchScope": ["2"],
+        "pagination": ["true"],
+        "batchSizeForSync": ["1000"]
+      }
+    }
+  ],
+  "identityProviders": [],
+  "identityProviderMappers": [],
+  "users": [
+    {
+      "username": "admin@truenorth.local",
+      "email": "admin@truenorth.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Range",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ],
+      "clientRoles": {
+        "truenorth-api": [
+          "manage-ranges",
+          "manage-scenarios",
+          "manage-exercises",
+          "view-telemetry"
+        ]
+      }
+    },
+    {
+      "username": "instructor@truenorth.local",
+      "email": "instructor@truenorth.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Lead",
+      "lastName": "Instructor",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "instructor",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "instructor"
+      ],
+      "clientRoles": {
+        "truenorth-api": [
+          "manage-scenarios",
+          "manage-exercises",
+          "view-telemetry"
+        ]
+      }
+    },
+    {
+      "username": "trainee@truenorth.local",
+      "email": "trainee@truenorth.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "Trainee",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "trainee",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "trainee"
+      ],
+      "clientRoles": {
+        "truenorth-api": [
+          "view-telemetry"
+        ]
+      }
+    }
+  ]
+}

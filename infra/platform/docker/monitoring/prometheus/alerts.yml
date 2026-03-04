@@ -1,0 +1,211 @@
+# TrueNorth Range — Prometheus Alert Rules
+groups:
+  # ══════════════════════════════════════════════════════════════
+  # INFRASTRUCTURE ALERTS
+  # ══════════════════════════════════════════════════════════════
+  - name: infrastructure
+    rules:
+      - alert: HighCpuUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage has been above 80% for 5 minutes. Current value: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: HighMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 85%. Current value: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: DiskSpaceHigh
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk usage above 80% on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+          description: "Disk usage: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: NodeDown
+        expr: up{job="node-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node exporter down on {{ $labels.instance }}"
+          description: "Node exporter has been unreachable for more than 1 minute."
+
+  # ══════════════════════════════════════════════════════════════
+  # API ALERTS
+  # ══════════════════════════════════════════════════════════════
+  - name: api
+    rules:
+      - alert: ApiHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="truenorth-api", status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="truenorth-api"}[5m])) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API error rate above 5%"
+          description: "5xx error rate: {{ $value | printf \"%.2f\" }}%"
+
+      - alert: ApiHighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="truenorth-api"}[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API P95 latency exceeds 1 second"
+          description: "P95 latency: {{ $value | printf \"%.3f\" }}s"
+
+      - alert: ApiTooManyRateLimits
+        expr: sum(rate(http_requests_total{job="truenorth-api", status="429"}[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Excessive 429 rate-limit responses"
+          description: "Rate-limited requests/sec: {{ $value | printf \"%.1f\" }}"
+
+  # ══════════════════════════════════════════════════════════════
+  # CELERY ALERTS
+  # ══════════════════════════════════════════════════════════════
+  - name: celery
+    rules:
+      - alert: CeleryHighTaskFailureRate
+        expr: |
+          sum(rate(celery_tasks_total{status="failed"}[5m]))
+          /
+          sum(rate(celery_tasks_total[5m])) * 100 > 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Celery task failure rate above 10%"
+          description: "Task failure rate: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: CeleryProvisionQueueDeep
+        expr: flower_queue_length{queue="provision"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Provision queue depth exceeds 100"
+          description: "Queue depth: {{ $value }}"
+
+      - alert: CeleryDeadWorkers
+        expr: flower_worker_online == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Celery worker {{ $labels.worker }} is offline"
+          description: "Worker has been offline for more than 2 minutes."
+
+  # ══════════════════════════════════════════════════════════════
+  # DATABASE ALERTS
+  # ══════════════════════════════════════════════════════════════
+  - name: database
+    rules:
+      - alert: PgConnectionPoolExhaustion
+        expr: pg_stat_activity_count / pg_settings_max_connections * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL connection pool above 90%"
+          description: "Active connections at {{ $value | printf \"%.0f\" }}% of max."
+
+      - alert: PgHighLockWaits
+        expr: pg_locks_count{mode="ExclusiveLock"} > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of PostgreSQL lock waits"
+          description: "Exclusive locks: {{ $value }}"
+
+      - alert: PgReplicationLag
+        expr: pg_replication_lag > 30
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL replication lag exceeds 30s"
+          description: "Replication lag: {{ $value | printf \"%.1f\" }}s"
+
+  # ══════════════════════════════════════════════════════════════
+  # REDIS ALERTS
+  # ══════════════════════════════════════════════════════════════
+  - name: redis
+    rules:
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage above 80%"
+          description: "Memory usage: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: RedisConnectionErrors
+        expr: rate(redis_rejected_connections_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is rejecting connections"
+          description: "Rejected connections rate: {{ $value | printf \"%.1f\" }}/s"
+
+      - alert: RedisPubSubBacklog
+        expr: redis_pubsub_patterns + redis_pubsub_channels > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis pub/sub backlog is high"
+          description: "Total pub/sub channels+patterns: {{ $value }}"
+
+  # ══════════════════════════════════════════════════════════════
+  # RANGE OPERATIONS ALERTS
+  # ══════════════════════════════════════════════════════════════
+  - name: ranges
+    rules:
+      - alert: HighProvisionFailureRate
+        expr: |
+          sum(rate(range_provisions_total{status="failed"}[15m]))
+          /
+          sum(rate(range_provisions_total[15m])) * 100 > 10
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Range provision failure rate above 10%"
+          description: "Provision failure rate: {{ $value | printf \"%.1f\" }}%"
+
+      - alert: SlowProvisionTime
+        expr: histogram_quantile(0.95, sum(rate(range_provision_duration_seconds_bucket[15m])) by (le)) > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Average range provision time exceeds 5 minutes"
+          description: "P95 provision time: {{ $value | printf \"%.0f\" }}s"
+
+      - alert: StuckRanges
+        expr: active_ranges{state="provisioning"} > 0 and on() (time() - range_provision_start_timestamp) > 900
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ranges stuck in provisioning state for >15 minutes"
+          description: "Ranges in provisioning state beyond 15-minute threshold."

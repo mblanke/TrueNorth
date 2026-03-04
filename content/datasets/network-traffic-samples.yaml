@@ -1,0 +1,40 @@
+# Sample network traffic events for training
+---
+events:
+  - timestamp: "2024-03-15T14:20:00Z"
+    src_ip: "192.168.1.100"
+    dst_ip: "8.8.8.8"
+    dst_port: 53
+    protocol: udp
+    query: "evil-c2.example.com"
+    query_type: A
+    event_type: dns
+
+  - timestamp: "2024-03-15T14:20:01Z"
+    src_ip: "192.168.1.100"
+    dst_ip: "203.0.113.50"
+    dst_port: 443
+    protocol: tcp
+    bytes_out: 15000
+    bytes_in: 250000
+    event_type: flow
+    tls_sni: "evil-c2.example.com"
+
+  - timestamp: "2024-03-15T14:25:00Z"
+    src_ip: "192.168.1.100"
+    dst_ip: "192.168.1.10"
+    dst_port: 445
+    protocol: tcp
+    bytes_out: 500
+    bytes_in: 125000
+    event_type: flow
+    description: "SMB lateral movement"
+
+  - timestamp: "2024-03-15T14:30:00Z"
+    src_ip: "192.168.1.100"
+    dst_ip: "192.168.1.0/24"
+    dst_port: 445
+    protocol: tcp
+    event_type: scan
+    ports_scanned: 254
+    description: "SMB port scan across subnet"

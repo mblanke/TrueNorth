@@ -1,0 +1,5 @@
+---
+- name: restart pvedaemon
+  service:
+    name: pvedaemon
+    state: restarted

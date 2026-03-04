@@ -1,0 +1,41 @@
+# TrueNorth Range — Correlation Rule: Data Exfiltration Detection
+# Triggers when a single source IP connects to many distinct external
+# destination ports, a pattern consistent with data staging or
+# exfiltration via non-standard protocols.
+
+rule:
+  id: data-exfil-port-spread
+  name: Data Exfiltration — Port Spread
+  description: >
+    Detects potential data exfiltration by identifying a single internal
+    source IP communicating over many distinct destination ports to
+    external addresses.  This pattern often indicates data staging,
+    tunnelling, or exfiltration via non-standard channels.
+  enabled: true
+
+  event_filter:
+    event_type:
+      - "network"
+      - "zeek"
+      - "connection"
+    action:
+      - "connection"
+      - "established"
+      - "allowed"
+
+  # Group by source IP
+  group_by:
+    - source_ip
+
+  # Alert when this many distinct dest_ports are seen
+  threshold: 15
+
+  window_seconds: 600  # 10 minutes
+
+  # Count distinct destination ports
+  distinct_field: dest_port
+
+  severity: high
+  alert_name: Possible Data Exfiltration (Port Spread)
+  mitre_technique: "T1048"
+  mitre_tactic: "exfiltration"

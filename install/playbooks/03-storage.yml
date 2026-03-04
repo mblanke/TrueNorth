@@ -1,0 +1,6 @@
+---
+# Playbook 03: Storage appliance and mount configuration
+- name: Storage -- NFS exports, mounts, Proxmox storage backends
+  hosts: storage:hypervisors
+  roles:
+    - storage

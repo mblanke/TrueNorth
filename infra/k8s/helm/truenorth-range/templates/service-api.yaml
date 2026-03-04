@@ -1,0 +1,17 @@
+{{- if .Values.api.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-api
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "api") | nindent 4 }}
+spec:
+  type: {{ .Values.api.service.type }}
+  ports:
+    - port: {{ .Values.api.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "api") | nindent 4 }}
+{{- end }}

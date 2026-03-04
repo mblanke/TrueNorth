@@ -1,0 +1,66 @@
+---
+# ============================================================
+# TrueNorth Range — Domain Controller Variables
+# ============================================================
+
+ad_domain_name:           "{{ range_domain }}"
+ad_netbios_name:          "TRUENORTH"
+ad_domain_admin_user:     "Administrator"
+ad_domain_admin_password: "{{ vault_ad_domain_admin_password }}"
+ad_dsrm_password:         "{{ vault_ad_dsrm_password }}"
+ad_domain_functional_level: "Win2016"
+ad_forest_functional_level: "Win2016"
+
+# ── DNS Zones ──────────────────────────────────────────────
+ad_dns_zones:
+  - name: "{{ range_domain }}"
+    type: "primary"
+  - name: "{{ range_domain | regex_replace('\\.', '.') }}.in-addr.arpa"
+    type: "primary"
+
+# ── Organisational Units ───────────────────────────────────
+ad_ous:
+  - "OU=Users,DC={{ range_domain.split('.')[0] }},DC={{ range_domain.split('.')[1] }}"
+  - "OU=Computers,DC={{ range_domain.split('.')[0] }},DC={{ range_domain.split('.')[1] }}"
+  - "OU=Servers,DC={{ range_domain.split('.')[0] }},DC={{ range_domain.split('.')[1] }}"
+  - "OU=Service Accounts,DC={{ range_domain.split('.')[0] }},DC={{ range_domain.split('.')[1] }}"
+
+# ── Sample Users ───────────────────────────────────────────
+ad_sample_users:
+  - { username: "jsmith",     first: "John",    last: "Smith",    dept: "IT",        title: "SysAdmin" }
+  - { username: "ajohnson",   first: "Alice",   last: "Johnson",  dept: "IT",        title: "NetAdmin" }
+  - { username: "bwilliams",  first: "Bob",     last: "Williams", dept: "Security",  title: "SOC Analyst" }
+  - { username: "clee",       first: "Carol",   last: "Lee",      dept: "Security",  title: "IR Lead" }
+  - { username: "dgarcia",    first: "David",   last: "Garcia",   dept: "HR",        title: "HR Manager" }
+  - { username: "emartinez",  first: "Eve",     last: "Martinez", dept: "Finance",   title: "Accountant" }
+  - { username: "fbrown",     first: "Frank",   last: "Brown",    dept: "Finance",   title: "CFO" }
+  - { username: "gwilson",    first: "Grace",   last: "Wilson",   dept: "Legal",     title: "Counsel" }
+  - { username: "htaylor",    first: "Hank",    last: "Taylor",   dept: "Marketing", title: "Director" }
+  - { username: "ianderson",  first: "Ivy",     last: "Anderson", dept: "Exec",      title: "CEO" }
+
+# ── Security Groups ───────────────────────────────────────
+ad_security_groups:
+  - { name: "IT-Admins",       members: ["jsmith", "ajohnson"] }
+  - { name: "SOC-Team",        members: ["bwilliams", "clee"] }
+  - { name: "Domain-Users",    members: "all" }
+  - { name: "Finance-Users",   members: ["emartinez", "fbrown"] }
+  - { name: "Executives",      members: ["ianderson", "fbrown"] }
+
+# ── Group Policy ───────────────────────────────────────────
+gpo_password_policy:
+  min_length: 12
+  complexity: true
+  max_age_days: 90
+  lockout_threshold: 5
+  lockout_duration_minutes: 30
+
+gpo_audit_policy:
+  logon_events: "Success,Failure"
+  object_access: "Success,Failure"
+  privilege_use: "Success,Failure"
+  process_tracking: "Success"
+  policy_change: "Success,Failure"
+  account_management: "Success,Failure"
+
+# ── Sysmon ─────────────────────────────────────────────────
+sysmon_config_url: "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml"

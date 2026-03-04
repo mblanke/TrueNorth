@@ -1,0 +1,27 @@
+# ai-orchestrator/.dockerignore
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+.env
+.env.*
+!.env.example
+tests
+test_*
+*_test.py
+*.md
+.git
+.gitignore
+.github
+.vscode
+.idea
+htmlcov
+coverage.xml
+.coverage
+Dockerfile
+.dockerignore
+docker-compose*.yml

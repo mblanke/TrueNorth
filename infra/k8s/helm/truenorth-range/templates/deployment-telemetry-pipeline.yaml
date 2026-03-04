@@ -1,0 +1,68 @@
+{{- if .Values.telemetryPipeline.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-telemetry-pipeline
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "telemetry-pipeline") | nindent 4 }}
+spec:
+  replicas: {{ .Values.telemetryPipeline.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "telemetry-pipeline") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "telemetry-pipeline") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "truenorth-range.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.telemetryPipeline.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.telemetryPipeline.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.telemetryPipeline.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: telemetry-pipeline
+          image: {{ include "truenorth-range.image" (dict "image" .Values.telemetryPipeline.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.telemetryPipeline.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "truenorth-range.fullname" . }}-config
+            - secretRef:
+                name: {{ include "truenorth-range.fullname" . }}-secret
+          env:
+            - name: REDIS_URL
+              value: {{ include "truenorth-range.redisUrl" . | quote }}
+            - name: OPENSEARCH_URL
+              value: {{ .Values.config.opensearchUrl | quote }}
+            - name: BATCH_SIZE
+              value: {{ .Values.telemetryPipeline.config.batchSize | quote }}
+            - name: FLUSH_INTERVAL_MS
+              value: {{ .Values.telemetryPipeline.config.flushIntervalMs | quote }}
+            - name: OPENSEARCH_INDEX_PREFIX
+              value: {{ .Values.telemetryPipeline.config.indexPrefix | quote }}
+            {{- with .Values.telemetryPipeline.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.telemetryPipeline.resources | nindent 12 }}
+{{- end }}

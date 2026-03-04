@@ -1,0 +1,61 @@
+---
+- name: Install Python {{ python_version }}
+  apt:
+    name:
+      - "python{{ python_version }}"
+      - "python{{ python_version }}-venv"
+      - "python{{ python_version }}-dev"
+    state: present
+
+- name: Install Node.js {{ node_version }}
+  shell: |
+    curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | bash -
+    apt-get install -y nodejs
+  args:
+    creates: /usr/bin/node
+
+- name: Create truenorth user
+  user:
+    name: truenorth
+    system: true
+    home: /opt/truenorth
+    shell: /bin/bash
+
+- name: Clone TrueNorth Range repository
+  git:
+    repo: "{{ truenorth_git_repo | default('https://github.com/org/truenorth-range.git') }}"
+    dest: /opt/truenorth/app
+    version: main
+  become_user: truenorth
+
+- name: Create Python venv and install API deps
+  pip:
+    requirements: /opt/truenorth/app/Core_Docs/control-plane/api/requirements.txt
+    virtualenv: /opt/truenorth/venv
+    virtualenv_command: "python{{ python_version }} -m venv"
+  become_user: truenorth
+
+- name: Install Angular dependencies
+  npm:
+    path: /opt/truenorth/app/Core_Docs/control-plane/web
+    state: present
+  become_user: truenorth
+
+- name: Build Angular production bundle
+  command: npx ng build --configuration production
+  args:
+    chdir: /opt/truenorth/app/Core_Docs/control-plane/web
+  become_user: truenorth
+
+- name: Deploy systemd service for API
+  template:
+    src: truenorth-api.service.j2
+    dest: /etc/systemd/system/truenorth-api.service
+  notify: restart truenorth-api
+
+- name: Enable and start API
+  systemd:
+    name: truenorth-api
+    enabled: true
+    state: started
+    daemon_reload: true

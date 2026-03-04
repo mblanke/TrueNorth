@@ -1,0 +1,254 @@
+{
+  "uid": "truenorth-ranges",
+  "title": "TrueNorth Range — Range Operations",
+  "description": "Cyber range provisioning, lifecycle, and exercise metrics",
+  "tags": ["truenorth", "ranges"],
+  "timezone": "browser",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Range States",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "draft" },       "properties": [{ "id": "color", "value": { "fixedColor": "light-blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "provisioning" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow",     "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "ready" },       "properties": [{ "id": "color", "value": { "fixedColor": "green",      "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "failed" },      "properties": [{ "id": "color", "value": { "fixedColor": "red",        "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "destroying" },  "properties": [{ "id": "color", "value": { "fixedColor": "orange",     "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "pieType": "donut",
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }
+      },
+      "targets": [
+        { "refId": "A", "expr": "active_ranges{state=\"draft\"}",        "legendFormat": "draft" },
+        { "refId": "B", "expr": "active_ranges{state=\"provisioning\"}", "legendFormat": "provisioning" },
+        { "refId": "C", "expr": "active_ranges{state=\"ready\"}",        "legendFormat": "ready" },
+        { "refId": "D", "expr": "active_ranges{state=\"failed\"}",       "legendFormat": "failed" },
+        { "refId": "E", "expr": "active_ranges{state=\"destroying\"}",   "legendFormat": "destroying" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Provisions per Hour",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 80 },
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "barWidth": 0.8,
+        "groupWidth": 0.7,
+        "stacking": "none",
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(range_provisions_total[1h])",
+          "legendFormat": "{{ status }}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Average Provision Duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 },
+          "unit": "s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum(rate(range_provision_duration_seconds_bucket[15m])) by (le))",
+          "legendFormat": "P50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum(rate(range_provision_duration_seconds_bucket[15m])) by (le))",
+          "legendFormat": "P95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum(rate(range_provision_duration_seconds_bucket[15m])) by (le))",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Failed Provisions",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area", "textMode": "auto" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(range_provisions_total{status=\"failed\"}[1h]))",
+          "legendFormat": "Failed (1h)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Failed Provisions Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "bars", "fillOpacity": 70 },
+          "unit": "short",
+          "color": { "fixedColor": "red", "mode": "fixed" }
+        },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "single" }, "legend": { "displayMode": "hidden" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(range_provisions_total{status=\"failed\"}[15m])",
+          "legendFormat": "Failures"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Active Exercises",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "blue", "value": 10 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area", "textMode": "auto" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(active_exercises)",
+          "legendFormat": "Exercises"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Batch Provision Queue Depth",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 10, "x": 4, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 },
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 100 }
+            ]
+          },
+          "custom.thresholdsStyle": { "mode": "line" }
+        },
+        "overrides": []
+      },
+      "options": { "tooltip": { "mode": "single" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "flower_queue_length{queue=\"provision\"}",
+          "legendFormat": "Provision Queue"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "VM Count by Node",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 80 },
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "barWidth": 0.7,
+        "groupWidth": 0.7,
+        "stacking": "normal",
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (node) (active_vms)",
+          "legendFormat": "{{ node }}"
+        }
+      ]
+    }
+  ]
+}

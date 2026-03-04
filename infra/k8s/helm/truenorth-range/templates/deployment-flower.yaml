@@ -1,0 +1,79 @@
+{{- if .Values.flower.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-flower
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "flower") | nindent 4 }}
+spec:
+  replicas: {{ .Values.flower.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "flower") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "flower") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "truenorth-range.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.flower.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.flower.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.flower.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: flower
+          image: {{ include "truenorth-range.image" (dict "image" .Values.flower.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.flower.image.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - worker.celery_app
+            - flower
+            - --port=5555
+            {{- if .Values.flower.basicAuth.enabled }}
+            - --basic-auth={{ .Values.flower.basicAuth.username }}:{{ .Values.flower.basicAuth.password }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 5555
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "truenorth-range.fullname" . }}-config
+            - secretRef:
+                name: {{ include "truenorth-range.fullname" . }}-secret
+          env:
+            - name: CELERY_BROKER_URL
+              value: {{ include "truenorth-range.redisUrl" . | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.flower.resources | nindent 12 }}
+{{- end }}

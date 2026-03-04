@@ -1,0 +1,65 @@
+id: inject-ransomware-simulation
+name: Ransomware Simulation Inject Pack
+version: "1.0"
+description: |
+  Simulates a ransomware attack chain from initial access through encryption.
+mitre_attack:
+  - T1566.001  # Phishing
+  - T1059.001  # PowerShell
+  - T1486      # Data Encrypted for Impact
+  - T1490      # Inhibit System Recovery
+
+injects:
+  - id: macro-execution
+    type: simulated_execution
+    delay_minutes: 0
+    params:
+      technique: T1059.001
+      description: "Malicious macro executes PowerShell downloader"
+      process_name: "powershell.exe"
+      command_line: "powershell -nop -w hidden -enc {{ encoded_payload }}"
+
+  - id: disable-defender
+    type: simulated_execution
+    delay_minutes: 2
+    depends_on: macro-execution
+    params:
+      technique: T1562.001
+      description: "Disable Windows Defender real-time protection"
+      process_name: "powershell.exe"
+      command_line: "Set-MpPreference -DisableRealtimeMonitoring $true"
+
+  - id: vss-delete
+    type: simulated_execution
+    delay_minutes: 5
+    depends_on: disable-defender
+    params:
+      technique: T1490
+      description: "Delete Volume Shadow Copies"
+      process_name: "vssadmin.exe"
+      command_line: "vssadmin delete shadows /all /quiet"
+
+  - id: encryption-sim
+    type: simulated_execution
+    delay_minutes: 8
+    depends_on: vss-delete
+    params:
+      technique: T1486
+      description: "Simulated file encryption across network shares"
+      artifacts:
+        - type: file_modification
+          path: "\\\\{{ fileserver }}\\shared\\*"
+          extension_added: ".encrypted"
+          count: 1000
+
+  - id: ransom-note
+    type: simulated_execution
+    delay_minutes: 10
+    depends_on: encryption-sim
+    params:
+      technique: T1491.001
+      description: "Drop ransom note on encrypted systems"
+      artifacts:
+        - type: file_create
+          path: "C:\\README_DECRYPT.txt"
+          content: "Your files have been encrypted. Contact: {{ ransom_email }}"

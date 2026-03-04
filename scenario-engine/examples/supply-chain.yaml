@@ -1,0 +1,50 @@
+name: supply-chain-attack
+version: "1.0"
+range_template: small-enterprise
+
+timeline:
+  - t: "0:00"
+    action: simulated_execution
+    params:
+      binary: "update-agent.exe"
+      target: "ws-01"
+      mitre_technique: "T1195.002"
+  - t: "0:05"
+    action: simulated_execution
+    params:
+      binary: "update-agent.exe"
+      target: "ws-02"
+      mitre_technique: "T1195.002"
+  - t: "0:10"
+    action: http_burst
+    params:
+      url: "http://legit-vendor.example.com/update-c2"
+      count: 20
+      method: "POST"
+  - t: "0:25"
+    action: dns_spike
+    params:
+      domains: ["cdn-update.example.com", "telemetry.legit-vendor.com"]
+      count: 150
+
+objectives:
+  - id: detect-unusual-binary
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:process_create AND binary:update-agent.exe"
+      min_hits: 2
+    points: 35
+  - id: detect-c2-comms
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:http AND url:*update-c2*"
+      min_hits: 1
+    points: 35
+  - id: containment-report
+    type: deliverable
+    validator: deliverable_check
+    params:
+      key: "containment-report.pdf"
+    points: 30

@@ -1,0 +1,25 @@
+﻿# Velociraptor Overlay — extend base compose.dev.yml
+# Usage: docker compose -f compose.dev.yml -f compose.velociraptor.yml up -d
+
+services:
+  velociraptor:
+    image: wlambert/velociraptor:0.72.4
+    container_name: tn-velociraptor
+    ports:
+      - "8889:8889"    # GUI
+      - "8001:8001"    # Frontend (agents)
+    volumes:
+      - vr-data:/velociraptor
+      - ./velociraptor/server.config.yaml:/velociraptor/server.config.yaml:ro
+    command: >
+      velociraptor --config /velociraptor/server.config.yaml frontend -v
+    networks:
+      - tn-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8889 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  vr-data:

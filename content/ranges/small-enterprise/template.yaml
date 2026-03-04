@@ -1,0 +1,25 @@
+name: small-enterprise
+version: 0.1
+inputs:
+  range_id: string
+  cidr_mgmt: 10.10.0.0/24
+  cidr_user: 10.20.0.0/24
+  cidr_srv: 10.30.0.0/24
+outputs:
+  jump_host_ip: string
+assets:
+  - role: jump
+    type: vm
+    count: 1
+    tags: [mgmt]
+  - role: dc
+    type: vm
+    count: 1
+    tags: [srv]
+  - role: user
+    type: vm
+    count: 3
+    tags: [user]
+policies:
+  egress: restricted
+  east_west: allowed_by_vlan

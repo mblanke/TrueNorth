@@ -1,0 +1,9 @@
+---
+- name: reload pf
+  ansible.builtin.shell: pfctl -f /tmp/rules.debug
+  changed_when: true
+
+- name: restart suricata
+  ansible.builtin.service:
+    name: suricata
+    state: restarted

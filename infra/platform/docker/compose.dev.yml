@@ -1,0 +1,371 @@
+# TrueNorth Range - Development Docker Compose
+# Scaled for 1,200 users / 70,000 VMs
+# Usage: docker compose -f compose.dev.yml up -d --build
+# Scale workers: docker compose -f compose.dev.yml up -d --scale worker-provision=4 --scale worker-scenario=2
+
+services:
+  # -- Data Stores -------------------------------------------------------
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: forge
+      POSTGRES_DB: forge
+      # Tuned for 1200-user workload
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    command: >
+      postgres
+        -c max_connections=500
+        -c shared_buffers=256MB
+        -c effective_cache_size=512MB
+        -c work_mem=16MB
+        -c maintenance_work_mem=128MB
+        -c checkpoint_completion_target=0.9
+        -c wal_buffers=16MB
+        -c default_statistics_target=100
+        -c random_page_cost=1.1
+        -c effective_io_concurrency=200
+        -c min_wal_size=1GB
+        -c max_wal_size=4GB
+        -c max_worker_processes=8
+        -c max_parallel_workers_per_gather=4
+        -c max_parallel_workers=8
+        -c max_parallel_maintenance_workers=4
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Connection pooler - essential for 1200+ concurrent connections
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.0
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://forge:forge@postgres:5432/forge
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 2000
+      DEFAULT_POOL_SIZE: 100
+      MIN_POOL_SIZE: 25
+      RESERVE_POOL_SIZE: 25
+      RESERVE_POOL_TIMEOUT: 3
+      SERVER_RESET_QUERY: DISCARD ALL
+      LOG_CONNECTIONS: 0
+      LOG_DISCONNECTIONS: 0
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+        --maxmemory 512mb
+        --maxmemory-policy allkeys-lru
+        --save 60 1000
+        --tcp-backlog 511
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  # -- Search / Telemetry ------------------------------------------------
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    volumes:
+      - os-data:/usr/share/opensearch/data
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.13.0
+    restart: unless-stopped
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      - opensearch
+
+  # -- Auth ---------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    restart: unless-stopped
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/forge
+      KC_DB_USERNAME: forge
+      KC_DB_PASSWORD: forge
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8180:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # -- Learning Record Store (xAPI/cmi5) ----------------------------------
+  lrs:
+    image: yetanalytics/lrsql:latest
+    restart: unless-stopped
+    environment:
+      LRSQL_DB_TYPE: postgresql
+      LRSQL_DB_HOST: postgres
+      LRSQL_DB_PORT: "5432"
+      LRSQL_DB_NAME: forge
+      LRSQL_DB_USER: forge
+      LRSQL_DB_PASSWORD: forge
+      LRSQL_ADMIN_USER_DEFAULT: lrsadmin
+      LRSQL_ADMIN_PASS_DEFAULT: lrsadmin
+      LRSQL_API_KEY_DEFAULT: truenorth-lrs-key
+      LRSQL_API_SECRET_DEFAULT: truenorth-lrs-secret
+    ports:
+      - "8000:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  # -- Control Plane API (multi-worker uvicorn) ---------------------------
+  api:
+    build:
+      context: ../../../control-plane/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Use PgBouncer for connection pooling
+      DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      OPENSEARCH_URL: http://opensearch:9200
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: truenorth
+      AUTH_DISABLED: "true"
+      PROVISIONER_BACKEND: mock
+      LRS_URL: http://lrs:8080
+      LRS_AUTH: dHJ1ZW5vcnRoLWxycy1rZXk6dHJ1ZW5vcnRoLWxycy1zZWNyZXQ=
+      CORS_ORIGINS: http://localhost:4200,http://localhost:3000
+      # Pool settings per uvicorn worker
+      DB_POOL_SIZE: "25"
+      DB_MAX_OVERFLOW: "50"
+      DB_POOL_TIMEOUT: "10"
+      DB_STATEMENT_TIMEOUT_MS: "30000"
+      # Uvicorn runs 4 workers (--workers 4 in Dockerfile)
+      UVICORN_WORKERS: "4"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 2G
+
+  # -- Celery Workers (separate queues for isolation) ---------------------
+  worker-provision:
+    build:
+      context: ../../../control-plane/worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A worker.celery_app worker -Q provision,destroy -c 4 --loglevel=info -n provision@%h
+    environment: &worker-env
+      DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
+      REDIS_URL: redis://redis:6379/0
+      OPENSEARCH_URL: http://opensearch:9200
+      PROVISIONER_BACKEND: mock
+      LRS_URL: http://lrs:8080
+      LRS_AUTH: dHJ1ZW5vcnRoLWxycy1rZXk6dHJ1ZW5vcnRoLWxycy1zZWNyZXQ=
+      CELERY_WORKER: "true"
+      MOCK_PROVISION_DELAY: "3"
+      MOCK_DESTROY_DELAY: "2"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+
+  worker-scenario:
+    build:
+      context: ../../../control-plane/worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A worker.celery_app worker -Q scenario,default -c 8 --loglevel=info -n scenario@%h
+    environment: *worker-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+
+  worker-telemetry:
+    build:
+      context: ../../../control-plane/worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A worker.celery_app worker -Q telemetry -c 4 --loglevel=info -n telemetry@%h
+    environment: *worker-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # -- Celery Flower (task monitoring dashboard) --------------------------
+  flower:
+    build:
+      context: ../../../control-plane/worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A worker.celery_app flower --port=5555 --broker_api=redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # -- AI Orchestrator ----------------------------------------------------
+  ai-orchestrator:
+    build:
+      context: ../../../ai-orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "6000:6000"
+    environment:
+      AI_MODEL_BACKEND: mock
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OLLAMA_NODES: "${OLLAMA_NODES:-}"
+
+  # -- Web Frontend (Angular) --------------------------------------------
+  web:
+    build:
+      context: ../../../control-plane/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "4200:80"
+    depends_on:
+      api:
+        condition: service_started
+
+  # -- Scenario Engine ---------------------------------------------------
+  scenario-engine:
+    build:
+      context: ../../../scenario-engine
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8080
+      REDIS_URL: redis://redis:6379/0
+      OPENSEARCH_URL: http://opensearch:9200
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # -- Telemetry Pipeline ------------------------------------------------
+  telemetry-pipeline:
+    build:
+      context: ../../../telemetry-pipeline
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX_PREFIX: truenorth-telemetry
+      BATCH_SIZE: "500"
+      FLUSH_INTERVAL_MS: "2000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  # -- Nginx Reverse Proxy ------------------------------------------------
+  nginx:
+    build:
+      context: ../../../infra/platform/nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
+volumes:
+  pg-data:
+  redis-data:
+  minio-data:
+  os-data:

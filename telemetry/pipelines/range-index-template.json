@@ -1,0 +1,45 @@
+﻿{
+  "index_patterns": ["range-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "range_id": { "type": "keyword" },
+        "tenant_id": { "type": "keyword" },
+        "event_type": { "type": "keyword" },
+        "source_ip": { "type": "ip" },
+        "dest_ip": { "type": "ip" },
+        "source_port": { "type": "integer" },
+        "dest_port": { "type": "integer" },
+        "protocol": { "type": "keyword" },
+        "action": { "type": "keyword" },
+        "severity": { "type": "keyword" },
+        "inject": { "type": "boolean" },
+        "query": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "query_type": { "type": "keyword" },
+        "url": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "method": { "type": "keyword" },
+        "status_code": { "type": "integer" },
+        "username": { "type": "keyword" },
+        "hostname": { "type": "keyword" },
+        "process_name": { "type": "keyword" },
+        "process_id": { "type": "integer" },
+        "parent_process": { "type": "keyword" },
+        "command_line": { "type": "text" },
+        "file_path": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+        "hash_md5": { "type": "keyword" },
+        "hash_sha256": { "type": "keyword" },
+        "mitre_technique": { "type": "keyword" },
+        "mitre_tactic": { "type": "keyword" },
+        "alert_name": { "type": "keyword" },
+        "alert_severity": { "type": "keyword" },
+        "raw_log": { "type": "text" }
+      }
+    }
+  }
+}

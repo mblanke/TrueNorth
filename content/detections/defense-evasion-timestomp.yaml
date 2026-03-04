@@ -1,0 +1,86 @@
+title: Defense Evasion via File Timestomping
+id: tn-detect-009
+status: stable
+description: |
+  Detects file timestamp manipulation (timestomping) used by adversaries
+  to blend malicious files with legitimate system files. Identifies
+  discrepancies between NTFS $STANDARD_INFORMATION and $FILE_NAME
+  timestamps, as well as known timestomping tool execution.
+author: TrueNorth Range
+date: 2026/02/25
+severity: medium
+mitre_technique:
+  - T1070.006   # Indicator Removal: Timestomp
+
+data_source:
+  - sysmon
+  - windows_security
+
+logsource:
+  category: file_change
+  product: windows
+
+detection:
+  selection_sysmon_file_create_time:
+    EventID: 2
+    description: "File creation time changed"
+  selection_timestamp_tools:
+    Image|endswith:
+      - "\\timestomp.exe"
+      - "\\NirCmd.exe"
+      - "\\SetMACE.exe"
+    CommandLine|contains:
+      - "timestomp"
+      - "setfiletime"
+      - "touch"
+  selection_powershell_timestomp:
+    Image|endswith:
+      - "\\powershell.exe"
+      - "\\pwsh.exe"
+    CommandLine|contains:
+      - "CreationTime"
+      - "LastWriteTime"
+      - "LastAccessTime"
+      - "SetCreationTime"
+      - "SetLastWriteTime"
+  selection_suspicious_target:
+    TargetFilename|contains:
+      - "C:\\Windows\\System32\\"
+      - "C:\\Windows\\SysWOW64\\"
+      - "C:\\ProgramData\\"
+  filter_legitimate:
+    Image|endswith:
+      - "\\TiWorker.exe"
+      - "\\msiexec.exe"
+      - "\\setup.exe"
+  condition: (selection_sysmon_file_create_time and selection_suspicious_target and not filter_legitimate) or selection_timestamp_tools or selection_powershell_timestomp
+
+level: medium
+
+query: |
+  (EventID:2 AND TargetFilename:(*\\System32\\* OR *\\SysWOW64\\* OR *\\ProgramData\\*)
+    AND NOT Image:(*\\TiWorker.exe OR *\\msiexec.exe)) OR
+  (Image:(*timestomp.exe OR *SetMACE.exe)) OR
+  (Image:*powershell* AND CommandLine:(*CreationTime* OR *LastWriteTime* OR *SetCreationTime*))
+
+sample_log:
+  timestamp: "2026-02-25T05:45:22Z"
+  event_id: 2
+  source: Microsoft-Windows-Sysmon
+  computer: "WS-DEV-03"
+  description: "File creation time changed"
+  fields:
+    Image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    TargetFilename: "C:\\Windows\\System32\\svchost-update.exe"
+    CreationUtcTime: "2026-02-25 05:45:22.123"
+    PreviousCreationUtcTime: "2024-01-15 08:30:00.000"
+    User: "CORP\\admin"
+    ProcessId: 8844
+
+false_positive_notes: |
+  - Windows Update (TiWorker.exe) legitimately modifies file timestamps
+  - Software installers (msiexec.exe) change timestamps during installation
+  - Build tools and compilers may set specific timestamps on output files
+  - File synchronization tools (OneDrive, Dropbox) may adjust timestamps
+  - Version control systems (git) can modify file timestamps during checkout
+  - Correlate with other suspicious activity on the same host for higher confidence

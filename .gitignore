@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Node
+node_modules/
+.next/
+dist/
+
+# Local data
+data/
+*.log
+
+# Terraform
+.terraform/
+*.tfstate*
+crash.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated artifacts
+*.bak
+*.db
+test_results.txt

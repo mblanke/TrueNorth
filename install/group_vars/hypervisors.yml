@@ -1,0 +1,6 @@
+---
+# Proxmox-specific variables
+proxmox_enterprise_repo: false
+proxmox_no_subscription_repo: true
+proxmox_bridge: vmbr0
+proxmox_storage_path: /mnt/pve

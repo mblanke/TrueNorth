@@ -1,0 +1,54 @@
+# Sample Windows Security Event Logs
+# These can be replayed into OpenSearch for training exercises
+---
+events:
+  - timestamp: "2024-03-15T14:23:01Z"
+    event_id: 4624
+    source: Security
+    description: "Successful logon"
+    fields:
+      LogonType: 10
+      TargetUserName: admin
+      TargetDomainName: CORP
+      IpAddress: "192.168.1.50"
+      WorkstationName: WS01
+
+  - timestamp: "2024-03-15T14:23:05Z"
+    event_id: 4672
+    source: Security
+    description: "Special privileges assigned to new logon"
+    fields:
+      SubjectUserName: admin
+      SubjectDomainName: CORP
+
+  - timestamp: "2024-03-15T14:25:00Z"
+    event_id: 1
+    source: Microsoft-Windows-Sysmon
+    description: "Process Create"
+    fields:
+      Image: "C:\\Windows\\System32\\cmd.exe"
+      CommandLine: "cmd.exe /c whoami /all"
+      ParentImage: "C:\\Windows\\explorer.exe"
+      User: "CORP\\admin"
+      Hashes: "SHA256=abc123def456"
+
+  - timestamp: "2024-03-15T14:26:00Z"
+    event_id: 3
+    source: Microsoft-Windows-Sysmon
+    description: "Network connection detected"
+    fields:
+      Image: "C:\\Windows\\System32\\cmd.exe"
+      DestinationIp: "10.0.0.5"
+      DestinationPort: 445
+      Protocol: tcp
+      User: "CORP\\admin"
+
+  - timestamp: "2024-03-15T14:30:00Z"
+    event_id: 4688
+    source: Security
+    description: "A new process has been created"
+    fields:
+      NewProcessName: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      CommandLine: "powershell -ep bypass -file C:\\temp\\recon.ps1"
+      SubjectUserName: admin
+      ParentProcessName: "C:\\Windows\\System32\\cmd.exe"

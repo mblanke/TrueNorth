@@ -1,0 +1,45 @@
+﻿# Filebeat config template — deployed per range
+# Variables: ${RANGE_ID}, ${TENANT_ID}, ${OPENSEARCH_URL}
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/sysmon/*.json
+    fields:
+      range_id: "${RANGE_ID}"
+      tenant_id: "${TENANT_ID}"
+      event_type: "sysmon"
+    fields_under_root: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/zeek/current/*.log
+    fields:
+      range_id: "${RANGE_ID}"
+      tenant_id: "${TENANT_ID}"
+      event_type: "zeek"
+    fields_under_root: true
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/suricata/eve.json
+    fields:
+      range_id: "${RANGE_ID}"
+      tenant_id: "${TENANT_ID}"
+      event_type: "suricata"
+    fields_under_root: true
+    json.keys_under_root: true
+
+output.opensearch:
+  hosts: ["${OPENSEARCH_URL}"]
+  index: "range-${RANGE_ID}-%{+yyyy.MM.dd}"
+
+processors:
+  - add_host_metadata: ~
+  - timestamp:
+      field: "@timestamp"
+      layouts:
+        - "2006-01-02T15:04:05.000Z"

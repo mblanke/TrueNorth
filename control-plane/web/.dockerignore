@@ -1,0 +1,20 @@
+# control-plane/web/.dockerignore
+node_modules
+.angular
+dist
+.npm
+.env
+.env.*
+*.md
+.git
+.gitignore
+.github
+.vscode
+.idea
+coverage
+e2e
+*.log
+Dockerfile
+.dockerignore
+karma.conf.js
+tsconfig.spec.json

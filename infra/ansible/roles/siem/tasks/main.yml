@@ -1,0 +1,113 @@
+---
+# ============================================================
+# TrueNorth Range — SIEM Role (Wazuh Manager + Suricata)
+# ============================================================
+
+- name: Add Wazuh GPG key
+  ansible.builtin.apt_key:
+    url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+    state: present
+  tags: [wazuh, install]
+
+- name: Add Wazuh repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://packages.wazuh.com/4.x/apt/ stable main"
+    state: present
+    filename: wazuh
+  tags: [wazuh, install]
+
+- name: Install Wazuh Manager
+  ansible.builtin.apt:
+    name: wazuh-manager
+    state: present
+  tags: [wazuh, install]
+
+- name: Configure Wazuh Manager — agent enrollment
+  ansible.builtin.template:
+    src: ossec.conf.j2
+    dest: /var/ossec/etc/ossec.conf
+    owner: root
+    group: wazuh
+    mode: "0640"
+  notify: restart wazuh-manager
+  tags: [wazuh, config]
+
+- name: Enable Wazuh agent auto-enrollment
+  ansible.builtin.lineinfile:
+    path: /var/ossec/etc/ossec.conf
+    regexp: "<use_source_ip>"
+    line: "      <use_source_ip>yes</use_source_ip>"
+    insertafter: "<auth>"
+  notify: restart wazuh-manager
+  tags: [wazuh, enrollment]
+
+- name: Start Wazuh Manager
+  ansible.builtin.systemd:
+    name: wazuh-manager
+    enabled: true
+    state: started
+  tags: [wazuh]
+
+- name: Install Suricata
+  ansible.builtin.apt:
+    name:
+      - suricata
+      - suricata-update
+    state: present
+  tags: [suricata, install]
+
+- name: Configure Suricata
+  ansible.builtin.template:
+    src: suricata.yaml.j2
+    dest: /etc/suricata/suricata.yaml
+    mode: "0644"
+  notify: restart suricata
+  tags: [suricata, config]
+
+- name: Update Suricata rules
+  ansible.builtin.command: suricata-update
+  changed_when: true
+  tags: [suricata, rules]
+
+- name: Configure Suricata integration with Wazuh
+  ansible.builtin.template:
+    src: suricata-wazuh.conf.j2
+    dest: /var/ossec/etc/shared/default/suricata.conf
+    mode: "0640"
+  notify: restart wazuh-manager
+  tags: [suricata, wazuh]
+
+- name: Enable Suricata service
+  ansible.builtin.systemd:
+    name: suricata
+    enabled: true
+    state: started
+  tags: [suricata]
+
+- name: Deploy custom detection rules
+  ansible.builtin.template:
+    src: local_rules.xml.j2
+    dest: /var/ossec/etc/rules/local_rules.xml
+    owner: root
+    group: wazuh
+    mode: "0640"
+  notify: restart wazuh-manager
+  tags: [wazuh, rules]
+
+- name: Configure alert forwarding to OpenSearch
+  ansible.builtin.template:
+    src: wazuh-opensearch.conf.j2
+    dest: /var/ossec/etc/shared/default/opensearch.conf
+    mode: "0640"
+  notify: restart wazuh-manager
+  tags: [wazuh, opensearch]
+
+- name: Configure Wazuh API credentials
+  ansible.builtin.template:
+    src: api.yaml.j2
+    dest: /var/ossec/api/configuration/api.yaml
+    owner: root
+    group: wazuh
+    mode: "0640"
+  notify: restart wazuh-api
+  tags: [wazuh, api]

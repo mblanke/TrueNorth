@@ -1,0 +1,5 @@
+# Managed by Ansible -- TrueNorth Range
+search {{ domain }}
+{% for dns in dns_servers %}
+nameserver {{ dns }}
+{% endfor %}

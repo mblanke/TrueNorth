@@ -1,0 +1,26 @@
+title: Suspicious DNS Queries to Known DGA Patterns
+id: tn-detect-003
+status: experimental
+description: Detects high-entropy DNS queries that may indicate DGA-based C2 communication
+author: TrueNorth Range
+date: 2024/03/15
+mitre_attack:
+  - T1568.002
+  - T1071.004
+logsource:
+  category: dns_query
+  product: any
+detection:
+  selection:
+    query_length|gt: 30
+    shannon_entropy|gt: 3.5
+  filter:
+    query|endswith:
+      - ".windows.com"
+      - ".microsoft.com"
+      - ".windowsupdate.com"
+  condition: selection and not filter
+level: medium
+falsepositives:
+  - CDN domains
+  - Cloud services with long subdomains

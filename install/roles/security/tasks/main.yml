@@ -1,0 +1,38 @@
+---
+- name: Harden SSH config
+  template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+  notify: restart sshd
+
+- name: Configure UFW defaults
+  ufw:
+    state: enabled
+    default: deny
+    direction: incoming
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    port: '22'
+    proto: tcp
+
+- name: Allow Proxmox web UI
+  ufw:
+    rule: allow
+    port: '8006'
+    proto: tcp
+  when: inventory_hostname in groups['hypervisors']
+
+- name: Allow TrueNorth API
+  ufw:
+    rule: allow
+    port: "{{ truenorth_api_port }}"
+    proto: tcp
+  when: inventory_hostname in groups['control_plane']
+
+- name: Allow VLAN subnets
+  ufw:
+    rule: allow
+    src: "{{ item.value.subnet }}"
+  loop: "{{ vlans | dict2items }}"

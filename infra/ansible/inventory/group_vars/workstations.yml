@@ -1,0 +1,54 @@
+---
+# ============================================================
+# TrueNorth Range — Workstation Variables
+# ============================================================
+
+workstation_default_user: "trainee"
+workstation_domain_join:  true
+workstation_rdp_enabled:  true
+
+# ── Local IR admin (for incident-response scenarios) ──────
+ir_local_admin_user:     "ir_admin"
+ir_local_admin_password: "{{ vault_ir_local_admin_password }}"
+
+# ── Common Applications ───────────────────────────────────
+workstation_apps:
+  - name: "Google Chrome"
+    choco_id: "googlechrome"
+  - name: "Mozilla Firefox"
+    choco_id: "firefox"
+  - name: "7-Zip"
+    choco_id: "7zip"
+  - name: "Notepad++"
+    choco_id: "notepadplusplus"
+  - name: "PuTTY"
+    choco_id: "putty"
+  - name: "Wireshark"
+    choco_id: "wireshark"
+
+# ── PowerShell Logging ────────────────────────────────────
+powershell_logging:
+  module_logging: true
+  script_block_logging: true
+  transcription_enabled: true
+  transcription_directory: 'C:\PSTranscripts'
+
+# ── Windows Firewall ──────────────────────────────────────
+firewall_rules:
+  - name: "Allow RDP"
+    direction: "Inbound"
+    protocol: "TCP"
+    localport: 3389
+    action: "Allow"
+  - name: "Allow WinRM"
+    direction: "Inbound"
+    protocol: "TCP"
+    localport: 5985
+    action: "Allow"
+  - name: "Allow ICMP"
+    direction: "Inbound"
+    protocol: "ICMPv4"
+    action: "Allow"
+
+# ── Sysmon / Winlogbeat ──────────────────────────────────
+sysmon_config_url: "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/master/sysmonconfig-export.xml"

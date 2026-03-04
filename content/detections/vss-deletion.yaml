@@ -1,0 +1,29 @@
+title: Volume Shadow Copy Deletion
+id: tn-detect-002
+status: stable
+description: Detects deletion of volume shadow copies, commonly used by ransomware
+author: TrueNorth Range
+date: 2024/03/15
+mitre_attack:
+  - T1490
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_vssadmin:
+    Image|endswith: "\\vssadmin.exe"
+    CommandLine|contains:
+      - "delete"
+      - "shadows"
+  selection_wmic:
+    Image|endswith: "\\wmic.exe"
+    CommandLine|contains:
+      - "shadowcopy"
+      - "delete"
+  selection_powershell:
+    Image|endswith: "\\powershell.exe"
+    CommandLine|contains: "Win32_ShadowCopy"
+  condition: selection_vssadmin or selection_wmic or selection_powershell
+level: critical
+falsepositives:
+  - Legitimate backup software

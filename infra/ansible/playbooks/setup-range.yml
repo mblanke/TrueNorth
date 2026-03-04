@@ -1,0 +1,108 @@
+---
+# ============================================================
+# TrueNorth Range — Full Range Setup Playbook
+# ============================================================
+# Applies roles in dependency order:
+#   routers → DCs → servers → workstations → security → attackers
+#
+# Usage:
+#   ansible-playbook playbooks/setup-range.yml \
+#     -e range_id=range-001 -e exercise_id=ex-apt-001
+
+- name: "Phase 1 — Network Infrastructure (Routers)"
+  hosts: routers
+  become: true
+  gather_facts: true
+  serial: 1
+  roles:
+    - common
+    - router
+  tags: [phase1, routers]
+  handlers:
+    - name: restart networking
+      ansible.builtin.service:
+        name: networking
+        state: restarted
+
+- name: "Phase 2 — Domain Controllers"
+  hosts: domain_controllers
+  gather_facts: true
+  roles:
+    - domain_controller
+  tags: [phase2, domain_controllers]
+  handlers:
+    - name: restart dns
+      ansible.windows.win_service:
+        name: DNS
+        state: restarted
+
+- name: "Phase 3 — Servers (Web, DB, etc.)"
+  hosts: servers
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - web_server
+  tags: [phase3, servers]
+  handlers:
+    - name: restart nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+
+- name: "Phase 4 — Workstations"
+  hosts: workstations
+  gather_facts: true
+  strategy: free
+  roles:
+    - workstation
+  tags: [phase4, workstations]
+  handlers:
+    - name: restart winlogbeat
+      ansible.windows.win_service:
+        name: winlogbeat
+        state: restarted
+
+- name: "Phase 5 — Security Tools (SIEM)"
+  hosts: siem
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - siem
+  tags: [phase5, security]
+  handlers:
+    - name: restart wazuh-manager
+      ansible.builtin.systemd:
+        name: wazuh-manager
+        state: restarted
+
+- name: "Phase 6 — Attacker / Red Team VMs"
+  hosts: attackers
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - attacker
+  tags: [phase6, attackers]
+
+- name: "Phase 7 — Post-setup validation"
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Verify SSH connectivity
+      ansible.builtin.ping:
+      when: ansible_os_family != "Windows"
+      tags: [validate]
+
+    - name: Verify WinRM connectivity
+      ansible.windows.win_ping:
+      when: ansible_os_family == "Windows"
+      tags: [validate]
+
+    - name: Log range setup completion
+      ansible.builtin.debug:
+        msg: >-
+          Range {{ range_id }} (exercise {{ exercise_id }}) setup complete
+          for host {{ inventory_hostname }}.
+      tags: [validate]

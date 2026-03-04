@@ -1,0 +1,13 @@
+{{- if .Values.api.enabled -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-api
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "api") | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.api.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "api") | nindent 6 }}
+{{- end }}

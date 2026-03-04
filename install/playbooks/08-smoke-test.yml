@@ -1,0 +1,26 @@
+---
+# Playbook 08: Smoke tests
+- name: Smoke Test -- verify all services are running
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check Proxmox API
+      uri:
+        url: "https://{{ ansible_host }}:{{ proxmox_api_port }}/api2/json/version"
+        validate_certs: false
+      when: inventory_hostname in groups['hypervisors']
+      register: pve_check
+      ignore_errors: true
+
+    - name: Check TrueNorth API
+      uri:
+        url: "http://{{ ansible_host }}:{{ truenorth_api_port }}/health"
+      when: inventory_hostname in groups['control_plane']
+      register: cp_check
+      ignore_errors: true
+
+    - name: Report results
+      debug:
+        msg: >
+          Proxmox: {{ pve_check.status | default('N/A') }},
+          Control Plane: {{ cp_check.status | default('N/A') }}

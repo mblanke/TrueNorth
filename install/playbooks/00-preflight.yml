@@ -1,0 +1,28 @@
+---
+# Playbook 00: Preflight checks
+- name: Preflight -- validate inventory and connectivity
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Verify Python is available
+      raw: python3 --version
+      changed_when: false
+
+    - name: Check OS family
+      assert:
+        that: ansible_os_family in ['Debian', 'RedHat']
+        fail_msg: "Unsupported OS: {{ ansible_os_family }}"
+
+    - name: Verify DNS resolution
+      command: "nslookup {{ domain }}"
+      changed_when: false
+      ignore_errors: true
+
+    - name: Verify NTP sync
+      command: timedatectl status
+      changed_when: false
+      register: time_status
+
+    - name: Report time sync
+      debug:
+        msg: "{{ time_status.stdout_lines }}"

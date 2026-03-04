@@ -1,0 +1,674 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  TrueNorth Range Template — Red vs Blue Cyber Exercise
+#  40 VMs · 80 vCPU · 160 GB RAM · ~1.1 TB disk
+#  Designed for 2-node Proxmox cluster (coyote + acme)
+# ═══════════════════════════════════════════════════════════════════════════
+id: red-vs-blue
+name: Red vs Blue Cyber Exercise
+version: "2.0"
+description: |
+  Full Red vs Blue cyber exercise range. Blue Team defends a simulated
+  enterprise network (AD, email, web, DB, SIEM) while Red Team operates
+  from an isolated attack enclave. A neutral management zone provides
+  scoring, C2 logging, and jump-box access for exercise control.
+  40 VMs split across two Proxmox nodes with six isolated VLANs.
+author: TrueNorth Range
+difficulty: advanced
+vm_count: 40
+
+inputs:
+  range_id: string
+  cidr_mgmt:   "10.0.0.0/24"
+  cidr_corp:   "10.10.0.0/24"
+  cidr_dmz:    "10.20.0.0/24"
+  cidr_server: "10.30.0.0/24"
+  cidr_user:   "10.40.0.0/24"
+  cidr_red:    "10.66.0.0/24"
+
+outputs:
+  jump_host_ip: string
+  scoreboard_url: string
+  siem_url: string
+
+# ─── NETWORK ──────────────────────────────────────────────────────────
+network:
+  vlans:
+    - id: 100
+      name: management
+      cidr: "10.0.0.0/24"
+      description: "Exercise control — scoring, jump boxes, SIEM, IDS"
+    - id: 200
+      name: corporate_lan
+      cidr: "10.10.0.0/24"
+      description: "Corporate endpoints and user workstations"
+    - id: 300
+      name: dmz
+      cidr: "10.20.0.0/24"
+      description: "Internet-facing services — web, mail relay, VPN"
+    - id: 400
+      name: server_vlan
+      cidr: "10.30.0.0/24"
+      description: "Backend servers — AD, DB, file shares, Exchange, PKI"
+    - id: 500
+      name: blue_team
+      cidr: "10.40.0.0/24"
+      description: "Blue Team analyst workstations with forensic tools"
+    - id: 666
+      name: red_team
+      cidr: "10.66.0.0/24"
+      description: "Isolated Red Team attack enclave"
+
+  firewall_rules:
+    # ── Red Team access control ───────────────────────────
+    - name: red-to-dmz
+      src: red_team
+      dst: dmz
+      action: allow
+      description: "Red can reach DMZ (simulated internet attack surface)"
+    - name: red-to-corp-deny
+      src: red_team
+      dst: corporate_lan
+      action: deny
+      description: "Red must pivot through DMZ — no direct corp access"
+    - name: red-to-server-deny
+      src: red_team
+      dst: server_vlan
+      action: deny
+      description: "Red must pivot — no direct server access"
+    - name: red-to-mgmt-deny
+      src: red_team
+      dst: management
+      action: deny
+      description: "Red cannot reach scoring/SIEM"
+    # ── Internal connectivity ─────────────────────────────
+    - name: corp-to-server
+      src: corporate_lan
+      dst: server_vlan
+      ports: [88, 135, 389, 445, 636, 1433, 3306]
+      action: allow
+      description: "Workstations reach AD, file, DB servers"
+    - name: corp-to-dmz
+      src: corporate_lan
+      dst: dmz
+      ports: [80, 443, 25, 587]
+      action: allow
+      description: "Corp reaches DMZ web/mail services"
+    - name: dmz-to-server-limited
+      src: dmz
+      dst: server_vlan
+      ports: [1433, 3306, 25, 587]
+      action: allow
+      description: "DMZ reaches DB + mail only (restricted ports)"
+    # ── Blue Team / Management ────────────────────────────
+    - name: blue-to-mgmt
+      src: blue_team
+      dst: management
+      ports: [443, 514, 5601, 9200]
+      action: allow
+      description: "Blue analysts reach SIEM and scoreboard"
+    - name: blue-to-server
+      src: blue_team
+      dst: server_vlan
+      action: allow
+      description: "Blue analysts access servers for investigation"
+    - name: mgmt-to-all
+      src: management
+      dst: "*"
+      action: allow
+      description: "Management zone has full access for exercise control"
+
+# ─── NODES (40 VMs) ──────────────────────────────────────────────────
+nodes:
+
+  # ════════════════════════════════════════════════════════════════════
+  # MANAGEMENT ZONE — 5 VMs  (coyote)  12 vCPU · 30 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: jump01
+    name: Jump Host
+    role: jump_host
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.0.0.10"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, rdp_gateway]
+    description: "Exercise controller jump box — RDP gateway to all zones"
+
+  - id: score01
+    name: Scoreboard
+    role: scoreboard
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.0.0.20"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [http, https, scoring_engine]
+    description: "Live scoreboard and scoring engine"
+
+  - id: siem01
+    name: SIEM
+    role: siem
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.0.0.30"
+    node: coyote
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 64 }
+    services: [opensearch, opensearch_dashboards, syslog]
+    description: "OpenSearch SIEM — centralized log collection and dashboards"
+
+  - id: relay01
+    name: Log Relay
+    role: log_relay
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.0.0.40"
+    node: coyote
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [rsyslog, filebeat]
+    description: "Syslog relay / Filebeat forwarder to SIEM"
+
+  - id: nids01
+    name: Network IDS
+    role: network_ids
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.0.0.50"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [suricata, zeek, evebox]
+    description: "Network intrusion detection — Suricata + Zeek sensor"
+
+  # ════════════════════════════════════════════════════════════════════
+  # DMZ — 5 VMs  (acme)  10 vCPU · 10 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: web01
+    name: Web Server 1
+    role: web_server
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.20.0.10"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [nginx, php, https]
+    tags: [blue_defend]
+    description: "Public-facing web server (primary)"
+
+  - id: web02
+    name: Web Server 2
+    role: web_server
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.20.0.11"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [apache, tomcat, https]
+    tags: [blue_defend]
+    description: "Public-facing web server (secondary)"
+
+  - id: mx01
+    name: Mail Gateway
+    role: mail_gateway
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.20.0.30"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [postfix, dovecot, spamassassin]
+    tags: [blue_defend]
+    description: "Inbound mail relay and spam filter"
+
+  - id: rproxy01
+    name: Reverse Proxy
+    role: reverse_proxy
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.20.0.40"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [haproxy, modsecurity, https]
+    tags: [blue_defend]
+    description: "Reverse proxy / WAF for backend services"
+
+  - id: vpn01
+    name: VPN Gateway
+    role: vpn_gateway
+    os: pfsense-2.7
+    vlan: dmz
+    ip: "10.20.0.50"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    services: [openvpn, ipsec]
+    tags: [blue_defend]
+    description: "VPN concentrator — remote access endpoint"
+
+  # ════════════════════════════════════════════════════════════════════
+  # SERVER VLAN — 8 VMs  (split)  16 vCPU · 44 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: dc01
+    name: Primary Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.30.0.10"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 48 }
+    services: [active_directory, dns, gpo, dhcp]
+    tags: [blue_defend]
+    ad_forest: corp.range.local
+    fsmo_roles: [schema_master, domain_naming_master, pdc_emulator, rid_master, infrastructure_master]
+    description: "Primary AD DC — all FSMO roles"
+
+  - id: dc02
+    name: Secondary Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.30.0.11"
+    node: acme
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 48 }
+    services: [active_directory, dns]
+    tags: [blue_defend]
+    ad_forest: corp.range.local
+    description: "Secondary AD DC — replication partner"
+
+  - id: db01
+    name: Database Server
+    role: database_server
+    os: ubuntu-2204
+    vlan: server_vlan
+    ip: "10.30.0.30"
+    node: acme
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 32 }
+    services: [postgresql, mysql]
+    tags: [blue_defend]
+    description: "Database server — HR, finance, and web-app backends"
+
+  - id: fs01
+    name: File Server
+    role: file_server
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.30.0.40"
+    node: acme
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 48 }
+    services: [smb, dfs]
+    tags: [blue_defend]
+    description: "File server — sensitive data shares, DFS namespace"
+
+  - id: exch01
+    name: Exchange Server
+    role: mail_server
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.30.0.50"
+    node: acme
+    specs: { cores: 2, memory_mb: 16384, disk_gb: 48 }
+    services: [exchange, owa, smtp]
+    tags: [blue_defend]
+    description: "Exchange mail server — high-value target"
+
+  - id: bak01
+    name: Backup Server
+    role: backup_server
+    os: ubuntu-2204
+    vlan: server_vlan
+    ip: "10.30.0.60"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 32 }
+    services: [veeam_agent, rsync, ssh]
+    tags: [blue_defend]
+    description: "Backup server — critical recovery target"
+
+  - id: ca01
+    name: Certificate Authority
+    role: certificate_authority
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.30.0.70"
+    node: coyote
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [ad_cs, ocsp]
+    tags: [blue_defend]
+    description: "Enterprise PKI — AD Certificate Services"
+
+  - id: webapp01
+    name: Internal Web Application
+    role: web_application
+    os: ubuntu-2204
+    vlan: server_vlan
+    ip: "10.30.0.80"
+    node: acme
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [tomcat, java, https]
+    tags: [blue_defend]
+    description: "Internal CRM/ERP web application"
+
+  # ════════════════════════════════════════════════════════════════════
+  # CORPORATE LAN — 6 VMs  (acme)  12 vCPU · 20 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: ws01
+    name: Workstation 1 - HR
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.10.0.10"
+    node: acme
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [rdp, sysmon, defender]
+    tags: [blue_defend]
+    user_profile: hr_manager
+    description: "Domain-joined Windows workstation (HR)"
+
+  - id: ws02
+    name: Workstation 2 - Finance
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.10.0.11"
+    node: acme
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [rdp, sysmon, defender]
+    tags: [blue_defend]
+    user_profile: finance_analyst
+    description: "Domain-joined Windows workstation (Finance)"
+
+  - id: ws03
+    name: Workstation 3 - IT Admin
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.10.0.12"
+    node: acme
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [rdp, sysmon, defender, rsat]
+    tags: [blue_defend]
+    user_profile: it_admin
+    description: "Domain-joined Windows workstation (IT Admin — RSAT)"
+
+  - id: ws04
+    name: Workstation 4 - Executive
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.10.0.13"
+    node: acme
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [rdp, sysmon, defender]
+    tags: [blue_defend]
+    user_profile: executive
+    description: "Domain-joined Windows workstation (C-suite)"
+
+  - id: lnx01
+    name: Dev Workstation 1
+    role: workstation
+    os: ubuntu-2204
+    vlan: corporate_lan
+    ip: "10.10.0.50"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [ssh, auditd, docker]
+    tags: [blue_defend]
+    user_profile: developer
+    description: "Linux developer workstation"
+
+  - id: lnx02
+    name: Dev Workstation 2
+    role: workstation
+    os: ubuntu-2204
+    vlan: corporate_lan
+    ip: "10.10.0.51"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [ssh, auditd, docker]
+    tags: [blue_defend]
+    user_profile: developer
+    description: "Linux developer workstation"
+
+  # ════════════════════════════════════════════════════════════════════
+  # BLUE TEAM ANALYSTS — 5 VMs  (coyote)  10 vCPU · 20 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: blue01
+    name: Blue Analyst 1
+    role: blue_analyst
+    os: ubuntu-2204
+    vlan: blue_team
+    ip: "10.40.0.10"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, rdp, wireshark, zeek, velociraptor_client]
+    description: "Blue Team analyst — forensic tools pre-installed"
+
+  - id: blue02
+    name: Blue Analyst 2
+    role: blue_analyst
+    os: ubuntu-2204
+    vlan: blue_team
+    ip: "10.40.0.11"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, rdp, wireshark, zeek, velociraptor_client]
+    description: "Blue Team analyst — forensic tools pre-installed"
+
+  - id: blue03
+    name: Blue Analyst 3
+    role: blue_analyst
+    os: ubuntu-2204
+    vlan: blue_team
+    ip: "10.40.0.12"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, rdp, wireshark, zeek, velociraptor_client]
+    description: "Blue Team analyst — forensic tools pre-installed"
+
+  - id: blue04
+    name: Blue Analyst 4
+    role: blue_analyst
+    os: ubuntu-2204
+    vlan: blue_team
+    ip: "10.40.0.13"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, rdp, wireshark, zeek, velociraptor_client]
+    description: "Blue Team analyst — forensic tools pre-installed"
+
+  - id: blue05
+    name: Blue Analyst 5
+    role: blue_analyst
+    os: ubuntu-2204
+    vlan: blue_team
+    ip: "10.40.0.14"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, rdp, wireshark, zeek, velociraptor_client]
+    description: "Blue Team analyst — forensic tools pre-installed"
+
+  # ════════════════════════════════════════════════════════════════════
+  # RED TEAM ENCLAVE — 5 VMs  (coyote)  10 vCPU · 18 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: red-c2-01
+    name: Red C2 Server
+    role: red_c2
+    os: kali-2024
+    vlan: red_team
+    ip: "10.66.0.10"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [cobalt_strike, metasploit, https]
+    description: "Red Team command-and-control server"
+
+  - id: red-op01
+    name: Red Operator 1
+    role: red_operator
+    os: kali-2024
+    vlan: red_team
+    ip: "10.66.0.20"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, burpsuite, bloodhound, impacket]
+    description: "Red Team operator workstation"
+
+  - id: red-op02
+    name: Red Operator 2
+    role: red_operator
+    os: kali-2024
+    vlan: red_team
+    ip: "10.66.0.21"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, burpsuite, bloodhound, impacket]
+    description: "Red Team operator workstation"
+
+  - id: red-op03
+    name: Red Operator 3
+    role: red_operator
+    os: kali-2024
+    vlan: red_team
+    ip: "10.66.0.22"
+    node: coyote
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    services: [ssh, burpsuite, bloodhound, impacket]
+    description: "Red Team operator workstation"
+
+  - id: red-phish01
+    name: Red Phishing Server
+    role: red_phishing
+    os: ubuntu-2204
+    vlan: red_team
+    ip: "10.66.0.50"
+    node: coyote
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    services: [gophish, postfix, nginx]
+    description: "Phishing infrastructure — GoPhish + mail relay"
+
+  # ════════════════════════════════════════════════════════════════════
+  # NETWORK INFRASTRUCTURE — 6 VMs  (split)  10 vCPU · 18 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: fw01
+    name: Firewall 1
+    role: firewall
+    os: pfsense-2.7
+    vlan: management
+    ip: "10.0.0.250"
+    node: coyote
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    services: [firewall, nat, vpn, snort]
+    description: "Perimeter firewall — mgmt / server / blue zones"
+
+  - id: fw02
+    name: Firewall 2
+    role: firewall
+    os: pfsense-2.7
+    vlan: management
+    ip: "10.0.0.251"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    services: [firewall, nat, vpn, snort]
+    description: "Perimeter firewall — dmz / corp zones"
+
+  - id: rtr01
+    name: Core Router
+    role: router
+    os: vyos-1.4
+    vlan: management
+    ip: "10.0.0.1"
+    node: acme
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 4 }
+    services: [ospf, bgp, inter_vlan_routing]
+    description: "Core router — inter-VLAN routing between all zones"
+
+  - id: tgen01
+    name: Traffic Generator
+    role: traffic_generator
+    os: ubuntu-2204
+    vlan: corporate_lan
+    ip: "10.10.0.99"
+    node: acme
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    services: [tcpreplay, scapy, cron]
+    description: "Background traffic generator for network realism"
+
+  - id: honey01
+    name: Honeypot
+    role: honeypot
+    os: ubuntu-2204
+    vlan: corporate_lan
+    ip: "10.10.0.200"
+    node: acme
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
+    services: [cowrie, dionaea, elasticpot]
+    tags: [canary, detection]
+    description: "Honeypot / canary — alerts on any Red Team interaction"
+
+  - id: ids01
+    name: IDS Sensor
+    role: ids_sensor
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.0.0.60"
+    node: coyote
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 32 }
+    services: [suricata, arkime, pcap_capture]
+    description: "Inline IDS sensor — full packet capture with Arkime"
+
+# ─── DEPLOYMENT ───────────────────────────────────────────────────────
+deployment:
+  strategy: split_across_nodes
+
+  node_assignment:
+    coyote:
+      vm_count: 19
+      roles:
+        - jump_host           # jump01
+        - scoreboard          # score01
+        - siem                # siem01
+        - log_relay           # relay01
+        - network_ids         # nids01
+        - domain_controller   # dc01
+        - certificate_authority  # ca01
+        - blue_analyst        # blue01–05
+        - red_c2              # red-c2-01
+        - red_operator        # red-op01–03
+        - red_phishing        # red-phish01
+        - firewall            # fw01
+        - ids_sensor          # ids01
+      total_vcpu: 40
+      total_ram_gb: 84
+
+    acme:
+      vm_count: 21
+      roles:
+        - web_server          # web01, web02
+        - mail_gateway        # mx01
+        - reverse_proxy       # rproxy01
+        - vpn_gateway         # vpn01
+        - domain_controller   # dc02
+        - database_server     # db01
+        - file_server         # fs01
+        - mail_server         # exch01
+        - backup_server       # bak01
+        - web_application     # webapp01
+        - workstation         # ws01–04, lnx01–02
+        - firewall            # fw02
+        - router              # rtr01
+        - traffic_generator   # tgen01
+        - honeypot            # honey01
+      total_vcpu: 40
+      total_ram_gb: 76
+
+  totals:
+    vms: 40
+    vcpu: 80
+    ram_gb: 160
+    disk_gb: 1092
+
+# ─── POLICIES ─────────────────────────────────────────────────────────
+policies:
+  egress: restricted
+  east_west: segmented_by_vlan

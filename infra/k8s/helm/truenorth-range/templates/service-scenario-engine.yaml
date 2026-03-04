@@ -1,0 +1,17 @@
+{{- if .Values.scenarioEngine.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-scenario-engine
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "scenario-engine") | nindent 4 }}
+spec:
+  type: {{ .Values.scenarioEngine.service.type }}
+  ports:
+    - port: {{ .Values.scenarioEngine.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "scenario-engine") | nindent 4 }}
+{{- end }}

@@ -1,0 +1,120 @@
+---
+# ============================================================
+# TrueNorth Range — Router / pfSense Role
+# ============================================================
+# NOTE: pfSense is FreeBSD-based; we use the pfsensible collection
+# or direct XML config + shell commands via SSH.
+
+- name: Configure WAN interface
+  pfsensible.core.pfsense_interface:
+    name: WAN
+    interface: vtnet0
+    ipv4_type: dhcp
+    enable: true
+    state: present
+  tags: [router, wan]
+
+- name: Configure LAN interface
+  pfsensible.core.pfsense_interface:
+    name: LAN
+    interface: vtnet1
+    ipv4_type: static
+    ipv4_address: "10.0.1.1"
+    ipv4_prefixlen: 24
+    enable: true
+    state: present
+  tags: [router, lan]
+
+- name: Configure VLAN interfaces
+  pfsensible.core.pfsense_vlan:
+    interface: vtnet1
+    vlan_id: "{{ item.vlan_id }}"
+    descr: "{{ item.name }}"
+    state: present
+  loop:
+    - { vlan_id: 10,  name: "Management" }
+    - { vlan_id: 20,  name: "Servers" }
+    - { vlan_id: 30,  name: "Workstations" }
+    - { vlan_id: 40,  name: "Security" }
+    - { vlan_id: 50,  name: "DMZ" }
+    - { vlan_id: 100, name: "Attacker" }
+  tags: [router, vlans]
+
+- name: Configure NAT outbound rules
+  pfsensible.core.pfsense_nat_outbound:
+    descr: "NAT {{ item.name }} to WAN"
+    interface: WAN
+    source: "{{ item.network }}"
+    destination: any
+    natport: ""
+    state: present
+  loop:
+    - { name: "Management",  network: "10.0.10.0/24" }
+    - { name: "Servers",     network: "10.0.20.0/24" }
+    - { name: "Workstations", network: "10.0.30.0/24" }
+    - { name: "Security",   network: "10.0.40.0/24" }
+    - { name: "DMZ",        network: "10.0.50.0/24" }
+  tags: [router, nat]
+
+- name: Configure DHCP server per VLAN
+  pfsensible.core.pfsense_dhcp_server:
+    interface: "{{ item.interface }}"
+    enable: true
+    range_from: "{{ item.range_from }}"
+    range_to: "{{ item.range_to }}"
+    gateway: "{{ item.gateway }}"
+    dns_servers:
+      - "{{ dns_server }}"
+    state: present
+  loop:
+    - { interface: "VLAN30", range_from: "10.0.30.100", range_to: "10.0.30.200", gateway: "10.0.30.1" }
+    - { interface: "VLAN50", range_from: "10.0.50.100", range_to: "10.0.50.200", gateway: "10.0.50.1" }
+  tags: [router, dhcp]
+
+- name: Configure firewall rules — allow inter-VLAN
+  pfsensible.core.pfsense_rule:
+    name: "Allow {{ item.name }}"
+    interface: "{{ item.interface }}"
+    action: pass
+    protocol: any
+    source: "{{ item.source }}"
+    destination: "{{ item.destination }}"
+    state: present
+  loop:
+    - { name: "Mgmt to All",         interface: "VLAN10", source: "VLAN10 net", destination: "any" }
+    - { name: "Workstations to DC",  interface: "VLAN30", source: "VLAN30 net", destination: "VLAN20 net" }
+    - { name: "Workstations to DMZ", interface: "VLAN30", source: "VLAN30 net", destination: "VLAN50 net" }
+    - { name: "Security to All",     interface: "VLAN40", source: "VLAN40 net", destination: "any" }
+  tags: [router, firewall]
+
+- name: Configure firewall rules — block attacker by default
+  pfsensible.core.pfsense_rule:
+    name: "Block Attacker to Internal"
+    interface: "VLAN100"
+    action: block
+    protocol: any
+    source: "VLAN100 net"
+    destination: "any"
+    state: present
+  tags: [router, firewall]
+
+- name: Enable Suricata on WAN interface
+  pfsensible.core.pfsense_package:
+    name: pfSense-pkg-suricata
+    state: present
+  tags: [router, suricata]
+
+- name: Configure Suricata on WAN
+  ansible.builtin.shell: |
+    # Configure Suricata via pfSense shellcmd
+    pfSsh.php playback enablesuricata wan
+  tags: [router, suricata]
+
+- name: Configure syslog remote logging
+  pfsensible.core.pfsense_syslog:
+    remote_server: "{{ syslog_server }}"
+    remote_port: 514
+    remote_protocol: udp
+    log_firewall: true
+    state: present
+  tags: [router, logging]

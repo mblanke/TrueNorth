@@ -1,0 +1,567 @@
+id: large-enterprise
+name: Large Enterprise Network
+version: "1.0"
+description: |
+  A large corporate network with 50+ VMs spanning multiple Active Directory
+  forests, DMZ, corporate LAN, server VLAN, security operations center,
+  OT/SCADA segment, and cloud hybrid connectivity. Suitable for advanced
+  exercises including APT simulations and purple team operations.
+author: TrueNorth Range
+difficulty: advanced
+vm_count: 54
+
+network:
+  vlans:
+    - id: 100
+      name: dmz
+      cidr: "10.50.100.0/24"
+      description: "Internet-facing services: web, mail relay, external DNS"
+    - id: 101
+      name: corporate_lan
+      cidr: "10.50.101.0/24"
+      description: "End-user workstations, printers, and file services"
+    - id: 102
+      name: server_vlan
+      cidr: "10.50.102.0/24"
+      description: "Core enterprise applications and databases"
+    - id: 103
+      name: security_vlan
+      cidr: "10.50.103.0/24"
+      description: "Security operations tools and monitoring"
+    - id: 104
+      name: ot_scada
+      cidr: "10.50.104.0/24"
+      description: "Operational technology and industrial control systems"
+    - id: 105
+      name: management
+      cidr: "10.50.105.0/24"
+      description: "Out-of-band management and jump hosts"
+    - id: 106
+      name: ad_forest_b
+      cidr: "10.50.106.0/24"
+      description: "Secondary AD forest (subsidiary)"
+    - id: 107
+      name: cloud_hybrid
+      cidr: "10.50.107.0/24"
+      description: "Simulated cloud hybrid connectivity segment"
+
+  firewall_rules:
+    - name: dmz-to-server
+      src: dmz
+      dst: server_vlan
+      ports: [443, 8443, 1433]
+      action: allow
+    - name: corp-to-server
+      src: corporate_lan
+      dst: server_vlan
+      ports: [80, 443, 445, 1433, 389, 636]
+      action: allow
+    - name: corp-to-dmz
+      src: corporate_lan
+      dst: dmz
+      action: deny
+    - name: ot-isolation
+      src: ot_scada
+      dst: corporate_lan
+      action: deny
+    - name: security-monitor-all
+      src: security_vlan
+      dst: "*"
+      action: allow
+    - name: mgmt-to-all
+      src: management
+      dst: "*"
+      ports: [22, 3389, 5985, 5986]
+      action: allow
+
+  trust_relationships:
+    - source_forest: corp.truenorth.local
+      target_forest: subsidiary.truenorth.local
+      type: two-way
+    - source_forest: corp.truenorth.local
+      target_forest: partner.external.local
+      type: one-way-incoming
+
+nodes:
+  # --- Management ---
+  - id: jump01
+    name: Jump Host
+    role: jump_host
+    os: windows-server-2022
+    vlan: management
+    ip: "10.50.105.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [rdp, ssh]
+
+  - id: ansible01
+    name: Ansible Controller
+    role: automation
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.50.105.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [ansible, ssh]
+
+  # --- DMZ (VLAN 100) ---
+  - id: web01
+    name: External Web Server 1
+    role: web_server
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.50.100.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [nginx, php, tls]
+
+  - id: web02
+    name: External Web Server 2
+    role: web_server
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.50.100.11"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [apache, tomcat, tls]
+
+  - id: mail-relay01
+    name: Mail Relay
+    role: mail_relay
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.50.100.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [postfix, spamassassin]
+
+  - id: dns-ext01
+    name: External DNS
+    role: dns_server
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.50.100.30"
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 20 }
+    services: [bind9]
+
+  - id: vpn01
+    name: VPN Gateway
+    role: vpn_gateway
+    os: pfsense
+    vlan: dmz
+    ip: "10.50.100.40"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    services: [openvpn, ipsec]
+
+  # --- Corporate LAN (VLAN 101) ---
+  - id: dc01
+    name: Primary Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: corporate_lan
+    ip: "10.50.101.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns, dhcp, gpo]
+    ad_forest: corp.truenorth.local
+    fsmo_roles: [schema_master, domain_naming_master, pdc_emulator, rid_master, infrastructure_master]
+
+  - id: dc02
+    name: Secondary Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: corporate_lan
+    ip: "10.50.101.11"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns]
+    ad_forest: corp.truenorth.local
+
+  - id: fs01
+    name: File Server
+    role: file_server
+    os: windows-server-2022
+    vlan: corporate_lan
+    ip: "10.50.101.20"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 500 }
+    services: [smb, dfs, vshadow]
+
+  - id: print01
+    name: Print Server
+    role: print_server
+    os: windows-server-2022
+    vlan: corporate_lan
+    ip: "10.50.101.21"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [print_spooler]
+
+  - id: ws01
+    name: Workstation 1 - Finance
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.50.101.100"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: finance_analyst
+
+  - id: ws02
+    name: Workstation 2 - Finance
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.50.101.101"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: finance_manager
+
+  - id: ws03
+    name: Workstation 3 - HR
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.50.101.102"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: hr_specialist
+
+  - id: ws04
+    name: Workstation 4 - Engineering
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.50.101.103"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: software_engineer
+
+  - id: ws05
+    name: Workstation 5 - Engineering
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.50.101.104"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: devops_engineer
+
+  - id: ws06
+    name: Workstation 6 - Executive
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.50.101.105"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 120 }
+    user_profile: c_level_executive
+
+  - id: ws07
+    name: Workstation 7 - IT Admin
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.50.101.106"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 120 }
+    user_profile: it_administrator
+
+  - id: ws08
+    name: Workstation 8 - Marketing
+    role: workstation
+    os: windows-11
+    vlan: corporate_lan
+    ip: "10.50.101.107"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: marketing_specialist
+
+  # --- Server VLAN (VLAN 102) ---
+  - id: exch01
+    name: Exchange Server
+    role: mail_server
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.50.102.10"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [exchange_2019, owa, smtp, imap]
+
+  - id: sp01
+    name: SharePoint Server
+    role: collaboration
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.50.102.20"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [sharepoint_2019, iis]
+
+  - id: sql01
+    name: SQL Server Primary
+    role: database
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.50.102.30"
+    specs: { cores: 8, memory_mb: 32768, disk_gb: 500 }
+    services: [mssql_2022, ssrs]
+
+  - id: sql02
+    name: SQL Server Secondary
+    role: database
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.50.102.31"
+    specs: { cores: 8, memory_mb: 32768, disk_gb: 500 }
+    services: [mssql_2022]
+    replication_partner: sql01
+
+  - id: erp01
+    name: ERP Application Server
+    role: application
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.50.102.40"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [iis, dotnet_runtime]
+
+  - id: ca01
+    name: Certificate Authority
+    role: pki
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.50.102.50"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [adcs, ocsp]
+
+  - id: wsus01
+    name: WSUS Server
+    role: patch_management
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.50.102.60"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 300 }
+    services: [wsus]
+
+  - id: sccm01
+    name: SCCM Server
+    role: endpoint_management
+    os: windows-server-2022
+    vlan: server_vlan
+    ip: "10.50.102.70"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [sccm, iis]
+
+  # --- Security VLAN (VLAN 103) ---
+  - id: siem01
+    name: SIEM (OpenSearch)
+    role: siem
+    os: ubuntu-2204
+    vlan: security_vlan
+    ip: "10.50.103.10"
+    specs: { cores: 8, memory_mb: 32768, disk_gb: 1000 }
+    services: [opensearch, opensearch_dashboards, filebeat]
+
+  - id: ids01
+    name: IDS/IPS (Suricata)
+    role: ids_ips
+    os: ubuntu-2204
+    vlan: security_vlan
+    ip: "10.50.103.20"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
+    services: [suricata, evebox]
+
+  - id: vuln01
+    name: Vulnerability Scanner
+    role: vulnerability_scanner
+    os: ubuntu-2204
+    vlan: security_vlan
+    ip: "10.50.103.30"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [openvas, greenbone]
+
+  - id: edr01
+    name: EDR Server (Velociraptor)
+    role: edr
+    os: ubuntu-2204
+    vlan: security_vlan
+    ip: "10.50.103.40"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
+    services: [velociraptor_server]
+
+  - id: soar01
+    name: SOAR Platform (TheHive)
+    role: soar
+    os: ubuntu-2204
+    vlan: security_vlan
+    ip: "10.50.103.50"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [thehive, cortex]
+
+  - id: tip01
+    name: Threat Intel Platform (MISP)
+    role: threat_intel
+    os: ubuntu-2204
+    vlan: security_vlan
+    ip: "10.50.103.60"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [misp]
+
+  # --- OT/SCADA (VLAN 104) ---
+  - id: historian01
+    name: OT Historian
+    role: historian
+    os: windows-server-2019
+    vlan: ot_scada
+    ip: "10.50.104.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 500 }
+    services: [osisoft_pi_sim]
+
+  - id: hmi01
+    name: HMI Workstation 1
+    role: hmi
+    os: windows-10-ltsc
+    vlan: ot_scada
+    ip: "10.50.104.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [scada_hmi_sim]
+
+  - id: hmi02
+    name: HMI Workstation 2
+    role: hmi
+    os: windows-10-ltsc
+    vlan: ot_scada
+    ip: "10.50.104.21"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [scada_hmi_sim]
+
+  - id: plc01
+    name: PLC Simulator 1
+    role: plc
+    os: ubuntu-2204
+    vlan: ot_scada
+    ip: "10.50.104.30"
+    specs: { cores: 1, memory_mb: 1024, disk_gb: 10 }
+    services: [openplc, modbus_tcp]
+
+  - id: plc02
+    name: PLC Simulator 2
+    role: plc
+    os: ubuntu-2204
+    vlan: ot_scada
+    ip: "10.50.104.31"
+    specs: { cores: 1, memory_mb: 1024, disk_gb: 10 }
+    services: [openplc, modbus_tcp]
+
+  - id: eng-ws01
+    name: Engineering Workstation
+    role: engineering_workstation
+    os: windows-10-ltsc
+    vlan: ot_scada
+    ip: "10.50.104.40"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 120 }
+    services: [plc_programming_sim]
+
+  - id: ot-fw01
+    name: OT Firewall
+    role: firewall
+    os: pfsense
+    vlan: ot_scada
+    ip: "10.50.104.1"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    services: [firewall, ids_passthrough]
+
+  # --- AD Forest B (VLAN 106) ---
+  - id: dc03
+    name: Subsidiary Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: ad_forest_b
+    ip: "10.50.106.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns]
+    ad_forest: subsidiary.truenorth.local
+
+  - id: ws09
+    name: Subsidiary Workstation 1
+    role: workstation
+    os: windows-11
+    vlan: ad_forest_b
+    ip: "10.50.106.100"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+  - id: ws10
+    name: Subsidiary Workstation 2
+    role: workstation
+    os: windows-11
+    vlan: ad_forest_b
+    ip: "10.50.106.101"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+  - id: fs02
+    name: Subsidiary File Server
+    role: file_server
+    os: windows-server-2022
+    vlan: ad_forest_b
+    ip: "10.50.106.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 200 }
+    services: [smb]
+
+  # --- Cloud Hybrid (VLAN 107) ---
+  - id: aadconnect01
+    name: Azure AD Connect Server
+    role: hybrid_identity
+    os: windows-server-2022
+    vlan: cloud_hybrid
+    ip: "10.50.107.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [azure_ad_connect_sim, password_hash_sync]
+
+  - id: appproxy01
+    name: Application Proxy Connector
+    role: app_proxy
+    os: windows-server-2022
+    vlan: cloud_hybrid
+    ip: "10.50.107.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [azure_app_proxy_sim]
+
+  - id: arc01
+    name: Azure Arc Agent
+    role: cloud_management
+    os: ubuntu-2204
+    vlan: cloud_hybrid
+    ip: "10.50.107.30"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
+    services: [azure_arc_sim, log_analytics_agent]
+
+  # --- Core Network ---
+  - id: fw01
+    name: Core Firewall
+    role: firewall
+    os: pfsense
+    vlan: management
+    ip: "10.50.105.1"
+    specs: { cores: 4, memory_mb: 4096, disk_gb: 40 }
+    services: [firewall, nat, vpn]
+    interfaces:
+      - vlan: dmz
+        ip: "10.50.100.1"
+      - vlan: corporate_lan
+        ip: "10.50.101.1"
+      - vlan: server_vlan
+        ip: "10.50.102.1"
+      - vlan: security_vlan
+        ip: "10.50.103.1"
+      - vlan: management
+        ip: "10.50.105.1"
+      - vlan: ad_forest_b
+        ip: "10.50.106.1"
+      - vlan: cloud_hybrid
+        ip: "10.50.107.1"
+
+  - id: ntp01
+    name: NTP Server
+    role: time_server
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.50.105.30"
+    specs: { cores: 1, memory_mb: 1024, disk_gb: 10 }
+    services: [chrony]
+
+  - id: syslog01
+    name: Syslog Collector
+    role: log_collector
+    os: ubuntu-2204
+    vlan: security_vlan
+    ip: "10.50.103.70"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 500 }
+    services: [rsyslog, logstash]
+
+resource_totals:
+  total_vms: 54
+  total_cores: 156
+  total_memory_gb: 384
+  total_disk_gb: 7110

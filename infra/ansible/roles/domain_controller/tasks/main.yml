@@ -1,0 +1,166 @@
+---
+# ============================================================
+# TrueNorth Range — Domain Controller Role (Windows AD DS)
+# ============================================================
+
+- name: Install AD DS role
+  ansible.windows.win_feature:
+    name:
+      - AD-Domain-Services
+      - DNS
+      - RSAT-AD-Tools
+      - RSAT-DNS-Server
+      - GPMC
+    state: present
+    include_management_tools: true
+  register: ad_install
+  tags: [ad, install]
+
+- name: Create AD Forest
+  microsoft.ad.domain:
+    dns_domain_name: "{{ ad_domain_name }}"
+    domain_netbios_name: "{{ ad_netbios_name }}"
+    safe_mode_password: "{{ ad_dsrm_password }}"
+    domain_mode: "{{ ad_domain_functional_level }}"
+    forest_mode: "{{ ad_forest_functional_level }}"
+    install_dns: true
+  register: forest_result
+  tags: [ad, forest]
+
+- name: Reboot after forest creation
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+    post_reboot_delay: 120
+  when: forest_result.reboot_required | default(false)
+  tags: [ad, forest]
+
+- name: Wait for AD DS to be ready
+  ansible.windows.win_shell: |
+    $null = Get-ADDomain
+    Write-Output "AD is ready"
+  register: ad_ready
+  retries: 12
+  delay: 30
+  until: ad_ready.rc == 0
+  tags: [ad]
+
+- name: Configure DNS forward zones
+  ansible.windows.win_shell: |
+    {% for zone in ad_dns_zones %}
+    if (-not (Get-DnsServerZone -Name "{{ zone.name }}" -ErrorAction SilentlyContinue)) {
+        Add-DnsServerPrimaryZone -Name "{{ zone.name }}" -ReplicationScope Domain
+        Write-Output "Created zone {{ zone.name }}"
+    }
+    {% endfor %}
+  tags: [ad, dns]
+
+- name: Create Organisational Units
+  microsoft.ad.ou:
+    name: "{{ item.split(',')[0] | regex_replace('^OU=', '') }}"
+    path: "{{ item.split(',')[1:] | join(',') }}"
+    state: present
+  loop: "{{ ad_ous }}"
+  tags: [ad, ous]
+
+- name: Create sample domain users
+  microsoft.ad.user:
+    name: "{{ item.username }}"
+    firstname: "{{ item.first }}"
+    surname: "{{ item.last }}"
+    password: "{{ vault_ad_default_user_password | default('TrueN0rth!2025') }}"
+    state: present
+    enabled: true
+    path: "OU=Users,DC={{ range_domain.split('.')[0] }},DC={{ range_domain.split('.')[1] }}"
+    attributes:
+      set:
+        department: "{{ item.dept }}"
+        title: "{{ item.title }}"
+  loop: "{{ ad_sample_users }}"
+  tags: [ad, users]
+
+- name: Create security groups
+  microsoft.ad.group:
+    name: "{{ item.name }}"
+    scope: global
+    category: security
+    state: present
+    path: "OU=Users,DC={{ range_domain.split('.')[0] }},DC={{ range_domain.split('.')[1] }}"
+  loop: "{{ ad_security_groups }}"
+  tags: [ad, groups]
+
+- name: Add users to security groups
+  microsoft.ad.group:
+    name: "{{ item.0.name }}"
+    members:
+      add: "{{ item.0.members if item.0.members != 'all' else ad_sample_users | map(attribute='username') | list }}"
+    state: present
+  loop: "{{ ad_security_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.members is defined
+  tags: [ad, groups]
+
+- name: Configure password policy via GPO
+  ansible.windows.win_shell: |
+    Import-Module GroupPolicy
+    $gpoName = "TrueNorth-PasswordPolicy"
+    $gpo = Get-GPO -Name $gpoName -ErrorAction SilentlyContinue
+    if (-not $gpo) {
+        $gpo = New-GPO -Name $gpoName
+        New-GPLink -Guid $gpo.Id -Target "DC={{ range_domain.split('.')[0] }},DC={{ range_domain.split('.')[1] }}"
+    }
+    # Set password policy
+    Set-ADDefaultDomainPasswordPolicy -Identity "{{ ad_domain_name }}" `
+        -MinPasswordLength {{ gpo_password_policy.min_length }} `
+        -ComplexityEnabled:${{ gpo_password_policy.complexity | string | lower }} `
+        -MaxPasswordAge (New-TimeSpan -Days {{ gpo_password_policy.max_age_days }}) `
+        -LockoutThreshold {{ gpo_password_policy.lockout_threshold }} `
+        -LockoutDuration (New-TimeSpan -Minutes {{ gpo_password_policy.lockout_duration_minutes }})
+  tags: [ad, gpo, password]
+
+- name: Enable Advanced Audit Policy
+  ansible.windows.win_shell: |
+    # Enable advanced audit subcategories
+    auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+    auditpol /set /subcategory:"Logoff" /success:enable
+    auditpol /set /subcategory:"Account Lockout" /success:enable /failure:enable
+    auditpol /set /subcategory:"Special Logon" /success:enable
+    auditpol /set /subcategory:"Other Object Access Events" /success:enable /failure:enable
+    auditpol /set /subcategory:"Process Creation" /success:enable
+    auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable
+    auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable
+    auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable
+    auditpol /set /subcategory:"Computer Account Management" /success:enable /failure:enable
+    # Enable command-line in process-creation events
+    reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" `
+        /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f
+  tags: [ad, audit]
+
+- name: Download Sysmon
+  ansible.windows.win_get_url:
+    url: "https://download.sysinternals.com/files/Sysmon.zip"
+    dest: 'C:\Windows\Temp\Sysmon.zip'
+  tags: [sysmon]
+
+- name: Extract Sysmon
+  community.windows.win_unzip:
+    src: 'C:\Windows\Temp\Sysmon.zip'
+    dest: 'C:\Windows\Temp\Sysmon'
+    creates: 'C:\Windows\Temp\Sysmon\Sysmon64.exe'
+  tags: [sysmon]
+
+- name: Download Sysmon config
+  ansible.windows.win_get_url:
+    url: "{{ sysmon_config_url }}"
+    dest: 'C:\Windows\Temp\sysmonconfig.xml'
+  tags: [sysmon]
+
+- name: Install Sysmon with config
+  ansible.windows.win_shell: |
+    $svc = Get-Service Sysmon64 -ErrorAction SilentlyContinue
+    if (-not $svc) {
+        & C:\Windows\Temp\Sysmon\Sysmon64.exe -accepteula -i C:\Windows\Temp\sysmonconfig.xml
+    } else {
+        & C:\Windows\Temp\Sysmon\Sysmon64.exe -c C:\Windows\Temp\sysmonconfig.xml
+    }
+  tags: [sysmon]

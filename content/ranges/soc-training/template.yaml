@@ -1,0 +1,295 @@
+id: soc-training
+name: SOC Analyst Training Environment
+version: "1.0"
+description: |
+  A dedicated SOC analyst training environment with 25 VMs providing attacker
+  infrastructure, a realistic victim network, a full SOC toolset (SIEM,
+  Velociraptor, TheHive/Cortex, MISP), and network monitoring (Security Onion,
+  Zeek, Suricata). Designed for blue-team analyst skill development.
+author: TrueNorth Range
+difficulty: intermediate
+vm_count: 25
+
+network:
+  vlans:
+    - id: 200
+      name: attacker_infra
+      cidr: "10.60.200.0/24"
+      description: "Attacker command & control, phishing, and staging"
+    - id: 201
+      name: victim_network
+      cidr: "10.60.201.0/24"
+      description: "Simulated victim corporate network"
+    - id: 202
+      name: soc_tools
+      cidr: "10.60.202.0/24"
+      description: "SOC analyst platforms and response tools"
+    - id: 203
+      name: network_monitoring
+      cidr: "10.60.203.0/24"
+      description: "Network visibility and packet analysis"
+    - id: 204
+      name: management
+      cidr: "10.60.204.0/24"
+      description: "Management, jump hosts, and range control"
+
+  firewall_rules:
+    - name: attacker-to-victim
+      src: attacker_infra
+      dst: victim_network
+      action: allow
+      note: "Attacks must be visible to monitoring"
+    - name: victim-to-attacker
+      src: victim_network
+      dst: attacker_infra
+      ports: [80, 443, 53, 8080]
+      action: allow
+      note: "C2 callback channels"
+    - name: monitoring-mirror
+      src: "*"
+      dst: network_monitoring
+      action: mirror
+      note: "Full packet capture via SPAN"
+    - name: soc-to-victim
+      src: soc_tools
+      dst: victim_network
+      action: allow
+      note: "SOC needs access for investigation"
+    - name: soc-to-monitoring
+      src: soc_tools
+      dst: network_monitoring
+      action: allow
+
+nodes:
+  # --- Attacker Infrastructure (VLAN 200) ---
+  - id: c2-server
+    name: C2 Server (Sliver)
+    role: c2_server
+    os: kali-2024
+    vlan: attacker_infra
+    ip: "10.60.200.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [sliver_c2, metasploit, empire]
+
+  - id: phish-server
+    name: Phishing Server
+    role: phishing
+    os: ubuntu-2204
+    vlan: attacker_infra
+    ip: "10.60.200.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [gophish, nginx, letsencrypt_sim]
+
+  - id: staging01
+    name: Staging / Exfil Server
+    role: staging
+    os: ubuntu-2204
+    vlan: attacker_infra
+    ip: "10.60.200.30"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 100 }
+    services: [sftp, http_fileserver, dns_exfil_listener]
+
+  - id: redir01
+    name: Redirector
+    role: redirector
+    os: ubuntu-2204
+    vlan: attacker_infra
+    ip: "10.60.200.40"
+    specs: { cores: 1, memory_mb: 1024, disk_gb: 20 }
+    services: [socat, iptables_redirect]
+
+  # --- Victim Network (VLAN 201) ---
+  - id: v-dc01
+    name: Victim Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: victim_network
+    ip: "10.60.201.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns, dhcp]
+
+  - id: v-fs01
+    name: Victim File Server
+    role: file_server
+    os: windows-server-2022
+    vlan: victim_network
+    ip: "10.60.201.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 200 }
+    services: [smb, dfs]
+    pre_staged_data:
+      - "\\shares\\finance\\payroll.xlsx"
+      - "\\shares\\hr\\employees.csv"
+      - "\\shares\\engineering\\credentials.kdbx"
+
+  - id: v-web01
+    name: Victim Web Application
+    role: web_server
+    os: ubuntu-2204
+    vlan: victim_network
+    ip: "10.60.201.30"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [nginx, dvwa, juice_shop]
+
+  - id: v-ws01
+    name: Victim Workstation 1
+    role: workstation
+    os: windows-11
+    vlan: victim_network
+    ip: "10.60.201.100"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: finance_user
+
+  - id: v-ws02
+    name: Victim Workstation 2
+    role: workstation
+    os: windows-11
+    vlan: victim_network
+    ip: "10.60.201.101"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: hr_user
+
+  - id: v-ws03
+    name: Victim Workstation 3
+    role: workstation
+    os: windows-11
+    vlan: victim_network
+    ip: "10.60.201.102"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: it_admin
+
+  - id: v-ws04
+    name: Victim Workstation 4
+    role: workstation
+    os: windows-11
+    vlan: victim_network
+    ip: "10.60.201.103"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: executive
+
+  - id: v-mail01
+    name: Victim Mail Server
+    role: mail_server
+    os: ubuntu-2204
+    vlan: victim_network
+    ip: "10.60.201.40"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [postfix, dovecot, roundcube]
+
+  # --- SOC Tools (VLAN 202) ---
+  - id: siem01
+    name: SIEM (OpenSearch + Dashboards)
+    role: siem
+    os: ubuntu-2204
+    vlan: soc_tools
+    ip: "10.60.202.10"
+    specs: { cores: 8, memory_mb: 32768, disk_gb: 500 }
+    services: [opensearch, opensearch_dashboards, sigma_rules]
+
+  - id: velociraptor01
+    name: Velociraptor Server
+    role: edr
+    os: ubuntu-2204
+    vlan: soc_tools
+    ip: "10.60.202.20"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
+    services: [velociraptor_server]
+    note: "Agents deployed on all victim workstations"
+
+  - id: thehive01
+    name: TheHive / Cortex
+    role: soar
+    os: ubuntu-2204
+    vlan: soc_tools
+    ip: "10.60.202.30"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [thehive, cortex, elasticsearch]
+
+  - id: misp01
+    name: MISP Threat Intel
+    role: threat_intel
+    os: ubuntu-2204
+    vlan: soc_tools
+    ip: "10.60.202.40"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [misp, mysql]
+
+  - id: dfir-ws01
+    name: DFIR Workstation
+    role: analyst_workstation
+    os: ubuntu-2204
+    vlan: soc_tools
+    ip: "10.60.202.50"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [autopsy, volatility3, plaso, yara]
+
+  # --- Network Monitoring (VLAN 203) ---
+  - id: seconion01
+    name: Security Onion
+    role: network_monitor
+    os: securityonion
+    vlan: network_monitoring
+    ip: "10.60.203.10"
+    specs: { cores: 8, memory_mb: 16384, disk_gb: 500 }
+    services: [zeek, suricata, elasticsearch, kibana, strelka]
+
+  - id: zeek01
+    name: Zeek Sensor (Standalone)
+    role: network_sensor
+    os: ubuntu-2204
+    vlan: network_monitoring
+    ip: "10.60.203.20"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
+    services: [zeek, filebeat]
+
+  - id: pcap01
+    name: Full Packet Capture
+    role: packet_capture
+    os: ubuntu-2204
+    vlan: network_monitoring
+    ip: "10.60.203.30"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 1000 }
+    services: [stenographer, arkime]
+
+  # --- Management (VLAN 204) ---
+  - id: jump01
+    name: Jump Host / Range Control
+    role: jump_host
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.60.204.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [guacamole, ssh]
+
+  - id: log-agg01
+    name: Log Aggregator
+    role: log_collector
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.60.204.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 200 }
+    services: [rsyslog, logstash, filebeat]
+
+  - id: fw01
+    name: Core Firewall
+    role: firewall
+    os: pfsense
+    vlan: management
+    ip: "10.60.204.1"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    interfaces:
+      - vlan: attacker_infra
+        ip: "10.60.200.1"
+      - vlan: victim_network
+        ip: "10.60.201.1"
+      - vlan: soc_tools
+        ip: "10.60.202.1"
+      - vlan: network_monitoring
+        ip: "10.60.203.1"
+      - vlan: management
+        ip: "10.60.204.1"
+
+resource_totals:
+  total_vms: 25
+  total_cores: 76
+  total_memory_gb: 192
+  total_disk_gb: 3920

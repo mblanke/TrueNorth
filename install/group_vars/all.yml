@@ -1,0 +1,62 @@
+---
+# TrueNorth Range -- Global Variables
+
+# ── COTE Naming ───────────────────────────────────────
+cote_env: "{{ truenorth_env }}"
+cote_site: "{{ truenorth_site }}"
+cote_kit: "{{ truenorth_kit }}"
+
+# ── VLANs ─────────────────────────────────────────────
+vlans:
+  management:
+    id: 10
+    subnet: 10.0.10.0/24
+    gateway: 10.0.10.1
+    description: Management & OOB
+  provisioning:
+    id: 20
+    subnet: 10.0.20.0/24
+    gateway: 10.0.20.1
+    description: Provisioning / PXE
+  exercise_blue:
+    id: 30
+    subnet: 10.0.30.0/24
+    gateway: 10.0.30.1
+    description: Blue team exercise traffic
+  exercise_red:
+    id: 40
+    subnet: 10.0.40.0/24
+    gateway: 10.0.40.1
+    description: Red team exercise traffic
+  storage:
+    id: 50
+    subnet: 10.0.50.0/24
+    gateway: 10.0.50.1
+    description: Storage / NFS / iSCSI
+  services:
+    id: 60
+    subnet: 10.0.60.0/24
+    gateway: 10.0.60.1
+    description: Infrastructure services
+
+# ── MTU ───────────────────────────────────────────────
+mtu: 9000
+management_mtu: 1500
+
+# ── Proxmox ──────────────────────────────────────────
+proxmox_cluster_name: "tn-{{ cote_kit }}"
+proxmox_api_user: root@pam
+proxmox_api_port: 8006
+proxmox_storage_type: nfs
+proxmox_iso_storage: local
+proxmox_vm_storage: nfs-vms
+
+# ── TrueNorth Control Plane ───────────────────────────
+truenorth_api_port: 8081
+truenorth_web_port: 4200
+truenorth_db_backend: sqlite
+truenorth_provisioner_backend: proxmox
+
+# ── Package versions ──────────────────────────────────
+python_version: "3.13"
+node_version: "20"

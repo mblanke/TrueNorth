@@ -1,0 +1,214 @@
+name: insider-threat-advanced
+version: "1.0"
+range_template: medium-enterprise
+difficulty: medium
+duration_minutes: 60
+phase_count: 8
+description: |
+  An advanced insider threat scenario simulating a disgruntled employee who
+  escalates privileges, accesses sensitive data, exfiltrates information via
+  USB and cloud storage, and attempts anti-forensic techniques to cover
+  their tracks. Focuses on behavioral analytics, DLP monitoring, and
+  insider threat detection patterns.
+author: TrueNorth Range
+
+mitre_attack:
+  - T1078      # Valid Accounts
+  - T1078.002  # Valid Accounts: Domain Accounts
+  - T1083      # File and Directory Discovery
+  - T1005      # Data from Local System
+  - T1039      # Data from Network Shared Drive
+  - T1052.001  # Exfiltration Over Physical Medium: USB
+  - T1567.002  # Exfiltration to Cloud Storage
+  - T1070.001  # Indicator Removal: Clear Windows Event Logs
+  - T1070.004  # Indicator Removal: File Deletion
+  - T1098      # Account Manipulation
+
+timeline:
+  - phase: 1
+    t: "00:00"
+    name: "After-Hours Access"
+    action: identity_logon
+    params:
+      username: "{{ insider_user }}"
+      logon_type: interactive
+      workstation: "ws03"
+      timestamp_override: "2026-02-25T23:15:00Z"
+      description: "Employee logs in after normal business hours"
+    mitre: T1078
+
+  - phase: 2
+    t: "00:05"
+    name: "Privilege Escalation via Group Modification"
+    action: simulated_execution
+    params:
+      host_tag: "ws03"
+      technique: T1098
+      process_name: "net.exe"
+      commands:
+        - 'net localgroup Administrators {{ insider_user }} /add'
+        - 'net group "Backup Operators" {{ insider_user }} /add /domain'
+      description: "Insider adds self to privileged groups"
+    mitre: T1098
+
+  - phase: 3
+    t: "00:12"
+    name: "Sensitive File Discovery"
+    action: simulated_execution
+    params:
+      host_tag: "ws03"
+      technique: T1083
+      process_name: "powershell.exe"
+      commands:
+        - 'Get-ChildItem -Path "\\\\fs01\\hr" -Recurse -Include *.xlsx,*.csv,*.pdf'
+        - 'Get-ChildItem -Path "\\\\fs01\\finance" -Recurse -Include *.xlsx,*.pdf'
+        - 'Get-ChildItem -Path "\\\\fs01\\legal" -Recurse -Include *.docx,*.pdf'
+      artifacts:
+        - type: smb_access
+          paths:
+            - "\\\\fs01\\hr\\salaries\\compensation-2026.xlsx"
+            - "\\\\fs01\\hr\\personnel\\employee-ssn.csv"
+            - "\\\\fs01\\finance\\budgets\\strategic-plan.xlsx"
+            - "\\\\fs01\\legal\\contracts\\merger-draft.pdf"
+    mitre: T1083
+
+  - phase: 4
+    t: "00:20"
+    name: "Data Collection from Shares"
+    action: simulated_execution
+    params:
+      host_tag: "ws03"
+      technique: T1039
+      process_name: "robocopy.exe"
+      command_line: 'robocopy "\\\\fs01\\hr\\salaries" "C:\\Users\\{{ insider_user }}\\Documents\\backup" /E /R:0'
+      artifacts:
+        - type: file_copy
+          source: "\\\\fs01\\hr\\salaries"
+          destination: "C:\\Users\\{{ insider_user }}\\Documents\\backup"
+          file_count: 47
+          total_size_mb: 230
+    mitre: T1039
+
+  - phase: 5
+    t: "00:30"
+    name: "Exfiltration via USB"
+    action: simulated_execution
+    params:
+      host_tag: "ws03"
+      technique: T1052.001
+      description: "Copy staged data to USB drive"
+      artifacts:
+        - type: usb_insert
+          device_id: "USB\\VID_0781&PID_5583"
+          device_name: "SanDisk Ultra USB 3.0"
+          drive_letter: "E:"
+        - type: file_copy
+          source: "C:\\Users\\{{ insider_user }}\\Documents\\backup"
+          destination: "E:\\data"
+          file_count: 47
+    mitre: T1052.001
+
+  - phase: 6
+    t: "00:38"
+    name: "Exfiltration via Cloud Storage"
+    action: http_burst
+    params:
+      target_url: "https://www.dropbox.com/upload"
+      method: POST
+      count: 35
+      total_bytes: 120000000
+      user_agent: "DropboxDesktopClient/180.4.5678"
+      description: "Upload sensitive files to personal Dropbox"
+    mitre: T1567.002
+
+  - phase: 7
+    t: "00:48"
+    name: "Anti-Forensics - Log Clearing"
+    action: simulated_execution
+    params:
+      host_tag: "ws03"
+      technique: T1070.001
+      commands:
+        - "wevtutil cl Security"
+        - "wevtutil cl System"
+        - "wevtutil cl Application"
+        - 'Remove-Item "C:\Users\{{ insider_user }}\AppData\Local\Microsoft\Windows\Explorer\thumbcache*" -Force'
+      description: "Clear event logs and browser history"
+    mitre: T1070.001
+
+  - phase: 8
+    t: "00:55"
+    name: "Anti-Forensics - Evidence Deletion"
+    action: simulated_execution
+    params:
+      host_tag: "ws03"
+      technique: T1070.004
+      process_name: "sdelete64.exe"
+      commands:
+        - 'sdelete64.exe -p 3 "C:\Users\{{ insider_user }}\Documents\backup\*"'
+        - 'Remove-Item "C:\Users\{{ insider_user }}\Documents\backup" -Recurse -Force'
+      description: "Securely delete staged files"
+    mitre: T1070.004
+
+objectives:
+  - id: detect_after_hours
+    type: detection
+    description: "Detect after-hours interactive logon"
+    validator: opensearch_query
+    params:
+      query: 'EventID:4624 AND LogonType:2 AND hour_of_day:>21'
+      min_hits: 1
+    points: 10
+
+  - id: detect_priv_esc
+    type: detection
+    description: "Detect unauthorized group membership changes"
+    validator: opensearch_query
+    params:
+      query: 'EventID:(4728 OR 4732 OR 4756) AND TargetUserName:{{ insider_user }}'
+      min_hits: 1
+    points: 20
+
+  - id: detect_bulk_access
+    type: detection
+    description: "Identify mass file access on sensitive shares"
+    validator: opensearch_query
+    params:
+      query: 'EventID:5145 AND ShareName:*hr* AND SubjectUserName:{{ insider_user }}'
+      min_hits: 10
+    points: 15
+
+  - id: detect_usb
+    type: detection
+    description: "Detect USB device insertion and data copy"
+    validator: opensearch_query
+    params:
+      query: 'EventID:6416 OR (EventID:4663 AND ObjectName:E\\:*)'
+      min_hits: 1
+    points: 15
+
+  - id: detect_cloud_exfil
+    type: detection
+    description: "Detect data upload to unauthorized cloud service"
+    validator: opensearch_query
+    params:
+      query: 'event_type:http AND url.domain:*dropbox.com* AND bytes_out:>10000000'
+      min_hits: 1
+    points: 15
+
+  - id: detect_log_clear
+    type: detection
+    description: "Detect event log clearing"
+    validator: opensearch_query
+    params:
+      query: 'EventID:1102 OR (process_name:wevtutil.exe AND CommandLine:*cl*)'
+      min_hits: 1
+    points: 15
+
+scoring:
+  total_points: 100
+  passing_score: 60
+  time_bonus:
+    enabled: true
+    max_bonus: 10
+    threshold_minutes: 45

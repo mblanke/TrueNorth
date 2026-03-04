@@ -1,0 +1,269 @@
+id: cloud-security
+name: Cloud Security Training Environment
+version: "1.0"
+description: |
+  A cloud security training environment with 20 VMs featuring simulated AWS
+  (LocalStack), Azure mock endpoints, container clusters (k3s with vulnerable
+  pods), and CI/CD pipelines (GitLab CE, Jenkins). Includes cloud-native SIEM
+  integration for detection and response exercises.
+author: TrueNorth Range
+difficulty: intermediate
+vm_count: 20
+
+network:
+  vlans:
+    - id: 400
+      name: cloud_sim
+      cidr: "10.80.0.0/24"
+      description: "Simulated cloud provider endpoints (AWS/Azure)"
+    - id: 401
+      name: container_cluster
+      cidr: "10.80.1.0/24"
+      description: "Kubernetes cluster and container workloads"
+    - id: 402
+      name: cicd_pipeline
+      cidr: "10.80.2.0/24"
+      description: "CI/CD infrastructure"
+    - id: 403
+      name: monitoring
+      cidr: "10.80.3.0/24"
+      description: "Cloud SIEM and monitoring tools"
+    - id: 404
+      name: management
+      cidr: "10.80.4.0/24"
+      description: "Jump hosts and range management"
+
+  firewall_rules:
+    - name: cicd-to-cloud
+      src: cicd_pipeline
+      dst: cloud_sim
+      action: allow
+    - name: cicd-to-containers
+      src: cicd_pipeline
+      dst: container_cluster
+      action: allow
+    - name: monitoring-to-all
+      src: monitoring
+      dst: "*"
+      action: allow
+    - name: mgmt-to-all
+      src: management
+      dst: "*"
+      action: allow
+
+nodes:
+  # --- Simulated Cloud (VLAN 400) ---
+  - id: localstack01
+    name: LocalStack (AWS Simulator)
+    role: cloud_sim_aws
+    os: ubuntu-2204
+    vlan: cloud_sim
+    ip: "10.80.0.10"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 100 }
+    services: [localstack, s3, iam, lambda, ec2_mock, cloudtrail_sim, sts]
+    simulated_services:
+      - name: S3
+        buckets: ["company-backups", "public-assets", "secret-configs"]
+        misconfigurations: ["public-assets is world-readable"]
+      - name: IAM
+        users: ["admin", "dev-deploy", "lambda-exec"]
+        misconfigurations: ["dev-deploy has iam:*"]
+      - name: Lambda
+        functions: ["data-processor", "auth-handler"]
+
+  - id: azure-mock01
+    name: Azure Mock Endpoints
+    role: cloud_sim_azure
+    os: ubuntu-2204
+    vlan: cloud_sim
+    ip: "10.80.0.20"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 60 }
+    services: [azurite, azure_ad_mock, azure_keyvault_mock]
+    simulated_services:
+      - name: Azure AD
+        tenants: ["contoso.onmicrosoft.com"]
+        misconfigurations: ["guest user enumeration enabled"]
+      - name: Key Vault
+        vaults: ["prod-secrets", "dev-secrets"]
+        misconfigurations: ["dev-secrets has overly broad access policy"]
+
+  - id: terraform01
+    name: Terraform State Server
+    role: iac_server
+    os: ubuntu-2204
+    vlan: cloud_sim
+    ip: "10.80.0.30"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [terraform, consul]
+    vulnerabilities:
+      - type: exposed_state_file
+        difficulty: easy
+      - type: hardcoded_credentials_in_tfvars
+        difficulty: easy
+
+  # --- Container Cluster (VLAN 401) ---
+  - id: k3s-master
+    name: k3s Master Node
+    role: k8s_master
+    os: ubuntu-2204
+    vlan: container_cluster
+    ip: "10.80.1.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [k3s_server, kubectl, helm]
+
+  - id: k3s-worker01
+    name: k3s Worker Node 1
+    role: k8s_worker
+    os: ubuntu-2204
+    vlan: container_cluster
+    ip: "10.80.1.20"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [k3s_agent, containerd]
+    vulnerable_pods:
+      - name: web-app
+        image: "vulnerable-web:latest"
+        issues: [ssrf, rce_via_template_injection]
+      - name: privileged-debug
+        image: "alpine:latest"
+        issues: [privileged_container, host_pid_ns]
+
+  - id: k3s-worker02
+    name: k3s Worker Node 2
+    role: k8s_worker
+    os: ubuntu-2204
+    vlan: container_cluster
+    ip: "10.80.1.21"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [k3s_agent, containerd]
+    vulnerable_pods:
+      - name: crypto-miner-sim
+        image: "miner-sim:latest"
+        issues: [unexpected_outbound_traffic]
+      - name: exposed-dashboard
+        image: "kubernetes-dashboard:latest"
+        issues: [no_auth, cluster_admin_binding]
+
+  - id: registry01
+    name: Container Registry
+    role: container_registry
+    os: ubuntu-2204
+    vlan: container_cluster
+    ip: "10.80.1.30"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 200 }
+    services: [harbor, trivy]
+    vulnerabilities:
+      - type: anonymous_pull_enabled
+        difficulty: easy
+
+  # --- CI/CD Pipeline (VLAN 402) ---
+  - id: gitlab01
+    name: GitLab CE
+    role: scm
+    os: ubuntu-2204
+    vlan: cicd_pipeline
+    ip: "10.80.2.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
+    services: [gitlab_ce, gitlab_runner]
+    vulnerabilities:
+      - type: public_repo_with_secrets
+        difficulty: easy
+      - type: ci_variable_exposure
+        difficulty: medium
+
+  - id: jenkins01
+    name: Jenkins Server
+    role: ci_server
+    os: ubuntu-2204
+    vlan: cicd_pipeline
+    ip: "10.80.2.20"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [jenkins, docker]
+    vulnerabilities:
+      - type: script_console_no_auth
+        difficulty: easy
+      - type: credential_store_weakness
+        difficulty: medium
+
+  - id: argocd01
+    name: ArgoCD
+    role: gitops
+    os: ubuntu-2204
+    vlan: cicd_pipeline
+    ip: "10.80.2.30"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [argocd]
+    vulnerabilities:
+      - type: default_admin_password
+        difficulty: easy
+
+  - id: sonarqube01
+    name: SonarQube
+    role: code_analysis
+    os: ubuntu-2204
+    vlan: cicd_pipeline
+    ip: "10.80.2.40"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [sonarqube, postgresql]
+
+  # --- Monitoring (VLAN 403) ---
+  - id: cloud-siem01
+    name: Cloud SIEM (OpenSearch)
+    role: siem
+    os: ubuntu-2204
+    vlan: monitoring
+    ip: "10.80.3.10"
+    specs: { cores: 8, memory_mb: 32768, disk_gb: 500 }
+    services: [opensearch, opensearch_dashboards, cloudtrail_ingest, k8s_audit_ingest]
+
+  - id: falco01
+    name: Falco Runtime Security
+    role: runtime_security
+    os: ubuntu-2204
+    vlan: monitoring
+    ip: "10.80.3.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [falco, falcosidekick]
+
+  - id: prowler01
+    name: Prowler / ScoutSuite
+    role: cloud_audit
+    os: ubuntu-2204
+    vlan: monitoring
+    ip: "10.80.3.30"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [prowler, scoutsuite, steampipe]
+
+  # --- Management (VLAN 404) ---
+  - id: jump01
+    name: Jump Host
+    role: jump_host
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.80.4.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [guacamole, ssh, aws_cli, az_cli, kubectl]
+
+  - id: fw01
+    name: Core Firewall
+    role: firewall
+    os: pfsense
+    vlan: management
+    ip: "10.80.4.1"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    interfaces:
+      - vlan: cloud_sim
+        ip: "10.80.0.1"
+      - vlan: container_cluster
+        ip: "10.80.1.1"
+      - vlan: cicd_pipeline
+        ip: "10.80.2.1"
+      - vlan: monitoring
+        ip: "10.80.3.1"
+      - vlan: management
+        ip: "10.80.4.1"
+
+resource_totals:
+  total_vms: 20
+  total_cores: 62
+  total_memory_gb: 160
+  total_disk_gb: 1980

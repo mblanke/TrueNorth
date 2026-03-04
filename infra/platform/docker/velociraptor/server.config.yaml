@@ -1,0 +1,28 @@
+﻿# Velociraptor Server Configuration
+# Generate a real config with: velociraptor config generate
+# This is a placeholder — replace with real config before production use.
+
+Client:
+  server_urls:
+    - https://velociraptor:8001/
+  use_self_signed_ssl: true
+
+Frontend:
+  hostname: velociraptor
+  bind_address: 0.0.0.0
+  bind_port: 8001
+
+GUI:
+  bind_address: 0.0.0.0
+  bind_port: 8889
+  initial_users:
+    - name: admin
+      password_hash: ""  # Set on first launch
+
+Datastore:
+  implementation: FileBaseDataStore
+  location: /velociraptor/datastore/
+  filestore_directory: /velociraptor/filestore/
+
+Logging:
+  output_directory: /velociraptor/logs/

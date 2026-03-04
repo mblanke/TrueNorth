@@ -1,0 +1,36 @@
+# TrueNorth Range -- Kit Inventory
+# COTE naming: cote-<env>-<site>-<kit>-<rack>-<role>-<idx>
+# Example: cote-prod-ott-alpha-r01-hv-01
+all:
+  vars:
+    truenorth_env: prod
+    truenorth_site: ott
+    truenorth_kit: alpha
+    domain: truenorth.local
+    ntp_servers: [10.0.60.1]
+    dns_servers: [10.0.60.1]
+
+  children:
+    hypervisors:
+      hosts:
+        cote-prod-ott-alpha-r01-hv-01:
+          ansible_host: 192.168.1.85
+        cote-prod-ott-alpha-r01-hv-02:
+          ansible_host: 192.168.1.86
+
+    storage:
+      hosts:
+        cote-prod-ott-alpha-r01-nas-01:
+          ansible_host: 10.0.60.10
+
+    network:
+      hosts:
+        cote-prod-ott-alpha-r01-tor-01:
+          ansible_host: 10.0.60.1
+        cote-prod-ott-alpha-r01-fw-01:
+          ansible_host: 10.0.60.2
+
+    control_plane:
+      hosts:
+        cote-prod-ott-alpha-r01-cp-01:
+          ansible_host: 10.0.50.10

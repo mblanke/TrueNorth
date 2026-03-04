@@ -1,0 +1,22 @@
+title: RDP Brute Force Attempt
+id: tn-detect-004
+status: stable
+description: Detects multiple failed RDP logon attempts from a single source
+author: TrueNorth Range
+date: 2024/03/15
+mitre_attack:
+  - T1110.001
+  - T1021.001
+logsource:
+  product: windows
+  service: security
+detection:
+  selection:
+    EventID: 4625
+    LogonType: 10
+  timeframe: 5m
+  condition: selection | count(TargetUserName) by IpAddress > 5
+level: high
+falsepositives:
+  - Misconfigured RDP clients
+  - Vulnerability scanners

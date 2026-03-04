@@ -1,0 +1,118 @@
+<?xml version="1.0"?>
+<!-- TrueNorth Range — pfSense Bootstrap Configuration -->
+<pfsense>
+  <version>23.9</version>
+  <system>
+    <hostname>pfsense</hostname>
+    <domain>range.local</domain>
+    <timezone>Etc/UTC</timezone>
+    <language>en_US</language>
+    <dnsserver>8.8.8.8</dnsserver>
+    <dnsserver>8.8.4.4</dnsserver>
+
+    <!-- Admin user -->
+    <user>
+      <name>admin</name>
+      <descr>System Administrator</descr>
+      <scope>system</scope>
+      <groupname>admins</groupname>
+      <bcrypt-hash>$2b$10$UGJ.X1F.FYK5VJne.Fv7ZuXGnFvL5JdR1mOsTnqMTOKP.BEU1DYNe</bcrypt-hash>
+      <uid>0</uid>
+      <priv>page-all</priv>
+    </user>
+
+    <group>
+      <name>admins</name>
+      <description>System Administrators</description>
+      <scope>system</scope>
+      <gid>110</gid>
+      <member>0</member>
+      <priv>page-all</priv>
+    </group>
+
+    <!-- Enable SSH -->
+    <enablesshd>enabled</enablesshd>
+    <sshport>22</sshport>
+
+    <!-- Disable setup wizard on first boot -->
+    <already_run_config_wizard/>
+  </system>
+
+  <interfaces>
+    <!-- WAN interface (vmbr0) -->
+    <wan>
+      <descr>WAN</descr>
+      <if>vtnet0</if>
+      <enable/>
+      <ipaddr>dhcp</ipaddr>
+      <ipaddrv6>dhcp6</ipaddrv6>
+      <blockpriv/>
+      <blockbogons/>
+    </wan>
+
+    <!-- LAN interface (vmbr1) -->
+    <lan>
+      <descr>LAN</descr>
+      <if>vtnet1</if>
+      <enable/>
+      <ipaddr>10.0.1.1</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+  </interfaces>
+
+  <!-- DHCP server on LAN -->
+  <dhcpd>
+    <lan>
+      <enable/>
+      <range>
+        <from>10.0.1.100</from>
+        <to>10.0.1.254</to>
+      </range>
+      <defaultleasetime>7200</defaultleasetime>
+      <maxleasetime>86400</maxleasetime>
+    </lan>
+  </dhcpd>
+
+  <!-- NAT rules — outbound auto -->
+  <nat>
+    <outbound>
+      <mode>automatic</mode>
+    </outbound>
+  </nat>
+
+  <!-- Basic firewall rules -->
+  <filter>
+    <!-- Allow LAN to any -->
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any/>
+      </destination>
+      <descr>Default allow LAN to any</descr>
+    </rule>
+
+    <!-- Allow LAN IPv6 to any -->
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet6</ipprotocol>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any/>
+      </destination>
+      <descr>Default allow LAN IPv6 to any</descr>
+    </rule>
+  </filter>
+
+  <!-- Syslog -->
+  <syslog>
+    <filterdescriptions>1</filterdescriptions>
+  </syslog>
+</pfsense>

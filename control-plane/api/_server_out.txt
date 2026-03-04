@@ -1,0 +1,198 @@
+INFO:     127.0.0.1:31335 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:31336 - "GET /users/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:31337 - "GET /teams HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51099 - "GET /users HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51103 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51106 - "GET /ai-config/backends HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51110 - "GET /directory/nations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61368 - "GET /templates?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:18837 - "GET /admin/users HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:18843 - "GET /admin/teams HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:18846 - "GET /directory/nations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:18844 - "GET /directory/coalitions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:18845 - "GET /directory/ous/tree HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53083 - "GET /ad-sync/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:18847 - "GET /directory/groups HTTP/1.1" 200 OK
+INFO:     127.0.0.1:22305 - "GET /auth-zones HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58129 - "GET /exercises?limit=5&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58127 - "GET /ranges?limit=5&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58132 - "GET /schedule/events?limit=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58131 - "GET /schedule/capacity HTTP/1.1" 200 OK
+INFO:     127.0.0.1:24198 - "GET /directory/nations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:24200 - "GET /directory/coalitions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58130 - "GET /proxmox/discover HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59220 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61098 - "GET /templates?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45316 - "GET /scenarios?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:21671 - "GET /learning-paths HTTP/1.1" 200 OK
+INFO:     127.0.0.1:21672 - "GET /courses?published=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51204 - "GET /users/00000000-0000-0000-0000-000000000000/transcript HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41484 - "GET /competency/frameworks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41485 - "GET /competency/users/00000000-0000-0000-0000-000000000000/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:16196 - "GET /exercises?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:16200 - "GET /scenarios?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:16199 - "GET /ranges?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:13947 - "GET /ranges?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4157 - "GET /exercises?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:27158 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:27160 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44331 - "POST /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/test HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58452 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58453 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43858 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43859 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:29516 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:29515 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:16372 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:16373 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36760 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36762 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36763 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36764 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36758 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36759 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7759 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:7760 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60437 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60438 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60439 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60441 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60434 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60433 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34778 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34779 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:31809 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:31810 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:31811 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:31812 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:31807 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:31808 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63015 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63016 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40083 - "GET /scenarios?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51137 - "GET /learning-paths HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51138 - "GET /courses?published=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:25143 - "GET /users/00000000-0000-0000-0000-000000000001/transcript HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3052 - "GET /competency/frameworks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:3053 - "GET /competency/users/00000000-0000-0000-0000-000000000001/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12810 - "GET /users/00000000-0000-0000-0000-000000000001/transcript HTTP/1.1" 200 OK
+INFO:     127.0.0.1:16198 - "GET /competency/users/00000000-0000-0000-0000-000000000001/profile HTTP/1.1" 200 OK
+INFO:     127.0.0.1:16197 - "GET /competency/frameworks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55708 - "GET /ranges?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55710 - "GET /templates?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45089 - "GET /scenarios?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45087 - "GET /ranges?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45086 - "GET /exercises?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:31439 - "GET /ranges?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:18677 - "GET /exercises?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32877 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:32878 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:32879 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:32880 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:32875 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32876 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56846 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56845 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5253 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:5256 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:5257 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:5259 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:5251 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5252 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49906 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49904 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40630 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40631 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40632 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40633 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40628 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40627 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48940 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48941 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35315 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35318 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35319 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:31387 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61324 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35320 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:5244 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:5246 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33853 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:33854 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:33855 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:33856 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:33852 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33851 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38510 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38509 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52790 - "GET /integrations/platforms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44461 - "GET /tenants HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35493 - "GET /exercises?limit=5&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35492 - "GET /ranges?limit=5&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35498 - "GET /schedule/events?limit=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35497 - "GET /schedule/capacity HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35652 - "GET /directory/coalitions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35650 - "GET /directory/nations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44462 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36692 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35495 - "GET /proxmox/discover HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:27801 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:27802 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:27803 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:27804 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:27799 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:27800 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63619 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63620 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4973 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:4974 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:4977 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:4978 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:4969 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:4970 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61768 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61766 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51715 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51716 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51718 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51720 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51713 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51714 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12994 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:12996 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49358 - "POST /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/discover HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49356 - "POST /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/discover HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44185 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44184 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2377 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2376 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:30329 - "POST /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/discover HTTP/1.1" 200 OK
+INFO:     127.0.0.1:30330 - "POST /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/discover HTTP/1.1" 200 OK
+INFO:     127.0.0.1:25440 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:25441 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2705 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2703 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:2772 - "GET /scenarios?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:13759 - "GET /scenarios?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:26527 - "GET /ranges?limit=5&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:26531 - "GET /exercises?limit=5&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:26532 - "GET /schedule/capacity HTTP/1.1" 200 OK
+INFO:     127.0.0.1:26534 - "GET /schedule/events?limit=50 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49474 - "GET /directory/coalitions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49472 - "GET /directory/nations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:26526 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:26533 - "GET /proxmox/discover HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:58989 - "GET /ranges?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58990 - "GET /templates?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49245 - "GET /exercises?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49244 - "GET /ranges?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49246 - "GET /scenarios?limit=50&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53387 - "GET /integrations/platforms HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1163 - "GET /hypervisors/connections HTTP/1.1" 200 OK
+INFO:     127.0.0.1:1170 - "GET /storage/appliances HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:1171 - "GET /storage/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:1172 - "GET /network-devices/ HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:1173 - "GET /network-devices/summary HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:1169 - "GET /hypervisors/summary HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51901 - "GET /hypervisors/connections/7bd27c86-8721-4163-a623-a78e7eaaf993/nodes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51899 - "GET /hypervisors/connections/83675de2-6ab8-49da-8861-e270956d0b77/nodes HTTP/1.1" 200 OK

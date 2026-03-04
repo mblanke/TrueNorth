@@ -1,0 +1,42 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == 'Debian'
+
+- name: Install base packages
+  apt:
+    name:
+      - curl
+      - wget
+      - vim
+      - htop
+      - iotop
+      - net-tools
+      - nfs-common
+      - open-iscsi
+      - chrony
+      - python3-pip
+      - jq
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Configure Chrony (NTP)
+  template:
+    src: chrony.conf.j2
+    dest: /etc/chrony/chrony.conf
+  notify: restart chrony
+
+- name: Configure DNS resolv.conf
+  template:
+    src: resolv.conf.j2
+    dest: /etc/resolv.conf
+
+- name: Set hostname to COTE convention
+  hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Set timezone
+  timezone:
+    name: UTC

@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Range Template",
+  "type": "object",
+  "required": [
+    "name",
+    "version",
+    "inputs",
+    "assets",
+    "policies"
+  ],
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "inputs": {
+      "type": "object"
+    },
+    "outputs": {
+      "type": "object"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "role",
+          "type",
+          "count"
+        ],
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "vm",
+              "k8s",
+              "service"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "properties": {
+        "egress": {
+          "type": "string",
+          "enum": [
+            "restricted",
+            "open",
+            "none"
+          ]
+        },
+        "east_west": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

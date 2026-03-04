@@ -1,0 +1,11 @@
+---
+- name: Configure VLAN interfaces
+  template:
+    src: vlan-interface.j2
+    dest: "/etc/network/interfaces.d/vlan{{ item.value.id }}"
+  loop: "{{ vlans | dict2items }}"
+  notify: restart networking
+
+- name: Set MTU on primary bridge
+  command: "ip link set {{ proxmox_bridge | default('vmbr0') }} mtu {{ mtu }}"
+  changed_when: false

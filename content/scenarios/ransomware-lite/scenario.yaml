@@ -1,0 +1,39 @@
+name: ransomware-lite
+version: 0.1
+range_template: small-enterprise
+
+timeline:
+  - t: "00:05"
+    action: "inject.email_phish"
+    params:
+      target_group: "users"
+      subject: "Payroll update"
+
+  - t: "00:15"
+    action: "inject.endpoint.simulated_execution"
+    params:
+      host_tag: "user"
+      technique: "T1204"
+      artifact: "fake-dropper"
+
+  - t: "00:25"
+    action: "inject.network.dns_spike"
+    params:
+      src_tag: "user"
+      domain: "bad.example"
+      qps: 50
+
+objectives:
+  - id: detect_dns
+    type: detection
+    validator: "validate.opensearch.query"
+    params:
+      query: 'dns.question.name:"bad.example" AND tags.range_id:${range_id}'
+    points: 25
+
+  - id: contain_host
+    type: response
+    validator: "validate.manual.ack"
+    params:
+      prompt: "Isolate host USER-02 (document steps)"
+    points: 25

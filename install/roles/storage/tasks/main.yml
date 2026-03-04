@@ -1,0 +1,33 @@
+---
+- name: Create NFS mount points
+  file:
+    path: "{{ proxmox_storage_path }}/{{ item }}"
+    state: directory
+  loop:
+    - nfs-vms
+    - nfs-templates
+    - nfs-backups
+
+- name: Mount NFS exports
+  mount:
+    src: "{{ hostvars[groups['storage'][0]].ansible_host }}:{{ nfs_export_path }}/{{ item }}"
+    path: "{{ proxmox_storage_path }}/{{ item }}"
+    fstype: nfs
+    opts: "{{ nfs_mount_options }}"
+    state: mounted
+  loop:
+    - nfs-vms
+    - nfs-templates
+    - nfs-backups
+  when: inventory_hostname in groups['hypervisors']
+
+- name: Add Proxmox NFS storage backend
+  command: >
+    pvesm add nfs {{ item }} --server {{ hostvars[groups['storage'][0]].ansible_host }}
+    --export {{ nfs_export_path }}/{{ item }} --content images,iso,vztmpl
+  args:
+    creates: "/etc/pve/storage.cfg"
+  loop:
+    - nfs-vms
+    - nfs-templates
+  when: inventory_hostname == groups['hypervisors'][0]

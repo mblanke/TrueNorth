@@ -1,0 +1,395 @@
+id: red-team
+name: Red Team Operations Environment
+version: "1.0"
+description: |
+  A red team operations environment with 30 VMs featuring a full target
+  organization (Active Directory, web applications, database tier), attacker
+  infrastructure (Kali, Cobalt Strike teamserver, redirectors), and pivot
+  networks (VPN concentrator, jump hosts). Built for offensive security
+  training and adversary simulation exercises.
+author: TrueNorth Range
+difficulty: advanced
+vm_count: 30
+
+network:
+  vlans:
+    - id: 300
+      name: target_corp
+      cidr: "10.70.0.0/24"
+      description: "Target organization corporate network"
+    - id: 301
+      name: target_dmz
+      cidr: "10.70.1.0/24"
+      description: "Target organization DMZ and internet-facing services"
+    - id: 302
+      name: target_db
+      cidr: "10.70.2.0/24"
+      description: "Target database tier (restricted)"
+    - id: 303
+      name: attacker_infra
+      cidr: "10.70.3.0/24"
+      description: "Attacker team infrastructure"
+    - id: 304
+      name: pivot_network
+      cidr: "10.70.4.0/24"
+      description: "Pivot and lateral movement network"
+
+  firewall_rules:
+    - name: internet-to-dmz
+      src: attacker_infra
+      dst: target_dmz
+      ports: [80, 443, 25, 53]
+      action: allow
+    - name: dmz-to-corp
+      src: target_dmz
+      dst: target_corp
+      ports: [8080, 1433, 389]
+      action: allow
+    - name: corp-to-db
+      src: target_corp
+      dst: target_db
+      ports: [1433, 3306, 5432]
+      action: allow
+    - name: db-isolation
+      src: target_db
+      dst: attacker_infra
+      action: deny
+    - name: pivot-all
+      src: pivot_network
+      dst: "*"
+      action: allow
+      note: "Dual-homed hosts for pivoting exercises"
+
+nodes:
+  # --- Target DMZ (VLAN 301) ---
+  - id: t-web01
+    name: Corporate Website
+    role: web_server
+    os: ubuntu-2204
+    vlan: target_dmz
+    ip: "10.70.1.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [nginx, wordpress]
+    vulnerabilities:
+      - cve: "CVE-2023-XXXX"
+        type: sqli
+        difficulty: easy
+      - type: file_upload
+        difficulty: medium
+
+  - id: t-web02
+    name: Customer Portal
+    role: web_server
+    os: ubuntu-2204
+    vlan: target_dmz
+    ip: "10.70.1.11"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [tomcat, java_app]
+    vulnerabilities:
+      - type: deserialization
+        difficulty: hard
+      - type: ssrf
+        difficulty: medium
+
+  - id: t-mail01
+    name: Mail Server
+    role: mail_server
+    os: ubuntu-2204
+    vlan: target_dmz
+    ip: "10.70.1.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [postfix, dovecot, roundcube]
+    vulnerabilities:
+      - type: open_relay_misconfiguration
+        difficulty: easy
+
+  - id: t-vpn01
+    name: VPN Concentrator
+    role: vpn_gateway
+    os: pfsense
+    vlan: target_dmz
+    ip: "10.70.1.30"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    services: [openvpn]
+    vulnerabilities:
+      - type: weak_credentials
+        difficulty: easy
+
+  - id: t-dns01
+    name: External DNS
+    role: dns_server
+    os: ubuntu-2204
+    vlan: target_dmz
+    ip: "10.70.1.40"
+    specs: { cores: 1, memory_mb: 1024, disk_gb: 20 }
+    services: [bind9]
+    vulnerabilities:
+      - type: zone_transfer
+        difficulty: easy
+
+  # --- Target Corporate (VLAN 300) ---
+  - id: t-dc01
+    name: Primary Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: target_corp
+    ip: "10.70.0.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns, dhcp, gpo]
+    ad_domain: targetcorp.local
+    vulnerabilities:
+      - type: kerberoastable_spn
+        difficulty: medium
+      - type: asreproastable_user
+        difficulty: medium
+
+  - id: t-dc02
+    name: Secondary Domain Controller
+    role: domain_controller
+    os: windows-server-2019
+    vlan: target_corp
+    ip: "10.70.0.11"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns]
+    ad_domain: targetcorp.local
+
+  - id: t-fs01
+    name: File Server
+    role: file_server
+    os: windows-server-2022
+    vlan: target_corp
+    ip: "10.70.0.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 300 }
+    services: [smb, dfs]
+    pre_staged_data:
+      - "\\shares\\IT\\passwords.xlsx"
+      - "\\shares\\finance\\budget.xlsx"
+      - "\\shares\\executive\\board-minutes.docx"
+
+  - id: t-ca01
+    name: Certificate Authority
+    role: pki
+    os: windows-server-2022
+    vlan: target_corp
+    ip: "10.70.0.30"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [adcs]
+    vulnerabilities:
+      - type: esc1_template_misconfiguration
+        difficulty: hard
+
+  - id: t-ws01
+    name: IT Admin Workstation
+    role: workstation
+    os: windows-11
+    vlan: target_corp
+    ip: "10.70.0.100"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 120 }
+    user_profile: domain_admin
+    vulnerabilities:
+      - type: cached_credentials
+        difficulty: medium
+
+  - id: t-ws02
+    name: Developer Workstation
+    role: workstation
+    os: windows-11
+    vlan: target_corp
+    ip: "10.70.0.101"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 120 }
+    user_profile: developer
+    vulnerabilities:
+      - type: stored_ssh_keys
+        difficulty: easy
+
+  - id: t-ws03
+    name: Finance Workstation
+    role: workstation
+    os: windows-11
+    vlan: target_corp
+    ip: "10.70.0.102"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: finance_user
+
+  - id: t-ws04
+    name: HR Workstation
+    role: workstation
+    os: windows-11
+    vlan: target_corp
+    ip: "10.70.0.103"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    user_profile: hr_user
+
+  - id: t-ws05
+    name: Executive Workstation
+    role: workstation
+    os: windows-11
+    vlan: target_corp
+    ip: "10.70.0.104"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 120 }
+    user_profile: cfo
+
+  - id: t-linux01
+    name: Internal Linux Server
+    role: application
+    os: ubuntu-2204
+    vlan: target_corp
+    ip: "10.70.0.50"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [gitlab_ce, docker]
+    vulnerabilities:
+      - type: sudo_misconfiguration
+        difficulty: medium
+      - type: docker_socket_exposed
+        difficulty: hard
+
+  # --- Target Database Tier (VLAN 302) ---
+  - id: t-sql01
+    name: SQL Server
+    role: database
+    os: windows-server-2022
+    vlan: target_db
+    ip: "10.70.2.10"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [mssql_2022]
+    vulnerabilities:
+      - type: sa_weak_password
+        difficulty: easy
+      - type: xp_cmdshell_enabled
+        difficulty: medium
+
+  - id: t-mysql01
+    name: MySQL Server
+    role: database
+    os: ubuntu-2204
+    vlan: target_db
+    ip: "10.70.2.20"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
+    services: [mysql_8]
+    vulnerabilities:
+      - type: udf_injection
+        difficulty: hard
+
+  - id: t-redis01
+    name: Redis Cache
+    role: cache
+    os: ubuntu-2204
+    vlan: target_db
+    ip: "10.70.2.30"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 20 }
+    services: [redis]
+    vulnerabilities:
+      - type: no_auth_required
+        difficulty: easy
+      - type: lua_sandbox_escape
+        difficulty: expert
+
+  # --- Attacker Infrastructure (VLAN 303) ---
+  - id: a-kali01
+    name: Kali Attack Box 1
+    role: attack_platform
+    os: kali-2024
+    vlan: attacker_infra
+    ip: "10.70.3.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 120 }
+    services: [metasploit, burpsuite, bloodhound, impacket, crackmapexec]
+
+  - id: a-kali02
+    name: Kali Attack Box 2
+    role: attack_platform
+    os: kali-2024
+    vlan: attacker_infra
+    ip: "10.70.3.11"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 120 }
+    services: [metasploit, burpsuite, bloodhound, impacket, crackmapexec]
+
+  - id: a-teamserver
+    name: Cobalt Strike Teamserver
+    role: c2_server
+    os: ubuntu-2204
+    vlan: attacker_infra
+    ip: "10.70.3.20"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 60 }
+    services: [cobalt_strike_sim, sliver]
+
+  - id: a-redir01
+    name: HTTPS Redirector
+    role: redirector
+    os: ubuntu-2204
+    vlan: attacker_infra
+    ip: "10.70.3.30"
+    specs: { cores: 1, memory_mb: 1024, disk_gb: 20 }
+    services: [nginx_redirect, socat]
+
+  - id: a-redir02
+    name: DNS Redirector
+    role: redirector
+    os: ubuntu-2204
+    vlan: attacker_infra
+    ip: "10.70.3.31"
+    specs: { cores: 1, memory_mb: 1024, disk_gb: 20 }
+    services: [dns_redirect, socat]
+
+  - id: a-payload
+    name: Payload Hosting
+    role: staging
+    os: ubuntu-2204
+    vlan: attacker_infra
+    ip: "10.70.3.40"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
+    services: [nginx, python_http_server]
+
+  # --- Pivot Network (VLAN 304) ---
+  - id: p-vpnconc01
+    name: Pivot VPN Concentrator
+    role: vpn_gateway
+    os: pfsense
+    vlan: pivot_network
+    ip: "10.70.4.10"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    services: [openvpn, wireguard]
+    note: "Dual-homed between attacker and target networks"
+
+  - id: p-jump01
+    name: Pivot Jump Host 1
+    role: jump_host
+    os: ubuntu-2204
+    vlan: pivot_network
+    ip: "10.70.4.20"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
+    services: [ssh, proxychains, chisel]
+
+  - id: p-jump02
+    name: Pivot Jump Host 2
+    role: jump_host
+    os: windows-server-2022
+    vlan: pivot_network
+    ip: "10.70.4.21"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [rdp, ssh]
+
+  # --- Core Network ---
+  - id: fw01
+    name: Core Firewall
+    role: firewall
+    os: pfsense
+    vlan: pivot_network
+    ip: "10.70.4.1"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    interfaces:
+      - vlan: target_corp
+        ip: "10.70.0.1"
+      - vlan: target_dmz
+        ip: "10.70.1.1"
+      - vlan: target_db
+        ip: "10.70.2.1"
+      - vlan: attacker_infra
+        ip: "10.70.3.1"
+      - vlan: pivot_network
+        ip: "10.70.4.1"
+
+resource_totals:
+  total_vms: 30
+  total_cores: 72
+  total_memory_gb: 178
+  total_disk_gb: 2160

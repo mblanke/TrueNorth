@@ -1,0 +1,38 @@
+# TrueNorth Range — Correlation Rule: Lateral Movement Detection
+# Triggers when a single user authenticates to multiple distinct hosts
+# within a short window, suggesting lateral movement through the network.
+
+rule:
+  id: lateral-movement-chain
+  name: Lateral Movement Chain
+  description: >
+    Detects potential lateral movement by identifying a single user
+    account successfully authenticating to multiple distinct hosts
+    within a 15-minute window.  Common in post-compromise scenarios
+    where attackers pivot through the network.
+  enabled: true
+
+  event_filter:
+    action:
+      - "login_success"
+      - "auth_success"
+      - "authentication_success"
+      - "rdp_connect"
+      - "ssh_connect"
+
+  # Group by user — detect one user moving across hosts
+  group_by:
+    - username
+
+  # Alert when user touches this many distinct hosts
+  threshold: 4
+
+  window_seconds: 900  # 15 minutes
+
+  # Count distinct destination hostnames
+  distinct_field: hostname
+
+  severity: critical
+  alert_name: Lateral Movement Chain Detected
+  mitre_technique: "T1021"
+  mitre_tactic: "lateral-movement"

@@ -1,0 +1,94 @@
+# -- pyproject.toml --
+# Monorepo packaging for TrueNorth Range
+[build-system]
+requires = ["setuptools>=69.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "truenorth-range"
+version = "0.1.0"
+description = "TrueNorth Range - AI-enhanced cyber training platform"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.6",
+    "pydantic==2.8.2",
+    "sqlalchemy==2.0.32",
+    "psycopg[binary]==3.2.1",
+    "alembic==1.13.2",
+    "python-dotenv==1.0.1",
+    "pyyaml==6.0.2",
+    "python-jose[cryptography]==3.3.0",
+    "httpx==0.27.2",
+    "celery==5.4.0",
+    "redis==5.0.8",
+    "jsonschema==4.23.0",
+    "jinja2==3.1.4",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "httpx>=0.27",
+]
+dev = [
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+cli = [
+    "typer[all]>=0.12",
+    "rich>=13.7",
+]
+
+[project.scripts]
+forge = "tools.cli.forge:app"
+
+[tool.setuptools.packages.find]
+include = [
+    "control_plane_api*",
+    "control_plane_worker*",
+    "scenario_engine*",
+    "ai_orchestrator*",
+    "tools*",
+    "telemetry*",
+]
+
+[tool.setuptools.package-dir]
+control_plane_api = "control-plane/api"
+control_plane_worker = "control-plane/worker"
+scenario_engine = "scenario-engine"
+ai_orchestrator = "ai-orchestrator"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [
+    "control-plane/api",
+    "control-plane/worker",
+    "scenario-engine",
+    "ai-orchestrator",
+    "tools",
+]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests requiring external services",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

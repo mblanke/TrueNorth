@@ -1,0 +1,144 @@
+---
+# ============================================================
+# TrueNorth Range — Attacker / Red Team VM Role
+# ============================================================
+
+- name: Install base red-team packages
+  ansible.builtin.apt:
+    name:
+      - git
+      - python3
+      - python3-pip
+      - python3-venv
+      - nmap
+      - gobuster
+      - hashcat
+      - john
+      - curl
+      - wget
+      - netcat-openbsd
+      - proxychains4
+      - sshuttle
+      - dnsutils
+      - whois
+      - libssl-dev
+      - libffi-dev
+      - build-essential
+      - crackmapexec
+    state: present
+  tags: [attacker, packages]
+
+- name: Create attack staging directory
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0750"
+  loop:
+    - /opt/redteam
+    - /opt/redteam/tools
+    - /opt/redteam/staging
+    - /opt/redteam/loot
+    - /opt/redteam/logs
+    - /opt/redteam/payloads
+  tags: [attacker, dirs]
+
+- name: Install Impacket
+  ansible.builtin.pip:
+    name: impacket
+    state: present
+    virtualenv: /opt/redteam/venv
+    virtualenv_command: python3 -m venv
+  tags: [attacker, impacket]
+
+- name: Install Metasploit Framework dependencies
+  ansible.builtin.apt:
+    name:
+      - ruby
+      - ruby-dev
+      - postgresql
+      - libpq-dev
+      - autoconf
+      - bison
+      - libyaml-dev
+      - libreadline-dev
+      - zlib1g-dev
+      - libncurses5-dev
+      - libgdbm-dev
+    state: present
+  tags: [attacker, metasploit]
+
+- name: Download and install Metasploit Framework
+  ansible.builtin.shell: |
+    if [ ! -d /opt/metasploit-framework ]; then
+      curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb \
+        > /tmp/msfinstall && chmod 755 /tmp/msfinstall && /tmp/msfinstall
+    fi
+  args:
+    creates: /opt/metasploit-framework/bin/msfconsole
+  tags: [attacker, metasploit]
+
+- name: Install MITRE Caldera
+  ansible.builtin.git:
+    repo: "https://github.com/mitre/caldera.git"
+    dest: /opt/redteam/caldera
+    version: master
+    recursive: true
+    force: true
+  tags: [attacker, caldera]
+
+- name: Install Caldera dependencies
+  ansible.builtin.pip:
+    requirements: /opt/redteam/caldera/requirements.txt
+    virtualenv: /opt/redteam/caldera/venv
+    virtualenv_command: python3 -m venv
+  tags: [attacker, caldera]
+
+- name: Deploy Caldera configuration
+  ansible.builtin.template:
+    src: caldera-config.yml.j2
+    dest: /opt/redteam/caldera/conf/local.yml
+    mode: "0600"
+  tags: [attacker, caldera]
+
+- name: Create Caldera systemd service
+  ansible.builtin.template:
+    src: caldera.service.j2
+    dest: /etc/systemd/system/caldera.service
+    mode: "0644"
+  notify: reload systemd
+  tags: [attacker, caldera]
+
+- name: Configure C2 profiles
+  ansible.builtin.template:
+    src: c2-profiles.yml.j2
+    dest: /opt/redteam/staging/c2-profiles.yml
+    mode: "0600"
+  tags: [attacker, c2]
+
+- name: Install additional Python red-team tools
+  ansible.builtin.pip:
+    name:
+      - bloodhound
+      - mitm6
+      - responder
+      - ldapdomaindump
+      - pywerview
+    state: present
+    virtualenv: /opt/redteam/venv
+  tags: [attacker, tools]
+
+- name: Download common wordlists
+  ansible.builtin.get_url:
+    url: "https://github.com/danielmiessler/SecLists/archive/refs/heads/master.tar.gz"
+    dest: /opt/redteam/tools/seclists.tar.gz
+    mode: "0644"
+  tags: [attacker, wordlists]
+
+- name: Set attack staging permissions
+  ansible.builtin.file:
+    path: /opt/redteam
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    recurse: true
+  tags: [attacker]

@@ -1,0 +1,229 @@
+# ------------------------------------------------------------------
+# TrueNorth Range — Deploy to Production (Blue/Green)
+# ------------------------------------------------------------------
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g. v1.2.3)"
+        required: true
+        type: string
+      confirm:
+        description: "I confirm this production deployment"
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/truenorth
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  validate:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        if: ${{ !inputs.confirm }}
+        run: |
+          echo "::error::Deployment not confirmed. Check the confirmation box."
+          exit 1
+
+      - name: Validate version format
+        run: |
+          if [[ ! "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Version must match vX.Y.Z (e.g. v1.2.3)"
+            exit 1
+          fi
+
+  tag-and-push:
+    name: Tag & Push Images
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: production
+    strategy:
+      matrix:
+        service: [api, worker, ai-orchestrator, web]
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag image with version
+        run: |
+          SRC="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:main"
+          DST="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ inputs.version }}"
+          DST_LATEST="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:latest"
+
+          docker pull "$SRC"
+          docker tag "$SRC" "$DST"
+          docker tag "$SRC" "$DST_LATEST"
+          docker push "$DST"
+          docker push "$DST_LATEST"
+          echo "Tagged ${{ matrix.service }} → ${{ inputs.version }}"
+
+  deploy:
+    name: Blue/Green Deploy
+    runs-on: ubuntu-latest
+    needs: tag-and-push
+    environment: production
+    outputs:
+      active_slot: ${{ steps.detect.outputs.active }}
+      target_slot: ${{ steps.detect.outputs.target }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect active slot
+        id: detect
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            ACTIVE=$(cat /opt/truenorth/active-slot 2>/dev/null || echo "blue")
+            if [ "$ACTIVE" = "blue" ]; then TARGET="green"; else TARGET="blue"; fi
+            echo "active=$ACTIVE" >> "$GITHUB_OUTPUT"
+            echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+            echo "Active: $ACTIVE → Deploying to: $TARGET"
+
+      - name: Deploy to target slot
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/truenorth
+
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            export IMAGE_TAG="${{ inputs.version }}"
+            export SLOT="${{ steps.detect.outputs.target }}"
+            export COMPOSE_PROJECT_NAME="truenorth-${SLOT}"
+
+            # Pull tagged images
+            docker compose -f compose.prod.yml pull
+
+            # Start target slot
+            docker compose -f compose.prod.yml up -d --remove-orphans
+
+            # Run migrations on target slot
+            docker compose -f compose.prod.yml exec -T api alembic upgrade head
+
+            # Wait for readiness
+            sleep 15
+
+      - name: Smoke test target slot
+        id: smoke
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            SLOT="${{ steps.detect.outputs.target }}"
+
+            # Determine port offsets (blue=0, green=100)
+            if [ "$SLOT" = "blue" ]; then API_PORT=8080; else API_PORT=8180; fi
+
+            echo "Testing $SLOT slot on port $API_PORT..."
+
+            # API health
+            curl -sf "http://localhost:${API_PORT}/health" || { echo "✗ API failed"; exit 1; }
+            echo "✓ API responding"
+
+            # API version check
+            VERSION=$(curl -sf "http://localhost:${API_PORT}/health" | python3 -c "import sys,json; print(json.load(sys.stdin).get('version','unknown'))" 2>/dev/null || echo "unknown")
+            echo "API version: $VERSION"
+
+      - name: Switch traffic to target slot
+        if: success()
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            TARGET="${{ steps.detect.outputs.target }}"
+
+            # Update nginx upstream to point to target slot
+            if [ "$TARGET" = "blue" ]; then
+              API_PORT=8080; WEB_PORT=80
+            else
+              API_PORT=8180; WEB_PORT=8081
+            fi
+
+            cat > /etc/nginx/conf.d/truenorth-upstream.conf <<EOF
+            upstream truenorth_api { server 127.0.0.1:${API_PORT}; }
+            upstream truenorth_web { server 127.0.0.1:${WEB_PORT}; }
+            EOF
+
+            nginx -t && systemctl reload nginx
+
+            # Record active slot
+            echo "$TARGET" > /opt/truenorth/active-slot
+            echo "✓ Traffic switched to $TARGET (${{ inputs.version }})"
+
+      - name: Rollback on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            echo "⚠ Deployment failed — rolling back"
+            TARGET="${{ steps.detect.outputs.target }}"
+            ACTIVE="${{ steps.detect.outputs.active }}"
+
+            cd /opt/truenorth
+            export COMPOSE_PROJECT_NAME="truenorth-${TARGET}"
+            docker compose -f compose.prod.yml down || true
+
+            echo "Rolled back. Active slot remains: $ACTIVE"
+            echo "$ACTIVE" > /opt/truenorth/active-slot
+
+  post-deploy:
+    name: Post-Deploy Verification
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+    steps:
+      - name: Full smoke test
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            echo "Running post-deploy verification..."
+            curl -sf https://${{ secrets.PROD_DOMAIN }}/health || { echo "✗ Production endpoint unreachable"; exit 1; }
+            curl -sf https://${{ secrets.PROD_DOMAIN }}/api/v1/health || { echo "✗ API endpoint unreachable"; exit 1; }
+            echo "✓ Production verification passed — ${{ inputs.version }} is live"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: "Release ${{ inputs.version }}"
+          generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

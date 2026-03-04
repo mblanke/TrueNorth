@@ -1,0 +1,63 @@
+name: apt-breach
+version: "1.0"
+range_template: small-enterprise
+
+timeline:
+  - t: "0:00"
+    action: email_phish
+    params:
+      subject: "Q4 Financial Report"
+      sender: "cfo@corp.example.com"
+      recipient: "analyst01@corp.example.com"
+      payload_url: "http://evil.example.com/q4report.docm"
+  - t: "0:10"
+    action: simulated_execution
+    params:
+      binary: "q4report.docm"
+      target: "ws-01"
+      mitre_technique: "T1204.002"
+  - t: "0:20"
+    action: http_burst
+    params:
+      url: "http://c2.evil.example.com/beacon"
+      count: 30
+      method: "POST"
+  - t: "0:35"
+    action: identity_new_admin_user
+    params:
+      username: "svc_backup"
+      target: "dc-01"
+  - t: "0:45"
+    action: dns_spike
+    params:
+      domains: ["exfil01.evil.example.com", "exfil02.evil.example.com"]
+      count: 200
+
+objectives:
+  - id: detect-phish
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:email AND subject:*Financial*"
+      min_hits: 1
+    points: 20
+  - id: detect-c2
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:http AND url:*c2.evil*"
+      min_hits: 1
+    points: 30
+  - id: detect-priv-esc
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:identity AND username:svc_backup"
+      min_hits: 1
+    points: 25
+  - id: incident-report
+    type: deliverable
+    validator: deliverable_check
+    params:
+      key: "incident-report.pdf"
+    points: 25

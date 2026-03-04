@@ -1,0 +1,99 @@
+{{- if .Values.aiOrchestrator.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-ai-orchestrator
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "ai-orchestrator") | nindent 4 }}
+spec:
+  replicas: {{ .Values.aiOrchestrator.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "ai-orchestrator") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.monitoring.prometheus.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "6000"
+        prometheus.io/path: {{ .Values.monitoring.prometheus.path | default "/metrics" }}
+        {{- end }}
+      labels:
+        {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "ai-orchestrator") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "truenorth-range.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.aiOrchestrator.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.aiOrchestrator.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.aiOrchestrator.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ai-orchestrator
+          image: {{ include "truenorth-range.image" (dict "image" .Values.aiOrchestrator.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.aiOrchestrator.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 6000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "truenorth-range.fullname" . }}-config
+            - secretRef:
+                name: {{ include "truenorth-range.fullname" . }}-secret
+          env:
+            - name: OLLAMA_NODES
+              value: {{ .Values.aiOrchestrator.ollamaNodes | quote }}
+            - name: DATABASE_URL
+              value: {{ include "truenorth-range.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "truenorth-range.redisUrl" . | quote }}
+            {{- with .Values.aiOrchestrator.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
+          resources:
+            {{- toYaml .Values.aiOrchestrator.resources | nindent 12 }}
+            {{- if .Values.aiOrchestrator.gpu.enabled }}
+            {{ .Values.aiOrchestrator.gpu.resourceKey }}: {{ .Values.aiOrchestrator.gpu.resourceValue | quote }}
+            {{- end }}
+{{- end }}

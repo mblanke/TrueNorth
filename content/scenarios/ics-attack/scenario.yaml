@@ -1,0 +1,264 @@
+name: ics-attack
+version: "1.0"
+range_template: large-enterprise
+difficulty: expert
+duration_minutes: 60
+phase_count: 8
+description: |
+  Industrial control system (ICS) attack scenario targeting an OT/SCADA
+  environment. Simulates an adversary moving from the IT network into the
+  OT segment, modifying PLC programs, manipulating HMI displays, bypassing
+  safety systems, and disrupting physical processes. Based on real-world
+  ICS attack frameworks (TRITON/TRISIS, Industroyer). Requires understanding
+  of the Purdue model, OT protocols (Modbus, OPC-UA), and ICS-specific
+  detection techniques.
+author: TrueNorth Range
+
+mitre_ics:
+  - T0886      # Remote Services (ICS)
+  - T0843      # Program Download (PLC)
+  - T0821      # Modify Controller Tasking
+  - T0842      # Network Sniffing (OT)
+  - T0856      # Spoof Reporting Message
+  - T0831      # Manipulation of Control
+  - T0880      # Loss of Safety
+  - T0826      # Loss of Availability
+
+purdue_model:
+  level_5: "Enterprise network (IT)"
+  level_4: "IT/OT DMZ"
+  level_3: "Site operations (Historian, Engineering WS)"
+  level_2: "Area supervisory (HMI)"
+  level_1: "Basic control (PLC)"
+  level_0: "Physical process (simulated)"
+
+timeline:
+  - phase: 1
+    t: "00:00"
+    name: "IT-to-OT Pivot - Historian Compromise"
+    action: simulated_execution
+    params:
+      source_host: "ws07"
+      target_host: "historian01"
+      technique: T0886
+      description: "Attacker pivots from IT admin workstation to OT historian via RDP"
+      process_name: "mstsc.exe"
+      command_line: "mstsc /v:10.50.104.10"
+      artifacts:
+        - type: network_flow
+          src_ip: "10.50.101.106"
+          dst_ip: "10.50.104.10"
+          dst_port: 3389
+          note: "Cross-boundary RDP from IT to OT (Purdue L5 to L3)"
+    mitre_ics: T0886
+
+  - phase: 2
+    t: "00:08"
+    name: "OT Network Reconnaissance"
+    action: simulated_execution
+    params:
+      host_tag: "historian01"
+      technique: T0842
+      description: "Scan OT network to identify PLCs and HMIs"
+      commands:
+        - "nmap -sS -p 502,102,44818,4840 10.50.104.0/24"
+        - "python3 modbus_scanner.py --target 10.50.104.30-31"
+      artifacts:
+        - type: network_scan
+          target_range: "10.50.104.0/24"
+          discovered_hosts:
+            - { ip: "10.50.104.20", role: "HMI", port: 502 }
+            - { ip: "10.50.104.21", role: "HMI", port: 502 }
+            - { ip: "10.50.104.30", role: "PLC", port: 502 }
+            - { ip: "10.50.104.31", role: "PLC", port: 502 }
+            - { ip: "10.50.104.40", role: "ENG-WS", port: 44818 }
+    mitre_ics: T0842
+
+  - phase: 3
+    t: "00:15"
+    name: "Engineering Workstation Compromise"
+    action: simulated_execution
+    params:
+      source_host: "historian01"
+      target_host: "eng-ws01"
+      technique: T0886
+      description: "Lateral movement to engineering workstation with PLC programming software"
+      artifacts:
+        - type: credential_reuse
+          method: "pass-the-hash"
+          source: "historian01"
+          target: "eng-ws01"
+        - type: network_flow
+          src_ip: "10.50.104.10"
+          dst_ip: "10.50.104.40"
+          dst_port: 445
+    mitre_ics: T0886
+
+  - phase: 4
+    t: "00:22"
+    name: "PLC Program Download - Reconnaissance"
+    action: simulated_execution
+    params:
+      host_tag: "eng-ws01"
+      technique: T0843
+      description: "Upload (read) current PLC logic for analysis"
+      commands:
+        - "openplc_client.py --host 10.50.104.30 --read-program --output current_logic.st"
+      artifacts:
+        - type: modbus_traffic
+          src_ip: "10.50.104.40"
+          dst_ip: "10.50.104.30"
+          function_code: "read_holding_registers"
+          register_count: 256
+        - type: file_create
+          path: "C:\\Projects\\current_logic.st"
+    mitre_ics: T0843
+
+  - phase: 5
+    t: "00:30"
+    name: "PLC Logic Modification"
+    action: simulated_execution
+    params:
+      host_tag: "eng-ws01"
+      technique: T0821
+      description: "Modify PLC program to alter process setpoints"
+      commands:
+        - "openplc_client.py --host 10.50.104.30 --write-program modified_logic.st"
+        - "openplc_client.py --host 10.50.104.31 --write-program modified_logic.st"
+      artifacts:
+        - type: modbus_traffic
+          src_ip: "10.50.104.40"
+          dst_ip: "10.50.104.30"
+          function_code: "write_multiple_registers"
+          description: "Modified temperature setpoint from 150F to 500F"
+        - type: plc_change
+          original_setpoint: 150
+          modified_setpoint: 500
+          variable: "temperature_max"
+    mitre_ics: T0821
+
+  - phase: 6
+    t: "00:38"
+    name: "HMI Display Spoofing"
+    action: simulated_execution
+    params:
+      target_hosts: ["hmi01", "hmi02"]
+      technique: T0856
+      description: "Modify HMI display to show normal values while process is disrupted"
+      artifacts:
+        - type: modbus_traffic
+          function_code: "write_single_register"
+          description: "Spoofing HMI display register to show normal temperature"
+          spoofed_value: 150
+          actual_value: 500
+    mitre_ics: T0856
+
+  - phase: 7
+    t: "00:45"
+    name: "Safety System Bypass"
+    action: simulated_execution
+    params:
+      host_tag: "eng-ws01"
+      technique: T0880
+      description: "Disable safety instrumented system (SIS) interlocks"
+      commands:
+        - "openplc_client.py --host 10.50.104.30 --write-coil 100 0"
+        - "openplc_client.py --host 10.50.104.31 --write-coil 100 0"
+      artifacts:
+        - type: modbus_traffic
+          function_code: "write_single_coil"
+          coil_address: 100
+          value: 0
+          description: "High-temperature emergency shutdown coil disabled"
+        - type: safety_event
+          system: "SIS"
+          status: "BYPASS"
+          alarm_suppressed: true
+    mitre_ics: T0880
+
+  - phase: 8
+    t: "00:52"
+    name: "Physical Process Disruption"
+    action: simulated_execution
+    params:
+      technique: T0831
+      description: "With safety systems bypassed and HMI spoofed, simulated process exceeds safe operating parameters"
+      artifacts:
+        - type: process_anomaly
+          variable: "temperature"
+          normal_range: "140-160 F"
+          current_value: "500 F"
+          status: "CRITICAL"
+        - type: process_anomaly
+          variable: "pressure"
+          normal_range: "50-70 PSI"
+          current_value: "185 PSI"
+          status: "DANGER"
+        - type: alarm
+          message: "Process variable out of range - emergency condition"
+          suppressed_on_hmi: true
+    mitre_ics: T0831
+
+objectives:
+  - id: detect_it_ot_pivot
+    type: detection
+    description: "Detect unauthorized RDP connection from IT to OT network"
+    validator: opensearch_query
+    params:
+      query: 'event_type:flow AND src_ip:10.50.101.* AND dst_ip:10.50.104.* AND dst_port:3389'
+      min_hits: 1
+    points: 15
+
+  - id: detect_ot_recon
+    type: detection
+    description: "Detect network scanning of OT segment"
+    validator: opensearch_query
+    params:
+      query: 'event_type:scan AND dst_ip:10.50.104.* AND dst_port:(502 OR 44818 OR 4840)'
+      min_hits: 1
+    points: 10
+
+  - id: detect_modbus_anomaly
+    type: detection
+    description: "Detect abnormal Modbus write operations"
+    validator: opensearch_query
+    params:
+      query: 'protocol:modbus AND function_code:(write_multiple_registers OR write_single_coil) AND src_ip:10.50.104.40'
+      min_hits: 2
+    points: 20
+
+  - id: detect_plc_change
+    type: detection
+    description: "Identify PLC program modification"
+    validator: opensearch_query
+    params:
+      query: 'event_type:plc_change AND action:program_download'
+      min_hits: 1
+    points: 20
+
+  - id: detect_safety_bypass
+    type: detection
+    description: "Detect safety system status change"
+    validator: opensearch_query
+    params:
+      query: 'event_type:safety_event AND status:BYPASS'
+      min_hits: 1
+    points: 20
+
+  - id: purdue_analysis
+    type: deliverable
+    description: "Map the attack path across Purdue model levels"
+    validator: deliverable_check
+    params:
+      key: "purdue-analysis.pdf"
+      required_sections:
+        - "Attack path diagram"
+        - "Purdue level violations"
+        - "Segmentation recommendations"
+    points: 15
+
+scoring:
+  total_points: 100
+  passing_score: 75
+  time_bonus:
+    enabled: false

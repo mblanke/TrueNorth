@@ -1,0 +1,39 @@
+# TrueNorth Range — Correlation Rule: Brute Force Detection
+# Triggers when N failed login attempts originate from the same source IP
+# within the configured time window.
+
+rule:
+  id: brute-force-login
+  name: Brute Force Login Attempt
+  description: >
+    Detects brute force login attacks by correlating multiple failed
+    authentication events from the same source IP address within a
+    5-minute window.  Threshold is set conservatively to reduce false
+    positives while catching sustained attacks.
+  enabled: true
+
+  # Only match events with these field values
+  event_filter:
+    action:
+      - "login_failed"
+      - "auth_failed"
+      - "authentication_failure"
+
+  # Group correlated events by source IP
+  group_by:
+    - source_ip
+
+  # Alert when this many matching events are seen in group
+  threshold: 10
+
+  # Sliding window in seconds
+  window_seconds: 300  # 5 minutes
+
+  # Count distinct values of this field (null = count raw events)
+  distinct_field: null
+
+  # Alert metadata
+  severity: high
+  alert_name: Brute Force Login Detected
+  mitre_technique: "T1110"
+  mitre_tactic: "credential-access"

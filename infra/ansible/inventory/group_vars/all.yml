@@ -1,0 +1,38 @@
+---
+# ============================================================
+# TrueNorth Range — Global Variables (all hosts)
+# ============================================================
+
+# ── Network / DNS ──────────────────────────────────────────
+range_domain:    "truenorth.local"
+dns_server:      "{{ hostvars[groups['domain_controllers'][0]]['ansible_host'] | default('10.0.1.10') }}"
+ntp_server:      "pool.ntp.org"
+syslog_server:   "{{ hostvars[groups['siem'][0]]['ansible_host'] | default('10.0.5.10') }}"
+timezone:        "UTC"
+
+# ── Monitoring / Telemetry ─────────────────────────────────
+prometheus_url:   "http://monitoring.{{ range_domain }}:9090"
+opensearch_url:   "https://opensearch.{{ range_domain }}:9200"
+filebeat_version: "8.12.2"
+winlogbeat_version: "8.12.2"
+
+# ── Range Identifiers (injected at provision time) ────────
+range_id:     "{{ lookup('env', 'RANGE_ID')     | default('range-dev-001') }}"
+tenant_id:    "{{ lookup('env', 'TENANT_ID')    | default('tenant-default') }}"
+exercise_id:  "{{ lookup('env', 'EXERCISE_ID')  | default('exercise-dev') }}"
+
+# ── SSH ────────────────────────────────────────────────────
+ssh_authorized_keys:
+  - "ssh-ed25519 AAAA...placeholder... truenorth-deploy"
+
+# ── Package mirrors (air-gapped support) ──────────────────
+apt_mirror:  ""   # leave blank to use upstream
+yum_mirror:  ""
+
+# ── Tags applied to every provisioned resource ─────────────
+common_tags:
+  project:     "truenorth-range"
+  managed_by:  "ansible"
+  range_id:    "{{ range_id }}"
+  tenant_id:   "{{ tenant_id }}"
+  exercise_id: "{{ exercise_id }}"

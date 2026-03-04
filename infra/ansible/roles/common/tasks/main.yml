@@ -1,0 +1,135 @@
+---
+# ============================================================
+# TrueNorth Range — Common Role (applied to ALL VMs)
+# ============================================================
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+  tags: [hostname]
+
+- name: Set timezone to UTC
+  ansible.builtin.timezone:
+    name: "{{ timezone | default('UTC') }}"
+  tags: [timezone]
+
+- name: Configure DNS resolvers
+  ansible.builtin.template:
+    src: resolv.conf.j2
+    dest: /etc/resolv.conf
+    mode: "0644"
+  when: ansible_os_family == "Debian"
+  tags: [dns]
+
+- name: Configure NTP
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+  when: ansible_os_family == "Debian"
+  tags: [ntp]
+
+- name: Deploy NTP configuration
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: /etc/chrony/chrony.conf
+    mode: "0644"
+  notify: restart chrony
+  when: ansible_os_family == "Debian"
+  tags: [ntp]
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+  tags: [packages]
+
+- name: Install essential packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - jq
+      - unzip
+      - net-tools
+      - tcpdump
+      - htop
+      - vim
+      - ca-certificates
+      - gnupg
+    state: present
+  when: ansible_os_family == "Debian"
+  tags: [packages]
+
+- name: Install QEMU guest agent
+  ansible.builtin.apt:
+    name: qemu-guest-agent
+    state: present
+  when: ansible_os_family == "Debian"
+  notify: start qemu-guest-agent
+  tags: [qemu]
+
+- name: Add Elastic APT key
+  ansible.builtin.apt_key:
+    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    state: present
+  when: ansible_os_family == "Debian"
+  tags: [filebeat]
+
+- name: Add Elastic APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://artifacts.elastic.co/packages/8.x/apt stable main"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags: [filebeat]
+
+- name: Install Filebeat
+  ansible.builtin.apt:
+    name: "filebeat={{ filebeat_version }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  notify: restart filebeat
+  tags: [filebeat]
+
+- name: Configure Filebeat
+  ansible.builtin.template:
+    src: filebeat.yml.j2
+    dest: /etc/filebeat/filebeat.yml
+    mode: "0600"
+  notify: restart filebeat
+  when: ansible_os_family == "Debian"
+  tags: [filebeat]
+
+- name: Enable Filebeat service
+  ansible.builtin.systemd:
+    name: filebeat
+    enabled: true
+    state: started
+  when: ansible_os_family == "Debian"
+  tags: [filebeat]
+
+- name: Configure syslog forwarding
+  ansible.builtin.template:
+    src: 50-truenorth-syslog.conf.j2
+    dest: /etc/rsyslog.d/50-truenorth-syslog.conf
+    mode: "0644"
+  notify: restart rsyslog
+  when: ansible_os_family == "Debian"
+  tags: [syslog]
+
+- name: Add SSH authorized keys
+  ansible.posix.authorized_key:
+    user: "{{ ansible_user }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ ssh_authorized_keys }}"
+  tags: [ssh]
+
+- name: Harden SSH — disable password auth
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PasswordAuthentication"
+    line: "PasswordAuthentication no"
+  notify: restart sshd
+  when: ansible_os_family == "Debian"
+  tags: [ssh]

@@ -1,0 +1,17 @@
+[Unit]
+Description=TrueNorth Range API
+After=network.target
+
+[Service]
+Type=simple
+User=truenorth
+WorkingDirectory=/opt/truenorth/app/Core_Docs/control-plane/api
+Environment=DATABASE_URL=sqlite:///./truenorth.db
+Environment=AUTH_DISABLED=false
+Environment=PROVISIONER_BACKEND={{ truenorth_provisioner_backend }}
+ExecStart=/opt/truenorth/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port {{ truenorth_api_port }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

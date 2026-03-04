@@ -1,0 +1,84 @@
+title: Persistence via Scheduled Task Creation
+id: tn-detect-008
+status: stable
+description: |
+  Detects creation of scheduled tasks commonly used for persistence by
+  adversaries. Covers schtasks.exe command-line creation, PowerShell
+  Register-ScheduledTask, and Task Scheduler COM interface abuse.
+  Focuses on suspicious task characteristics such as SYSTEM context,
+  unusual binary paths, and encoded commands.
+author: TrueNorth Range
+date: 2026/02/25
+severity: high
+mitre_technique:
+  - T1053.005   # Scheduled Task / Job: Scheduled Task
+
+data_source:
+  - windows_security
+  - sysmon
+  - windows_task_scheduler
+
+logsource:
+  category: process_creation
+  product: windows
+
+detection:
+  selection_schtasks:
+    Image|endswith: "\\schtasks.exe"
+    CommandLine|contains: "/create"
+  selection_powershell_task:
+    Image|endswith:
+      - "\\powershell.exe"
+      - "\\pwsh.exe"
+    CommandLine|contains:
+      - "Register-ScheduledTask"
+      - "New-ScheduledTask"
+  selection_suspicious_path:
+    CommandLine|contains:
+      - "C:\\ProgramData\\"
+      - "C:\\Temp\\"
+      - "C:\\Users\\Public\\"
+      - "%APPDATA%"
+      - "\\AppData\\Local\\Temp\\"
+  selection_system_context:
+    CommandLine|contains:
+      - "/ru SYSTEM"
+      - "/ru \"NT AUTHORITY\\SYSTEM\""
+  selection_event_log:
+    EventID: 4698
+    source: Microsoft-Windows-Security-Auditing
+  filter_legitimate:
+    CommandLine|contains:
+      - "\\Microsoft\\Windows\\UpdateOrchestrator"
+      - "\\Microsoft\\Windows\\WindowsUpdate"
+      - "\\Microsoft\\Windows\\Defrag"
+  condition: ((selection_schtasks or selection_powershell_task) and (selection_suspicious_path or selection_system_context)) or (selection_event_log and not filter_legitimate)
+
+level: high
+
+query: |
+  ((Image:*\\schtasks.exe AND CommandLine:*create*) AND
+   (CommandLine:(*ProgramData* OR *\\Temp\\* OR *Users\\Public* OR *APPDATA*) OR
+    CommandLine:(*SYSTEM*))) OR
+  (EventID:4698 AND NOT TaskName:(*UpdateOrchestrator* OR *WindowsUpdate* OR *Defrag*))
+
+sample_log:
+  timestamp: "2026-02-25T04:12:00Z"
+  event_id: 1
+  source: Microsoft-Windows-Sysmon
+  computer: "WS-EXEC-01"
+  description: "Process Create"
+  fields:
+    Image: "C:\\Windows\\System32\\schtasks.exe"
+    CommandLine: 'schtasks /create /tn "WindowsUpdate" /tr "C:\\ProgramData\\svchost.exe" /sc daily /st 09:00 /ru SYSTEM'
+    ParentImage: "C:\\Windows\\System32\\cmd.exe"
+    User: "CORP\\admin"
+    Hashes: "SHA256=a1b2c3d4e5f6..."
+    ParentCommandLine: "cmd.exe /c schtasks /create ..."
+
+false_positive_notes: |
+  - Software installers often create scheduled tasks during installation
+  - Windows Update and maintenance tasks create scheduled tasks as SYSTEM
+  - GPO-deployed scripts may use schtasks for configuration
+  - Filter known software deployment tools (SCCM, Intune, PDQ)
+  - Baseline environment to identify normal scheduled task creation patterns

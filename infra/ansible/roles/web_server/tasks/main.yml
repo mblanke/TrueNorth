@@ -1,0 +1,130 @@
+---
+# ============================================================
+# TrueNorth Range — Web Server Role (Linux / Nginx + DVWA)
+# ============================================================
+
+- name: Install Nginx
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - php-fpm
+      - php-mysql
+      - php-gd
+      - mariadb-server
+      - python3-pymysql
+      - git
+      - openssl
+    state: present
+  tags: [nginx, install]
+
+- name: Generate self-signed SSL certificate
+  ansible.builtin.shell: |
+    openssl req -x509 -nodes -days 365 \
+      -newkey rsa:2048 \
+      -keyout /etc/ssl/private/truenorth.key \
+      -out /etc/ssl/certs/truenorth.crt \
+      -subj "/C=US/ST=Lab/L=Range/O=TrueNorth/CN={{ inventory_hostname }}.{{ range_domain }}"
+  args:
+    creates: /etc/ssl/certs/truenorth.crt
+  tags: [ssl]
+
+- name: Deploy Nginx site configuration
+  ansible.builtin.template:
+    src: nginx-site.conf.j2
+    dest: /etc/nginx/sites-available/truenorth
+    mode: "0644"
+  notify: restart nginx
+  tags: [nginx]
+
+- name: Enable Nginx site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/truenorth
+    dest: /etc/nginx/sites-enabled/truenorth
+    state: link
+  notify: restart nginx
+  tags: [nginx]
+
+- name: Remove default Nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: restart nginx
+  tags: [nginx]
+
+- name: Clone DVWA
+  ansible.builtin.git:
+    repo: "https://github.com/digininja/DVWA.git"
+    dest: /var/www/dvwa
+    version: master
+    force: true
+  tags: [dvwa]
+
+- name: Configure DVWA database settings
+  ansible.builtin.template:
+    src: dvwa-config.php.j2
+    dest: /var/www/dvwa/config/config.inc.php
+    mode: "0644"
+  tags: [dvwa]
+
+- name: Set DVWA permissions
+  ansible.builtin.file:
+    path: /var/www/dvwa
+    owner: www-data
+    group: www-data
+    recurse: true
+  tags: [dvwa]
+
+- name: Start MariaDB
+  ansible.builtin.systemd:
+    name: mariadb
+    state: started
+    enabled: true
+  tags: [dvwa, db]
+
+- name: Create DVWA database
+  community.mysql.mysql_db:
+    name: dvwa
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  tags: [dvwa, db]
+
+- name: Create DVWA database user
+  community.mysql.mysql_user:
+    name: dvwa
+    password: "dvwa_password"
+    priv: "dvwa.*:ALL"
+    state: present
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+  tags: [dvwa, db]
+
+- name: Configure Nginx logging to syslog
+  ansible.builtin.lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: "^\\s*access_log"
+    line: "    access_log syslog:server={{ syslog_server }}:514,tag=nginx_access combined;"
+  notify: restart nginx
+  tags: [logging]
+
+- name: Configure Nginx error logging to syslog
+  ansible.builtin.lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: "^\\s*error_log"
+    line: "    error_log syslog:server={{ syslog_server }}:514,tag=nginx_error warn;"
+    insertafter: "access_log"
+  notify: restart nginx
+  tags: [logging]
+
+- name: Ensure Filebeat is configured for Nginx
+  ansible.builtin.template:
+    src: filebeat-nginx.yml.j2
+    dest: /etc/filebeat/modules.d/nginx.yml
+    mode: "0644"
+  notify: restart filebeat
+  tags: [filebeat]
+
+- name: Enable Nginx service
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started
+  tags: [nginx]

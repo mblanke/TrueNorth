@@ -1,0 +1,35 @@
+{{- if and .Values.workerProvision.enabled .Values.workerProvision.autoscaling.enabled -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-worker-provision
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "worker-provision") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "truenorth-range.fullname" . }}-worker-provision
+  minReplicas: {{ .Values.workerProvision.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.workerProvision.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.workerProvision.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+{{- end }}

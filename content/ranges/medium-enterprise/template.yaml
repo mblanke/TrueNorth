@@ -1,0 +1,93 @@
+id: medium-enterprise
+name: Medium Enterprise Network
+version: "1.0"
+description: |
+  A medium-sized enterprise network with multiple subnets, Active Directory,
+  DMZ, and internal services. Suitable for intermediate-level exercises.
+author: TrueNorth Range
+difficulty: intermediate
+
+network:
+  vlans:
+    - id: 100
+      name: corporate
+      cidr: "10.10.100.0/24"
+    - id: 200
+      name: servers
+      cidr: "10.10.200.0/24"
+    - id: 300
+      name: dmz
+      cidr: "10.10.300.0/24"
+    - id: 400
+      name: management
+      cidr: "10.10.400.0/24"
+
+nodes:
+  - id: dc01
+    name: Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: servers
+    ip: "10.10.200.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns, dhcp]
+
+  - id: fs01
+    name: File Server
+    role: file_server
+    os: windows-server-2022
+    vlan: servers
+    ip: "10.10.200.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 200 }
+    services: [smb, dfs]
+
+  - id: web01
+    name: Web Server
+    role: web_server
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.10.300.10"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
+    services: [nginx, php]
+
+  - id: mail01
+    name: Mail Server
+    role: mail_server
+    os: ubuntu-2204
+    vlan: dmz
+    ip: "10.10.300.20"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [postfix, dovecot]
+
+  - id: ws01
+    name: Workstation 1
+    role: workstation
+    os: windows-11
+    vlan: corporate
+    ip: "10.10.100.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+  - id: ws02
+    name: Workstation 2
+    role: workstation
+    os: windows-11
+    vlan: corporate
+    ip: "10.10.100.11"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+  - id: siem01
+    name: SIEM
+    role: siem
+    os: ubuntu-2204
+    vlan: management
+    ip: "10.10.400.10"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 500 }
+    services: [opensearch, filebeat]
+
+  - id: fw01
+    name: Firewall
+    role: firewall
+    os: pfsense
+    vlan: management
+    ip: "10.10.400.1"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }

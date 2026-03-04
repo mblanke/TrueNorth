@@ -1,0 +1,177 @@
+---
+# ============================================================
+# TrueNorth Range — Evidence Collection Playbook
+# ============================================================
+# Collects forensic artifacts from range VMs for scoring and AAR.
+# Exports all evidence to MinIO object storage.
+#
+# Usage:
+#   ansible-playbook playbooks/collect-evidence.yml \
+#     -e exercise_id=ex-001 -e minio_bucket=evidence
+
+- name: "Collect Evidence — Windows Hosts"
+  hosts: workstations:domain_controllers
+  gather_facts: true
+  vars:
+    evidence_dir: 'C:\TrueNorth\Evidence\{{ exercise_id }}'
+    minio_endpoint: "{{ minio_endpoint | default('http://minio.' + range_domain + ':9000') }}"
+    minio_bucket: "{{ minio_bucket | default('evidence') }}"
+  tasks:
+    - name: Create evidence collection directory
+      ansible.windows.win_file:
+        path: "{{ evidence_dir }}"
+        state: directory
+      tags: [evidence, setup]
+
+    - name: Export Windows Security Event Log
+      ansible.windows.win_shell: |
+        wevtutil epl Security "{{ evidence_dir }}\Security.evtx"
+      tags: [evidence, eventlogs]
+
+    - name: Export Windows System Event Log
+      ansible.windows.win_shell: |
+        wevtutil epl System "{{ evidence_dir }}\System.evtx"
+      tags: [evidence, eventlogs]
+
+    - name: Export Sysmon Event Log
+      ansible.windows.win_shell: |
+        wevtutil epl "Microsoft-Windows-Sysmon/Operational" "{{ evidence_dir }}\Sysmon.evtx"
+      ignore_errors: true
+      tags: [evidence, sysmon]
+
+    - name: Export PowerShell Event Logs
+      ansible.windows.win_shell: |
+        wevtutil epl "Microsoft-Windows-PowerShell/Operational" "{{ evidence_dir }}\PowerShell.evtx"
+        wevtutil epl "Windows PowerShell" "{{ evidence_dir }}\WindowsPowerShell.evtx"
+      ignore_errors: true
+      tags: [evidence, powershell]
+
+    - name: Collect PowerShell transcription logs
+      ansible.windows.win_shell: |
+        $src = "{{ powershell_logging.transcription_directory | default('C:\\PSTranscripts') }}"
+        if (Test-Path $src) {
+            Copy-Item -Path "$src\*" -Destination "{{ evidence_dir }}\PSTranscripts\" -Recurse -Force
+        }
+      ignore_errors: true
+      tags: [evidence, powershell]
+
+    - name: Collect scheduled tasks
+      ansible.windows.win_shell: |
+        Get-ScheduledTask | Where-Object { $_.State -ne 'Disabled' } |
+          Select-Object TaskName, TaskPath, State, @{N='Actions';E={$_.Actions.Execute}} |
+          ConvertTo-Json -Depth 3 |
+          Out-File "{{ evidence_dir }}\scheduled_tasks.json" -Encoding UTF8
+      tags: [evidence, artifacts]
+
+    - name: Collect running processes
+      ansible.windows.win_shell: |
+        Get-Process | Select-Object Id, ProcessName, Path, StartTime, 
+          @{N='CommandLine';E={(Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)").CommandLine}} |
+          ConvertTo-Json -Depth 3 |
+          Out-File "{{ evidence_dir }}\processes.json" -Encoding UTF8
+      tags: [evidence, artifacts]
+
+    - name: Collect network connections
+      ansible.windows.win_shell: |
+        Get-NetTCPConnection | Where-Object { $_.State -eq 'Established' } |
+          Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State |
+          ConvertTo-Json |
+          Out-File "{{ evidence_dir }}\connections.json" -Encoding UTF8
+      tags: [evidence, artifacts]
+
+    - name: Collect autoruns (registry run keys)
+      ansible.windows.win_shell: |
+        $keys = @(
+          'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+          'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+          'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
+        )
+        $results = foreach ($k in $keys) {
+            if (Test-Path $k) {
+                Get-ItemProperty $k | Select-Object PSPath, *
+            }
+        }
+        $results | ConvertTo-Json -Depth 3 |
+          Out-File "{{ evidence_dir }}\autoruns.json" -Encoding UTF8
+      tags: [evidence, artifacts]
+
+    - name: Compress evidence archive
+      community.windows.win_zip:
+        src: "{{ evidence_dir }}"
+        dest: "{{ evidence_dir }}.zip"
+      tags: [evidence, archive]
+
+- name: "Collect Evidence — Linux Hosts"
+  hosts: servers:siem:attackers
+  become: true
+  gather_facts: true
+  vars:
+    evidence_dir: "/opt/truenorth/evidence/{{ exercise_id }}"
+    minio_endpoint: "{{ minio_endpoint | default('http://minio.' + range_domain + ':9000') }}"
+    minio_bucket: "{{ minio_bucket | default('evidence') }}"
+  tasks:
+    - name: Create evidence directory
+      ansible.builtin.file:
+        path: "{{ evidence_dir }}"
+        state: directory
+        mode: "0750"
+      tags: [evidence, setup]
+
+    - name: Capture syslog
+      ansible.builtin.shell: |
+        cp /var/log/syslog "{{ evidence_dir }}/syslog.log" 2>/dev/null || true
+        cp /var/log/auth.log "{{ evidence_dir }}/auth.log" 2>/dev/null || true
+        journalctl --since "today" --no-pager > "{{ evidence_dir }}/journal.log"
+      changed_when: true
+      tags: [evidence, logs]
+
+    - name: Capture Suricata alerts
+      ansible.builtin.shell: |
+        cp /var/log/suricata/eve.json "{{ evidence_dir }}/suricata_eve.json" 2>/dev/null || true
+        cp /var/log/suricata/fast.log "{{ evidence_dir }}/suricata_fast.log" 2>/dev/null || true
+      changed_when: true
+      when: "'siem' in group_names or 'routers' in group_names"
+      tags: [evidence, suricata]
+
+    - name: Capture network traffic (30 second pcap)
+      ansible.builtin.shell: |
+        timeout 30 tcpdump -i any -w "{{ evidence_dir }}/capture.pcap" -c 10000 2>/dev/null || true
+      async: 45
+      poll: 5
+      tags: [evidence, pcap]
+
+    - name: Collect filesystem artifacts
+      ansible.builtin.shell: |
+        # Recent file modifications
+        find / -maxdepth 4 -mmin -60 -type f 2>/dev/null | head -500 > "{{ evidence_dir }}/recent_files.txt"
+        # Cron jobs
+        crontab -l > "{{ evidence_dir }}/crontab_root.txt" 2>/dev/null || true
+        for u in $(cut -d: -f1 /etc/passwd); do
+          crontab -u "$u" -l 2>/dev/null >> "{{ evidence_dir }}/crontab_all.txt"
+        done
+        # Network connections
+        ss -tulnp > "{{ evidence_dir }}/netstat.txt"
+        # Running processes
+        ps auxww > "{{ evidence_dir }}/processes.txt"
+        # Loaded kernel modules
+        lsmod > "{{ evidence_dir }}/lsmod.txt"
+      changed_when: true
+      tags: [evidence, artifacts]
+
+    - name: Compress evidence
+      ansible.builtin.archive:
+        path: "{{ evidence_dir }}"
+        dest: "{{ evidence_dir }}.tar.gz"
+        format: gz
+      tags: [evidence, archive]
+
+    - name: Upload evidence to MinIO
+      ansible.builtin.shell: |
+        mc alias set range "{{ minio_endpoint }}" "{{ minio_access_key | default('minioadmin') }}" "{{ minio_secret_key | default('minioadmin') }}"
+        mc mb --ignore-existing "range/{{ minio_bucket }}"
+        mc cp "{{ evidence_dir }}.tar.gz" \
+          "range/{{ minio_bucket }}/{{ exercise_id }}/{{ inventory_hostname }}/evidence.tar.gz"
+      environment:
+        MC_HOST_range: "{{ minio_endpoint }}"
+      ignore_errors: true
+      tags: [evidence, upload]

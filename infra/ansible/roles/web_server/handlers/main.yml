@@ -1,0 +1,15 @@
+---
+- name: restart nginx
+  ansible.builtin.systemd:
+    name: nginx
+    state: restarted
+
+- name: restart filebeat
+  ansible.builtin.systemd:
+    name: filebeat
+    state: restarted
+
+- name: restart php-fpm
+  ansible.builtin.systemd:
+    name: php8.1-fpm
+    state: restarted

@@ -1,0 +1,76 @@
+title: Data Exfiltration via DNS Tunneling
+id: tn-detect-007
+status: stable
+description: |
+  Detects DNS tunneling activity used for data exfiltration. Identifies
+  anomalously long DNS queries, high volumes of TXT record lookups, and
+  unusually high DNS query rates from a single source that indicate
+  DNS-based covert channels (e.g., dnscat2, iodine, DNSExfiltrator).
+author: TrueNorth Range
+date: 2026/02/25
+severity: high
+mitre_technique:
+  - T1048.003   # Exfiltration Over Alternative Protocol: DNS
+  - T1071.004   # Application Layer Protocol: DNS
+
+data_source:
+  - zeek
+  - dns_logs
+  - sysmon
+
+logsource:
+  category: dns_query
+  product: any
+
+detection:
+  selection_long_query:
+    query_length|gt: 50
+    query|re: "^[a-zA-Z0-9]{30,}\\."
+  selection_txt_volume:
+    query_type: TXT
+  selection_high_rate:
+    dns_queries_per_minute|gt: 100
+  selection_encoded_subdomain:
+    query|re: "^[a-f0-9]{40,}\\."
+  filter_legitimate:
+    query|endswith:
+      - ".windows.com"
+      - ".microsoft.com"
+      - ".windowsupdate.com"
+      - ".office.com"
+      - ".azure.com"
+      - "._dmarc."
+      - "._domainkey."
+  condition: (selection_long_query or (selection_txt_volume and selection_high_rate) or selection_encoded_subdomain) and not filter_legitimate
+
+level: high
+
+query: |
+  (event_type:dns AND (
+    (query_length:>50 AND NOT query:(*windows.com OR *microsoft.com OR *office.com)) OR
+    (query_type:TXT AND _count_per_minute:>100) OR
+    (query:/[a-f0-9]{40,}\./)
+  ))
+
+sample_log:
+  timestamp: "2026-02-25T02:14:33Z"
+  event_type: dns
+  source: zeek
+  fields:
+    id.orig_h: "10.60.201.100"
+    id.orig_p: 52431
+    id.resp_h: "10.60.201.10"
+    id.resp_p: 53
+    query: "5468697320697320612073656372657420646f63756d656e7420.data.evil-tunnel.example.com"
+    qtype_name: "TXT"
+    rcode_name: "NOERROR"
+    answers: ["TXTv0-7468616e6b20796f7520666f7220796f757220646174"]
+    query_length: 72
+    description: "Hex-encoded data in DNS subdomain labels"
+
+false_positive_notes: |
+  - DKIM and DMARC TXT lookups create long queries but are legitimate
+  - Content delivery networks (CDNs) may use long subdomains
+  - Some anti-spam and email authentication systems issue high-volume TXT queries
+  - Cloud service health checks may generate periodic long DNS queries
+  - Tune query_length threshold based on environment baseline (typically 50-60 chars)

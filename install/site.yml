@@ -1,0 +1,18 @@
+---
+# TrueNorth Range -- Full Kit Deployment
+# Usage: ansible-playbook site.yml
+#
+# COTE naming convention: cote-<env>-<site>-<kit>-<rack>-<role>-<idx>
+# VLANs: 10=Mgmt, 20=Provision, 30=Blue, 40=Red, 50=Storage, 60=Services
+# MTU: 9000 (data), 1500 (management)
+
+- import_playbook: playbooks/00-preflight.yml
+- import_playbook: playbooks/01-common.yml
+- import_playbook: playbooks/02-networking.yml
+- import_playbook: playbooks/03-storage.yml
+- import_playbook: playbooks/04-proxmox.yml
+- import_playbook: playbooks/05-control-plane.yml
+- import_playbook: playbooks/06-security.yml
+- import_playbook: playbooks/07-templates.yml
+- import_playbook: playbooks/08-smoke-test.yml
+- import_playbook: playbooks/09-validate.yml

@@ -1,0 +1,60 @@
+id: inject-phishing-campaign
+name: Phishing Campaign Inject Pack
+version: "1.0"
+description: |
+  Simulates a targeted spear-phishing campaign against an organization.
+  Includes initial email delivery, credential harvesting, and lateral movement.
+mitre_attack:
+  - T1566.001  # Spearphishing Attachment
+  - T1566.002  # Spearphishing Link
+  - T1078      # Valid Accounts
+  - T1021.001  # Remote Desktop Protocol
+
+injects:
+  - id: phish-email-delivery
+    type: email_phish
+    delay_minutes: 0
+    params:
+      from_address: "ceo-assistant@trustedpartner.com"
+      to_address: "finance-team@{{ domain }}"
+      subject: "URGENT: Updated Wire Transfer Instructions"
+      body_template: |
+        Hi Team,
+        Please review the updated wire transfer instructions for Q4.
+        Click here to review: https://{{ c2_domain }}/docs/wire-transfer.pdf
+        Best regards, Sarah
+      attachment_name: "wire-instructions.pdf"
+      attachment_type: "application/pdf"
+
+  - id: credential-harvest
+    type: simulated_execution
+    delay_minutes: 5
+    depends_on: phish-email-delivery
+    params:
+      technique: T1078
+      description: "User clicks link, enters credentials on fake login page"
+      artifacts:
+        - type: credential
+          username: "{{ target_user }}"
+          domain: "{{ domain }}"
+
+  - id: rdp-lateral
+    type: simulated_execution
+    delay_minutes: 15
+    depends_on: credential-harvest
+    params:
+      technique: T1021.001
+      description: "Attacker uses stolen credentials for RDP to file server"
+      source_ip: "{{ attacker_ip }}"
+      dest_ip: "{{ fileserver_ip }}"
+
+  - id: dns-exfil-prep
+    type: dns_spike
+    delay_minutes: 20
+    depends_on: rdp-lateral
+    params:
+      target_dns: "{{ internal_dns }}"
+      domains:
+        - "update.{{ c2_domain }}"
+        - "sync.{{ c2_domain }}"
+      count: 500

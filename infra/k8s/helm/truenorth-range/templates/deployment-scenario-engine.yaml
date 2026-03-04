@@ -1,0 +1,80 @@
+{{- if .Values.scenarioEngine.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-scenario-engine
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "scenario-engine") | nindent 4 }}
+spec:
+  replicas: {{ .Values.scenarioEngine.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "scenario-engine") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "scenario-engine") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "truenorth-range.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scenarioEngine.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scenarioEngine.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.scenarioEngine.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: scenario-engine
+          image: {{ include "truenorth-range.image" (dict "image" .Values.scenarioEngine.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.scenarioEngine.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8082
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "truenorth-range.fullname" . }}-config
+            - secretRef:
+                name: {{ include "truenorth-range.fullname" . }}-secret
+          env:
+            - name: API_URL
+              value: "http://{{ include "truenorth-range.fullname" . }}-api:{{ .Values.api.service.port }}"
+            - name: REDIS_URL
+              value: {{ include "truenorth-range.redisUrl" . | quote }}
+            - name: OPENSEARCH_URL
+              value: {{ .Values.config.opensearchUrl | quote }}
+            {{- with .Values.scenarioEngine.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.scenarioEngine.resources | nindent 12 }}
+{{- end }}

@@ -1,0 +1,91 @@
+{{- if .Values.workerProvision.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-worker-provision
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "worker-provision") | nindent 4 }}
+spec:
+  {{- if not .Values.workerProvision.autoscaling.enabled }}
+  replicas: {{ .Values.workerProvision.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "worker-provision") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.monitoring.prometheus.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: {{ .Values.monitoring.prometheus.path | default "/metrics" }}
+        {{- end }}
+      labels:
+        {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "worker-provision") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "truenorth-range.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.workerProvision.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.workerProvision.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.workerProvision.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker-provision
+          image: {{ include "truenorth-range.image" (dict "image" .Values.workerProvision.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.workerProvision.image.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - worker.celery_app
+            - worker
+            - -Q
+            - {{ .Values.workerProvision.queues | quote }}
+            - -c
+            - {{ .Values.workerProvision.concurrency | quote }}
+            - --loglevel=info
+            - -n
+            - "provision@%h"
+          envFrom:
+            - configMapRef:
+                name: {{ include "truenorth-range.fullname" . }}-config
+            - secretRef:
+                name: {{ include "truenorth-range.fullname" . }}-secret
+          env:
+            - name: DATABASE_URL
+              value: {{ include "truenorth-range.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "truenorth-range.redisUrl" . | quote }}
+            {{- with .Values.workerProvision.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - celery -A worker.celery_app inspect ping -d celery@$HOSTNAME
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.workerProvision.resources | nindent 12 }}
+{{- end }}

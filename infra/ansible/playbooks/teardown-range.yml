@@ -1,0 +1,123 @@
+---
+# ============================================================
+# TrueNorth Range — Teardown / Cleanup Playbook
+# ============================================================
+# Reverses setup-range.yml — removes configurations and agents.
+#
+# Usage:
+#   ansible-playbook playbooks/teardown-range.yml
+
+- name: "Teardown — Windows Workstations"
+  hosts: workstations
+  gather_facts: true
+  tasks:
+    - name: Unjoin domain
+      microsoft.ad.membership:
+        state: workgroup
+        workgroup_name: WORKGROUP
+        domain_admin_user: "{{ ad_domain_admin_user }}@{{ ad_domain_name }}"
+        domain_admin_password: "{{ ad_domain_admin_password }}"
+      register: unjoin_result
+      ignore_errors: true
+      tags: [teardown, domain]
+
+    - name: Reboot after domain unjoin
+      ansible.windows.win_reboot:
+        reboot_timeout: 300
+      when: unjoin_result.reboot_required | default(false)
+      tags: [teardown, domain]
+
+    - name: Uninstall Sysmon
+      ansible.windows.win_shell: |
+        & C:\Windows\Temp\Sysmon\Sysmon64.exe -u force 2>$null
+      ignore_errors: true
+      tags: [teardown, sysmon]
+
+    - name: Stop and remove Winlogbeat
+      ansible.windows.win_service:
+        name: winlogbeat
+        state: stopped
+        start_mode: disabled
+      ignore_errors: true
+      tags: [teardown, winlogbeat]
+
+    - name: Clear Windows event logs
+      ansible.windows.win_shell: |
+        wevtutil el | ForEach-Object { wevtutil cl "$_" 2>$null }
+      tags: [teardown, logs]
+
+    - name: Remove IR admin account
+      ansible.windows.win_user:
+        name: "{{ ir_local_admin_user }}"
+        state: absent
+      ignore_errors: true
+      tags: [teardown, accounts]
+
+    - name: Remove PowerShell transcription logs
+      ansible.windows.win_file:
+        path: "{{ powershell_logging.transcription_directory }}"
+        state: absent
+      ignore_errors: true
+      tags: [teardown, logs]
+
+- name: "Teardown — Linux Hosts"
+  hosts: servers:siem:attackers
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Stop and remove Filebeat
+      ansible.builtin.apt:
+        name: filebeat
+        state: absent
+      when: ansible_os_family == "Debian"
+      tags: [teardown, filebeat]
+
+    - name: Remove Filebeat configuration
+      ansible.builtin.file:
+        path: /etc/filebeat
+        state: absent
+      tags: [teardown, filebeat]
+
+    - name: Clear syslog
+      ansible.builtin.shell: |
+        truncate -s 0 /var/log/syslog
+        truncate -s 0 /var/log/auth.log
+        truncate -s 0 /var/log/kern.log
+        journalctl --vacuum-time=1s
+      changed_when: true
+      tags: [teardown, logs]
+
+    - name: Remove syslog forwarding config
+      ansible.builtin.file:
+        path: /etc/rsyslog.d/50-truenorth-syslog.conf
+        state: absent
+      notify: restart rsyslog
+      tags: [teardown, syslog]
+
+    - name: Remove SSH authorized keys
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ item }}"
+        state: absent
+      loop: "{{ ssh_authorized_keys }}"
+      tags: [teardown, ssh]
+
+    - name: Remove red-team tools (attacker hosts)
+      ansible.builtin.file:
+        path: /opt/redteam
+        state: absent
+      when: "'attackers' in group_names"
+      tags: [teardown, attacker]
+
+    - name: Remove DVWA (web server hosts)
+      ansible.builtin.file:
+        path: /var/www/dvwa
+        state: absent
+      when: "'servers' in group_names"
+      tags: [teardown, web]
+
+  handlers:
+    - name: restart rsyslog
+      ansible.builtin.systemd:
+        name: rsyslog
+        state: restarted

@@ -1,0 +1,169 @@
+---
+# ============================================================
+# TrueNorth Range — Windows Workstation Role
+# ============================================================
+
+- name: Join domain
+  microsoft.ad.membership:
+    dns_domain_name: "{{ ad_domain_name }}"
+    domain_admin_user: "{{ ad_domain_admin_user }}@{{ ad_domain_name }}"
+    domain_admin_password: "{{ ad_domain_admin_password }}"
+    ou_path: "OU=Computers,DC={{ range_domain.split('.')[0] }},DC={{ range_domain.split('.')[1] }}"
+    state: domain
+  register: domain_join
+  when: workstation_domain_join | default(true)
+  tags: [domain]
+
+- name: Reboot after domain join
+  ansible.windows.win_reboot:
+    reboot_timeout: 300
+    post_reboot_delay: 60
+  when: domain_join.reboot_required | default(false)
+  tags: [domain]
+
+- name: Download Sysmon
+  ansible.windows.win_get_url:
+    url: "https://download.sysinternals.com/files/Sysmon.zip"
+    dest: 'C:\Windows\Temp\Sysmon.zip'
+  tags: [sysmon]
+
+- name: Extract Sysmon
+  community.windows.win_unzip:
+    src: 'C:\Windows\Temp\Sysmon.zip'
+    dest: 'C:\Windows\Temp\Sysmon'
+    creates: 'C:\Windows\Temp\Sysmon\Sysmon64.exe'
+  tags: [sysmon]
+
+- name: Download Sysmon config
+  ansible.windows.win_get_url:
+    url: "{{ sysmon_config_url }}"
+    dest: 'C:\Windows\Temp\sysmonconfig.xml'
+  tags: [sysmon]
+
+- name: Install Sysmon
+  ansible.windows.win_shell: |
+    $svc = Get-Service Sysmon64 -ErrorAction SilentlyContinue
+    if (-not $svc) {
+        & C:\Windows\Temp\Sysmon\Sysmon64.exe -accepteula -i C:\Windows\Temp\sysmonconfig.xml
+    } else {
+        & C:\Windows\Temp\Sysmon\Sysmon64.exe -c C:\Windows\Temp\sysmonconfig.xml
+    }
+  tags: [sysmon]
+
+- name: Install Winlogbeat via Chocolatey
+  chocolatey.chocolatey.win_chocolatey:
+    name: winlogbeat
+    version: "{{ winlogbeat_version }}"
+    state: present
+  tags: [winlogbeat]
+
+- name: Configure Winlogbeat
+  ansible.windows.win_template:
+    src: winlogbeat.yml.j2
+    dest: 'C:\ProgramData\Elastic\Beats\winlogbeat\winlogbeat.yml'
+  notify: restart winlogbeat
+  tags: [winlogbeat]
+
+- name: Enable Winlogbeat service
+  ansible.windows.win_service:
+    name: winlogbeat
+    start_mode: auto
+    state: started
+  tags: [winlogbeat]
+
+- name: Enable RDP
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server
+    name: fDenyTSConnections
+    data: 0
+    type: dword
+  when: workstation_rdp_enabled | default(true)
+  tags: [rdp]
+
+- name: Allow RDP through firewall
+  community.windows.win_firewall_rule:
+    name: "TrueNorth - Allow RDP"
+    direction: in
+    action: allow
+    protocol: tcp
+    localport: 3389
+    enabled: true
+    state: present
+  when: workstation_rdp_enabled | default(true)
+  tags: [rdp]
+
+- name: Create local IR admin account
+  ansible.windows.win_user:
+    name: "{{ ir_local_admin_user }}"
+    password: "{{ ir_local_admin_password }}"
+    groups:
+      - Administrators
+    state: present
+    password_never_expires: true
+  tags: [accounts]
+
+- name: Install common applications via Chocolatey
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ item.choco_id }}"
+    state: present
+  loop: "{{ workstation_apps }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [apps]
+
+- name: Configure Windows Firewall rules
+  community.windows.win_firewall_rule:
+    name: "TrueNorth - {{ item.name }}"
+    direction: "{{ item.direction | lower }}"
+    action: "{{ item.action | lower }}"
+    protocol: "{{ item.protocol }}"
+    localport: "{{ item.localport | default(omit) }}"
+    enabled: true
+    state: present
+  loop: "{{ firewall_rules }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [firewall]
+
+- name: Enable PowerShell Module Logging
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
+    name: EnableModuleLogging
+    data: 1
+    type: dword
+  when: powershell_logging.module_logging | default(false)
+  tags: [powershell]
+
+- name: Enable PowerShell Script Block Logging
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+    name: EnableScriptBlockLogging
+    data: 1
+    type: dword
+  when: powershell_logging.script_block_logging | default(false)
+  tags: [powershell]
+
+- name: Enable PowerShell Transcription
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription
+    name: EnableTranscripting
+    data: 1
+    type: dword
+  when: powershell_logging.transcription_enabled | default(false)
+  tags: [powershell]
+
+- name: Set PowerShell Transcription output directory
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription
+    name: OutputDirectory
+    data: "{{ powershell_logging.transcription_directory }}"
+    type: string
+  when: powershell_logging.transcription_enabled | default(false)
+  tags: [powershell]
+
+- name: Create transcription directory
+  ansible.windows.win_file:
+    path: "{{ powershell_logging.transcription_directory }}"
+    state: directory
+  when: powershell_logging.transcription_enabled | default(false)
+  tags: [powershell]

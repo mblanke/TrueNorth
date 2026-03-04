@@ -1,0 +1,63 @@
+# ── Git & VCS ──
+.git
+.gitignore
+.github
+
+# ── Python ──
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+.eggs
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+coverage.xml
+.coverage
+
+# ── Node / Angular ──
+node_modules
+.angular
+dist
+.npm
+
+# ── IDE & Editors ──
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# ── Documentation & CI ──
+docs
+*.md
+LICENSE
+.pre-commit-config.yaml
+
+# ── Environment ──
+.env
+.env.*
+!.env.example
+
+# ── Tests ──
+tests
+**/test_*
+**/*_test.py
+
+# ── Infrastructure ──
+infra
+alembic
+content
+scripts
+SKILLS
+telemetry
+
+# ── Misc ──
+Makefile
+docker-compose*.yml
+compose*.yml
+*.log

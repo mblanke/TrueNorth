@@ -1,0 +1,654 @@
+@use '@angular/material' as mat;
+
+/* ── Angular Material theme init (emits MDC CSS tokens) ── */
+$tn-primary: mat.define-palette(mat.$cyan-palette);
+$tn-accent:  mat.define-palette(mat.$teal-palette);
+$tn-warn:    mat.define-palette(mat.$red-palette);
+
+$tn-theme: mat.define-dark-theme((
+  color: (
+    primary: $tn-primary,
+    accent:  $tn-accent,
+    warn:    $tn-warn,
+  ),
+));
+
+@include mat.core();
+@include mat.all-component-themes($tn-theme);
+
+
+/* ─────────────────────────────────────────────────────────────
+   THEME A: Northern Ops (default)
+───────────────────────────────────────────────────────────── */
+:root {
+  --bg-primary:      #0B1F3A;
+  --bg-secondary:    #0E2847;
+  --bg-card:         #122E51;
+  --bg-surface:      #163764;
+  --bg-input:        #0E2847;
+  --accent:          #1FB6A6;
+  --accent-hover:    #25D4C2;
+  --accent-muted:    rgba(31, 182, 166, 0.15);
+  --alert:           #D22630;
+  --border:          #1E3D5F;
+  --border-light:    #264A6E;
+  --text-primary:    #F0F4F8;
+  --text-secondary:  #C2D4E6;
+  --text-muted:      #8FA8BF;
+  --text-on-accent:  #0B1F3A;
+  --scrollbar-track: #0E2847;
+  --scrollbar-thumb: #1E3D5F;
+  --toolbar-bg:      #081729;
+  --sidenav-bg:      #071525;
+  --success:         #1FB6A6;
+  --warning:         #E8A838;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   THEME B: Maple & Steel
+───────────────────────────────────────────────────────────── */
+body.theme-maple-steel {
+  --bg-primary:      #0D1117;
+  --bg-secondary:    #161B22;
+  --bg-card:         #1C2128;
+  --bg-surface:      #21262D;
+  --bg-input:        #161B22;
+  --accent:          #D62828;
+  --accent-hover:    #F03030;
+  --accent-muted:    rgba(214, 40, 40, 0.15);
+  --border:          #30363D;
+  --border-light:    #444C56;
+  --text-primary:    #E6EDF3;
+  --text-secondary:  #8B949E;
+  --text-muted:      #6E7681;
+  --text-on-accent:  #FFFFFF;
+  --toolbar-bg:      #090D12;
+  --sidenav-bg:      #070A0F;
+  --success:         #3FB950;
+  --warning:         #D29922;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   THEME C: Aurora SOC
+───────────────────────────────────────────────────────────── */
+body.theme-aurora-soc {
+  --bg-primary:      #070A12;
+  --bg-secondary:    #0C1220;
+  --bg-card:         #0F192E;
+  --bg-surface:      #131F38;
+  --bg-input:        #0C1220;
+  --accent:          #2DE2C5;
+  --accent-hover:    #4DFFD9;
+  --accent-muted:    rgba(45, 226, 197, 0.12);
+  --border:          #1A2B45;
+  --border-light:    #233A5A;
+  --text-primary:    #E8F0FE;
+  --text-secondary:  #9EAFC2;
+  --text-muted:      #607080;
+  --text-on-accent:  #070A12;
+  --toolbar-bg:      #040710;
+  --sidenav-bg:      #030508;
+  --success:         #2DE2C5;
+  --warning:         #F5A623;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BASE
+───────────────────────────────────────────────────────────── */
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 15px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ─────────────────────────────────────────────────────────────
+   LAYOUT HELPERS
+───────────────────────────────────────────────────────────── */
+.page-container  { padding: 24px; max-width: 1400px; margin: 0 auto; }
+.page-header     { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.card-grid       { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.summary-row     { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.form-row        { display: flex; gap: 16px; margin-bottom: 0; flex-wrap: wrap; }
+.form-row mat-form-field { flex: 1 1 280px; min-width: 220px; }
+.table-wrap      { overflow-x: auto; }
+.full-width      { width: 100%; }
+.tab-content     { padding: 20px 0; }
+
+h1 { color: var(--text-primary);   font-weight: 600; font-size: 24px; margin: 0 0 4px; }
+h2 { color: var(--text-secondary); font-weight: 500; font-size: 18px; margin: 0 0 4px; }
+h3 { color: var(--text-primary);   font-weight: 500; font-size: 16px; margin: 0 0 4px; }
+p  { color: var(--text-primary); margin: 0 0 8px; }
+a  { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+
+/* ─────────────────────────────────────────────────────────────
+   MATERIAL SURFACES
+───────────────────────────────────────────────────────────── */
+.mat-app-background,
+mat-sidenav-container,
+.mat-drawer-container {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary);
+}
+
+mat-sidenav,
+.mat-drawer,
+.mat-sidenav {
+  background: var(--sidenav-bg) !important;
+  color: var(--text-primary) !important;
+  border-right: 1px solid var(--border);
+}
+
+mat-toolbar,
+.mat-toolbar {
+  background: var(--toolbar-bg) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--border);
+  height: 56px !important;
+  min-height: 56px !important;
+}
+
+.mat-mdc-card,
+mat-card {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FORM FIELDS — themed via MDC CSS custom property tokens
+───────────────────────────────────────────────────────────── */
+.mat-mdc-form-field {
+  /* Outlined text field tokens */
+  --mdc-outlined-text-field-outline-color:          var(--border);
+  --mdc-outlined-text-field-hover-outline-color:    var(--border-light);
+  --mdc-outlined-text-field-focus-outline-color:    var(--accent);
+  --mdc-outlined-text-field-disabled-outline-color: var(--border);
+  --mdc-outlined-text-field-error-outline-color:    var(--alert);
+
+  --mdc-outlined-text-field-label-text-color:       var(--text-secondary);
+  --mdc-outlined-text-field-hover-label-text-color: var(--text-primary);
+  --mdc-outlined-text-field-focus-label-text-color: var(--accent);
+  --mdc-outlined-text-field-error-label-text-color: var(--alert);
+
+  --mdc-outlined-text-field-input-text-color:       var(--text-primary);
+  --mdc-outlined-text-field-disabled-input-text-color: var(--text-muted);
+  --mdc-outlined-text-field-caret-color:            var(--accent);
+
+  /* Placeholder */
+  --mdc-outlined-text-field-input-text-placeholder-color: var(--text-muted);
+
+  /* Container shape */
+  --mdc-outlined-text-field-container-shape: 6px;
+
+  /* Filled text field tokens (used in some contexts) */
+  --mdc-filled-text-field-container-color:           var(--bg-input);
+  --mdc-filled-text-field-label-text-color:          var(--text-secondary);
+  --mdc-filled-text-field-focus-label-text-color:    var(--accent);
+  --mdc-filled-text-field-input-text-color:          var(--text-primary);
+  --mdc-filled-text-field-active-indicator-color:    var(--border);
+  --mdc-filled-text-field-focus-active-indicator-color: var(--accent);
+
+  /* Select trigger */
+  --mat-select-trigger-text-color:     var(--text-primary);
+  --mat-select-enabled-arrow-color:    var(--text-secondary);
+  --mat-select-focused-arrow-color:    var(--accent);
+  --mat-select-invalid-arrow-color:    var(--alert);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FORM FIELD BORDER OVERRIDE (direct, belt-and-suspenders)
+───────────────────────────────────────────────────────────── */
+.mat-mdc-form-field .mdc-notched-outline__leading,
+.mat-mdc-form-field .mdc-notched-outline__notch,
+.mat-mdc-form-field .mdc-notched-outline__trailing {
+  border-color: var(--border) !important;
+}
+.mat-mdc-form-field:hover .mdc-notched-outline__leading,
+.mat-mdc-form-field:hover .mdc-notched-outline__notch,
+.mat-mdc-form-field:hover .mdc-notched-outline__trailing {
+  border-color: var(--border-light) !important;
+}
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__leading,
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__trailing {
+  border-color: var(--accent) !important;
+  border-width: 2px !important;
+}
+.mat-mdc-form-field.mat-focused .mdc-notched-outline__notch {
+  border-color: var(--accent) !important;
+  border-right-width: 0 !important;
+  border-left-width: 0 !important;
+  border-bottom-width: 2px !important;
+  /* border-top intentionally untouched - handled by notch rule below */
+}
+
+/* ── CRITICAL: Preserve the floating-label notch gap ──
+   The notch segment has border-top:none so the floating label
+   sits cleanly inside it. Specificity 0-3-0 to match focused rule. */
+.mat-mdc-form-field .mdc-notched-outline--notched .mdc-notched-outline__notch {
+  border-top: none !important;
+}
+
+/* Filled variant container background */
+.mat-mdc-form-field .mdc-text-field--filled:not(.mdc-text-field--disabled) {
+  background-color: var(--bg-input) !important;
+}
+
+/* Hint / error below field */
+.mat-mdc-form-field-hint,
+.mat-mdc-form-field-subscript-wrapper {
+  color: var(--text-muted);
+}
+.mat-mdc-form-field-error {
+  color: var(--alert) !important;
+}
+
+/* ── CDK overlay stacking (dropdown panels render above page) ── */
+.cdk-overlay-container {
+  z-index: 1000 !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SELECT DROPDOWN PANELS (all mat-select, global)
+───────────────────────────────────────────────────────────── */
+.cdk-overlay-container .mat-mdc-select-panel,
+.mat-mdc-select-panel,
+.tn-select-panel {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  max-height: 320px !important;
+  padding: 4px 0 !important;
+}
+
+.cdk-overlay-container .mat-mdc-select-panel .mat-mdc-option,
+.mat-mdc-select-panel .mat-mdc-option,
+.tn-select-panel .mat-mdc-option {
+  color: var(--text-primary) !important;
+  min-height: 40px !important;
+}
+
+.cdk-overlay-container .mat-mdc-select-panel .mat-mdc-option .mdc-list-item__primary-text,
+.mat-mdc-select-panel .mat-mdc-option .mdc-list-item__primary-text,
+.tn-select-panel .mat-mdc-option .mdc-list-item__primary-text {
+  color: var(--text-primary) !important;
+}
+
+.cdk-overlay-container .mat-mdc-select-panel .mat-mdc-option:hover,
+.cdk-overlay-container .mat-mdc-select-panel .mat-mdc-option.mat-mdc-option-active,
+.mat-mdc-select-panel .mat-mdc-option:hover,
+.mat-mdc-select-panel .mat-mdc-option.mat-mdc-option-active,
+.tn-select-panel .mat-mdc-option:hover,
+.tn-select-panel .mat-mdc-option.mat-mdc-option-active {
+  background: var(--accent-muted) !important;
+}
+
+.cdk-overlay-container .mat-mdc-select-panel .mat-mdc-option.mdc-list-item--selected .mdc-list-item__primary-text,
+.mat-mdc-select-panel .mat-mdc-option.mdc-list-item--selected .mdc-list-item__primary-text {
+  color: var(--accent) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   AUTOCOMPLETE / MENU OVERLAYS
+───────────────────────────────────────────────────────────── */
+.cdk-overlay-container .mat-mdc-autocomplete-panel,
+.mat-mdc-autocomplete-panel {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+}
+
+.cdk-overlay-container .mat-mdc-menu-panel,
+.mat-mdc-menu-panel {
+  background: var(--bg-surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+}
+
+.mat-mdc-menu-item,
+.mat-mdc-menu-item .mat-mdc-menu-item-text {
+  color: var(--text-primary) !important;
+}
+
+.mat-mdc-menu-item:hover {
+  background: var(--accent-muted) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TABS
+───────────────────────────────────────────────────────────── */
+.mat-mdc-tab-header {
+  background: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border);
+}
+
+.mat-mdc-tab,
+.mat-mdc-tab .mdc-tab__text-label {
+  color: var(--text-secondary) !important;
+}
+
+.mat-mdc-tab.mdc-tab--active .mdc-tab__text-label {
+  color: var(--accent) !important;
+}
+
+.mat-mdc-tab .mdc-tab-indicator__content--underline {
+  border-color: var(--accent) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   STEPPER
+───────────────────────────────────────────────────────────── */
+mat-stepper,
+.mat-stepper-horizontal,
+.mat-stepper-vertical,
+.mat-horizontal-content-container,
+.mat-vertical-content-container {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+}
+
+.mat-horizontal-stepper-header-container {
+  background: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border);
+}
+
+.mat-step-header .mat-step-label {
+  color: var(--text-secondary) !important;
+}
+
+.mat-step-header .mat-step-label.mat-step-label-active {
+  color: var(--text-primary) !important;
+}
+
+.mat-step-header .mat-step-icon {
+  background-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+.mat-step-header .mat-step-icon-selected,
+.mat-step-header .mat-step-icon-state-done,
+.mat-step-header .mat-step-icon-state-edit {
+  background-color: var(--accent) !important;
+  color: var(--text-on-accent) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   TABLES
+───────────────────────────────────────────────────────────── */
+.mat-mdc-table,
+table.mat-mdc-table {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mat-mdc-header-cell,
+th.mat-mdc-header-cell {
+  background: var(--bg-secondary) !important;
+  color: var(--text-muted) !important;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.mat-mdc-cell,
+td.mat-mdc-cell {
+  color: var(--text-primary) !important;
+  border-bottom-color: var(--border) !important;
+}
+
+.mat-mdc-row:hover {
+  background: var(--accent-muted) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BUTTONS
+───────────────────────────────────────────────────────────── */
+.mat-mdc-raised-button.mat-primary,
+.mat-mdc-fab.mat-primary,
+.mat-mdc-mini-fab.mat-primary {
+  background: var(--accent) !important;
+  color: var(--text-on-accent) !important;
+}
+
+.mat-mdc-raised-button.mat-primary:hover {
+  background: var(--accent-hover) !important;
+}
+
+button[mat-stroked-button],
+.mat-mdc-outlined-button {
+  color: var(--accent) !important;
+  border-color: var(--border) !important;
+}
+
+button[mat-stroked-button]:hover,
+.mat-mdc-outlined-button:hover {
+  background: var(--accent-muted) !important;
+}
+
+button[mat-icon-button] .mat-icon,
+.mat-mdc-icon-button .mat-icon {
+  color: var(--text-secondary);
+}
+
+button[mat-icon-button]:hover .mat-icon,
+.mat-mdc-icon-button:hover .mat-icon {
+  color: var(--text-primary);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   DIALOG
+───────────────────────────────────────────────────────────── */
+.mat-mdc-dialog-container .mdc-dialog__surface {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border);
+  border-radius: 12px !important;
+}
+
+.mat-mdc-dialog-title { color: var(--text-primary) !important; }
+.mat-mdc-dialog-content { color: var(--text-primary) !important; }
+
+/* ─────────────────────────────────────────────────────────────
+   SNACKBAR
+───────────────────────────────────────────────────────────── */
+.snack-success .mdc-snackbar__surface {
+  background: var(--success) !important;
+}
+.snack-success .mat-mdc-snack-bar-label,
+.snack-success .mdc-snackbar__label {
+  color: var(--text-on-accent) !important;
+}
+
+.snack-error .mdc-snackbar__surface {
+  background: var(--alert) !important;
+}
+.snack-error .mat-mdc-snack-bar-label,
+.snack-error .mdc-snackbar__label {
+  color: #fff !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SLIDE TOGGLE
+───────────────────────────────────────────────────────────── */
+.mat-mdc-slide-toggle {
+  --mdc-switch-selected-track-color:           var(--accent) !important;
+  --mdc-switch-selected-handle-color:          var(--accent-hover) !important;
+  --mdc-switch-unselected-track-color:         var(--border) !important;
+  --mdc-switch-unselected-handle-color:        var(--text-muted) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PAGINATOR
+───────────────────────────────────────────────────────────── */
+.mat-mdc-paginator {
+  background: var(--bg-secondary) !important;
+  color: var(--text-secondary) !important;
+  border-top: 1px solid var(--border);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   CHIPS
+───────────────────────────────────────────────────────────── */
+.mat-mdc-chip {
+  background: var(--bg-surface) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   NAV LIST (scoped to sidenav)
+───────────────────────────────────────────────────────────── */
+.side-nav mat-nav-list {
+  padding-top: 0 !important;
+  padding-bottom: 4px !important;
+}
+
+.side-nav .mat-mdc-list-item {
+  height: 40px !important;
+  border-radius: 6px !important;
+  margin: 0 8px !important;
+  width: calc(100% - 16px) !important;
+  color: var(--text-secondary) !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+
+.side-nav .mat-mdc-list-item .mdc-list-item__primary-text {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.side-nav .mat-mdc-list-item:hover {
+  background: rgba(255,255,255,0.06) !important;
+}
+.side-nav .mat-mdc-list-item:hover .mdc-list-item__primary-text,
+.side-nav .mat-mdc-list-item:hover .mat-icon {
+  color: var(--text-primary) !important;
+}
+
+.side-nav .mat-mdc-list-item .mat-icon {
+  color: var(--text-muted) !important;
+  font-size: 20px !important;
+  width: 20px !important;
+  height: 20px !important;
+  margin-right: 12px !important;
+}
+
+.side-nav .active-link {
+  background: var(--accent-muted) !important;
+}
+.side-nav .active-link .mdc-list-item__primary-text,
+.side-nav .active-link .mat-icon {
+  color: var(--accent) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   EXPANSION PANELS (sidenav collapsible sections)
+───────────────────────────────────────────────────────────── */
+.side-nav .mat-expansion-panel {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.side-nav .mat-expansion-panel-header {
+  padding: 0 16px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
+  background: transparent !important;
+}
+
+.side-nav .mat-expansion-panel-header:hover {
+  background: rgba(255,255,255,0.04) !important;
+}
+
+.side-nav .mat-expansion-panel-header .mat-expansion-indicator::after {
+  color: var(--text-muted) !important;
+}
+
+.side-nav .mat-expansion-panel-header-title {
+  color: var(--text-muted) !important;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.side-nav .mat-expansion-panel-body {
+  padding: 0 !important;
+}
+
+.side-nav .mat-expansion-panel .mat-expansion-panel-content {
+  padding: 0 !important;
+}
+
+.side-nav .mat-expansion-panel::before {
+  display: none !important;
+}
+
+.side-nav .mat-expansion-panel:not(:first-child)::before {
+  display: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PROGRESS BAR
+───────────────────────────────────────────────────────────── */
+.mat-mdc-progress-bar {
+  --mdc-linear-progress-active-indicator-color: var(--accent);
+  --mdc-linear-progress-track-color: var(--border);
+  border-radius: 4px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   STATUS CHIPS (custom)
+───────────────────────────────────────────────────────────── */
+.status-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.status-chip.created,
+.status-chip.draft       { background: rgba(143, 168, 191, 0.2); color: var(--text-muted); }
+.status-chip.provisioning{ background: rgba(232, 168, 56,  0.2); color: var(--warning); }
+.status-chip.ready       { background: rgba(31,  182, 166, 0.2); color: var(--success); }
+.status-chip.running,
+.status-chip.active      { background: rgba(31,  182, 166, 0.2); color: var(--accent); }
+.status-chip.stopped     { background: rgba(143, 168, 191, 0.2); color: var(--text-muted); }
+.status-chip.failed      { background: rgba(210, 38,  48,  0.2); color: var(--alert); }
+
+/* ─────────────────────────────────────────────────────────────
+   SCROLLBAR
+───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+/* ─────────────────────────────────────────────────────────────
+   UTILITIES
+───────────────────────────────────────────────────────────── */
+.mt-1 { margin-top:    8px; }
+.mt-2 { margin-top:   16px; }
+.mt-3 { margin-top:   24px; }
+.mb-2 { margin-bottom: 16px; }
+.ml-2 { margin-left:  16px; }

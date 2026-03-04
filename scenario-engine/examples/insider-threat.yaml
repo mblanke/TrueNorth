@@ -1,0 +1,42 @@
+name: insider-threat
+version: "1.0"
+range_template: small-enterprise
+
+timeline:
+  - t: "0:00"
+    action: identity_new_admin_user
+    params:
+      username: "rogue_admin"
+      target: "dc-01"
+  - t: "0:15"
+    action: http_burst
+    params:
+      url: "http://10.0.2.10/sensitive-data"
+      count: 200
+      method: "GET"
+  - t: "0:30"
+    action: dns_spike
+    params:
+      domains: ["personal-cloud.example.com"]
+      count: 500
+
+objectives:
+  - id: detect-new-admin
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:identity AND action:create AND username:rogue_admin"
+      min_hits: 1
+    points: 30
+  - id: detect-data-access
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:http AND url:*sensitive-data* AND count:>100"
+      min_hits: 1
+    points: 30
+  - id: response-action
+    type: response
+    validator: manual_ack
+    params: {}
+    points: 40

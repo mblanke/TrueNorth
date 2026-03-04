@@ -1,0 +1,15 @@
+---
+- name: restart wazuh-manager
+  ansible.builtin.systemd:
+    name: wazuh-manager
+    state: restarted
+
+- name: restart wazuh-api
+  ansible.builtin.systemd:
+    name: wazuh-api
+    state: restarted
+
+- name: restart suricata
+  ansible.builtin.systemd:
+    name: suricata
+    state: restarted

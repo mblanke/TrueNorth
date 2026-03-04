@@ -1,0 +1,6 @@
+---
+# Playbook 05: TrueNorth Control Plane deployment
+- name: Control Plane -- API, worker, web dashboard
+  hosts: control_plane
+  roles:
+    - control_plane

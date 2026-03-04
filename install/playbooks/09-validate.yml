@@ -1,0 +1,37 @@
+---
+# Playbook 09: Full validation
+- name: Validate -- end-to-end infrastructure validation
+  hosts: control_plane
+  gather_facts: false
+  tasks:
+    - name: Query hypervisor summary from API
+      uri:
+        url: "http://localhost:{{ truenorth_api_port }}/hypervisors/summary"
+        return_content: true
+      register: hv_summary
+
+    - name: Assert nodes discovered
+      assert:
+        that: (hv_summary.json.total_nodes | int) > 0
+        fail_msg: "No hypervisor nodes discovered -- run discovery first"
+
+    - name: Assert storage configured
+      uri:
+        url: "http://localhost:{{ truenorth_api_port }}/storage/summary"
+        return_content: true
+      register: stor_summary
+
+    - name: Validate storage
+      assert:
+        that: (stor_summary.json.total_appliances | int) > 0
+        fail_msg: "No storage appliances registered"
+
+    - name: Print validation summary
+      debug:
+        msg: |
+          === TrueNorth Range Validation ===
+          Hypervisor Nodes: {{ hv_summary.json.total_nodes }}
+          Total vCPUs:      {{ hv_summary.json.total_cpu }}
+          Total RAM (GB):   {{ hv_summary.json.total_memory_gb }}
+          Storage:          {{ stor_summary.json.total_appliances }} appliance(s)
+          Status:           READY

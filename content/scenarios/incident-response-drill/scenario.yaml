@@ -1,0 +1,237 @@
+name: incident-response-drill
+version: "1.0"
+range_template: soc-training
+difficulty: medium
+duration_minutes: 60
+phase_count: 6
+description: |
+  A blue team incident response exercise with a pre-staged compromised
+  environment. Indicators of compromise are scattered across multiple log
+  sources. Participants must collect evidence, reconstruct timelines,
+  and execute containment/eradication/recovery phases under time pressure.
+  Scoring rewards thoroughness, accuracy, and speed.
+author: TrueNorth Range
+
+mitre_attack:
+  - T1566.001  # Initial Access: Spearphishing Attachment
+  - T1059.001  # Execution: PowerShell
+  - T1053.005  # Persistence: Scheduled Task
+  - T1003.001  # Credential Access: LSASS Dump
+  - T1021.002  # Lateral Movement: SMB Admin Shares
+  - T1486      # Impact: Data Encrypted for Impact
+  - T1070.001  # Defense Evasion: Clear Event Logs
+
+pre_staged_environment:
+  description: |
+    The range is pre-compromised before the exercise begins. Participants
+    arrive to find an active incident with the following conditions.
+  compromised_hosts:
+    - host: v-ws01
+      indicators:
+        - scheduled_task: "WindowsUpdate" running C:\ProgramData\svchost.exe
+        - process: "svchost.exe" in C:\ProgramData\ (anomalous path)
+        - network: beaconing to 10.60.200.10 every 60 seconds
+        - file: C:\Users\finance_user\AppData\Local\Temp\invoice.docm
+    - host: v-ws02
+      indicators:
+        - process: "powershell.exe" with encoded command
+        - file: C:\Temp\procdump64.exe
+        - file: C:\Temp\lsass.dmp (credential dump)
+        - event_log: Security log cleared at 03:15 UTC
+    - host: v-fs01
+      indicators:
+        - service: PSEXESVC installed and running
+        - smb: unusual admin share access from v-ws01
+        - files: 1,200 files with .encrypted extension
+        - file: C:\README_DECRYPT.txt (ransom note)
+    - host: v-dc01
+      indicators:
+        - user: "svc_backup" created at 02:45 UTC (unauthorized)
+        - gpo: modified Default Domain Policy
+  evidence_sources:
+    - source: "OpenSearch SIEM"
+      location: "siem01:10.60.202.10"
+      log_types: [windows_security, sysmon, zeek_conn, zeek_dns, suricata_alerts]
+    - source: "Velociraptor"
+      location: "velociraptor01:10.60.202.20"
+      capabilities: [process_listing, file_timeline, registry_analysis, memory_acquisition]
+    - source: "Zeek logs"
+      location: "zeek01:10.60.203.20"
+      log_types: [conn.log, dns.log, http.log, ssl.log, files.log]
+    - source: "Full PCAP"
+      location: "pcap01:10.60.203.30"
+      retention: "last 24 hours"
+
+timeline:
+  - phase: 1
+    t: "00:00"
+    name: "Triage & Scoping"
+    duration_minutes: 10
+    description: "Assess the situation, identify affected systems, determine scope"
+    tasks:
+      - "Review SIEM alerts dashboard for high-severity events"
+      - "Identify compromised hosts via network anomaly detection"
+      - "Check Velociraptor for active threats on endpoints"
+      - "Document initial findings"
+    expected_deliverables:
+      - "Initial scope assessment (affected hosts, timeframe)"
+
+  - phase: 2
+    t: "00:10"
+    name: "Evidence Collection"
+    duration_minutes: 10
+    description: "Collect volatile and non-volatile evidence from compromised hosts"
+    tasks:
+      - "Acquire memory image from v-ws01 using Velociraptor"
+      - "Collect process listing and network connections"
+      - "Pull Sysmon logs for lateral movement indicators"
+      - "Preserve full PCAP from pcap01 for the incident timeframe"
+      - "Export relevant Zeek logs (conn, dns, http)"
+    expected_deliverables:
+      - "Evidence inventory with hashes"
+
+  - phase: 3
+    t: "00:20"
+    name: "Timeline Reconstruction"
+    duration_minutes: 10
+    description: "Build a chronological timeline of the attack"
+    tasks:
+      - "Correlate email delivery with process execution"
+      - "Map lateral movement path (ws01 -> ws02 -> fs01)"
+      - "Identify credential theft timeline"
+      - "Document encryption start time and scope"
+    expected_deliverables:
+      - "Attack timeline with timestamps and MITRE mappings"
+
+  - phase: 4
+    t: "00:30"
+    name: "Containment"
+    duration_minutes: 10
+    description: "Stop the attack from spreading further"
+    tasks:
+      - "Isolate compromised workstations (v-ws01, v-ws02)"
+      - "Block C2 IP (10.60.200.10) at firewall"
+      - "Disable unauthorized account 'svc_backup'"
+      - "Block lateral movement via SMB admin shares"
+      - "Disable the malicious scheduled task"
+    validators:
+      - type: network_isolation
+        hosts: [v-ws01, v-ws02]
+      - type: firewall_rule
+        block_ip: "10.60.200.10"
+
+  - phase: 5
+    t: "00:40"
+    name: "Eradication"
+    duration_minutes: 10
+    description: "Remove all attacker artifacts from the environment"
+    tasks:
+      - "Remove malicious scheduled tasks"
+      - "Delete attacker tools (procdump, PSEXESVC)"
+      - "Remove unauthorized user account"
+      - "Revert GPO modifications"
+      - "Reset compromised credentials (all domain accounts)"
+    validators:
+      - type: artifact_removal
+        files:
+          - "C:\\ProgramData\\svchost.exe"
+          - "C:\\Temp\\procdump64.exe"
+          - "C:\\Temp\\lsass.dmp"
+
+  - phase: 6
+    t: "00:50"
+    name: "Recovery & Reporting"
+    duration_minutes: 10
+    description: "Restore services and prepare the incident report"
+    tasks:
+      - "Restore encrypted files from backup"
+      - "Verify system integrity before reconnecting"
+      - "Prepare executive summary"
+      - "Document lessons learned and recommended improvements"
+    expected_deliverables:
+      - "Incident report"
+      - "Lessons learned document"
+
+objectives:
+  - id: scope_assessment
+    type: deliverable
+    description: "Submit initial scope assessment within 10 minutes"
+    validator: deliverable_check
+    params:
+      key: "scope-assessment.md"
+      deadline_minutes: 10
+    points: 10
+
+  - id: identify_c2
+    type: detection
+    description: "Identify the C2 server IP and beacon interval"
+    validator: opensearch_query
+    params:
+      query: 'event_type:flow AND dst_ip:10.60.200.10 AND dst_port:(443 OR 8080)'
+      min_hits: 5
+    points: 10
+
+  - id: identify_all_hosts
+    type: detection
+    description: "Identify all four compromised hosts"
+    validator: manual_ack
+    params:
+      prompt: "List all compromised hosts with evidence"
+      expected_count: 4
+    points: 15
+
+  - id: build_timeline
+    type: deliverable
+    description: "Complete attack timeline with MITRE ATT&CK mappings"
+    validator: deliverable_check
+    params:
+      key: "attack-timeline.pdf"
+      min_entries: 8
+    points: 20
+
+  - id: contain_threat
+    type: response
+    description: "Successfully contain the threat (isolate hosts, block C2)"
+    validator: manual_ack
+    params:
+      prompt: "Verify containment: hosts isolated, C2 blocked, accounts disabled"
+      checklist:
+        - "v-ws01 isolated"
+        - "v-ws02 isolated"
+        - "C2 IP blocked"
+        - "svc_backup disabled"
+    points: 20
+
+  - id: eradicate_artifacts
+    type: response
+    description: "Remove all attacker artifacts"
+    validator: manual_ack
+    params:
+      prompt: "Verify eradication: all malicious files, tasks, and accounts removed"
+    points: 10
+
+  - id: incident_report
+    type: deliverable
+    description: "Final incident report with executive summary"
+    validator: deliverable_check
+    params:
+      key: "incident-report.pdf"
+    points: 15
+
+scoring:
+  total_points: 100
+  passing_score: 65
+  time_bonus:
+    enabled: true
+    max_bonus: 15
+    threshold_minutes: 45
+  phase_timing:
+    - phase: "Triage & Scoping"
+      max_minutes: 10
+      bonus: 5
+    - phase: "Containment"
+      max_minutes: 10
+      bonus: 5
+    - phase: "Timeline Reconstruction"
+      max_minutes: 10
+      bonus: 5

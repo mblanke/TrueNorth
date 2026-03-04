@@ -1,0 +1,211 @@
+# Active Directory Security Events for Training
+# Includes Kerberoasting, Golden Ticket, DCSync, and GPO modification indicators
+---
+events:
+  # --- Kerberoasting Events (Event ID 4769) ---
+  - timestamp: "2026-02-25T02:15:00Z"
+    event_id: 4769
+    source: Security
+    description: "Kerberos Service Ticket Request - Kerberoasting indicator"
+    fields:
+      TargetUserName: "svc_sqlserver"
+      ServiceName: "MSSQLSvc/sql01.corp.local:1433"
+      TicketEncryptionType: "0x17"
+      TicketOptions: "0x40810000"
+      IpAddress: "10.50.101.105"
+      IpPort: "49832"
+      LogonGuid: "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+    notes: "RC4 encryption (0x17) requested for service account - Kerberoasting indicator"
+
+  - timestamp: "2026-02-25T02:15:02Z"
+    event_id: 4769
+    source: Security
+    description: "Kerberos Service Ticket Request - Kerberoasting indicator"
+    fields:
+      TargetUserName: "svc_backup"
+      ServiceName: "cifs/fs01.corp.local"
+      TicketEncryptionType: "0x17"
+      TicketOptions: "0x40810000"
+      IpAddress: "10.50.101.105"
+      IpPort: "49833"
+    notes: "Multiple SPN requests with RC4 from same source in rapid succession"
+
+  - timestamp: "2026-02-25T02:15:05Z"
+    event_id: 4769
+    source: Security
+    description: "Kerberos Service Ticket Request - Kerberoasting indicator"
+    fields:
+      TargetUserName: "svc_exchange"
+      ServiceName: "exchangeMDB/exch01.corp.local"
+      TicketEncryptionType: "0x17"
+      TicketOptions: "0x40810000"
+      IpAddress: "10.50.101.105"
+      IpPort: "49834"
+    notes: "Third SPN request within 5 seconds from workstation IP"
+
+  # --- Golden Ticket Indicators ---
+  - timestamp: "2026-02-25T03:30:00Z"
+    event_id: 4768
+    source: Security
+    description: "Kerberos TGT Request - Golden Ticket indicator"
+    fields:
+      TargetUserName: "Administrator"
+      TargetDomainName: "CORP.LOCAL"
+      TicketEncryptionType: "0x17"
+      PreAuthType: "0"
+      IpAddress: "10.50.101.105"
+      ServiceName: "krbtgt"
+    notes: "TGT requested without pre-authentication - possible golden ticket usage"
+
+  - timestamp: "2026-02-25T03:30:01Z"
+    event_id: 4769
+    source: Security
+    description: "Kerberos Service Ticket with anomalous lifetime"
+    fields:
+      TargetUserName: "Administrator"
+      ServiceName: "cifs/dc01.corp.local"
+      TicketEncryptionType: "0x17"
+      IpAddress: "10.50.101.105"
+    notes: "Service ticket issued immediately after suspicious TGT"
+
+  - timestamp: "2026-02-25T03:30:05Z"
+    event_id: 4672
+    source: Security
+    description: "Special privileges assigned to new logon"
+    fields:
+      SubjectUserName: "Administrator"
+      SubjectDomainName: "CORP"
+      SubjectLogonId: "0x3E7ABCD"
+      PrivilegeList: "SeDebugPrivilege\n\t\tSeBackupPrivilege\n\t\tSeRestorePrivilege\n\t\tSeTakeOwnershipPrivilege"
+    notes: "Elevated privileges granted after golden ticket TGT"
+
+  # --- DCSync Detection (Event ID 4662) ---
+  - timestamp: "2026-02-25T04:00:00Z"
+    event_id: 4662
+    source: Security
+    description: "Directory Service Access - DCSync indicator"
+    fields:
+      SubjectUserName: "admin-compromised"
+      SubjectDomainName: "CORP"
+      ObjectType: "{19195a5b-6da0-11d0-afd3-00c04fd930c9}"
+      ObjectName: "DC=corp,DC=local"
+      OperationType: "Object Access"
+      AccessMask: "0x100"
+      Properties: "Replicating Directory Changes All\n{1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}"
+    notes: "Replicating Directory Changes All - DCSync attack indicator"
+
+  - timestamp: "2026-02-25T04:00:01Z"
+    event_id: 4662
+    source: Security
+    description: "Directory Service Access - DCSync replication"
+    fields:
+      SubjectUserName: "admin-compromised"
+      SubjectDomainName: "CORP"
+      ObjectType: "{19195a5b-6da0-11d0-afd3-00c04fd930c9}"
+      ObjectName: "DC=corp,DC=local"
+      Properties: "Replicating Directory Changes\n{1131f6aa-9c07-11d1-f79f-00c04fc2dcd2}"
+    notes: "Paired with previous event - confirms DCSync operation"
+
+  - timestamp: "2026-02-25T04:00:05Z"
+    event_id: 4624
+    source: Security
+    description: "Successful logon from non-DC with replication rights"
+    fields:
+      TargetUserName: "admin-compromised"
+      TargetDomainName: "CORP"
+      LogonType: 3
+      IpAddress: "10.50.101.106"
+      WorkstationName: "WS-ITADMIN"
+    notes: "Network logon from workstation preceding DCSync - not a domain controller"
+
+  # --- Group Policy Modification ---
+  - timestamp: "2026-02-25T04:30:00Z"
+    event_id: 5136
+    source: Security
+    description: "Directory Service object modified - GPO change"
+    fields:
+      SubjectUserName: "svc_backup"
+      SubjectDomainName: "CORP"
+      ObjectDN: "CN={31B2F340-016D-11D2-945F-00C04FB984F9},CN=Policies,CN=System,DC=corp,DC=local"
+      AttributeLDAPDisplayName: "gPCFileSysPath"
+      ObjectClass: "groupPolicyContainer"
+      OperationType: "Value Added"
+    notes: "Default Domain Policy modified by service account - potential GPO abuse"
+
+  - timestamp: "2026-02-25T04:30:02Z"
+    event_id: 5136
+    source: Security
+    description: "Directory Service object modified - scheduled task via GPO"
+    fields:
+      SubjectUserName: "svc_backup"
+      SubjectDomainName: "CORP"
+      ObjectDN: "CN={31B2F340-016D-11D2-945F-00C04FB984F9},CN=Policies,CN=System,DC=corp,DC=local"
+      AttributeLDAPDisplayName: "gPCMachineExtensionNames"
+      ObjectClass: "groupPolicyContainer"
+      OperationType: "Value Modified"
+    notes: "GPO machine extensions modified - may include scheduled task deployment"
+
+  # --- Account Manipulation ---
+  - timestamp: "2026-02-25T02:45:00Z"
+    event_id: 4720
+    source: Security
+    description: "A user account was created"
+    fields:
+      TargetUserName: "svc_backup"
+      TargetDomainName: "CORP"
+      SubjectUserName: "admin-compromised"
+      SubjectDomainName: "CORP"
+      SamAccountName: "svc_backup"
+      UserPrincipalName: "svc_backup@corp.local"
+      HomeDirectory: ""
+      PrimaryGroupId: "513"
+    notes: "Unauthorized account creation by compromised admin"
+
+  - timestamp: "2026-02-25T02:45:05Z"
+    event_id: 4728
+    source: Security
+    description: "A member was added to a security-enabled global group"
+    fields:
+      TargetUserName: "Domain Admins"
+      SubjectUserName: "admin-compromised"
+      MemberName: "CN=svc_backup,CN=Users,DC=corp,DC=local"
+      MemberSid: "S-1-5-21-XXXXXXXXXX-XXXXXXXXXX-XXXXXXXXXX-1234"
+    notes: "New account immediately added to Domain Admins"
+
+  - timestamp: "2026-02-25T02:45:10Z"
+    event_id: 4738
+    source: Security
+    description: "A user account was changed"
+    fields:
+      TargetUserName: "svc_backup"
+      SubjectUserName: "admin-compromised"
+      UserAccountControl: "0x10200"
+      PasswordLastSet: "2026-02-25T02:45:10Z"
+    notes: "Password set and account enabled with DONT_EXPIRE_PASSWORD flag"
+
+  # --- AS-REP Roasting ---
+  - timestamp: "2026-02-25T02:20:00Z"
+    event_id: 4768
+    source: Security
+    description: "Kerberos TGT Request without pre-auth - AS-REP Roasting"
+    fields:
+      TargetUserName: "legacy_svc"
+      TargetDomainName: "CORP.LOCAL"
+      PreAuthType: "0"
+      TicketEncryptionType: "0x17"
+      IpAddress: "10.50.101.105"
+      Status: "0x0"
+    notes: "Pre-authentication not required (DONT_REQUIRE_PREAUTH set) - AS-REP Roast target"
+
+  - timestamp: "2026-02-25T02:20:01Z"
+    event_id: 4768
+    source: Security
+    description: "Kerberos TGT Request without pre-auth"
+    fields:
+      TargetUserName: "old_admin"
+      TargetDomainName: "CORP.LOCAL"
+      PreAuthType: "0"
+      TicketEncryptionType: "0x17"
+      IpAddress: "10.50.101.105"
+      Status: "0x0"
+    notes: "Second AS-REP Roastable account enumerated from same source"

