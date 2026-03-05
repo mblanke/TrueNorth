@@ -136,6 +136,10 @@ class RangeIn(BaseModel):
     template_id: uuid.UUID
 
 
+class RangeUpdate(BaseModel):
+    name: str | None = None
+
+
 class RangeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -166,6 +170,11 @@ class ExerciseIn(BaseModel):
     range_id: uuid.UUID
     scenario_id: uuid.UUID
     max_score: int = Field(default=100, ge=0)
+
+
+class ExerciseUpdate(BaseModel):
+    name: str | None = None
+    max_score: int | None = None
 
 
 class ExerciseOut(BaseModel):
@@ -489,6 +498,18 @@ class ExternalPlatformIn(BaseModel):
     lti_token_url: str | None = None
 
 
+class ExternalPlatformUpdate(BaseModel):
+    name: str | None = None
+    base_url: str | None = None
+    auth_type: str | None = None
+    is_active: bool | None = None
+    lti_client_id: str | None = None
+    lti_deployment_id: str | None = None
+    lti_issuer: str | None = None
+    lti_jwks_url: str | None = None
+    lti_token_url: str | None = None
+
+
 class ExternalPlatformOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -705,6 +726,14 @@ class AIModelRouteIn(BaseModel):
     tags: str | None = None
 
 
+class AIModelRouteUpdate(BaseModel):
+    model_pattern: str | None = None
+    backend_id: uuid.UUID | None = None
+    priority: int | None = None
+    tags: str | None = None
+    is_active: bool | None = None
+
+
 class AIModelRouteOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -768,6 +797,13 @@ class OUIn(BaseModel):
     nation_id: uuid.UUID | None = None
 
 
+class OUUpdate(BaseModel):
+    name: str | None = None
+    slug: str | None = None
+    ou_type: str | None = None
+    parent_id: uuid.UUID | None = None
+
+
 class OUOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -798,6 +834,13 @@ class SecurityGroupIn(BaseModel):
     group_type: str = Field(default="access", pattern=r"^(access|distribution|training|role_based)$")
     description: str | None = None
     ou_id: uuid.UUID | None = None
+
+
+class SecurityGroupUpdate(BaseModel):
+    name: str | None = None
+    slug: str | None = None
+    group_type: str | None = None
+    description: str | None = None
 
 
 class SecurityGroupOut(BaseModel):
@@ -889,6 +932,14 @@ class TeamFullIn(BaseModel):
     is_persistent: bool = True
 
 
+class TeamUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    team_type: str | None = None
+    color_hex: str | None = None
+    max_members: int | None = None
+
+
 class TeamFullOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -960,6 +1011,18 @@ class StorageApplianceIn(BaseModel):
     notes: str | None = None
 
 
+class StorageApplianceUpdate(BaseModel):
+    name: str | None = None
+    vendor: str | None = None
+    model: str | None = None
+    management_ip: str | None = None
+    protocol: str | None = None
+    raw_capacity_tb: float | None = None
+    usable_capacity_tb: float | None = None
+    is_active: bool | None = None
+    notes: str | None = None
+
+
 class StorageApplianceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -1015,6 +1078,18 @@ class NetworkDeviceIn(BaseModel):
     notes: str | None = None
 
 
+class NetworkDeviceUpdate(BaseModel):
+    name: str | None = None
+    vendor: str | None = None
+    model: str | None = None
+    role: str | None = None
+    management_ip: str | None = None
+    firmware_version: str | None = None
+    port_count: int | None = None
+    is_active: bool | None = None
+    notes: str | None = None
+
+
 class NetworkDeviceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -1054,3 +1129,225 @@ class KitDefinitionOut(BaseModel):
     network_device_count: int
     created_at: datetime
 
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Helpdesk / Tickets
+# ══════════════════════════════════════════════════════════════════════════
+
+class SupportQueueIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
+    description: str | None = None
+    is_default: bool = False
+
+
+class SupportQueueOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    slug: str
+    description: str | None = None
+    is_default: bool
+    created_at: datetime
+
+
+class SupportQueueMemberIn(BaseModel):
+    user_id: uuid.UUID
+    role: str = "agent"
+
+
+class SupportQueueMemberOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    queue_id: uuid.UUID
+    user_id: uuid.UUID
+    role: str
+
+
+class TicketIn(BaseModel):
+    subject: str = Field(..., min_length=1, max_length=500)
+    description: str = Field(..., min_length=1)
+    priority: str = "medium"
+    category: str = "other"
+    queue_id: uuid.UUID | None = None
+    range_id: uuid.UUID | None = None
+    exercise_id: uuid.UUID | None = None
+
+
+class TicketUpdate(BaseModel):
+    subject: str | None = None
+    description: str | None = None
+    status: str | None = None
+    priority: str | None = None
+    category: str | None = None
+    assignee_id: uuid.UUID | None = None
+    queue_id: uuid.UUID | None = None
+
+
+class TicketOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    subject: str
+    description: str
+    status: str
+    priority: str
+    category: str
+    tenant_id: uuid.UUID | None = None
+    reporter_id: uuid.UUID
+    assignee_id: uuid.UUID | None = None
+    queue_id: uuid.UUID | None = None
+    range_id: uuid.UUID | None = None
+    exercise_id: uuid.UUID | None = None
+    ai_triaged: bool
+    ai_confidence: float | None = None
+    resolved_at: datetime | None = None
+    closed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TicketListOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    subject: str
+    status: str
+    priority: str
+    category: str
+    reporter_id: uuid.UUID
+    assignee_id: uuid.UUID | None = None
+    queue_id: uuid.UUID | None = None
+    ai_triaged: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class TicketCommentIn(BaseModel):
+    body: str = Field(..., min_length=1)
+    is_internal: bool = False
+
+
+class TicketCommentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    ticket_id: uuid.UUID
+    author_id: uuid.UUID
+    body: str
+    is_internal: bool
+    comment_source: str
+    created_at: datetime
+
+
+class AIAgentActionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    ticket_id: uuid.UUID
+    action_type: str
+    input_summary: str | None = None
+    output_summary: str | None = None
+    confidence: float | None = None
+    model_used: str | None = None
+    tokens_used: int | None = None
+    latency_ms: int | None = None
+    was_applied: bool
+    created_at: datetime
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Wiki / Knowledge Base
+# ══════════════════════════════════════════════════════════════════════════
+
+class WikiSpaceIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
+    description: str | None = None
+    icon: str = "folder"
+
+
+class WikiSpaceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    slug: str
+    description: str | None = None
+    icon: str
+    is_archived: bool
+    created_at: datetime
+
+
+class WikiSpaceListOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    slug: str
+    icon: str
+    is_archived: bool
+    created_at: datetime
+
+
+class WikiPageIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    body: str = ""
+    parent_id: uuid.UUID | None = None
+    tags: str | None = None
+    is_published: bool = True
+
+
+class WikiPageUpdate(BaseModel):
+    title: str | None = None
+    body: str | None = None
+    parent_id: uuid.UUID | None = None
+    tags: str | None = None
+    is_published: bool | None = None
+    ordinal: int | None = None
+    edit_summary: str | None = None
+
+
+class WikiPageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    space_id: uuid.UUID
+    parent_id: uuid.UUID | None = None
+    title: str
+    slug: str
+    body: str
+    author_id: uuid.UUID
+    last_editor_id: uuid.UUID
+    ordinal: int
+    is_published: bool
+    tags: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WikiPageListOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    space_id: uuid.UUID
+    parent_id: uuid.UUID | None = None
+    title: str
+    slug: str
+    ordinal: int
+    is_published: bool
+    tags: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WikiPageTreeNode(BaseModel):
+    id: uuid.UUID
+    title: str
+    slug: str
+    children: list["WikiPageTreeNode"] = Field(default_factory=list)
+
+
+class WikiRevisionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    page_id: uuid.UUID
+    revision_number: int
+    title: str
+    body: str
+    editor_id: uuid.UUID
+    edit_summary: str | None = None
+    created_at: datetime

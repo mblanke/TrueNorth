@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
@@ -17,7 +18,8 @@ import { Scenario } from '@core/models';
   standalone: true,
   imports: [
     CommonModule, MatCardModule, MatTableModule, MatButtonModule,
-    MatIconModule, MatFormFieldModule, MatInputModule, MatSlideToggleModule, FormsModule,
+    MatIconModule, MatFormFieldModule, MatInputModule, MatSlideToggleModule,
+    MatTooltipModule, FormsModule,
   ],
   template: `
     <div class="page-container">
@@ -29,13 +31,17 @@ import { Scenario } from '@core/models';
             <p class="subtitle">Create and manage attack scenarios</p>
           </div>
         </div>
-        <button mat-raised-button color="primary" (click)="showCreate = !showCreate">
+        <button mat-raised-button color="primary" (click)="startCreate()">
           <mat-icon>add</mat-icon> New Scenario
         </button>
       </div>
 
-      @if (showCreate) {
-        <mat-card class="mt-2">
+      <!-- CREATE / EDIT FORM -->
+      @if (showForm) {
+        <mat-card class="create-form mt-2">
+          <mat-card-header>
+            <mat-card-title>{{ editingId ? 'Edit Scenario' : 'New Scenario' }}</mat-card-title>
+          </mat-card-header>
           <mat-card-content>
             <div class="form-row">
               <mat-form-field appearance="outline" class="flex-grow">
@@ -49,47 +55,191 @@ import { Scenario } from '@core/models';
             </div>
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>YAML Definition</mat-label>
-              <textarea matInput [(ngModel)]="form.yaml" rows="12" style="font-family: monospace;"></textarea>
+              <textarea matInput [(ngModel)]="form.yaml" rows="14"
+                        style="font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; line-height: 1.5;"></textarea>
             </mat-form-field>
             <mat-slide-toggle [(ngModel)]="form.is_public">Public</mat-slide-toggle>
-            <div class="mt-1">
-              <button mat-raised-button color="primary" (click)="create()">Create</button>
-              <button mat-button (click)="showCreate = false">Cancel</button>
+            <div class="form-actions mt-1">
+              @if (editingId) {
+                <button mat-raised-button color="primary" (click)="update()" [disabled]="!form.name || saving">
+                  <mat-icon>save</mat-icon> Save Changes
+                </button>
+              } @else {
+                <button mat-raised-button color="primary" (click)="create()" [disabled]="!form.name || saving">
+                  <mat-icon>add</mat-icon> Create
+                </button>
+              }
+              <button mat-button (click)="cancelForm()">Cancel</button>
             </div>
           </mat-card-content>
         </mat-card>
       }
 
+      <!-- SCENARIO TABLE -->
       <table mat-table [dataSource]="scenarios()" class="mt-2 full-width">
-        <ng-container matColumnDef="name"><th mat-header-cell *matHeaderCellDef>Name</th><td mat-cell *matCellDef="let s">{{ s.name }}</td></ng-container>
-        <ng-container matColumnDef="version"><th mat-header-cell *matHeaderCellDef>Version</th><td mat-cell *matCellDef="let s">{{ s.version }}</td></ng-container>
-        <ng-container matColumnDef="public"><th mat-header-cell *matHeaderCellDef>Public</th><td mat-cell *matCellDef="let s">{{ s.is_public ? 'Yes' : 'No' }}</td></ng-container>
-        <ng-container matColumnDef="created"><th mat-header-cell *matHeaderCellDef>Created</th><td mat-cell *matCellDef="let s">{{ s.created_at | date:'short' }}</td></ng-container>
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef>Name</th>
+          <td mat-cell *matCellDef="let s">{{ s.name }}</td>
+        </ng-container>
+        <ng-container matColumnDef="version">
+          <th mat-header-cell *matHeaderCellDef>Version</th>
+          <td mat-cell *matCellDef="let s">{{ s.version }}</td>
+        </ng-container>
+        <ng-container matColumnDef="public">
+          <th mat-header-cell *matHeaderCellDef>Public</th>
+          <td mat-cell *matCellDef="let s">
+            <mat-icon [class.text-green]="s.is_public">{{ s.is_public ? 'public' : 'lock' }}</mat-icon>
+          </td>
+        </ng-container>
+        <ng-container matColumnDef="created">
+          <th mat-header-cell *matHeaderCellDef>Created</th>
+          <td mat-cell *matCellDef="let s">{{ s.created_at | date:'short' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef>Actions</th>
+          <td mat-cell *matCellDef="let s">
+            <button mat-icon-button matTooltip="Edit" (click)="startEdit(s)">
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button mat-icon-button matTooltip="Delete" color="warn" (click)="confirmDelete(s)">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
         <tr mat-header-row *matHeaderRowDef="columns"></tr>
-        <tr mat-row *matRowDef="let row; columns: columns"></tr>
+        <tr mat-row *matRowDef="let row; columns: columns"
+            [class.selected-row]="row.id === editingId"></tr>
       </table>
+
+      @if (scenarios().length === 0) {
+        <div class="empty-state mt-2">
+          <mat-icon>theaters</mat-icon>
+          <p>No scenarios yet. Click <strong>New Scenario</strong> to create one.</p>
+        </div>
+      }
+
+      <!-- DELETE CONFIRMATION -->
+      @if (deleteTarget) {
+        <div class="confirm-overlay" (click)="deleteTarget = null">
+          <mat-card class="confirm-dialog" (click)="$event.stopPropagation()">
+            <mat-card-header>
+              <mat-card-title>Delete Scenario</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <p>Are you sure you want to delete <strong>{{ deleteTarget.name }}</strong>?</p>
+              <p class="warn-text">This action cannot be undone.</p>
+            </mat-card-content>
+            <mat-card-actions align="end">
+              <button mat-button (click)="deleteTarget = null">Cancel</button>
+              <button mat-raised-button color="warn" (click)="doDelete()" [disabled]="saving">
+                <mat-icon>delete</mat-icon> Delete
+              </button>
+            </mat-card-actions>
+          </mat-card>
+        </div>
+      }
     </div>
   `,
-  styles: [`.page-header { display: flex; justify-content: space-between; align-items: center; }
+  styles: [`
+    .page-header { display: flex; justify-content: space-between; align-items: center; }
     .full-width { width: 100%; }
-    mat-card-content { display: flex; flex-direction: column; gap: 12px; }
     .form-row { display: flex; gap: 16px; align-items: flex-start; }
     .flex-grow { flex: 1; }
-    .version-field { width: 160px; min-width: 160px; }`],
+    .version-field { width: 160px; min-width: 160px; }
+    .form-actions { display: flex; gap: 8px; }
+    .text-green { color: #4caf50; }
+    .selected-row { background: rgba(0, 188, 212, 0.08); }
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 48px 16px; opacity: 0.6;
+      mat-icon { font-size: 48px; width: 48px; height: 48px; }
+    }
+    .confirm-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .confirm-dialog { max-width: 420px; width: 100%; }
+    .warn-text { color: #ef5350; font-size: 0.85em; }
+  `],
 })
 export class ScenariosComponent implements OnInit {
   scenarios = signal<Scenario[]>([]);
-  showCreate = false;
+  showForm = false;
+  editingId: string | null = null;
+  deleteTarget: Scenario | null = null;
+  saving = false;
   form = { name: '', version: '1.0', yaml: '', is_public: false };
-  columns = ['name', 'version', 'public', 'created'];
+  columns = ['name', 'version', 'public', 'created', 'actions'];
 
   constructor(private api: ApiService, private notify: NotificationService) {}
   ngOnInit(): void { this.load(); }
+
   load(): void { this.api.listScenarios().subscribe(s => this.scenarios.set(s)); }
+
+  // ── Create ────────────────────────────────────────────────
+  startCreate(): void {
+    this.editingId = null;
+    this.form = { name: '', version: '1.0', yaml: '', is_public: false };
+    this.showForm = true;
+  }
+
   create(): void {
+    this.saving = true;
     this.api.createScenario(this.form).subscribe({
-      next: () => { this.notify.success('Scenario created'); this.load(); this.showCreate = false; },
-      error: () => this.notify.error('Failed'),
+      next: () => {
+        this.notify.success('Scenario created');
+        this.load();
+        this.cancelForm();
+      },
+      error: () => { this.notify.error('Create failed'); this.saving = false; },
     });
+  }
+
+  // ── Edit ──────────────────────────────────────────────────
+  startEdit(s: Scenario): void {
+    this.editingId = s.id;
+    this.form = { name: s.name, version: s.version, yaml: s.yaml, is_public: s.is_public };
+    this.showForm = true;
+  }
+
+  update(): void {
+    if (!this.editingId) return;
+    this.saving = true;
+    this.api.updateScenario(this.editingId, this.form).subscribe({
+      next: () => {
+        this.notify.success('Scenario updated');
+        this.load();
+        this.cancelForm();
+      },
+      error: () => { this.notify.error('Update failed'); this.saving = false; },
+    });
+  }
+
+  // ── Delete ────────────────────────────────────────────────
+  confirmDelete(s: Scenario): void {
+    this.deleteTarget = s;
+  }
+
+  doDelete(): void {
+    if (!this.deleteTarget) return;
+    const deletedId = this.deleteTarget.id;
+    this.saving = true;
+    this.api.deleteScenario(deletedId).subscribe({
+      next: () => {
+        this.notify.success('Scenario deleted');
+        this.deleteTarget = null;
+        this.saving = false;
+        if (this.editingId === deletedId) this.cancelForm();
+        this.load();
+      },
+      error: () => { this.notify.error('Delete failed'); this.saving = false; },
+    });
+  }
+
+  cancelForm(): void {
+    this.showForm = false;
+    this.editingId = null;
+    this.saving = false;
+    this.form = { name: '', version: '1.0', yaml: '', is_public: false };
   }
 }

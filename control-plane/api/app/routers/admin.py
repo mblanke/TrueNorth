@@ -44,6 +44,7 @@ from ..schemas import (
     TeamOut,
     TeamFullIn,
     TeamFullOut,
+    TeamUpdate,
     TenantIn,
     TenantOut,
     UserOut,
@@ -234,6 +235,23 @@ def list_teams(
 ) -> list[Team]:
     """List teams in the caller's tenant.  **Permission: user:read**"""
     return db.query(Team).filter(Team.tenant_id == uuid.UUID(user.tenant_id)).all()
+
+
+@router.patch("/teams/{team_id}", response_model=TeamFullOut)
+def update_team(
+    body: TeamUpdate,
+    team_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> Team:
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(404, "Team not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(team, field, value)
+    db.commit()
+    db.refresh(team)
+    return team
 
 
 @router.delete("/teams/{team_id}", status_code=204)

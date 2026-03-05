@@ -23,9 +23,11 @@ from ..schemas import (
     CoalitionOut,
     OUIn,
     OUOut,
+    OUUpdate,
     OUTreeOut,
     SecurityGroupIn,
     SecurityGroupOut,
+    SecurityGroupUpdate,
     SecurityGroupMembershipIn,
 )
 
@@ -126,6 +128,20 @@ def get_ou(ou_id: uuid.UUID, db: Session = Depends(get_db)):
     return ou
 
 
+@router.patch("/ous/{ou_id}", response_model=OUOut)
+def update_ou(ou_id: uuid.UUID, payload: OUUpdate, db: Session = Depends(get_db)):
+    ou = db.get(OrganizationalUnit, str(ou_id))
+    if not ou:
+        raise HTTPException(404, "OU not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        if field == "parent_id" and value is not None:
+            value = str(value)
+        setattr(ou, field, value)
+    db.commit()
+    db.refresh(ou)
+    return ou
+
+
 @router.delete("/ous/{ou_id}", status_code=204)
 def delete_ou(ou_id: uuid.UUID, db: Session = Depends(get_db)):
     ou = db.get(OrganizationalUnit, str(ou_id))
@@ -161,6 +177,18 @@ def get_group(group_id: uuid.UUID, db: Session = Depends(get_db)):
     sg = db.get(SecurityGroup, str(group_id))
     if not sg:
         raise HTTPException(404, "Group not found")
+    return sg
+
+
+@router.patch("/groups/{group_id}", response_model=SecurityGroupOut)
+def update_group(group_id: uuid.UUID, payload: SecurityGroupUpdate, db: Session = Depends(get_db)):
+    sg = db.get(SecurityGroup, str(group_id))
+    if not sg:
+        raise HTTPException(404, "Group not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(sg, field, value)
+    db.commit()
+    db.refresh(sg)
     return sg
 
 

@@ -70,6 +70,23 @@ import { Exercise, Range, Scenario } from '@core/models';
         </mat-card>
       }
 
+      @if (editingId) {
+        <mat-card class="edit-form mt-2">
+          <mat-card-content>
+            <div class="form-row">
+              <mat-form-field appearance="outline">
+                <mat-label>Exercise Name</mat-label>
+                <input matInput [(ngModel)]="editForm.name" placeholder="Exercise name">
+              </mat-form-field>
+            </div>
+            <button mat-raised-button color="primary" (click)="updateExercise()" [disabled]="!editForm.name || saving">
+              {{ saving ? 'Saving...' : 'Save' }}
+            </button>
+            <button mat-button (click)="cancelEdit()" [disabled]="saving">Cancel</button>
+          </mat-card-content>
+        </mat-card>
+      }
+
       <table mat-table [dataSource]="exercises()" class="mt-2 full-width">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Name</th>
@@ -93,6 +110,9 @@ import { Exercise, Range, Scenario } from '@core/models';
           <th mat-header-cell *matHeaderCellDef>Actions</th>
           <td mat-cell *matCellDef="let e">
             @if (e.state === 'pending') {
+              <button mat-icon-button (click)="startEdit(e)" matTooltip="Rename" [disabled]="saving">
+                <mat-icon>edit</mat-icon>
+              </button>
               <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Start">
                 <mat-icon>play_arrow</mat-icon>
               </button>
@@ -130,6 +150,8 @@ import { Exercise, Range, Scenario } from '@core/models';
     .full-width { width: 100%; }
     mat-card-content { display: flex; flex-direction: column; gap: 12px; }
     mat-card-content mat-form-field:not(.full-width) { width: 100%; max-width: 400px; }
+    .edit-form mat-card-content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; flex-direction: row; }
+    .edit-form mat-form-field { flex: 1; min-width: 200px; }
   `],
 })
 export class ExercisesComponent implements OnInit {
@@ -139,6 +161,9 @@ export class ExercisesComponent implements OnInit {
   showCreate = false;
   form = { name: '', range_id: '', scenario_id: '' };
   columns = ['name', 'state', 'score', 'created', 'actions'];
+  editingId: string | null = null;
+  editForm = { name: '' };
+  saving = false;
 
   constructor(private api: ApiService, private notify: NotificationService) {}
 
@@ -183,5 +208,23 @@ export class ExercisesComponent implements OnInit {
       next: () => this.notify.success('AAR generated'),
       error: () => this.notify.error('AAR generation failed'),
     });
+  }
+
+  startEdit(e: Exercise): void {
+    this.editingId = e.id;
+    this.editForm.name = e.name;
+  }
+
+  updateExercise(): void {
+    this.saving = true;
+    this.api.updateExercise(this.editingId!, this.editForm).subscribe({
+      next: () => { this.notify.success('Exercise renamed'); this.load(); this.cancelEdit(); this.saving = false; },
+      error: () => { this.notify.error('Failed to rename exercise'); this.saving = false; },
+    });
+  }
+
+  cancelEdit(): void {
+    this.editingId = null;
+    this.editForm.name = '';
   }
 }

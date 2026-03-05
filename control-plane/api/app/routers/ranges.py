@@ -41,6 +41,7 @@ from ..schemas import (
     RangeListOut,
     RangeOut,
     RangeStatsOut,
+    RangeUpdate,
 )
 
 logger = logging.getLogger("truenorth.api.ranges")
@@ -142,6 +143,26 @@ def get_range(
     rng = db.query(Range).filter(Range.id == range_id).first()
     if not rng:
         raise HTTPException(404, "Range not found")
+    return rng
+
+
+@router.put("/{range_id}", response_model=RangeOut)
+def update_range(
+    body: RangeUpdate,
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
+) -> Range:
+    """Update a range.  **Permission: range:update**"""
+    rng = db.query(Range).filter(Range.id == range_id).first()
+    if not rng:
+        raise HTTPException(404, "Range not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(rng, field, value)
+    db.commit()
+    db.refresh(rng)
+    _audit(db, user, "update", "range", str(rng.id))
+    db.commit()
     return rng
 
 

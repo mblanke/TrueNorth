@@ -49,6 +49,7 @@ from ..schemas import (
     ExerciseIn,
     ExerciseListOut,
     ExerciseOut,
+    ExerciseUpdate,
     ObjectiveAck,
     ObjectiveOut,
 )
@@ -120,6 +121,28 @@ def get_exercise(
     ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
     if not ex:
         raise HTTPException(404, "Exercise not found")
+    return ex
+
+
+@router.put("/{exercise_id}", response_model=ExerciseOut)
+def update_exercise(
+    body: ExerciseUpdate,
+    exercise_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_CREATE)),
+) -> Exercise:
+    """Update an exercise.  **Permission: exercise:create**"""
+    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
+    if not ex:
+        raise HTTPException(404, "Exercise not found")
+    if ex.state not in (ExerciseState.pending,):
+        raise HTTPException(409, f"Cannot edit exercise in state {ex.state.value}")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(ex, field, value)
+    db.commit()
+    db.refresh(ex)
+    _audit(db, user, "update", "exercise", str(ex.id))
+    db.commit()
     return ex
 
 

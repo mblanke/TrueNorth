@@ -52,10 +52,10 @@ interface ExternalPlatform {
               </button>
             </div>
 
-            @if (showAdd) {
+            @if (showAdd || editingPlatformId) {
               <mat-card class="add-form mt-2">
                 <mat-card-content>
-                  <h3>Register External Platform</h3>
+                  <h3>{{ editingPlatformId ? 'Edit Platform' : 'Register External Platform' }}</h3>
                   <div class="form-row">
                     <mat-form-field appearance="outline">
                       <mat-label>Name</mat-label>
@@ -91,8 +91,13 @@ interface ExternalPlatform {
                       </mat-select>
                     </mat-form-field>
                   </div>
-                  <button mat-raised-button color="primary" (click)="addPlatform()">Save</button>
-                  <button mat-button (click)="showAdd = false">Cancel</button>
+                  <button mat-raised-button color="primary"
+                    [disabled]="platformSaving"
+                    (click)="editingPlatformId ? updatePlatform() : addPlatform()">
+                    {{ platformSaving ? 'Saving...' : 'Save' }}
+                  </button>
+                  <button mat-button [disabled]="platformSaving"
+                    (click)="editingPlatformId ? cancelPlatformEdit() : showAdd = false">Cancel</button>
                 </mat-card-content>
               </mat-card>
             }
@@ -122,6 +127,9 @@ interface ExternalPlatform {
                   <mat-card-actions align="end">
                     <button mat-button (click)="testConnection(p)">
                       <mat-icon>network_check</mat-icon> Test
+                    </button>
+                    <button mat-button (click)="startEditPlatform(p)">
+                      <mat-icon>edit</mat-icon> Edit
                     </button>
                     <button mat-button color="warn" (click)="deletePlatform(p)">
                       <mat-icon>delete</mat-icon> Remove
@@ -188,6 +196,8 @@ interface ExternalPlatform {
 export class IntegrationsComponent implements OnInit {
   platforms = signal<ExternalPlatform[]>([]);
   showAdd = false;
+  editingPlatformId: string | null = null;
+  platformSaving = false;
   newPlatform: any = { name: '', slug: '', base_url: '', auth_type: 'lti13', platform_type: 'moodle' };
 
   constructor(private api: ApiService) {}
@@ -216,6 +226,39 @@ export class IntegrationsComponent implements OnInit {
       next: () => { this.showAdd = false; this.loadPlatforms(); },
       error: (err: any) => alert(err.error?.detail || 'Failed to add platform'),
     });
+  }
+
+  startEditPlatform(p: ExternalPlatform) {
+    this.showAdd = false;
+    this.editingPlatformId = p.id;
+    this.newPlatform = {
+      name: p.name,
+      slug: p.slug,
+      base_url: p.base_url,
+      auth_type: p.auth_type,
+      platform_type: p.platform_type,
+    };
+  }
+
+  updatePlatform() {
+    if (!this.editingPlatformId) return;
+    this.platformSaving = true;
+    this.api.patch('/integrations/platforms/' + this.editingPlatformId, this.newPlatform).subscribe({
+      next: () => {
+        this.cancelPlatformEdit();
+        this.loadPlatforms();
+      },
+      error: (err: any) => {
+        this.platformSaving = false;
+        alert(err.error?.detail || 'Failed to update platform');
+      },
+    });
+  }
+
+  cancelPlatformEdit() {
+    this.editingPlatformId = null;
+    this.platformSaving = false;
+    this.newPlatform = { name: '', slug: '', base_url: '', auth_type: 'lti13', platform_type: 'moodle' };
   }
 
   testConnection(p: ExternalPlatform) {

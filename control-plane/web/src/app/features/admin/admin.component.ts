@@ -9,6 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatTableModule } from '@angular/material/table';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Tenant, HealthResponse } from '@core/models';
@@ -29,7 +30,7 @@ interface AuditEntry {
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatTableModule,
-    MatTabsModule, MatChipsModule,
+    MatTabsModule, MatChipsModule, MatTooltipModule,
   ],
   template: `
     <div class="page-container">
@@ -101,13 +102,74 @@ interface AuditEntry {
                 </mat-card-content>
               </mat-card>
             }
+
+            <!-- INLINE EDIT FORM -->
+            @if (editingTenantId) {
+              <mat-card class="mt-1">
+                <mat-card-header>
+                  <mat-card-title>Edit Tenant</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Name</mat-label>
+                      <input matInput [(ngModel)]="tenantEditForm.name">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Slug</mat-label>
+                      <input matInput [(ngModel)]="tenantEditForm.slug">
+                    </mat-form-field>
+                  </div>
+                  <div class="form-actions">
+                    <button mat-raised-button color="primary" (click)="updateTenant()" [disabled]="!tenantEditForm.name || tenantSaving">
+                      <mat-icon>save</mat-icon> Save
+                    </button>
+                    <button mat-button (click)="cancelTenantEdit()">Cancel</button>
+                  </div>
+                </mat-card-content>
+              </mat-card>
+            }
+
             <table mat-table [dataSource]="tenants()" class="mt-2 full-width">
               <ng-container matColumnDef="name"><th mat-header-cell *matHeaderCellDef>Name</th><td mat-cell *matCellDef="let t">{{ t.name }}</td></ng-container>
               <ng-container matColumnDef="slug"><th mat-header-cell *matHeaderCellDef>Slug</th><td mat-cell *matCellDef="let t">{{ t.slug }}</td></ng-container>
               <ng-container matColumnDef="id"><th mat-header-cell *matHeaderCellDef>ID</th><td mat-cell *matCellDef="let t">{{ t.id }}</td></ng-container>
+              <ng-container matColumnDef="actions">
+                <th mat-header-cell *matHeaderCellDef>Actions</th>
+                <td mat-cell *matCellDef="let t">
+                  <button mat-icon-button matTooltip="Edit" (click)="startEditTenant(t)">
+                    <mat-icon>edit</mat-icon>
+                  </button>
+                  <button mat-icon-button matTooltip="Delete" color="warn" (click)="confirmDeleteTenant(t)">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </td>
+              </ng-container>
               <tr mat-header-row *matHeaderRowDef="tenantColumns"></tr>
-              <tr mat-row *matRowDef="let row; columns: tenantColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: tenantColumns"
+                  [class.selected-row]="row.id === editingTenantId"></tr>
             </table>
+
+            <!-- DELETE CONFIRMATION -->
+            @if (tenantDeleteTarget) {
+              <div class="confirm-overlay" (click)="tenantDeleteTarget = null">
+                <mat-card class="confirm-dialog" (click)="$event.stopPropagation()">
+                  <mat-card-header>
+                    <mat-card-title>Delete Tenant</mat-card-title>
+                  </mat-card-header>
+                  <mat-card-content>
+                    <p>Are you sure you want to delete <strong>{{ tenantDeleteTarget.name }}</strong>?</p>
+                    <p class="warn-text">This action cannot be undone.</p>
+                  </mat-card-content>
+                  <mat-card-actions align="end">
+                    <button mat-button (click)="tenantDeleteTarget = null">Cancel</button>
+                    <button mat-raised-button color="warn" (click)="doDeleteTenant()" [disabled]="tenantSaving">
+                      <mat-icon>delete</mat-icon> Delete
+                    </button>
+                  </mat-card-actions>
+                </mat-card>
+              </div>
+            }
           </div>
         </mat-tab>
 
@@ -195,7 +257,15 @@ interface AuditEntry {
     .mono { font-family: monospace; font-size: 12px; color: var(--text-secondary); }
     .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
     table th, table td { color: var(--text-primary) !important; }
-    table { background: transparent !important; }`],
+    table { background: transparent !important; }
+    .form-actions { display: flex; gap: 8px; }
+    .selected-row { background: rgba(0, 188, 212, 0.08); }
+    .confirm-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center; z-index: 1000;
+    }
+    .confirm-dialog { max-width: 420px; width: 100%; }
+    .warn-text { color: #ef5350; font-size: 0.85em; }`],
 })
 export class AdminComponent implements OnInit {
   health = signal<HealthResponse | null>(null);
@@ -203,8 +273,14 @@ export class AdminComponent implements OnInit {
   auditLog = signal<AuditEntry[]>([]);
   showCreateTenant = false;
   tenantForm = { name: '', slug: '' };
-  tenantColumns = ['name', 'slug', 'id'];
+  tenantColumns = ['name', 'slug', 'id', 'actions'];
   auditColumns = ['timestamp', 'action', 'resource_type', 'resource_id', 'user_id', 'detail'];
+
+  // ── Tenant edit / delete state ─────────────────────────
+  editingTenantId: string | null = null;
+  tenantEditForm = { name: '', slug: '' };
+  tenantDeleteTarget: Tenant | null = null;
+  tenantSaving = false;
 
   constructor(private api: ApiService, private notify: NotificationService) {}
 
@@ -234,6 +310,52 @@ export class AdminComponent implements OnInit {
         this.tenantForm = { name: '', slug: '' };
       },
       error: () => this.notify.error('Failed'),
+    });
+  }
+
+  // ── Tenant Edit ────────────────────────────────────────
+  startEditTenant(t: Tenant): void {
+    this.editingTenantId = t.id;
+    this.tenantEditForm = { name: t.name, slug: t.slug };
+  }
+
+  updateTenant(): void {
+    if (!this.editingTenantId) return;
+    this.tenantSaving = true;
+    this.api.updateTenant(this.editingTenantId, this.tenantEditForm).subscribe({
+      next: () => {
+        this.notify.success('Tenant updated');
+        this.loadTenants();
+        this.cancelTenantEdit();
+      },
+      error: () => { this.notify.error('Update failed'); this.tenantSaving = false; },
+    });
+  }
+
+  cancelTenantEdit(): void {
+    this.editingTenantId = null;
+    this.tenantSaving = false;
+    this.tenantEditForm = { name: '', slug: '' };
+  }
+
+  // ── Tenant Delete ──────────────────────────────────────
+  confirmDeleteTenant(t: Tenant): void {
+    this.tenantDeleteTarget = t;
+  }
+
+  doDeleteTenant(): void {
+    if (!this.tenantDeleteTarget) return;
+    const deletedId = this.tenantDeleteTarget.id;
+    this.tenantSaving = true;
+    this.api.deleteTenant(deletedId).subscribe({
+      next: () => {
+        this.notify.success('Tenant deleted');
+        this.tenantDeleteTarget = null;
+        this.tenantSaving = false;
+        if (this.editingTenantId === deletedId) this.cancelTenantEdit();
+        this.loadTenants();
+      },
+      error: () => { this.notify.error('Delete failed'); this.tenantSaving = false; },
     });
   }
 }

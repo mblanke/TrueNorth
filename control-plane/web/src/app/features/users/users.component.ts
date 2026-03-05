@@ -1,4 +1,4 @@
-﻿import { Component, OnInit } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -50,8 +50,8 @@ interface ADSyncStatus {
 interface AuthZone {
   id: string; zone_name: string; description: string | null;
   allowed_methods: string; require_mfa: boolean;
-  session_timeout_minutes: number; clearance_required: string;
-  is_active: boolean;
+  session_timeout_minutes: number; max_failed_attempts: number;
+  clearance_required: string; is_active: boolean;
 }
 
 @Component({
@@ -85,19 +85,19 @@ interface AuthZone {
                 <input matInput [(ngModel)]="userSearch" placeholder="Name, email, callsign...">
                 <mat-icon matSuffix>search</mat-icon>
               </mat-form-field>
-              <button mat-raised-button color="primary" (click)="showUserForm = !showUserForm">
-                <mat-icon>person_add</mat-icon> {{ showUserForm ? 'Cancel' : 'Add User' }}
+              <button mat-raised-button color="primary" (click)="editingUserId ? cancelUserEdit() : (showUserForm = !showUserForm)">
+                <mat-icon>person_add</mat-icon> {{ (showUserForm || editingUserId) ? 'Cancel' : 'Add User' }}
               </button>
             </div>
 
-            <!-- Add User Form -->
-            <mat-card *ngIf="showUserForm" class="add-form-card">
-              <mat-card-header><mat-card-title>New User</mat-card-title></mat-card-header>
+            <!-- Add / Edit User Form -->
+            <mat-card *ngIf="showUserForm || editingUserId" class="add-form-card">
+              <mat-card-header><mat-card-title>{{ editingUserId ? 'Edit User' : 'New User' }}</mat-card-title></mat-card-header>
               <mat-card-content>
                 <div class="form-row">
                   <mat-form-field appearance="outline">
                     <mat-label>Email</mat-label>
-                    <input matInput [(ngModel)]="newUser.email" placeholder="user@example.com">
+                    <input matInput [(ngModel)]="newUser.email" placeholder="user@example.com" [readonly]="!!editingUserId">
                   </mat-form-field>
                   <mat-form-field appearance="outline">
                     <mat-label>Display Name</mat-label>
@@ -169,10 +169,10 @@ interface AuthZone {
                 </div>
               </mat-card-content>
               <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="createUser()" [disabled]="!newUser.email || !newUser.display_name">
-                  <mat-icon>save</mat-icon> Create User
+                <button mat-raised-button color="primary" (click)="editingUserId ? updateUser() : createUser()" [disabled]="userSaving || !newUser.email || !newUser.display_name">
+                  <mat-icon>save</mat-icon> {{ editingUserId ? 'Save Changes' : 'Create User' }}
                 </button>
-                <button mat-button (click)="showUserForm = false">Cancel</button>
+                <button mat-button (click)="editingUserId ? cancelUserEdit() : (showUserForm = false)">Cancel</button>
               </mat-card-actions>
             </mat-card>
 
@@ -208,6 +208,9 @@ interface AuthZone {
               <ng-container matColumnDef="actions">
                 <th mat-header-cell *matHeaderCellDef></th>
                 <td mat-cell *matCellDef="let u">
+                  <button mat-icon-button matTooltip="Edit" (click)="startEditUser(u)">
+                    <mat-icon>edit</mat-icon>
+                  </button>
                   <button mat-icon-button color="warn" matTooltip="Delete" (click)="deleteUser(u)">
                     <mat-icon>delete</mat-icon>
                   </button>
@@ -225,13 +228,14 @@ interface AuthZone {
           <div class="tab-content">
             <div class="tab-toolbar">
               <span class="toolbar-spacer"></span>
-              <button mat-raised-button color="primary" (click)="showTeamForm = !showTeamForm">
-                <mat-icon>group_add</mat-icon> {{ showTeamForm ? 'Cancel' : 'Add Team' }}
+              <button mat-raised-button color="primary" (click)="editingTeamId ? cancelTeamEdit() : (showTeamForm = !showTeamForm)">
+                <mat-icon>group_add</mat-icon> {{ (showTeamForm || editingTeamId) ? 'Cancel' : 'Add Team' }}
               </button>
             </div>
 
-            <mat-card *ngIf="showTeamForm" class="add-form-card">
-              <mat-card-header><mat-card-title>New Team</mat-card-title></mat-card-header>
+            <!-- Add / Edit Team Form -->
+            <mat-card *ngIf="showTeamForm || editingTeamId" class="add-form-card">
+              <mat-card-header><mat-card-title>{{ editingTeamId ? 'Edit Team' : 'New Team' }}</mat-card-title></mat-card-header>
               <mat-card-content>
                 <div class="form-row">
                   <mat-form-field appearance="outline">
@@ -268,10 +272,10 @@ interface AuthZone {
                 </div>
               </mat-card-content>
               <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="createTeam()" [disabled]="!newTeam.name">
-                  <mat-icon>save</mat-icon> Create Team
+                <button mat-raised-button color="primary" (click)="editingTeamId ? updateTeam() : createTeam()" [disabled]="teamSaving || !newTeam.name">
+                  <mat-icon>save</mat-icon> {{ editingTeamId ? 'Save Changes' : 'Create Team' }}
                 </button>
-                <button mat-button (click)="showTeamForm = false">Cancel</button>
+                <button mat-button (click)="editingTeamId ? cancelTeamEdit() : (showTeamForm = false)">Cancel</button>
               </mat-card-actions>
             </mat-card>
 
@@ -289,6 +293,9 @@ interface AuthZone {
                   </div>
                 </mat-card-content>
                 <mat-card-actions>
+                  <button mat-icon-button matTooltip="Edit" (click)="startEditTeam(t)">
+                    <mat-icon>edit</mat-icon>
+                  </button>
                   <button mat-icon-button color="warn" matTooltip="Delete" (click)="deleteTeam(t)">
                     <mat-icon>delete</mat-icon>
                   </button>
@@ -340,12 +347,14 @@ interface AuthZone {
           <div class="tab-content">
             <div class="tab-toolbar">
               <h3 style="margin: 0;">Organizational Units</h3>
-              <button mat-raised-button color="accent" (click)="showOUForm = !showOUForm">
-                <mat-icon>create_new_folder</mat-icon> {{ showOUForm ? 'Cancel' : 'Add OU' }}
+              <button mat-raised-button color="accent" (click)="editingOuId ? cancelOuEdit() : (showOUForm = !showOUForm)">
+                <mat-icon>create_new_folder</mat-icon> {{ (showOUForm || editingOuId) ? 'Cancel' : 'Add OU' }}
               </button>
             </div>
 
-            <mat-card *ngIf="showOUForm" class="add-form-card">
+            <!-- Add / Edit OU Form -->
+            <mat-card *ngIf="showOUForm || editingOuId" class="add-form-card">
+              <mat-card-header><mat-card-title>{{ editingOuId ? 'Edit OU' : 'New OU' }}</mat-card-title></mat-card-header>
               <mat-card-content>
                 <div class="form-row">
                   <mat-form-field appearance="outline">
@@ -368,18 +377,25 @@ interface AuthZone {
                 </div>
               </mat-card-content>
               <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="createOU()" [disabled]="!newOU.name || !newOU.slug">
-                  <mat-icon>save</mat-icon> Create OU
+                <button mat-raised-button color="primary" (click)="editingOuId ? updateOu() : createOU()" [disabled]="ouSaving || !newOU.name || !newOU.slug">
+                  <mat-icon>save</mat-icon> {{ editingOuId ? 'Save Changes' : 'Create OU' }}
                 </button>
+                <button mat-button (click)="editingOuId ? cancelOuEdit() : (showOUForm = false)">Cancel</button>
               </mat-card-actions>
             </mat-card>
 
             <div *ngFor="let ou of ouTree" class="ou-node">
               <mat-icon>folder</mat-icon>
               <strong>{{ ou.name }}</strong> ({{ ou.ou_type }})
+              <button mat-icon-button matTooltip="Edit" (click)="startEditOu(ou)">
+                <mat-icon>edit</mat-icon>
+              </button>
               <div *ngFor="let child of ou.children" class="ou-child">
                 <mat-icon>subdirectory_arrow_right</mat-icon>
                 {{ child.name }} ({{ child.ou_type }})
+                <button mat-icon-button matTooltip="Edit" (click)="startEditOu(child)">
+                  <mat-icon>edit</mat-icon>
+                </button>
               </div>
             </div>
             <p *ngIf="ouTree.length === 0" class="empty-state">No OUs configured.</p>
@@ -388,12 +404,14 @@ interface AuthZone {
 
             <div class="tab-toolbar">
               <h3 style="margin: 0;">Security Groups</h3>
-              <button mat-raised-button color="accent" (click)="showGroupForm = !showGroupForm">
-                <mat-icon>security</mat-icon> {{ showGroupForm ? 'Cancel' : 'Add Group' }}
+              <button mat-raised-button color="accent" (click)="editingGroupId ? cancelGroupEdit() : (showGroupForm = !showGroupForm)">
+                <mat-icon>security</mat-icon> {{ (showGroupForm || editingGroupId) ? 'Cancel' : 'Add Group' }}
               </button>
             </div>
 
-            <mat-card *ngIf="showGroupForm" class="add-form-card">
+            <!-- Add / Edit Security Group Form -->
+            <mat-card *ngIf="showGroupForm || editingGroupId" class="add-form-card">
+              <mat-card-header><mat-card-title>{{ editingGroupId ? 'Edit Group' : 'New Group' }}</mat-card-title></mat-card-header>
               <mat-card-content>
                 <div class="form-row">
                   <mat-form-field appearance="outline">
@@ -419,9 +437,10 @@ interface AuthZone {
                 </mat-form-field>
               </mat-card-content>
               <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="createGroup()" [disabled]="!newGroup.name || !newGroup.slug">
-                  <mat-icon>save</mat-icon> Create Group
+                <button mat-raised-button color="primary" (click)="editingGroupId ? updateGroup() : createGroup()" [disabled]="groupSaving || !newGroup.name || !newGroup.slug">
+                  <mat-icon>save</mat-icon> {{ editingGroupId ? 'Save Changes' : 'Create Group' }}
                 </button>
+                <button mat-button (click)="editingGroupId ? cancelGroupEdit() : (showGroupForm = false)">Cancel</button>
               </mat-card-actions>
             </mat-card>
 
@@ -438,8 +457,16 @@ interface AuthZone {
                 <th mat-header-cell *matHeaderCellDef>Description</th>
                 <td mat-cell *matCellDef="let g">{{ g.description || '-' }}</td>
               </ng-container>
-              <tr mat-header-row *matHeaderRowDef="['name','type','description']"></tr>
-              <tr mat-row *matRowDef="let row; columns: ['name','type','description'];"></tr>
+              <ng-container matColumnDef="actions">
+                <th mat-header-cell *matHeaderCellDef></th>
+                <td mat-cell *matCellDef="let g">
+                  <button mat-icon-button matTooltip="Edit" (click)="startEditGroup(g)">
+                    <mat-icon>edit</mat-icon>
+                  </button>
+                </td>
+              </ng-container>
+              <tr mat-header-row *matHeaderRowDef="['name','type','description','actions']"></tr>
+              <tr mat-row *matRowDef="let row; columns: ['name','type','description','actions'];"></tr>
             </table>
           </div>
         </mat-tab>
@@ -475,20 +502,83 @@ interface AuthZone {
         <!-- ===== Auth Zones Tab ===== -->
         <mat-tab label="Auth Zones">
           <div class="tab-content">
-            <mat-card *ngFor="let z of authZones" class="zone-card">
-              <mat-card-header>
-                <mat-card-title>{{ z.zone_name }}</mat-card-title>
-              </mat-card-header>
-              <mat-card-content>
-                <p>{{ z.description }}</p>
-                <div class="zone-info">
-                  <span><strong>Methods:</strong> {{ z.allowed_methods }}</span>
-                  <span><strong>MFA Required:</strong> {{ z.require_mfa ? 'Yes' : 'No' }}</span>
-                  <span><strong>Timeout:</strong> {{ z.session_timeout_minutes }}min</span>
-                  <span><strong>Clearance:</strong> {{ z.clearance_required }}</span>
-                </div>
-              </mat-card-content>
-            </mat-card>
+            <ng-container *ngFor="let z of authZones">
+              <mat-card class="zone-card">
+                <mat-card-header>
+                  <mat-card-title>{{ z.zone_name }}</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <p>{{ z.description }}</p>
+                  <div class="zone-info">
+                    <span><strong>Methods:</strong> {{ z.allowed_methods }}</span>
+                    <span><strong>MFA Required:</strong> {{ z.require_mfa ? 'Yes' : 'No' }}</span>
+                    <span><strong>Timeout:</strong> {{ z.session_timeout_minutes }}min</span>
+                    <span><strong>Clearance:</strong> {{ z.clearance_required }}</span>
+                  </div>
+                </mat-card-content>
+                <mat-card-actions>
+                  <button mat-icon-button matTooltip="Edit" (click)="startEditZone(z)">
+                    <mat-icon>edit</mat-icon>
+                  </button>
+                </mat-card-actions>
+              </mat-card>
+
+              <!-- Auth Zone Inline Edit Form -->
+              <mat-card *ngIf="editingZoneId === z.id" class="add-form-card">
+                <mat-card-header><mat-card-title>Edit Auth Zone</mat-card-title></mat-card-header>
+                <mat-card-content>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Zone Name</mat-label>
+                      <input matInput [(ngModel)]="zoneForm.zone_name">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Description</mat-label>
+                      <input matInput [(ngModel)]="zoneForm.description">
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Allowed Methods</mat-label>
+                      <input matInput [(ngModel)]="zoneForm.allowed_methods" placeholder="password,cac,token">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Clearance Required</mat-label>
+                      <mat-select [(ngModel)]="zoneForm.clearance_required" panelClass="tn-select-panel">
+                        <mat-option value="unclassified">Unclassified</mat-option>
+                        <mat-option value="protected">Protected</mat-option>
+                        <mat-option value="confidential">Confidential</mat-option>
+                        <mat-option value="secret">Secret</mat-option>
+                        <mat-option value="top_secret">Top Secret</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Require MFA</mat-label>
+                      <mat-select [(ngModel)]="zoneForm.require_mfa" panelClass="tn-select-panel">
+                        <mat-option [value]="true">Yes</mat-option>
+                        <mat-option [value]="false">No</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Session Timeout (min)</mat-label>
+                      <input matInput type="number" [(ngModel)]="zoneForm.session_timeout_minutes">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Max Failed Attempts</mat-label>
+                      <input matInput type="number" [(ngModel)]="zoneForm.max_failed_attempts">
+                    </mat-form-field>
+                  </div>
+                </mat-card-content>
+                <mat-card-actions>
+                  <button mat-raised-button color="primary" (click)="updateZone()" [disabled]="zoneSaving || !zoneForm.zone_name">
+                    <mat-icon>save</mat-icon> Save Changes
+                  </button>
+                  <button mat-button (click)="cancelZoneEdit()">Cancel</button>
+                </mat-card-actions>
+              </mat-card>
+            </ng-container>
           </div>
         </mat-tab>
       </mat-tab-group>
@@ -497,7 +587,7 @@ interface AuthZone {
   styles: [`
         .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     .header-left { display: flex; align-items: center; gap: 16px; }
-    
+
     h1 { margin: 0; font-size: 24px; color: var(--text-primary); }
     .subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
     .tab-content { padding: 16px 0; }
@@ -523,7 +613,7 @@ interface AuthZone {
     .badge-nato { background: #1565c0 !important; color: #fff !important; }
     .badge-fvey { background: #7b1fa2 !important; color: #fff !important; }
     .coalition-card { margin-bottom: 12px; background: var(--bg-card); border: 1px solid var(--border); }
-    .ou-node { padding: 8px 0 8px 16px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+    .ou-node { padding: 8px 0 8px 16px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); flex-wrap: wrap; }
     .ou-child { padding: 4px 0 4px 40px; display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
     .sync-card { max-width: 600px; background: var(--bg-card); }
     .sync-stats { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
@@ -559,6 +649,19 @@ export class UsersComponent implements OnInit {
   newTeam: any = { name: '', team_type: 'blue', description: '', max_members: 10, color_hex: '#2196F3' };
   newOU: any = { name: '', slug: '', ou_type: 'department' };
   newGroup: any = { name: '', slug: '', group_type: 'access', description: '' };
+
+  // Edit mode state
+  editingUserId: string | null = null;
+  userSaving = false;
+  editingTeamId: string | null = null;
+  teamSaving = false;
+  editingZoneId: string | null = null;
+  zoneForm: any = {};
+  zoneSaving = false;
+  editingOuId: string | null = null;
+  ouSaving = false;
+  editingGroupId: string | null = null;
+  groupSaving = false;
 
   constructor(private http: HttpClient, private snack: MatSnackBar) {}
 
@@ -620,6 +723,47 @@ export class UsersComponent implements OnInit {
     });
   }
 
+  startEditUser(u: UserFull): void {
+    this.editingUserId = u.id;
+    this.showUserForm = false;
+    this.newUser = {
+      email: u.email,
+      display_name: u.display_name,
+      role: u.role,
+      first_name: u.first_name || '',
+      last_name: u.last_name || '',
+      rank: u.rank || '',
+      service_branch: u.service_branch || '',
+      nation_id: u.nation_id,
+      clearance_level: u.clearance_level,
+      unit: u.unit || '',
+      callsign: u.callsign || '',
+    };
+  }
+
+  updateUser(): void {
+    if (!this.editingUserId) return;
+    this.userSaving = true;
+    this.http.patch('/api/users/' + this.editingUserId, this.newUser).subscribe({
+      next: () => {
+        this.userSaving = false;
+        this.snack.open('User updated', '', { duration: 2000, panelClass: 'snack-success' });
+        this.cancelUserEdit();
+        this.loadUsers();
+      },
+      error: (err: any) => {
+        this.userSaving = false;
+        this.snack.open(err.error?.detail || 'Failed to update user', 'OK', { duration: 5000 });
+      },
+    });
+  }
+
+  cancelUserEdit(): void {
+    this.editingUserId = null;
+    this.newUser = this.emptyUser();
+    this.showUserForm = false;
+  }
+
   deleteUser(u: UserFull): void {
     if (!confirm('Delete user "' + u.display_name + '"? This cannot be undone.')) return;
     this.http.delete('/api/users/' + u.id).subscribe({
@@ -646,6 +790,41 @@ export class UsersComponent implements OnInit {
         this.snack.open(err.error?.detail || 'Failed to create team', 'OK', { duration: 5000 });
       },
     });
+  }
+
+  startEditTeam(t: TeamFull): void {
+    this.editingTeamId = t.id;
+    this.showTeamForm = false;
+    this.newTeam = {
+      name: t.name,
+      team_type: t.team_type,
+      description: t.description || '',
+      max_members: t.max_members || 10,
+      color_hex: t.color_hex || '#2196F3',
+    };
+  }
+
+  updateTeam(): void {
+    if (!this.editingTeamId) return;
+    this.teamSaving = true;
+    this.http.patch('/api/teams/' + this.editingTeamId, this.newTeam).subscribe({
+      next: () => {
+        this.teamSaving = false;
+        this.snack.open('Team updated', '', { duration: 2000, panelClass: 'snack-success' });
+        this.cancelTeamEdit();
+        this.loadTeams();
+      },
+      error: (err: any) => {
+        this.teamSaving = false;
+        this.snack.open(err.error?.detail || 'Failed to update team', 'OK', { duration: 5000 });
+      },
+    });
+  }
+
+  cancelTeamEdit(): void {
+    this.editingTeamId = null;
+    this.newTeam = { name: '', team_type: 'blue', description: '', max_members: 10, color_hex: '#2196F3' };
+    this.showTeamForm = false;
   }
 
   deleteTeam(t: TeamFull): void {
@@ -676,6 +855,39 @@ export class UsersComponent implements OnInit {
     });
   }
 
+  startEditOu(ou: OUTree): void {
+    this.editingOuId = ou.id;
+    this.showOUForm = false;
+    this.newOU = {
+      name: ou.name,
+      slug: ou.slug,
+      ou_type: ou.ou_type,
+    };
+  }
+
+  updateOu(): void {
+    if (!this.editingOuId) return;
+    this.ouSaving = true;
+    this.http.patch('/api/directory/ous/' + this.editingOuId, this.newOU).subscribe({
+      next: () => {
+        this.ouSaving = false;
+        this.snack.open('OU updated', '', { duration: 2000, panelClass: 'snack-success' });
+        this.cancelOuEdit();
+        this.http.get<OUTree[]>('/api/directory/ous/tree').subscribe({ next: t => this.ouTree = t, error: () => {} });
+      },
+      error: (err: any) => {
+        this.ouSaving = false;
+        this.snack.open(err.error?.detail || 'Failed to update OU', 'OK', { duration: 5000 });
+      },
+    });
+  }
+
+  cancelOuEdit(): void {
+    this.editingOuId = null;
+    this.newOU = { name: '', slug: '', ou_type: 'department' };
+    this.showOUForm = false;
+  }
+
   // -- Security Group CRUD --
   createGroup(): void {
     this.http.post('/api/directory/groups', this.newGroup).subscribe({
@@ -691,6 +903,77 @@ export class UsersComponent implements OnInit {
     });
   }
 
+  startEditGroup(g: SecurityGroup): void {
+    this.editingGroupId = g.id;
+    this.showGroupForm = false;
+    this.newGroup = {
+      name: g.name,
+      slug: g.slug,
+      group_type: g.group_type,
+      description: g.description || '',
+    };
+  }
+
+  updateGroup(): void {
+    if (!this.editingGroupId) return;
+    this.groupSaving = true;
+    this.http.patch('/api/directory/groups/' + this.editingGroupId, this.newGroup).subscribe({
+      next: () => {
+        this.groupSaving = false;
+        this.snack.open('Security group updated', '', { duration: 2000, panelClass: 'snack-success' });
+        this.cancelGroupEdit();
+        this.http.get<SecurityGroup[]>('/api/directory/groups').subscribe({ next: g => this.securityGroups = g, error: () => {} });
+      },
+      error: (err: any) => {
+        this.groupSaving = false;
+        this.snack.open(err.error?.detail || 'Failed to update group', 'OK', { duration: 5000 });
+      },
+    });
+  }
+
+  cancelGroupEdit(): void {
+    this.editingGroupId = null;
+    this.newGroup = { name: '', slug: '', group_type: 'access', description: '' };
+    this.showGroupForm = false;
+  }
+
+  // -- Auth Zone Edit --
+  startEditZone(z: AuthZone): void {
+    this.editingZoneId = z.id;
+    this.zoneForm = {
+      zone_name: z.zone_name,
+      description: z.description || '',
+      allowed_methods: z.allowed_methods,
+      require_mfa: z.require_mfa,
+      session_timeout_minutes: z.session_timeout_minutes,
+      max_failed_attempts: z.max_failed_attempts || 5,
+      clearance_required: z.clearance_required,
+    };
+  }
+
+  updateZone(): void {
+    if (!this.editingZoneId) return;
+    this.zoneSaving = true;
+    this.http.patch('/api/auth-zones/' + this.editingZoneId, this.zoneForm).subscribe({
+      next: () => {
+        this.zoneSaving = false;
+        this.snack.open('Auth zone updated', '', { duration: 2000, panelClass: 'snack-success' });
+        this.cancelZoneEdit();
+        this.http.get<AuthZone[]>('/api/auth-zones').subscribe({ next: z => this.authZones = z, error: () => {} });
+      },
+      error: (err: any) => {
+        this.zoneSaving = false;
+        this.snack.open(err.error?.detail || 'Failed to update auth zone', 'OK', { duration: 5000 });
+      },
+    });
+  }
+
+  cancelZoneEdit(): void {
+    this.editingZoneId = null;
+    this.zoneForm = {};
+    this.zoneSaving = false;
+  }
+
   // -- AD Sync --
   triggerSync(): void {
     this.http.post<any>('/api/ad-sync/trigger', {}).subscribe({
@@ -703,4 +986,3 @@ export class UsersComponent implements OnInit {
     });
   }
 }
-

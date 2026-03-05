@@ -9,7 +9,7 @@ from ..db import get_db
 from ..auth import get_current_user, CurrentUser
 from ..models import StorageAppliance, StorageVolume
 from ..schemas import (
-    StorageApplianceIn, StorageApplianceOut,
+    StorageApplianceIn, StorageApplianceOut, StorageApplianceUpdate,
     StorageVolumeIn, StorageVolumeOut,
     StorageSummaryOut,
 )
@@ -39,6 +39,23 @@ def delete_appliance(appliance_id: uuid.UUID, db: Session = Depends(get_db), use
         raise HTTPException(404, "Appliance not found")
     db.delete(obj)
     db.commit()
+
+
+@router.patch("/appliances/{appliance_id}", response_model=StorageApplianceOut)
+def update_appliance(
+    appliance_id: uuid.UUID,
+    body: StorageApplianceUpdate,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    obj = db.query(StorageAppliance).filter_by(id=appliance_id, tenant_id=user.tenant_id).first()
+    if not obj:
+        raise HTTPException(404, "Appliance not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(obj, field, value)
+    db.commit()
+    db.refresh(obj)
+    return obj
 
 
 # ── Volumes ────────────────────────────────────────────────────

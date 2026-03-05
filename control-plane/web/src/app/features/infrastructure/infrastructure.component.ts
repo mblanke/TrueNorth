@@ -165,7 +165,7 @@ interface NetworkSummary {
           <ng-template mat-tab-label><mat-icon class="tab-icon">computer</mat-icon> Compute</ng-template>
 
           <div class="tab-actions">
-            <button mat-raised-button color="primary" (click)="showAddConn = !showAddConn">
+            <button mat-raised-button color="primary" (click)="cancelConnectionEdit(); showAddConn = !showAddConn">
               <mat-icon>add</mat-icon> Add Connection
             </button>
             <button mat-stroked-button (click)="discoverAllNodes()" [disabled]="discoveringAll || connections.length === 0">
@@ -175,8 +175,8 @@ interface NetworkSummary {
           </div>
 
           <!-- Add Connection Form -->
-          <mat-card *ngIf="showAddConn" class="add-form-card">
-            <mat-card-header><mat-card-title>New Hypervisor Connection</mat-card-title></mat-card-header>
+          <mat-card *ngIf="showAddConn || editingConnectionId" class="add-form-card">
+            <mat-card-header><mat-card-title>{{ editingConnectionId ? 'Edit Hypervisor Connection' : 'New Hypervisor Connection' }}</mat-card-title></mat-card-header>
             <mat-card-content>
               <div class="form-row">
                 <mat-form-field appearance="outline">
@@ -214,8 +214,12 @@ interface NetworkSummary {
               </div>
             </mat-card-content>
             <mat-card-actions>
-              <button mat-raised-button color="primary" (click)="createConnection()">Save</button>
-              <button mat-button (click)="showAddConn = false">Cancel</button>
+              <button mat-raised-button color="primary"
+                (click)="editingConnectionId ? updateConnection() : createConnection()"
+                [disabled]="connectionSaving">
+                {{ editingConnectionId ? (connectionSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
+              </button>
+              <button mat-button (click)="editingConnectionId ? cancelConnectionEdit() : (showAddConn = false)">Cancel</button>
             </mat-card-actions>
           </mat-card>
 
@@ -253,6 +257,7 @@ interface NetworkSummary {
                   <ng-container matColumnDef="actions">
                     <th mat-header-cell *matHeaderCellDef>Actions</th>
                     <td mat-cell *matCellDef="let c">
+                      <button mat-icon-button matTooltip="Edit" (click)="startEditConnection(c)"><mat-icon>edit</mat-icon></button>
                       <button mat-icon-button matTooltip="Test" (click)="testConnection(c)"><mat-icon>network_check</mat-icon></button>
                       <button mat-icon-button matTooltip="Discover Nodes" (click)="discoverNodes(c)"><mat-icon>search</mat-icon></button>
                       <button mat-icon-button matTooltip="Set Primary" (click)="setPrimary(c)" [disabled]="c.is_primary"><mat-icon>star_border</mat-icon></button>
@@ -318,14 +323,14 @@ interface NetworkSummary {
           <ng-template mat-tab-label><mat-icon class="tab-icon">inventory_2</mat-icon> Storage</ng-template>
 
           <div class="tab-actions">
-            <button mat-raised-button color="primary" (click)="showAddStorage = !showAddStorage">
+            <button mat-raised-button color="primary" (click)="cancelApplianceEdit(); showAddStorage = !showAddStorage">
               <mat-icon>add</mat-icon> Add Appliance
             </button>
           </div>
 
           <!-- Add Appliance Form -->
-          <mat-card *ngIf="showAddStorage" class="add-form-card">
-            <mat-card-header><mat-card-title>New Storage Appliance</mat-card-title></mat-card-header>
+          <mat-card *ngIf="showAddStorage || editingApplianceId" class="add-form-card">
+            <mat-card-header><mat-card-title>{{ editingApplianceId ? 'Edit Storage Appliance' : 'New Storage Appliance' }}</mat-card-title></mat-card-header>
             <mat-card-content>
               <div class="form-row">
                 <mat-form-field appearance="outline">
@@ -371,8 +376,12 @@ interface NetworkSummary {
               </div>
             </mat-card-content>
             <mat-card-actions>
-              <button mat-raised-button color="primary" (click)="createAppliance()">Save</button>
-              <button mat-button (click)="showAddStorage = false">Cancel</button>
+              <button mat-raised-button color="primary"
+                (click)="editingApplianceId ? updateAppliance() : createAppliance()"
+                [disabled]="applianceSaving">
+                {{ editingApplianceId ? (applianceSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
+              </button>
+              <button mat-button (click)="editingApplianceId ? cancelApplianceEdit() : (showAddStorage = false)">Cancel</button>
             </mat-card-actions>
           </mat-card>
 
@@ -448,6 +457,7 @@ interface NetworkSummary {
                   <ng-container matColumnDef="actions">
                     <th mat-header-cell *matHeaderCellDef></th>
                     <td mat-cell *matCellDef="let a">
+                      <button mat-icon-button matTooltip="Edit" (click)="startEditAppliance(a)"><mat-icon>edit</mat-icon></button>
                       <button mat-icon-button matTooltip="Delete" color="warn" (click)="deleteAppliance(a)"><mat-icon>delete</mat-icon></button>
                     </td>
                   </ng-container>
@@ -465,14 +475,14 @@ interface NetworkSummary {
           <ng-template mat-tab-label><mat-icon class="tab-icon">router</mat-icon> Network</ng-template>
 
           <div class="tab-actions">
-            <button mat-raised-button color="primary" (click)="showAddNetwork = !showAddNetwork">
+            <button mat-raised-button color="primary" (click)="cancelDeviceEdit(); showAddNetwork = !showAddNetwork">
               <mat-icon>add</mat-icon> Add Device
             </button>
           </div>
 
           <!-- Add Network Device Form -->
-          <mat-card *ngIf="showAddNetwork" class="add-form-card">
-            <mat-card-header><mat-card-title>New Network Device</mat-card-title></mat-card-header>
+          <mat-card *ngIf="showAddNetwork || editingDeviceId" class="add-form-card">
+            <mat-card-header><mat-card-title>{{ editingDeviceId ? 'Edit Network Device' : 'New Network Device' }}</mat-card-title></mat-card-header>
             <mat-card-content>
               <div class="form-row">
                 <mat-form-field appearance="outline">
@@ -519,8 +529,12 @@ interface NetworkSummary {
               </div>
             </mat-card-content>
             <mat-card-actions>
-              <button mat-raised-button color="primary" (click)="createNetDevice()">Save</button>
-              <button mat-button (click)="showAddNetwork = false">Cancel</button>
+              <button mat-raised-button color="primary"
+                (click)="editingDeviceId ? updateDevice() : createNetDevice()"
+                [disabled]="deviceSaving">
+                {{ editingDeviceId ? (deviceSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
+              </button>
+              <button mat-button (click)="editingDeviceId ? cancelDeviceEdit() : (showAddNetwork = false)">Cancel</button>
             </mat-card-actions>
           </mat-card>
 
@@ -585,6 +599,7 @@ interface NetworkSummary {
                   <ng-container matColumnDef="actions">
                     <th mat-header-cell *matHeaderCellDef></th>
                     <td mat-cell *matCellDef="let d">
+                      <button mat-icon-button matTooltip="Edit" (click)="startEditDevice(d)"><mat-icon>edit</mat-icon></button>
                       <button mat-icon-button matTooltip="Delete" color="warn" (click)="deleteNetDevice(d)"><mat-icon>delete</mat-icon></button>
                     </td>
                   </ng-container>
@@ -630,6 +645,8 @@ export class InfrastructureComponent implements OnInit {
   hvSummary: HypervisorSummary | null = null;
   showAddConn = false;
   discoveringAll = false;
+  editingConnectionId: string | null = null;
+  connectionSaving = false;
   connCols = ['status', 'name', 'type', 'host', 'actions'];
   nodeCols = ['status', 'node_name', 'ip', 'cpu', 'memory', 'storage', 'vms'];
   newConn = {
@@ -641,6 +658,8 @@ export class InfrastructureComponent implements OnInit {
   appliances: StorageAppliance[] = [];
   storageSummary: StorageSummary | null = null;
   showAddStorage = false;
+  editingApplianceId: string | null = null;
+  applianceSaving = false;
   applianceCols = ['status', 'name', 'vendor', 'model', 'ip', 'protocol', 'capacity', 'actions'];
   newAppliance = {
     name: '', vendor: '', model: '', management_ip: '',
@@ -651,6 +670,8 @@ export class InfrastructureComponent implements OnInit {
   netDevices: NetworkDevice[] = [];
   networkSummary: NetworkSummary | null = null;
   showAddNetwork = false;
+  editingDeviceId: string | null = null;
+  deviceSaving = false;
   netCols = ['status', 'name', 'vendor', 'model', 'role', 'ip', 'ports', 'firmware', 'actions'];
   newNetDev = {
     name: '', vendor: '', model: '', management_ip: '',
@@ -783,6 +804,38 @@ export class InfrastructureComponent implements OnInit {
       error: () => this.snack.open('Failed to delete', 'OK', { duration: 3000 }),
     });
   }
+  startEditConnection(c: HypervisorConnection): void {
+    this.showAddConn = false;
+    this.editingConnectionId = c.id;
+    this.newConn = {
+      name: c.name, hypervisor_type: c.hypervisor_type, host: c.host, port: c.port,
+      username: c.username, password: '', verify_ssl: c.verify_ssl, is_primary: c.is_primary,
+    };
+  }
+  updateConnection(): void {
+    if (!this.editingConnectionId) return;
+    this.connectionSaving = true;
+    this.http.patch(`/api/hypervisors/connections/${this.editingConnectionId}`, this.newConn).subscribe({
+      next: () => {
+        this.cancelConnectionEdit();
+        this.loadConnections();
+        this.loadHvSummary();
+        this.snack.open('Connection updated', 'OK', { duration: 3000 });
+      },
+      error: e => {
+        this.connectionSaving = false;
+        this.snack.open('Failed to update: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 });
+      },
+    });
+  }
+  cancelConnectionEdit(): void {
+    this.editingConnectionId = null;
+    this.connectionSaving = false;
+    this.newConn = {
+      name: '', hypervisor_type: 'proxmox' as const, host: '', port: 8006,
+      username: '', password: '', verify_ssl: false, is_primary: false,
+    };
+  }
 
   /* ── Storage helpers ───────────────────────────────────────── */
   loadAppliances(): void {
@@ -810,6 +863,38 @@ export class InfrastructureComponent implements OnInit {
       error: () => this.snack.open('Failed to delete', 'OK', { duration: 3000 }),
     });
   }
+  startEditAppliance(a: StorageAppliance): void {
+    this.showAddStorage = false;
+    this.editingApplianceId = a.id;
+    this.newAppliance = {
+      name: a.name, vendor: a.vendor, model: a.model, management_ip: a.management_ip,
+      protocol: a.protocol, raw_capacity_tb: a.raw_capacity_tb, usable_capacity_tb: a.usable_capacity_tb,
+    };
+  }
+  updateAppliance(): void {
+    if (!this.editingApplianceId) return;
+    this.applianceSaving = true;
+    this.http.patch(`/api/storage/appliances/${this.editingApplianceId}`, this.newAppliance).subscribe({
+      next: () => {
+        this.cancelApplianceEdit();
+        this.loadAppliances();
+        this.loadStorageSummary();
+        this.snack.open('Appliance updated', 'OK', { duration: 3000 });
+      },
+      error: e => {
+        this.applianceSaving = false;
+        this.snack.open('Failed to update: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 });
+      },
+    });
+  }
+  cancelApplianceEdit(): void {
+    this.editingApplianceId = null;
+    this.applianceSaving = false;
+    this.newAppliance = {
+      name: '', vendor: '', model: '', management_ip: '',
+      protocol: 'nfs' as StorageProtocol, raw_capacity_tb: 0, usable_capacity_tb: 0,
+    };
+  }
 
   /* ── Network helpers ───────────────────────────────────────── */
   loadNetDevices(): void {
@@ -836,5 +921,37 @@ export class InfrastructureComponent implements OnInit {
       next: () => { this.loadNetDevices(); this.loadNetSummary(); },
       error: () => this.snack.open('Failed to delete', 'OK', { duration: 3000 }),
     });
+  }
+  startEditDevice(d: NetworkDevice): void {
+    this.showAddNetwork = false;
+    this.editingDeviceId = d.id;
+    this.newNetDev = {
+      name: d.name, vendor: d.vendor, model: d.model, management_ip: d.management_ip,
+      role: d.role, port_count: d.port_count, firmware_version: d.firmware_version || '',
+    };
+  }
+  updateDevice(): void {
+    if (!this.editingDeviceId) return;
+    this.deviceSaving = true;
+    this.http.patch(`/api/network-devices/${this.editingDeviceId}`, this.newNetDev).subscribe({
+      next: () => {
+        this.cancelDeviceEdit();
+        this.loadNetDevices();
+        this.loadNetSummary();
+        this.snack.open('Device updated', 'OK', { duration: 3000 });
+      },
+      error: e => {
+        this.deviceSaving = false;
+        this.snack.open('Failed to update: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 });
+      },
+    });
+  }
+  cancelDeviceEdit(): void {
+    this.editingDeviceId = null;
+    this.deviceSaving = false;
+    this.newNetDev = {
+      name: '', vendor: '', model: '', management_ip: '',
+      role: 'tor' as NetworkDeviceRole, port_count: 48, firmware_version: '',
+    };
   }
 }

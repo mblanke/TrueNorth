@@ -24,6 +24,7 @@ from ..schemas import (
     ExternalActivityOut,
     ExternalPlatformIn,
     ExternalPlatformOut,
+    ExternalPlatformUpdate,
     PaginatedResponse,
 )
 
@@ -88,6 +89,24 @@ def get_platform(
     p = db.query(ExternalPlatform).filter(ExternalPlatform.id == platform_id).first()
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
+    return p
+
+
+@router.patch("/platforms/{platform_id}", response_model=ExternalPlatformOut)
+def update_platform(
+    platform_id: uuid.UUID,
+    body: ExternalPlatformUpdate,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Update a registered platform."""
+    p = db.query(ExternalPlatform).filter(ExternalPlatform.id == platform_id).first()
+    if not p:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(p, field, value)
+    db.commit()
+    db.refresh(p)
     return p
 
 

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..auth import get_current_user, CurrentUser
 from ..models import NetworkDevice
-from ..schemas import NetworkDeviceIn, NetworkDeviceOut, NetworkSummaryOut
+from ..schemas import NetworkDeviceIn, NetworkDeviceOut, NetworkDeviceUpdate, NetworkSummaryOut
 
 router = APIRouter(prefix="/network-devices", tags=["network"])
 
@@ -34,6 +34,23 @@ def delete_device(device_id: uuid.UUID, db: Session = Depends(get_db), user: Cur
         raise HTTPException(404, "Device not found")
     db.delete(obj)
     db.commit()
+
+
+@router.patch("/{device_id}", response_model=NetworkDeviceOut)
+def update_device(
+    device_id: uuid.UUID,
+    body: NetworkDeviceUpdate,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    obj = db.query(NetworkDevice).filter_by(id=device_id, tenant_id=user.tenant_id).first()
+    if not obj:
+        raise HTTPException(404, "Device not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(obj, field, value)
+    db.commit()
+    db.refresh(obj)
+    return obj
 
 
 @router.get("/summary", response_model=NetworkSummaryOut)

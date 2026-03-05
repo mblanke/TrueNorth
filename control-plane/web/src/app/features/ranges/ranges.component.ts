@@ -63,6 +63,23 @@ import { Range, Template } from '@core/models';
         </mat-card>
       }
 
+      @if (editingId) {
+        <mat-card class="edit-form mt-2">
+          <mat-card-content>
+            <div class="form-row">
+              <mat-form-field appearance="outline">
+                <mat-label>Range Name</mat-label>
+                <input matInput [(ngModel)]="editForm.name" placeholder="Range name">
+              </mat-form-field>
+            </div>
+            <button mat-raised-button color="primary" (click)="updateRange()" [disabled]="!editForm.name || saving">
+              {{ saving ? 'Saving...' : 'Save' }}
+            </button>
+            <button mat-button (click)="cancelEdit()" [disabled]="saving">Cancel</button>
+          </mat-card-content>
+        </mat-card>
+      }
+
       <table mat-table [dataSource]="ranges()" class="mt-2 full-width">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Name</th>
@@ -81,6 +98,11 @@ import { Range, Template } from '@core/models';
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef>Actions</th>
           <td mat-cell *matCellDef="let r">
+            @if (r.state === 'created' || r.state === 'stopped') {
+              <button mat-icon-button (click)="startEdit(r)" matTooltip="Rename" [disabled]="saving">
+                <mat-icon>edit</mat-icon>
+              </button>
+            }
             @if (r.state === 'created') {
               <button mat-icon-button color="primary" (click)="provision(r.id)" matTooltip="Provision">
                 <mat-icon>rocket_launch</mat-icon>
@@ -111,8 +133,8 @@ import { Range, Template } from '@core/models';
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; }
     .full-width { width: 100%; }
-    .create-form mat-card-content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-    .create-form mat-form-field { flex: 1; min-width: 200px; }
+    .create-form mat-card-content, .edit-form mat-card-content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .create-form mat-form-field, .edit-form mat-form-field { flex: 1; min-width: 200px; }
   `],
 })
 export class RangesComponent implements OnInit {
@@ -121,6 +143,9 @@ export class RangesComponent implements OnInit {
   showCreate = false;
   newName = '';
   selectedTemplateId = '';
+  editingId = '';
+  editForm = { name: '' };
+  saving = false;
   displayedColumns = ['name', 'state', 'created', 'actions'];
 
   constructor(private api: ApiService, private notify: NotificationService) {}
@@ -139,6 +164,24 @@ export class RangesComponent implements OnInit {
       next: () => { this.notify.success('Range created'); this.loadRanges(); this.showCreate = false; this.newName = ''; },
       error: () => this.notify.error('Failed to create range'),
     });
+  }
+
+  startEdit(r: Range): void {
+    this.editingId = r.id;
+    this.editForm.name = r.name;
+  }
+
+  updateRange(): void {
+    this.saving = true;
+    this.api.updateRange(this.editingId, this.editForm).subscribe({
+      next: () => { this.notify.success('Range renamed'); this.loadRanges(); this.cancelEdit(); this.saving = false; },
+      error: () => { this.notify.error('Failed to rename range'); this.saving = false; },
+    });
+  }
+
+  cancelEdit(): void {
+    this.editingId = '';
+    this.editForm.name = '';
   }
 
   provision(id: string): void {
