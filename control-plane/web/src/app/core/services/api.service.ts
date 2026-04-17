@@ -108,6 +108,12 @@ export class ApiService {
   destroyRange(id: string): Observable<Range> {
     return this.http.post<Range>(`${this.base}/ranges/${id}/destroy`, {});
   }
+  getRangeDiagram(id: string): Observable<{ range_id: string; diagram_json: any }> {
+    return this.http.get<{ range_id: string; diagram_json: any }>(`${this.base}/ranges/${id}/diagram`);
+  }
+  saveRangeDiagram(id: string, diagram: any): Observable<{ range_id: string; diagram_json: any }> {
+    return this.http.put<{ range_id: string; diagram_json: any }>(`${this.base}/ranges/${id}/diagram`, diagram);
+  }
 
   // ── Exercises ────────────────────────────────────────────
   listExercises(limit = 50, offset = 0): Observable<Exercise[]> {
@@ -153,6 +159,9 @@ export class ApiService {
   }
   getAARHtml(exerciseId: string): Observable<string> {
     return this.http.get(`${this.base}/exercises/${exerciseId}/aar/html`, { responseType: 'text' });
+  }
+  getAARPdf(exerciseId: string): Observable<Blob> {
+    return this.http.get(`${this.base}/exercises/${exerciseId}/aar/pdf`, { responseType: 'blob' });
   }
 
   // ── Teams ────────────────────────────────────────────────

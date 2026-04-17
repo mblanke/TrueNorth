@@ -19,6 +19,7 @@ POST   /exercises/{id}/objectives/{ref}/ack EXERCISE_COMPLETE
 POST   /exercises/{id}/aar/generate        AAR_GENERATE
 GET    /exercises/{id}/aar                  AAR_READ
 GET    /exercises/{id}/aar/html            AAR_READ
+GET    /exercises/{id}/aar/pdf             AAR_READ
 ==========================================  ==========================
 """
 
@@ -30,8 +31,8 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
@@ -46,6 +47,7 @@ from ..models import (
     Scenario,
 )
 from ..rbac import Permission, require_permission
+from ..xapi import emit_lifecycle
 from ..schemas import (
     AAROut,
     ExerciseIn,
@@ -152,6 +154,7 @@ def update_exercise(
 @router.post("/{exercise_id}/start", response_model=ExerciseOut)
 async def start_exercise(
     exercise_id: uuid.UUID = Path(...),
+    background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_START)),
 ) -> Exercise:
@@ -167,12 +170,23 @@ async def start_exercise(
     db.refresh(ex)
     _audit(db, user, "start", "exercise", str(ex.id))
     db.commit()
+    if background_tasks is not None:
+        emit_lifecycle(
+            background_tasks,
+            verb_key="attempted",
+            user_email=user.email or f"{user.id}@truenorth.local",
+            user_name=user.display_name,
+            activity_type="exercise",
+            activity_id=str(ex.id),
+            activity_name=ex.name,
+        )
     return ex
 
 
 @router.post("/{exercise_id}/pause", response_model=ExerciseOut)
 async def pause_exercise(
     exercise_id: uuid.UUID = Path(...),
+    background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_PAUSE)),
 ) -> Exercise:
@@ -187,12 +201,24 @@ async def pause_exercise(
     db.refresh(ex)
     _audit(db, user, "pause", "exercise", str(ex.id))
     db.commit()
+    if background_tasks is not None:
+        emit_lifecycle(
+            background_tasks,
+            verb_key="terminated",
+            user_email=user.email or f"{user.id}@truenorth.local",
+            user_name=user.display_name,
+            activity_type="exercise",
+            activity_id=str(ex.id),
+            activity_name=ex.name,
+            context_extensions={"pause": True},
+        )
     return ex
 
 
 @router.post("/{exercise_id}/complete", response_model=ExerciseOut)
 async def complete_exercise(
     exercise_id: uuid.UUID = Path(...),
+    background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
 ) -> Exercise:
@@ -222,6 +248,26 @@ async def complete_exercise(
         )
     except Exception:
         logger.warning("Failed to dispatch auto-assess task for exercise %s", ex.id)
+    if background_tasks is not None:
+        max_score = max(ex.max_score or 1, 1)
+        emit_lifecycle(
+            background_tasks,
+            verb_key="completed",
+            user_email=user.email or f"{user.id}@truenorth.local",
+            user_name=user.display_name,
+            activity_type="exercise",
+            activity_id=str(ex.id),
+            activity_name=ex.name,
+            result={
+                "score": {
+                    "raw": ex.total_score or 0,
+                    "max": ex.max_score or 0,
+                    "scaled": (ex.total_score or 0) / max_score,
+                },
+                "completion": True,
+                "success": (ex.total_score or 0) >= max_score * 0.7,
+            },
+        )
     return ex
 
 
@@ -241,6 +287,7 @@ async def acknowledge_objective(
     exercise_id: uuid.UUID = Path(...),
     ref_id: str = Path(...),
     body: ObjectiveAck = Depends(),
+    background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
 ) -> Objective:
@@ -262,6 +309,18 @@ async def acknowledge_objective(
     obj.achieved_at = datetime.now(UTC)
     db.commit()
     db.refresh(obj)
+    if background_tasks is not None:
+        emit_lifecycle(
+            background_tasks,
+            verb_key="passed",
+            user_email=user.email or f"{user.id}@truenorth.local",
+            user_name=user.display_name,
+            activity_type="objective",
+            activity_id=str(obj.id),
+            activity_name=obj.description or obj.ref_id,
+            result={"score": {"raw": obj.points}, "success": True},
+            context_extensions={"exercise_id": str(exercise_id), "ref_id": obj.ref_id},
+        )
     return obj
 
 
@@ -348,6 +407,105 @@ def get_aar_html(
     if not aar:
         raise HTTPException(404, "AAR not found")
     return HTMLResponse(content=aar.report_html)
+
+
+@router.get("/{exercise_id}/aar/pdf")
+def get_aar_pdf(
+    exercise_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.AAR_READ)),
+) -> StreamingResponse:
+    """Retrieve AAR as downloadable PDF.  **Permission: aar:read**
+
+    Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps).
+    """
+    from io import BytesIO
+
+    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
+    if not aar:
+        raise HTTPException(404, "AAR not found — generate it first")
+
+    try:
+        from fpdf import FPDF
+    except ImportError as exc:  # pragma: no cover
+        raise HTTPException(500, "PDF rendering dependency unavailable") from exc
+
+    try:
+        data = json.loads(aar.report_json) if aar.report_json else {}
+    except json.JSONDecodeError:
+        data = {}
+
+    def _s(val: object) -> str:
+        """Coerce to str and strip characters outside fpdf2's core-font range (latin-1)."""
+        return str(val if val is not None else "").encode("latin-1", "replace").decode("latin-1")
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # Header
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 10, "After-Action Report", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+
+    ex = data.get("exercise", {})
+    pdf.cell(0, 7, _s(f"Exercise: {ex.get('name', 'Unknown')}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _s(f"State: {ex.get('state', '-')}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _s(f"Started: {ex.get('started_at') or '-'}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _s(f"Completed: {ex.get('completed_at') or '-'}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, _s(f"Generated: {data.get('generated_at', '-')}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    # Scores
+    scores = data.get("scores", {})
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, "Score", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(
+        0,
+        7,
+        _s(f"{scores.get('total', 0)} / {scores.get('max', 0)}  ({scores.get('pct', 0)}%)"),
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
+    pdf.ln(4)
+
+    # Objectives
+    objectives = data.get("objectives", [])
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, _s(f"Objectives ({len(objectives)})"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    for obj in objectives:
+        status = "[x]" if obj.get("achieved") else "[ ]"
+        line = f"{status} [{obj.get('ref_id', '?')}] ({obj.get('points', 0)} pts) {obj.get('description', '')}"
+        pdf.multi_cell(0, 6, _s(line))
+        if obj.get("evidence"):
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.multi_cell(0, 5, _s(f"     Evidence: {obj['evidence']}"))
+            pdf.set_font("Helvetica", "", 10)
+    pdf.ln(4)
+
+    # AI analysis if present
+    ai = data.get("ai_analysis")
+    if isinstance(ai, dict) and ai.get("summary"):
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, "AI Analysis", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, _s(str(ai["summary"])[:4000]))
+
+    pdf.set_y(-20)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.cell(0, 5, _s(f"Generated by TrueNorth Range - user: {user.display_name}"), align="C")
+
+    buf = BytesIO()
+    pdf.output(buf)
+    buf.seek(0)
+    filename = f"aar-{exercise_id}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/{exercise_id}/aar/ai-enhance", response_model=AAROut)

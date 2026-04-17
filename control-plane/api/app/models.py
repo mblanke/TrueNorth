@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -262,6 +263,7 @@ class Range(SoftDeleteMixin, TimestampMixin, Base):
     provisioner_backend: Mapped[str] = mapped_column(String(50), default="mock")
     provisioner_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    diagram_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     template: Mapped[Template] = relationship()
     snapshots: Mapped[list[RangeSnapshot]] = relationship(back_populates="range_", cascade="all, delete-orphan")
 

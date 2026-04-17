@@ -162,3 +162,64 @@ def scenario_started(user_email: str, user_name: str, scenario_id: str, scenario
         scenario_name,
         context_extensions={"range_id": range_id},
     )
+
+
+# ── Fire-and-forget emitter (for FastAPI BackgroundTasks / Celery) ────
+import logging as _logging  # noqa: E402
+
+_xapi_logger = _logging.getLogger("truenorth.xapi")
+
+
+def emit_statement_sync(statement: dict, timeout: float = 2.0) -> bool:
+    """Send an xAPI statement synchronously to the LRS.
+
+    Designed for use from ``fastapi.BackgroundTasks``. Swallows all errors —
+    xAPI emission is advisory: it must never block or fail a lifecycle
+    transition.
+    """
+    try:
+        headers = {"Content-Type": "application/json", "X-Experience-API-Version": "1.0.3"}
+        if LRS_AUTH:
+            headers["Authorization"] = f"Basic {LRS_AUTH}"
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(f"{LRS_URL}/xapi/statements", json=statement, headers=headers)
+            ok = resp.status_code in (200, 204)
+            if not ok:
+                _xapi_logger.warning("xAPI LRS returned %s: %s", resp.status_code, resp.text[:200])
+            return ok
+    except Exception as exc:  # pragma: no cover — LRS outage tolerated
+        _xapi_logger.warning("xAPI emit failed: %s", exc)
+        return False
+
+
+def emit_lifecycle(
+    background_tasks,  # fastapi.BackgroundTasks
+    verb_key: str,
+    user_email: str,
+    user_name: str,
+    activity_type: str,
+    activity_id: str,
+    activity_name: str,
+    result: dict | None = None,
+    context_extensions: dict | None = None,
+) -> None:
+    """Queue a lifecycle xAPI statement for background emission.
+
+    Never raises. Use from exercise start/pause/complete and objective ack
+    handlers to record cmi5-compatible learner activity without blocking
+    the API response.
+    """
+    try:
+        stmt = build_statement(
+            verb_key=verb_key,
+            user_email=user_email,
+            user_name=user_name,
+            activity_type=activity_type,
+            activity_id=activity_id,
+            activity_name=activity_name,
+            result=result,
+            context_extensions=context_extensions,
+        )
+        background_tasks.add_task(emit_statement_sync, stmt)
+    except Exception as exc:  # pragma: no cover
+        _xapi_logger.warning("xAPI statement queue failed: %s", exc)

@@ -137,6 +137,9 @@ import { Exercise, Range, Scenario } from '@core/models';
               <button mat-icon-button (click)="genAAR(e.id)" matTooltip="Generate AAR">
                 <mat-icon>assessment</mat-icon>
               </button>
+              <button mat-icon-button (click)="downloadAARPdf(e.id)" matTooltip="Download AAR PDF">
+                <mat-icon>picture_as_pdf</mat-icon>
+              </button>
             }
           </td>
         </ng-container>
@@ -207,6 +210,21 @@ export class ExercisesComponent implements OnInit {
     this.api.generateAAR(id).subscribe({
       next: () => this.notify.success('AAR generated'),
       error: () => this.notify.error('AAR generation failed'),
+    });
+  }
+
+  downloadAARPdf(id: string): void {
+    this.api.getAARPdf(id).subscribe({
+      next: (blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `aar-${id}.pdf`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        this.notify.success('AAR PDF downloaded');
+      },
+      error: (err) => this.notify.error(err?.error?.detail || 'PDF download failed. Generate AAR first.'),
     });
   }
 

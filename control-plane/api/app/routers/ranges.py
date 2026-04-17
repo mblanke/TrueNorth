@@ -194,6 +194,44 @@ def delete_range(
     db.commit()
 
 
+# ── Diagram (range designer persistence) ───────────────────────────────
+@router.get("/{range_id}/diagram")
+def get_range_diagram(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> dict:
+    """Retrieve persisted JointJS diagram for a range.  **Permission: range:read**"""
+    rng = db.query(Range).filter(Range.id == range_id).first()
+    if not rng:
+        raise HTTPException(404, "Range not found")
+    return {"range_id": str(rng.id), "diagram_json": rng.diagram_json or {"cells": []}}
+
+
+@router.put("/{range_id}/diagram")
+def save_range_diagram(
+    body: dict,
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
+) -> dict:
+    """Persist JointJS diagram JSON for a range.  **Permission: range:update**
+
+    Accepts the raw output of ``joint.dia.Graph.toJSON()``.
+    """
+    rng = db.query(Range).filter(Range.id == range_id).first()
+    if not rng:
+        raise HTTPException(404, "Range not found")
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Diagram body must be a JSON object")
+    rng.diagram_json = body
+    db.commit()
+    db.refresh(rng)
+    _audit(db, user, "update", "range.diagram", str(rng.id))
+    db.commit()
+    return {"range_id": str(rng.id), "diagram_json": rng.diagram_json}
+
+
 # ── Lifecycle Actions ──────────────────────────────────────────────────
 @router.post("/{range_id}/provision", response_model=RangeOut)
 async def provision_range(

@@ -21,8 +21,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { ActivatedRoute } from '@angular/router';
 import * as joint from 'jointjs';
 import { FilterCategoryPipe } from './filter-category.pipe';
+import { ApiService } from '@core/services/api.service';
 
 /* ----------------------------------------------------------------
    Stencil types for the palette
@@ -228,6 +230,9 @@ function createSubnetZone(
           <span class="spacer"></span>
           <button mat-stroked-button (click)="autoLayout()">
             <mat-icon>auto_fix_high</mat-icon> Auto Layout
+          </button>
+          <button mat-stroked-button color="primary" (click)="saveDiagram()" [disabled]="!rangeId()">
+            <mat-icon>save</mat-icon> Save
           </button>
           <button mat-stroked-button (click)="exportYaml()">
             <mat-icon>download</mat-icon> Export YAML
@@ -607,6 +612,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
   linkCount = signal(0);
   selectedNode = signal<joint.dia.Element | null>(null);
   selectedNodeType = signal('');
+  rangeId = signal<string | null>(null);
 
   /* Property panel bindings */
   propLabel = '';
@@ -670,12 +676,18 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     { id: 'ca', label: 'Certificate Authority' },
   ];
 
-  constructor(private cdr: ChangeDetectorRef, private snack: MatSnackBar) {}
+  constructor(private cdr: ChangeDetectorRef, private snack: MatSnackBar, private route: ActivatedRoute, private api: ApiService) {}
 
   ngAfterViewInit(): void {
     this.initGraph();
     this.initPaper();
     this.bindEvents();
+
+    const id = this.route.snapshot.queryParamMap.get('range');
+    if (id) {
+      this.rangeId.set(id);
+      this.loadDiagram(id);
+    }
   }
 
   ngOnDestroy(): void {
@@ -905,6 +917,41 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     });
     this.paper.scaleContentToFit({ padding: 40, maxScale: 1.5 });
     this.snack.open('Layout applied', '', { duration: 1500, panelClass: 'snack-success' });
+  }
+
+  /* --- Save / Load persisted diagram --- */
+  saveDiagram(): void {
+    const id = this.rangeId();
+    if (!id) {
+      this.snack.open('Open the designer with ?range=<id> to enable save', '', { duration: 3000 });
+      return;
+    }
+    const graphJson = this.graph.toJSON();
+    this.api.saveRangeDiagram(id, graphJson).subscribe({
+      next: () => this.snack.open('Diagram saved', '', { duration: 1500, panelClass: 'snack-success' }),
+      error: (err) => this.snack.open(err?.error?.detail || 'Save failed', 'Dismiss', { duration: 4000, panelClass: 'snack-error' }),
+    });
+  }
+
+  loadDiagram(id: string): void {
+    this.api.getRangeDiagram(id).subscribe({
+      next: (res) => {
+        const diagram = res?.diagram_json;
+        if (!diagram || !diagram.cells || !diagram.cells.length) {
+          this.snack.open('No saved diagram for this range — starting blank', '', { duration: 2500 });
+          return;
+        }
+        try {
+          this.graph.fromJSON(diagram);
+          this.updateCounts();
+          this.paper.scaleContentToFit({ padding: 40, maxScale: 1.5 });
+          this.snack.open('Diagram loaded', '', { duration: 1500, panelClass: 'snack-success' });
+        } catch {
+          this.snack.open('Saved diagram was corrupted — starting blank', 'Dismiss', { duration: 4000, panelClass: 'snack-error' });
+        }
+      },
+      error: (err) => this.snack.open(err?.error?.detail || 'Load failed', 'Dismiss', { duration: 4000, panelClass: 'snack-error' }),
+    });
   }
 
   /* --- YAML Export --- */
