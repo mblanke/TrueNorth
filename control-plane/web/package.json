@@ -26,6 +26,7 @@
     "jointjs": "^3.7.7",
     "keycloak-angular": "^15.2.0",
     "keycloak-js": "^24.0.0",
+    "material-icons": "^1.13.14",
     "ngx-echarts": "^17.1.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.6.0",
