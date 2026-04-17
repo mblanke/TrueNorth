@@ -10,7 +10,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatTableModule } from '@angular/material/table';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { DomSanitizer } from '@angular/platform-browser';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Exercise, Objective, AAR } from '@core/models';

@@ -152,7 +152,7 @@ interface AuditEntry {
 
             <!-- DELETE CONFIRMATION -->
             @if (tenantDeleteTarget) {
-              <div class="confirm-overlay" (click)="tenantDeleteTarget = null">
+              <div class="confirm-overlay" (click)="tenantDeleteTarget = null" (keyup.escape)="tenantDeleteTarget = null" tabindex="0" role="dialog">
                 <mat-card class="confirm-dialog" (click)="$event.stopPropagation()">
                   <mat-card-header>
                     <mat-card-title>Delete Tenant</mat-card-title>

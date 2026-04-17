@@ -8,9 +8,9 @@ Modules:
 """
 
 from .bootstrap import bootstrap
-from .ingest import EventIngestor, IngestMetrics, DeadLetterQueue
-from .enrichment import enrich_event, enrich_mitre, enrich_geoip, normalise_timestamp
 from .correlator import CorrelationEngine, CorrelationRule
+from .enrichment import enrich_event, enrich_geoip, enrich_mitre, normalise_timestamp
+from .ingest import DeadLetterQueue, EventIngestor, IngestMetrics
 
 __all__ = [
     "bootstrap",

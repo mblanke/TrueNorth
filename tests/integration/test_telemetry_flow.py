@@ -2,6 +2,7 @@
 
 Send telemetry events via API -> verify they appear in OpenSearch.
 """
+
 from __future__ import annotations
 
 import time

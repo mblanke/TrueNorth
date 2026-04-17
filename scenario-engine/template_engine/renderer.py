@@ -4,11 +4,10 @@ Renders a range template YAML into Terraform-consumable variables,
 including VM definitions, network definitions, VLAN maps, and
 cloud-init user-data per VM role.
 """
+
 from __future__ import annotations
 
 import ipaddress
-import json
-import re
 from pathlib import Path
 from typing import Any
 
@@ -22,9 +21,7 @@ class TemplateRenderer:
 
     def __init__(self, template_path: str) -> None:
         self.template_path = Path(template_path)
-        self.template: dict[str, Any] = yaml.safe_load(
-            self.template_path.read_text(encoding="utf-8-sig")
-        )
+        self.template: dict[str, Any] = yaml.safe_load(self.template_path.read_text(encoding="utf-8-sig"))
         self._cloud_init = CloudInitGenerator()
 
     # ------------------------------------------------------------------
@@ -71,7 +68,7 @@ class TemplateRenderer:
         nodes = self._extract_nodes()
         vm_definitions: list[dict[str, Any]] = []
 
-        for idx, node in enumerate(nodes):
+        for _idx, node in enumerate(nodes):
             vm_vlan = node.get("vlan", "default")
             vm_vlan_id = vlan_map.get(vm_vlan, vlan_base)
 
@@ -130,7 +127,7 @@ class TemplateRenderer:
         for net in data["network_definitions"]:
             lines.append("  {")
             lines.append(f'    name        = "{net["name"]}"')
-            lines.append(f'    vlan_id     = {net["vlan_id"]}')
+            lines.append(f"    vlan_id     = {net['vlan_id']}")
             lines.append(f'    cidr        = "{net["cidr"]}"')
             lines.append(f'    gateway     = "{net["gateway"]}"')
             lines.append(f'    description = "{net["description"]}"')
@@ -145,11 +142,11 @@ class TemplateRenderer:
             lines.append(f'    name      = "{vm["name"]}"')
             lines.append(f'    role      = "{vm["role"]}"')
             lines.append(f'    os        = "{vm["os"]}"')
-            lines.append(f'    vlan_id   = {vm["vlan_id"]}')
+            lines.append(f"    vlan_id   = {vm['vlan_id']}")
             lines.append(f'    ip        = "{vm["ip"]}"')
-            lines.append(f'    cores     = {vm["cores"]}')
-            lines.append(f'    memory_mb = {vm["memory_mb"]}')
-            lines.append(f'    disk_gb   = {vm["disk_gb"]}')
+            lines.append(f"    cores     = {vm['cores']}")
+            lines.append(f"    memory_mb = {vm['memory_mb']}")
+            lines.append(f"    disk_gb   = {vm['disk_gb']}")
             lines.append("  },")
         lines.append("]")
 

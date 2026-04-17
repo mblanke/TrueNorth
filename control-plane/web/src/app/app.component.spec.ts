@@ -26,7 +26,7 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const logoText = el.querySelector('.logo-text');
-    expect(logoText?.textContent).toContain('TrueNorth Range');
+    expect(logoText?.textContent).toContain('TrueNorth');
   });
 
   // ── Renders navigation ───────────────────────────────────────────
@@ -34,16 +34,18 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const navItems = el.querySelectorAll('mat-nav-list a[mat-list-item]');
-    expect(navItems.length).toBe(component.navItems.length);
+    const allItems = component.navSections.flatMap(s => s.items);
+    expect(navItems.length).toBe(allItems.length);
   });
 
   it('should have Dashboard as the first nav item', () => {
-    expect(component.navItems[0].label).toBe('Dashboard');
-    expect(component.navItems[0].route).toBe('/dashboard');
+    const firstItem = component.navSections[0].items[0];
+    expect(firstItem.label).toBe('Dashboard');
+    expect(firstItem.route).toBe('/dashboard');
   });
 
   it('should include expected nav routes', () => {
-    const routes = component.navItems.map((n) => n.route);
+    const routes = component.navSections.flatMap(s => s.items.map(n => n.route));
     expect(routes).toContain('/dashboard');
     expect(routes).toContain('/ranges');
     expect(routes).toContain('/exercises');
@@ -57,7 +59,8 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const icons = el.querySelectorAll('mat-nav-list mat-icon');
-    expect(icons.length).toBeGreaterThanOrEqual(component.navItems.length);
+    const totalItems = component.navSections.reduce((sum, s) => sum + s.items.length, 0);
+    expect(icons.length).toBeGreaterThanOrEqual(totalItems);
   });
 
   // ── Toolbar buttons ──────────────────────────────────────────────
@@ -65,7 +68,7 @@ describe('AppComponent', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const toolbarButtons = el.querySelectorAll('mat-toolbar button');
-    expect(toolbarButtons.length).toBe(3); // menu, notifications, account
+    expect(toolbarButtons.length).toBeGreaterThanOrEqual(3); // menu, notifications, account + theme buttons
   });
 
   // ── Sidenav ──────────────────────────────────────────────────────
@@ -87,11 +90,13 @@ describe('AppComponent', () => {
 
   // ── NavItem interface ────────────────────────────────────────────
   it('each navItem should have label, icon, and route', () => {
-    for (const item of component.navItems) {
-      expect(item.label).toBeTruthy();
-      expect(item.icon).toBeTruthy();
-      expect(item.route).toBeTruthy();
-      expect(item.route.startsWith('/')).toBeTrue();
+    for (const section of component.navSections) {
+      for (const item of section.items) {
+        expect(item.label).toBeTruthy();
+        expect(item.icon).toBeTruthy();
+        expect(item.route).toBeTruthy();
+        expect(item.route.startsWith('/')).toBeTrue();
+      }
     }
   });
 });

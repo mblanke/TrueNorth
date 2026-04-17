@@ -10,6 +10,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '@core/services/api.service';
+import { CompetencyHeatmapComponent } from './competency-heatmap.component';
 
 interface Competency {
   id: string;
@@ -46,6 +47,7 @@ interface SkillGap {
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatSelectModule, MatFormFieldModule, MatProgressBarModule,
+    CompetencyHeatmapComponent,
   ],
   template: `
     <div class="page-container">
@@ -160,6 +162,12 @@ interface SkillGap {
             } @else {
               <mat-card class="mt-2"><mat-card-content>No competencies loaded. Click "Import NICE Framework" to seed the database.</mat-card-content></mat-card>
             }
+          </div>
+        </mat-tab>
+
+        <mat-tab label="Heatmap">
+          <div class="tab-content mt-2">
+            <tn-competency-heatmap></tn-competency-heatmap>
           </div>
         </mat-tab>
       </mat-tab-group>

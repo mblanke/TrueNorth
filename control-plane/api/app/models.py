@@ -3,6 +3,7 @@
 Designed for 1,200 concurrent users and 70,000 VMs.
 All lookup columns carry composite indexes for tenant-scoped queries.
 """
+
 from __future__ import annotations
 
 import enum
@@ -22,9 +23,9 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from .db import Base
 
@@ -108,15 +109,12 @@ class ObjectiveType(str, enum.Enum):
     deliverable = "deliverable"
 
 
-
-
 class EventState(str, enum.Enum):
     draft = "draft"
     scheduled = "scheduled"
     active = "active"
     completed = "completed"
     cancelled = "cancelled"
-
 
 
 class UserRole(str, enum.Enum):
@@ -129,12 +127,25 @@ class UserRole(str, enum.Enum):
 
 # -- Mixins ---------------------------------------------------------------
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class SoftDeleteMixin:
+    """Mixin providing soft-delete capability with ``deleted_at`` timestamp."""
+
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None, index=True
+    )
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+
+    def soft_delete(self) -> None:
+        self.deleted_at = datetime.now(tz=__import__("datetime").timezone.utc)
 
 
 # -- Tenant / User -------------------------------------------------------
@@ -147,7 +158,7 @@ class Tenant(TimestampMixin, Base):
     users: Mapped[list[User]] = relationship(back_populates="tenant")
 
 
-class User(TimestampMixin, Base):
+class User(SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "users"
     __table_args__ = (
         Index("ix_users_tenant_role", "tenant_id", "role"),
@@ -213,7 +224,7 @@ class TeamMembership(Base):
 
 
 # -- Templates ------------------------------------------------------------
-class Template(TimestampMixin, Base):
+class Template(SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "templates"
     __table_args__ = (Index("ix_templates_tenant", "tenant_id"),)
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -225,7 +236,7 @@ class Template(TimestampMixin, Base):
 
 
 # -- Scenarios ------------------------------------------------------------
-class Scenario(TimestampMixin, Base):
+class Scenario(SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "scenarios"
     __table_args__ = (Index("ix_scenarios_tenant", "tenant_id"),)
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -237,7 +248,7 @@ class Scenario(TimestampMixin, Base):
 
 
 # -- Ranges ---------------------------------------------------------------
-class Range(TimestampMixin, Base):
+class Range(SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "ranges"
     __table_args__ = (
         Index("ix_ranges_tenant_state", "tenant_id", "state"),
@@ -252,10 +263,34 @@ class Range(TimestampMixin, Base):
     provisioner_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     template: Mapped[Template] = relationship()
+    snapshots: Mapped[list[RangeSnapshot]] = relationship(back_populates="range_", cascade="all, delete-orphan")
+
+
+class RangeSnapshot(TimestampMixin, Base):
+    """A point-in-time snapshot of a range that can be restored."""
+
+    __tablename__ = "range_snapshots"
+    __table_args__ = (
+        Index("ix_snapshot_range", "range_id"),
+        Index("ix_snapshot_tenant", "tenant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    range_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("ranges.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    snapshot_state: Mapped[str] = mapped_column(
+        String(20), default="creating"
+    )  # creating, ready, restoring, failed, deleted
+    snapshot_data: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON: provisioner snapshot refs
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    range_state_at_snapshot: Mapped[str] = mapped_column(String(20), nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    range_: Mapped[Range] = relationship(back_populates="snapshots")
 
 
 # -- Exercises ------------------------------------------------------------
-class Exercise(TimestampMixin, Base):
+class Exercise(SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "exercises"
     __table_args__ = (
         Index("ix_exercises_tenant_state", "tenant_id", "state"),
@@ -321,9 +356,11 @@ class AuditLog(Base):
     resource_id: Mapped[str] = mapped_column(String(255), nullable=False)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+
 # -- Scheduled Events (resource reservation) -------------------------------
 class ScheduledEvent(TimestampMixin, Base):
     """Resource-reserving event to prevent over-commitment of cluster capacity."""
+
     __tablename__ = "scheduled_events"
     __table_args__ = (
         Index("ix_event_tenant_start", "tenant_id", "start_time"),
@@ -354,6 +391,7 @@ class ScheduledEvent(TimestampMixin, Base):
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # LMS / Learning Management Models
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
 
 class EnrollmentStatus(str, enum.Enum):
     enrolled = "enrolled"
@@ -402,6 +440,7 @@ class IntegrationAuthType(str, enum.Enum):
 # -- Course ---------------------------------------------------------------
 class Course(TimestampMixin, Base):
     """A structured learning offering composed of ordered modules."""
+
     __tablename__ = "courses"
     __table_args__ = (
         Index("ix_courses_tenant", "tenant_id"),
@@ -419,17 +458,16 @@ class Course(TimestampMixin, Base):
     nice_work_roles: Mapped[str] = mapped_column(Text, default="")  # JSON array of NICE work role codes
     course_meta: Mapped[str] = mapped_column(Text, default="{}")  # JSON: prerequisites, learning objectives, etc.
 
-    modules: Mapped[list["CourseModule"]] = relationship(back_populates="course", order_by="CourseModule.ordinal")
-    enrollments: Mapped[list["Enrollment"]] = relationship(back_populates="course")
+    modules: Mapped[list[CourseModule]] = relationship(back_populates="course", order_by="CourseModule.ordinal")
+    enrollments: Mapped[list[Enrollment]] = relationship(back_populates="course")
 
 
 # -- Course Module --------------------------------------------------------
 class CourseModule(TimestampMixin, Base):
     """An ordered unit within a course (scenario, LTI activity, reading, etc.)."""
+
     __tablename__ = "course_modules"
-    __table_args__ = (
-        Index("ix_modules_course_ordinal", "course_id", "ordinal"),
-    )
+    __table_args__ = (Index("ix_modules_course_ordinal", "course_id", "ordinal"),)
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     course_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("courses.id"), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -437,21 +475,22 @@ class CourseModule(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="")
     content_type: Mapped[ModuleContentType] = mapped_column(Enum(ModuleContentType), nullable=False)
     # For scenario type: scenario_id; for external_lti: platform_id + resource_link
-    content_ref: Mapped[str] = mapped_column(Text, default="")  # JSON: {scenario_id, platform_id, resource_link_url, etc.}
+    content_ref: Mapped[str] = mapped_column(
+        Text, default=""
+    )  # JSON: {scenario_id, platform_id, resource_link_url, etc.}
     duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
     is_required: Mapped[bool] = mapped_column(Boolean, default=True)
     pass_threshold: Mapped[int] = mapped_column(Integer, default=70)  # percentage needed to pass
 
-    course: Mapped["Course"] = relationship(back_populates="modules")
+    course: Mapped[Course] = relationship(back_populates="modules")
 
 
 # -- Learning Path --------------------------------------------------------
 class LearningPath(TimestampMixin, Base):
     """Ordered collection of courses forming a complete training programme."""
+
     __tablename__ = "learning_paths"
-    __table_args__ = (
-        Index("ix_lp_tenant", "tenant_id"),
-    )
+    __table_args__ = (Index("ix_lp_tenant", "tenant_id"),)
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
@@ -464,6 +503,7 @@ class LearningPath(TimestampMixin, Base):
 # -- Enrollment -----------------------------------------------------------
 class Enrollment(TimestampMixin, Base):
     """Tracks a user's registration and progress through a course."""
+
     __tablename__ = "enrollments"
     __table_args__ = (
         UniqueConstraint("user_id", "course_id", name="uq_user_course"),
@@ -483,13 +523,14 @@ class Enrollment(TimestampMixin, Base):
     final_score: Mapped[int] = mapped_column(Integer, default=0)
     max_score: Mapped[int] = mapped_column(Integer, default=0)
 
-    course: Mapped["Course"] = relationship(back_populates="enrollments")
-    module_progress: Mapped[list["ModuleProgress"]] = relationship(back_populates="enrollment")
+    course: Mapped[Course] = relationship(back_populates="enrollments")
+    module_progress: Mapped[list[ModuleProgress]] = relationship(back_populates="enrollment")
 
 
 # -- Module Progress ------------------------------------------------------
 class ModuleProgress(TimestampMixin, Base):
     """Per-user progress through a single course module."""
+
     __tablename__ = "module_progress"
     __table_args__ = (
         UniqueConstraint("enrollment_id", "module_id", name="uq_enroll_module"),
@@ -498,19 +539,22 @@ class ModuleProgress(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     enrollment_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("enrollments.id"), nullable=False)
     module_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("course_modules.id"), nullable=False)
-    status: Mapped[ModuleProgressStatus] = mapped_column(Enum(ModuleProgressStatus), default=ModuleProgressStatus.not_started)
+    status: Mapped[ModuleProgressStatus] = mapped_column(
+        Enum(ModuleProgressStatus), default=ModuleProgressStatus.not_started
+    )
     score: Mapped[int] = mapped_column(Integer, default=0)
     max_score: Mapped[int] = mapped_column(Integer, default=100)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    enrollment: Mapped["Enrollment"] = relationship(back_populates="module_progress")
+    enrollment: Mapped[Enrollment] = relationship(back_populates="module_progress")
 
 
 # -- Competency -----------------------------------------------------------
 class Competency(TimestampMixin, Base):
     """A skill or knowledge area (e.g. NICE T0023, ATT&CK T1059)."""
+
     __tablename__ = "competencies"
     __table_args__ = (
         UniqueConstraint("framework", "code", name="uq_framework_code"),
@@ -529,6 +573,7 @@ class Competency(TimestampMixin, Base):
 # -- Competency Assertion -------------------------------------------------
 class CompetencyAssertion(TimestampMixin, Base):
     """Evidence that a user has demonstrated proficiency in a competency."""
+
     __tablename__ = "competency_assertions"
     __table_args__ = (
         Index("ix_ca_user", "user_id"),
@@ -547,6 +592,7 @@ class CompetencyAssertion(TimestampMixin, Base):
 # -- Certification --------------------------------------------------------
 class Certification(TimestampMixin, Base):
     """External certification or credential held by a user."""
+
     __tablename__ = "certifications"
     __table_args__ = (
         Index("ix_certs_user", "user_id"),
@@ -568,6 +614,7 @@ class Certification(TimestampMixin, Base):
 # -- External Platform (Moodle, Immersive Labs, OffSec) -------------------
 class ExternalPlatform(TimestampMixin, Base):
     """Registration of an external learning platform for integration."""
+
     __tablename__ = "external_platforms"
     __table_args__ = (
         Index("ix_ep_tenant", "tenant_id"),
@@ -594,6 +641,7 @@ class ExternalPlatform(TimestampMixin, Base):
 # -- External Activity (cross-platform learning record) -------------------
 class ExternalActivity(TimestampMixin, Base):
     """A learning activity completed on an external platform, synced into TrueNorth."""
+
     __tablename__ = "external_activities"
     __table_args__ = (
         Index("ix_ea_user", "user_id"),
@@ -613,16 +661,17 @@ class ExternalActivity(TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     raw_data: Mapped[str] = mapped_column(Text, default="{}")  # full platform response JSON
-    xapi_statement_id: Mapped[str | None] = mapped_column(String(255), nullable=True)  # if we generated an xAPI statement
+    xapi_statement_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # if we generated an xAPI statement
 
 
 # -- LTI 1.3 Nonce / State (replay protection) ---------------------------
 class LTINonce(Base):
     """One-time nonces for LTI 1.3 OIDC login flow â€” replay protection."""
+
     __tablename__ = "lti_nonces"
-    __table_args__ = (
-        Index("ix_lti_nonce_exp", "expires_at"),
-    )
+    __table_args__ = (Index("ix_lti_nonce_exp", "expires_at"),)
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     nonce: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     state: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -634,6 +683,7 @@ class LTINonce(Base):
 # ══════════════════════════════════════════════════════════════════════════
 # Infrastructure & Directory Enums
 # ══════════════════════════════════════════════════════════════════════════
+
 
 class HypervisorType(str, enum.Enum):
     proxmox = "proxmox"
@@ -707,8 +757,10 @@ class OUType(str, enum.Enum):
 # Infrastructure Models
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class HypervisorConnection(TimestampMixin, Base):
     """DB-backed hypervisor endpoint — replaces env-var / hardcoded creds."""
+
     __tablename__ = "hypervisor_connections"
     __table_args__ = (Index("ix_hv_conn_tenant", "tenant_id"),)
 
@@ -726,11 +778,12 @@ class HypervisorConnection(TimestampMixin, Base):
     datacenter: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
-    nodes: Mapped[list["HypervisorNode"]] = relationship(back_populates="connection", cascade="all, delete-orphan")
+    nodes: Mapped[list[HypervisorNode]] = relationship(back_populates="connection", cascade="all, delete-orphan")
 
 
 class HypervisorNode(TimestampMixin, Base):
     """Discovered compute node within a hypervisor cluster."""
+
     __tablename__ = "hypervisor_nodes"
     __table_args__ = (Index("ix_hv_node_conn", "connection_id"),)
 
@@ -747,11 +800,12 @@ class HypervisorNode(TimestampMixin, Base):
     storage_used_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     vm_count: Mapped[int] = mapped_column(Integer, default=0)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    connection: Mapped["HypervisorConnection"] = relationship(back_populates="nodes")
+    connection: Mapped[HypervisorConnection] = relationship(back_populates="nodes")
 
 
 class HypervisorPool(TimestampMixin, Base):
     """Resource / storage pool within a hypervisor cluster."""
+
     __tablename__ = "hypervisor_pools"
     __table_args__ = (Index("ix_hv_pool_conn", "connection_id"),)
 
@@ -768,8 +822,10 @@ class HypervisorPool(TimestampMixin, Base):
 # AI Orchestrator Config Models
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class AIBackendConfig(TimestampMixin, Base):
     """Persisted AI provider configuration — replaces env-var-only config."""
+
     __tablename__ = "ai_backend_configs"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -783,11 +839,12 @@ class AIBackendConfig(TimestampMixin, Base):
     timeout_seconds: Mapped[int] = mapped_column(Integer, default=120)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
-    fleet_nodes: Mapped[list["AIFleetNode"]] = relationship(back_populates="backend", cascade="all, delete-orphan")
+    fleet_nodes: Mapped[list[AIFleetNode]] = relationship(back_populates="backend", cascade="all, delete-orphan")
 
 
 class AIFleetNode(TimestampMixin, Base):
     """Individual GPU/inference node within an AI backend fleet."""
+
     __tablename__ = "ai_fleet_nodes"
     __table_args__ = (Index("ix_ai_fleet_backend", "backend_id"),)
 
@@ -802,11 +859,12 @@ class AIFleetNode(TimestampMixin, Base):
     current_requests: Mapped[int] = mapped_column(Integer, default=0)
     max_requests: Mapped[int] = mapped_column(Integer, default=10)
     last_health_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    backend: Mapped["AIBackendConfig"] = relationship(back_populates="fleet_nodes")
+    backend: Mapped[AIBackendConfig] = relationship(back_populates="fleet_nodes")
 
 
 class AIModelRoute(TimestampMixin, Base):
     """Tag-based routing rule: which models go to which backends."""
+
     __tablename__ = "ai_model_routes"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -821,8 +879,10 @@ class AIModelRoute(TimestampMixin, Base):
 # Nations & Coalitions
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class Nation(TimestampMixin, Base):
     """Country / nation reference data."""
+
     __tablename__ = "nations"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -837,6 +897,7 @@ class Nation(TimestampMixin, Base):
 
 class Coalition(TimestampMixin, Base):
     """Named alliance or working group of nations."""
+
     __tablename__ = "coalitions"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -848,10 +909,9 @@ class Coalition(TimestampMixin, Base):
 
 class CoalitionMembership(Base):
     """Junction: Nation ↔ Coalition."""
+
     __tablename__ = "coalition_memberships"
-    __table_args__ = (
-        UniqueConstraint("nation_id", "coalition_id", name="uq_nation_coalition"),
-    )
+    __table_args__ = (UniqueConstraint("nation_id", "coalition_id", name="uq_nation_coalition"),)
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     nation_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("nations.id"), nullable=False)
@@ -863,8 +923,10 @@ class CoalitionMembership(Base):
 # Organizational Units & Security Groups
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class OrganizationalUnit(TimestampMixin, Base):
     """Hierarchical OU tree — mirrors AD OU structure."""
+
     __tablename__ = "organizational_units"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -875,12 +937,15 @@ class OrganizationalUnit(TimestampMixin, Base):
     dn_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     nation_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("nations.id"), nullable=True)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
-    children: Mapped[list["OrganizationalUnit"]] = relationship(back_populates="parent")
-    parent: Mapped["OrganizationalUnit | None"] = relationship(back_populates="children", remote_side="OrganizationalUnit.id")
+    children: Mapped[list[OrganizationalUnit]] = relationship(back_populates="parent")
+    parent: Mapped[OrganizationalUnit | None] = relationship(
+        back_populates="children", remote_side="OrganizationalUnit.id"
+    )
 
 
 class SecurityGroup(TimestampMixin, Base):
     """Security / distribution group — maps to AD security groups."""
+
     __tablename__ = "security_groups"
     __table_args__ = (Index("ix_sg_tenant", "tenant_id"),)
 
@@ -896,10 +961,9 @@ class SecurityGroup(TimestampMixin, Base):
 
 class SecurityGroupMembership(Base):
     """Junction: User ↔ SecurityGroup."""
+
     __tablename__ = "security_group_memberships"
-    __table_args__ = (
-        UniqueConstraint("user_id", "group_id", name="uq_user_secgroup"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "group_id", name="uq_user_secgroup"),)
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
@@ -910,8 +974,10 @@ class SecurityGroupMembership(Base):
 # Auth Zone Policies
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class AuthZonePolicy(TimestampMixin, Base):
     """Zone-based authentication policy — FIDO2 / Kerberos / session tokens."""
+
     __tablename__ = "auth_zone_policies"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -931,6 +997,7 @@ class AuthZonePolicy(TimestampMixin, Base):
 # Storage
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class StorageProtocol(str, enum.Enum):
     nfs = "nfs"
     iscsi = "iscsi"
@@ -941,6 +1008,7 @@ class StorageProtocol(str, enum.Enum):
 
 class StorageAppliance(TimestampMixin, Base):
     """External storage array (NetApp, Dell, etc.)."""
+
     __tablename__ = "storage_appliances"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -958,6 +1026,7 @@ class StorageAppliance(TimestampMixin, Base):
 
 class StorageVolume(TimestampMixin, Base):
     """A volume/LUN exported from a storage appliance."""
+
     __tablename__ = "storage_volumes"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -974,6 +1043,7 @@ class StorageVolume(TimestampMixin, Base):
 # Network Devices
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class NetworkDeviceRole(str, enum.Enum):
     tor = "tor"
     spine = "spine"
@@ -985,6 +1055,7 @@ class NetworkDeviceRole(str, enum.Enum):
 
 class NetworkDevice(TimestampMixin, Base):
     """Physical network device (switch, firewall, router)."""
+
     __tablename__ = "network_devices"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -1004,8 +1075,10 @@ class NetworkDevice(TimestampMixin, Base):
 # Kit Definition
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class KitDefinition(TimestampMixin, Base):
     """A complete deployable kit (rack, nodes, storage, network)."""
+
     __tablename__ = "kit_definitions"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
@@ -1017,3 +1090,193 @@ class KitDefinition(TimestampMixin, Base):
     network_device_count: Mapped[int] = mapped_column(Integer, default=0)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
 
+
+# ══════════════════════════════════════════════════════════════════════════
+# Threat Intelligence
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class ThreatIntelFeed(TimestampMixin, SoftDeleteMixin, Base):
+    """A STIX/TAXII or custom threat intelligence feed source."""
+
+    __tablename__ = "threat_intel_feeds"
+    __table_args__ = (Index("ix_ti_feed_tenant", "tenant_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    feed_type: Mapped[str] = mapped_column(String(50), nullable=False)  # taxii, stix_file, custom_api
+    url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    collection_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    api_key_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    poll_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_poll_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    indicator_count: Mapped[int] = mapped_column(Integer, default=0)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    indicators: Mapped[list[ThreatIndicator]] = relationship(back_populates="feed", cascade="all, delete-orphan")
+
+
+class ThreatIndicator(TimestampMixin, Base):
+    """An indicator of compromise (IOC) from a threat intelligence feed."""
+
+    __tablename__ = "threat_indicators"
+    __table_args__ = (
+        Index("ix_ti_indicator_type_value", "indicator_type", "value"),
+        Index("ix_ti_indicator_feed", "feed_id"),
+        Index("ix_ti_indicator_tenant", "tenant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    feed_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("threat_intel_feeds.id"), nullable=False)
+    stix_id: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
+    indicator_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # ipv4, ipv6, domain, url, sha256, md5, email
+    value: Mapped[str] = mapped_column(String(2048), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[int] = mapped_column(Integer, default=50)  # 0-100
+    severity: Mapped[str] = mapped_column(String(20), default="medium")  # low, medium, high, critical
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    kill_chain_phases: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    mitre_attack_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    feed: Mapped[ThreatIntelFeed] = relationship(back_populates="indicators")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Detection Rules (Sigma-compatible)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class DetectionRule(TimestampMixin, SoftDeleteMixin, Base):
+    """A Sigma-compatible detection rule for scoring and alerting."""
+
+    __tablename__ = "detection_rules"
+    __table_args__ = (
+        Index("ix_detection_tenant", "tenant_id"),
+        Index("ix_detection_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    sigma_id: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft, testing, stable, deprecated
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    level: Mapped[str] = mapped_column(String(20), default="medium")  # informational, low, medium, high, critical
+    logsource_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    logsource_product: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    logsource_service: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    detection_yaml: Mapped[str] = mapped_column(Text, nullable=False)  # full Sigma YAML body
+    mitre_attack_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    false_positives: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    tags: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+
+
+# ── Exercise Forge (EPIC 1) ─────────────────────────────────────────────
+
+
+class ForgedExercise(TimestampMixin, Base):
+    """Tracks AI-generated exercises from threat intel feeds."""
+
+    __tablename__ = "forged_exercises"
+    __table_args__ = (
+        Index("ix_forged_tenant", "tenant_id"),
+        Index("ix_forged_feed", "feed_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    exercise_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=False)
+    scenario_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("scenarios.id"), nullable=False)
+    feed_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("threat_intel_feeds.id"), nullable=True)
+    indicator_ids: Mapped[str] = mapped_column(Text, default="[]")  # JSON array of indicator UUIDs
+    scenario_yaml: Mapped[str] = mapped_column(Text, nullable=False)
+    mitre_techniques: Mapped[str] = mapped_column(Text, default="[]")  # JSON array
+    difficulty: Mapped[str] = mapped_column(String(50), nullable=False)
+    model_used: Mapped[str] = mapped_column(String(255), default="")
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+
+
+# ── Adaptive Competency (EPIC 3) ───────────────────────────────────────
+
+
+class CompetencyAutoAssessment(TimestampMixin, Base):
+    """Auto-assessed competencies derived from exercise performance."""
+
+    __tablename__ = "competency_auto_assessments"
+    __table_args__ = (
+        Index("ix_auto_assess_user", "user_id"),
+        Index("ix_auto_assess_exercise", "exercise_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    exercise_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=False)
+    competency_mappings: Mapped[str] = mapped_column(Text, default="[]")  # JSON: [{competency_id, delta, reason}]
+    raw_score: Mapped[int] = mapped_column(Integer, default=0)
+    max_score: Mapped[int] = mapped_column(Integer, default=0)
+    assessed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LearningRecommendation(TimestampMixin, Base):
+    """AI-generated personalized learning recommendations."""
+
+    __tablename__ = "learning_recommendations"
+    __table_args__ = (Index("ix_learn_rec_user", "user_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    strengths: Mapped[str] = mapped_column(Text, default="[]")  # JSON
+    gaps: Mapped[str] = mapped_column(Text, default="[]")  # JSON
+    recommendations: Mapped[str] = mapped_column(Text, default="[]")  # JSON
+    target_role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    target_role_readiness: Mapped[float] = mapped_column(Float, default=0.0)
+    next_milestone: Mapped[str] = mapped_column(Text, default="")
+    model_used: Mapped[str] = mapped_column(String(255), default="")
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ── Ops Center (EPIC 2) ────────────────────────────────────────────────
+
+
+class AnalystAnnotation(TimestampMixin, Base):
+    """Analyst annotations during live exercise."""
+
+    __tablename__ = "analyst_annotations"
+    __table_args__ = (
+        Index("ix_annotation_exercise", "exercise_id"),
+        Index("ix_annotation_user", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    exercise_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    user_display_name: Mapped[str] = mapped_column(String(255), default="")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    annotation_type: Mapped[str] = mapped_column(String(50), default="observation")
+    severity: Mapped[str] = mapped_column(String(20), default="info")
+    related_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tags: Mapped[str] = mapped_column(Text, default="[]")  # JSON array
+
+
+class SharedCommand(TimestampMixin, Base):
+    """Commands shared between analysts during live exercise."""
+
+    __tablename__ = "shared_commands"
+    __table_args__ = (Index("ix_shared_cmd_exercise", "exercise_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    exercise_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    user_display_name: Mapped[str] = mapped_column(String(255), default="")
+    command: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    host_tag: Mapped[str] = mapped_column(String(100), default="")
+    shared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

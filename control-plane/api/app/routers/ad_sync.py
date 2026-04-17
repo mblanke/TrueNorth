@@ -1,8 +1,9 @@
-﻿"""TrueNorth Range -- AD/LDAP Synchronization Router.
+"""TrueNorth Range -- AD/LDAP Synchronization Router.
 
 Provides status, trigger, and config endpoints for Active Directory integration.
 Reads configuration from environment variables when available.
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,7 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import User, SecurityGroup
+from ..models import SecurityGroup, User
 
 logger = logging.getLogger("truenorth.api.ad_sync")
 
@@ -39,12 +40,8 @@ def _get_ldap_config() -> dict:
 def ad_sync_status(db: Session = Depends(get_db)):
     """Return current AD sync status and statistics."""
     ad_users = db.query(User).filter(User.source == "ad_sync").count()
-    ad_groups = db.query(SecurityGroup).filter(
-        SecurityGroup.ad_object_guid.isnot(None)
-    ).count()
-    last_sync = db.query(func.max(User.last_synced_at)).filter(
-        User.source == "ad_sync"
-    ).scalar()
+    ad_groups = db.query(SecurityGroup).filter(SecurityGroup.ad_object_guid.isnot(None)).count()
+    last_sync = db.query(func.max(User.last_synced_at)).filter(User.source == "ad_sync").scalar()
     config = _get_ldap_config()
     return {
         "connected": config["configured"],
@@ -76,7 +73,6 @@ def trigger_ad_sync(db: Session = Depends(get_db)):
     kc_url = os.getenv("KEYCLOAK_URL", "")
     if kc_url:
         try:
-            import httpx
             # Attempt to trigger Keycloak user federation sync
             logger.info("Triggering Keycloak federation sync at %s", kc_url)
             return {

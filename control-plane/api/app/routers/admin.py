@@ -1,4 +1,4 @@
-﻿"""TrueNorth Range - Admin router.
+"""TrueNorth Range - Admin router.
 
 Tenant management, user CRUD (with military fields), team CRUD (full schema),
 team membership, and audit log access.
@@ -25,13 +25,15 @@ DELETE /teams/{team_id}/members/{user_id}  USER_UPDATE
 GET    /audit-log                          AUDIT_READ
 =========================================  ==========================
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
@@ -40,16 +42,13 @@ from ..models import AuditLog, Team, TeamMembership, Tenant, User, UserRole
 from ..rbac import Permission, require_permission
 from ..schemas import (
     AuditLogOut,
-    TeamIn,
-    TeamOut,
     TeamFullIn,
     TeamFullOut,
     TeamUpdate,
     TenantIn,
     TenantOut,
-    UserOut,
-    UserFullOut,
     UserCreateIn,
+    UserFullOut,
     UserUpdateIn,
 )
 
@@ -185,12 +184,12 @@ def update_user(
     return target
 
 
-@router.delete("/users/{user_id}", status_code=204)
+@router.delete("/users/{user_id}", status_code=204, response_class=Response)
 def delete_user(
     user_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.USER_DELETE)),
-) -> None:
+):
     """Delete (deactivate) a user.  **Permission: user:delete**"""
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
@@ -254,12 +253,12 @@ def update_team(
     return team
 
 
-@router.delete("/teams/{team_id}", status_code=204)
+@router.delete("/teams/{team_id}", status_code=204, response_class=Response)
 def delete_team(
     team_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
-) -> None:
+):
     """Delete a team and its memberships.  **Permission: user:update**"""
     team = db.query(Team).filter(Team.id == team_id).first()
     if not team:
@@ -287,9 +286,9 @@ def add_team_member(
     target = db.query(User).filter(User.id == user_id).first()
     if not target:
         raise HTTPException(404, "User not found")
-    existing = db.query(TeamMembership).filter(
-        TeamMembership.team_id == team_id, TeamMembership.user_id == user_id
-    ).first()
+    existing = (
+        db.query(TeamMembership).filter(TeamMembership.team_id == team_id, TeamMembership.user_id == user_id).first()
+    )
     if existing:
         raise HTTPException(409, "User already in team")
     if team.max_members:
@@ -300,7 +299,7 @@ def add_team_member(
         user_id=user_id,
         team_id=team_id,
         role=role,
-        joined_at=datetime.now(timezone.utc),
+        joined_at=datetime.now(UTC),
     )
     db.add(membership)
     db.commit()
@@ -323,28 +322,32 @@ def list_team_members(
     results = []
     for m in memberships:
         u = db.query(User).filter(User.id == m.user_id).first()
-        results.append({
-            "user_id": str(m.user_id),
-            "display_name": u.display_name if u else "Unknown",
-            "email": u.email if u else "",
-            "role": m.role,
-            "position": m.position,
-            "joined_at": m.joined_at.isoformat() if m.joined_at else None,
-        })
+        results.append(
+            {
+                "user_id": str(m.user_id),
+                "display_name": u.display_name if u else "Unknown",
+                "email": u.email if u else "",
+                "role": m.role,
+                "position": m.position,
+                "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+            }
+        )
     return results
 
 
-@router.delete("/teams/{team_id}/members/{member_user_id}", status_code=204)
+@router.delete("/teams/{team_id}/members/{member_user_id}", status_code=204, response_class=Response)
 def remove_team_member(
     team_id: uuid.UUID = Path(...),
     member_user_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
-) -> None:
+):
     """Remove a user from a team.  **Permission: user:update**"""
-    m = db.query(TeamMembership).filter(
-        TeamMembership.team_id == team_id, TeamMembership.user_id == member_user_id
-    ).first()
+    m = (
+        db.query(TeamMembership)
+        .filter(TeamMembership.team_id == team_id, TeamMembership.user_id == member_user_id)
+        .first()
+    )
     if not m:
         raise HTTPException(404, "Membership not found")
     db.delete(m)

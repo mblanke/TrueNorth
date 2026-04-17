@@ -1,4 +1,5 @@
-﻿"""Manual acknowledgement validator — checks API for objective ack."""
+"""Manual acknowledgement validator — checks API for objective ack."""
+
 from __future__ import annotations
 
 import logging

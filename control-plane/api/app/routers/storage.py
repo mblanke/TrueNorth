@@ -1,17 +1,23 @@
-﻿"""Storage appliance & volume CRUD."""
+"""Storage appliance & volume CRUD."""
+
 from __future__ import annotations
+
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..auth import get_current_user, CurrentUser
 from ..models import StorageAppliance, StorageVolume
 from ..schemas import (
-    StorageApplianceIn, StorageApplianceOut, StorageApplianceUpdate,
-    StorageVolumeIn, StorageVolumeOut,
+    StorageApplianceIn,
+    StorageApplianceOut,
+    StorageApplianceUpdate,
     StorageSummaryOut,
+    StorageVolumeIn,
+    StorageVolumeOut,
 )
 
 router = APIRouter(prefix="/storage", tags=["storage"])
@@ -24,7 +30,9 @@ def list_appliances(db: Session = Depends(get_db), user: CurrentUser = Depends(g
 
 
 @router.post("/appliances", response_model=StorageApplianceOut, status_code=201)
-def create_appliance(body: StorageApplianceIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def create_appliance(
+    body: StorageApplianceIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+):
     obj = StorageAppliance(**body.model_dump(), tenant_id=user.tenant_id)
     db.add(obj)
     db.commit()
@@ -32,8 +40,10 @@ def create_appliance(body: StorageApplianceIn, db: Session = Depends(get_db), us
     return obj
 
 
-@router.delete("/appliances/{appliance_id}", status_code=204)
-def delete_appliance(appliance_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+@router.delete("/appliances/{appliance_id}", status_code=204, response_class=Response)
+def delete_appliance(
+    appliance_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+):
     obj = db.query(StorageAppliance).filter_by(id=appliance_id, tenant_id=user.tenant_id).first()
     if not obj:
         raise HTTPException(404, "Appliance not found")
@@ -60,7 +70,9 @@ def update_appliance(
 
 # ── Volumes ────────────────────────────────────────────────────
 @router.get("/volumes", response_model=list[StorageVolumeOut])
-def list_volumes(appliance_id: uuid.UUID | None = None, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def list_volumes(
+    appliance_id: uuid.UUID | None = None, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+):
     q = db.query(StorageVolume).filter(StorageVolume.tenant_id == user.tenant_id)
     if appliance_id:
         q = q.filter(StorageVolume.appliance_id == appliance_id)
@@ -76,7 +88,7 @@ def create_volume(body: StorageVolumeIn, db: Session = Depends(get_db), user: Cu
     return obj
 
 
-@router.delete("/volumes/{volume_id}", status_code=204)
+@router.delete("/volumes/{volume_id}", status_code=204, response_class=Response)
 def delete_volume(volume_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     obj = db.query(StorageVolume).filter_by(id=volume_id, tenant_id=user.tenant_id).first()
     if not obj:

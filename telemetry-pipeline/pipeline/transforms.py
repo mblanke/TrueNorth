@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -12,10 +12,10 @@ def normalize_timestamp(event: dict[str, Any]) -> dict[str, Any]:
     """Ensure timestamp is ISO-8601 and add @timestamp field for OpenSearch."""
     raw_ts = event.get("timestamp")
     if raw_ts is None:
-        event["timestamp"] = datetime.now(timezone.utc).isoformat()
+        event["timestamp"] = datetime.now(UTC).isoformat()
     elif isinstance(raw_ts, (int, float)):
         # Assume epoch seconds
-        event["timestamp"] = datetime.fromtimestamp(raw_ts, tz=timezone.utc).isoformat()
+        event["timestamp"] = datetime.fromtimestamp(raw_ts, tz=UTC).isoformat()
     elif isinstance(raw_ts, str):
         # Try to parse and re-format to ensure consistency
         try:
@@ -23,7 +23,7 @@ def normalize_timestamp(event: dict[str, Any]) -> dict[str, Any]:
             event["timestamp"] = dt.isoformat()
         except ValueError:
             logger.warning("Unparseable timestamp '%s', using current time", raw_ts)
-            event["timestamp"] = datetime.now(timezone.utc).isoformat()
+            event["timestamp"] = datetime.now(UTC).isoformat()
 
     event["@timestamp"] = event["timestamp"]
     return event

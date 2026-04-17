@@ -6,13 +6,14 @@ optionally uploaded to MinIO / S3.
 """
 
 from __future__ import annotations
+
 import csv
 import io
 import json
 import logging
-from datetime import datetime, timezone
-from enum import Enum
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
 from typing import Any
 from uuid import uuid4
 
@@ -37,9 +38,7 @@ class ReportResult:
     report_type: ReportType
     format: str  # json, csv, pdf
     storage_url: str  # MinIO / S3 presigned URL (or local path)
-    generated_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    generated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -84,9 +83,7 @@ class ReportGenerator:
     # Dispatcher
     # ------------------------------------------------------------------
 
-    async def generate(
-        self, report_type: ReportType, params: dict
-    ) -> ReportResult:
+    async def generate(self, report_type: ReportType, params: dict) -> ReportResult:
         """Generate a report of the given *report_type*.
 
         *params* is a free-form dict whose keys depend on the report type
@@ -158,9 +155,7 @@ class ReportGenerator:
         return {
             "report_type": ReportType.EXERCISE_AAR.value,
             "exercise_id": exercise_id,
-            "executive_summary": (
-                f"After-Action Review for exercise {exercise_id}."
-            ),
+            "executive_summary": (f"After-Action Review for exercise {exercise_id}."),
             "timeline": [
                 {"time": "T+00:00", "event": "Exercise started"},
                 {"time": "T+01:30", "event": "Phase 1 completed"},
@@ -209,9 +204,7 @@ class ReportGenerator:
             "rows": [],
         }
 
-    async def generate_team_performance(
-        self, team_id: str, date_range: tuple | None = None
-    ) -> dict:
+    async def generate_team_performance(self, team_id: str, date_range: tuple | None = None) -> dict:
         """Team performance across exercises."""
         logger.info("Generating team performance for %s", team_id)
         return {
@@ -232,9 +225,7 @@ class ReportGenerator:
             "rows": [],
         }
 
-    async def generate_tenant_usage(
-        self, tenant_id: str, date_range: tuple | None = None
-    ) -> dict:
+    async def generate_tenant_usage(self, tenant_id: str, date_range: tuple | None = None) -> dict:
         """Tenant resource usage: ranges, VM-hours, exercises."""
         logger.info("Generating tenant usage for %s", tenant_id)
         return {

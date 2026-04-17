@@ -2,6 +2,7 @@
 
 Simulates infrastructure operations with configurable delays and failure rates.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,7 @@ import os
 import random
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .base import BaseProvisioner
 from .results import (
@@ -51,7 +52,10 @@ class MockProvisioner(BaseProvisioner):
     # provision
     # ------------------------------------------------------------------ #
     async def provision(
-        self, range_id: str, template: dict, allocations: dict,
+        self,
+        range_id: str,
+        template: dict,
+        allocations: dict,
     ) -> ProvisionResult:
         start = time.monotonic()
         await asyncio.sleep(MOCK_PROVISION_DELAY)
@@ -90,13 +94,15 @@ class MockProvisioner(BaseProvisioner):
             "vms": vms,
             "networks": networks,
             "status": "running",
-            "provisioned_at": datetime.now(timezone.utc).isoformat(),
+            "provisioned_at": datetime.now(UTC).isoformat(),
         }
 
         # Mock telemetry
         logger.info(
             "MockProvisioner: provisioned %d VMs for range %s in %.2fs",
-            len(vms), range_id, time.monotonic() - start,
+            len(vms),
+            range_id,
+            time.monotonic() - start,
         )
 
         return ProvisionResult(
@@ -111,7 +117,9 @@ class MockProvisioner(BaseProvisioner):
     # destroy
     # ------------------------------------------------------------------ #
     async def destroy(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> DestroyResult:
         start = time.monotonic()
         await asyncio.sleep(MOCK_PROVISION_DELAY * 0.5)
@@ -137,7 +145,9 @@ class MockProvisioner(BaseProvisioner):
     # stop
     # ------------------------------------------------------------------ #
     async def stop(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> StopResult:
         start = time.monotonic()
         await asyncio.sleep(MOCK_PROVISION_DELAY * 0.3)
@@ -159,7 +169,9 @@ class MockProvisioner(BaseProvisioner):
     # start
     # ------------------------------------------------------------------ #
     async def start(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> StartResult:
         start = time.monotonic()
         await asyncio.sleep(MOCK_PROVISION_DELAY * 0.3)
@@ -181,7 +193,10 @@ class MockProvisioner(BaseProvisioner):
     # snapshot
     # ------------------------------------------------------------------ #
     async def snapshot(
-        self, range_id: str, provision_output: dict, name: str,
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
     ) -> SnapshotResult:
         start = time.monotonic()
         await asyncio.sleep(MOCK_PROVISION_DELAY * 0.5)
@@ -209,7 +224,9 @@ class MockProvisioner(BaseProvisioner):
     # health_check
     # ------------------------------------------------------------------ #
     async def health_check(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> HealthResult:
         start = time.monotonic()
         await asyncio.sleep(MOCK_PROVISION_DELAY * 0.1)
@@ -229,12 +246,14 @@ class MockProvisioner(BaseProvisioner):
             healthy = vm.get("status") == "running"
             if not healthy:
                 all_healthy = False
-            vm_statuses.append({
-                "vm_id": vm["vm_id"],
-                "name": vm["name"],
-                "status": vm.get("status", "unknown"),
-                "healthy": healthy,
-            })
+            vm_statuses.append(
+                {
+                    "vm_id": vm["vm_id"],
+                    "name": vm["name"],
+                    "status": vm.get("status", "unknown"),
+                    "healthy": healthy,
+                }
+            )
 
         overall = "ok" if all_healthy else "degraded"
         return HealthResult(

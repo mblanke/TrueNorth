@@ -6,6 +6,7 @@ Simulates common AD attack techniques for training scenarios:
   - DCSync
   - Group Policy modification
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -24,8 +25,7 @@ class ADAttackInjector(BaseInjector):
 
     name: str = "ad_attack"
     description: str = (
-        "Simulates Active Directory attacks including Kerberoasting, "
-        "password spray, DCSync, and GPO modification."
+        "Simulates Active Directory attacks including Kerberoasting, password spray, DCSync, and GPO modification."
     )
     required_params: list[str] = ["attack_type", "target_dc"]
 
@@ -42,8 +42,7 @@ class ADAttackInjector(BaseInjector):
             assert p in self.params, f"Missing required param: {p}"
         attack = self.params["attack_type"]
         assert attack in self._TECHNIQUE_MAP, (
-            f"Unknown attack_type '{attack}'. "
-            f"Valid: {list(self._TECHNIQUE_MAP.keys())}"
+            f"Unknown attack_type '{attack}'. Valid: {list(self._TECHNIQUE_MAP.keys())}"
         )
 
     def execute(self, context: dict[str, Any]) -> dict[str, Any]:
@@ -78,21 +77,24 @@ class ADAttackInjector(BaseInjector):
 
     def _kerberoast(self, context: dict[str, Any]) -> dict[str, Any]:
         """Simulate Kerberoasting: request TGS tickets for SPN accounts."""
-        target_spns = self.params.get("target_spns", [
-            "MSSQLSvc/sql01.corp.truenorth.local:1433",
-            "HTTP/web01.corp.truenorth.local",
-            "exchangeMDB/exch01.corp.truenorth.local",
-        ])
+        target_spns = self.params.get(
+            "target_spns",
+            [
+                "MSSQLSvc/sql01.corp.truenorth.local:1433",
+                "HTTP/web01.corp.truenorth.local",
+                "exchangeMDB/exch01.corp.truenorth.local",
+            ],
+        )
         results = []
         for spn in target_spns:
-            ticket_hash = hashlib.sha256(
-                f"{spn}:{random.random()}".encode()
-            ).hexdigest()[:32]
-            results.append({
-                "spn": spn,
-                "ticket_hash": f"$krb5tgs$23$*{ticket_hash}",
-                "crackable": random.choice([True, False]),
-            })
+            ticket_hash = hashlib.sha256(f"{spn}:{random.random()}".encode()).hexdigest()[:32]
+            results.append(
+                {
+                    "spn": spn,
+                    "ticket_hash": f"$krb5tgs$23$*{ticket_hash}",
+                    "crackable": random.choice([True, False]),
+                }
+            )
         return {
             "spns_targeted": len(target_spns),
             "tickets_obtained": results,
@@ -101,22 +103,36 @@ class ADAttackInjector(BaseInjector):
 
     def _password_spray(self, context: dict[str, Any]) -> dict[str, Any]:
         """Simulate password spraying against AD accounts."""
-        users = self.params.get("target_users", [
-            "admin", "jdoe", "svc_backup", "svc_sql", "trainee",
-        ])
-        passwords = self.params.get("passwords", [
-            "Welcome1!", "Password1!", "Spring2026!",
-        ])
+        users = self.params.get(
+            "target_users",
+            [
+                "admin",
+                "jdoe",
+                "svc_backup",
+                "svc_sql",
+                "trainee",
+            ],
+        )
+        passwords = self.params.get(
+            "passwords",
+            [
+                "Welcome1!",
+                "Password1!",
+                "Spring2026!",
+            ],
+        )
         success_rate = float(self.params.get("success_rate", 0.15))
         attempts: list[dict[str, Any]] = []
         for pwd in passwords:
             for user in users:
                 success = random.random() < success_rate
-                attempts.append({
-                    "username": user,
-                    "password_tested": pwd[:3] + "***",
-                    "success": success,
-                })
+                attempts.append(
+                    {
+                        "username": user,
+                        "password_tested": pwd[:3] + "***",
+                        "success": success,
+                    }
+                )
         successful = [a for a in attempts if a["success"]]
         return {
             "total_attempts": len(attempts),
@@ -128,19 +144,24 @@ class ADAttackInjector(BaseInjector):
 
     def _dcsync(self, context: dict[str, Any]) -> dict[str, Any]:
         """Simulate DCSync replication attack."""
-        target_accounts = self.params.get("target_accounts", [
-            "krbtgt", "Administrator", "svc_backup",
-        ])
+        target_accounts = self.params.get(
+            "target_accounts",
+            [
+                "krbtgt",
+                "Administrator",
+                "svc_backup",
+            ],
+        )
         results = []
         for account in target_accounts:
-            nt_hash = hashlib.md5(
-                f"{account}:{random.random()}".encode()
-            ).hexdigest()
-            results.append({
-                "account": account,
-                "nt_hash": nt_hash,
-                "lm_hash": "aad3b435b51404eeaad3b435b51404ee",
-            })
+            nt_hash = hashlib.md5(f"{account}:{random.random()}".encode()).hexdigest()
+            results.append(
+                {
+                    "account": account,
+                    "nt_hash": nt_hash,
+                    "lm_hash": "aad3b435b51404eeaad3b435b51404ee",
+                }
+            )
         return {
             "accounts_synced": len(results),
             "hashes": results,

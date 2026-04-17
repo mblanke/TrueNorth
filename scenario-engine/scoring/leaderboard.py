@@ -41,9 +41,7 @@ class Leaderboard:
             try:
                 import redis as redis_lib  # type: ignore[import-untyped]
 
-                self._redis = redis_lib.from_url(
-                    redis_url, decode_responses=True
-                )
+                self._redis = redis_lib.from_url(redis_url, decode_responses=True)
                 self._redis.ping()
                 logger.info("Leaderboard connected to Redis at %s", redis_url)
             except Exception:
@@ -99,20 +97,12 @@ class Leaderboard:
         Each entry: ``{rank, team_id, score}``.
         """
         if self._redis is not None:
-            raw = self._redis.zrevrange(
-                self._key(exercise_id), 0, top_n - 1, withscores=True
-            )
-            return [
-                {"rank": i + 1, "team_id": tid, "score": int(sc)}
-                for i, (tid, sc) in enumerate(raw)
-            ]
+            raw = self._redis.zrevrange(self._key(exercise_id), 0, top_n - 1, withscores=True)
+            return [{"rank": i + 1, "team_id": tid, "score": int(sc)} for i, (tid, sc) in enumerate(raw)]
 
         board = self._memory.get(exercise_id, {})
         sorted_board = sorted(board.items(), key=lambda kv: kv[1], reverse=True)
-        return [
-            {"rank": i + 1, "team_id": tid, "score": sc}
-            for i, (tid, sc) in enumerate(sorted_board[:top_n])
-        ]
+        return [{"rank": i + 1, "team_id": tid, "score": sc} for i, (tid, sc) in enumerate(sorted_board[:top_n])]
 
     # ── get team rank ──────────────────────────────────────
 

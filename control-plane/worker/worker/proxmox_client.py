@@ -8,6 +8,7 @@ Features:
   - Retry with exponential backoff on 5xx errors
   - Structured logging
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -67,7 +68,7 @@ class ProxmoxClient:
         """Close the underlying HTTP connection pool."""
         await self._client.aclose()
 
-    async def __aenter__(self) -> "ProxmoxClient":
+    async def __aenter__(self) -> ProxmoxClient:
         return self
 
     async def __aexit__(self, *exc: Any) -> None:
@@ -90,7 +91,10 @@ class ProxmoxClient:
         for attempt in range(_MAX_RETRIES):
             try:
                 resp = await self._client.request(
-                    method, path, data=data, params=params,
+                    method,
+                    path,
+                    data=data,
+                    params=params,
                 )
                 if resp.status_code >= 500:
                     raise ProxmoxError(resp.status_code, resp.text, path)
@@ -102,10 +106,14 @@ class ProxmoxClient:
                 last_exc = exc
                 if isinstance(exc, ProxmoxError) and exc.status < 500:
                     raise
-                wait = _BACKOFF_BASE ** attempt
+                wait = _BACKOFF_BASE**attempt
                 logger.warning(
                     "Proxmox %s %s attempt %d failed: %s — retrying in %.1fs",
-                    method, path, attempt + 1, exc, wait,
+                    method,
+                    path,
+                    attempt + 1,
+                    exc,
+                    wait,
                 )
                 await asyncio.sleep(wait)
         raise last_exc  # type: ignore[misc]
@@ -208,7 +216,11 @@ class ProxmoxClient:
     # ------------------------------------------------------------------
 
     async def wait_for_task(
-        self, node: str, task_id: str, timeout: int = 300, poll_interval: float = 2.0,
+        self,
+        node: str,
+        task_id: str,
+        timeout: int = 300,
+        poll_interval: float = 2.0,
     ) -> dict[str, Any]:
         """Poll a Proxmox task until completion or timeout.
 
@@ -236,7 +248,10 @@ class ProxmoxClient:
         return await self._get(f"/nodes/{node}/network")
 
     async def create_bridge(
-        self, node: str, name: str, vlan_aware: bool = True,
+        self,
+        node: str,
+        name: str,
+        vlan_aware: bool = True,
     ) -> None:
         """Create a Linux bridge on a node."""
         await self._post(
@@ -253,7 +268,10 @@ class ProxmoxClient:
     # ------------------------------------------------------------------
 
     async def set_firewall_rule(
-        self, node: str, vmid: int, rule: dict[str, Any],
+        self,
+        node: str,
+        vmid: int,
+        rule: dict[str, Any],
     ) -> None:
         """Add a firewall rule to a VM."""
         await self._post(f"/nodes/{node}/qemu/{vmid}/firewall/rules", **rule)
@@ -281,7 +299,10 @@ class ProxmoxClient:
             async with sem:
                 try:
                     tid = await self.clone_vm(
-                        node, template_vmid, vm["vmid"], vm["name"],
+                        node,
+                        template_vmid,
+                        vm["vmid"],
+                        vm["name"],
                         **{k: v for k, v in vm.items() if k not in ("vmid", "name")},
                     )
                     return {"vmid": vm["vmid"], "name": vm["name"], "task_id": tid, "status": "cloning"}
@@ -321,19 +342,28 @@ class ProxmoxClient:
         return results
 
     async def bulk_start(
-        self, node: str, vmids: list[int], concurrency: int = 20,
+        self,
+        node: str,
+        vmids: list[int],
+        concurrency: int = 20,
     ) -> list[dict[str, Any]]:
         """Start multiple VMs with bounded concurrency."""
         return await self._bulk_action(node, vmids, self.start_vm, concurrency, "start")
 
     async def bulk_stop(
-        self, node: str, vmids: list[int], concurrency: int = 20,
+        self,
+        node: str,
+        vmids: list[int],
+        concurrency: int = 20,
     ) -> list[dict[str, Any]]:
         """Stop multiple VMs with bounded concurrency."""
         return await self._bulk_action(node, vmids, self.stop_vm, concurrency, "stop")
 
     async def bulk_delete(
-        self, node: str, vmids: list[int], concurrency: int = 10,
+        self,
+        node: str,
+        vmids: list[int],
+        concurrency: int = 10,
     ) -> list[dict[str, Any]]:
         """Delete multiple VMs with bounded concurrency."""
         return await self._bulk_action(node, vmids, self.delete_vm, concurrency, "delete")

@@ -10,6 +10,7 @@ Usage (sync):
         ranges = tn.list_ranges()
         tn.provision_range(ranges[0]["id"])
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,8 +18,8 @@ import functools
 import json
 import logging
 import os
-import time
-from typing import Any, AsyncIterator, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import httpx
 
@@ -135,9 +136,7 @@ class TrueNorthClient:
         max_retries: int = 3,
         backoff_factor: float = 0.5,
     ):
-        self.base_url = (
-            base_url or os.getenv("TRUENORTH_API_URL", "http://localhost:8080")
-        ).rstrip("/")
+        self.base_url = (base_url or os.getenv("TRUENORTH_API_URL", "http://localhost:8080")).rstrip("/")
         self._api_key = api_key or os.getenv("TRUENORTH_API_KEY")
         self._token = token or os.getenv("TRUENORTH_TOKEN")
         self._refresh_token_str: str | None = None
@@ -181,7 +180,7 @@ class TrueNorthClient:
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> "TrueNorthClient":
+    async def __aenter__(self) -> TrueNorthClient:
         await self._ensure_client()
         return self
 
@@ -222,7 +221,12 @@ class TrueNorthClient:
                     wait = max(retry_after, self._backoff_factor * (2 ** (attempt - 1)))
                     logger.warning(
                         "Retryable %s on %s %s (attempt %d/%d, wait %.1fs)",
-                        resp.status_code, method, path, attempt, self._max_retries, wait,
+                        resp.status_code,
+                        method,
+                        path,
+                        attempt,
+                        self._max_retries,
+                        wait,
                     )
                     await asyncio.sleep(wait)
                     continue
@@ -358,9 +362,7 @@ class TrueNorthClient:
     async def get_template(self, template_id: str) -> dict:
         return await self._get(f"/templates/{template_id}")
 
-    async def create_template(
-        self, name: str, version: str, definition: dict, **kwargs: Any
-    ) -> dict:
+    async def create_template(self, name: str, version: str, definition: dict, **kwargs: Any) -> dict:
         return await self._post(
             "/templates",
             {"name": name, "version": version, "definition": definition, **kwargs},
@@ -385,9 +387,7 @@ class TrueNorthClient:
     async def get_scenario(self, scenario_id: str) -> dict:
         return await self._get(f"/scenarios/{scenario_id}")
 
-    async def create_scenario(
-        self, name: str, version: str, definition: dict, **kwargs: Any
-    ) -> dict:
+    async def create_scenario(self, name: str, version: str, definition: dict, **kwargs: Any) -> dict:
         return await self._post(
             "/scenarios",
             {"name": name, "version": version, "definition": definition, **kwargs},
@@ -403,9 +403,7 @@ class TrueNorthClient:
     #  Ranges
     # ═══════════════════════════════════════════════════════════════
 
-    async def list_ranges(
-        self, limit: int = 50, offset: int = 0, **filters: Any
-    ) -> list[dict]:
+    async def list_ranges(self, limit: int = 50, offset: int = 0, **filters: Any) -> list[dict]:
         return await self._get("/ranges", limit=limit, offset=offset, **filters)
 
     async def list_all_ranges(self, **filters: Any) -> list[dict]:
@@ -415,9 +413,7 @@ class TrueNorthClient:
         return await self._get(f"/ranges/{range_id}")
 
     async def create_range(self, name: str, template_id: str, **kwargs: Any) -> dict:
-        return await self._post(
-            "/ranges", {"name": name, "template_id": template_id, **kwargs}
-        )
+        return await self._post("/ranges", {"name": name, "template_id": template_id, **kwargs})
 
     async def provision_range(self, range_id: str) -> dict:
         return await self._post(f"/ranges/{range_id}/provision")
@@ -485,9 +481,7 @@ class TrueNorthClient:
     async def list_objectives(self, exercise_id: str) -> list[dict]:
         return await self._get(f"/exercises/{exercise_id}/objectives")
 
-    async def ack_objective(
-        self, exercise_id: str, ref_id: str, evidence: str = ""
-    ) -> dict:
+    async def ack_objective(self, exercise_id: str, ref_id: str, evidence: str = "") -> dict:
         return await self._post(
             f"/exercises/{exercise_id}/objectives/{ref_id}/ack",
             {"evidence": evidence},
@@ -497,12 +491,8 @@ class TrueNorthClient:
     #  Telemetry
     # ═══════════════════════════════════════════════════════════════
 
-    async def search_telemetry(
-        self, range_id: str, query: str = "*", size: int = 50, **kwargs: Any
-    ) -> dict:
-        return await self._get(
-            f"/telemetry/{range_id}/search", q=query, size=size, **kwargs
-        )
+    async def search_telemetry(self, range_id: str, query: str = "*", size: int = 50, **kwargs: Any) -> dict:
+        return await self._get(f"/telemetry/{range_id}/search", q=query, size=size, **kwargs)
 
     async def ingest_events(self, range_id: str, events: list[dict]) -> dict:
         return await self._post(f"/telemetry/{range_id}/events", events)
@@ -565,9 +555,7 @@ class TrueNorthClient:
         try:
             import websockets  # type: ignore[import-untyped]
         except ImportError:
-            raise ImportError(
-                "websockets package required for subscriptions: pip install websockets"
-            )
+            raise ImportError("websockets package required for subscriptions: pip install websockets") from None
 
         ws_url = self.base_url.replace("http", "ws", 1) + f"/ws/{channel}"
         headers: dict[str, str] = {}
@@ -590,15 +578,21 @@ class TrueNorthClient:
                             result = callback(msg)
                             if asyncio.iscoroutine(result):
                                 await result
-                except (websockets.ConnectionClosed, OSError) as exc:
+                except (websockets.ConnectionClosed, OSError):
                     if not reconnect:
                         raise
                     attempts += 1
                     if attempts > max_reconnect_attempts:
                         logger.error("WebSocket reconnect limit reached for %s", channel)
                         raise
-                    wait = min(self._backoff_factor * (2 ** attempts), 30.0)
-                    logger.warning("WebSocket %s disconnected, reconnecting in %.1fs (%d/%d)", channel, wait, attempts, max_reconnect_attempts)
+                    wait = min(self._backoff_factor * (2**attempts), 30.0)
+                    logger.warning(
+                        "WebSocket %s disconnected, reconnecting in %.1fs (%d/%d)",
+                        channel,
+                        wait,
+                        attempts,
+                        max_reconnect_attempts,
+                    )
                     await asyncio.sleep(wait)
 
         task = asyncio.create_task(_listen())
@@ -662,7 +656,7 @@ class TrueNorthClient:
                 self._loop.close()
                 self._loop = None
 
-        def __enter__(self) -> "TrueNorthClient.Sync":
+        def __enter__(self) -> TrueNorthClient.Sync:
             self._run(self._async_client.__aenter__())
             return self
 

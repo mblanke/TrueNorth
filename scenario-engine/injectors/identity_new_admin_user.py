@@ -1,4 +1,5 @@
-﻿"""Identity inject — creates a new admin user on target (simulated)."""
+"""Identity inject — creates a new admin user on target (simulated)."""
+
 from __future__ import annotations
 
 import logging
@@ -25,4 +26,6 @@ class IdentityNewAdminInjector(Injector):
         logger.info(f"Creating admin user '{username}' on {target} ({target_ip})")
         # Real mode: SSH/WinRM to DC and create user
         # Mock mode: generate Windows Security event 4720 (user created)
-        return InjectResult(success=True, action="identity_new_admin_user", detail=f"Created admin user '{username}' on {target}")
+        return InjectResult(
+            success=True, action="identity_new_admin_user", detail=f"Created admin user '{username}' on {target}"
+        )

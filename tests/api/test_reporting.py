@@ -1,13 +1,12 @@
 """Tests for the TrueNorth Range reporting module."""
 
-import json
 import pytest
 from app.reporting import ReportGenerator, ReportResult, ReportType
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _gen(**kw) -> ReportGenerator:
     return ReportGenerator(**kw)
@@ -16,6 +15,7 @@ def _gen(**kw) -> ReportGenerator:
 # ---------------------------------------------------------------------------
 # ReportType enum
 # ---------------------------------------------------------------------------
+
 
 class TestReportType:
     def test_all_types_present(self):
@@ -38,6 +38,7 @@ class TestReportType:
 # ---------------------------------------------------------------------------
 # ReportResult dataclass
 # ---------------------------------------------------------------------------
+
 
 class TestReportResult:
     def test_defaults(self):
@@ -65,6 +66,7 @@ class TestReportResult:
 # ---------------------------------------------------------------------------
 # AAR report
 # ---------------------------------------------------------------------------
+
 
 class TestAARReport:
     @pytest.mark.asyncio
@@ -94,6 +96,7 @@ class TestAARReport:
 # Range inventory report
 # ---------------------------------------------------------------------------
 
+
 class TestRangeInventoryReport:
     @pytest.mark.asyncio
     async def test_structure(self):
@@ -120,6 +123,7 @@ class TestRangeInventoryReport:
 # Team performance report
 # ---------------------------------------------------------------------------
 
+
 class TestTeamPerformanceReport:
     @pytest.mark.asyncio
     async def test_structure(self):
@@ -136,9 +140,7 @@ class TestTeamPerformanceReport:
     @pytest.mark.asyncio
     async def test_with_date_range(self):
         gen = _gen()
-        report = await gen.generate_team_performance(
-            "team-beta", date_range=("2026-01-01", "2026-02-28")
-        )
+        report = await gen.generate_team_performance("team-beta", date_range=("2026-01-01", "2026-02-28"))
         assert report["date_range"] == ["2026-01-01", "2026-02-28"]
 
     @pytest.mark.asyncio
@@ -154,6 +156,7 @@ class TestTeamPerformanceReport:
 # ---------------------------------------------------------------------------
 # Tenant usage report
 # ---------------------------------------------------------------------------
+
 
 class TestTenantUsageReport:
     @pytest.mark.asyncio
@@ -171,6 +174,7 @@ class TestTenantUsageReport:
 # ---------------------------------------------------------------------------
 # Compliance report
 # ---------------------------------------------------------------------------
+
 
 class TestComplianceReport:
     @pytest.mark.asyncio
@@ -198,6 +202,7 @@ class TestComplianceReport:
 # Scenario results report
 # ---------------------------------------------------------------------------
 
+
 class TestScenarioResultsReport:
     @pytest.mark.asyncio
     async def test_structure(self):
@@ -211,6 +216,7 @@ class TestScenarioResultsReport:
 # ---------------------------------------------------------------------------
 # CSV export
 # ---------------------------------------------------------------------------
+
 
 class TestCSVExport:
     @pytest.mark.asyncio
@@ -242,13 +248,12 @@ class TestCSVExport:
 # generate() dispatcher
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateDispatcher:
     @pytest.mark.asyncio
     async def test_dispatch_aar(self):
         gen = _gen()
-        result = await gen.generate(
-            ReportType.EXERCISE_AAR, {"exercise_id": "ex-dispatch"}
-        )
+        result = await gen.generate(ReportType.EXERCISE_AAR, {"exercise_id": "ex-dispatch"})
         assert isinstance(result, ReportResult)
         assert result.report_type == ReportType.EXERCISE_AAR
         assert result.format == "json"
@@ -257,9 +262,7 @@ class TestGenerateDispatcher:
     @pytest.mark.asyncio
     async def test_dispatch_team_performance(self):
         gen = _gen()
-        result = await gen.generate(
-            ReportType.TEAM_PERFORMANCE, {"team_id": "t-1"}
-        )
+        result = await gen.generate(ReportType.TEAM_PERFORMANCE, {"team_id": "t-1"})
         assert result.report_type == ReportType.TEAM_PERFORMANCE
 
     @pytest.mark.asyncio
@@ -271,9 +274,7 @@ class TestGenerateDispatcher:
     @pytest.mark.asyncio
     async def test_report_result_to_dict(self):
         gen = _gen()
-        result = await gen.generate(
-            ReportType.RANGE_INVENTORY, {"range_id": "rng-x"}
-        )
+        result = await gen.generate(ReportType.RANGE_INVENTORY, {"range_id": "rng-x"})
         d = result.to_dict()
         assert d["report_type"] == "range_inventory"
         assert "generated_at" in d

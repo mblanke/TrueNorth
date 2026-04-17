@@ -9,6 +9,7 @@ Usage:
     forge exercise start <exercise_id>
     forge telemetry search <range_id> --query "event_type:dns_query"
 """
+
 from __future__ import annotations
 
 import json
@@ -92,7 +93,7 @@ def login(
         console.print(f"[green]Logged in successfully.[/green] Token saved to {token_path}")
     except httpx.HTTPStatusError as exc:
         console.print(f"[red]Login failed:[/red] {exc.response.status_code} {exc.response.text}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 @app.command("config")
@@ -156,13 +157,13 @@ def range_get(range_id: str):
     console.print_json(json.dumps(r, indent=2))
 
 
-
-
 @range_app.command("batch-provision")
 def range_batch_provision(range_ids: list[str]):
     """Provision multiple ranges in a batch (up to 500)."""
     result = _post("/ranges/batch-provision", {"range_ids": range_ids})
-    console.print(f"[green]Batch provision started:[/green] task_id={result['task_id']}, {result['accepted']} ranges accepted")
+    console.print(
+        f"[green]Batch provision started:[/green] task_id={result['task_id']}, {result['accepted']} ranges accepted"
+    )
 
 
 @range_app.command("stats")
@@ -179,6 +180,7 @@ def range_stats(tenant_id: str = None):
         table.add_row(state, str(count))
     table.add_row("[bold]Total[/bold]", f"[bold]{result.get('total', 0)}[/bold]")
     console.print(table)
+
 
 # ── Template ───────────────────────────────────────────────────────────
 @template_app.command("list")
@@ -198,9 +200,10 @@ def template_list():
 @template_app.command("validate")
 def template_validate(path: str):
     """Validate a template YAML against the schema."""
-    import yaml
-    from jsonschema import validate, ValidationError
     from pathlib import Path
+
+    import yaml
+    from jsonschema import ValidationError, validate
 
     schema = json.loads(Path("scenario-engine/schemas/template.schema.json").read_text())
     data = yaml.safe_load(Path(path).read_text())
@@ -209,7 +212,7 @@ def template_validate(path: str):
         console.print(f"[green]Valid:[/green] {path}")
     except ValidationError as e:
         console.print(f"[red]Invalid:[/red] {e.message}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 # ── Scenario ───────────────────────────────────────────────────────────

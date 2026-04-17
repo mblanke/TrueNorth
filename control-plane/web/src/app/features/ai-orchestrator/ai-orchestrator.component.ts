@@ -14,7 +14,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatBadgeModule } from '@angular/material/badge';
 import { HttpClient } from '@angular/common/http';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 interface AIBackend {
   id: string;
@@ -29,7 +29,7 @@ interface AIBackend {
   created_at: string;
 }
 
-interface AIFleetNode {
+interface _AIFleetNode {
   id: string;
   backend_id: string;
   node_name: string;
@@ -83,7 +83,7 @@ interface AIFleetSummary {
 }
 
 @Component({
-  selector: 'app-ai-orchestrator',
+  selector: 'tn-ai-orchestrator',
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,

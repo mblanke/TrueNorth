@@ -3,11 +3,10 @@
 Provides role-based cloud-init (Linux) and cloudbase-init (Windows) user-data
 templates with Jinja2 support for per-VM customisation.
 """
+
 from __future__ import annotations
 
 import textwrap
-from typing import Any
-
 
 # ======================================================================
 # Linux cloud-init templates (YAML)
@@ -63,7 +62,6 @@ _ROLE_TEMPLATES: dict[str, str] = {
           - samba-tool user create trainee 'Tr@inee1!' --given-name=Test --surname=Trainee || true
           - samba-tool group addmembers 'Domain Users' trainee || true
     """),
-
     "workstation": textwrap.dedent("""\
         packages:
           - samba-common
@@ -83,7 +81,6 @@ _ROLE_TEMPLATES: dict[str, str] = {
           - useradd -m -s /bin/bash trainee || true
           - echo 'trainee:Tr@inee1!' | chpasswd
     """),
-
     "web_server": textwrap.dedent("""\
         packages:
           - nginx
@@ -102,7 +99,6 @@ _ROLE_TEMPLATES: dict[str, str] = {
         runcmd:
           - systemctl enable --now nginx
     """),
-
     "db_server": textwrap.dedent("""\
         packages:
           - postgresql
@@ -115,7 +111,6 @@ _ROLE_TEMPLATES: dict[str, str] = {
           - sudo -u postgres createdb --owner=tnadmin truenorth_data || true
           - sudo -u postgres psql -c "ALTER USER tnadmin PASSWORD 'TN_Db_P@ss!';" || true
     """),
-
     "jump_box": textwrap.dedent("""\
         packages:
           - xrdp
@@ -134,7 +129,6 @@ _ROLE_TEMPLATES: dict[str, str] = {
           - echo 'AllowTcpForwarding yes' >> /etc/ssh/sshd_config
           - systemctl restart sshd
     """),
-
     "siem": textwrap.dedent("""\
         packages:
           - docker.io
@@ -150,7 +144,6 @@ _ROLE_TEMPLATES: dict[str, str] = {
             && chmod +x wazuh-install.sh || true
           - echo "Wazuh/OpenSearch install placeholder — run wazuh-install.sh manually"
     """),
-
     "ids": textwrap.dedent("""\
         packages:
           - suricata
@@ -163,7 +156,6 @@ _ROLE_TEMPLATES: dict[str, str] = {
           - systemctl enable --now suricata || true
           - echo "IDS rules loaded — tune /etc/suricata/suricata.yaml for range networks"
     """),
-
     "attacker": textwrap.dedent("""\
         packages:
           - python3
@@ -227,7 +219,6 @@ _WINDOWS_ROLE_TEMPLATES: dict[str, str] = {
         "@
         Register-ScheduledTask -TaskName "CreateTrainee" -Trigger $trigger -Action $action -RunLevel Highest -User "SYSTEM" -ErrorAction SilentlyContinue
     """),
-
     "workstation": textwrap.dedent("""\
         # Join domain
         $cred = New-Object PSCredential("administrator@{domain}", (ConvertTo-SecureString 'TN_P@ssw0rd!' -AsPlainText -Force))
@@ -239,17 +230,14 @@ _WINDOWS_ROLE_TEMPLATES: dict[str, str] = {
         Invoke-WebRequest -Uri "https://community.chocolatey.org/install.ps1" -UseBasicParsing | Invoke-Expression
         choco install -y firefox 7zip notepadplusplus sysinternals
     """),
-
     "web_server": textwrap.dedent("""\
         Install-WindowsFeature -Name Web-Server -IncludeManagementTools
         Set-Content -Path "C:\\inetpub\\wwwroot\\index.html" -Value "<html><body><h1>TrueNorth Range - {hostname}</h1></body></html>"
     """),
-
     "db_server": textwrap.dedent("""\
         # SQL Server placeholder — typically deployed from template image
         Write-Host "DB Server {hostname} — configure SQL Server post-deployment"
     """),
-
     "jump_box": textwrap.dedent("""\
         # Enable RDP
         Set-ItemProperty -Path "HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server" -Name fDenyTSConnections -Value 0
@@ -277,6 +265,7 @@ _WINDOWS_MONITORING = textwrap.dedent("""\
 # ======================================================================
 # Generator class
 # ======================================================================
+
 
 class CloudInitGenerator:
     """Generate cloud-init (Linux) or cloudbase-init (Windows) user-data."""
@@ -335,7 +324,9 @@ class CloudInitGenerator:
 
     def _render_windows(self, role: str, fmt: dict[str, str]) -> str:
         header = _WINDOWS_HEADER.format(**fmt)
-        body = _WINDOWS_ROLE_TEMPLATES.get(role, '# Generic Windows VM\nWrite-Host "Provisioned {hostname}"'.format(**fmt) + "\n")
+        body = _WINDOWS_ROLE_TEMPLATES.get(
+            role, '# Generic Windows VM\nWrite-Host "Provisioned {hostname}"'.format(**fmt) + "\n"
+        )
         body = body.format(**fmt)
         monitoring = _WINDOWS_MONITORING.format(**fmt)
         return header + body + "\n" + monitoring

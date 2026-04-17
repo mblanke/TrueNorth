@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-import sys
 import os
+import sys
 from dataclasses import asdict
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -20,13 +19,12 @@ from app.health import (
     HealthChecker,
     HealthStatus,
     SystemHealth,
-    health_router,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def checker() -> HealthChecker:
@@ -37,6 +35,7 @@ def checker() -> HealthChecker:
 # ---------------------------------------------------------------------------
 # test_liveness_always_ok
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_liveness_always_ok(checker: HealthChecker):
@@ -49,6 +48,7 @@ async def test_liveness_always_ok(checker: HealthChecker):
 # ---------------------------------------------------------------------------
 # test_readiness_returns_components
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_readiness_returns_components(checker: HealthChecker):
@@ -83,12 +83,18 @@ async def test_readiness_returns_components(checker: HealthChecker):
 # test_deep_check_returns_all_components
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_deep_check_returns_all_components(checker: HealthChecker):
     """Deep check must report all seven infrastructure components."""
     expected_names = {
-        "database", "redis", "opensearch", "minio",
-        "celery", "ai_orchestrator", "keycloak",
+        "database",
+        "redis",
+        "opensearch",
+        "minio",
+        "celery",
+        "ai_orchestrator",
+        "keycloak",
     }
 
     async def _healthy_stub(name: str) -> ComponentHealth:
@@ -119,6 +125,7 @@ async def test_deep_check_returns_all_components(checker: HealthChecker):
 # ---------------------------------------------------------------------------
 # test_health_response_format
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_health_response_format(checker: HealthChecker):
@@ -154,6 +161,7 @@ async def test_health_response_format(checker: HealthChecker):
 # ---------------------------------------------------------------------------
 # test_component_health_dataclass
 # ---------------------------------------------------------------------------
+
 
 def test_component_health_dataclass():
     """ComponentHealth dataclass serialization works correctly."""

@@ -1,5 +1,6 @@
 import logging
 from typing import Any
+
 from .base import BaseValidator
 
 logger = logging.getLogger(__name__)

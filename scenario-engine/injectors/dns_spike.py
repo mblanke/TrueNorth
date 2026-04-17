@@ -1,4 +1,5 @@
-﻿"""DNS spike injector — generates burst of DNS queries."""
+"""DNS spike injector — generates burst of DNS queries."""
+
 from __future__ import annotations
 
 import logging
@@ -24,16 +25,18 @@ class DnsSpikeInjector(Injector):
         # In real mode: use scapy or dnspython to send queries
         # For mock: generate telemetry events
         events = []
-        for i in range(count):
+        for _i in range(count):
             domain = random.choice(domains)
-            events.append({
-                "@timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                "event_type": "dns_query",
-                "source_ip": target_ip,
-                "query": domain,
-                "query_type": "A",
-                "inject": True,
-            })
+            events.append(
+                {
+                    "@timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "event_type": "dns_query",
+                    "source_ip": target_ip,
+                    "query": domain,
+                    "query_type": "A",
+                    "inject": True,
+                }
+            )
 
         # TODO: ship events to OpenSearch via telemetry API
         return InjectResult(

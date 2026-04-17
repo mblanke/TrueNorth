@@ -7,15 +7,13 @@ Generates Prometheus text exposition format (v0.0.4) directly.
 
 from __future__ import annotations
 
-import math
 import threading
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from fastapi import APIRouter, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.types import ASGIApp
 
 # ── Registry ─────────────────────────────────────────────────────────────────
 
@@ -25,18 +23,18 @@ _lock = threading.Lock()
 class Counter:
     """Prometheus-style counter (monotonically increasing)."""
 
-    def __init__(self, name: str, help_text: str, label_names: Tuple[str, ...] = ()):
+    def __init__(self, name: str, help_text: str, label_names: tuple[str, ...] = ()):
         self.name = name
         self.help_text = help_text
         self.label_names = label_names
-        self._values: Dict[Tuple[str, ...], float] = defaultdict(float)
+        self._values: dict[tuple[str, ...], float] = defaultdict(float)
 
     def inc(self, *label_values: str, amount: float = 1.0) -> None:
         with _lock:
             self._values[label_values] += amount
 
     def collect(self) -> str:
-        lines: List[str] = [
+        lines: list[str] = [
             f"# HELP {self.name} {self.help_text}",
             f"# TYPE {self.name} counter",
         ]
@@ -47,12 +45,10 @@ class Counter:
         return "\n".join(lines)
 
     # ── helpers ──────────────────────────────────────────────────────────
-    def _format_labels(self, values: Tuple[str, ...]) -> str:
+    def _format_labels(self, values: tuple[str, ...]) -> str:
         if not self.label_names:
             return ""
-        pairs = ",".join(
-            f'{k}="{v}"' for k, v in zip(self.label_names, values)
-        )
+        pairs = ",".join(f'{k}="{v}"' for k, v in zip(self.label_names, values, strict=False))
         return "{" + pairs + "}"
 
     @staticmethod
@@ -63,11 +59,11 @@ class Counter:
 class Gauge:
     """Prometheus-style gauge (can go up or down)."""
 
-    def __init__(self, name: str, help_text: str, label_names: Tuple[str, ...] = ()):
+    def __init__(self, name: str, help_text: str, label_names: tuple[str, ...] = ()):
         self.name = name
         self.help_text = help_text
         self.label_names = label_names
-        self._values: Dict[Tuple[str, ...], float] = defaultdict(float)
+        self._values: dict[tuple[str, ...], float] = defaultdict(float)
 
     def inc(self, *label_values: str, amount: float = 1.0) -> None:
         with _lock:
@@ -82,7 +78,7 @@ class Gauge:
             self._values[label_values] = value
 
     def collect(self) -> str:
-        lines: List[str] = [
+        lines: list[str] = [
             f"# HELP {self.name} {self.help_text}",
             f"# TYPE {self.name} gauge",
         ]
@@ -92,39 +88,45 @@ class Gauge:
                 lines.append(f"{self.name}{lbl} {Counter._fmt(value)}")
         return "\n".join(lines)
 
-    def _format_labels(self, values: Tuple[str, ...]) -> str:
+    def _format_labels(self, values: tuple[str, ...]) -> str:
         if not self.label_names:
             return ""
-        pairs = ",".join(
-            f'{k}="{v}"' for k, v in zip(self.label_names, values)
-        )
+        pairs = ",".join(f'{k}="{v}"' for k, v in zip(self.label_names, values, strict=False))
         return "{" + pairs + "}"
 
 
 class Histogram:
     """Prometheus-style histogram with configurable buckets."""
 
-    DEFAULT_BUCKETS: Tuple[float, ...] = (
-        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    DEFAULT_BUCKETS: tuple[float, ...] = (
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
     )
 
     def __init__(
         self,
         name: str,
         help_text: str,
-        label_names: Tuple[str, ...] = (),
-        buckets: Optional[Tuple[float, ...]] = None,
+        label_names: tuple[str, ...] = (),
+        buckets: tuple[float, ...] | None = None,
     ):
         self.name = name
         self.help_text = help_text
         self.label_names = label_names
         self.buckets = buckets or self.DEFAULT_BUCKETS
         # keyed by label_values → {bucket_bound: count}
-        self._counts: Dict[Tuple[str, ...], Dict[float, int]] = defaultdict(
-            lambda: defaultdict(int)
-        )
-        self._sums: Dict[Tuple[str, ...], float] = defaultdict(float)
-        self._totals: Dict[Tuple[str, ...], int] = defaultdict(int)
+        self._counts: dict[tuple[str, ...], dict[float, int]] = defaultdict(lambda: defaultdict(int))
+        self._sums: dict[tuple[str, ...], float] = defaultdict(float)
+        self._totals: dict[tuple[str, ...], int] = defaultdict(int)
 
     def observe(self, *label_values: str, value: float) -> None:
         with _lock:
@@ -135,17 +137,13 @@ class Histogram:
                     self._counts[label_values][b] += 1
 
     def collect(self) -> str:
-        lines: List[str] = [
+        lines: list[str] = [
             f"# HELP {self.name} {self.help_text}",
             f"# TYPE {self.name} histogram",
         ]
         fmt = Counter._fmt
         with _lock:
-            all_keys = sorted(
-                set(self._totals.keys())
-                | set(self._sums.keys())
-                | set(self._counts.keys())
-            )
+            all_keys = sorted(set(self._totals.keys()) | set(self._sums.keys()) | set(self._counts.keys()))
             for labels in all_keys:
                 lbl_base = self._format_labels(labels)
                 cumulative = 0
@@ -160,12 +158,10 @@ class Histogram:
         return "\n".join(lines)
 
     # ── helpers ──────────────────────────────────────────────────────────
-    def _format_labels(self, values: Tuple[str, ...]) -> str:
+    def _format_labels(self, values: tuple[str, ...]) -> str:
         if not self.label_names:
             return ""
-        pairs = ",".join(
-            f'{k}="{v}"' for k, v in zip(self.label_names, values)
-        )
+        pairs = ",".join(f'{k}="{v}"' for k, v in zip(self.label_names, values, strict=False))
         return "{" + pairs + "}"
 
     @staticmethod
@@ -214,7 +210,7 @@ celery_tasks_total = Counter(
 
 # ── Metrics router ───────────────────────────────────────────────────────────
 
-_ALL_METRICS: List[Any] = [
+_ALL_METRICS: list[Any] = [
     http_requests_total,
     http_request_duration_seconds,
     http_requests_in_flight,
@@ -235,6 +231,7 @@ async def metrics_endpoint() -> Response:
 
 # ── Middleware ────────────────────────────────────────────────────────────────
 
+
 def _normalize_path(path: str) -> str:
     """Collapse dynamic path segments to reduce cardinality.
 
@@ -243,6 +240,7 @@ def _normalize_path(path: str) -> str:
         /api/v1/ranges/abc-123/nodes/5  → /api/v1/ranges/{id}/nodes/{id}
     """
     import re
+
     # UUID-like or numeric ids
     path = re.sub(
         r"/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
@@ -259,9 +257,7 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
     # Paths to skip recording (avoid cardinality explosion and self-measurement)
     SKIP_PATHS = frozenset({"/metrics", "/health", "/healthz", "/ready"})
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self.SKIP_PATHS:
             return await call_next(request)
 

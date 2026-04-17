@@ -4,25 +4,64 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Ensure control-plane/api is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "control-plane" / "api"))
 
 from app.db import Base
 from app.models import (  # noqa: F401 — import all models so metadata is populated
-    Tenant,
-    User,
+    AfterActionReport,
+    AIBackendConfig,
+    AIFleetNode,
+    AIModelRoute,
+    AnalystAnnotation,
+    AuditLog,
+    AuthZonePolicy,
+    Certification,
+    Coalition,
+    CoalitionMembership,
+    Competency,
+    CompetencyAssertion,
+    CompetencyAutoAssessment,
+    Course,
+    CourseModule,
+    DetectionRule,
+    Enrollment,
+    Exercise,
+    ExternalActivity,
+    ExternalPlatform,
+    ForgedExercise,
+    HypervisorConnection,
+    HypervisorNode,
+    HypervisorPool,
+    KitDefinition,
+    LearningPath,
+    LearningRecommendation,
+    LTINonce,
+    ModuleProgress,
+    Nation,
+    NetworkDevice,
+    Objective,
+    OrganizationalUnit,
+    Range,
+    RangeSnapshot,
+    Scenario,
+    ScheduledEvent,
+    SecurityGroup,
+    SecurityGroupMembership,
+    SharedCommand,
+    StorageAppliance,
+    StorageVolume,
     Team,
     TeamMembership,
     Template,
-    Scenario,
-    Range,
-    Exercise,
-    Objective,
-    AfterActionReport,
-    AuditLog,
+    Tenant,
+    ThreatIndicator,
+    ThreatIntelFeed,
+    User,
 )
 
 config = context.config

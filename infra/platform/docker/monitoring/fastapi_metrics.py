@@ -13,19 +13,17 @@ Usage:
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.routing import APIRoute
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
-    CollectorRegistry,
     Counter,
     Gauge,
     Histogram,
     generate_latest,
-    multiprocess,
 )
 
 # ── Registry ────────────────────────────────────────────────────

@@ -1,9 +1,10 @@
 """In-app notification channel — stores in DB and optionally pushes via WebSocket."""
+
 from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .base import NotificationChannel
 
@@ -26,7 +27,7 @@ class InAppChannel(NotificationChannel):
         metadata: dict | None = None,
     ) -> bool:
         notification_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Persist to database if session factory is available
         if self._db_session_factory:

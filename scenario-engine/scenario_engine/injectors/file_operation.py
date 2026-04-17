@@ -6,11 +6,11 @@ Simulates malicious file operations for training scenarios:
   - Delete security logs
   - Encrypt files (ransomware simulation)
 """
+
 from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import random
 import string
 from typing import Any
@@ -31,7 +31,10 @@ class FileOperationInjector(BaseInjector):
     required_params: list[str] = ["operation", "target_host"]
 
     _OPERATIONS = (
-        "drop_tools", "modify_system", "delete_logs", "ransomware_encrypt",
+        "drop_tools",
+        "modify_system",
+        "delete_logs",
+        "ransomware_encrypt",
     )
 
     # Common attacker tools for the drop_tools operation
@@ -50,9 +53,7 @@ class FileOperationInjector(BaseInjector):
         for p in self.required_params:
             assert p in self.params, f"Missing required param: {p}"
         op = self.params["operation"]
-        assert op in self._OPERATIONS, (
-            f"Unknown operation '{op}'. Valid: {list(self._OPERATIONS)}"
-        )
+        assert op in self._OPERATIONS, f"Unknown operation '{op}'. Valid: {list(self._OPERATIONS)}"
 
     def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         self.validate_params()
@@ -64,14 +65,17 @@ class FileOperationInjector(BaseInjector):
             "ransomware_encrypt": self._ransomware_encrypt,
         }[op]
         result = handler(context)
-        result.update({
-            "injector": self.name,
-            "operation": op,
-            "target_host": self.params["target_host"],
-        })
+        result.update(
+            {
+                "injector": self.name,
+                "operation": op,
+                "target_host": self.params["target_host"],
+            }
+        )
         logger.info(
             "File operation '%s' executed on %s",
-            op, self.params["target_host"],
+            op,
+            self.params["target_host"],
         )
         return result
 
@@ -91,17 +95,17 @@ class FileOperationInjector(BaseInjector):
         drop_path = self.params.get("drop_path", "C:\\Windows\\Temp")
         dropped: list[dict[str, Any]] = []
         for tool in selected:
-            file_hash = hashlib.sha256(
-                f"{tool['name']}:{random.random()}".encode()
-            ).hexdigest()
-            dropped.append({
-                "filename": tool["name"],
-                "path": f"{drop_path}\\{tool['name']}",
-                "sha256": file_hash,
-                "size_bytes": random.randint(50_000, 2_000_000),
-                "technique_id": tool["technique"],
-                "detected": random.choice([True, False]),
-            })
+            file_hash = hashlib.sha256(f"{tool['name']}:{random.random()}".encode()).hexdigest()
+            dropped.append(
+                {
+                    "filename": tool["name"],
+                    "path": f"{drop_path}\\{tool['name']}",
+                    "sha256": file_hash,
+                    "size_bytes": random.randint(50_000, 2_000_000),
+                    "technique_id": tool["technique"],
+                    "detected": random.choice([True, False]),
+                }
+            )
 
         return {
             "tools_dropped": len(dropped),
@@ -112,23 +116,28 @@ class FileOperationInjector(BaseInjector):
 
     def _modify_system(self, context: dict[str, Any]) -> dict[str, Any]:
         """Simulate modifying critical system files."""
-        target_files = self.params.get("target_files", [
-            {"path": "C:\\Windows\\System32\\drivers\\etc\\hosts", "modification": "dns_redirect"},
-            {"path": "/etc/passwd", "modification": "add_backdoor_user"},
-            {"path": "C:\\Windows\\System32\\config\\SAM", "modification": "credential_access"},
-            {"path": "/etc/sudoers", "modification": "privilege_escalation"},
-        ])
+        target_files = self.params.get(
+            "target_files",
+            [
+                {"path": "C:\\Windows\\System32\\drivers\\etc\\hosts", "modification": "dns_redirect"},
+                {"path": "/etc/passwd", "modification": "add_backdoor_user"},
+                {"path": "C:\\Windows\\System32\\config\\SAM", "modification": "credential_access"},
+                {"path": "/etc/sudoers", "modification": "privilege_escalation"},
+            ],
+        )
 
         modifications: list[dict[str, Any]] = []
         for tf in target_files:
-            modifications.append({
-                "file_path": tf["path"],
-                "modification_type": tf["modification"],
-                "original_hash": hashlib.sha256(tf["path"].encode()).hexdigest()[:16],
-                "modified_hash": hashlib.sha256(f"{tf['path']}:modified".encode()).hexdigest()[:16],
-                "backup_created": random.choice([True, False]),
-                "timestamp": "2026-02-26T10:30:00Z",
-            })
+            modifications.append(
+                {
+                    "file_path": tf["path"],
+                    "modification_type": tf["modification"],
+                    "original_hash": hashlib.sha256(tf["path"].encode()).hexdigest()[:16],
+                    "modified_hash": hashlib.sha256(f"{tf['path']}:modified".encode()).hexdigest()[:16],
+                    "backup_created": random.choice([True, False]),
+                    "timestamp": "2026-02-26T10:30:00Z",
+                }
+            )
 
         return {
             "files_modified": len(modifications),
@@ -138,25 +147,42 @@ class FileOperationInjector(BaseInjector):
 
     def _delete_logs(self, context: dict[str, Any]) -> dict[str, Any]:
         """Simulate deletion of security and audit logs."""
-        log_sources = self.params.get("log_sources", [
-            {"name": "Security", "type": "windows_event_log", "path": "C:\\Windows\\System32\\winevt\\Logs\\Security.evtx"},
-            {"name": "System", "type": "windows_event_log", "path": "C:\\Windows\\System32\\winevt\\Logs\\System.evtx"},
-            {"name": "PowerShell", "type": "windows_event_log", "path": "C:\\Windows\\System32\\winevt\\Logs\\PowerShell.evtx"},
-            {"name": "syslog", "type": "linux_log", "path": "/var/log/syslog"},
-            {"name": "auth.log", "type": "linux_log", "path": "/var/log/auth.log"},
-        ])
+        log_sources = self.params.get(
+            "log_sources",
+            [
+                {
+                    "name": "Security",
+                    "type": "windows_event_log",
+                    "path": "C:\\Windows\\System32\\winevt\\Logs\\Security.evtx",
+                },
+                {
+                    "name": "System",
+                    "type": "windows_event_log",
+                    "path": "C:\\Windows\\System32\\winevt\\Logs\\System.evtx",
+                },
+                {
+                    "name": "PowerShell",
+                    "type": "windows_event_log",
+                    "path": "C:\\Windows\\System32\\winevt\\Logs\\PowerShell.evtx",
+                },
+                {"name": "syslog", "type": "linux_log", "path": "/var/log/syslog"},
+                {"name": "auth.log", "type": "linux_log", "path": "/var/log/auth.log"},
+            ],
+        )
 
         cleared: list[dict[str, Any]] = []
         for source in log_sources:
             events_cleared = random.randint(500, 50_000)
-            cleared.append({
-                "log_name": source["name"],
-                "log_type": source["type"],
-                "log_path": source["path"],
-                "events_cleared": events_cleared,
-                "method": random.choice(["wevtutil cl", "Clear-EventLog", "rm -f", "truncate"]),
-                "success": random.random() > 0.1,
-            })
+            cleared.append(
+                {
+                    "log_name": source["name"],
+                    "log_type": source["type"],
+                    "log_path": source["path"],
+                    "events_cleared": events_cleared,
+                    "method": random.choice(["wevtutil cl", "Clear-EventLog", "rm -f", "truncate"]),
+                    "success": random.random() > 0.1,
+                }
+            )
 
         return {
             "logs_targeted": len(cleared),
@@ -167,28 +193,44 @@ class FileOperationInjector(BaseInjector):
 
     def _ransomware_encrypt(self, context: dict[str, Any]) -> dict[str, Any]:
         """Simulate ransomware file encryption (NO actual encryption)."""
-        target_dirs = self.params.get("target_directories", [
-            "C:\\Users\\trainee\\Documents",
-            "C:\\Users\\trainee\\Desktop",
-            "D:\\SharedFiles",
-        ])
-        extensions = self.params.get("target_extensions", [
-            ".doc", ".docx", ".xls", ".xlsx", ".pdf", ".ppt",
-            ".jpg", ".png", ".txt", ".csv",
-        ])
+        target_dirs = self.params.get(
+            "target_directories",
+            [
+                "C:\\Users\\trainee\\Documents",
+                "C:\\Users\\trainee\\Desktop",
+                "D:\\SharedFiles",
+            ],
+        )
+        extensions = self.params.get(
+            "target_extensions",
+            [
+                ".doc",
+                ".docx",
+                ".xls",
+                ".xlsx",
+                ".pdf",
+                ".ppt",
+                ".jpg",
+                ".png",
+                ".txt",
+                ".csv",
+            ],
+        )
         file_count = int(self.params.get("file_count", 150))
         ransom_ext = self.params.get("ransom_extension", ".encrypted")
 
         encrypted_files: list[dict[str, str]] = []
-        for i in range(file_count):
+        for _i in range(file_count):
             ext = random.choice(extensions)
             directory = random.choice(target_dirs)
             filename = "".join(random.choices(string.ascii_lowercase, k=8)) + ext
-            encrypted_files.append({
-                "original_path": f"{directory}\\{filename}",
-                "encrypted_path": f"{directory}\\{filename}{ransom_ext}",
-                "original_extension": ext,
-            })
+            encrypted_files.append(
+                {
+                    "original_path": f"{directory}\\{filename}",
+                    "encrypted_path": f"{directory}\\{filename}{ransom_ext}",
+                    "original_extension": ext,
+                }
+            )
 
         ransom_note = (
             "=== YOUR FILES HAVE BEEN ENCRYPTED ===\n"

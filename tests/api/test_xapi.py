@@ -1,7 +1,6 @@
 """Tests for xAPI statement builder."""
-import uuid
 
-import pytest
+import uuid
 
 from app.xapi import (
     VERBS,
@@ -17,8 +16,12 @@ class TestXAPIStatements:
     def test_build_basic_statement(self):
         """build_statement produces all required xAPI fields."""
         stmt = build_statement(
-            "launched", "user@test.com", "Tester",
-            "exercise", "ex-123", "My Exercise",
+            "launched",
+            "user@test.com",
+            "Tester",
+            "exercise",
+            "ex-123",
+            "My Exercise",
         )
         for key in ("id", "actor", "verb", "object", "timestamp", "context"):
             assert key in stmt, f"Missing required field: {key}"

@@ -2,33 +2,35 @@
 
 OUs (hierarchical tree), Security Groups, Nations, Coalitions.
 """
+
 from __future__ import annotations
 
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import (
-    Nation,
     Coalition,
     CoalitionMembership,
+    Nation,
     OrganizationalUnit,
     SecurityGroup,
     SecurityGroupMembership,
 )
 from ..schemas import (
-    NationOut,
     CoalitionOut,
+    NationOut,
     OUIn,
     OUOut,
-    OUUpdate,
     OUTreeOut,
+    OUUpdate,
     SecurityGroupIn,
+    SecurityGroupMembershipIn,
     SecurityGroupOut,
     SecurityGroupUpdate,
-    SecurityGroupMembershipIn,
 )
 
 router = APIRouter(prefix="/directory", tags=["Directory"])
@@ -37,11 +39,11 @@ router = APIRouter(prefix="/directory", tags=["Directory"])
 # -- Nations -------------------------------------------------------------
 @router.get("/nations", response_model=list[NationOut])
 def list_nations(nato_only: bool = False, fvey_only: bool = False, db: Session = Depends(get_db)):
-    q = db.query(Nation).filter(Nation.is_active == True)
+    q = db.query(Nation).filter(Nation.is_active)
     if nato_only:
-        q = q.filter(Nation.is_nato == True)
+        q = q.filter(Nation.is_nato)
     if fvey_only:
-        q = q.filter(Nation.is_fvey == True)
+        q = q.filter(Nation.is_fvey)
     return q.order_by(Nation.name).all()
 
 
@@ -56,7 +58,7 @@ def get_nation(nation_id: uuid.UUID, db: Session = Depends(get_db)):
 # -- Coalitions ----------------------------------------------------------
 @router.get("/coalitions", response_model=list[CoalitionOut])
 def list_coalitions(db: Session = Depends(get_db)):
-    return db.query(Coalition).filter(Coalition.is_active == True).order_by(Coalition.name).all()
+    return db.query(Coalition).filter(Coalition.is_active).order_by(Coalition.name).all()
 
 
 @router.get("/coalitions/{coalition_id}", response_model=CoalitionOut)
@@ -69,9 +71,7 @@ def get_coalition(coalition_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.get("/coalitions/{coalition_id}/members", response_model=list[NationOut])
 def coalition_members(coalition_id: uuid.UUID, db: Session = Depends(get_db)):
-    memberships = db.query(CoalitionMembership).filter(
-        CoalitionMembership.coalition_id == str(coalition_id)
-    ).all()
+    memberships = db.query(CoalitionMembership).filter(CoalitionMembership.coalition_id == str(coalition_id)).all()
     nation_ids = [m.nation_id for m in memberships]
     if not nation_ids:
         return []
@@ -106,9 +106,13 @@ def ou_tree(db: Session = Depends(get_db)):
     roots = []
     for ou in all_ous:
         node = OUTreeOut(
-            id=ou.id, name=ou.name, slug=ou.slug,
-            ou_type=ou.ou_type, parent_id=ou.parent_id,
-            nation_id=ou.nation_id, children=[],
+            id=ou.id,
+            name=ou.name,
+            slug=ou.slug,
+            ou_type=ou.ou_type,
+            parent_id=ou.parent_id,
+            nation_id=ou.nation_id,
+            children=[],
         )
         by_id[str(ou.id)] = node
     for ou in all_ous:
@@ -142,7 +146,7 @@ def update_ou(ou_id: uuid.UUID, payload: OUUpdate, db: Session = Depends(get_db)
     return ou
 
 
-@router.delete("/ous/{ou_id}", status_code=204)
+@router.delete("/ous/{ou_id}", status_code=204, response_class=Response)
 def delete_ou(ou_id: uuid.UUID, db: Session = Depends(get_db)):
     ou = db.get(OrganizationalUnit, str(ou_id))
     if not ou:
@@ -192,7 +196,7 @@ def update_group(group_id: uuid.UUID, payload: SecurityGroupUpdate, db: Session 
     return sg
 
 
-@router.delete("/groups/{group_id}", status_code=204)
+@router.delete("/groups/{group_id}", status_code=204, response_class=Response)
 def delete_group(group_id: uuid.UUID, db: Session = Depends(get_db)):
     sg = db.get(SecurityGroup, str(group_id))
     if not sg:
@@ -212,12 +216,16 @@ def add_group_member(group_id: uuid.UUID, payload: SecurityGroupMembershipIn, db
     return {"message": "Member added"}
 
 
-@router.delete("/groups/{group_id}/members/{user_id}", status_code=204)
+@router.delete("/groups/{group_id}/members/{user_id}", status_code=204, response_class=Response)
 def remove_group_member(group_id: uuid.UUID, user_id: uuid.UUID, db: Session = Depends(get_db)):
-    membership = db.query(SecurityGroupMembership).filter(
-        SecurityGroupMembership.group_id == str(group_id),
-        SecurityGroupMembership.user_id == str(user_id),
-    ).first()
+    membership = (
+        db.query(SecurityGroupMembership)
+        .filter(
+            SecurityGroupMembership.group_id == str(group_id),
+            SecurityGroupMembership.user_id == str(user_id),
+        )
+        .first()
+    )
     if not membership:
         raise HTTPException(404, "Membership not found")
     db.delete(membership)

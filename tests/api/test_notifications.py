@@ -8,10 +8,10 @@ from app.notifications import (
     NotificationService,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_notification(**overrides) -> Notification:
     defaults = dict(
@@ -34,6 +34,7 @@ def _service(**kw) -> NotificationService:
 # Notification dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestNotification:
     def test_defaults(self):
         n = _make_notification()
@@ -48,9 +49,7 @@ class TestNotification:
         assert d["channels"] == ["in_app"]
 
     def test_multiple_channels(self):
-        n = _make_notification(
-            channels=[NotificationChannel.WEBSOCKET, NotificationChannel.EMAIL]
-        )
+        n = _make_notification(channels=[NotificationChannel.WEBSOCKET, NotificationChannel.EMAIL])
         assert len(n.channels) == 2
 
 
@@ -65,6 +64,7 @@ class TestNotificationLevel:
 # ---------------------------------------------------------------------------
 # NotificationService.send
 # ---------------------------------------------------------------------------
+
 
 class TestSendNotification:
     @pytest.mark.asyncio
@@ -141,6 +141,7 @@ class TestSendNotification:
 # In-app storage and retrieval
 # ---------------------------------------------------------------------------
 
+
 class TestInAppNotifications:
     @pytest.mark.asyncio
     async def test_store_and_retrieve(self):
@@ -170,9 +171,7 @@ class TestInAppNotifications:
     async def test_limit(self):
         svc = _service()
         for i in range(10):
-            await svc.send(
-                _make_notification(title=f"N-{i}", channels=[NotificationChannel.IN_APP])
-            )
+            await svc.send(_make_notification(title=f"N-{i}", channels=[NotificationChannel.IN_APP]))
         items = await svc.get_user_notifications("user-1", limit=3)
         assert len(items) == 3
 
@@ -196,9 +195,7 @@ class TestInAppNotifications:
     async def test_mark_all_read(self):
         svc = _service()
         for _ in range(3):
-            await svc.send(
-                _make_notification(channels=[NotificationChannel.IN_APP])
-            )
+            await svc.send(_make_notification(channels=[NotificationChannel.IN_APP]))
         count = await svc.mark_all_read("user-1")
         assert count == 3
         assert await svc.get_unread_count("user-1") == 0
@@ -207,9 +204,7 @@ class TestInAppNotifications:
     async def test_unread_count(self):
         svc = _service()
         for _ in range(4):
-            await svc.send(
-                _make_notification(channels=[NotificationChannel.IN_APP])
-            )
+            await svc.send(_make_notification(channels=[NotificationChannel.IN_APP]))
         assert await svc.get_unread_count("user-1") == 4
         items = await svc.get_user_notifications("user-1")
         await svc.mark_read(items[0]["id"], "user-1")

@@ -1,5 +1,5 @@
 name: small-enterprise
-version: 0.1
+version: "0.1"
 inputs:
   range_id: string
   cidr_mgmt: 10.10.0.0/24

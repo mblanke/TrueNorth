@@ -3,6 +3,8 @@
 # Usage: docker compose -f compose.dev.yml up -d --build
 # Scale workers: docker compose -f compose.dev.yml up -d --scale worker-provision=4 --scale worker-scenario=2
 
+name: truenorth
+
 services:
   # -- Data Stores -------------------------------------------------------
   postgres:
@@ -15,7 +17,7 @@ services:
       # Tuned for 1200-user workload
       POSTGRES_INITDB_ARGS: "--data-checksums"
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
     command: >
@@ -44,7 +46,7 @@ services:
 
   # Connection pooler - essential for 1200+ concurrent connections
   pgbouncer:
-    image: edoburu/pgbouncer:1.22.0
+    image: edoburu/pgbouncer:v1.25.1-p0
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://forge:forge@postgres:5432/forge
@@ -142,6 +144,7 @@ services:
   lrs:
     image: yetanalytics/lrsql:latest
     restart: unless-stopped
+    command: /lrsql/bin/run_postgres.sh
     environment:
       LRSQL_DB_TYPE: postgresql
       LRSQL_DB_HOST: postgres
@@ -154,7 +157,7 @@ services:
       LRSQL_API_KEY_DEFAULT: truenorth-lrs-key
       LRSQL_API_SECRET_DEFAULT: truenorth-lrs-secret
     ports:
-      - "8000:8080"
+      - "8001:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -288,10 +291,10 @@ services:
     ports:
       - "6000:6000"
     environment:
-      AI_MODEL_BACKEND: mock
-      OPENAI_API_KEY: ""
-      ANTHROPIC_API_KEY: ""
-      OLLAMA_NODES: "${OLLAMA_NODES:-}"
+      AI_MODEL_BACKEND: "${AI_MODEL_BACKEND:-ollama}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OLLAMA_NODES: "${OLLAMA_NODES:-http://ai.guapo613.beer:11434}"
 
   # -- Web Frontend (Angular) --------------------------------------------
   web:
@@ -362,6 +365,22 @@ services:
       resources:
         limits:
           cpus: "1"
+          memory: 256M
+
+  # -- Observability: OpenTelemetry Collector ----------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.100.0
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics exporter
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
           memory: 256M
 
 volumes:

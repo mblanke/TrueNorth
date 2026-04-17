@@ -4,17 +4,17 @@ Prevents over-commitment by tracking resource claims per time window.
 The ``/schedule/check`` endpoint lets the UI forecast whether a given
 deployment will fit within the cluster capacity at a given time.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -25,7 +25,7 @@ logger = logging.getLogger("truenorth.api.scheduling")
 router = APIRouter(prefix="/schedule", tags=["scheduling"])
 
 # -- Cluster capacity (configurable via env or pulled from Proxmox) ------
-CLUSTER_VCPU = int(os.getenv("CLUSTER_TOTAL_VCPU", "128"))     # total vCPU across all nodes
+CLUSTER_VCPU = int(os.getenv("CLUSTER_TOTAL_VCPU", "128"))  # total vCPU across all nodes
 CLUSTER_RAM_MB = int(os.getenv("CLUSTER_TOTAL_RAM_MB", "524288"))  # 512 GB
 CLUSTER_DISK_GB = int(os.getenv("CLUSTER_TOTAL_DISK_GB", "10240"))  # 10 TB
 CLUSTER_OVERHEAD_PCT = float(os.getenv("CLUSTER_OVERHEAD_PCT", "15"))  # % reserved for hypervisor
@@ -43,6 +43,7 @@ class EventIn(BaseModel):
     disk_gb_total: int = Field(0, ge=0)
     template_id: str | None = None
     range_id: str | None = None
+
 
 class EventOut(BaseModel):
     id: str
@@ -64,12 +65,14 @@ class EventOut(BaseModel):
     class Config:
         from_attributes = True
 
+
 class CapacityCheck(BaseModel):
     start_time: datetime
     end_time: datetime
     vcpu_needed: int = 0
     ram_mb_needed: int = 0
     disk_gb_needed: int = 0
+
 
 class CapacityResult(BaseModel):
     fits: bool
@@ -129,6 +132,7 @@ def _to_out(e: ScheduledEvent) -> dict:
 
 # -- Endpoints -----------------------------------------------------------
 
+
 @router.get("/capacity", response_model=CapacityResult, summary="Current cluster capacity")
 def get_capacity(
     start_time: datetime = Query(None, description="Window start (default: now)"),
@@ -137,7 +141,8 @@ def get_capacity(
 ):
     """Return current usable capacity minus all scheduled/active event reservations."""
     from datetime import timedelta
-    now = datetime.now(timezone.utc)
+
+    now = datetime.now(UTC)
     start = start_time or now
     end = end_time or (now + timedelta(hours=8))
 
@@ -176,9 +181,7 @@ def check_capacity(body: CapacityCheck, db: Session = Depends(get_db)):
     avail_ram = max(0, usable_ram - ram_c)
     avail_disk = max(0, usable_disk - disk_c)
 
-    fits = (body.vcpu_needed <= avail_cpu and
-            body.ram_mb_needed <= avail_ram and
-            body.disk_gb_needed <= avail_disk)
+    fits = body.vcpu_needed <= avail_cpu and body.ram_mb_needed <= avail_ram and body.disk_gb_needed <= avail_disk
 
     problems = []
     if body.vcpu_needed > avail_cpu:
@@ -291,11 +294,11 @@ def update_event(event_id: str, body: EventIn, db: Session = Depends(get_db)):
     usable_disk = _usable(CLUSTER_DISK_GB)
 
     if body.vcpu_total > (usable_cpu - vcpu_c):
-        raise HTTPException(409, f"Insufficient vCPU for update")
+        raise HTTPException(409, "Insufficient vCPU for update")
     if body.ram_mb_total > (usable_ram - ram_c):
-        raise HTTPException(409, f"Insufficient RAM for update")
+        raise HTTPException(409, "Insufficient RAM for update")
     if body.disk_gb_total > (usable_disk - disk_c):
-        raise HTTPException(409, f"Insufficient Disk for update")
+        raise HTTPException(409, "Insufficient Disk for update")
 
     evt.name = body.name
     evt.description = body.description
@@ -312,7 +315,7 @@ def update_event(event_id: str, body: EventIn, db: Session = Depends(get_db)):
     return _to_out(evt)
 
 
-@router.delete("/events/{event_id}", status_code=204, summary="Cancel/delete event")
+@router.delete("/events/{event_id}", status_code=204, response_class=Response, summary="Cancel/delete event")
 def delete_event(event_id: str, db: Session = Depends(get_db)):
     evt = db.query(ScheduledEvent).filter(ScheduledEvent.id == uuid.UUID(event_id)).first()
     if not evt:
@@ -351,19 +354,22 @@ def resource_timeline(
     """Return hourly resource commitment buckets for the next N days.
     Used to render the capacity timeline chart in the dashboard."""
     from datetime import timedelta
-    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+
+    now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
     buckets = []
     for h in range(0, days * 24, 1):
         t_start = now + timedelta(hours=h)
         t_end = t_start + timedelta(hours=1)
         vcpu, ram, disk, count = _committed_in_window(db, t_start, t_end)
-        buckets.append({
-            "time": t_start.isoformat(),
-            "vcpu_committed": vcpu,
-            "ram_mb_committed": ram,
-            "disk_gb_committed": disk,
-            "event_count": count,
-        })
+        buckets.append(
+            {
+                "time": t_start.isoformat(),
+                "vcpu_committed": vcpu,
+                "ram_mb_committed": ram,
+                "disk_gb_committed": disk,
+                "event_count": count,
+            }
+        )
     return {
         "buckets": buckets,
         "cluster_vcpu": _usable(CLUSTER_VCPU),

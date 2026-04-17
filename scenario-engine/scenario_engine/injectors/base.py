@@ -7,8 +7,7 @@ class BaseInjector(ABC):
         self.params = params or {}
 
     @abstractmethod
-    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
-        ...
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]: ...
 
-    def validate_params(self) -> None:
+    def validate_params(self) -> None:  # noqa: B027 — optional override
         pass

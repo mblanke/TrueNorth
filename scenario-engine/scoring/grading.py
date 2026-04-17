@@ -10,7 +10,6 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ── Grade thresholds (configurable) ────────────────────────
 
 _DEFAULT_GRADE_THRESHOLDS: list[tuple[float, str]] = [
@@ -61,7 +60,7 @@ class GradingCalculator:
         >>> GradingCalculator.letter_grade(55.0)
         'F'
         """
-        for cutoff, grade in (thresholds or cls.grade_thresholds):
+        for cutoff, grade in thresholds or cls.grade_thresholds:
             if percentage >= cutoff:
                 return grade
         return "F"
@@ -97,7 +96,7 @@ class GradingCalculator:
             return 0
         ratio = 1.0 - (elapsed_seconds / time_limit_seconds)
         if curve == "exponential":
-            ratio = ratio ** 2
+            ratio = ratio**2
         return int(max_bonus * ratio)
 
     # ── partial credit ──────────────────────────────────────

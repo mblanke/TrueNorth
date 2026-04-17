@@ -14,16 +14,18 @@ Usage::
     await ingestor.flush()
     await ingestor.stop()
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import httpx
@@ -84,7 +86,7 @@ class DeadLetterQueue:
         entry = {
             "event": event,
             "error": error,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         self._queue.append(entry)
         if self._persist_path:
@@ -153,10 +155,8 @@ class EventIngestor:
         self._running = False
         if self._flush_task:
             self._flush_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._flush_task
-            except asyncio.CancelledError:
-                pass
         await self.flush()
         if self._client:
             await self._client.aclose()
@@ -165,7 +165,7 @@ class EventIngestor:
     async def ingest(self, event_type: EventType, event: dict[str, Any]) -> None:
         """Buffer a single event for bulk indexing."""
         if "@timestamp" not in event:
-            event["@timestamp"] = datetime.now(timezone.utc).isoformat()
+            event["@timestamp"] = datetime.now(UTC).isoformat()
         self.metrics.events_received += 1
         async with self._lock:
             self._buffer.append((event_type, event))
@@ -240,5 +240,5 @@ class EventIngestor:
         except Exception as exc:
             logger.error("Bulk ingest failed: %s", exc)
             self.metrics.events_failed += len(batch)
-            for event_type, event in batch:
+            for _event_type, event in batch:
                 self.dlq.put(event, str(exc))

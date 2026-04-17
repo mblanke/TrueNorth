@@ -28,10 +28,10 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from rich.console import Console
-    from rich.table import Table
-    from rich.progress import Progress, SpinnerColumn, TextColumn
     from rich import print as rprint
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from rich.table import Table
 except ImportError:
     print("ERROR: rich is required. Install with: pip install rich")
     sys.exit(1)

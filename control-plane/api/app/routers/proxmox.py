@@ -19,17 +19,17 @@ PROXMOX_USER         API user                    (default: root@pam)
 PROXMOX_PASSWORD     API password                (default: powers4w)
 PROXMOX_VERIFY_SSL   TLS verify                  (default: false)
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
-from functools import lru_cache
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException
 from proxmoxer import ProxmoxAPI
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger("truenorth.api.proxmox")
 
@@ -100,8 +100,10 @@ def _node_name(host: str) -> str:
 
 # ── Pydantic schemas ───────────────────────────────────────────────────
 
+
 class CloneRequest(BaseModel):
     """Clone a template VM to create a new VM."""
+
     source_vmid: int = Field(..., description="Template VMID to clone from")
     target_node: str = Field("coyote", description="Target node for the new VM")
     new_name: str = Field(..., description="Name for the cloned VM")
@@ -114,8 +116,10 @@ class CloneRequest(BaseModel):
     pool: str | None = Field(None, description="Resource pool name")
     tags: str | None = Field(None, description="Comma-separated tags")
 
+
 class VMCreateRequest(BaseModel):
     """Create a new empty VM."""
+
     node: str = Field("coyote", description="Target node")
     vmid: int | None = Field(None, description="Specific VMID (auto-assigned if omitted)")
     name: str = Field(..., description="VM name")
@@ -130,8 +134,10 @@ class VMCreateRequest(BaseModel):
     description: str | None = Field(None)
     tags: str | None = Field(None)
 
+
 class VMConfigUpdate(BaseModel):
     """Partial VM config update."""
+
     cores: int | None = None
     memory_mb: int | None = None
     name: str | None = None
@@ -143,8 +149,10 @@ class VMConfigUpdate(BaseModel):
     net2: str | None = None
     net3: str | None = None
 
+
 class BridgeRequest(BaseModel):
     """Create a Linux bridge on a node."""
+
     node: str = Field("coyote", description="Node to create bridge on")
     name: str = Field(..., description="Bridge name (e.g. vmbr100)")
     address: str | None = Field(None, description="IP address (e.g. 10.0.0.1)")
@@ -154,8 +162,10 @@ class BridgeRequest(BaseModel):
     comments: str | None = Field(None, description="Description / label")
     autostart: bool = Field(True, description="Start on boot")
 
+
 class SnapshotRequest(BaseModel):
     """Create a VM snapshot."""
+
     name: str = Field(..., description="Snapshot name")
     description: str | None = Field(None)
     vmstate: bool = Field(False, description="Include RAM state")
@@ -164,6 +174,7 @@ class SnapshotRequest(BaseModel):
 # ══════════════════════════════════════════════════════════════════════════
 #  DISCOVERY
 # ══════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/nodes", summary="List cluster nodes")
 async def list_nodes():
@@ -193,20 +204,22 @@ async def list_node_vms(node: str, include_templates: bool = False):
         is_tpl = bool(vm.get("template", 0))
         if is_tpl and not include_templates:
             continue
-        results.append({
-            "vmid": vm.get("vmid"),
-            "name": vm.get("name", f"vm-{vm.get('vmid')}"),
-            "status": vm.get("status", "unknown"),
-            "node": node,
-            "cpu": vm.get("cpus", 0),
-            "mem": vm.get("maxmem", 0),
-            "mem_mb": round(vm.get("maxmem", 0) / 1048576),
-            "disk": vm.get("maxdisk", 0),
-            "disk_gb": round(vm.get("maxdisk", 0) / 1073741824, 1),
-            "uptime": vm.get("uptime", 0),
-            "template": is_tpl,
-            "tags": vm.get("tags", ""),
-        })
+        results.append(
+            {
+                "vmid": vm.get("vmid"),
+                "name": vm.get("name", f"vm-{vm.get('vmid')}"),
+                "status": vm.get("status", "unknown"),
+                "node": node,
+                "cpu": vm.get("cpus", 0),
+                "mem": vm.get("maxmem", 0),
+                "mem_mb": round(vm.get("maxmem", 0) / 1048576),
+                "disk": vm.get("maxdisk", 0),
+                "disk_gb": round(vm.get("maxdisk", 0) / 1073741824, 1),
+                "uptime": vm.get("uptime", 0),
+                "template": is_tpl,
+                "tags": vm.get("tags", ""),
+            }
+        )
     return results
 
 
@@ -260,14 +273,16 @@ async def list_templates():
             vms = await _run(px.nodes(name).qemu.get)
             for vm in vms:
                 if vm.get("template"):
-                    templates.append({
-                        "vmid": vm.get("vmid"),
-                        "name": vm.get("name", f"template-{vm.get('vmid')}"),
-                        "node": name,
-                        "mem_mb": round(vm.get("maxmem", 0) / 1048576),
-                        "disk_gb": round(vm.get("maxdisk", 0) / 1073741824, 1),
-                        "tags": vm.get("tags", ""),
-                    })
+                    templates.append(
+                        {
+                            "vmid": vm.get("vmid"),
+                            "name": vm.get("name", f"template-{vm.get('vmid')}"),
+                            "node": name,
+                            "mem_mb": round(vm.get("maxmem", 0) / 1048576),
+                            "disk_gb": round(vm.get("maxdisk", 0) / 1073741824, 1),
+                            "tags": vm.get("tags", ""),
+                        }
+                    )
         except Exception as e:
             logger.warning("Failed to list templates on %s: %s", name, e)
     return templates
@@ -338,14 +353,16 @@ async def discover_cluster():
             nets = await _run(px.nodes(name).network.get)
             for net in nets:
                 if net.get("type") in ("bridge", "OVSBridge"):
-                    node_info["networks"].append({
-                        "iface": net.get("iface"),
-                        "type": net.get("type"),
-                        "cidr": net.get("cidr", ""),
-                        "address": net.get("address", ""),
-                        "bridge_ports": net.get("bridge_ports", ""),
-                        "active": bool(net.get("active", 0)),
-                    })
+                    node_info["networks"].append(
+                        {
+                            "iface": net.get("iface"),
+                            "type": net.get("type"),
+                            "cidr": net.get("cidr", ""),
+                            "address": net.get("address", ""),
+                            "bridge_ports": net.get("bridge_ports", ""),
+                            "active": bool(net.get("active", 0)),
+                        }
+                    )
         except Exception as e:
             logger.warning("Failed to list networks on %s: %s", name, e)
 
@@ -354,14 +371,16 @@ async def discover_cluster():
             stores = await _run(px.nodes(name).storage.get)
             for s in stores:
                 if s.get("active"):
-                    node_info["storage"].append({
-                        "storage": s.get("storage"),
-                        "type": s.get("type"),
-                        "total_gb": round(s.get("total", 0) / 1073741824, 1),
-                        "used_gb": round(s.get("used", 0) / 1073741824, 1),
-                        "avail_gb": round(s.get("avail", 0) / 1073741824, 1),
-                        "content": s.get("content", ""),
-                    })
+                    node_info["storage"].append(
+                        {
+                            "storage": s.get("storage"),
+                            "type": s.get("type"),
+                            "total_gb": round(s.get("total", 0) / 1073741824, 1),
+                            "used_gb": round(s.get("used", 0) / 1073741824, 1),
+                            "avail_gb": round(s.get("avail", 0) / 1073741824, 1),
+                            "content": s.get("content", ""),
+                        }
+                    )
         except Exception as e:
             logger.warning("Failed to list storage on %s: %s", name, e)
 
@@ -380,6 +399,7 @@ async def next_vmid():
 # ══════════════════════════════════════════════════════════════════════════
 #  VM LIFECYCLE
 # ══════════════════════════════════════════════════════════════════════════
+
 
 @router.post("/clone", summary="Clone a template to create a new VM")
 async def clone_template(req: CloneRequest):
@@ -423,10 +443,7 @@ async def clone_template(req: CloneRequest):
     if req.pool:
         clone_params["pool"] = req.pool
 
-    upid = await _run(
-        px.nodes(src_node).qemu(req.source_vmid).clone.create,
-        **clone_params
-    )
+    upid = await _run(px.nodes(src_node).qemu(req.source_vmid).clone.create, **clone_params)
 
     # Apply resource overrides after clone
     target = req.target_node or src_node
@@ -562,6 +579,7 @@ async def destroy_vm(node: str, vmid: int, purge: bool = True):
 
 # ── Power actions ───────────────────────────────────────────────────────
 
+
 @router.post("/vms/{node}/{vmid}/start", summary="Start a VM")
 async def start_vm(node: str, vmid: int):
     px = _get_client()
@@ -608,6 +626,7 @@ async def resume_vm(node: str, vmid: int):
 #  TASK TRACKING
 # ══════════════════════════════════════════════════════════════════════════
 
+
 @router.get("/tasks/{node}/{upid}", summary="Check Proxmox task status")
 async def task_status(node: str, upid: str):
     """Poll a Proxmox UPID task for completion / progress."""
@@ -616,7 +635,7 @@ async def task_status(node: str, upid: str):
     log_lines = []
     try:
         log = await _run(px.nodes(node).tasks(upid).log.get, limit=50)
-        log_lines = [l.get("t", "") for l in log]
+        log_lines = [entry.get("t", "") for entry in log]
     except Exception:
         pass
     return {
@@ -653,6 +672,7 @@ async def list_tasks(node: str, limit: int = 20, source: str = "all"):
 #  CONSOLE ACCESS
 # ══════════════════════════════════════════════════════════════════════════
 
+
 @router.post("/vms/{node}/{vmid}/vnc", summary="Get VNC proxy ticket")
 async def vnc_proxy(node: str, vmid: int):
     """Create a VNC proxy ticket for browser-based console access."""
@@ -678,6 +698,7 @@ async def spice_proxy(node: str, vmid: int):
 # ══════════════════════════════════════════════════════════════════════════
 #  SNAPSHOTS
 # ══════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/vms/{node}/{vmid}/snapshots", summary="List VM snapshots")
 async def list_snapshots(node: str, vmid: int):
@@ -726,6 +747,7 @@ async def delete_snapshot(node: str, vmid: int, snap: str):
 #  NETWORK MANAGEMENT
 # ══════════════════════════════════════════════════════════════════════════
 
+
 @router.post("/networks", summary="Create a Linux bridge on a node")
 async def create_bridge(req: BridgeRequest):
     """Create a new Linux bridge for range network isolation."""
@@ -768,6 +790,7 @@ async def delete_network(node: str, iface: str):
 #  ISO / STORAGE CONTENT
 # ══════════════════════════════════════════════════════════════════════════
 
+
 @router.get("/storage/{node}/{storage}/content", summary="List storage content")
 async def list_storage_content(node: str, storage: str, content_type: str | None = None):
     """List ISOs, disk images, backups, etc. on a storage pool."""
@@ -807,6 +830,7 @@ async def list_isos(node: str, storage: str = "local"):
 #  BATCH DEPLOYMENT (for range provisioning)
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class BatchDeployItem(BaseModel):
     template_vmid: int
     name: str
@@ -816,8 +840,10 @@ class BatchDeployItem(BaseModel):
     net_bridge: str = "vmbr0"
     tags: str | None = None
 
+
 class BatchDeployRequest(BaseModel):
     """Deploy multiple VMs at once (e.g., an entire range)."""
+
     vms: list[BatchDeployItem]
     storage: str = "local-lvm"
     full_clone: bool = True
@@ -851,11 +877,13 @@ async def batch_deploy(req: BatchDeployRequest):
             result = await clone_template(clone_req)
             results.append({"success": True, **result})
         except Exception as e:
-            results.append({
-                "success": False,
-                "name": item.name,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "success": False,
+                    "name": item.name,
+                    "error": str(e),
+                }
+            )
 
     return {
         "total": len(req.vms),
@@ -868,6 +896,7 @@ async def batch_deploy(req: BatchDeployRequest):
 # ══════════════════════════════════════════════════════════════════════════
 #  HEALTH / CONNECTIVITY TEST
 # ══════════════════════════════════════════════════════════════════════════
+
 
 @router.get("/ping", summary="Test Proxmox connectivity")
 async def ping():

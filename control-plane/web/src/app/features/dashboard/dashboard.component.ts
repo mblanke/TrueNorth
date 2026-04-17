@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, signal, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -762,7 +762,7 @@ export class DashboardComponent implements OnInit {
         this.fitCheckResult.set(res);
         this.cdr.detectChanges();
       },
-      error: (err: any) => {
+      error: (_err: any) => {
         this.snack.open('Capacity check failed', 'OK', { duration: 3000 });
       },
     });

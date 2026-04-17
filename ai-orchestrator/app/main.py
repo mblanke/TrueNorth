@@ -5,6 +5,7 @@ cloud fallback (OpenAI/Anthropic), tag-based task-to-model routing,
 load balancing, health-aware failover, and caching.
 Designed for 1,200+ concurrent users at 70k-VM scale.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,7 @@ from enum import Enum
 from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -38,6 +39,8 @@ class TaskType(str, Enum):
     detection_rule = "detection-rule"
     scenario_suggest = "scenario-suggest"
     aar_analysis = "aar-analysis"
+    exercise_forge = "exercise-forge"
+    learning_recommendation = "learning-recommendation"
     general = "general"
     embedding = "embedding"
 
@@ -49,11 +52,11 @@ class BackendType(str, Enum):
     mock = "mock"
 
 
-
 # ── Model Configuration ───────────────────────────────────────────────
 @dataclass
 class OllamaNode:
     """Represents a single Ollama server."""
+
     name: str
     base_url: str
     models: list[str] = field(default_factory=list)
@@ -77,6 +80,7 @@ class OllamaNode:
 @dataclass
 class ModelRoute:
     """Maps a task to capability tags for model selection."""
+
     task: TaskType
     tags: list[str]
     fallback_backend: BackendType = BackendType.openai
@@ -271,6 +275,20 @@ TASK_ROUTES: dict[TaskType, ModelRoute] = {
         fallback_backend=BackendType.mock,
         max_tokens_default=512,
     ),
+    TaskType.exercise_forge: ModelRoute(
+        task=TaskType.exercise_forge,
+        tags=["instruct-large", "large", "instruct"],
+        fallback_backend=BackendType.openai,
+        fallback_model="gpt-4o",
+        max_tokens_default=5000,
+    ),
+    TaskType.learning_recommendation: ModelRoute(
+        task=TaskType.learning_recommendation,
+        tags=["instruct-large", "large", "instruct"],
+        fallback_backend=BackendType.openai,
+        fallback_model="gpt-4o",
+        max_tokens_default=3000,
+    ),
 }
 
 
@@ -352,7 +370,10 @@ async def _health_check_loop():
                             node.models = live_models
                             node.tagged_models = {m: _tag_model(m) for m in live_models}
                         logger.debug(
-                            "Health OK: %s (%.0fms, %d models)", name, latency, len(live_models),
+                            "Health OK: %s (%.0fms, %d models)",
+                            name,
+                            latency,
+                            len(live_models),
                         )
                     else:
                         node.mark_unhealthy()
@@ -375,7 +396,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 
 # ── Schemas ────────────────────────────────────────────────────────────
@@ -425,6 +445,33 @@ class EmbeddingRequest(BaseModel):
     model: str = Field(default="bge-m3:latest")
 
 
+class ExerciseForgeRequest(BaseModel):
+    threat_indicators: list[dict] = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        description="List of threat indicators with type, value, severity, mitre_attack_ids",
+    )
+    difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
+    duration_minutes: int = Field(default=60, ge=15, le=480)
+    objective_count: int = Field(default=4, ge=2, le=10)
+    range_template: str = Field(default="small-enterprise")
+    focus_areas: list[str] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Focus: detection, containment, eradication, recovery, analysis",
+    )
+    model: str = Field(default="", description="Override model")
+
+
+class LearningRecommendationRequest(BaseModel):
+    user_profile: dict = Field(..., description="User competency profile with assertions and gaps")
+    exercise_history: list[dict] = Field(default_factory=list, description="Recent exercise results")
+    available_courses: list[dict] = Field(default_factory=list, description="Available course catalog")
+    target_role: str = Field(default="", description="Target NICE work role code")
+    model: str = Field(default="", description="Override model")
+
+
 class EmbeddingResponse(BaseModel):
     embedding: list[float]
     model_used: str
@@ -432,9 +479,9 @@ class EmbeddingResponse(BaseModel):
     latency_ms: float = 0
 
 
-
 class AddNodeRequest(BaseModel):
     """Request body to register a new Ollama node at runtime."""
+
     name: str = Field(..., description="Unique node name (e.g. gpu3)")
     url: str = Field(..., description="Ollama base URL (e.g. http://10.0.0.12:11434)")
 
@@ -444,7 +491,6 @@ class FleetStatus(BaseModel):
     primary_backend: str = ""
     cache_size: int = 0
     max_concurrency: int = 0
-
 
 
 # ── Cache helpers ──────────────────────────────────────────────────────
@@ -475,19 +521,21 @@ async def _call_with_retry(coro_factory, retries: int = 3, base_delay: float = 1
         try:
             return await coro_factory()
         except httpx.HTTPStatusError as e:
-            if e.response.status_code in (429,) or e.response.status_code >= 500:
-                if attempt < retries:
-                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.5)
-                    logger.warning(
-                        "LLM call failed (%s), retrying in %.1fs (attempt %d/%d)",
-                        e.response.status_code, delay, attempt + 1, retries,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
+            if (e.response.status_code in (429,) or e.response.status_code >= 500) and attempt < retries:
+                delay = base_delay * (2**attempt) + random.uniform(0, 0.5)
+                logger.warning(
+                    "LLM call failed (%s), retrying in %.1fs (attempt %d/%d)",
+                    e.response.status_code,
+                    delay,
+                    attempt + 1,
+                    retries,
+                )
+                await asyncio.sleep(delay)
+                continue
             raise
         except (httpx.ConnectError, httpx.ReadTimeout) as e:
             if attempt < retries:
-                delay = base_delay * (2 ** attempt) + random.uniform(0, 0.5)
+                delay = base_delay * (2**attempt) + random.uniform(0, 0.5)
                 logger.warning("Connection error (%s), retrying in %.1fs", type(e).__name__, delay)
                 await asyncio.sleep(delay)
                 continue
@@ -670,7 +718,7 @@ async def _generate(
 
     async with _llm_semaphore:
         # Strategy: try Ollama fleet first if primary is ollama
-        if PRIMARY_BACKEND == BackendType.ollama:
+        if BackendType.ollama == PRIMARY_BACKEND:
             # Build candidate list: explicit override or tag-based discovery
             if model_override:
                 models_to_try: list[tuple[str, str]] = [(model_override, node_override)]
@@ -682,7 +730,8 @@ async def _generate(
             for model, node_hint in models_to_try:
                 try:
                     result = await _call_ollama(
-                        prompt, model,
+                        prompt,
+                        model,
                         node_name=node_hint,
                         max_tokens=effective_max,
                         system_prompt=system_prompt,
@@ -698,7 +747,8 @@ async def _generate(
             # All Ollama models failed -- fall back to cloud
             logger.warning(
                 "All Ollama models failed for task=%s, falling back to %s",
-                task.value, route.fallback_backend.value,
+                task.value,
+                route.fallback_backend.value,
             )
             try:
                 result = await _cloud_fallback(prompt, route, effective_max)
@@ -707,11 +757,11 @@ async def _generate(
                 return (*result, False)
             except Exception as cloud_err:
                 logger.error("Cloud fallback also failed: %s (original: %s)", cloud_err, last_err)
-                raise HTTPException(503, f"All backends failed. Ollama: {last_err}, Cloud: {cloud_err}")
+                raise HTTPException(503, f"All backends failed. Ollama: {last_err}, Cloud: {cloud_err}") from cloud_err
 
-        elif PRIMARY_BACKEND == BackendType.openai and OPENAI_API_KEY:
+        elif BackendType.openai == PRIMARY_BACKEND and OPENAI_API_KEY:
             result = await _call_openai(prompt, effective_model or route.fallback_model, effective_max)
-        elif PRIMARY_BACKEND == BackendType.anthropic and ANTHROPIC_API_KEY:
+        elif BackendType.anthropic == PRIMARY_BACKEND and ANTHROPIC_API_KEY:
             result = await _call_anthropic(prompt, effective_model or route.fallback_model, effective_max)
         else:
             result = (f"[MOCK] Response for: {prompt[:200]}...", "mock", "mock", {})
@@ -831,7 +881,7 @@ async def pull_model(node_name: str, model: str):
         resp.raise_for_status()
         return {"status": "pulled", "node": node_name, "model": model}
     except Exception as e:
-        raise HTTPException(502, f"Pull failed on {node_name}: {e}")
+        raise HTTPException(502, f"Pull failed on {node_name}: {e}") from e
 
 
 @app.post("/ai/generate", response_model=GenerateResponse)
@@ -843,17 +893,31 @@ async def generate(req: GenerateRequest):
         full_prompt += f"\n\nContext:\n{json.dumps(req.context, indent=2)}"
 
     output, model_used, node_used, usage, cached = await _generate(
-        full_prompt, task, req.model, req.node, req.max_tokens, use_cache=not req.skip_cache,
+        full_prompt,
+        task,
+        req.model,
+        req.node,
+        req.max_tokens,
+        use_cache=not req.skip_cache,
     )
     latency = (time.perf_counter() - start) * 1000
     logger.info(
         "generate task=%s model=%s node=%s cached=%s latency=%.0fms",
-        req.task, model_used, node_used, cached, latency,
+        req.task,
+        model_used,
+        node_used,
+        cached,
+        latency,
     )
     return GenerateResponse(
-        task=req.task, model_used=model_used, node_used=node_used,
-        backend=PRIMARY_BACKEND.value, output=output, usage=usage,
-        cached=cached, latency_ms=round(latency, 1),
+        task=req.task,
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
+        latency_ms=round(latency, 1),
     )
 
 
@@ -870,13 +934,20 @@ Requirements:
 Output only the detection rule in {req.format} format."""
 
     output, model_used, node_used, usage, cached = await _generate(
-        prompt, TaskType.detection_rule, req.model,
+        prompt,
+        TaskType.detection_rule,
+        req.model,
     )
     latency = (time.perf_counter() - start) * 1000
     return GenerateResponse(
-        task="detection-rule", model_used=model_used, node_used=node_used,
-        backend=PRIMARY_BACKEND.value, output=output, usage=usage,
-        cached=cached, latency_ms=round(latency, 1),
+        task="detection-rule",
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
+        latency_ms=round(latency, 1),
     )
 
 
@@ -884,7 +955,7 @@ Output only the detection rule in {req.format} format."""
 async def suggest_scenario(req: ScenarioSuggestRequest):
     start = time.perf_counter()
     prompt = f"""Design a cyber training scenario as YAML for TrueNorth Range platform.
-Training objectives: {', '.join(req.objectives)}
+Training objectives: {", ".join(req.objectives)}
 Difficulty: {req.difficulty}
 Duration: {req.duration_minutes} minutes
 
@@ -898,13 +969,21 @@ The YAML should include:
 Output valid YAML only."""
 
     output, model_used, node_used, usage, cached = await _generate(
-        prompt, TaskType.scenario_suggest, req.model, max_tokens=3000,
+        prompt,
+        TaskType.scenario_suggest,
+        req.model,
+        max_tokens=3000,
     )
     latency = (time.perf_counter() - start) * 1000
     return GenerateResponse(
-        task="scenario-suggest", model_used=model_used, node_used=node_used,
-        backend=PRIMARY_BACKEND.value, output=output, usage=usage,
-        cached=cached, latency_ms=round(latency, 1),
+        task="scenario-suggest",
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
+        latency_ms=round(latency, 1),
     )
 
 
@@ -921,16 +1000,25 @@ async def analyze_aar(req: AARAnalysisRequest):
 Data:
 {req.report_data}
 
-{json.dumps(req.context, indent=2) if req.context else ''}"""
+{json.dumps(req.context, indent=2) if req.context else ""}"""
 
     output, model_used, node_used, usage, cached = await _generate(
-        prompt, TaskType.aar_analysis, req.model, use_cache=False, max_tokens=4000,
+        prompt,
+        TaskType.aar_analysis,
+        req.model,
+        use_cache=False,
+        max_tokens=4000,
     )
     latency = (time.perf_counter() - start) * 1000
     return GenerateResponse(
-        task="aar-analysis", model_used=model_used, node_used=node_used,
-        backend=PRIMARY_BACKEND.value, output=output, usage=usage,
-        cached=cached, latency_ms=round(latency, 1),
+        task="aar-analysis",
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
+        latency_ms=round(latency, 1),
     )
 
 
@@ -941,9 +1029,165 @@ async def get_embedding(req: EmbeddingRequest):
     try:
         embedding, model_used, node_used = await _call_ollama_embedding(req.text, req.model)
     except Exception as e:
-        raise HTTPException(503, f"Embedding failed: {e}")
+        raise HTTPException(503, f"Embedding failed: {e}") from e
     latency = (time.perf_counter() - start) * 1000
     return EmbeddingResponse(
-        embedding=embedding, model_used=model_used,
-        node_used=node_used, latency_ms=round(latency, 1),
+        embedding=embedding,
+        model_used=model_used,
+        node_used=node_used,
+        latency_ms=round(latency, 1),
+    )
+
+
+@app.post("/ai/exercise-forge", response_model=GenerateResponse)
+async def forge_exercise(req: ExerciseForgeRequest):
+    """Generate a complete exercise scenario from threat intelligence indicators."""
+    start = time.perf_counter()
+
+    # Build indicator summary for the prompt
+    indicator_lines = []
+    mitre_ids = set()
+    for ind in req.threat_indicators:
+        line = f"- {ind.get('indicator_type', 'unknown')}: {ind.get('value', 'N/A')} (severity: {ind.get('severity', 'medium')})"
+        if ind.get("description"):
+            line += f" — {ind['description']}"
+        indicator_lines.append(line)
+        for mid in ind.get("mitre_attack_ids") or []:
+            mitre_ids.add(mid)
+
+    focus = ", ".join(req.focus_areas) if req.focus_areas else "detection, containment, analysis"
+
+    prompt = f"""Generate a complete cyber training exercise scenario as YAML for the TrueNorth Range platform.
+
+## Threat Intelligence Context
+The following indicators of compromise (IOCs) were observed from real threat feeds:
+{chr(10).join(indicator_lines)}
+
+MITRE ATT&CK techniques involved: {", ".join(sorted(mitre_ids)) if mitre_ids else "determine from indicators"}
+
+## Exercise Requirements
+- Difficulty: {req.difficulty}
+- Duration: {req.duration_minutes} minutes
+- Number of objectives: {req.objective_count}
+- Range template: {req.range_template}
+- Focus areas: {focus}
+
+## Output Format (YAML)
+Generate valid YAML with this structure:
+```yaml
+name: <descriptive-kebab-case-name>
+version: "1.0"
+description: <2-3 sentence description linking to threat intel>
+range_template: {req.range_template}
+difficulty: {req.difficulty}
+duration_minutes: {req.duration_minutes}
+mitre_attack:
+  - <technique IDs>
+
+timeline:
+  - t: "HH:MM"
+    action: "inject.<type>"  # email_phish, dns_spike, http_burst, simulated_execution, identity_new_admin_user
+    params:
+      technique: "<ATT&CK ID>"
+      description: "<what this inject simulates>"
+      <inject-specific params>
+
+objectives:
+  - id: <kebab-case-id>
+    name: "<objective name>"
+    type: <detection|containment|eradication|recovery|analysis>
+    validator: "validate.<method>"  # opensearch_query, manual_ack, deliverable_check
+    params:
+      <validator-specific config>
+    points: <integer>
+    time_bonus: <true|false>
+    time_limit_seconds: <seconds or 0>
+```
+
+Rules:
+- Timeline events must be chronologically ordered
+- Total objective points must sum to 100
+- Include at least one detection and one response objective
+- Reference the actual IOC values from the threat intel in inject params
+- Use realistic OpenSearch queries for detection validators
+- Output ONLY valid YAML, no markdown fences or explanation"""
+
+    output, model_used, node_used, usage, cached = await _generate(
+        prompt,
+        TaskType.exercise_forge,
+        req.model,
+        use_cache=False,
+        max_tokens=5000,
+    )
+    latency = (time.perf_counter() - start) * 1000
+    return GenerateResponse(
+        task="exercise-forge",
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
+        latency_ms=round(latency, 1),
+    )
+
+
+@app.post("/ai/learning-recommendation", response_model=GenerateResponse)
+async def recommend_learning(req: LearningRecommendationRequest):
+    """Generate personalized learning recommendations from competency profile."""
+    start = time.perf_counter()
+
+    prompt = f"""Analyze this cybersecurity trainee's competency profile and generate personalized learning recommendations.
+
+## Current Competency Profile
+{json.dumps(req.user_profile, indent=2)}
+
+## Recent Exercise Performance
+{json.dumps(req.exercise_history, indent=2) if req.exercise_history else "No recent exercises."}
+
+## Available Courses
+{json.dumps(req.available_courses, indent=2) if req.available_courses else "Use general recommendations."}
+
+{f"## Target Work Role: {req.target_role}" if req.target_role else ""}
+
+## Output Format (JSON)
+Return a JSON object with:
+```json
+{{
+  "summary": "Brief assessment of current skill level",
+  "strengths": ["area1", "area2"],
+  "gaps": ["gap1", "gap2"],
+  "recommendations": [
+    {{
+      "priority": 1,
+      "type": "course|exercise|certification|self-study",
+      "title": "Recommended item title",
+      "rationale": "Why this is recommended",
+      "competencies_addressed": ["comp1", "comp2"],
+      "estimated_hours": 4
+    }}
+  ],
+  "target_role_readiness": 0.0-1.0,
+  "next_milestone": "Description of next achievable milestone"
+}}
+```
+Output ONLY valid JSON, no markdown fences."""
+
+    output, model_used, node_used, usage, cached = await _generate(
+        prompt,
+        TaskType.learning_recommendation,
+        req.model,
+        use_cache=False,
+        max_tokens=3000,
+    )
+    latency = (time.perf_counter() - start) * 1000
+    return GenerateResponse(
+        task="learning-recommendation",
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
+        latency_ms=round(latency, 1),
     )

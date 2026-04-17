@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, signal, computed } from '@angular/core';
+﻿import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -404,7 +404,7 @@ interface Transcript {
                       </ng-container>
                       <ng-container matColumnDef="score">
                         <th mat-header-cell *matHeaderCellDef>Score</th>
-                        <td mat-cell *matCellDef="let e">{{ e.grade || (e.score != null ? e.score + '%' : '—') }}</td>
+                        <td mat-cell *matCellDef="let e">{{ e.grade || (e.score !== null ? e.score + '%' : '—') }}</td>
                       </ng-container>
                       <ng-container matColumnDef="completed">
                         <th mat-header-cell *matHeaderCellDef>Completed</th>

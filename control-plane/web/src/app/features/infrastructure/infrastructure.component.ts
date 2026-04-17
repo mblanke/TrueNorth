@@ -46,7 +46,7 @@ interface StorageAppliance {
   raw_capacity_tb: number; usable_capacity_tb: number;
   is_active: boolean; notes: string | null; created_at: string;
 }
-interface StorageVolume {
+interface _StorageVolume {
   id: string; appliance_id: string; volume_name: string;
   size_gb: number; used_gb: number; protocol: StorageProtocol;
   mount_path: string | null; created_at: string;
@@ -68,7 +68,7 @@ interface NetworkSummary {
 }
 
 @Component({
-  selector: 'app-infrastructure',
+  selector: 'tn-infrastructure',
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
@@ -296,7 +296,7 @@ interface NetworkSummary {
                   </ng-container>
                   <ng-container matColumnDef="cpu">
                     <th mat-header-cell *matHeaderCellDef>CPU</th>
-                    <td mat-cell *matCellDef="let n">{{ n.cpu_total }} cores {{ n.cpu_used != null ? '(' + (n.cpu_used | number:'1.0-0') + '%)' : '' }}</td>
+                    <td mat-cell *matCellDef="let n">{{ n.cpu_total }} cores {{ n.cpu_used !== null ? '(' + (n.cpu_used | number:'1.0-0') + '%)' : '' }}</td>
                   </ng-container>
                   <ng-container matColumnDef="memory">
                     <th mat-header-cell *matHeaderCellDef>Memory</th>
@@ -649,8 +649,11 @@ export class InfrastructureComponent implements OnInit {
   connectionSaving = false;
   connCols = ['status', 'name', 'type', 'host', 'actions'];
   nodeCols = ['status', 'node_name', 'ip', 'cpu', 'memory', 'storage', 'vms'];
-  newConn = {
-    name: '', hypervisor_type: 'proxmox' as const, host: '', port: 8006,
+  newConn: {
+    name: string; hypervisor_type: HypervisorConnection['hypervisor_type']; host: string;
+    port: number; username: string; password: string; verify_ssl: boolean; is_primary: boolean;
+  } = {
+    name: '', hypervisor_type: 'proxmox', host: '', port: 8006,
     username: '', password: '', verify_ssl: false, is_primary: false,
   };
 
@@ -832,7 +835,7 @@ export class InfrastructureComponent implements OnInit {
     this.editingConnectionId = null;
     this.connectionSaving = false;
     this.newConn = {
-      name: '', hypervisor_type: 'proxmox' as const, host: '', port: 8006,
+      name: '', hypervisor_type: 'proxmox', host: '', port: 8006,
       username: '', password: '', verify_ssl: false, is_primary: false,
     };
   }

@@ -24,9 +24,7 @@
       "items": {
         "type": "object",
         "required": [
-          "t",
-          "action",
-          "params"
+          "t"
         ],
         "properties": {
           "t": {

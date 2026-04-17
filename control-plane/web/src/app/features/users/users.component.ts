@@ -55,7 +55,7 @@ interface AuthZone {
 }
 
 @Component({
-  selector: 'app-users',
+  selector: 'tn-users',
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,

@@ -2,6 +2,7 @@
 
 create range -> create exercise -> start -> submit objectives -> complete -> generate AAR
 """
+
 from __future__ import annotations
 
 import time

@@ -4,6 +4,7 @@ Allocates VLANs, IP blocks, and VMIDs across ranges to prevent collisions.
 Uses Redis for distributed locking in production, or an in-memory store
 for local development and testing.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,6 +25,7 @@ _VMID_BASE = 100_000
 @dataclass
 class _RangeAllocation:
     """Bookkeeping for a single range's allocated resources."""
+
     vlans: list[int] = field(default_factory=list)
     ip_blocks: dict[int, str] = field(default_factory=dict)
     vmids: list[int] = field(default_factory=list)
@@ -54,6 +56,7 @@ class ResourceAllocator:
         if redis_url:
             try:
                 import redis as _redis_mod
+
                 self._redis = _redis_mod.Redis.from_url(redis_url, decode_responses=True)
                 self._redis.ping()
                 logger.info("ResourceAllocator connected to Redis at %s", redis_url)

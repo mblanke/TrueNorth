@@ -85,7 +85,14 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "B008",   # function-call-in-default-argument — FastAPI Depends() pattern
+    "UP042",  # replace-str-enum — keeping str+Enum for SQLAlchemy compat
+    "F811",   # redefined-while-unused — router re-exports in __init__.py
+    "E402",   # module-import-not-at-top — FastAPI lifespan/router pattern
+    "N999",   # invalid-module-name — hyphenated pkg dirs (telemetry-pipeline)
+]
 
 [tool.mypy]
 python_version = "3.11"

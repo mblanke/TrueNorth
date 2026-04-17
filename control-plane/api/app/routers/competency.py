@@ -3,6 +3,7 @@
 Maps NICE/ATT&CK competencies to exercise objectives, tracks user proficiency,
 identifies skill gaps, and manages external certifications.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,7 +28,6 @@ from ..schemas import (
     CompetencyAssertionOut,
     CompetencyOut,
     CompetencyProfileOut,
-    PaginatedResponse,
     SkillGapOut,
 )
 
@@ -97,32 +97,111 @@ def import_nice_framework(
     This is idempotent — skips competencies that already exist.
     """
     nice_roles = [
-        ("SP-RSK-001", "Authorizing Official", "Analyze", "Senior official with authority to formally assume responsibility for operating a system"),
-        ("SP-RSK-002", "Security Control Assessor", "Analyze", "Conducts independent assessments of security controls and privacy controls"),
-        ("AN-ASA-001", "All-Source Analyst", "Analyze", "Analyzes data from multiple sources to develop threat intelligence"),
-        ("AN-TGT-001", "Target Developer", "Analyze", "Performs target system analysis and develops targeting solutions"),
-        ("AN-TWA-001", "Threat/Warning Analyst", "Analyze", "Identifies and assesses cyber threats to inform decision makers"),
-        ("CO-CLO-001", "Cloud Operations Specialist", "Collect and Operate", "Manages cloud infrastructure and services"),
-        ("CO-OPL-001", "Cyber Operations Planner", "Collect and Operate", "Develops detailed plans for cyber operations"),
-        ("IN-FOR-001", "Cyber Defense Forensics Analyst", "Investigate", "Analyzes digital evidence and investigates computer security incidents"),
-        ("IN-INV-001", "Cyber Defense Incident Responder", "Investigate", "Investigates, analyzes, and responds to cyber incidents"),
-        ("OV-MGT-001", "Information Systems Security Manager", "Oversee and Govern", "Manages information systems security program"),
-        ("OV-TEL-001", "Cyber Instructional Curriculum Developer", "Oversee and Govern", "Develops cyber training curricula and instructional materials"),
+        (
+            "SP-RSK-001",
+            "Authorizing Official",
+            "Analyze",
+            "Senior official with authority to formally assume responsibility for operating a system",
+        ),
+        (
+            "SP-RSK-002",
+            "Security Control Assessor",
+            "Analyze",
+            "Conducts independent assessments of security controls and privacy controls",
+        ),
+        (
+            "AN-ASA-001",
+            "All-Source Analyst",
+            "Analyze",
+            "Analyzes data from multiple sources to develop threat intelligence",
+        ),
+        (
+            "AN-TGT-001",
+            "Target Developer",
+            "Analyze",
+            "Performs target system analysis and develops targeting solutions",
+        ),
+        (
+            "AN-TWA-001",
+            "Threat/Warning Analyst",
+            "Analyze",
+            "Identifies and assesses cyber threats to inform decision makers",
+        ),
+        (
+            "CO-CLO-001",
+            "Cloud Operations Specialist",
+            "Collect and Operate",
+            "Manages cloud infrastructure and services",
+        ),
+        (
+            "CO-OPL-001",
+            "Cyber Operations Planner",
+            "Collect and Operate",
+            "Develops detailed plans for cyber operations",
+        ),
+        (
+            "IN-FOR-001",
+            "Cyber Defense Forensics Analyst",
+            "Investigate",
+            "Analyzes digital evidence and investigates computer security incidents",
+        ),
+        (
+            "IN-INV-001",
+            "Cyber Defense Incident Responder",
+            "Investigate",
+            "Investigates, analyzes, and responds to cyber incidents",
+        ),
+        (
+            "OV-MGT-001",
+            "Information Systems Security Manager",
+            "Oversee and Govern",
+            "Manages information systems security program",
+        ),
+        (
+            "OV-TEL-001",
+            "Cyber Instructional Curriculum Developer",
+            "Oversee and Govern",
+            "Develops cyber training curricula and instructional materials",
+        ),
         ("OV-TEL-002", "Cyber Instructor", "Oversee and Govern", "Delivers technical cyber training to personnel"),
-        ("PR-CDA-001", "Cyber Defense Analyst", "Protect and Defend", "Analyzes events and trends to identify cyber defense mitigations"),
-        ("PR-CIR-001", "Cyber Defense Incident Responder", "Protect and Defend", "Investigates and responds to cyber defense incidents"),
-        ("PR-INF-001", "Cyber Defense Infrastructure Support", "Protect and Defend", "Tests, implements, and maintains infrastructure security"),
-        ("PR-VAM-001", "Vulnerability Assessment Analyst", "Protect and Defend", "Performs vulnerability assessments and recommends mitigations"),
+        (
+            "PR-CDA-001",
+            "Cyber Defense Analyst",
+            "Protect and Defend",
+            "Analyzes events and trends to identify cyber defense mitigations",
+        ),
+        (
+            "PR-CIR-001",
+            "Cyber Defense Incident Responder",
+            "Protect and Defend",
+            "Investigates and responds to cyber defense incidents",
+        ),
+        (
+            "PR-INF-001",
+            "Cyber Defense Infrastructure Support",
+            "Protect and Defend",
+            "Tests, implements, and maintains infrastructure security",
+        ),
+        (
+            "PR-VAM-001",
+            "Vulnerability Assessment Analyst",
+            "Protect and Defend",
+            "Performs vulnerability assessments and recommends mitigations",
+        ),
         ("SE-DEV-001", "Secure Software Assessor", "Securely Provision", "Analyzes security of software applications"),
         ("SE-ARC-001", "Security Architect", "Securely Provision", "Develops system security architecture and designs"),
     ]
 
     created = 0
     for code, name, category, description in nice_roles:
-        existing = db.query(Competency).filter(
-            Competency.framework == CompetencyFramework.nice,
-            Competency.code == code,
-        ).first()
+        existing = (
+            db.query(Competency)
+            .filter(
+                Competency.framework == CompetencyFramework.nice,
+                Competency.code == code,
+            )
+            .first()
+        )
         if not existing:
             comp = Competency(
                 code=code,
@@ -151,20 +230,16 @@ def get_competency_profile(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Get aggregated competency profile for a user."""
-    assertions = (
-        db.query(CompetencyAssertion)
-        .filter(CompetencyAssertion.user_id == user_id)
-        .all()
-    )
+    assertions = db.query(CompetencyAssertion).filter(CompetencyAssertion.user_id == user_id).all()
 
     by_framework: dict[str, int] = {}
     by_proficiency: dict[str, int] = {}
     for a in assertions:
         comp = db.query(Competency).filter(Competency.id == a.competency_id).first()
         if comp:
-            fw = comp.framework.value if hasattr(comp.framework, 'value') else str(comp.framework)
+            fw = comp.framework.value if hasattr(comp.framework, "value") else str(comp.framework)
             by_framework[fw] = by_framework.get(fw, 0) + 1
-        prof = a.proficiency.value if hasattr(a.proficiency, 'value') else str(a.proficiency)
+        prof = a.proficiency.value if hasattr(a.proficiency, "value") else str(a.proficiency)
         by_proficiency[prof] = by_proficiency.get(prof, 0) + 1
 
     assertion_outs = [CompetencyAssertionOut.model_validate(a) for a in assertions]
@@ -190,39 +265,38 @@ def get_skill_gaps(
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Target role not found")
 
-    role_competencies = (
-        db.query(Competency)
-        .filter(Competency.category == target.category)
-        .all()
-    )
+    role_competencies = db.query(Competency).filter(Competency.category == target.category).all()
 
     # Get user's existing assertions
     user_assertions = {
-        a.competency_id: a
-        for a in db.query(CompetencyAssertion)
-        .filter(CompetencyAssertion.user_id == user_id)
-        .all()
+        a.competency_id: a for a in db.query(CompetencyAssertion).filter(CompetencyAssertion.user_id == user_id).all()
     }
 
     gaps = []
     for comp in role_competencies:
         assertion = user_assertions.get(comp.id)
         if not assertion:
-            gaps.append(SkillGapOut(
-                competency=CompetencyOut.model_validate(comp),
-                required_level="intermediate",
-                current_level=None,
-                gap=True,
-            ))
-        else:
-            prof = assertion.proficiency.value if hasattr(assertion.proficiency, 'value') else str(assertion.proficiency)
-            if prof in ("novice", "beginner"):
-                gaps.append(SkillGapOut(
+            gaps.append(
+                SkillGapOut(
                     competency=CompetencyOut.model_validate(comp),
                     required_level="intermediate",
-                    current_level=prof,
+                    current_level=None,
                     gap=True,
-                ))
+                )
+            )
+        else:
+            prof = (
+                assertion.proficiency.value if hasattr(assertion.proficiency, "value") else str(assertion.proficiency)
+            )
+            if prof in ("novice", "beginner"):
+                gaps.append(
+                    SkillGapOut(
+                        competency=CompetencyOut.model_validate(comp),
+                        required_level="intermediate",
+                        current_level=prof,
+                        gap=True,
+                    )
+                )
 
     return gaps
 
@@ -266,10 +340,7 @@ def list_user_certifications(
 ):
     """List all certifications for a user."""
     return (
-        db.query(Certification)
-        .filter(Certification.user_id == user_id)
-        .order_by(Certification.issued_at.desc())
-        .all()
+        db.query(Certification).filter(Certification.user_id == user_id).order_by(Certification.issued_at.desc()).all()
     )
 
 
@@ -297,3 +368,86 @@ def add_certification(
     db.refresh(cert)
     logger.info("Certification added: %s for user %s", body.cert_name, user_id)
     return cert
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Competency Heatmap
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/heatmap")
+def get_competency_heatmap(
+    view: str = Query("team"),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Return competency heatmap data for ECharts visualization.
+
+    Returns NICE categories vs work roles with average proficiency scores.
+    """
+    nice_categories = [
+        "Analyze",
+        "Collect & Operate",
+        "Investigate",
+        "Operate & Maintain",
+        "Oversee & Govern",
+        "Protect & Defend",
+        "Securely Provision",
+    ]
+
+    # Get distinct work roles from competencies
+    work_roles_rows = db.query(Competency.category).filter(Competency.framework == "NICE").distinct().all()
+    work_roles = (
+        [r[0] for r in work_roles_rows]
+        if work_roles_rows
+        else [
+            "SOC Analyst",
+            "Incident Responder",
+            "Threat Hunter",
+            "Vulnerability Analyst",
+            "Pen Tester",
+            "Forensic Analyst",
+        ]
+    )
+
+    _proficiency_score = {
+        "novice": 10,
+        "beginner": 30,
+        "intermediate": 50,
+        "advanced": 75,
+        "expert": 95,
+    }
+
+    # Build heatmap values: aggregate assertions per category × role
+    values = []
+    for x_idx, _role in enumerate(work_roles):
+        for y_idx, category in enumerate(nice_categories):
+            from sqlalchemy import case, func
+
+            score_expr = case(
+                (CompetencyAssertion.proficiency == "novice", 10),
+                (CompetencyAssertion.proficiency == "beginner", 30),
+                (CompetencyAssertion.proficiency == "intermediate", 50),
+                (CompetencyAssertion.proficiency == "advanced", 75),
+                (CompetencyAssertion.proficiency == "expert", 95),
+                else_=0,
+            )
+            avg_query = (
+                db.query(func.avg(score_expr))
+                .join(Competency, CompetencyAssertion.competency_id == Competency.id)
+                .filter(
+                    Competency.category == category,
+                    Competency.framework == "NICE",
+                )
+            )
+            if view == "individual":
+                avg_query = avg_query.filter(CompetencyAssertion.user_id == uuid.UUID(user.id))
+            result = avg_query.scalar()
+            score = int(result) if result else 0
+            values.append([x_idx, y_idx, score])
+
+    return {
+        "categories": nice_categories,
+        "work_roles": work_roles,
+        "values": values,
+    }

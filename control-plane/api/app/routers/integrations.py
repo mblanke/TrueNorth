@@ -3,14 +3,15 @@
 Manages registration and connectivity for Moodle, Immersive Labs, OffSec,
 and custom LTI/API platforms. Handles external activity sync and LTI 1.3 flows.
 """
+
 from __future__ import annotations
 
-import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
@@ -110,7 +111,7 @@ def update_platform(
     return p
 
 
-@router.delete("/platforms/{platform_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/platforms/{platform_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 def deregister_platform(
     platform_id: uuid.UUID,
     db: Session = Depends(get_db),

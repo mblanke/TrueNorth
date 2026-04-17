@@ -230,15 +230,18 @@ export class AppComponent {
         { label: 'Exercises',    icon: 'fitness_center',route: '/exercises' },
         { label: 'Telemetry',    icon: 'leaderboard',   route: '/telemetry' },
         { label: 'Scoring',      icon: 'assessment',    route: '/scoring' },
+        { label: 'Ops Center',   icon: 'radar',         route: '/ops-center/select' },
       ],
     },
     {
       name: 'Design',
       items: [
-        { label: 'Range Designer',   icon: 'architecture', route: '/range-designer' },
-        { label: 'Templates',        icon: 'description',  route: '/templates' },
-        { label: 'Scenario Builder', icon: 'build',        route: '/scenario-builder' },
-        { label: 'Scenarios',        icon: 'play_circle',  route: '/scenarios' },
+        { label: 'Range Designer',   icon: 'architecture',  route: '/range-designer' },
+        { label: 'Templates',        icon: 'description',   route: '/templates' },
+        { label: 'Scenario Builder', icon: 'build',         route: '/scenario-builder' },
+        { label: 'Scenarios',        icon: 'play_circle',   route: '/scenarios' },
+        { label: 'Exercise Forge',   icon: 'auto_fix_high', route: '/exercise-forge' },
+        { label: 'Detection Editor', icon: 'shield',        route: '/detection-editor' },
       ],
     },
     {

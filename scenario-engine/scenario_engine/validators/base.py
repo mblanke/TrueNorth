@@ -7,5 +7,4 @@ class BaseValidator(ABC):
         self.params = params or {}
 
     @abstractmethod
-    def validate(self, context: dict[str, Any]) -> bool:
-        ...
+    def validate(self, context: dict[str, Any]) -> bool: ...

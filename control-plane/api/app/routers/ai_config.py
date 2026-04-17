@@ -1,18 +1,20 @@
-﻿"""TrueNorth Range -- AI Orchestrator Configuration Router.
+"""TrueNorth Range -- AI Orchestrator Configuration Router.
 
 DB-backed CRUD for AI backends, fleet nodes, model routing,
 real test-generate via configured backends, and fleet summary.
 """
+
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import time
-from datetime import datetime, timezone
 import uuid
+from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -20,13 +22,13 @@ from ..db import get_db
 from ..models import AIBackendConfig, AIFleetNode, AIModelRoute
 from ..schemas import (
     AIBackendConfigIn,
-    AIBackendConfigUpdate,
     AIBackendConfigOut,
+    AIBackendConfigUpdate,
     AIFleetNodeOut,
+    AIFleetSummaryOut,
     AIModelRouteIn,
     AIModelRouteOut,
     AIModelRouteUpdate,
-    AIFleetSummaryOut,
 )
 
 logger = logging.getLogger("truenorth.api.ai_config")
@@ -73,7 +75,7 @@ def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Se
         raise HTTPException(404, "Backend not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "api_key":
-            setattr(backend, "api_key_encrypted", value)
+            backend.api_key_encrypted = value
         else:
             setattr(backend, field, value)
     db.commit()
@@ -81,7 +83,7 @@ def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Se
     return backend
 
 
-@router.delete("/backends/{backend_id}", status_code=204)
+@router.delete("/backends/{backend_id}", status_code=204, response_class=Response)
 def delete_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
     backend = db.get(AIBackendConfig, str(backend_id))
     if not backend:
@@ -141,7 +143,7 @@ def add_fleet_node(
     return node
 
 
-@router.delete("/nodes/{node_id}", status_code=204)
+@router.delete("/nodes/{node_id}", status_code=204, response_class=Response)
 def remove_fleet_node(node_id: uuid.UUID, db: Session = Depends(get_db)):
     node = db.get(AIFleetNode, str(node_id))
     if not node:
@@ -170,7 +172,7 @@ def create_model_route(payload: AIModelRouteIn, db: Session = Depends(get_db)):
     return route
 
 
-@router.delete("/routes/{route_id}", status_code=204)
+@router.delete("/routes/{route_id}", status_code=204, response_class=Response)
 def delete_model_route(route_id: uuid.UUID, db: Session = Depends(get_db)):
     route = db.get(AIModelRoute, str(route_id))
     if not route:
@@ -194,12 +196,16 @@ def update_model_route(route_id: uuid.UUID, payload: AIModelRouteUpdate, db: Ses
     return route
 
 
-
-
 # -- Known Fleet Nodes (hardcoded for LAN discovery) -----------------------
 KNOWN_OLLAMA_NODES = [
     {"node_name": "wile", "host": "192.168.1.50", "port": 11434, "gpu_model": "Dell Pro Max GB10", "gpu_vram_gb": 128},
-    {"node_name": "roadrunner", "host": "192.168.1.51", "port": 11434, "gpu_model": "Dell Pro Max GB10", "gpu_vram_gb": 128},
+    {
+        "node_name": "roadrunner",
+        "host": "192.168.1.51",
+        "port": 11434,
+        "gpu_model": "Dell Pro Max GB10",
+        "gpu_vram_gb": 128,
+    },
 ]
 
 
@@ -231,9 +237,7 @@ def _probe_ollama_node(host: str, port: int, timeout: float = 5.0) -> dict:
         # Get currently loaded/running models
         pr = httpx.get(f"{base}/api/ps", timeout=timeout)
         if pr.status_code == 200:
-            result["running"] = [
-                rm.get("name", "") for rm in pr.json().get("models", [])
-            ]
+            result["running"] = [rm.get("name", "") for rm in pr.json().get("models", [])]
 
         result["online"] = True
     except Exception as exc:
@@ -253,13 +257,17 @@ def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
         probe = _probe_ollama_node(known["host"], known["port"])
 
         # Upsert fleet node
-        existing = db.query(AIFleetNode).filter(
-            AIFleetNode.backend_id == str(backend_id),
-            AIFleetNode.node_name == known["node_name"],
-        ).first()
+        existing = (
+            db.query(AIFleetNode)
+            .filter(
+                AIFleetNode.backend_id == str(backend_id),
+                AIFleetNode.node_name == known["node_name"],
+            )
+            .first()
+        )
 
         model_names = [m["name"] for m in probe["models"]]
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if existing:
             existing.url = probe["url"]
@@ -283,17 +291,19 @@ def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
             )
             db.add(node_record)
 
-        scan_results.append({
-            "node_name": known["node_name"],
-            "url": probe["url"],
-            "online": probe["online"],
-            "version": probe["version"],
-            "gpu_model": known.get("gpu_model"),
-            "gpu_vram_gb": known.get("gpu_vram_gb"),
-            "model_count": len(probe["models"]),
-            "models": probe["models"],
-            "running": probe["running"],
-        })
+        scan_results.append(
+            {
+                "node_name": known["node_name"],
+                "url": probe["url"],
+                "online": probe["online"],
+                "version": probe["version"],
+                "gpu_model": known.get("gpu_model"),
+                "gpu_vram_gb": known.get("gpu_vram_gb"),
+                "model_count": len(probe["models"]),
+                "models": probe["models"],
+                "running": probe["running"],
+            }
+        )
 
     db.commit()
     return {"scanned": len(KNOWN_OLLAMA_NODES), "results": scan_results}
@@ -361,10 +371,14 @@ def list_available_models(db: Session = Depends(get_db)):
 
 def _pick_ollama_node(db: Session, backend_id: str, model: str | None = None) -> AIFleetNode | None:
     """Pick the best online fleet node, optionally one that has the requested model."""
-    nodes = db.query(AIFleetNode).filter(
-        AIFleetNode.backend_id == backend_id,
-        AIFleetNode.status == "online",
-    ).all()
+    nodes = (
+        db.query(AIFleetNode)
+        .filter(
+            AIFleetNode.backend_id == backend_id,
+            AIFleetNode.status == "online",
+        )
+        .all()
+    )
     if not nodes:
         return None
     if model:
@@ -391,10 +405,14 @@ def test_generate(
     base_url (which may be Open WebUI / a reverse proxy that rejects raw
     Ollama API calls).  Falls back to mock if nothing is reachable.
     """
-    primary = db.query(AIBackendConfig).filter(
-        AIBackendConfig.is_primary == True,
-        AIBackendConfig.is_active == True,
-    ).first()
+    primary = (
+        db.query(AIBackendConfig)
+        .filter(
+            AIBackendConfig.is_primary,
+            AIBackendConfig.is_active,
+        )
+        .first()
+    )
 
     if not primary:
         result = _call_mock(prompt)

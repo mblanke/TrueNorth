@@ -3,10 +3,10 @@
 Provisions VMs directly via the Proxmox REST API using httpx,
 with concurrent clone operations gated by a semaphore.
 """
+
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
@@ -58,7 +58,7 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
     # HTTP helpers
     # ------------------------------------------------------------------ #
 
-    def _client(self) -> "httpx.AsyncClient":
+    def _client(self) -> httpx.AsyncClient:
         if httpx is None:
             raise RuntimeError("httpx is required for ProxmoxAPIProvisioner")
         return httpx.AsyncClient(
@@ -68,12 +68,12 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
             timeout=60.0,
         )
 
-    async def _api_get(self, client: "httpx.AsyncClient", path: str) -> dict:
+    async def _api_get(self, client: httpx.AsyncClient, path: str) -> dict:
         resp = await client.get(f"/api2/json{path}")
         resp.raise_for_status()
         return resp.json().get("data", {})
 
-    async def _api_post(self, client: "httpx.AsyncClient", path: str, **kwargs) -> dict:
+    async def _api_post(self, client: httpx.AsyncClient, path: str, **kwargs) -> dict:
         resp = await client.post(f"/api2/json{path}", **kwargs)
         resp.raise_for_status()
         return resp.json().get("data", {})
@@ -84,7 +84,7 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
 
     async def _clone_vm(
         self,
-        client: "httpx.AsyncClient",
+        client: httpx.AsyncClient,
         template_vmid: int,
         new_vmid: int,
         name: str,
@@ -120,22 +120,22 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
 
             return {"vmid": new_vmid, "name": name, "status": "stopped"}
 
-    async def _start_vm(self, client: "httpx.AsyncClient", vmid: int) -> None:
+    async def _start_vm(self, client: httpx.AsyncClient, vmid: int) -> None:
         async with self._semaphore:
             await self._api_post(client, f"/nodes/{self._node}/qemu/{vmid}/status/start")
 
-    async def _stop_vm(self, client: "httpx.AsyncClient", vmid: int) -> None:
+    async def _stop_vm(self, client: httpx.AsyncClient, vmid: int) -> None:
         async with self._semaphore:
             await self._api_post(client, f"/nodes/{self._node}/qemu/{vmid}/status/stop")
 
-    async def _destroy_vm(self, client: "httpx.AsyncClient", vmid: int) -> None:
+    async def _destroy_vm(self, client: httpx.AsyncClient, vmid: int) -> None:
         async with self._semaphore:
             await self._api_post(client, f"/nodes/{self._node}/qemu/{vmid}/status/stop")
             await asyncio.sleep(2)
             resp = await client.delete(f"/api2/json/nodes/{self._node}/qemu/{vmid}")
             resp.raise_for_status()
 
-    async def _wait_task(self, client: "httpx.AsyncClient", upid: str, timeout: int = 120) -> None:
+    async def _wait_task(self, client: httpx.AsyncClient, upid: str, timeout: int = 120) -> None:
         """Poll a Proxmox task until completion."""
         if not upid:
             return
@@ -147,12 +147,12 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
             await asyncio.sleep(2)
         logger.warning("Task %s did not complete within %ds", upid, timeout)
 
-    async def _wait_qemu_agent(self, client: "httpx.AsyncClient", vmid: int) -> bool:
+    async def _wait_qemu_agent(self, client: httpx.AsyncClient, vmid: int) -> bool:
         """Wait until QEMU guest agent responds."""
         deadline = time.monotonic() + self._agent_timeout
         while time.monotonic() < deadline:
             try:
-                data = await self._api_get(
+                await self._api_get(
                     client,
                     f"/nodes/{self._node}/qemu/{vmid}/agent/ping",
                 )
@@ -169,7 +169,10 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
     # provision
     # ------------------------------------------------------------------ #
     async def provision(
-        self, range_id: str, template: dict, allocations: dict,
+        self,
+        range_id: str,
+        template: dict,
+        allocations: dict,
     ) -> ProvisionResult:
         start = time.monotonic()
         errors: list[str] = []
@@ -213,7 +216,7 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
                 agent_tasks.append(self._wait_qemu_agent(client, vm["vmid"]))
             agent_results = await asyncio.gather(*agent_tasks, return_exceptions=True)
 
-            for vm, agent_ok in zip(vms, agent_results):
+            for vm, agent_ok in zip(vms, agent_results, strict=False):
                 if agent_ok is True:
                     vm["status"] = "running"
                     # Retrieve IP from QEMU agent
@@ -234,12 +237,14 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
 
             # Collect network info from allocations
             for net in template.get("networks", []):
-                networks.append({
-                    "network_id": str(uuid.uuid4()),
-                    "name": net.get("name", "vmbr0"),
-                    "cidr": net.get("cidr", "10.0.1.0/24"),
-                    "vlan_id": net.get("vlan_id"),
-                })
+                networks.append(
+                    {
+                        "network_id": str(uuid.uuid4()),
+                        "name": net.get("name", "vmbr0"),
+                        "cidr": net.get("cidr", "10.0.1.0/24"),
+                        "vlan_id": net.get("vlan_id"),
+                    }
+                )
 
         status = "ok" if not errors else ("partial" if vms else "failed")
         return ProvisionResult(
@@ -254,7 +259,9 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
     # destroy
     # ------------------------------------------------------------------ #
     async def destroy(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> DestroyResult:
         start = time.monotonic()
         errors: list[str] = []
@@ -268,7 +275,7 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
                 if vmid:
                     tasks.append(self._destroy_vm(client, vmid))
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            for idx, r in enumerate(results):
+            for _idx, r in enumerate(results):
                 if isinstance(r, Exception):
                     errors.append(f"Destroy VM failed: {r}")
                 else:
@@ -286,7 +293,9 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
     # stop
     # ------------------------------------------------------------------ #
     async def stop(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> StopResult:
         start = time.monotonic()
         errors: list[str] = []
@@ -313,7 +322,9 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
     # start
     # ------------------------------------------------------------------ #
     async def start(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> StartResult:
         start = time.monotonic()
         errors: list[str] = []
@@ -340,7 +351,10 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
     # snapshot
     # ------------------------------------------------------------------ #
     async def snapshot(
-        self, range_id: str, provision_output: dict, name: str,
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
     ) -> SnapshotResult:
         start = time.monotonic()
         errors: list[str] = []
@@ -375,7 +389,9 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
     # health_check
     # ------------------------------------------------------------------ #
     async def health_check(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> HealthResult:
         start = time.monotonic()
         errors: list[str] = []
@@ -397,21 +413,25 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
                     healthy = status == "running"
                     if not healthy:
                         all_healthy = False
-                    vm_statuses.append({
-                        "vmid": vmid,
-                        "name": vm.get("name", ""),
-                        "status": status,
-                        "healthy": healthy,
-                    })
+                    vm_statuses.append(
+                        {
+                            "vmid": vmid,
+                            "name": vm.get("name", ""),
+                            "status": status,
+                            "healthy": healthy,
+                        }
+                    )
                 except Exception as exc:
                     all_healthy = False
                     errors.append(f"Health check VM {vmid} failed: {exc}")
-                    vm_statuses.append({
-                        "vmid": vmid,
-                        "name": vm.get("name", ""),
-                        "status": "error",
-                        "healthy": False,
-                    })
+                    vm_statuses.append(
+                        {
+                            "vmid": vmid,
+                            "name": vm.get("name", ""),
+                            "status": "error",
+                            "healthy": False,
+                        }
+                    )
 
         overall = "ok" if all_healthy else ("degraded" if vm_statuses else "unhealthy")
         return HealthResult(

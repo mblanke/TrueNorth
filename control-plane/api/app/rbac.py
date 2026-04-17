@@ -6,11 +6,13 @@ permission-level model.  Each :class:`Permission` maps to one or more
 (:func:`require_permission`, :func:`require_any_permission`, etc.) can be
 injected into route signatures to enforce access control declaratively.
 """
+
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from fastapi import Depends, HTTPException, Path, status
 from sqlalchemy.orm import Session
@@ -75,7 +77,6 @@ class Permission(str, Enum):
 ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
     # Admin: every permission that exists
     UserRole.admin: set(Permission),
-
     # Instructor: full range lifecycle, scenarios, exercises, own-tenant users
     UserRole.instructor: {
         # Ranges
@@ -106,7 +107,6 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.AAR_READ,
         Permission.TELEMETRY_READ,
     },
-
     # Range-ops: infrastructure-focused, no exercises/scenarios write
     UserRole.range_ops: {
         Permission.RANGE_CREATE,
@@ -124,7 +124,6 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.STATS_READ,
         Permission.TELEMETRY_READ,
     },
-
     # Student (trainee): consume ranges, run exercises
     UserRole.student: {
         Permission.RANGE_READ,
@@ -135,7 +134,6 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_COMPLETE,
         Permission.AAR_READ,
     },
-
     # Observer: read-only plus telemetry
     UserRole.observer: {
         Permission.RANGE_READ,

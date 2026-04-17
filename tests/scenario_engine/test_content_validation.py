@@ -1,9 +1,9 @@
 """Tests for schema validation of content YAML files."""
+
 from pathlib import Path
 
 import pytest
 import yaml
-
 
 CONTENT_DIR = Path("content")
 
@@ -59,9 +59,7 @@ class TestRangeTemplates:
         for f in template_files:
             with open(f, encoding="utf-8-sig") as fh:
                 data = yaml.safe_load(fh)
-            assert "assets" in data or "nodes" in data or "network" in data, (
-                f"{f.name} needs assets/nodes/network"
-            )
+            assert "assets" in data or "nodes" in data or "network" in data, f"{f.name} needs assets/nodes/network"
 
 
 class TestDatasets:

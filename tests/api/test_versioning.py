@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 # ---------------------------------------------------------------------------
 # Ensure the control-plane package is importable
@@ -14,19 +13,19 @@ from unittest.mock import AsyncMock, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "control-plane", "api"))
 
 from app.versioning import (
-    APIVersion,
     DEPRECATED_VERSIONS,
     LATEST_VERSION,
     SUPPORTED_VERSIONS,
+    APIVersion,
     V1toV2Adapter,
     VersionMiddleware,
     create_versioned_app,
 )
 
-
 # ---------------------------------------------------------------------------
 # test_supported_versions
 # ---------------------------------------------------------------------------
+
 
 def test_supported_versions():
     """Validates the version constants are set correctly."""
@@ -41,11 +40,12 @@ def test_supported_versions():
 # test_version_middleware_adds_header
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_version_middleware_adds_header():
     """VersionMiddleware must set the X-API-Version response header."""
-    from starlette.testclient import TestClient
     from fastapi import FastAPI
+    from starlette.testclient import TestClient
 
     app = FastAPI()
     app.add_middleware(VersionMiddleware)
@@ -64,11 +64,12 @@ async def test_version_middleware_adds_header():
 # test_deprecated_version_warning
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_deprecated_version_warning():
     """Deprecated v1 requests include Deprecation + Sunset headers."""
-    from starlette.testclient import TestClient
     from fastapi import FastAPI
+    from starlette.testclient import TestClient
 
     app = FastAPI()
     app.add_middleware(VersionMiddleware)
@@ -89,6 +90,7 @@ async def test_deprecated_version_warning():
 # ---------------------------------------------------------------------------
 # test_v1_to_v2_range_adapter
 # ---------------------------------------------------------------------------
+
 
 def test_v1_to_v2_range_adapter():
     """V1toV2Adapter.adapt_range_response adds v2-specific fields."""
@@ -111,6 +113,7 @@ def test_v1_to_v2_range_adapter():
 # ---------------------------------------------------------------------------
 # test_v1_to_v2_list_pagination
 # ---------------------------------------------------------------------------
+
 
 def test_v1_to_v2_list_pagination():
     """V1toV2Adapter.adapt_list_response wraps lists in pagination envelope."""
@@ -141,6 +144,7 @@ def test_v1_to_v2_list_pagination():
 # test_v1_to_v2_exercise_adapter
 # ---------------------------------------------------------------------------
 
+
 def test_v1_to_v2_exercise_adapter():
     """V1toV2Adapter.adapt_exercise_response adds v2 exercise fields."""
     v1_data = {"id": "ex-1", "name": "IR Drill", "score": 85}
@@ -155,6 +159,7 @@ def test_v1_to_v2_exercise_adapter():
 # ---------------------------------------------------------------------------
 # test_create_versioned_app
 # ---------------------------------------------------------------------------
+
 
 def test_create_versioned_app():
     """create_versioned_app returns routers for both versions."""

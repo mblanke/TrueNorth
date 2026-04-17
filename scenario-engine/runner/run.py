@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """TrueNorth Range — Scenario runner.
 
 Parses scenario YAML, executes timeline via injector registry,
@@ -7,6 +7,7 @@ then validates objectives.
 Usage:
     python -m scenario-engine.runner.run <scenario.yaml> [--range-id <id>] [--dry-run]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,6 +39,7 @@ def validate_against_schema(data: dict, schema_path: str) -> bool:
     """Validate scenario data against JSON schema."""
     try:
         from jsonschema import validate as jvalidate
+
         schema = json.loads(Path(schema_path).read_text())
         jvalidate(data, schema)
         return True
@@ -78,10 +80,11 @@ def execute_timeline(scenario: dict, range_ctx: dict, dry_run: bool = False) -> 
     # Try to import injector registry
     try:
         from importlib import import_module
+
         injectors_mod = import_module("scenario-engine.injectors")
         get_injector = injectors_mod.get_injector
-        RangeContext = injectors_mod.RangeContext
-        ctx = RangeContext(**range_ctx)
+        range_context_cls = injectors_mod.RangeContext
+        ctx = range_context_cls(**range_ctx)
     except ImportError:
         get_injector = None
         ctx = None
@@ -115,7 +118,9 @@ def execute_timeline(scenario: dict, range_ctx: dict, dry_run: bool = False) -> 
             injector = get_injector(action)
             if injector:
                 result = injector.execute(params, ctx)
-                results.append({"t": t, "action": action, "status": "ok" if result.success else "failed", "detail": result.detail})
+                results.append(
+                    {"t": t, "action": action, "status": "ok" if result.success else "failed", "detail": result.detail}
+                )
             else:
                 logger.warning(f"No injector found for action: {action}")
                 results.append({"t": t, "action": action, "status": "no_injector"})
@@ -129,6 +134,7 @@ def evaluate_objectives(scenario: dict, range_ctx: dict) -> list[dict]:
     """Evaluate scenario objectives via validators."""
     try:
         from importlib import import_module
+
         validators_mod = import_module("scenario-engine.validators")
         get_validator = validators_mod.get_validator
     except ImportError:
@@ -147,14 +153,20 @@ def evaluate_objectives(scenario: dict, range_ctx: dict) -> list[dict]:
         validator = get_validator(validator_name)
         if validator:
             vr = validator.check(params, range_ctx["range_id"], range_ctx["tenant_id"])
-            results.append({
-                "id": obj_id, "validator": validator_name,
-                "passed": vr.passed, "evidence": vr.evidence,
-                "points_earned": points if vr.passed else 0,
-            })
+            results.append(
+                {
+                    "id": obj_id,
+                    "validator": validator_name,
+                    "passed": vr.passed,
+                    "evidence": vr.evidence,
+                    "points_earned": points if vr.passed else 0,
+                }
+            )
         else:
             logger.warning(f"No validator found for: {validator_name}")
-            results.append({"id": obj_id, "validator": validator_name, "passed": False, "evidence": "Validator not found"})
+            results.append(
+                {"id": obj_id, "validator": validator_name, "passed": False, "evidence": "Validator not found"}
+            )
 
     return results
 

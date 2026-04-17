@@ -14,15 +14,17 @@ PUT    /templates/{template_id}          TEMPLATE_UPDATE
 DELETE /templates/{template_id}          TEMPLATE_DELETE
 =======================================  ==========================
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from ..auth import CurrentUser, get_current_user
+from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Template, UserRole
 from ..rbac import Permission, require_permission
@@ -110,12 +112,12 @@ def update_template(
     return tmpl
 
 
-@router.delete("/{template_id}", status_code=204)
+@router.delete("/{template_id}", status_code=204, response_class=Response)
 def delete_template(
     template_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_DELETE)),
-) -> None:
+):
     """Delete a template.  **Permission: template:delete**"""
     tmpl = db.query(Template).filter(Template.id == template_id).first()
     if not tmpl:

@@ -14,16 +14,18 @@ PUT    /scenarios/{scenario_id}            SCENARIO_UPDATE
 DELETE /scenarios/{scenario_id}            SCENARIO_DELETE
 =========================================  ==========================
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
 
 import yaml as pyyaml
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from ..auth import CurrentUser, get_current_user
+from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Scenario, UserRole
 from ..rbac import Permission, require_permission
@@ -50,7 +52,7 @@ def create_scenario(
         if not isinstance(parsed, dict):
             raise HTTPException(422, "Scenario YAML must be a mapping")
     except pyyaml.YAMLError as e:
-        raise HTTPException(422, f"Invalid YAML: {e}")
+        raise HTTPException(422, f"Invalid YAML: {e}") from e
     sc = Scenario(
         name=body.name,
         version=body.version,
@@ -111,7 +113,7 @@ def update_scenario(
         if not isinstance(parsed, dict):
             raise HTTPException(422, "Scenario YAML must be a mapping")
     except pyyaml.YAMLError as e:
-        raise HTTPException(422, f"Invalid YAML: {e}")
+        raise HTTPException(422, f"Invalid YAML: {e}") from e
     update_data = body.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(sc, key, value)
@@ -120,12 +122,12 @@ def update_scenario(
     return sc
 
 
-@router.delete("/{scenario_id}", status_code=204)
+@router.delete("/{scenario_id}", status_code=204, response_class=Response)
 def delete_scenario(
     scenario_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.SCENARIO_DELETE)),
-) -> None:
+):
     """Delete a scenario.  **Permission: scenario:delete**"""
     sc = db.query(Scenario).filter(Scenario.id == scenario_id).first()
     if not sc:

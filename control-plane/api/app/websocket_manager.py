@@ -9,15 +9,16 @@ Features
 * Structured JSON messages with monotonic sequence numbers
 * Graceful shutdown with drain
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
-import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -50,8 +51,8 @@ class WSConnection:
     user_id: str | None = None
     tenant_id: str | None = None
     channels: set[str] = field(default_factory=set)
-    connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    last_pong: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    connected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_pong: datetime = field(default_factory=lambda: datetime.now(UTC))
     sequence: int = 0
     missed_pongs: int = 0
 
@@ -98,9 +99,7 @@ class WebSocketManager:
         if self._redis_url:
             await self._connect_redis()
             self._tasks.append(asyncio.create_task(self._redis_listener()))
-        logger.info(
-            "WebSocketManager started (redis=%s)", "yes" if self._redis_url else "no"
-        )
+        logger.info("WebSocketManager started (redis=%s)", "yes" if self._redis_url else "no")
 
     async def shutdown(self) -> None:
         """Gracefully close every connection and cancel background tasks."""
@@ -115,10 +114,8 @@ class WebSocketManager:
         self._tasks.clear()
         # Close Redis
         if self._redis:
-            try:
+            with contextlib.suppress(Exception):
                 await self._redis.close()
-            except Exception:
-                pass
         logger.info("WebSocketManager shut down")
 
     # ── Connect / Disconnect ───────────────────────────────────────────
@@ -147,9 +144,7 @@ class WebSocketManager:
         if user_id:
             user_conns = self._user_connections.get(user_id, set())
             if len(user_conns) >= MAX_CONNECTIONS_PER_USER:
-                await websocket.close(
-                    code=1008, reason="Too many connections for this user"
-                )
+                await websocket.close(code=1008, reason="Too many connections for this user")
                 raise WebSocketDisconnect(code=1008)
 
         await websocket.accept()
@@ -199,10 +194,8 @@ class WebSocketManager:
                         del self._user_connections[conn.user_id]
 
         # Best-effort close
-        try:
+        with contextlib.suppress(Exception):
             await conn.websocket.close()
-        except Exception:
-            pass
 
         logger.info(
             "WS disconnect conn=%s user=%s (total=%d)",
@@ -211,17 +204,13 @@ class WebSocketManager:
             len(self.connections),
         )
 
-    async def _force_disconnect(
-        self, conn_id: str, *, reason: str = "server"
-    ) -> None:
+    async def _force_disconnect(self, conn_id: str, *, reason: str = "server") -> None:
         """Disconnect with a close reason (used by heartbeat & shutdown)."""
         conn = self.connections.get(conn_id)
         if conn is None:
             return
-        try:
+        with contextlib.suppress(Exception):
             await conn.websocket.close(code=1001, reason=reason)
-        except Exception:
-            pass
         await self.disconnect(conn_id)
 
     # ── Subscribe / Unsubscribe ────────────────────────────────────────
@@ -262,7 +251,7 @@ class WebSocketManager:
             "type": message_type,
             "channel": channel,
             "data": data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "sequence": conn.next_sequence(),
         }
 
@@ -335,9 +324,7 @@ class WebSocketManager:
         try:
             import redis.asyncio as aioredis
 
-            self._redis = aioredis.from_url(
-                self._redis_url, decode_responses=True
-            )
+            self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
             self._pubsub = self._redis.pubsub()
             await self._pubsub.psubscribe("truenorth:ws:*")
             logger.info("Redis pub/sub connected: %s", self._redis_url)
@@ -346,9 +333,7 @@ class WebSocketManager:
             self._redis = None
             self._pubsub = None
 
-    async def _redis_publish(
-        self, channel: str, message_type: str, data: dict[str, Any]
-    ) -> None:
+    async def _redis_publish(self, channel: str, message_type: str, data: dict[str, Any]) -> None:
         """Publish a message to Redis for cross-worker fan-out."""
         if not self._redis:
             return
@@ -372,9 +357,7 @@ class WebSocketManager:
         origin = id(self)
         try:
             while self._running:
-                msg = await self._pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=1.0
-                )
+                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if msg is None:
                     await asyncio.sleep(0.05)
                     continue
@@ -427,15 +410,13 @@ class WebSocketManager:
         conn = self.connections.get(conn_id)
         if conn:
             conn.missed_pongs = 0
-            conn.last_pong = datetime.now(timezone.utc)
+            conn.last_pong = datetime.now(UTC)
 
     # ── Stats / Introspection ──────────────────────────────────────────
     @property
     def stats(self) -> dict[str, Any]:
         """Connection statistics snapshot."""
-        by_channel: dict[str, int] = {
-            ch: len(ids) for ch, ids in self.channels.items()
-        }
+        by_channel: dict[str, int] = {ch: len(ids) for ch, ids in self.channels.items()}
         by_tenant: dict[str, int] = {}
         for conn in self.connections.values():
             tid = conn.tenant_id or "unknown"
@@ -450,9 +431,7 @@ class WebSocketManager:
 
     # ── Channel Authorization Helper ──────────────────────────────────
     @staticmethod
-    def authorize_channel(
-        channel: str, user_tenant_id: str | None, user_role: str | None = None
-    ) -> bool:
+    def authorize_channel(channel: str, user_tenant_id: str | None, user_role: str | None = None) -> bool:
         """Check whether a user may subscribe to *channel*.
 
         Rules:
@@ -474,3 +453,73 @@ class WebSocketManager:
             return True
         # Default: allow (more specific checks should be layered in routes)
         return True
+
+    # ── Collaboration Rooms ───────────────────────────────────────────
+    async def join_room(self, conn_id: str, room_id: str, user_display_name: str | None = None) -> None:
+        """Join an exercise collaboration room.
+
+        Rooms are channels prefixed with ``room.``. When a user joins,
+        all other room members are notified.
+        """
+        channel = f"room.{room_id}"
+        await self.subscribe(conn_id, channel)
+        # Announce join
+        await self.broadcast(
+            channel=channel,
+            message_type="room_member_joined",
+            data={
+                "room_id": room_id,
+                "user_id": self.connections.get(conn_id, WSConnection(None)).user_id,  # type: ignore[arg-type]
+                "display_name": user_display_name or "Anonymous",
+                "conn_id": conn_id[:8],
+            },
+        )
+
+    async def leave_room(self, conn_id: str, room_id: str) -> None:
+        """Leave an exercise collaboration room."""
+        channel = f"room.{room_id}"
+        conn = self.connections.get(conn_id)
+        await self.unsubscribe(conn_id, channel)
+        await self.broadcast(
+            channel=channel,
+            message_type="room_member_left",
+            data={
+                "room_id": room_id,
+                "user_id": conn.user_id if conn else None,
+                "conn_id": conn_id[:8],
+            },
+        )
+
+    async def broadcast_to_room(
+        self, room_id: str, sender_conn_id: str, message_type: str, data: dict[str, Any]
+    ) -> None:
+        """Send a message to all room members except the sender."""
+        channel = f"room.{room_id}"
+        conn_ids = self.channels.get(channel, set())
+        for cid in list(conn_ids):
+            if cid == sender_conn_id:
+                continue
+            conn = self.connections.get(cid)
+            if conn is None:
+                continue
+            try:
+                msg = self._build_message(conn, message_type, channel, data)
+                await conn.websocket.send_json(msg)
+            except Exception:
+                await self._force_disconnect(cid, reason="send_failed")
+
+    def get_room_members(self, room_id: str) -> list[dict[str, Any]]:
+        """List current members in a room."""
+        channel = f"room.{room_id}"
+        members = []
+        for cid in self.channels.get(channel, set()):
+            conn = self.connections.get(cid)
+            if conn:
+                members.append(
+                    {
+                        "conn_id": cid[:8],
+                        "user_id": conn.user_id,
+                        "connected_at": conn.connected_at.isoformat(),
+                    }
+                )
+        return members

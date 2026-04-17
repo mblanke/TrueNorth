@@ -1,21 +1,21 @@
 """Tests for TrueNorth Range security middleware."""
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from starlette.testclient import TestClient
-
 from app.middleware import (
     InputSanitizationMiddleware,
     RateLimitMiddleware,
     RequestIDMiddleware,
     SecurityHeadersMiddleware,
 )
-
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from starlette.testclient import TestClient
 
 # ── Standalone test app with all middleware ────────────────────────────
+
 
 def _make_app(redis_client=None, rate_limit_enabled=True, max_request_size=10 * 1024 * 1024):
     """Build a minimal FastAPI app with the full middleware stack."""
@@ -32,14 +32,10 @@ def _make_app(redis_client=None, rate_limit_enabled=True, max_request_size=10 * 
     @_app.post("/items")
     async def create_item(request: Request):
         body = await request.body()
-        return JSONResponse(
-            {"size": len(body), "body": body.decode("utf-8", errors="replace")}
-        )
+        return JSONResponse({"size": len(body), "body": body.decode("utf-8", errors="replace")})
 
     # Middleware stack (last added = outermost = runs first)
-    _app.add_middleware(
-        InputSanitizationMiddleware, max_request_size=max_request_size
-    )
+    _app.add_middleware(InputSanitizationMiddleware, max_request_size=max_request_size)
     _app.add_middleware(
         RateLimitMiddleware,
         redis_client=redis_client,
@@ -58,6 +54,7 @@ def mw_client():
 
 
 # ── Rate Limiting ──────────────────────────────────────────────────────
+
 
 class TestRateLimit:
     def test_rate_limit_headers_present(self):
@@ -92,6 +89,7 @@ class TestRateLimit:
 
 # ── Security Headers ──────────────────────────────────────────────────
 
+
 class TestSecurityHeaders:
     _EXPECTED = [
         "x-content-type-options",
@@ -121,6 +119,7 @@ class TestSecurityHeaders:
 
 # ── Request ID ─────────────────────────────────────────────────────────
 
+
 class TestRequestID:
     def test_request_id_generated(self, mw_client):
         """Every response must carry a valid UUID in X-Request-ID."""
@@ -144,6 +143,7 @@ class TestRequestID:
 
 
 # ── Input Sanitisation ─────────────────────────────────────────────────
+
 
 class TestInputSanitization:
     def test_null_bytes_stripped(self, mw_client):

@@ -28,26 +28,26 @@ pre_staged_environment:
   compromised_hosts:
     - host: v-ws01
       indicators:
-        - scheduled_task: "WindowsUpdate" running C:\ProgramData\svchost.exe
-        - process: "svchost.exe" in C:\ProgramData\ (anomalous path)
-        - network: beaconing to 10.60.200.10 every 60 seconds
-        - file: C:\Users\finance_user\AppData\Local\Temp\invoice.docm
+        - 'scheduled_task: "WindowsUpdate" running C:\ProgramData\svchost.exe'
+        - 'process: "svchost.exe" in C:\ProgramData\ (anomalous path)'
+        - "network: beaconing to 10.60.200.10 every 60 seconds"
+        - 'file: C:\Users\finance_user\AppData\Local\Temp\invoice.docm'
     - host: v-ws02
       indicators:
-        - process: "powershell.exe" with encoded command
-        - file: C:\Temp\procdump64.exe
-        - file: C:\Temp\lsass.dmp (credential dump)
-        - event_log: Security log cleared at 03:15 UTC
+        - "process: powershell.exe with encoded command"
+        - 'file: C:\Temp\procdump64.exe'
+        - 'file: C:\Temp\lsass.dmp (credential dump)'
+        - "event_log: Security log cleared at 03:15 UTC"
     - host: v-fs01
       indicators:
-        - service: PSEXESVC installed and running
-        - smb: unusual admin share access from v-ws01
-        - files: 1,200 files with .encrypted extension
-        - file: C:\README_DECRYPT.txt (ransom note)
+        - "service: PSEXESVC installed and running"
+        - "smb: unusual admin share access from v-ws01"
+        - "files: 1,200 files with .encrypted extension"
+        - 'file: C:\README_DECRYPT.txt (ransom note)'
     - host: v-dc01
       indicators:
-        - user: "svc_backup" created at 02:45 UTC (unauthorized)
-        - gpo: modified Default Domain Policy
+        - 'user: "svc_backup" created at 02:45 UTC (unauthorized)'
+        - "gpo: modified Default Domain Policy"
   evidence_sources:
     - source: "OpenSearch SIEM"
       location: "siem01:10.60.202.10"

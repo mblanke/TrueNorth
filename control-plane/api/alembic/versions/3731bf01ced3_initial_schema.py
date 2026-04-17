@@ -4,22 +4,25 @@ Revision ID: 3731bf01ced3
 Revises:
 Create Date: 2026-02-25 16:20:40.833652
 """
-from typing import Sequence, Union
 
-from alembic import op
-import sqlalchemy as sa
+import os
 
 # Import custom GUID type
-import sys, os
+import sys
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+
+from alembic import op
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from app.models import GUID
 
-
 # revision identifiers
 revision: str = "3731bf01ced3"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -30,8 +33,12 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("slug", sa.String(length=63), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name"),
     )
@@ -44,11 +51,17 @@ def upgrade() -> None:
         sa.Column("keycloak_id", sa.String(length=255), nullable=False),
         sa.Column("email", sa.String(length=320), nullable=False),
         sa.Column("display_name", sa.String(length=255), nullable=False),
-        sa.Column("role", sa.Enum("admin", "instructor", "student", "observer", "range_ops", name="userrole"), nullable=False),
+        sa.Column(
+            "role", sa.Enum("admin", "instructor", "student", "observer", "range_ops", name="userrole"), nullable=False
+        ),
         sa.Column("tenant_id", GUID(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("email"),
@@ -63,8 +76,12 @@ def upgrade() -> None:
         sa.Column("id", GUID(), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("tenant_id", GUID(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -94,8 +111,12 @@ def upgrade() -> None:
         sa.Column("yaml", sa.Text(), nullable=False),
         sa.Column("tenant_id", GUID(), nullable=True),
         sa.Column("is_public", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -110,8 +131,12 @@ def upgrade() -> None:
         sa.Column("yaml", sa.Text(), nullable=False),
         sa.Column("tenant_id", GUID(), nullable=True),
         sa.Column("is_public", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -123,13 +148,31 @@ def upgrade() -> None:
         sa.Column("id", GUID(), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("template_id", GUID(), nullable=False),
-        sa.Column("state", sa.Enum("created", "provisioning", "ready", "running", "stopped", "destroying", "destroyed", "failed", name="rangestate"), nullable=False),
+        sa.Column(
+            "state",
+            sa.Enum(
+                "created",
+                "provisioning",
+                "ready",
+                "running",
+                "stopped",
+                "destroying",
+                "destroyed",
+                "failed",
+                name="rangestate",
+            ),
+            nullable=False,
+        ),
         sa.Column("tenant_id", GUID(), nullable=True),
         sa.Column("provisioner_backend", sa.String(length=50), nullable=False),
         sa.Column("provisioner_output", sa.Text(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["template_id"], ["templates.id"]),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
@@ -144,14 +187,22 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("range_id", GUID(), nullable=False),
         sa.Column("scenario_id", GUID(), nullable=False),
-        sa.Column("state", sa.Enum("pending", "running", "paused", "completed", "cancelled", name="exercisestate"), nullable=False),
+        sa.Column(
+            "state",
+            sa.Enum("pending", "running", "paused", "completed", "cancelled", name="exercisestate"),
+            nullable=False,
+        ),
         sa.Column("tenant_id", GUID(), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("total_score", sa.Integer(), nullable=False),
         sa.Column("max_score", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["range_id"], ["ranges.id"]),
         sa.ForeignKeyConstraint(["scenario_id"], ["scenarios.id"]),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
@@ -167,7 +218,9 @@ def upgrade() -> None:
         sa.Column("id", GUID(), nullable=False),
         sa.Column("exercise_id", GUID(), nullable=False),
         sa.Column("ref_id", sa.String(length=100), nullable=False),
-        sa.Column("objective_type", sa.Enum("detection", "response", "deliverable", name="objectivetype"), nullable=False),
+        sa.Column(
+            "objective_type", sa.Enum("detection", "response", "deliverable", name="objectivetype"), nullable=False
+        ),
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("validator", sa.String(length=255), nullable=False),
         sa.Column("validator_params", sa.Text(), nullable=True),
@@ -175,8 +228,12 @@ def upgrade() -> None:
         sa.Column("achieved", sa.Boolean(), nullable=False),
         sa.Column("evidence", sa.Text(), nullable=True),
         sa.Column("achieved_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["exercise_id"], ["exercises.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -190,9 +247,15 @@ def upgrade() -> None:
         sa.Column("exercise_id", GUID(), nullable=False),
         sa.Column("report_json", sa.Text(), nullable=False),
         sa.Column("report_html", sa.Text(), nullable=True),
-        sa.Column("generated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "generated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.ForeignKeyConstraint(["exercise_id"], ["exercises.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("exercise_id"),
@@ -202,7 +265,9 @@ def upgrade() -> None:
     op.create_table(
         "audit_logs",
         sa.Column("id", GUID(), nullable=False),
-        sa.Column("timestamp", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "timestamp", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.Column("user_id", GUID(), nullable=True),
         sa.Column("tenant_id", GUID(), nullable=True),
         sa.Column("action", sa.String(length=100), nullable=False),

@@ -3,6 +3,7 @@
 Provisions infrastructure by generating .tfvars, running terraform
 init / plan / apply / destroy via subprocess, one workspace per range.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,6 @@ import json
 import logging
 import os
 import shutil
-import tempfile
 import time
 from pathlib import Path
 
@@ -64,7 +64,11 @@ class TerraformProvisioner(BaseProvisioner):
         return tfvars_path
 
     async def _run_tf(
-        self, args: list[str], cwd: Path, *, timeout: int | None = None,
+        self,
+        args: list[str],
+        cwd: Path,
+        *,
+        timeout: int | None = None,
     ) -> tuple[int, str, str]:
         """Run a terraform command asynchronously and return (rc, stdout, stderr)."""
         cmd = [self._tf_bin] + args
@@ -80,19 +84,17 @@ class TerraformProvisioner(BaseProvisioner):
         )
         try:
             stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout,
+                proc.communicate(),
+                timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.communicate()
-            raise TimeoutError(
-                f"Terraform command timed out after {timeout}s: {' '.join(cmd)}"
-            )
+            raise TimeoutError(f"Terraform command timed out after {timeout}s: {' '.join(cmd)}") from None
 
         stdout = stdout_b.decode(errors="replace")
         stderr = stderr_b.decode(errors="replace")
-        logger.debug("terraform rc=%d stdout=%d bytes stderr=%d bytes",
-                      proc.returncode, len(stdout), len(stderr))
+        logger.debug("terraform rc=%d stdout=%d bytes stderr=%d bytes", proc.returncode, len(stdout), len(stderr))
         return proc.returncode, stdout, stderr
 
     def _parse_outputs(self, ws: Path) -> dict:
@@ -106,7 +108,10 @@ class TerraformProvisioner(BaseProvisioner):
     # provision
     # ------------------------------------------------------------------ #
     async def provision(
-        self, range_id: str, template: dict, allocations: dict,
+        self,
+        range_id: str,
+        template: dict,
+        allocations: dict,
     ) -> ProvisionResult:
         start = time.monotonic()
         ws = self._workspace_dir(range_id)
@@ -125,46 +130,47 @@ class TerraformProvisioner(BaseProvisioner):
         try:
             # init
             rc, out, err = await self._run_tf(
-                ["init", "-input=false", "-no-color"], ws,
+                ["init", "-input=false", "-no-color"],
+                ws,
             )
             if rc != 0:
                 errors.append(f"terraform init failed (rc={rc}): {err[:500]}")
                 return ProvisionResult(
-                    status="failed", errors=errors,
+                    status="failed",
+                    errors=errors,
                     duration_seconds=time.monotonic() - start,
                 )
 
             # plan
             rc, out, err = await self._run_tf(
-                ["plan", "-input=false", "-no-color",
-                 f"-parallelism={TERRAFORM_PARALLELISM}",
-                 "-out=tfplan"],
+                ["plan", "-input=false", "-no-color", f"-parallelism={TERRAFORM_PARALLELISM}", "-out=tfplan"],
                 ws,
             )
             if rc != 0:
                 errors.append(f"terraform plan failed (rc={rc}): {err[:500]}")
                 return ProvisionResult(
-                    status="failed", errors=errors,
+                    status="failed",
+                    errors=errors,
                     duration_seconds=time.monotonic() - start,
                 )
 
             # apply
             rc, out, err = await self._run_tf(
-                ["apply", "-input=false", "-no-color",
-                 f"-parallelism={TERRAFORM_PARALLELISM}",
-                 "tfplan"],
+                ["apply", "-input=false", "-no-color", f"-parallelism={TERRAFORM_PARALLELISM}", "tfplan"],
                 ws,
             )
             if rc != 0:
                 errors.append(f"terraform apply failed (rc={rc}): {err[:500]}")
                 return ProvisionResult(
-                    status="failed", errors=errors,
+                    status="failed",
+                    errors=errors,
                     duration_seconds=time.monotonic() - start,
                 )
 
             # capture outputs
             rc, out, err = await self._run_tf(
-                ["output", "-json", "-no-color"], ws,
+                ["output", "-json", "-no-color"],
+                ws,
             )
             if rc == 0:
                 (ws / "tf_output.json").write_text(out)
@@ -181,7 +187,8 @@ class TerraformProvisioner(BaseProvisioner):
         except TimeoutError as exc:
             errors.append(str(exc))
             return ProvisionResult(
-                status="failed", errors=errors,
+                status="failed",
+                errors=errors,
                 duration_seconds=time.monotonic() - start,
             )
 
@@ -197,7 +204,9 @@ class TerraformProvisioner(BaseProvisioner):
     # destroy
     # ------------------------------------------------------------------ #
     async def destroy(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> DestroyResult:
         start = time.monotonic()
         ws = self._workspace_dir(range_id)
@@ -205,26 +214,28 @@ class TerraformProvisioner(BaseProvisioner):
 
         if not ws.exists():
             return DestroyResult(
-                status="ok", resources_removed=0,
+                status="ok",
+                resources_removed=0,
                 duration_seconds=time.monotonic() - start,
             )
 
         try:
             rc, out, err = await self._run_tf(
-                ["destroy", "-auto-approve", "-input=false", "-no-color",
-                 f"-parallelism={TERRAFORM_PARALLELISM}"],
+                ["destroy", "-auto-approve", "-input=false", "-no-color", f"-parallelism={TERRAFORM_PARALLELISM}"],
                 ws,
             )
             if rc != 0:
                 errors.append(f"terraform destroy failed (rc={rc}): {err[:500]}")
                 return DestroyResult(
-                    status="failed", errors=errors,
+                    status="failed",
+                    errors=errors,
                     duration_seconds=time.monotonic() - start,
                 )
         except TimeoutError as exc:
             errors.append(str(exc))
             return DestroyResult(
-                status="failed", errors=errors,
+                status="failed",
+                errors=errors,
                 duration_seconds=time.monotonic() - start,
             )
 
@@ -241,7 +252,9 @@ class TerraformProvisioner(BaseProvisioner):
     # stop
     # ------------------------------------------------------------------ #
     async def stop(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> StopResult:
         """Stop VMs by applying with power_state=off variable."""
         start = time.monotonic()
@@ -250,27 +263,36 @@ class TerraformProvisioner(BaseProvisioner):
 
         try:
             rc, out, err = await self._run_tf(
-                ["apply", "-auto-approve", "-input=false", "-no-color",
-                 "-var", "power_state=off",
-                 f"-parallelism={TERRAFORM_PARALLELISM}"],
+                [
+                    "apply",
+                    "-auto-approve",
+                    "-input=false",
+                    "-no-color",
+                    "-var",
+                    "power_state=off",
+                    f"-parallelism={TERRAFORM_PARALLELISM}",
+                ],
                 ws,
             )
             if rc != 0:
                 errors.append(f"terraform stop failed (rc={rc}): {err[:500]}")
                 return StopResult(
-                    status="failed", errors=errors,
+                    status="failed",
+                    errors=errors,
                     duration_seconds=time.monotonic() - start,
                 )
         except TimeoutError as exc:
             errors.append(str(exc))
             return StopResult(
-                status="failed", errors=errors,
+                status="failed",
+                errors=errors,
                 duration_seconds=time.monotonic() - start,
             )
 
         vm_count = len(provision_output.get("vms", []))
         return StopResult(
-            status="ok", vms_stopped=vm_count,
+            status="ok",
+            vms_stopped=vm_count,
             duration_seconds=time.monotonic() - start,
         )
 
@@ -278,7 +300,9 @@ class TerraformProvisioner(BaseProvisioner):
     # start
     # ------------------------------------------------------------------ #
     async def start(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> StartResult:
         """Start VMs by applying with power_state=on variable."""
         start = time.monotonic()
@@ -287,27 +311,36 @@ class TerraformProvisioner(BaseProvisioner):
 
         try:
             rc, out, err = await self._run_tf(
-                ["apply", "-auto-approve", "-input=false", "-no-color",
-                 "-var", "power_state=on",
-                 f"-parallelism={TERRAFORM_PARALLELISM}"],
+                [
+                    "apply",
+                    "-auto-approve",
+                    "-input=false",
+                    "-no-color",
+                    "-var",
+                    "power_state=on",
+                    f"-parallelism={TERRAFORM_PARALLELISM}",
+                ],
                 ws,
             )
             if rc != 0:
                 errors.append(f"terraform start failed (rc={rc}): {err[:500]}")
                 return StartResult(
-                    status="failed", errors=errors,
+                    status="failed",
+                    errors=errors,
                     duration_seconds=time.monotonic() - start,
                 )
         except TimeoutError as exc:
             errors.append(str(exc))
             return StartResult(
-                status="failed", errors=errors,
+                status="failed",
+                errors=errors,
                 duration_seconds=time.monotonic() - start,
             )
 
         vm_count = len(provision_output.get("vms", []))
         return StartResult(
-            status="ok", vms_started=vm_count,
+            status="ok",
+            vms_started=vm_count,
             duration_seconds=time.monotonic() - start,
         )
 
@@ -315,12 +348,16 @@ class TerraformProvisioner(BaseProvisioner):
     # snapshot
     # ------------------------------------------------------------------ #
     async def snapshot(
-        self, range_id: str, provision_output: dict, name: str,
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
     ) -> SnapshotResult:
         """Terraform does not natively snapshot; delegate to provider scripts."""
         start = time.monotonic()
         logger.warning(
-            "TerraformProvisioner.snapshot is a no-op stub for range %s", range_id,
+            "TerraformProvisioner.snapshot is a no-op stub for range %s",
+            range_id,
         )
         return SnapshotResult(
             status="ok",
@@ -334,14 +371,17 @@ class TerraformProvisioner(BaseProvisioner):
     # health_check
     # ------------------------------------------------------------------ #
     async def health_check(
-        self, range_id: str, provision_output: dict,
+        self,
+        range_id: str,
+        provision_output: dict,
     ) -> HealthResult:
         start = time.monotonic()
         ws = self._workspace_dir(range_id)
 
         if not ws.exists():
             return HealthResult(
-                healthy=False, status="unhealthy",
+                healthy=False,
+                status="unhealthy",
                 errors=[f"Workspace not found for range {range_id}"],
                 duration_seconds=time.monotonic() - start,
             )

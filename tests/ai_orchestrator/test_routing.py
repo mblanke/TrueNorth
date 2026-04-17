@@ -1,15 +1,12 @@
 """Tests for AI Orchestrator tag-based model routing."""
+
 import importlib.util
 import os
 import sys
 
-import pytest
-
 # ── Load AI orchestrator module ────────────────────────────────────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_MOD_PATH = os.path.normpath(
-    os.path.join(_HERE, "..", "..", "ai-orchestrator", "app", "main.py")
-)
+_MOD_PATH = os.path.normpath(os.path.join(_HERE, "..", "..", "ai-orchestrator", "app", "main.py"))
 _MOD_NAME = "_ai_orch_routing"
 if _MOD_NAME in sys.modules:
     _ai = sys.modules[_MOD_NAME]
@@ -34,6 +31,7 @@ def _node(name, models, healthy=True):
 
 
 # ── Tag Routing ────────────────────────────────────────────────────────
+
 
 class TestTagRouting:
     def test_find_best_prefers_large(self, monkeypatch):

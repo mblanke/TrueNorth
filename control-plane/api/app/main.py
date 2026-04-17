@@ -7,6 +7,7 @@ Production FastAPI application with:
   - Internal event bus (Redis-backed domain events)
   - Telemetry proxy to OpenSearch
 """
+
 from __future__ import annotations
 
 import json
@@ -14,10 +15,9 @@ import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -71,17 +71,17 @@ def _seed_dev_data() -> None:
     db = SessionLocal()
     try:
         # Use deterministic UUIDs that match the AUTH_DISABLED dev stub in auth.py
-        _DEV_UUID = "00000000-0000-0000-0000-000000000001"
+        _dev_uuid = "00000000-0000-0000-0000-000000000001"
         if db.query(Tenant).count() == 0:
-            tenant = Tenant(id=_DEV_UUID, name="Default Org", slug="default")
+            tenant = Tenant(id=_dev_uuid, name="Default Org", slug="default")
             db.add(tenant)
             db.flush()
             admin = User(
-                id=_DEV_UUID,
+                id=_dev_uuid,
                 email="admin@truenorth.local",
                 display_name="Dev Admin",
                 role=UserRole.admin,
-                tenant_id=_DEV_UUID,
+                tenant_id=_dev_uuid,
                 keycloak_id="dev-admin",
             )
             db.add(admin)
@@ -89,11 +89,12 @@ def _seed_dev_data() -> None:
             logger.info("Seeded default tenant and admin user")
         # Seed reference data
         from .seed import (
-            seed_nations_and_coalitions,
+            seed_ai_backends,
             seed_auth_zones,
             seed_infrastructure,
-            seed_ai_backends,
+            seed_nations_and_coalitions,
         )
+
         seed_nations_and_coalitions(db)
         seed_auth_zones(db)
         seed_infrastructure(db)
@@ -119,8 +120,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Request-ID",
+        "X-CSRF-Token",
+        "Accept",
+        "Origin",
+    ],
+    expose_headers=["X-Request-ID", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+    max_age=86400,
 )
 
 # -- Security middleware (rate limit, headers, request ID, logging) ---------
@@ -128,8 +138,15 @@ from .middleware import setup_middleware
 
 setup_middleware(app, redis_url=os.getenv("REDIS_URL"))
 
+# -- Distributed tracing (OpenTelemetry) ------------------------------------
+from .tracing import setup_tracing
+
+setup_tracing(app, db_engine=engine)
+
 # -- Prometheus metrics -----------------------------------------------------
-from .metrics import router as metrics_router, PrometheusMiddleware
+from .metrics import PrometheusMiddleware
+from .metrics import router as metrics_router
+
 app.add_middleware(PrometheusMiddleware)
 app.include_router(metrics_router)
 
@@ -146,28 +163,33 @@ app.state.ws_manager = ws_manager
 
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .routers import (
+    ad_sync_router,
+    adaptive_learning_router,
     admin_router,
+    ai_config_router,
+    auth_zones_router,
+    certifications_router,
+    competency_router,
+    courses_router,
+    detection_rules_router,
+    directory_router,
+    exercise_forge_router,
     exercises_router,
+    hypervisors_router,
+    integrations_router,
+    kit_router,
+    learning_paths_router,
+    lti_router,
+    network_devices_router,
+    ops_center_router,
     proxmox_router,
-    scheduling_router,
     ranges_router,
     scenarios_router,
-    templates_router,
-    courses_router,
-    learning_paths_router,
-    transcript_router,
-    competency_router,
-    certifications_router,
-    integrations_router,
-    lti_router,
-    hypervisors_router,
-    ai_config_router,
-    directory_router,
-    ad_sync_router,
-    auth_zones_router,
+    scheduling_router,
     storage_router,
-    network_devices_router,
-    kit_router,
+    templates_router,
+    threat_intel_router,
+    transcript_router,
 )
 
 # Core routers
@@ -195,6 +217,14 @@ app.include_router(auth_zones_router)
 app.include_router(storage_router)
 app.include_router(network_devices_router)
 app.include_router(kit_router)
+# Threat Intelligence
+app.include_router(threat_intel_router)
+app.include_router(detection_rules_router)
+# AI Exercise Forge (EPIC 1)
+app.include_router(exercise_forge_router)
+# Adaptive Learning (EPIC 3)
+app.include_router(adaptive_learning_router)
+app.include_router(ops_center_router)
 
 
 # -- Health check (backwards-compatible format) ----------------------------
@@ -261,7 +291,29 @@ async def websocket_endpoint(ws: WebSocket, channel: str):
     try:
         while True:
             data = await ws.receive_text()
-            await ws_manager.send_to_connection(conn_id, {"type": "ack", "data": data})
+            try:
+                msg = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                await ws_manager.send_to_connection(conn_id, {"type": "ack", "data": data})
+                continue
+
+            action = msg.get("action")
+            if action == "join_room":
+                await ws_manager.join_room(conn_id, msg.get("room_id", ""), msg.get("display_name"))
+            elif action == "leave_room":
+                await ws_manager.leave_room(conn_id, msg.get("room_id", ""))
+            elif action == "room_message":
+                await ws_manager.broadcast_to_room(
+                    msg.get("room_id", ""),
+                    conn_id,
+                    msg.get("type", "room_chat"),
+                    msg.get("data", {}),
+                )
+            elif action == "room_members":
+                members = ws_manager.get_room_members(msg.get("room_id", ""))
+                await ws_manager.send_to_connection(conn_id, {"type": "room_members", "members": members})
+            else:
+                await ws_manager.send_to_connection(conn_id, {"type": "ack", "data": data})
     except WebSocketDisconnect:
         await ws_manager.disconnect(conn_id)
     except Exception:
@@ -285,7 +337,7 @@ async def ingest_telemetry(
         event["range_id"] = str(range_id)
         event["tenant_id"] = user.tenant_id
         if "@timestamp" not in event:
-            event["@timestamp"] = datetime.now(timezone.utc).isoformat()
+            event["@timestamp"] = datetime.now(UTC).isoformat()
         bulk_body += json.dumps({"index": {"_index": index}}) + "\n"
         bulk_body += json.dumps(event) + "\n"
     try:
@@ -298,7 +350,7 @@ async def ingest_telemetry(
             resp.raise_for_status()
     except Exception as e:
         logger.error("OpenSearch ingest error: %s", e)
-        raise HTTPException(502, f"OpenSearch error: {e}")
+        raise HTTPException(502, f"OpenSearch error: {e}") from e
     return {"accepted": len(events)}
 
 
@@ -326,4 +378,4 @@ async def search_telemetry(
             return resp.json()
     except Exception as e:
         logger.error("OpenSearch search error: %s", e)
-        raise HTTPException(502, f"OpenSearch error: {e}")
+        raise HTTPException(502, f"OpenSearch error: {e}") from e

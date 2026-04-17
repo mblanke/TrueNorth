@@ -1,12 +1,12 @@
 import {
   Component,
-  OnInit,
   OnDestroy,
   ElementRef,
   ViewChild,
   AfterViewInit,
   signal,
   ChangeDetectorRef,
+  ViewEncapsulation,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -138,6 +138,7 @@ function createSubnetZone(
 @Component({
   selector: 'tn-range-designer',
   standalone: true,
+  encapsulation: ViewEncapsulation.None,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatTooltipModule,
@@ -593,7 +594,7 @@ function createSubnetZone(
     .hint { font-size: 12px; color: var(--text-muted); }
   `],
 })
-export class RangeDesignerComponent implements OnInit, AfterViewInit, OnDestroy {
+export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
   @ViewChild('canvas', { static: true }) canvasEl!: ElementRef<HTMLDivElement>;
   @ViewChild('yamlInput', { static: true }) yamlInputEl!: ElementRef<HTMLTextAreaElement>;
 
@@ -671,8 +672,6 @@ export class RangeDesignerComponent implements OnInit, AfterViewInit, OnDestroy 
 
   constructor(private cdr: ChangeDetectorRef, private snack: MatSnackBar) {}
 
-  ngOnInit(): void {}
-
   ngAfterViewInit(): void {
     this.initGraph();
     this.initPaper();
@@ -711,7 +710,7 @@ export class RangeDesignerComponent implements OnInit, AfterViewInit, OnDestroy 
         connector: { name: 'rounded', args: { radius: 8 } },
       }),
       defaultConnectionPoint: { name: 'boundary' },
-      validateConnection: (cellViewS, magnetS, cellViewT, magnetT) => {
+      validateConnection: (cellViewS, magnetS, cellViewT, _magnetT) => {
         return cellViewS !== cellViewT;
       },
       snapLinks: { radius: 15 },
@@ -1085,7 +1084,7 @@ export class RangeDesignerComponent implements OnInit, AfterViewInit, OnDestroy 
       /* Determine node type and OS template */
       let nodeType = 'server';
       let osTemplate = 'ubuntu-22.04';
-      let label = hostname || ip || 'Host ' + (idx + 1);
+      const label = hostname || ip || 'Host ' + (idx + 1);
       const detectedServices: string[] = [];
 
       /* OS classification */

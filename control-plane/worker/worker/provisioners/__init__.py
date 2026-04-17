@@ -2,6 +2,7 @@
 
 Maps backend names to provisioner classes and provides a factory function.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -10,8 +11,8 @@ if TYPE_CHECKING:
     from .base import BaseProvisioner
 
 from .mock import MockProvisioner
-from .terraform import TerraformProvisioner
 from .proxmox_api import ProxmoxAPIProvisioner
+from .terraform import TerraformProvisioner
 
 _REGISTRY: dict[str, type] = {
     "mock": MockProvisioner,
@@ -20,7 +21,7 @@ _REGISTRY: dict[str, type] = {
 }
 
 
-def get_provisioner(backend: str) -> "BaseProvisioner":
+def get_provisioner(backend: str) -> BaseProvisioner:
     """Return an instantiated provisioner for the given backend name.
 
     Raises:
@@ -28,10 +29,7 @@ def get_provisioner(backend: str) -> "BaseProvisioner":
     """
     cls = _REGISTRY.get(backend)
     if cls is None:
-        raise ValueError(
-            f"Unknown provisioner backend: {backend!r}. "
-            f"Available: {sorted(_REGISTRY)}"
-        )
+        raise ValueError(f"Unknown provisioner backend: {backend!r}. Available: {sorted(_REGISTRY)}")
     return cls()
 
 

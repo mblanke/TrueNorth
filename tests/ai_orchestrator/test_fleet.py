@@ -1,19 +1,16 @@
 """Tests for AI Orchestrator fleet management, model tagging, and size hints."""
+
 import importlib.util
 import os
 import sys
 
-import pytest
-
 # ── Load AI orchestrator module (avoid collision with control-plane app) ──
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_MOD_PATH = os.path.normpath(
-    os.path.join(_HERE, "..", "..", "ai-orchestrator", "app", "main.py")
-)
+_MOD_PATH = os.path.normpath(os.path.join(_HERE, "..", "..", "ai-orchestrator", "app", "main.py"))
 _MOD_NAME = "_ai_orch_fleet"
 _spec = importlib.util.spec_from_file_location(_MOD_NAME, _MOD_PATH)
 _ai = importlib.util.module_from_spec(_spec)
-sys.modules[_MOD_NAME] = _ai          # required for @dataclass in Python 3.13
+sys.modules[_MOD_NAME] = _ai  # required for @dataclass in Python 3.13
 _spec.loader.exec_module(_ai)
 
 _tag_model = _ai._tag_model
@@ -23,6 +20,7 @@ OllamaNode = _ai.OllamaNode
 
 
 # ── Model Tagging ──────────────────────────────────────────────────────
+
 
 class TestModelTagging:
     def test_tag_large_model(self):
@@ -61,6 +59,7 @@ class TestModelTagging:
 
 # ── Model Size Hint ────────────────────────────────────────────────────
 
+
 class TestModelSizeHint:
     def test_size_70b(self):
         assert _model_size_hint("llama3.1:70b-instruct-q5_K_M") == 70
@@ -76,6 +75,7 @@ class TestModelSizeHint:
 
 
 # ── Fleet Parsing ──────────────────────────────────────────────────────
+
 
 class TestFleetParsing:
     def test_parse_single_node(self, monkeypatch):

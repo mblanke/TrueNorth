@@ -2,6 +2,7 @@
 
 Load ransomware-lite scenario -> execute on range -> verify timeline events -> evaluate objectives.
 """
+
 from __future__ import annotations
 
 import time
@@ -99,24 +100,18 @@ class TestScenarioExecution:
         _poll_execution_state(api_client, self.__class__._execution_id, "completed")
 
     def test_verify_timeline_events(self, api_client):
-        resp = api_client.get(
-            f"/scenarios/executions/{self.__class__._execution_id}/timeline"
-        )
+        resp = api_client.get(f"/scenarios/executions/{self.__class__._execution_id}/timeline")
         assert resp.status_code == 200
         timeline = resp.json()
         events = timeline if isinstance(timeline, list) else timeline.get("events", [])
         assert len(events) > 0, "Expected at least one timeline event"
 
     def test_evaluate_objectives(self, api_client):
-        resp = api_client.get(
-            f"/scenarios/executions/{self.__class__._execution_id}/results"
-        )
+        resp = api_client.get(f"/scenarios/executions/{self.__class__._execution_id}/results")
         assert resp.status_code == 200
         results = resp.json()
         # Should have objective evaluations
-        objectives = (
-            results if isinstance(results, list) else results.get("objectives", [])
-        )
+        objectives = results if isinstance(results, list) else results.get("objectives", [])
         assert len(objectives) > 0, "Expected objective evaluations"
 
     def test_cleanup_range(self, api_client):

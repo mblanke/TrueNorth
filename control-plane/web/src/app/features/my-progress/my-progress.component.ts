@@ -6,7 +6,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatTableModule } from '@angular/material/table';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
+import { NotificationService } from '@core/services/notification.service';
 
 interface TranscriptEntry {
   source: string;
@@ -33,12 +36,40 @@ interface Transcript {
   total_hours: number;
 }
 
+interface ProgressSummary {
+  avg_score: number;
+  total_exercises: number;
+  strongest_areas: string[];
+  weakest_areas: string[];
+  competency_trend: { category: string; avg_delta: number; count: number }[];
+}
+
+interface Recommendation {
+  id: string;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  recommendations: { area?: string; action?: string }[];
+  next_milestone: string;
+  generated_at: string;
+}
+
+interface AutoAssessment {
+  id: string;
+  exercise_id: string;
+  raw_score: number;
+  max_score: number;
+  competency_mappings: { category: string; delta: number }[];
+  assessed_at: string;
+}
+
 @Component({
   selector: 'tn-my-progress',
   standalone: true,
   imports: [
     CommonModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatProgressBarModule,
+    MatChipsModule, MatTooltipModule,
   ],
   template: `
     <div class="page-container">
@@ -74,6 +105,13 @@ interface Transcript {
             <div class="stat-label">Certifications</div>
           </mat-card-content>
         </mat-card>
+        <mat-card class="stat-card">
+          <mat-card-content>
+            <mat-icon color="primary">psychology</mat-icon>
+            <div class="stat-value">{{ progressSummary()?.total_exercises ? (progressSummary()!.avg_score | number:'1.0-0') + '%' : '-' }}</div>
+            <div class="stat-label">Avg Score</div>
+          </mat-card-content>
+        </mat-card>
       </div>
 
       <mat-tab-group class="mt-2">
@@ -97,7 +135,7 @@ interface Transcript {
                 </ng-container>
                 <ng-container matColumnDef="score">
                   <th mat-header-cell *matHeaderCellDef>Score</th>
-                  <td mat-cell *matCellDef="let e">{{ e.grade || (e.score != null ? e.score + '%' : '-') }}</td>
+                  <td mat-cell *matCellDef="let e">{{ e.grade || (e.score !== null ? e.score + '%' : '-') }}</td>
                 </ng-container>
                 <ng-container matColumnDef="completed">
                   <th mat-header-cell *matHeaderCellDef>Completed</th>
@@ -136,6 +174,109 @@ interface Transcript {
             </div>
           </div>
         </mat-tab>
+
+        <mat-tab label="AI Insights">
+          <div class="tab-content">
+            <div class="section-header">
+              <h3>Learning Recommendations</h3>
+              <button mat-stroked-button color="primary" (click)="generateRecommendation()" [disabled]="generatingRec()">
+                <mat-icon>auto_awesome</mat-icon>
+                {{ generatingRec() ? 'Generating...' : 'Generate Recommendation' }}
+              </button>
+            </div>
+
+            @if (progressSummary(); as ps) {
+              <div class="insights-grid">
+                @if (ps.strongest_areas.length) {
+                  <mat-card>
+                    <mat-card-header><mat-card-title>Strengths</mat-card-title></mat-card-header>
+                    <mat-card-content>
+                      <mat-chip-set>
+                        @for (s of ps.strongest_areas; track s) {
+                          <mat-chip color="primary" highlighted>{{ s }}</mat-chip>
+                        }
+                      </mat-chip-set>
+                    </mat-card-content>
+                  </mat-card>
+                }
+                @if (ps.weakest_areas.length) {
+                  <mat-card>
+                    <mat-card-header><mat-card-title>Areas to Improve</mat-card-title></mat-card-header>
+                    <mat-card-content>
+                      <mat-chip-set>
+                        @for (g of ps.weakest_areas; track g) {
+                          <mat-chip color="warn" highlighted>{{ g }}</mat-chip>
+                        }
+                      </mat-chip-set>
+                    </mat-card-content>
+                  </mat-card>
+                }
+              </div>
+            }
+
+            @for (rec of recommendations(); track rec.id) {
+              <mat-card class="rec-card">
+                <mat-card-header>
+                  <mat-icon mat-card-avatar color="accent">lightbulb</mat-icon>
+                  <mat-card-title>{{ rec.summary || 'Recommendation' }}</mat-card-title>
+                  <mat-card-subtitle>{{ rec.generated_at | date:'medium' }}</mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content>
+                  @if (rec.recommendations.length) {
+                    <h4>Recommended Actions</h4>
+                    <ul>
+                      @for (r of rec.recommendations; track r) {
+                        <li><strong>{{ r.area }}</strong>: {{ r.action }}</li>
+                      }
+                    </ul>
+                  }
+                  @if (rec.next_milestone) {
+                    <p><strong>Next milestone:</strong> {{ rec.next_milestone }}</p>
+                  }
+                  @if (rec.gaps.length) {
+                    <h4>Focus Areas</h4>
+                    <mat-chip-set>
+                      @for (g of rec.gaps; track g) {
+                        <mat-chip>{{ g }}</mat-chip>
+                      }
+                    </mat-chip-set>
+                  }
+                </mat-card-content>
+              </mat-card>
+            } @empty {
+              <mat-card class="mt-1"><mat-card-content>No recommendations yet. Click "Generate Recommendation" to get AI-powered learning guidance.</mat-card-content></mat-card>
+            }
+          </div>
+        </mat-tab>
+
+        <mat-tab label="Assessments">
+          <div class="tab-content">
+            @for (a of assessments(); track a.id) {
+              <mat-card class="assessment-card">
+                <mat-card-header>
+                  <mat-icon mat-card-avatar [color]="(a.max_score > 0 ? a.raw_score / a.max_score * 100 : 0) >= 70 ? 'primary' : 'warn'">assessment</mat-icon>
+                  <mat-card-title>Score: {{ a.raw_score }}/{{ a.max_score }}</mat-card-title>
+                  <mat-card-subtitle>{{ a.assessed_at | date:'medium' }}</mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content>
+                  @if (a.competency_mappings.length) {
+                    <div class="competency-bars">
+                      @for (m of a.competency_mappings; track m.category) {
+                        <div class="competency-row">
+                          <span class="competency-label" [matTooltip]="m.category">{{ m.category }}</span>
+                          <mat-progress-bar mode="determinate" [value]="m.delta > 0 ? m.delta : 0"></mat-progress-bar>
+                          <span class="competency-score">{{ m.delta > 0 ? '+' : '' }}{{ m.delta }}</span>
+                        </div>
+                      }
+                    </div>
+                  }
+                </mat-card-content>
+              </mat-card>
+            } @empty {
+              <mat-card><mat-card-content>No auto-assessments yet. Complete exercises to receive AI competency assessments.</mat-card-content></mat-card>
+            }
+          </div>
+        </mat-tab>
       </mat-tab-group>
     </div>
   `,
@@ -151,23 +292,76 @@ interface Transcript {
     .source-badge[data-source="truenorth"] { background: var(--primary); color: white; }
     .source-badge[data-source="moodle"] { background: #f98012; color: white; }
     .source-badge[data-source="external"] { background: #6366f1; color: white; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .section-header h3 { margin: 0; }
+    .insights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .rec-card, .assessment-card { margin-bottom: 12px; }
+    .rec-card ul { padding-left: 20px; }
+    .mt-1 { margin-top: 8px; }
+    .competency-bars { display: flex; flex-direction: column; gap: 8px; }
+    .competency-row { display: flex; align-items: center; gap: 8px; }
+    .competency-label { min-width: 140px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .competency-score { min-width: 40px; text-align: right; font-weight: 500; }
   `],
 })
 export class MyProgressComponent implements OnInit {
   transcript = signal<Transcript | null>(null);
+  progressSummary = signal<ProgressSummary | null>(null);
+  recommendations = signal<Recommendation[]>([]);
+  assessments = signal<AutoAssessment[]>([]);
+  generatingRec = signal(false);
   transcriptColumns = ['source', 'title', 'type', 'score', 'completed'];
   private userId = '00000000-0000-0000-0000-000000000001'; // TODO: get from auth
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private notify: NotificationService) {}
 
   ngOnInit() {
     this.loadTranscript();
+    this.loadProgress();
+    this.loadRecommendations();
+    this.loadAssessments();
   }
 
   loadTranscript() {
     this.api.get<Transcript>(`/users/${this.userId}/transcript`).subscribe({
       next: t => this.transcript.set(t),
       error: () => this.transcript.set({ entries: [], certifications: [], total_hours: 0 }),
+    });
+  }
+
+  loadProgress() {
+    this.api.get<ProgressSummary>(`/adaptive/users/${this.userId}/progress`).subscribe({
+      next: p => this.progressSummary.set(p),
+      error: () => {},
+    });
+  }
+
+  loadRecommendations() {
+    this.api.get<Recommendation[]>(`/adaptive/users/${this.userId}/recommendations`).subscribe({
+      next: r => this.recommendations.set(r),
+      error: () => {},
+    });
+  }
+
+  loadAssessments() {
+    this.api.get<AutoAssessment[]>(`/adaptive/users/${this.userId}/auto-assessments`).subscribe({
+      next: a => this.assessments.set(a),
+      error: () => {},
+    });
+  }
+
+  generateRecommendation() {
+    this.generatingRec.set(true);
+    this.api.post(`/adaptive/users/${this.userId}/recommendations`, {}).subscribe({
+      next: () => {
+        this.notify.success('Recommendation generation started');
+        this.generatingRec.set(false);
+        setTimeout(() => this.loadRecommendations(), 3000);
+      },
+      error: () => {
+        this.notify.error('Failed to generate recommendation');
+        this.generatingRec.set(false);
+      },
     });
   }
 }

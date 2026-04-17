@@ -1,16 +1,18 @@
-﻿"""Alembic environment configuration."""
+"""Alembic environment configuration."""
+
 import os
 import sys
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Add parent dir to path for model imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.db import Base
 from app import models  # noqa: F401 — ensure models are registered
+from app.db import Base
 
 config = context.config
 
@@ -27,7 +29,9 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(url=url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle": "named"})
+    context.configure(
+        url=url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle": "named"}
+    )
     with context.begin_transaction():
         context.run_migrations()
 

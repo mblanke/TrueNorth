@@ -1,7 +1,7 @@
-﻿"""TrueNorth Range — Validator base class and registry."""
+"""TrueNorth Range — Validator base class and registry."""
+
 from __future__ import annotations
 
-import importlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ValidationResult:
     """Result of a validation check."""
+
     passed: bool
     validator_name: str
     evidence: str = ""

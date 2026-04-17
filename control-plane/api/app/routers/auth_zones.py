@@ -2,11 +2,13 @@
 
 Zone-based authentication policies (FIDO2, Kerberos, session tokens).
 """
+
 from __future__ import annotations
 
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -59,7 +61,7 @@ def update_zone(zone_id: uuid.UUID, payload: AuthZonePolicyIn, db: Session = Dep
     return zone
 
 
-@router.delete("/{zone_id}", status_code=204)
+@router.delete("/{zone_id}", status_code=204, response_class=Response)
 def delete_zone(zone_id: uuid.UUID, db: Session = Depends(get_db)):
     zone = db.get(AuthZonePolicy, str(zone_id))
     if not zone:

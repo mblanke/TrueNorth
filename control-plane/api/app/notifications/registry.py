@@ -1,4 +1,5 @@
 """Channel registry — maps channel type names to channel instances."""
+
 from __future__ import annotations
 
 import logging
@@ -34,9 +35,9 @@ def list_channels() -> list[str]:
 
 # -- Default registrations ------------------------------------------------
 def _register_defaults() -> None:
+    from .in_app import InAppChannel
     from .smtp import SMTPChannel
     from .webhook import WebhookChannel
-    from .in_app import InAppChannel
 
     register_channel("email", SMTPChannel)
     register_channel("webhook", WebhookChannel)

@@ -1,4 +1,5 @@
-﻿"""Deliverable validator — checks MinIO for uploaded artifact."""
+"""Deliverable validator — checks MinIO for uploaded artifact."""
+
 from __future__ import annotations
 
 import logging
@@ -22,7 +23,8 @@ class DeliverableCheckValidator(Validator):
 
         if not object_key:
             return ValidationResult(
-                passed=False, validator_name="deliverable_check",
+                passed=False,
+                validator_name="deliverable_check",
                 evidence="No object key specified",
             )
 
@@ -30,15 +32,18 @@ class DeliverableCheckValidator(Validator):
             resp = httpx.head(f"{minio_url}/{bucket}/{object_key}")
             if resp.status_code == 200:
                 return ValidationResult(
-                    passed=True, validator_name="deliverable_check",
+                    passed=True,
+                    validator_name="deliverable_check",
                     evidence=f"Artifact found: {bucket}/{object_key}",
                 )
             return ValidationResult(
-                passed=False, validator_name="deliverable_check",
+                passed=False,
+                validator_name="deliverable_check",
                 evidence=f"Artifact not found: {bucket}/{object_key} (HTTP {resp.status_code})",
             )
         except Exception as e:
             return ValidationResult(
-                passed=False, validator_name="deliverable_check",
+                passed=False,
+                validator_name="deliverable_check",
                 evidence=f"MinIO error: {e}",
             )

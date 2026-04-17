@@ -120,7 +120,7 @@ import { Scenario } from '@core/models';
 
       <!-- DELETE CONFIRMATION -->
       @if (deleteTarget) {
-        <div class="confirm-overlay" (click)="deleteTarget = null">
+        <div class="confirm-overlay" (click)="deleteTarget = null" (keyup.escape)="deleteTarget = null" tabindex="0" role="dialog">
           <mat-card class="confirm-dialog" (click)="$event.stopPropagation()">
             <mat-card-header>
               <mat-card-title>Delete Scenario</mat-card-title>

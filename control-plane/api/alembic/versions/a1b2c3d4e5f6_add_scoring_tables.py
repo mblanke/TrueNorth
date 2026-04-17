@@ -4,19 +4,22 @@ Revision ID: a1b2c3d4e5f6
 Revises: 3731bf01ced3
 Create Date: 2026-02-26 06:00:00.000000
 """
-from typing import Sequence, Union
 
-from alembic import op
+import os
+import sys
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 
-import sys, os
+from alembic import op
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from app.models import GUID
 
 revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "3731bf01ced3"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "3731bf01ced3"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -32,8 +35,12 @@ def upgrade() -> None:
         sa.Column("time_elapsed_seconds", sa.Integer(), nullable=True),
         sa.Column("bonuses_json", sa.Text(), nullable=True),
         sa.Column("evaluated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_scoring_results_exercise", "scoring_results", ["exercise_id"])
@@ -62,7 +69,9 @@ def upgrade() -> None:
         sa.Column("team_id", GUID(), sa.ForeignKey("teams.id"), nullable=False),
         sa.Column("score", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("rank", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("exercise_id", "team_id", name="uq_leaderboard_exercise_team"),
     )

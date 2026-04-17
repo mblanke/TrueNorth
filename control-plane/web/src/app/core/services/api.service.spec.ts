@@ -7,7 +7,7 @@ import { HTTP_INTERCEPTORS, HttpRequest, HttpHandler, HttpInterceptor } from '@a
 import { Injectable } from '@angular/core';
 import { ApiService } from './api.service';
 import { environment } from '@env/environment';
-import { Range, Exercise, HealthResponse, Template, Scenario } from '@core/models';
+import { Range } from '@core/models';
 
 // ── Fake auth interceptor to prove header injection ──────────────────
 let fakeToken: string | null = null;

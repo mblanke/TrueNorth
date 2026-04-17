@@ -1,8 +1,8 @@
-﻿"""HTTP burst injector — generates burst of HTTP requests."""
+"""HTTP burst injector — generates burst of HTTP requests."""
+
 from __future__ import annotations
 
 import logging
-import time
 
 from . import Injector, InjectResult, RangeContext, register_injector
 

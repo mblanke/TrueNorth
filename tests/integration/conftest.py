@@ -1,4 +1,5 @@
 """Fixtures for integration tests (require live services)."""
+
 from __future__ import annotations
 
 import os
@@ -42,6 +43,7 @@ def async_api_client(api_base_url):
     async def _make():
         async with httpx.AsyncClient(base_url=api_base_url, timeout=30.0) as client:
             yield client
+
     return _make
 
 

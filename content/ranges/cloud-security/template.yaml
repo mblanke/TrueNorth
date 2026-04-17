@@ -10,6 +10,14 @@ author: TrueNorth Range
 difficulty: intermediate
 vm_count: 20
 
+inputs:
+  range_id: string
+  cidr_cloud_sim: "10.80.0.0/24"
+  cidr_containers: "10.80.1.0/24"
+  cidr_cicd: "10.80.2.0/24"
+  cidr_monitoring: "10.80.3.0/24"
+  cidr_mgmt: "10.80.4.0/24"
+
 network:
   vlans:
     - id: 400

@@ -1,7 +1,9 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { of, throwError, delay } from 'rxjs';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { DashboardComponent } from './dashboard.component';
 import { ApiService } from '@core/services/api.service';
 import { Range, Exercise, HealthResponse } from '@core/models';
@@ -35,10 +37,22 @@ describe('DashboardComponent', () => {
       'health',
       'listRanges',
       'listExercises',
+      'proxmoxDiscover',
+      'getCapacity',
+      'listScheduledEvents',
+      'checkCapacity',
+      'createScheduledEvent',
+      'deleteScheduledEvent',
     ]);
     mockApi.health.and.returnValue(of(mockHealth));
     mockApi.listRanges.and.returnValue(of(mockRanges as Range[]));
     mockApi.listExercises.and.returnValue(of(mockExercises as Exercise[]));
+    mockApi.proxmoxDiscover.and.returnValue(of({ cluster: [] }));
+    mockApi.getCapacity.and.returnValue(of({}));
+    mockApi.listScheduledEvents.and.returnValue(of([]));
+    mockApi.checkCapacity.and.returnValue(of({}));
+    mockApi.createScheduledEvent.and.returnValue(of({}));
+    mockApi.deleteScheduledEvent.and.returnValue(of(void 0));
 
     await TestBed.configureTestingModule({
       imports: [
@@ -46,7 +60,11 @@ describe('DashboardComponent', () => {
         NoopAnimationsModule,
         RouterTestingModule,
       ],
-      providers: [{ provide: ApiService, useValue: mockApi }],
+      providers: [
+        { provide: ApiService, useValue: mockApi },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DashboardComponent);

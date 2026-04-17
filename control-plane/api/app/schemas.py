@@ -1,11 +1,13 @@
 """TrueNorth Range — Pydantic v2 request/response schemas."""
+
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 T = TypeVar("T")
 
@@ -164,6 +166,26 @@ class RangeListOut(BaseModel):
     updated_at: datetime
 
 
+# ── Range Snapshots ────────────────────────────────────────────────────
+class SnapshotIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+
+
+class SnapshotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    range_id: uuid.UUID
+    name: str
+    description: str | None = None
+    snapshot_state: str
+    size_bytes: int
+    range_state_at_snapshot: str
+    tenant_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
 # ── Exercises ──────────────────────────────────────────────────────────
 class ExerciseIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -282,6 +304,7 @@ class RangeStatsOut(BaseModel):
 # ══════════════════════════════════════════════════════════════════════════
 # LMS Schemas
 # ══════════════════════════════════════════════════════════════════════════
+
 
 # ── Courses ────────────────────────────────────────────────────────────
 class CourseModuleIn(BaseModel):
@@ -440,6 +463,7 @@ class CompetencyAssertionOut(BaseModel):
 
 class CompetencyProfileOut(BaseModel):
     """Aggregated competency profile for a user across all platforms."""
+
     user_id: uuid.UUID
     assertions: list[CompetencyAssertionOut] = Field(default_factory=list)
     total_competencies: int = 0
@@ -449,6 +473,7 @@ class CompetencyProfileOut(BaseModel):
 
 class SkillGapOut(BaseModel):
     """Competencies required by target role but not yet demonstrated by user."""
+
     competency: CompetencyOut
     required_level: str
     current_level: str | None = None
@@ -548,6 +573,7 @@ class ExternalActivityOut(BaseModel):
 # ── Transcript ─────────────────────────────────────────────────────────
 class TranscriptEntry(BaseModel):
     """A single learning record in a user's unified transcript."""
+
     source: str  # truenorth / moodle / immersive_labs / offsec
     activity_type: str  # exercise / course / lab / certification
     title: str
@@ -566,10 +592,10 @@ class TranscriptOut(BaseModel):
     certifications: list[CertificationOut] = Field(default_factory=list)
 
 
-
 # ══════════════════════════════════════════════════════════════════════════
 # Infrastructure Schemas
 # ══════════════════════════════════════════════════════════════════════════
+
 
 # ── Hypervisor Connections ─────────────────────────────────────────────
 class HypervisorConnectionIn(BaseModel):
@@ -760,6 +786,7 @@ class AIFleetSummaryOut(BaseModel):
 # Directory & Nations Schemas
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class NationOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -819,13 +846,14 @@ class OUOut(BaseModel):
 
 class OUTreeOut(BaseModel):
     """OU with nested children for tree rendering."""
+
     id: uuid.UUID
     name: str
     slug: str
     ou_type: str
     parent_id: uuid.UUID | None = None
     nation_id: uuid.UUID | None = None
-    children: list["OUTreeOut"] = Field(default_factory=list)
+    children: list[OUTreeOut] = Field(default_factory=list)
 
 
 class SecurityGroupIn(BaseModel):
@@ -1130,10 +1158,10 @@ class KitDefinitionOut(BaseModel):
     created_at: datetime
 
 
-
 # ══════════════════════════════════════════════════════════════════════════
 # Helpdesk / Tickets
 # ══════════════════════════════════════════════════════════════════════════
+
 
 class SupportQueueIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -1257,6 +1285,7 @@ class AIAgentActionOut(BaseModel):
 # Wiki / Knowledge Base
 # ══════════════════════════════════════════════════════════════════════════
 
+
 class WikiSpaceIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
@@ -1338,7 +1367,7 @@ class WikiPageTreeNode(BaseModel):
     id: uuid.UUID
     title: str
     slug: str
-    children: list["WikiPageTreeNode"] = Field(default_factory=list)
+    children: list[WikiPageTreeNode] = Field(default_factory=list)
 
 
 class WikiRevisionOut(BaseModel):
@@ -1351,3 +1380,299 @@ class WikiRevisionOut(BaseModel):
     editor_id: uuid.UUID
     edit_summary: str | None = None
     created_at: datetime
+
+
+# ── Threat Intelligence ────────────────────────────────────────────────
+class ThreatIntelFeedIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    feed_type: str = Field(..., pattern=r"^(taxii|stix_file|custom_api)$")
+    url: str | None = Field(None, max_length=2048)
+    collection_id: str | None = Field(None, max_length=255)
+    api_key_ref: str | None = Field(None, max_length=255)
+    poll_interval_minutes: int = Field(60, ge=5, le=10080)
+    is_enabled: bool = True
+
+
+class ThreatIntelFeedUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    url: str | None = Field(None, max_length=2048)
+    collection_id: str | None = None
+    api_key_ref: str | None = None
+    poll_interval_minutes: int | None = Field(None, ge=5, le=10080)
+    is_enabled: bool | None = None
+
+
+class ThreatIntelFeedOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    feed_type: str
+    url: str | None = None
+    collection_id: str | None = None
+    poll_interval_minutes: int
+    is_enabled: bool
+    last_poll_at: datetime | None = None
+    last_poll_status: str | None = None
+    indicator_count: int
+    tenant_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class ThreatIndicatorOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    feed_id: uuid.UUID
+    stix_id: str | None = None
+    indicator_type: str
+    value: str
+    name: str | None = None
+    description: str | None = None
+    confidence: int
+    severity: str
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    kill_chain_phases: str | None = None
+    mitre_attack_ids: str | None = None
+    is_active: bool
+    created_at: datetime
+
+
+class ThreatIndicatorSearch(BaseModel):
+    indicator_type: str | None = None
+    value: str | None = None
+    severity: str | None = None
+    min_confidence: int | None = Field(None, ge=0, le=100)
+    feed_id: uuid.UUID | None = None
+
+
+# ── Detection Rules (Sigma) ───────────────────────────────────────────
+class DetectionRuleIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    sigma_id: str | None = Field(None, max_length=100)
+    status: str = Field("draft", pattern=r"^(draft|testing|stable|deprecated)$")
+    description: str | None = None
+    author: str | None = Field(None, max_length=255)
+    level: str = Field("medium", pattern=r"^(informational|low|medium|high|critical)$")
+    logsource_category: str | None = Field(None, max_length=100)
+    logsource_product: str | None = Field(None, max_length=100)
+    logsource_service: str | None = Field(None, max_length=100)
+    detection_yaml: str = Field(..., min_length=10)
+    mitre_attack_ids: list[str] | None = None
+    false_positives: list[str] | None = None
+    tags: list[str] | None = None
+    is_enabled: bool = True
+
+
+class DetectionRuleUpdate(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=500)
+    status: str | None = Field(None, pattern=r"^(draft|testing|stable|deprecated)$")
+    description: str | None = None
+    level: str | None = Field(None, pattern=r"^(informational|low|medium|high|critical)$")
+    logsource_category: str | None = None
+    logsource_product: str | None = None
+    logsource_service: str | None = None
+    detection_yaml: str | None = Field(None, min_length=10)
+    mitre_attack_ids: list[str] | None = None
+    false_positives: list[str] | None = None
+    tags: list[str] | None = None
+    is_enabled: bool | None = None
+
+
+class DetectionRuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    title: str
+    sigma_id: str | None = None
+    status: str
+    description: str | None = None
+    author: str | None = None
+    level: str
+    logsource_category: str | None = None
+    logsource_product: str | None = None
+    logsource_service: str | None = None
+    detection_yaml: str
+    mitre_attack_ids: str | None = None
+    false_positives: str | None = None
+    tags: str | None = None
+    is_enabled: bool
+    tenant_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class SigmaValidationResult(BaseModel):
+    valid: bool
+    errors: list[str] = []
+    warnings: list[str] = []
+
+
+# ── Exercise Forge (EPIC 1) ─────────────────────────────────────────────
+
+
+class ForgeIndicatorIn(BaseModel):
+    indicator_id: uuid.UUID | None = None
+    indicator_type: str = Field(..., description="ipv4, domain, sha256, etc.")
+    value: str
+    severity: str = "medium"
+    mitre_attack_ids: list[str] = []
+    description: str | None = None
+
+
+class ForgeRequest(BaseModel):
+    feed_id: uuid.UUID | None = Field(None, description="Pull indicators from this feed")
+    indicators: list[ForgeIndicatorIn] = Field(
+        default_factory=list, description="Manual indicators (used if feed_id is None)"
+    )
+    difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
+    duration_minutes: int = Field(default=60, ge=15, le=480)
+    objective_count: int = Field(default=4, ge=2, le=10)
+    range_template: str = Field(default="small-enterprise")
+    focus_areas: list[str] = Field(default_factory=list)
+    name_override: str | None = Field(None, max_length=255)
+
+
+class ForgePreviewOut(BaseModel):
+    scenario_yaml: str
+    model_used: str
+    indicators_used: int
+    mitre_techniques: list[str]
+    estimated_duration_minutes: int
+    objective_count: int
+
+
+class ForgeResultOut(BaseModel):
+    exercise_id: uuid.UUID
+    scenario_id: uuid.UUID
+    name: str
+    scenario_yaml: str
+    model_used: str
+    indicators_used: int
+    mitre_techniques: list[str]
+
+
+class ForgePresetOut(BaseModel):
+    name: str
+    difficulty: str
+    duration_minutes: int
+    objective_count: int
+    focus_areas: list[str]
+    description: str
+
+
+# ── Adaptive Learning (EPIC 3) ──────────────────────────────────────────
+
+
+class AutoAssessmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    user_id: uuid.UUID
+    exercise_id: uuid.UUID
+    competency_mappings: list[dict]
+    raw_score: int
+    max_score: int
+    assessed_at: datetime
+
+    @field_validator("competency_mappings", mode="before")
+    @classmethod
+    def _parse_competency_mappings(cls, v):
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+
+class LearningRecommendationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    user_id: uuid.UUID
+    summary: str
+    strengths: list[str]
+    gaps: list[str]
+    recommendations: list[dict]
+    target_role_readiness: float
+    next_milestone: str
+    model_used: str
+    generated_at: datetime
+
+    @field_validator("strengths", "gaps", "recommendations", mode="before")
+    @classmethod
+    def _parse_json_fields(cls, v):
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+
+class ProgressSummaryOut(BaseModel):
+    user_id: uuid.UUID
+    total_exercises: int
+    avg_score: float
+    competency_trend: list[dict]
+    strongest_areas: list[str]
+    weakest_areas: list[str]
+    recent_assessments: list[AutoAssessmentOut]
+
+
+# ── Ops Center (EPIC 2) ─────────────────────────────────────────────────
+
+
+class AnnotationIn(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
+    annotation_type: str = Field(default="observation", pattern=r"^(observation|finding|recommendation|ioc)$")
+    severity: str = Field(default="info", pattern=r"^(info|low|medium|high|critical)$")
+    related_event_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class AnnotationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    exercise_id: uuid.UUID
+    user_id: uuid.UUID
+    user_display_name: str
+    content: str
+    annotation_type: str
+    severity: str
+    related_event_id: str | None = None
+    tags: list[str]
+    created_at: datetime
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _parse_tags(cls, v):
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+
+class SharedCommandIn(BaseModel):
+    command: str = Field(..., min_length=1, max_length=2000)
+    description: str = Field(default="", max_length=500)
+    host_tag: str = Field(default="", max_length=100)
+
+
+class SharedCommandOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    exercise_id: uuid.UUID
+    user_id: uuid.UUID
+    user_display_name: str
+    command: str
+    description: str
+    host_tag: str
+    shared_at: datetime
+
+
+class InstructorInjectIn(BaseModel):
+    inject_type: str = Field(..., pattern=r"^(simulated_execution|dns_spike|http_burst|email_phish|custom)$")
+    params: dict = Field(default_factory=dict)
+    description: str = Field(default="Manual inject from instructor", max_length=1000)
+
+
+class OpsStatsOut(BaseModel):
+    exercise_id: uuid.UUID
+    active_analysts: int
+    annotations_count: int
+    shared_commands_count: int
+    objectives_completed: int
+    objectives_total: int
+    elapsed_seconds: int

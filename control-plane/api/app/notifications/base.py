@@ -1,4 +1,5 @@
 """Abstract base class for notification channels."""
+
 from __future__ import annotations
 
 import asyncio
@@ -31,7 +32,4 @@ class NotificationChannel(ABC):
             *(self.send(r, subject, body, metadata) for r in recipients),
             return_exceptions=True,
         )
-        return {
-            r: (isinstance(res, bool) and res)
-            for r, res in zip(recipients, results)
-        }
+        return {r: (isinstance(res, bool) and res) for r, res in zip(recipients, results, strict=False)}

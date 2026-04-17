@@ -18,11 +18,12 @@ import os
 import signal
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as aioredis
-from opensearchpy import AsyncOpenSearch, helpers as os_helpers
+from opensearchpy import AsyncOpenSearch
+from opensearchpy import helpers as os_helpers
 
 from .schemas import IngestBatch, PipelineStats
 from .transforms import apply_all_transforms
@@ -52,7 +53,7 @@ logger = logging.getLogger("telemetry.ingest")
 # ── Helpers ────────────────────────────────────────────────────────────
 def _index_name() -> str:
     """Return today's index name, e.g. truenorth-telemetry-2026.02.26."""
-    return f"{INDEX_PREFIX}-{datetime.now(timezone.utc).strftime('%Y.%m.%d')}"
+    return f"{INDEX_PREFIX}-{datetime.now(UTC).strftime('%Y.%m.%d')}"
 
 
 def _parse_stream_message(msg_id: bytes, fields: dict[bytes, bytes]) -> dict[str, Any]:
@@ -81,6 +82,103 @@ async def _ensure_consumer_group(rds: aioredis.Redis) -> None:
             logger.debug("Consumer group '%s' already exists", CONSUMER_GROUP)
         else:
             raise
+
+
+ISM_POLICY_ID = f"{INDEX_PREFIX}-lifecycle"
+
+ISM_POLICY_BODY: dict[str, Any] = {
+    "policy": {
+        "description": "TrueNorth telemetry index lifecycle: hot → warm → cold → delete",
+        "default_state": "hot",
+        "states": [
+            {
+                "name": "hot",
+                "actions": [{"replica_count": {"number_of_replicas": 1}}],
+                "transitions": [{"state_name": "warm", "conditions": {"min_index_age": "7d"}}],
+            },
+            {
+                "name": "warm",
+                "actions": [
+                    {"replica_count": {"number_of_replicas": 0}},
+                    {"force_merge": {"max_num_segments": 1}},
+                ],
+                "transitions": [{"state_name": "cold", "conditions": {"min_index_age": "30d"}}],
+            },
+            {
+                "name": "cold",
+                "actions": [{"read_only": {}}],
+                "transitions": [{"state_name": "delete", "conditions": {"min_index_age": "365d"}}],
+            },
+            {
+                "name": "delete",
+                "actions": [{"delete": {}}],
+                "transitions": [],
+            },
+        ],
+        "ism_template": [
+            {"index_patterns": [f"{INDEX_PREFIX}-*"], "priority": 100}
+        ],
+    }
+}
+
+
+async def _ensure_ism_policy(os_client: AsyncOpenSearch) -> None:
+    """Create or update the ISM lifecycle policy for telemetry indices."""
+    try:
+        await os_client.transport.perform_request(
+            "GET", f"/_plugins/_ism/policies/{ISM_POLICY_ID}"
+        )
+        logger.debug("ISM policy '%s' already exists", ISM_POLICY_ID)
+    except Exception:
+        try:
+            await os_client.transport.perform_request(
+                "PUT",
+                f"/_plugins/_ism/policies/{ISM_POLICY_ID}",
+                body=ISM_POLICY_BODY,
+            )
+            logger.info("Created ISM policy '%s'", ISM_POLICY_ID)
+        except Exception:
+            logger.warning("Failed to create ISM policy — continuing without lifecycle management", exc_info=True)
+
+
+async def _ensure_index_template(os_client: AsyncOpenSearch) -> None:
+    """Create an index template for telemetry indices with optimised mappings."""
+    template_name = f"{INDEX_PREFIX}-template"
+    template_body = {
+        "index_patterns": [f"{INDEX_PREFIX}-*"],
+        "template": {
+            "settings": {
+                "index": {
+                    "number_of_shards": 2,
+                    "number_of_replicas": 1,
+                    "refresh_interval": "5s",
+                    "plugins.index_state_management.policy_id": ISM_POLICY_ID,
+                }
+            },
+            "mappings": {
+                "properties": {
+                    "timestamp": {"type": "date"},
+                    "event_type": {"type": "keyword"},
+                    "range_id": {"type": "keyword"},
+                    "tenant_id": {"type": "keyword"},
+                    "source_ip": {"type": "ip", "ignore_malformed": True},
+                    "dest_ip": {"type": "ip", "ignore_malformed": True},
+                    "severity": {"type": "keyword"},
+                    "raw_data": {"type": "object", "enabled": False},
+                }
+            },
+        },
+        "priority": 200,
+    }
+    try:
+        await os_client.transport.perform_request(
+            "PUT",
+            f"/_index_template/{template_name}",
+            body=template_body,
+        )
+        logger.info("Upserted index template '%s'", template_name)
+    except Exception:
+        logger.warning("Failed to create index template — continuing with defaults", exc_info=True)
 
 
 async def _bulk_index(os_client: AsyncOpenSearch, batch: IngestBatch) -> tuple[int, int]:
@@ -128,6 +226,8 @@ class IngestPipeline:
 
         try:
             await _ensure_consumer_group(rds)
+            await _ensure_ism_policy(os_client)
+            await _ensure_index_template(os_client)
             logger.info(
                 "Pipeline started — stream=%s group=%s consumer=%s batch_size=%d flush_ms=%d",
                 STREAM_KEY, CONSUMER_GROUP, CONSUMER_NAME, BATCH_SIZE, FLUSH_INTERVAL_MS,
@@ -212,7 +312,7 @@ class IngestPipeline:
                 try:
                     parsed.append(TelemetryEvent(
                         event_type=raw.get("event_type", "unknown"),
-                        timestamp=datetime.now(timezone.utc),
+                        timestamp=datetime.now(UTC),
                         range_id=raw.get("range_id", "unknown"),
                         tenant_id=raw.get("tenant_id", "unknown"),
                         raw_data=raw,
@@ -229,7 +329,7 @@ class IngestPipeline:
                 self._stats.events_indexed += ok
                 self._stats.events_failed += errs
                 self._stats.batches_flushed += 1
-                self._stats.last_flush_at = datetime.now(timezone.utc)
+                self._stats.last_flush_at = datetime.now(UTC)
                 self._last_flush = time.monotonic()
                 logger.info("Flushed batch %s — %d indexed, %d errors", batch.batch_id[:12], ok, errs)
                 return

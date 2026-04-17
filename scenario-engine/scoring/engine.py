@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -106,15 +106,11 @@ class ScoringEngine:
         start_time: datetime | None = None,
     ) -> None:
         self.exercise_id = exercise_id
-        self.objectives: dict[str, Objective] = {
-            obj["id"]: Objective.from_dict(obj) for obj in objectives
-        }
+        self.objectives: dict[str, Objective] = {obj["id"]: Objective.from_dict(obj) for obj in objectives}
         self.opensearch_url = opensearch_url
-        self.start_time = start_time or datetime.now(timezone.utc)
+        self.start_time = start_time or datetime.now(UTC)
         self.total_score: int = 0
-        self.max_score: int = sum(
-            obj.max_points for obj in self.objectives.values()
-        )
+        self.max_score: int = sum(obj.max_points for obj in self.objectives.values())
         self._results: dict[str, ObjectiveResult] = {}
         self._bonuses: list[dict[str, Any]] = []
 
@@ -122,9 +118,7 @@ class ScoringEngine:
 
     async def evaluate(self) -> ScoringResult:
         """Evaluate **all** objectives and return the aggregate result."""
-        tasks = [
-            self.evaluate_objective(oid) for oid in self.objectives
-        ]
+        tasks = [self.evaluate_objective(oid) for oid in self.objectives]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         objective_results: list[ObjectiveResult] = []
@@ -135,17 +129,13 @@ class ScoringEngine:
             objective_results.append(res)
 
         self.total_score = sum(r.points_awarded for r in objective_results)
-        percentage = (
-            (self.total_score / self.max_score * 100) if self.max_score else 0.0
-        )
+        percentage = (self.total_score / self.max_score * 100) if self.max_score else 0.0
 
         from scenario_engine.scoring.grading import GradingCalculator
 
         grade = GradingCalculator.letter_grade(percentage)
 
-        elapsed = int(
-            (datetime.now(timezone.utc) - self.start_time).total_seconds()
-        )
+        elapsed = int((datetime.now(UTC) - self.start_time).total_seconds())
 
         return ScoringResult(
             exercise_id=self.exercise_id,
@@ -204,7 +194,7 @@ class ScoringEngine:
             points_awarded=points,
             max_points=obj.max_points,
             evidence=evidence,
-            timestamp=datetime.now(timezone.utc) if achieved else None,
+            timestamp=datetime.now(UTC) if achieved else None,
             feedback=self._build_feedback(obj, achieved, points),
         )
         self._results[objective_id] = result
@@ -224,18 +214,12 @@ class ScoringEngine:
                 oid: {
                     "name": obj.name,
                     "max_points": obj.max_points,
-                    "awarded": self._results[oid].points_awarded
-                    if oid in self._results
-                    else 0,
-                    "achieved": self._results[oid].achieved
-                    if oid in self._results
-                    else False,
+                    "awarded": self._results[oid].points_awarded if oid in self._results else 0,
+                    "achieved": self._results[oid].achieved if oid in self._results else False,
                 }
                 for oid, obj in self.objectives.items()
             },
-            "elapsed_seconds": int(
-                (datetime.now(timezone.utc) - self.start_time).total_seconds()
-            ),
+            "elapsed_seconds": int((datetime.now(UTC) - self.start_time).total_seconds()),
         }
 
     # ── helpers ─────────────────────────────────────────────
@@ -257,7 +241,7 @@ class ScoringEngine:
 
         # Time bonus
         if obj.time_bonus and obj.time_limit_seconds > 0:
-            elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
+            elapsed = (datetime.now(UTC) - self.start_time).total_seconds()
             if elapsed < obj.time_limit_seconds:
                 bonus = int(obj.max_points * 0.25)  # 25 % bonus
                 self._bonuses.append(

@@ -3,13 +3,14 @@
 DB-backed CRUD for hypervisor connections (Proxmox, vSphere, Hyper-V),
 node discovery, pool management, and connection testing.
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -20,12 +21,12 @@ from ..models import (
 )
 from ..schemas import (
     HypervisorConnectionIn,
-    HypervisorConnectionUpdate,
     HypervisorConnectionOut,
+    HypervisorConnectionUpdate,
     HypervisorNodeOut,
     HypervisorPoolOut,
-    HypervisorTestResult,
     HypervisorSummaryOut,
+    HypervisorTestResult,
 )
 
 router = APIRouter(prefix="/hypervisors", tags=["Infrastructure"])
@@ -73,7 +74,7 @@ def update_connection(conn_id: uuid.UUID, payload: HypervisorConnectionUpdate, d
         raise HTTPException(404, "Connection not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "password":
-            setattr(conn, "password_encrypted", value)
+            conn.password_encrypted = value
         else:
             setattr(conn, field, value)
     db.commit()
@@ -81,7 +82,7 @@ def update_connection(conn_id: uuid.UUID, payload: HypervisorConnectionUpdate, d
     return conn
 
 
-@router.delete("/connections/{conn_id}", status_code=204)
+@router.delete("/connections/{conn_id}", status_code=204, response_class=Response)
 def delete_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     conn = db.get(HypervisorConnection, str(conn_id))
     if not conn:
@@ -105,6 +106,7 @@ def test_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
         )
     try:
         from proxmoxer import ProxmoxAPI
+
         prox = ProxmoxAPI(
             conn.host,
             user=conn.username,
@@ -167,6 +169,7 @@ def discover_nodes(conn_id: uuid.UUID, db: Session = Depends(get_db)):
         return {"message": f"{conn.hypervisor_type} discovery not yet supported", "nodes_discovered": 0}
     try:
         from proxmoxer import ProxmoxAPI
+
         prox = ProxmoxAPI(
             conn.host,
             user=conn.username,
@@ -183,15 +186,13 @@ def discover_nodes(conn_id: uuid.UUID, db: Session = Depends(get_db)):
             # ── CROSS-CONNECTION DEDUP ──
             # Check if this node already exists under ANY connection
             # (both nodes in a cluster are visible from either connection)
-            existing = db.query(HypervisorNode).filter_by(
-                node_name=node_name
-            ).first()
+            existing = db.query(HypervisorNode).filter_by(node_name=node_name).first()
 
             maxcpu = n.get("maxcpu", 0)
             maxmem_gb = round(n.get("maxmem", 0) / (1024**3), 1)
             mem_used_gb = round(n.get("mem", 0) / (1024**3), 1)
             cpu_pct = round(n.get("cpu", 0) * 100, 1)
-            uptime = n.get("uptime", 0)
+            n.get("uptime", 0)
             status = "online" if n.get("status") == "online" else "offline"
 
             # Resolve real management IP from the node's own network config
@@ -241,7 +242,10 @@ def discover_nodes(conn_id: uuid.UUID, db: Session = Depends(get_db)):
         conn.is_active = True
         conn.last_seen_at = datetime.utcnow()
         db.commit()
-        return {"message": f"Discovered {discovered} new nodes ({len(api_nodes)} total)", "nodes_discovered": discovered}
+        return {
+            "message": f"Discovered {discovered} new nodes ({len(api_nodes)} total)",
+            "nodes_discovered": discovered,
+        }
     except Exception as exc:
         return {"message": f"Discovery failed: {exc}", "nodes_discovered": 0}
 
@@ -262,10 +266,14 @@ def set_primary(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     conn = db.get(HypervisorConnection, str(conn_id))
     if not conn:
         raise HTTPException(404, "Connection not found")
-    others = db.query(HypervisorConnection).filter(
-        HypervisorConnection.hypervisor_type == conn.hypervisor_type,
-        HypervisorConnection.id != str(conn_id),
-    ).all()
+    others = (
+        db.query(HypervisorConnection)
+        .filter(
+            HypervisorConnection.hypervisor_type == conn.hypervisor_type,
+            HypervisorConnection.id != str(conn_id),
+        )
+        .all()
+    )
     for other in others:
         other.is_primary = False
     conn.is_primary = True
@@ -285,7 +293,7 @@ def hypervisor_summary(db: Session = Depends(get_db)):
     # different connections.  Keep only one row per node_name.
     seen: dict[str, HypervisorNode] = {}
     for n in all_nodes:
-        seen[n.node_name] = n          # last-write wins (all rows are updated identically)
+        seen[n.node_name] = n  # last-write wins (all rows are updated identically)
     nodes = list(seen.values())
 
     online = [n for n in nodes if n.status == "online"]

@@ -5,6 +5,7 @@ Simulates network reconnaissance activities:
   - Network discovery (ARP scan)
   - Service enumeration
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,10 +46,7 @@ class NetworkScanInjector(BaseInjector):
     """Inject network scanning simulations into a range exercise."""
 
     name: str = "network_scan"
-    description: str = (
-        "Simulates network reconnaissance: port scanning, ARP discovery, "
-        "and service enumeration."
-    )
+    description: str = "Simulates network reconnaissance: port scanning, ARP discovery, and service enumeration."
     required_params: list[str] = ["scan_type", "target_network"]
 
     _SCAN_TYPES = ("port_scan", "arp_discovery", "service_enum")
@@ -57,9 +55,7 @@ class NetworkScanInjector(BaseInjector):
         for p in self.required_params:
             assert p in self.params, f"Missing required param: {p}"
         scan_type = self.params["scan_type"]
-        assert scan_type in self._SCAN_TYPES, (
-            f"Unknown scan_type '{scan_type}'. Valid: {list(self._SCAN_TYPES)}"
-        )
+        assert scan_type in self._SCAN_TYPES, f"Unknown scan_type '{scan_type}'. Valid: {list(self._SCAN_TYPES)}"
 
     def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         self.validate_params()
@@ -70,14 +66,17 @@ class NetworkScanInjector(BaseInjector):
             "service_enum": self._service_enum,
         }[scan_type]
         result = handler(context)
-        result.update({
-            "injector": self.name,
-            "scan_type": scan_type,
-            "target_network": self.params["target_network"],
-        })
+        result.update(
+            {
+                "injector": self.name,
+                "scan_type": scan_type,
+                "target_network": self.params["target_network"],
+            }
+        )
         logger.info(
             "Network scan '%s' executed against %s",
-            scan_type, self.params["target_network"],
+            scan_type,
+            self.params["target_network"],
         )
         return result
 
@@ -99,12 +98,14 @@ class NetworkScanInjector(BaseInjector):
             roll = random.random()
             if port in _SERVICE_BANNERS and roll < 0.7:
                 svc = _SERVICE_BANNERS[port]
-                open_ports.append({
-                    "port": port,
-                    "state": "open",
-                    "service": svc["service"],
-                    "protocol": "tcp",
-                })
+                open_ports.append(
+                    {
+                        "port": port,
+                        "state": "open",
+                        "service": svc["service"],
+                        "protocol": "tcp",
+                    }
+                )
             elif roll < 0.85:
                 filtered += 1
             else:
@@ -151,13 +152,15 @@ class NetworkScanInjector(BaseInjector):
         for port in ports:
             svc_info = _SERVICE_BANNERS.get(port, {"service": "unknown", "banner": ""})
             version = f"{svc_info['service']}/{random.randint(1, 9)}.{random.randint(0, 9)}"
-            services.append({
-                "port": port,
-                "service": svc_info["service"],
-                "version": version,
-                "banner": svc_info["banner"] or "(no banner)",
-                "cpe": f"cpe:/a:{svc_info['service']}:{svc_info['service']}",
-            })
+            services.append(
+                {
+                    "port": port,
+                    "service": svc_info["service"],
+                    "version": version,
+                    "banner": svc_info["banner"] or "(no banner)",
+                    "cpe": f"cpe:/a:{svc_info['service']}:{svc_info['service']}",
+                }
+            )
 
         return {
             "target_ip": target_ip,

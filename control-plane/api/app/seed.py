@@ -1,19 +1,29 @@
-﻿"""TrueNorth Range -- Seed data for nations, coalitions, auth zones, infrastructure, AI.
+"""TrueNorth Range -- Seed data for nations, coalitions, auth zones, infrastructure, AI.
 
 42 nations (32 NATO + 10 key partners), 5 coalitions, 3 default auth zones,
 2 Proxmox hypervisor connections, 1 Ollama AI backend.
 """
+
 from __future__ import annotations
 
 import logging
 import uuid
+
 from sqlalchemy.orm import Session
 
 from .models import (
-    Nation, Coalition, CoalitionMembership, AuthZonePolicy, Tenant,
-    HypervisorConnection, AIBackendConfig,
-    StorageAppliance, StorageVolume, StorageProtocol,
-    NetworkDevice, NetworkDeviceRole,
+    AIBackendConfig,
+    AuthZonePolicy,
+    Coalition,
+    CoalitionMembership,
+    HypervisorConnection,
+    Nation,
+    NetworkDevice,
+    NetworkDeviceRole,
+    StorageAppliance,
+    StorageProtocol,
+    StorageVolume,
+    Tenant,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,14 +79,14 @@ PARTNER_NATIONS = [
 # fmt: on
 
 COALITIONS = [
-    ("Five Eyes",   "fvey",   "SIGINT alliance: US, UK, CA, AU, NZ"),
-    ("NATO",        "nato",   "North Atlantic Treaty Organization"),
-    ("ABCANZ",      "abcanz", "America, Britain, Canada, Australia, New Zealand Armies Programme"),
-    ("CANZUK",      "canzuk", "Canada, Australia, New Zealand, United Kingdom"),
-    ("Combined Ops","custom", "Custom combined exercise coalition"),
+    ("Five Eyes", "fvey", "SIGINT alliance: US, UK, CA, AU, NZ"),
+    ("NATO", "nato", "North Atlantic Treaty Organization"),
+    ("ABCANZ", "abcanz", "America, Britain, Canada, Australia, New Zealand Armies Programme"),
+    ("CANZUK", "canzuk", "Canada, Australia, New Zealand, United Kingdom"),
+    ("Combined Ops", "custom", "Custom combined exercise coalition"),
 ]
 
-FVEY_CODES  = {"US", "GB", "CA", "AU", "NZ"}
+FVEY_CODES = {"US", "GB", "CA", "AU", "NZ"}
 ABCANZ_CODES = {"US", "GB", "CA", "AU", "NZ"}
 CANZUK_CODES = {"CA", "AU", "NZ", "GB"}
 
@@ -91,8 +101,12 @@ def seed_nations_and_coalitions(db: Session) -> None:
 
     for name, a2, a3, flag, is_nato, is_fvey in all_nations:
         n = Nation(
-            name=name, iso_alpha2=a2, iso_alpha3=a3,
-            flag_emoji=flag, is_nato=is_nato, is_fvey=is_fvey,
+            name=name,
+            iso_alpha2=a2,
+            iso_alpha3=a3,
+            flag_emoji=flag,
+            is_nato=is_nato,
+            is_fvey=is_fvey,
         )
         db.add(n)
         nation_map[a2] = n
@@ -178,22 +192,38 @@ def seed_infrastructure(db: Session) -> None:
         logger.info("Created default dev tenant %s", tenant_id)
 
     # Backfill tenant_id on any existing infra rows
-    updated = db.query(HypervisorConnection).filter(HypervisorConnection.tenant_id.is_(None)).update({HypervisorConnection.tenant_id: tenant_id}, synchronize_session=False)
+    updated = (
+        db.query(HypervisorConnection)
+        .filter(HypervisorConnection.tenant_id.is_(None))
+        .update({HypervisorConnection.tenant_id: tenant_id}, synchronize_session=False)
+    )
     if updated:
         db.commit()
         logger.info("Backfilled tenant_id on %d hypervisor connections", updated)
 
-    updated = db.query(StorageAppliance).filter(StorageAppliance.tenant_id.is_(None)).update({StorageAppliance.tenant_id: tenant_id}, synchronize_session=False)
+    updated = (
+        db.query(StorageAppliance)
+        .filter(StorageAppliance.tenant_id.is_(None))
+        .update({StorageAppliance.tenant_id: tenant_id}, synchronize_session=False)
+    )
     if updated:
         db.commit()
         logger.info("Backfilled tenant_id on %d storage appliances", updated)
 
-    updated = db.query(StorageVolume).filter(StorageVolume.tenant_id.is_(None)).update({StorageVolume.tenant_id: tenant_id}, synchronize_session=False)
+    updated = (
+        db.query(StorageVolume)
+        .filter(StorageVolume.tenant_id.is_(None))
+        .update({StorageVolume.tenant_id: tenant_id}, synchronize_session=False)
+    )
     if updated:
         db.commit()
         logger.info("Backfilled tenant_id on %d storage volumes", updated)
 
-    updated = db.query(NetworkDevice).filter(NetworkDevice.tenant_id.is_(None)).update({NetworkDevice.tenant_id: tenant_id}, synchronize_session=False)
+    updated = (
+        db.query(NetworkDevice)
+        .filter(NetworkDevice.tenant_id.is_(None))
+        .update({NetworkDevice.tenant_id: tenant_id}, synchronize_session=False)
+    )
     if updated:
         db.commit()
         logger.info("Backfilled tenant_id on %d network devices", updated)
@@ -353,9 +383,3 @@ def seed_ai_backends(db: Session) -> None:
         db.add(b)
     db.commit()
     logger.info("Seeded %d AI backend configs", len(backends))
-
-
-
-
-
-

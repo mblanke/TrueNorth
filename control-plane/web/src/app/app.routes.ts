@@ -123,6 +123,24 @@ export const routes: Routes = [
     title: 'Login - TrueNorth Range',
   },
   {
+    path: 'detection-editor',
+    loadComponent: () =>
+      import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
+    title: 'Detection Rule Editor - TrueNorth Range',
+  },
+  {
+    path: 'exercise-forge',
+    loadComponent: () =>
+      import('./features/exercise-forge/exercise-forge.component').then(m => m.ExerciseForgeComponent),
+    title: 'Exercise Forge - TrueNorth Range',
+  },
+  {
+    path: 'ops-center/:exerciseId',
+    loadComponent: () =>
+      import('./features/ops-center/ops-center.component').then(m => m.OpsCenterComponent),
+    title: 'Ops Center - TrueNorth Range',
+  },
+  {
     path: '**',
     redirectTo: 'dashboard',
   },

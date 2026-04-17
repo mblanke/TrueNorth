@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -17,10 +16,9 @@ from scenario_engine.scoring.engine import (
     ScoringEngine,
     ScoringResult,
 )
-from scenario_engine.scoring.grading import GradingCalculator, GradeResult
+from scenario_engine.scoring.grading import GradeResult, GradingCalculator
 from scenario_engine.scoring.leaderboard import Leaderboard
 from scenario_engine.scoring.validators import ScoringValidator
-
 
 # ── Fixtures ────────────────────────────────────────────────
 
@@ -76,7 +74,7 @@ def engine(sample_objectives: list[dict]) -> ScoringEngine:
     return ScoringEngine(
         exercise_id="test-ex-001",
         objectives=sample_objectives,
-        start_time=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        start_time=datetime(2025, 1, 1, tzinfo=UTC),
     )
 
 
@@ -148,9 +146,7 @@ class TestScoringEngine:
 
     @pytest.mark.asyncio
     async def test_evaluate_deliverable_with_real_file(self, sample_objectives):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("Incident Report\n" * 10)
             tmp_path = f.name
 
@@ -240,9 +236,7 @@ class TestGradingCalculator:
         assert penalty == 15
 
     def test_hint_penalty_with_max(self):
-        penalty = GradingCalculator.hint_penalty(
-            hints_used=100, penalty_per_hint=5, max_penalty=20
-        )
+        penalty = GradingCalculator.hint_penalty(hints_used=100, penalty_per_hint=5, max_penalty=20)
         assert penalty == 20
 
     def test_calculate_full_grade(self):
@@ -376,9 +370,7 @@ class TestScoringValidator:
 
     @pytest.mark.asyncio
     async def test_deliverable_valid_file(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write("x" * 200)
             path = f.name
         try:
@@ -393,9 +385,7 @@ class TestScoringValidator:
 
     @pytest.mark.asyncio
     async def test_deliverable_json_validation(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump({"title": "Report", "findings": []}, f)
             path = f.name
         try:
@@ -413,9 +403,7 @@ class TestScoringValidator:
 
     @pytest.mark.asyncio
     async def test_deliverable_json_missing_fields(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump({"title": "Report"}, f)
             path = f.name
         try:
@@ -453,11 +441,7 @@ class TestScoringValidator:
     async def test_firewall_rule(self):
         ok, evidence = await ScoringValidator.validate(
             method="firewall_rule",
-            config={
-                "expected_rules": [
-                    {"port": 443, "protocol": "tcp", "action": "block"}
-                ]
-            },
+            config={"expected_rules": [{"port": 443, "protocol": "tcp", "action": "block"}]},
         )
         # Stub always returns True for now
         assert isinstance(ok, bool)

@@ -5,6 +5,7 @@ Simulates C2 communication patterns for training scenarios:
   - DNS C2 tunnel
   - HTTPS C2 with jitter
 """
+
 from __future__ import annotations
 
 import base64
@@ -25,8 +26,7 @@ class C2BeaconInjector(BaseInjector):
 
     name: str = "c2_beacon"
     description: str = (
-        "Simulates C2 communication patterns: HTTP beaconing, DNS tunnelling, "
-        "and HTTPS C2 with configurable jitter."
+        "Simulates C2 communication patterns: HTTP beaconing, DNS tunnelling, and HTTPS C2 with configurable jitter."
     )
     required_params: list[str] = ["c2_type", "target_host"]
 
@@ -41,9 +41,7 @@ class C2BeaconInjector(BaseInjector):
         for p in self.required_params:
             assert p in self.params, f"Missing required param: {p}"
         c2_type = self.params["c2_type"]
-        assert c2_type in self._C2_TYPES, (
-            f"Unknown c2_type '{c2_type}'. Valid: {list(self._C2_TYPES)}"
-        )
+        assert c2_type in self._C2_TYPES, f"Unknown c2_type '{c2_type}'. Valid: {list(self._C2_TYPES)}"
 
     def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         self.validate_params()
@@ -54,15 +52,18 @@ class C2BeaconInjector(BaseInjector):
             "https_jitter": self._https_jitter,
         }[c2_type]
         result = handler(context)
-        result.update({
-            "injector": self.name,
-            "c2_type": c2_type,
-            "target_host": self.params["target_host"],
-            "technique_id": self._technique_for(c2_type),
-        })
+        result.update(
+            {
+                "injector": self.name,
+                "c2_type": c2_type,
+                "target_host": self.params["target_host"],
+                "technique_id": self._technique_for(c2_type),
+            }
+        )
         logger.info(
             "C2 beacon '%s' simulated from %s",
-            c2_type, self.params["target_host"],
+            c2_type,
+            self.params["target_host"],
         )
         return result
 
@@ -85,9 +86,7 @@ class C2BeaconInjector(BaseInjector):
         num_callbacks = int(self.params.get("num_callbacks", 10))
         sleep_jitter = float(self.params.get("jitter_pct", 0.0))
 
-        beacon_id = hashlib.sha256(
-            f"{self.params['target_host']}:{random.random()}".encode()
-        ).hexdigest()[:16]
+        beacon_id = hashlib.sha256(f"{self.params['target_host']}:{random.random()}".encode()).hexdigest()[:16]
 
         callbacks: list[dict[str, Any]] = []
         ts = time.time()
@@ -97,26 +96,34 @@ class C2BeaconInjector(BaseInjector):
             ts += actual_interval
 
             # Simulate different HTTP methods / URIs
-            uri = random.choice([
-                "/api/v1/status", "/updates/check", "/content/load",
-                "/__utm.gif", "/pixel.png", "/jquery-3.6.0.min.js",
-            ])
+            uri = random.choice(
+                [
+                    "/api/v1/status",
+                    "/updates/check",
+                    "/content/load",
+                    "/__utm.gif",
+                    "/pixel.png",
+                    "/jquery-3.6.0.min.js",
+                ]
+            )
             method = random.choice(["GET", "GET", "GET", "POST"])
             response_code = random.choices([200, 204, 302], weights=[85, 10, 5])[0]
 
             payload_size = random.randint(64, 4096) if method == "POST" else 0
             response_size = random.randint(128, 8192)
 
-            callbacks.append({
-                "seq": i + 1,
-                "timestamp_epoch": round(ts, 2),
-                "method": method,
-                "uri": uri,
-                "status": response_code,
-                "request_bytes": payload_size,
-                "response_bytes": response_size,
-                "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) rv:109.0",
-            })
+            callbacks.append(
+                {
+                    "seq": i + 1,
+                    "timestamp_epoch": round(ts, 2),
+                    "method": method,
+                    "uri": uri,
+                    "status": response_code,
+                    "request_bytes": payload_size,
+                    "response_bytes": response_size,
+                    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) rv:109.0",
+                }
+            )
 
         return {
             "c2_server": c2_server,
@@ -137,20 +144,22 @@ class C2BeaconInjector(BaseInjector):
         # Encode data into DNS-safe subdomains
         encoded = base64.b32encode(data_to_exfil.encode()).decode().lower().rstrip("=")
         chunk_size = 63  # Max DNS label length
-        chunks = [encoded[i:i + chunk_size] for i in range(0, len(encoded), chunk_size)]
+        chunks = [encoded[i : i + chunk_size] for i in range(0, len(encoded), chunk_size)]
 
         queries: list[dict[str, Any]] = []
         for i in range(num_queries):
             chunk = chunks[i % len(chunks)] if chunks else "ping"
             query_type = random.choice(["TXT", "CNAME", "A", "MX"])
             fqdn = f"{chunk}.{c2_domain}"
-            queries.append({
-                "seq": i + 1,
-                "query_type": query_type,
-                "fqdn": fqdn,
-                "response": self._fake_dns_response(query_type),
-                "data_bytes": len(chunk),
-            })
+            queries.append(
+                {
+                    "seq": i + 1,
+                    "query_type": query_type,
+                    "fqdn": fqdn,
+                    "response": self._fake_dns_response(query_type),
+                    "data_bytes": len(chunk),
+                }
+            )
 
         total_data = sum(q["data_bytes"] for q in queries)
         return {
@@ -169,13 +178,11 @@ class C2BeaconInjector(BaseInjector):
         jitter_pct = float(self.params.get("jitter_pct", 0.40))
         num_callbacks = int(self.params.get("num_callbacks", 15))
 
-        beacon_id = hashlib.sha256(
-            f"{self.params['target_host']}:https:{random.random()}".encode()
-        ).hexdigest()[:16]
+        beacon_id = hashlib.sha256(f"{self.params['target_host']}:https:{random.random()}".encode()).hexdigest()[:16]
 
         # TLS fingerprint simulation (JA3)
         ja3_hash = hashlib.md5(
-            f"771,4865-4866-4867-49195-49199,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0".encode()
+            b"771,4865-4866-4867-49195-49199,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0"
         ).hexdigest()
 
         callbacks: list[dict[str, Any]] = []
@@ -187,31 +194,35 @@ class C2BeaconInjector(BaseInjector):
             ts += actual_interval
 
             # Vary URIs to look like CDN/API traffic
-            uri = random.choice([
-                "/api/v2/config", "/cdn/assets/main.js", "/telemetry/collect",
-                "/health", "/static/fonts/roboto.woff2", "/media/thumb_placeholder.jpg",
-            ])
+            uri = random.choice(
+                [
+                    "/api/v2/config",
+                    "/cdn/assets/main.js",
+                    "/telemetry/collect",
+                    "/health",
+                    "/static/fonts/roboto.woff2",
+                    "/media/thumb_placeholder.jpg",
+                ]
+            )
 
-            encrypted_payload = base64.b64encode(
-                f"task_response_{i}:{random.random()}".encode()
-            ).decode()
+            encrypted_payload = base64.b64encode(f"task_response_{i}:{random.random()}".encode()).decode()
 
-            callbacks.append({
-                "seq": i + 1,
-                "timestamp_epoch": round(ts, 2),
-                "actual_interval_s": round(actual_interval, 1),
-                "uri": uri,
-                "tls_version": "TLSv1.3",
-                "ja3_hash": ja3_hash,
-                "encrypted_payload_b64": encrypted_payload[:32] + "...",
-                "response_bytes": random.randint(256, 16384),
-            })
+            callbacks.append(
+                {
+                    "seq": i + 1,
+                    "timestamp_epoch": round(ts, 2),
+                    "actual_interval_s": round(actual_interval, 1),
+                    "uri": uri,
+                    "tls_version": "TLSv1.3",
+                    "ja3_hash": ja3_hash,
+                    "encrypted_payload_b64": encrypted_payload[:32] + "...",
+                    "response_bytes": random.randint(256, 16384),
+                }
+            )
 
         intervals = [c["actual_interval_s"] for c in callbacks]
         avg_interval = sum(intervals) / len(intervals) if intervals else 0
-        std_dev = math.sqrt(
-            sum((x - avg_interval) ** 2 for x in intervals) / len(intervals)
-        ) if intervals else 0
+        std_dev = math.sqrt(sum((x - avg_interval) ** 2 for x in intervals) / len(intervals)) if intervals else 0
 
         return {
             "c2_server": c2_server,

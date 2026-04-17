@@ -3,15 +3,16 @@
 Provides CRUD for courses (with ordered modules), user enrollments,
 progress tracking, learning paths, and unified transcript generation.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth import CurrentUser, get_current_user
@@ -26,8 +27,6 @@ from ..models import (
     LearningPath,
     ModuleContentType,
     ModuleProgress,
-    ModuleProgressStatus,
-    User,
 )
 from ..schemas import (
     CourseIn,
@@ -107,7 +106,7 @@ def list_courses(
     """List courses with optional filters."""
     q = db.query(Course)
     if published_only:
-        q = q.filter(Course.is_published == True)
+        q = q.filter(Course.is_published)
     if difficulty:
         q = q.filter(Course.difficulty == difficulty)
     total = q.count()
@@ -122,12 +121,7 @@ def get_course(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Get a single course with its modules."""
-    course = (
-        db.query(Course)
-        .options(joinedload(Course.modules))
-        .filter(Course.id == course_id)
-        .first()
-    )
+    course = db.query(Course).options(joinedload(Course.modules)).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
     return course
@@ -156,7 +150,7 @@ def update_course(
     return course
 
 
-@router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{course_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 def delete_course(
     course_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -189,9 +183,7 @@ def enroll_user(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
     # Check for existing enrollment
     existing = (
-        db.query(Enrollment)
-        .filter(Enrollment.user_id == body.user_id, Enrollment.course_id == course_id)
-        .first()
+        db.query(Enrollment).filter(Enrollment.user_id == body.user_id, Enrollment.course_id == course_id).first()
     )
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "User already enrolled in this course")
@@ -226,12 +218,7 @@ def list_enrollments(
     user: CurrentUser = Depends(get_current_user),
 ):
     """List all enrollments for a course."""
-    return (
-        db.query(Enrollment)
-        .filter(Enrollment.course_id == course_id)
-        .order_by(Enrollment.enrolled_at.desc())
-        .all()
-    )
+    return db.query(Enrollment).filter(Enrollment.course_id == course_id).order_by(Enrollment.enrolled_at.desc()).all()
 
 
 @router.get("/{course_id}/progress/{user_id}", response_model=list[ModuleProgressOut])
@@ -242,18 +229,10 @@ def get_user_progress(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Get per-module progress for a user in a course."""
-    enrollment = (
-        db.query(Enrollment)
-        .filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id)
-        .first()
-    )
+    enrollment = db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id).first()
     if not enrollment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
-    return (
-        db.query(ModuleProgress)
-        .filter(ModuleProgress.enrollment_id == enrollment.id)
-        .all()
-    )
+    return db.query(ModuleProgress).filter(ModuleProgress.enrollment_id == enrollment.id).all()
 
 
 @router.post("/{course_id}/complete/{user_id}", response_model=EnrollmentOut)
@@ -264,20 +243,12 @@ def complete_course(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Mark a course enrollment as completed and calculate final grade."""
-    enrollment = (
-        db.query(Enrollment)
-        .filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id)
-        .first()
-    )
+    enrollment = db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id).first()
     if not enrollment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
 
     # Calculate final score from module progress
-    progress_rows = (
-        db.query(ModuleProgress)
-        .filter(ModuleProgress.enrollment_id == enrollment.id)
-        .all()
-    )
+    progress_rows = db.query(ModuleProgress).filter(ModuleProgress.enrollment_id == enrollment.id).all()
     total_score = sum(p.score for p in progress_rows)
     max_score = sum(p.max_score for p in progress_rows) or 1
     pct = (total_score / max_score) * 100
@@ -295,7 +266,7 @@ def complete_course(
         grade = "F"
 
     enrollment.status = EnrollmentStatus.completed
-    enrollment.completed_at = datetime.now(timezone.utc)
+    enrollment.completed_at = datetime.now(UTC)
     enrollment.final_score = total_score
     enrollment.max_score = max_score
     enrollment.final_grade = grade
@@ -372,49 +343,54 @@ def get_transcript(
     entries: list[TranscriptEntry] = []
 
     # 1. TrueNorth exercises
-    exercises = db.query(Exercise).filter(
-        Exercise.tenant_id == user.tenant_id
-    ).all()
+    exercises = db.query(Exercise).filter(Exercise.tenant_id == user.tenant_id).all()
     for ex in exercises:
-        entries.append(TranscriptEntry(
-            source="truenorth",
-            activity_type="exercise",
-            title=ex.name,
-            score=ex.total_score,
-            max_score=ex.max_score,
-            completed_at=ex.completed_at,
-        ))
+        entries.append(
+            TranscriptEntry(
+                source="truenorth",
+                activity_type="exercise",
+                title=ex.name,
+                score=ex.total_score,
+                max_score=ex.max_score,
+                completed_at=ex.completed_at,
+            )
+        )
 
     # 2. Course enrollments
     enrollments = db.query(Enrollment).filter(Enrollment.user_id == user_id).all()
     for enr in enrollments:
         course = db.query(Course).filter(Course.id == enr.course_id).first()
         if course:
-            entries.append(TranscriptEntry(
-                source="truenorth",
-                activity_type="course",
-                title=course.name,
-                score=enr.final_score,
-                max_score=enr.max_score,
-                grade=enr.final_grade,
-                completed_at=enr.completed_at,
-            ))
+            entries.append(
+                TranscriptEntry(
+                    source="truenorth",
+                    activity_type="course",
+                    title=course.name,
+                    score=enr.final_score,
+                    max_score=enr.max_score,
+                    grade=enr.final_grade,
+                    completed_at=enr.completed_at,
+                )
+            )
 
     # 3. External activities
     ext_activities = db.query(ExternalActivity).filter(ExternalActivity.user_id == user_id).all()
     for ea in ext_activities:
-        entries.append(TranscriptEntry(
-            source=ea.activity_type,
-            activity_type=ea.activity_type,
-            title=ea.title,
-            score=ea.score,
-            max_score=ea.max_score,
-            completed_at=ea.completed_at,
-        ))
+        entries.append(
+            TranscriptEntry(
+                source=ea.activity_type,
+                activity_type=ea.activity_type,
+                title=ea.title,
+                score=ea.score,
+                max_score=ea.max_score,
+                completed_at=ea.completed_at,
+            )
+        )
 
     # 4. Certifications
     from ..models import Certification
     from ..schemas import CertificationOut
+
     certs = db.query(Certification).filter(Certification.user_id == user_id).all()
     cert_outs = [CertificationOut.model_validate(c) for c in certs]
 

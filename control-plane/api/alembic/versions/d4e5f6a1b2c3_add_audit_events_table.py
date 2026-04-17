@@ -4,19 +4,22 @@ Revision ID: d4e5f6a1b2c3
 Revises: c3d4e5f6a1b2
 Create Date: 2026-02-26 06:03:00.000000
 """
-from typing import Sequence, Union
 
-from alembic import op
+import os
+import sys
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 
-import sys, os
+from alembic import op
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from app.models import GUID
 
 revision: str = "d4e5f6a1b2c3"
-down_revision: Union[str, None] = "c3d4e5f6a1b2"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "c3d4e5f6a1b2"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -32,7 +35,9 @@ def upgrade() -> None:
         sa.Column("details_json", sa.Text(), nullable=True),
         sa.Column("ip_address", sa.String(length=45), nullable=True),
         sa.Column("user_agent", sa.String(length=200), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("(CURRENT_TIMESTAMP)"), nullable=False
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_audit_events_tenant_created", "audit_events", ["tenant_id", sa.text("created_at DESC")])

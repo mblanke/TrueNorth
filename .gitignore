@@ -26,3 +26,11 @@ Thumbs.db
 *.bak
 *.db
 test_results.txt
+test-out*.txt
+test-output.txt
+pytest-out*.txt
+.angular/cache/
+
+# SSL / secrets
+infra/platform/docker/ssl/*.crt
+infra/platform/docker/ssl/*.key

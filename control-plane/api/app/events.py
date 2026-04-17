@@ -5,13 +5,16 @@ Backed by Redis pub/sub for multi-instance support.
 """
 
 from __future__ import annotations
+
 import asyncio
+import contextlib
 import json
 import logging
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Callable, Awaitable
-from dataclasses import dataclass, field, asdict
+from typing import Any
 from uuid import uuid4
 
 logger = logging.getLogger("truenorth.events")
@@ -68,9 +71,7 @@ class Event:
     type: EventType
     data: dict
     id: str = field(default_factory=lambda: str(uuid4()))
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     source: str = "api"
     tenant_id: str | None = None
     user_id: str | None = None
@@ -83,7 +84,7 @@ class Event:
         return d
 
     @classmethod
-    def from_dict(cls, raw: dict) -> "Event":
+    def from_dict(cls, raw: dict) -> Event:
         """Deserialise an event from a dictionary."""
         raw = dict(raw)  # shallow copy
         raw["type"] = EventType(raw["type"])
@@ -154,9 +155,7 @@ class EventBus:
 
     async def _dispatch_local(self, event: Event) -> None:
         """Call all matching local handlers, catching per-handler errors."""
-        handlers = list(self._global_handlers) + list(
-            self._handlers.get(event.type, [])
-        )
+        handlers = list(self._global_handlers) + list(self._handlers.get(event.type, []))
         for handler in handlers:
             try:
                 await handler(event)
@@ -214,15 +213,11 @@ class EventBus:
             try:
                 import redis.asyncio as aioredis
 
-                self._redis = aioredis.from_url(
-                    self._redis_url, decode_responses=True
-                )
+                self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
                 self._listener_task = asyncio.create_task(self._subscribe_redis())
                 logger.info("Event bus started with Redis at %s", self._redis_url)
             except ImportError:
-                logger.warning(
-                    "redis package not installed; running in local-only mode"
-                )
+                logger.warning("redis package not installed; running in local-only mode")
             except Exception:
                 logger.exception("Could not connect to Redis; local-only mode")
         else:
@@ -233,10 +228,8 @@ class EventBus:
         self._running = False
         if self._listener_task and not self._listener_task.done():
             self._listener_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._listener_task
-            except asyncio.CancelledError:
-                pass
         if self._pubsub:
             await self._pubsub.unsubscribe(REDIS_CHANNEL)
         if self._redis:
@@ -338,13 +331,21 @@ async def xapi_handler(event: Event) -> None:
             )
         elif event.type == EventType.USER_LOGIN:
             stmt = xapi.build_statement(
-                "experienced", user_email, user_name,
-                "session", data.get("session_id", ""), "User Login",
+                "experienced",
+                user_email,
+                user_name,
+                "session",
+                data.get("session_id", ""),
+                "User Login",
             )
         elif event.type == EventType.USER_LOGOUT:
             stmt = xapi.build_statement(
-                "terminated", user_email, user_name,
-                "session", data.get("session_id", ""), "User Logout",
+                "terminated",
+                user_email,
+                user_name,
+                "session",
+                data.get("session_id", ""),
+                "User Logout",
             )
 
         if stmt:

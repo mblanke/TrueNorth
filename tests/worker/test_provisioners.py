@@ -1,4 +1,5 @@
 """Tests for TrueNorth Range provisioner backends."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,10 +12,10 @@ os.environ["MOCK_PROVISION_DELAY"] = "0"
 os.environ["MOCK_FAILURE_RATE"] = "0"
 
 import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "control-plane", "worker"))
 
-from worker.provisioners import get_provisioner, MockProvisioner, TerraformProvisioner
-from worker.provisioners.mock import MockProvisioner as _MockDirect
+from worker.provisioners import MockProvisioner, TerraformProvisioner, get_provisioner
 from worker.provisioners.results import (
     DestroyResult,
     HealthResult,
@@ -27,12 +28,13 @@ from worker.provisioners.results import (
 
 def _run(coro):
     """Helper to run an async coroutine in tests."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # -----------------------------------------------------------------------
 # Fixtures
 # -----------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_provisioner() -> MockProvisioner:
@@ -60,6 +62,7 @@ def sample_allocations() -> dict:
 # -----------------------------------------------------------------------
 # Tests
 # -----------------------------------------------------------------------
+
 
 class TestMockProvisioner:
     def test_mock_provision_returns_vms(self, mock_provisioner, sample_template, sample_allocations):

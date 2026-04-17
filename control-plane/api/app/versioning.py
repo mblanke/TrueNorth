@@ -10,17 +10,17 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
 
 # -- Version Enum ---------------------------------------------------------
 
+
 class APIVersion(str, Enum):
     """Supported API versions."""
+
     V1 = "v1"
     V2 = "v2"
 
@@ -37,6 +37,7 @@ _DEPRECATION_SUNSET = "2027-01-01T00:00:00Z"
 
 
 # -- Middleware ------------------------------------------------------------
+
 
 class VersionMiddleware(BaseHTTPMiddleware):
     """Adds ``X-API-Version`` header to responses and warns on deprecated versions.
@@ -56,8 +57,7 @@ class VersionMiddleware(BaseHTTPMiddleware):
                 status_code=400,
                 content={
                     "detail": (
-                        f"Unsupported API version: {version}. "
-                        f"Supported: {sorted(v.value for v in SUPPORTED_VERSIONS)}"
+                        f"Unsupported API version: {version}. Supported: {sorted(v.value for v in SUPPORTED_VERSIONS)}"
                     ),
                 },
             )
@@ -76,16 +76,14 @@ class VersionMiddleware(BaseHTTPMiddleware):
         if resolved in DEPRECATED_VERSIONS:
             response.headers["Deprecation"] = "true"
             response.headers["Sunset"] = _DEPRECATION_SUNSET
-            response.headers["Link"] = (
-                f'</api/{LATEST_VERSION.value}/>; rel="successor-version"'
-            )
+            response.headers["Link"] = f'</api/{LATEST_VERSION.value}/>; rel="successor-version"'
 
         return response
 
     # -- helpers -----------------------------------------------------------
 
     @staticmethod
-    def _detect_version(request: Request) -> Optional[APIVersion]:
+    def _detect_version(request: Request) -> APIVersion | None:
         """Return detected version or ``None`` (caller applies default)."""
         # 1. URL prefix
         match = _VERSION_URL_RE.match(request.url.path)
@@ -102,7 +100,7 @@ class VersionMiddleware(BaseHTTPMiddleware):
         return None
 
 
-def _parse_version(raw: str) -> Optional[APIVersion]:
+def _parse_version(raw: str) -> APIVersion | None:
     """Safely convert raw string to :class:`APIVersion`."""
     try:
         return APIVersion(raw)
@@ -111,6 +109,7 @@ def _parse_version(raw: str) -> Optional[APIVersion]:
 
 
 # -- Versioned Router Factory ----------------------------------------------
+
 
 def create_versioned_app() -> dict[APIVersion, APIRouter]:
     """Create versioned routers.
@@ -136,7 +135,10 @@ def create_versioned_app() -> dict[APIVersion, APIRouter]:
     @v2_router.get("/ranges", summary="List ranges (v2)")
     async def list_ranges_v2():
         return V1toV2Adapter.adapt_list_response(
-            items=[], total=0, page=1, page_size=20,
+            items=[],
+            total=0,
+            page=1,
+            page_size=20,
         )
 
     return {
@@ -146,6 +148,7 @@ def create_versioned_app() -> dict[APIVersion, APIRouter]:
 
 
 # -- Migration Adapters ----------------------------------------------------
+
 
 class V1toV2Adapter:
     """Adapter for migrating v1 response formats to v2.

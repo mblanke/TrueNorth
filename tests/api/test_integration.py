@@ -1,58 +1,70 @@
 """End-to-end API integration tests for TrueNorth Range."""
+
 import uuid
-
-import pytest
-
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
+
 def _make_template(client):
     """Create and return a template via the API."""
-    resp = client.post("/templates", json={
-        "name": f"tmpl-{uuid.uuid4().hex[:8]}",
-        "version": "1.0",
-        "yaml": "id: test\nnodes:\n  - name: dc1",
-        "is_public": True,
-    })
+    resp = client.post(
+        "/templates",
+        json={
+            "name": f"tmpl-{uuid.uuid4().hex[:8]}",
+            "version": "1.0",
+            "yaml": "id: test\nnodes:\n  - name: dc1",
+            "is_public": True,
+        },
+    )
     assert resp.status_code == 201
     return resp.json()
 
 
 def _make_scenario(client):
     """Create and return a scenario via the API."""
-    resp = client.post("/scenarios", json={
-        "name": f"sc-{uuid.uuid4().hex[:8]}",
-        "version": "1.0",
-        "yaml": "name: test\nphases:\n  - init",
-        "is_public": True,
-    })
+    resp = client.post(
+        "/scenarios",
+        json={
+            "name": f"sc-{uuid.uuid4().hex[:8]}",
+            "version": "1.0",
+            "yaml": "name: test\nphases:\n  - init",
+            "is_public": True,
+        },
+    )
     assert resp.status_code == 201
     return resp.json()
 
 
 def _make_range(client, template_id):
     """Create and return a range via the API."""
-    resp = client.post("/ranges", json={
-        "name": f"range-{uuid.uuid4().hex[:8]}",
-        "template_id": str(template_id),
-    })
+    resp = client.post(
+        "/ranges",
+        json={
+            "name": f"range-{uuid.uuid4().hex[:8]}",
+            "template_id": str(template_id),
+        },
+    )
     assert resp.status_code == 201
     return resp.json()
 
 
 def _make_exercise(client, range_id, scenario_id, max_score=100):
     """Create and return an exercise via the API."""
-    resp = client.post("/exercises", json={
-        "name": f"ex-{uuid.uuid4().hex[:8]}",
-        "range_id": str(range_id),
-        "scenario_id": str(scenario_id),
-        "max_score": max_score,
-    })
+    resp = client.post(
+        "/exercises",
+        json={
+            "name": f"ex-{uuid.uuid4().hex[:8]}",
+            "range_id": str(range_id),
+            "scenario_id": str(scenario_id),
+            "max_score": max_score,
+        },
+    )
     assert resp.status_code == 201
     return resp.json()
 
 
 # ── Range Lifecycle ────────────────────────────────────────────────────
+
 
 class TestRangeLifecycle:
     def test_full_lifecycle(self, client, db_session):
@@ -102,6 +114,7 @@ class TestRangeLifecycle:
 
 # ── Multi-Tenant Isolation ─────────────────────────────────────────────
 
+
 class TestMultiTenantIsolation:
     def test_tenant_ranges_isolated(self, client, db_session):
         """Ranges owned by another tenant must not appear in listings."""
@@ -143,6 +156,7 @@ class TestMultiTenantIsolation:
 
 # ── Exercise Workflow ──────────────────────────────────────────────────
 
+
 class TestExerciseWorkflow:
     def test_exercise_state_machine(self, client):
         """pending -> running -> paused -> (start blocked) -> completed."""
@@ -171,14 +185,16 @@ class TestExerciseWorkflow:
         rng = _make_range(client, tmpl["id"])
         ex = _make_exercise(client, rng["id"], sc["id"])
         for i in range(3):
-            db_session.add(Objective(
-                exercise_id=uuid.UUID(ex["id"]),
-                ref_id=f"obj-{i}",
-                objective_type=ObjectiveType.detection,
-                description=f"Detect threat #{i}",
-                validator="manual",
-                points=50,
-            ))
+            db_session.add(
+                Objective(
+                    exercise_id=uuid.UUID(ex["id"]),
+                    ref_id=f"obj-{i}",
+                    objective_type=ObjectiveType.detection,
+                    description=f"Detect threat #{i}",
+                    validator="manual",
+                    points=50,
+                )
+            )
         db_session.commit()
         resp = client.get(f"/exercises/{ex['id']}/objectives")
         assert resp.status_code == 200
@@ -192,15 +208,17 @@ class TestExerciseWorkflow:
         sc = _make_scenario(client)
         rng = _make_range(client, tmpl["id"])
         ex = _make_exercise(client, rng["id"], sc["id"], max_score=100)
-        db_session.add(Objective(
-            exercise_id=uuid.UUID(ex["id"]),
-            ref_id="obj-a",
-            objective_type=ObjectiveType.detection,
-            description="Detect C2 callback",
-            validator="manual",
-            points=60,
-            achieved=True,
-        ))
+        db_session.add(
+            Objective(
+                exercise_id=uuid.UUID(ex["id"]),
+                ref_id="obj-a",
+                objective_type=ObjectiveType.detection,
+                description="Detect C2 callback",
+                validator="manual",
+                points=60,
+                achieved=True,
+            )
+        )
         db_session.commit()
         client.post(f"/exercises/{ex['id']}/start")
         client.post(f"/exercises/{ex['id']}/complete")
@@ -214,12 +232,17 @@ class TestExerciseWorkflow:
 
 # ── Error Handling ─────────────────────────────────────────────────────
 
+
 class TestErrorHandling:
     def test_create_range_invalid_template(self, client):
         """Creating a range with a non-existent template returns 404."""
-        resp = client.post("/ranges", json={
-            "name": "Bad", "template_id": str(uuid.uuid4()),
-        })
+        resp = client.post(
+            "/ranges",
+            json={
+                "name": "Bad",
+                "template_id": str(uuid.uuid4()),
+            },
+        )
         assert resp.status_code == 404
 
     def test_provision_non_existent_range(self, client):
@@ -236,21 +259,28 @@ class TestErrorHandling:
         """Duplicate range_ids in batch payload are handled."""
         tmpl = _make_template(client)
         rng = _make_range(client, tmpl["id"])
-        resp = client.post("/ranges/batch-provision", json={
-            "range_ids": [rng["id"], rng["id"]],
-        })
+        resp = client.post(
+            "/ranges/batch-provision",
+            json={
+                "range_ids": [rng["id"], rng["id"]],
+            },
+        )
         assert resp.status_code in (202, 400, 409, 500)
 
     def test_large_payload_rejection(self, client):
         """Oversized name triggers Pydantic validation (max_length=255)."""
-        resp = client.post("/ranges", json={
-            "name": "x" * 100_000,
-            "template_id": str(uuid.uuid4()),
-        })
+        resp = client.post(
+            "/ranges",
+            json={
+                "name": "x" * 100_000,
+                "template_id": str(uuid.uuid4()),
+            },
+        )
         assert resp.status_code in (413, 422)
 
 
 # ── Audit Log ──────────────────────────────────────────────────────────
+
 
 class TestAuditLog:
     def test_audit_log_records_operations(self, client):

@@ -3,11 +3,7 @@
   "title": "Range Template",
   "type": "object",
   "required": [
-    "name",
-    "version",
-    "inputs",
-    "assets",
-    "policies"
+    "name"
   ],
   "properties": {
     "name": {
@@ -74,6 +70,15 @@
           "type": "string"
         }
       }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "network": {
+      "type": "object"
     }
   }
 }

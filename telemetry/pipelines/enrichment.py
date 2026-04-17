@@ -6,11 +6,13 @@ dict in-place and return it.  They can be composed into a pipeline::
     from telemetry.pipelines.enrichment import enrich_event
     event = enrich_event(event, user_cache=cache, range_cache=cache)
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("telemetry.enrichment")
 
@@ -211,7 +213,7 @@ def normalise_timestamp(event: dict[str, Any]) -> dict[str, Any]:
         if isinstance(raw, str):
             try:
                 dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-                event["@timestamp"] = dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+                event["@timestamp"] = dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
                 return event
             except ValueError:
                 pass
@@ -219,12 +221,12 @@ def normalise_timestamp(event: dict[str, Any]) -> dict[str, Any]:
         if isinstance(raw, (int, float)):
             if raw > 1e12:
                 raw = raw / 1000.0
-            dt = datetime.fromtimestamp(raw, tz=timezone.utc)
+            dt = datetime.fromtimestamp(raw, tz=UTC)
             event["@timestamp"] = dt.isoformat().replace("+00:00", "Z")
             return event
 
     # Fallback — inject current UTC time
-    event["@timestamp"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    event["@timestamp"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     return event
 
 

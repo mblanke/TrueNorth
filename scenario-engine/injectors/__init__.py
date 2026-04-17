@@ -1,6 +1,8 @@
-﻿"""TrueNorth Range — Injector base class and registry."""
+"""TrueNorth Range — Injector base class and registry."""
+
 from __future__ import annotations
 
+import contextlib
 import importlib
 import logging
 from abc import ABC, abstractmethod
@@ -12,6 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RangeContext:
     """Context about the range an inject is targeting."""
+
     range_id: str
     tenant_id: str
     vms: list[dict]  # [{"name": ..., "ip": ..., "role": ...}]
@@ -22,6 +25,7 @@ class RangeContext:
 @dataclass
 class InjectResult:
     """Result of an inject execution."""
+
     success: bool
     action: str
     detail: str = ""
@@ -69,15 +73,13 @@ def list_injectors() -> list[str]:
 def _auto_discover():
     """Import all injector modules to trigger registration."""
     import pathlib
+
     pkg_dir = pathlib.Path(__file__).parent
     for f in pkg_dir.glob("*.py"):
         if f.name.startswith("_"):
             continue
-        module_name = f"scenario-engine.injectors.{f.stem}"
-        try:
+        with contextlib.suppress(Exception):
             importlib.import_module(f".{f.stem}", package="scenario-engine.injectors")
-        except Exception:
-            pass
 
 
 _auto_discover()

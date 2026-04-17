@@ -2,6 +2,7 @@
 TrueNorth Range — Security Hardening Middleware
 ================================================
 Comprehensive FastAPI middleware providing:
+  - CSRF protection (double-submit cookie)
   - Sliding-window rate limiting (Redis ZSET)
   - Security headers
   - Request-ID propagation
@@ -11,14 +12,17 @@ Comprehensive FastAPI middleware providing:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
 import re
+import secrets
 import time
 import uuid
 from contextvars import ContextVar
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -43,17 +47,97 @@ _UUID_RE = re.compile(
 )
 
 # =========================================================================
+# 0. CSRF PROTECTION (double-submit cookie)
+# =========================================================================
+
+_CSRF_COOKIE = "truenorth_csrf"
+_CSRF_HEADER = "x-csrf-token"
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+_CSRF_SECRET = os.getenv("CSRF_SECRET", secrets.token_hex(32))
+_CSRF_TOKEN_TTL = 86400  # 1 day
+
+
+def _generate_csrf_token() -> str:
+    """Generate a signed CSRF token: payload.signature."""
+    payload = secrets.token_hex(16)
+    sig = hmac.new(_CSRF_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    return f"{payload}.{sig}"
+
+
+def _verify_csrf_token(token: str) -> bool:
+    """Verify the CSRF token signature is valid."""
+    parts = token.split(".", 1)
+    if len(parts) != 2:
+        return False
+    payload, sig = parts
+    expected = hmac.new(_CSRF_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    return hmac.compare_digest(sig, expected)
+
+
+class CsrfMiddleware(BaseHTTPMiddleware):
+    """Double-submit cookie CSRF protection.
+
+    On every response, sets a ``truenorth_csrf`` cookie with a signed token.
+    On state-changing requests (POST/PUT/PATCH/DELETE), the ``X-CSRF-Token``
+    header must match the cookie value.  Skipped when ``AUTH_DISABLED=true``.
+    """
+
+    def __init__(self, app: ASGIApp, enabled: bool = True) -> None:
+        super().__init__(app)
+        self.enabled = enabled
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if not self.enabled:
+            return await call_next(request)
+
+        method = request.method
+
+        # Validate on mutating methods
+        if method not in _CSRF_SAFE_METHODS:
+            cookie_token = request.cookies.get(_CSRF_COOKIE, "")
+            header_token = request.headers.get(_CSRF_HEADER, "")
+
+            if (
+                not cookie_token
+                or not header_token
+                or not hmac.compare_digest(cookie_token, header_token)
+                or not _verify_csrf_token(header_token)
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "CSRF token missing or invalid"},
+                )
+
+        response = await call_next(request)
+
+        # Always set / refresh the CSRF cookie so the frontend can read it
+        if _CSRF_COOKIE not in request.cookies or method in _CSRF_SAFE_METHODS:
+            token = _generate_csrf_token()
+            response.set_cookie(
+                key=_CSRF_COOKIE,
+                value=token,
+                max_age=_CSRF_TOKEN_TTL,
+                httponly=False,  # JS must read it to send in header
+                samesite="strict",
+                secure=request.url.scheme == "https",
+                path="/",
+            )
+
+        return response
+
+
+# =========================================================================
 # 1. RATE LIMITING (Redis sliding-window via ZSET)
 # =========================================================================
 
 # Per-route overrides: (method, path_prefix) -> requests/min
-_DEFAULT_ROUTE_LIMITS: Dict[Tuple[str, str], int] = {
+_DEFAULT_ROUTE_LIMITS: dict[tuple[str, str], int] = {
     ("POST", "/ranges/batch-provision"): 5,
     ("POST", "/ranges"): 30,
-    ("GET", ""): 200,          # all GET endpoints
+    ("GET", ""): 200,  # all GET endpoints
 }
 
-_UNLIMITED_PATHS: List[str] = ["/health"]
+_UNLIMITED_PATHS: list[str] = ["/health"]
 
 
 def _match_route_limit(method: str, path: str, default: int) -> int:
@@ -90,14 +174,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if tenant:
             return f"rl:tenant:{tenant}"
         forwarded = request.headers.get("x-forwarded-for")
-        ip = forwarded.split(",")[0].strip() if forwarded else (
-            request.client.host if request.client else "unknown"
-        )
+        ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
         return f"rl:ip:{ip}"
 
-    async def _check_rate_limit(
-        self, key: str, limit: int, now: float
-    ) -> Tuple[bool, int, int]:
+    async def _check_rate_limit(self, key: str, limit: int, now: float) -> tuple[bool, int, int]:
         """
         Returns (allowed, remaining, reset_epoch).
         Uses a sorted-set with score = request timestamp.
@@ -123,9 +203,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     # ----- dispatch ---------------------------------------------------------
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if not self.enabled or self.redis is None:
             return await call_next(request)
 
@@ -141,9 +219,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.time()
 
         try:
-            allowed, remaining, reset_at = await self._check_rate_limit(
-                key, limit, now
-            )
+            allowed, remaining, reset_at = await self._check_rate_limit(key, limit, now)
         except Exception:
             # Redis down → degrade gracefully, allow the request
             logger.warning("Rate-limiter Redis error; allowing request", exc_info=True)
@@ -176,6 +252,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 # 2. SECURITY HEADERS
 # =========================================================================
 
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Inject hardening headers on every response."""
 
@@ -188,9 +265,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     }
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
 
         for header, value in self.HEADERS.items():
@@ -199,9 +274,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # HSTS only when the connection is (or was) over TLS
         scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
         if scheme == "https":
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
-            )
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
         # Strip the Server header if present
         for _server_key in ("Server", "server"):
@@ -215,20 +288,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # 3. REQUEST ID
 # =========================================================================
 
+
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """
     Ensure every request has a unique X-Request-ID.
     Accepts a valid client-provided UUID; otherwise generates one.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         incoming = request.headers.get("x-request-id", "")
-        if incoming and _UUID_RE.match(incoming):
-            rid = incoming
-        else:
-            rid = str(uuid.uuid4())
+        rid = incoming if incoming and _UUID_RE.match(incoming) else str(uuid.uuid4())
 
         # Store in context var for downstream consumers
         request_id_ctx.set(rid)
@@ -243,16 +312,14 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 # 4. REQUEST LOGGING
 # =========================================================================
 
-_QUIET_PATHS: List[str] = ["/health", "/metrics"]
+_QUIET_PATHS: list[str] = ["/health", "/metrics"]
 _SLOW_THRESHOLD_MS: float = 1000.0
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Structured JSON logging of every request."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
         verbose = not any(path.startswith(qp) for qp in _QUIET_PATHS)
 
@@ -264,7 +331,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         tid = tenant_id_ctx.get("")
         uid = user_id_ctx.get("")
 
-        log_entry: Dict[str, Any] = {
+        log_entry: dict[str, Any] = {
             "method": request.method,
             "path": path,
             "status": response.status_code,
@@ -309,9 +376,7 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.max_request_size = max_request_size
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         method = request.method
 
         # --- Payload size guard -------------------------------------------
@@ -319,12 +384,7 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
         if content_length and int(content_length) > self.max_request_size:
             return JSONResponse(
                 status_code=413,
-                content={
-                    "detail": (
-                        f"Payload too large. Max allowed: "
-                        f"{self.max_request_size} bytes."
-                    )
-                },
+                content={"detail": (f"Payload too large. Max allowed: {self.max_request_size} bytes.")},
             )
 
         # --- Content-Type validation on mutating methods ------------------
@@ -336,8 +396,7 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
                     status_code=415,
                     content={
                         "detail": (
-                            f"Unsupported Content-Type: {base_ct}. "
-                            f"Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}"
+                            f"Unsupported Content-Type: {base_ct}. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}"
                         )
                     },
                 )
@@ -362,9 +421,10 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
 # 6. SETUP HELPER
 # =========================================================================
 
+
 def setup_middleware(
     app: FastAPI,
-    redis_url: Optional[str] = None,
+    redis_url: str | None = None,
 ) -> None:
     """
     One-call middleware setup.
@@ -396,6 +456,7 @@ def setup_middleware(
     rate_limit_default = int(os.getenv("RATE_LIMIT_DEFAULT", "100"))
     max_request_size = int(os.getenv("MAX_REQUEST_SIZE", str(_MAX_REQUEST_SIZE_DEFAULT)))
     effective_redis_url = redis_url or os.getenv("REDIS_URL")
+    csrf_enabled = os.getenv("AUTH_DISABLED", "false").lower() != "true"
 
     # --- Redis client (lazy) ----------------------------------------------
     redis_client = None
@@ -411,8 +472,7 @@ def setup_middleware(
             )
         except Exception:
             logger.warning(
-                "Failed to initialise Redis for rate limiting; "
-                "rate limiter will be disabled.",
+                "Failed to initialise Redis for rate limiting; rate limiter will be disabled.",
                 exc_info=True,
             )
 
@@ -439,3 +499,6 @@ def setup_middleware(
         InputSanitizationMiddleware,
         max_request_size=max_request_size,
     )
+
+    # 6. CSRF protection (innermost: only reached after sanitisation)
+    app.add_middleware(CsrfMiddleware, enabled=csrf_enabled)

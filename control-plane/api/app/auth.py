@@ -1,4 +1,5 @@
-﻿"""TrueNorth Range — Auth middleware (Keycloak OIDC JWT validation)."""
+"""TrueNorth Range — Auth middleware (Keycloak OIDC JWT validation)."""
+
 from __future__ import annotations
 
 import os
@@ -11,6 +12,7 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from .circuit_breaker import CircuitOpenError, keycloak_breaker
 from .db import get_db
 from .models import User, UserRole
 
@@ -37,10 +39,20 @@ class TokenPayload(BaseModel):
 async def _get_jwks() -> dict:
     global _jwks_cache
     if _jwks_cache is None:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(JWKS_URL)
-            resp.raise_for_status()
-            _jwks_cache = resp.json()
+
+        async def _fetch() -> dict:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(JWKS_URL)
+                resp.raise_for_status()
+                return resp.json()
+
+        try:
+            _jwks_cache = await keycloak_breaker.call(_fetch)
+        except CircuitOpenError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service temporarily unavailable",
+            ) from None
     return _jwks_cache
 
 
@@ -60,11 +72,12 @@ async def _decode_token(token: str) -> TokenPayload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {e}",
-        )
+        ) from None
 
 
 class CurrentUser(BaseModel):
     """Resolved user context for request handlers."""
+
     id: str
     email: str
     display_name: str
@@ -113,6 +126,7 @@ async def get_current_user(
 
 def require_role(*roles: UserRole):
     """Dependency that checks the current user has one of the required roles."""
+
     async def _check(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
         if user.role not in roles:
             raise HTTPException(
@@ -120,4 +134,5 @@ def require_role(*roles: UserRole):
                 detail=f"Role {user.role} not authorized. Required: {[r.value for r in roles]}",
             )
         return user
+
     return _check

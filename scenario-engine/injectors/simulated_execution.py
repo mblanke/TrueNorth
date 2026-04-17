@@ -1,4 +1,5 @@
-﻿"""Simulated execution inject — triggers malware execution event."""
+"""Simulated execution inject — triggers malware execution event."""
+
 from __future__ import annotations
 
 import logging

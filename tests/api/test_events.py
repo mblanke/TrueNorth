@@ -1,6 +1,5 @@
 """Tests for the TrueNorth Range internal event bus."""
 
-import asyncio
 import pytest
 from app.events import (
     Event,
@@ -13,10 +12,10 @@ from app.events import (
     xapi_handler,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_event(event_type: EventType = EventType.RANGE_CREATED, **kw) -> Event:
     defaults = {"type": event_type, "data": {"id": "test-1"}}
@@ -27,6 +26,7 @@ def _make_event(event_type: EventType = EventType.RANGE_CREATED, **kw) -> Event:
 # ---------------------------------------------------------------------------
 # EventType enum tests
 # ---------------------------------------------------------------------------
+
 
 class TestEventTypeEnum:
     def test_all_values_are_strings(self):
@@ -68,6 +68,7 @@ class TestEventTypeEnum:
 # ---------------------------------------------------------------------------
 # Event dataclass tests
 # ---------------------------------------------------------------------------
+
 
 class TestEvent:
     def test_defaults(self):
@@ -113,6 +114,7 @@ class TestEvent:
 # ---------------------------------------------------------------------------
 # EventBus core functionality
 # ---------------------------------------------------------------------------
+
 
 class TestEventBus:
     @pytest.mark.asyncio
@@ -237,6 +239,7 @@ class TestEventBus:
 # Pre-built handlers
 # ---------------------------------------------------------------------------
 
+
 class TestPrebuiltHandlers:
     @pytest.mark.asyncio
     async def test_audit_handler_runs(self):
@@ -263,11 +266,12 @@ class TestPrebuiltHandlers:
 # setup_event_bus
 # ---------------------------------------------------------------------------
 
+
 class TestSetupEventBus:
     def test_wires_handlers(self):
 
         class FakeApp:
-            class state:
+            class state:  # noqa: N801 — mimics Starlette app.state
                 event_bus = None
 
         bus = setup_event_bus(FakeApp)

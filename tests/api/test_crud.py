@@ -1,7 +1,6 @@
 """Tests for core API endpoints."""
-import uuid
 
-import pytest
+import uuid
 
 
 class TestHealth:
@@ -71,12 +70,15 @@ class TestTemplates:
         assert isinstance(resp.json(), list)
 
     def test_get_template(self, client):
-        create_resp = client.post("/templates", json={
-            "name": "Fetched",
-            "version": "2.0",
-            "yaml": "id: fetch\nnodes: []",
-            "is_public": False,
-        })
+        create_resp = client.post(
+            "/templates",
+            json={
+                "name": "Fetched",
+                "version": "2.0",
+                "yaml": "id: fetch\nnodes: []",
+                "is_public": False,
+            },
+        )
         tid = create_resp.json()["id"]
         resp = client.get(f"/templates/{tid}")
         assert resp.status_code == 200
@@ -87,24 +89,30 @@ class TestTemplates:
         assert resp.status_code == 404
 
     def test_update_template(self, client):
-        create_resp = client.post("/templates", json={
-            "name": "Original",
-            "version": "1.0",
-            "yaml": "id: orig\nnodes: []",
-            "is_public": False,
-        })
+        create_resp = client.post(
+            "/templates",
+            json={
+                "name": "Original",
+                "version": "1.0",
+                "yaml": "id: orig\nnodes: []",
+                "is_public": False,
+            },
+        )
         tid = create_resp.json()["id"]
         resp = client.put(f"/templates/{tid}", json={"name": "Updated"})
         assert resp.status_code == 200
         assert resp.json()["name"] == "Updated"
 
     def test_delete_template(self, client):
-        create_resp = client.post("/templates", json={
-            "name": "ToDelete",
-            "version": "1.0",
-            "yaml": "id: del\nnodes: []",
-            "is_public": False,
-        })
+        create_resp = client.post(
+            "/templates",
+            json={
+                "name": "ToDelete",
+                "version": "1.0",
+                "yaml": "id: del\nnodes: []",
+                "is_public": False,
+            },
+        )
         tid = create_resp.json()["id"]
         resp = client.delete(f"/templates/{tid}")
         assert resp.status_code in (200, 204)
@@ -139,12 +147,15 @@ class TestScenarios:
 
 class TestRanges:
     def _create_template(self, client):
-        resp = client.post("/templates", json={
-            "name": "Range Template",
-            "version": "1.0",
-            "yaml": "id: rt\nnodes: []",
-            "is_public": True,
-        })
+        resp = client.post(
+            "/templates",
+            json={
+                "name": "Range Template",
+                "version": "1.0",
+                "yaml": "id: rt\nnodes: []",
+                "is_public": True,
+            },
+        )
         return resp.json()["id"]
 
     def test_create_range(self, client):
@@ -188,29 +199,38 @@ class TestTeams:
 
 class TestExercises:
     def _setup_range(self, client):
-        t = client.post("/templates", json={
-            "name": "Ex Template",
-            "version": "1.0",
-            "yaml": "id: ex\nnodes: []",
-            "is_public": True,
-        }).json()
+        t = client.post(
+            "/templates",
+            json={
+                "name": "Ex Template",
+                "version": "1.0",
+                "yaml": "id: ex\nnodes: []",
+                "is_public": True,
+            },
+        ).json()
         r = client.post("/ranges", json={"name": "Ex Range", "template_id": t["id"]}).json()
-        s = client.post("/scenarios", json={
-            "name": "Ex Scenario",
-            "version": "1.0",
-            "yaml": "id: exs\ntimeline: []",
-            "is_public": True,
-        }).json()
+        s = client.post(
+            "/scenarios",
+            json={
+                "name": "Ex Scenario",
+                "version": "1.0",
+                "yaml": "id: exs\ntimeline: []",
+                "is_public": True,
+            },
+        ).json()
         return r["id"], s["id"]
 
     def test_create_exercise(self, client):
         rid, sid = self._setup_range(client)
-        resp = client.post("/exercises", json={
-            "name": "Test Exercise",
-            "range_id": rid,
-            "scenario_id": sid,
-            "max_score": 100,
-        })
+        resp = client.post(
+            "/exercises",
+            json={
+                "name": "Test Exercise",
+                "range_id": rid,
+                "scenario_id": sid,
+                "max_score": 100,
+            },
+        )
         assert resp.status_code in (200, 201)
         data = resp.json()
         assert data["name"] == "Test Exercise"

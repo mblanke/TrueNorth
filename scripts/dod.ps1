@@ -39,9 +39,9 @@ if (Has-Command "python") {
 import json, yaml, pathlib
 from jsonschema import validate, ValidationError
 for schema_name, content_dir in [('template', 'content/ranges'), ('scenario', 'content/scenarios')]:
-    schema = json.loads(pathlib.Path(f'scenario-engine/schemas/{schema_name}.schema.json').read_text())
+    schema = json.loads(pathlib.Path(f'scenario-engine/schemas/{schema_name}.schema.json').read_text(encoding='utf-8-sig'))
     for f in pathlib.Path(content_dir).rglob('*.yaml'):
-        data = yaml.safe_load(f.read_text())
+        data = yaml.safe_load(f.read_text(encoding='utf-8-sig'))
         try:
             validate(data, schema)
             print(f'  OK: {f}')

@@ -18,6 +18,7 @@ Usage::
     if alert:
         await ingestor.ingest("security_event", alert)
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,10 +50,10 @@ class CorrelationRule:
     name: str
     description: str
     event_filter: dict[str, Any]  # field → value(s) that an event must match
-    group_by: list[str]           # fields used to group events (e.g. source_ip)
-    threshold: int                # number of matching events to trigger
-    window_seconds: float         # sliding time window
-    distinct_field: str | None    # count distinct values of this field (e.g. dest_port)
+    group_by: list[str]  # fields used to group events (e.g. source_ip)
+    threshold: int  # number of matching events to trigger
+    window_seconds: float  # sliding time window
+    distinct_field: str | None  # count distinct values of this field (e.g. dest_port)
     severity: str = "high"
     mitre_technique: str = ""
     mitre_tactic: str = ""
@@ -60,7 +61,7 @@ class CorrelationRule:
     enabled: bool = True
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CorrelationRule":
+    def from_dict(cls, data: dict[str, Any]) -> CorrelationRule:
         rule = data.get("rule", data)
         return cls(
             id=rule.get("id", str(uuid.uuid4())[:8]),
@@ -79,7 +80,7 @@ class CorrelationRule:
         )
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "CorrelationRule":
+    def from_yaml(cls, path: str | Path) -> CorrelationRule:
         if yaml is None:
             raise ImportError("PyYAML required: pip install pyyaml")
         text = Path(path).read_text(encoding="utf-8")
@@ -140,7 +141,7 @@ class CorrelationEngine:
     # ── factory ───────────────────────────────────────────────────
 
     @classmethod
-    def from_rules_dir(cls, directory: str | Path) -> "CorrelationEngine":
+    def from_rules_dir(cls, directory: str | Path) -> CorrelationEngine:
         """Load all YAML rule files from a directory."""
         rules: list[CorrelationRule] = []
         rule_dir = Path(directory)
@@ -190,11 +191,10 @@ class CorrelationEngine:
 
             # Check threshold
             effective_count = bucket.distinct_count if rule.distinct_field else bucket.count
-            if effective_count >= rule.threshold:
-                if now - bucket.last_alert_time >= self._alert_cooldown:
-                    alert = self._generate_alert(rule, bucket, group_key, now)
-                    alerts.append(alert)
-                    bucket.last_alert_time = now
+            if effective_count >= rule.threshold and now - bucket.last_alert_time >= self._alert_cooldown:
+                alert = self._generate_alert(rule, bucket, group_key, now)
+                alerts.append(alert)
+                bucket.last_alert_time = now
 
         return alerts
 
@@ -256,6 +256,9 @@ class CorrelationEngine:
 
         logger.warning(
             "ALERT [%s] %s — %d events from group '%s'",
-            rule.severity.upper(), rule.alert_name, source_event_count, group_key,
+            rule.severity.upper(),
+            rule.alert_name,
+            source_event_count,
+            group_key,
         )
         return alert

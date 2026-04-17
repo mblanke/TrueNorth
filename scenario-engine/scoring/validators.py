@@ -69,25 +69,22 @@ class ScoringValidator:
 
             url = f"{opensearch_url.rstrip('/')}/{index}/_search"
             payload = {"query": query, "size": min(threshold, 100)}
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     url,
                     json=payload,
                     ssl=False,
                     timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp:
-                    data = await resp.json()
-                    hits = data.get("hits", {}).get("hits", [])
-                    total = data.get("hits", {}).get("total", {})
-                    total_count = (
-                        total.get("value", 0) if isinstance(total, dict) else total
-                    )
-                    evidence = [
-                        {"_id": h["_id"], "_source": h.get("_source", {})}
-                        for h in hits[:20]
-                    ]
-                    achieved = total_count >= threshold
-                    return achieved, evidence
+                ) as resp,
+            ):
+                data = await resp.json()
+                hits = data.get("hits", {}).get("hits", [])
+                total = data.get("hits", {}).get("total", {})
+                total_count = total.get("value", 0) if isinstance(total, dict) else total
+                evidence = [{"_id": h["_id"], "_source": h.get("_source", {})} for h in hits[:20]]
+                achieved = total_count >= threshold
+                return achieved, evidence
         except ImportError:
             logger.error("aiohttp is required for OpenSearch validation")
             return False, []
@@ -277,7 +274,5 @@ class ScoringValidator:
         """
         approved = config.get("approved", False)
         notes = config.get("notes", "Awaiting instructor review")
-        evidence: list[dict[str, Any]] = [
-            {"manual_review": True, "approved": approved, "notes": notes}
-        ]
+        evidence: list[dict[str, Any]] = [{"manual_review": True, "approved": approved, "notes": notes}]
         return approved, evidence

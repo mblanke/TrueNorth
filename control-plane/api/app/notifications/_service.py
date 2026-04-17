@@ -5,13 +5,11 @@ in-app notifications with read/unread tracking.
 """
 
 from __future__ import annotations
-import asyncio
-import json
+
 import logging
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
-from dataclasses import dataclass, field, asdict
-from typing import Any
 from uuid import uuid4
 
 logger = logging.getLogger("truenorth.notifications")
@@ -42,9 +40,7 @@ class Notification:
     level: str  # info, warning, error, success
     channels: list[NotificationChannel]
     id: str = field(default_factory=lambda: str(uuid4()))
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     recipient_user_id: str | None = None
     recipient_tenant_id: str | None = None
     recipient_role: str | None = None  # Send to all users with this role
@@ -107,9 +103,7 @@ class NotificationService:
             except Exception as exc:
                 logger.exception("Failed %s delivery for %s", channel.value, notification.id)
                 results[channel.value] = f"error: {exc}"
-        self._sent_log.append(
-            {"id": notification.id, "channels": results, "ts": notification.created_at}
-        )
+        self._sent_log.append({"id": notification.id, "channels": results, "ts": notification.created_at})
         return results
 
     # ------------------------------------------------------------------
@@ -118,7 +112,7 @@ class NotificationService:
 
     async def _send_websocket(self, notification: Notification) -> None:
         """Push notification payload through WebSocket (or Redis pub/sub)."""
-        payload = notification.to_dict()
+        notification.to_dict()
         logger.info(
             "WS notification: [%s] %s -> user=%s tenant=%s",
             notification.level,
@@ -143,7 +137,7 @@ class NotificationService:
 
     async def _send_webhook(self, notification: Notification) -> None:
         """POST notification JSON to configured webhook URLs."""
-        payload = notification.to_dict()
+        notification.to_dict()
         targets = list(self._webhook_urls)
         if notification.data.get("webhook_url"):
             targets.append(notification.data["webhook_url"])
@@ -166,9 +160,7 @@ class NotificationService:
     # In-app query helpers
     # ------------------------------------------------------------------
 
-    async def get_user_notifications(
-        self, user_id: str, limit: int = 50
-    ) -> list[dict]:
+    async def get_user_notifications(self, user_id: str, limit: int = 50) -> list[dict]:
         """Return most recent *limit* in-app notifications for *user_id*."""
         items = self._in_app_store.get(user_id, [])
         return items[:limit]
@@ -192,11 +184,7 @@ class NotificationService:
 
     async def get_unread_count(self, user_id: str) -> int:
         """Return the number of unread in-app notifications."""
-        return sum(
-            1
-            for item in self._in_app_store.get(user_id, [])
-            if not item["read"]
-        )
+        return sum(1 for item in self._in_app_store.get(user_id, []) if not item["read"])
 
     async def delete_notification(self, notification_id: str, user_id: str) -> bool:
         """Delete a notification.  Returns *True* if found and removed."""

@@ -22,7 +22,7 @@ print(f"Float imports removed: {float_count - 1}")
 result = []
 skip_until_tenant = False
 seen_extended = False
-for i, line in enumerate(lines):
+for _i, line in enumerate(lines):
     if "# -- Extended identity fields" in line:
         if seen_extended:
             # This is the duplicate block - skip until we hit tenant relationship
@@ -42,7 +42,7 @@ result = []
 seen_desc = False
 skip_team_dupes = False
 in_team_class = False
-for i, line in enumerate(lines):
+for _i, line in enumerate(lines):
     if "class Team(TimestampMixin, Base):" in line:
         in_team_class = True
         seen_desc = False
@@ -65,20 +65,26 @@ lines = result
 result = []
 seen_position = False
 in_tm_class = False
-for i, line in enumerate(lines):
+for _i, line in enumerate(lines):
     if "class TeamMembership(Base):" in line:
         in_tm_class = True
         seen_position = False
-    if in_tm_class and line.startswith("# --") or (in_tm_class and line.startswith("class ")):
-        if "class TeamMembership" not in line:
-            in_tm_class = False
+    if (
+        in_tm_class and line.startswith("# --") or (in_tm_class and line.startswith("class "))
+    ) and "class TeamMembership" not in line:
+        in_tm_class = False
     if in_tm_class and "position: Mapped[str | None]" in line:
         if seen_position:
             continue
         seen_position = True
-    if in_tm_class and "joined_at: Mapped[datetime | None]" in line:
-        if seen_position and result and "position: Mapped[str | None]" not in result[-1]:
-            continue
+    if (
+        in_tm_class
+        and "joined_at: Mapped[datetime | None]" in line
+        and seen_position
+        and result
+        and "position: Mapped[str | None]" not in result[-1]
+    ):
+        continue
     result.append(line)
 lines = result
 

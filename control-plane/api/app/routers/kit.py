@@ -1,11 +1,15 @@
-﻿"""Kit definition CRUD."""
+"""Kit definition CRUD."""
+
 from __future__ import annotations
+
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..auth import get_current_user, CurrentUser
 from ..models import KitDefinition
 from ..schemas import KitDefinitionIn, KitDefinitionOut
 
@@ -26,7 +30,7 @@ def create_kit(body: KitDefinitionIn, db: Session = Depends(get_db), user: Curre
     return obj
 
 
-@router.delete("/{kit_id}", status_code=204)
+@router.delete("/{kit_id}", status_code=204, response_class=Response)
 def delete_kit(kit_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     obj = db.query(KitDefinition).filter_by(id=kit_id, tenant_id=user.tenant_id).first()
     if not obj:

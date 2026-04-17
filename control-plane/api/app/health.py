@@ -11,15 +11,14 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
 
 from fastapi import APIRouter
 
-
 # -- Status Enum -----------------------------------------------------------
+
 
 class HealthStatus(str, Enum):
     HEALTHY = "healthy"
@@ -29,9 +28,11 @@ class HealthStatus(str, Enum):
 
 # -- Data Classes ----------------------------------------------------------
 
+
 @dataclass
 class ComponentHealth:
     """Health of a single infrastructure component."""
+
     name: str
     status: HealthStatus
     latency_ms: float
@@ -42,6 +43,7 @@ class ComponentHealth:
 @dataclass
 class SystemHealth:
     """Aggregate system health report."""
+
     status: HealthStatus
     version: str
     uptime_seconds: float
@@ -50,6 +52,7 @@ class SystemHealth:
 
 
 # -- Health Checker --------------------------------------------------------
+
 
 class HealthChecker:
     """Checks health of all TrueNorth Range dependencies."""
@@ -68,7 +71,7 @@ class HealthChecker:
         """Fast liveness - just confirms process is alive."""
         return {
             "status": "ok",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     async def readiness(self) -> SystemHealth:
@@ -103,6 +106,7 @@ class HealthChecker:
         start = time.monotonic()
         try:
             from .db import check_db_health  # noqa: F811
+
             healthy = check_db_health()
             elapsed = (time.monotonic() - start) * 1000
             if healthy:
@@ -132,6 +136,7 @@ class HealthChecker:
         start = time.monotonic()
         try:
             import redis as redis_lib
+
             url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
             r = redis_lib.from_url(url, socket_connect_timeout=2)
             pong = r.ping()
@@ -156,6 +161,7 @@ class HealthChecker:
         start = time.monotonic()
         try:
             import httpx
+
             url = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
             async with httpx.AsyncClient(timeout=3) as client:
                 resp = await client.get(f"{url}/_cluster/health")
@@ -163,8 +169,10 @@ class HealthChecker:
             data = resp.json()
             cluster_status = data.get("status", "red")
             status = (
-                HealthStatus.HEALTHY if cluster_status == "green"
-                else HealthStatus.DEGRADED if cluster_status == "yellow"
+                HealthStatus.HEALTHY
+                if cluster_status == "green"
+                else HealthStatus.DEGRADED
+                if cluster_status == "yellow"
                 else HealthStatus.UNHEALTHY
             )
             return ComponentHealth(
@@ -188,6 +196,7 @@ class HealthChecker:
         start = time.monotonic()
         try:
             import httpx
+
             endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
             if not endpoint.startswith("http"):
                 endpoint = f"http://{endpoint}"
@@ -214,6 +223,7 @@ class HealthChecker:
         start = time.monotonic()
         try:
             import redis as redis_lib
+
             url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
             r = redis_lib.from_url(url, socket_connect_timeout=2)
             # Check if any Celery-related keys exist (best-effort)
@@ -240,6 +250,7 @@ class HealthChecker:
         start = time.monotonic()
         try:
             import httpx
+
             base = os.getenv("AI_ORCHESTRATOR_URL", "http://localhost:6000")
             async with httpx.AsyncClient(timeout=3) as client:
                 resp = await client.get(f"{base}/health")
@@ -264,12 +275,11 @@ class HealthChecker:
         start = time.monotonic()
         try:
             import httpx
+
             url = os.getenv("KEYCLOAK_URL", "http://localhost:8180")
             realm = os.getenv("KEYCLOAK_REALM", "truenorth")
             async with httpx.AsyncClient(timeout=3) as client:
-                resp = await client.get(
-                    f"{url}/realms/{realm}/.well-known/openid-configuration"
-                )
+                resp = await client.get(f"{url}/realms/{realm}/.well-known/openid-configuration")
             elapsed = (time.monotonic() - start) * 1000
             return ComponentHealth(
                 name="keycloak",
@@ -296,19 +306,19 @@ class HealthChecker:
         resolved: list[ComponentHealth] = []
         for r in results:
             if isinstance(r, BaseException):
-                resolved.append(ComponentHealth(
-                    name="unknown",
-                    status=HealthStatus.UNHEALTHY,
-                    latency_ms=0.0,
-                    message=str(r),
-                ))
+                resolved.append(
+                    ComponentHealth(
+                        name="unknown",
+                        status=HealthStatus.UNHEALTHY,
+                        latency_ms=0.0,
+                        message=str(r),
+                    )
+                )
             else:
                 resolved.append(r)
         return resolved
 
-    def _build_system_health(
-        self, components: list[ComponentHealth]
-    ) -> SystemHealth:
+    def _build_system_health(self, components: list[ComponentHealth]) -> SystemHealth:
         """Determine aggregate status from component checks."""
         statuses = {c.status for c in components}
         if HealthStatus.UNHEALTHY in statuses:
@@ -323,7 +333,7 @@ class HealthChecker:
             version=self._version,
             uptime_seconds=round(self.uptime, 2),
             components=components,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
         )
 
 

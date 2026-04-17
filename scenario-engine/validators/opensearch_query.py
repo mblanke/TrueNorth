@@ -1,4 +1,5 @@
-﻿"""OpenSearch query validator — checks for matching events in telemetry."""
+"""OpenSearch query validator — checks for matching events in telemetry."""
+
 from __future__ import annotations
 
 import json

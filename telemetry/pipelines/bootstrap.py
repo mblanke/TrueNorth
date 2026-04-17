@@ -6,14 +6,13 @@ Idempotent — safe to run multiple times.  Checks existence before creating.
 Usage:
     python -m telemetry.pipelines.bootstrap --opensearch-url http://localhost:9200
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import logging
 import os
-import sys
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -67,7 +66,15 @@ ISM_POLICY: dict[str, Any] = {
             },
         ],
         "ism_template": [
-            {"index_patterns": ["range-events-*", "exercise-events-*", "security-events-*", "network-events-*", "system-events-*"]},
+            {
+                "index_patterns": [
+                    "range-events-*",
+                    "exercise-events-*",
+                    "security-events-*",
+                    "network-events-*",
+                    "system-events-*",
+                ]
+            },
         ],
     }
 }
@@ -359,13 +366,20 @@ DASHBOARD_OBJECTS: list[dict[str, Any]] = [
         "attributes": {
             "title": "TrueNorth — Events Over Time",
             "description": "Line chart of event volume across all indices",
-            "visState": json.dumps({
-                "type": "line",
-                "aggs": [
-                    {"id": "1", "type": "count", "schema": "metric"},
-                    {"id": "2", "type": "date_histogram", "schema": "segment", "params": {"field": "@timestamp", "interval": "auto"}},
-                ],
-            }),
+            "visState": json.dumps(
+                {
+                    "type": "line",
+                    "aggs": [
+                        {"id": "1", "type": "count", "schema": "metric"},
+                        {
+                            "id": "2",
+                            "type": "date_histogram",
+                            "schema": "segment",
+                            "params": {"field": "@timestamp", "interval": "auto"},
+                        },
+                    ],
+                }
+            ),
         },
     },
     {
@@ -374,9 +388,11 @@ DASHBOARD_OBJECTS: list[dict[str, Any]] = [
         "attributes": {
             "title": "TrueNorth Range — Overview Dashboard",
             "description": "High-level view of all telemetry streams",
-            "panelsJSON": json.dumps([
-                {"panelIndex": "1", "gridData": {"x": 0, "y": 0, "w": 48, "h": 15}, "panelRefName": "panel_0"},
-            ]),
+            "panelsJSON": json.dumps(
+                [
+                    {"panelIndex": "1", "gridData": {"x": 0, "y": 0, "w": 48, "h": 15}, "panelRefName": "panel_0"},
+                ]
+            ),
         },
         "references": [
             {"name": "panel_0", "type": "visualization", "id": "tn-events-over-time"},
@@ -388,6 +404,7 @@ DASHBOARD_OBJECTS: list[dict[str, Any]] = [
 # ═══════════════════════════════════════════════════════════════════
 #  Bootstrap Functions
 # ═══════════════════════════════════════════════════════════════════
+
 
 def _client() -> httpx.Client:
     return httpx.Client(base_url=OPENSEARCH_URL, timeout=30.0)
@@ -475,6 +492,7 @@ def bootstrap(opensearch_url: str | None = None) -> None:
 # ═══════════════════════════════════════════════════════════════════
 #  CLI
 # ═══════════════════════════════════════════════════════════════════
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bootstrap OpenSearch for TrueNorth Range")

@@ -20,6 +20,7 @@ POST   /ranges/{range_id}/stop       RANGE_PROVISION
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,12 +29,13 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from ..auth import CurrentUser, get_current_user
+from ..auth import CurrentUser
 from ..db import get_db
-from ..models import Exercise, ExerciseState, Range, RangeState, Template, UserRole
-from ..rbac import Permission, require_permission, require_range_access
+from ..models import Exercise, ExerciseState, Range, RangeSnapshot, RangeState, Template
+from ..rbac import Permission, require_permission
 from ..schemas import (
     BatchProvisionIn,
     BatchProvisionOut,
@@ -42,6 +44,8 @@ from ..schemas import (
     RangeOut,
     RangeStatsOut,
     RangeUpdate,
+    SnapshotIn,
+    SnapshotOut,
 )
 
 logger = logging.getLogger("truenorth.api.ranges")
@@ -52,12 +56,22 @@ router = APIRouter(prefix="/ranges", tags=["ranges"])
 # ── Helpers (same as main.py — will centralise later) ──────────────────
 def _audit(db: Session, user: CurrentUser, action: str, resource_type: str, resource_id: str, detail: str = "") -> None:
     from ..models import AuditLog
-    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=resource_type, resource_id=resource_id, detail=detail))
+
+    db.add(
+        AuditLog(
+            user_id=uuid.UUID(user.id),
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            detail=detail,
+        )
+    )
 
 
 def _dispatch_task(task_name: str, *args: Any) -> str | None:
     try:
         from celery import current_app
+
         result = current_app.send_task(f"worker.tasks.{task_name}", args=args)
         return result.id
     except Exception:
@@ -119,16 +133,14 @@ def get_range_stats(
     tenant_id = uuid.UUID(user.tenant_id)
     total = db.query(sqlfunc.count(Range.id)).filter(Range.tenant_id == tenant_id).scalar() or 0
     state_counts = (
-        db.query(Range.state, sqlfunc.count(Range.id))
-        .filter(Range.tenant_id == tenant_id)
-        .group_by(Range.state)
-        .all()
+        db.query(Range.state, sqlfunc.count(Range.id)).filter(Range.tenant_id == tenant_id).group_by(Range.state).all()
     )
     by_state = {s.value: c for s, c in state_counts}
     active_ex = (
         db.query(sqlfunc.count(Exercise.id))
         .filter(Exercise.tenant_id == tenant_id, Exercise.state == ExerciseState.running)
-        .scalar() or 0
+        .scalar()
+        or 0
     )
     return RangeStatsOut(total_ranges=total, by_state=by_state, total_vms=0, active_exercises=active_ex)
 
@@ -166,12 +178,12 @@ def update_range(
     return rng
 
 
-@router.delete("/{range_id}", status_code=204)
+@router.delete("/{range_id}", status_code=204, response_class=Response)
 def delete_range(
     range_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_DELETE)),
-) -> None:
+):
     """Delete a range record.  **Permission: range:delete**"""
     rng = db.query(Range).filter(Range.id == range_id).first()
     if not rng:
@@ -262,3 +274,113 @@ def batch_provision_ranges(
     _audit(db, user, "batch_provision", "range", f"{len(range_ids)} ranges")
     db.commit()
     return BatchProvisionOut(dispatched=len(range_ids), task_id=task_id)
+
+
+# ── Snapshots ──────────────────────────────────────────────────────────
+
+
+@router.get("/{range_id}/snapshots", response_model=list[SnapshotOut])
+def list_snapshots(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> list[SnapshotOut]:
+    rng = db.query(Range).filter(Range.id == range_id).first()
+    if not rng:
+        raise HTTPException(404, "Range not found")
+    return (
+        db.query(RangeSnapshot)
+        .filter(RangeSnapshot.range_id == range_id)
+        .order_by(RangeSnapshot.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/{range_id}/snapshots", response_model=SnapshotOut, status_code=status.HTTP_202_ACCEPTED)
+def create_snapshot(
+    payload: SnapshotIn,
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
+) -> SnapshotOut:
+    """Create a snapshot of the current range state."""
+    rng = db.query(Range).filter(Range.id == range_id).first()
+    if not rng:
+        raise HTTPException(404, "Range not found")
+    if rng.state not in (RangeState.ready, RangeState.stopped):
+        raise HTTPException(409, f"Cannot snapshot range in state '{rng.state.value}'")
+
+    snap = RangeSnapshot(
+        range_id=range_id,
+        name=payload.name,
+        description=payload.description,
+        range_state_at_snapshot=rng.state.value,
+        tenant_id=rng.tenant_id,
+        snapshot_state="creating",
+    )
+    db.add(snap)
+    db.flush()
+    _dispatch_task("snapshot_range", str(range_id), str(snap.id))
+    _audit(db, user, "snapshot_create", "range_snapshot", str(snap.id), f"Snapshot of range {range_id}")
+    db.commit()
+    db.refresh(snap)
+    return snap
+
+
+@router.post(
+    "/{range_id}/snapshots/{snapshot_id}/restore", response_model=RangeOut, status_code=status.HTTP_202_ACCEPTED
+)
+def restore_snapshot(
+    range_id: uuid.UUID = Path(...),
+    snapshot_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
+) -> RangeOut:
+    """Restore a range from a snapshot."""
+    rng = db.query(Range).filter(Range.id == range_id).first()
+    if not rng:
+        raise HTTPException(404, "Range not found")
+    if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
+        raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
+
+    snap = (
+        db.query(RangeSnapshot)
+        .filter(
+            RangeSnapshot.id == snapshot_id,
+            RangeSnapshot.range_id == range_id,
+            RangeSnapshot.snapshot_state == "ready",
+        )
+        .first()
+    )
+    if not snap:
+        raise HTTPException(404, "Snapshot not found or not ready")
+
+    snap.snapshot_state = "restoring"
+    _dispatch_task("restore_snapshot", str(range_id), str(snapshot_id))
+    _audit(db, user, "snapshot_restore", "range_snapshot", str(snapshot_id), f"Restoring range {range_id}")
+    db.commit()
+    db.refresh(rng)
+    return rng
+
+
+@router.delete("/{range_id}/snapshots/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def delete_snapshot(
+    range_id: uuid.UUID = Path(...),
+    snapshot_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_DESTROY)),
+):
+    snap = (
+        db.query(RangeSnapshot)
+        .filter(
+            RangeSnapshot.id == snapshot_id,
+            RangeSnapshot.range_id == range_id,
+        )
+        .first()
+    )
+    if not snap:
+        raise HTTPException(404, "Snapshot not found")
+    _dispatch_task("delete_snapshot", str(range_id), str(snapshot_id))
+    snap.snapshot_state = "deleted"
+    _audit(db, user, "snapshot_delete", "range_snapshot", str(snapshot_id))
+    db.commit()
