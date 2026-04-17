@@ -29,7 +29,7 @@ test_results.txt
 test-out*.txt
 test-output.txt
 pytest-out*.txt
-.angular/cache/
+.angular/
 
 # SSL / secrets
 infra/platform/docker/ssl/*.crt
