@@ -37,6 +37,7 @@ from ..schemas import (
     EnrollmentOut,
     LearningPathIn,
     LearningPathOut,
+    LearningPathUpdate,
     ModuleProgressOut,
     PaginatedResponse,
     TranscriptEntry,
@@ -291,6 +292,16 @@ def create_learning_path(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Create a learning path (ordered sequence of courses)."""
+    duplicate = (
+        db.query(LearningPath)
+        .filter(LearningPath.tenant_id == user.tenant_id, LearningPath.name == body.name)
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"A learning path named '{body.name}' already exists. Edit it or pick another name.",
+        )
     lp = LearningPath(
         name=body.name,
         description=body.description,
@@ -309,8 +320,13 @@ def list_learning_paths(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """List all learning paths."""
-    return db.query(LearningPath).order_by(LearningPath.created_at.desc()).all()
+    """List the tenant's learning paths."""
+    return (
+        db.query(LearningPath)
+        .filter(LearningPath.tenant_id == user.tenant_id)
+        .order_by(LearningPath.created_at.desc())
+        .all()
+    )
 
 
 @lp_router.get("/{lp_id}", response_model=LearningPathOut)
@@ -324,6 +340,65 @@ def get_learning_path(
     if not lp:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning path not found")
     return lp
+
+
+@lp_router.patch("/{lp_id}", response_model=LearningPathOut)
+def update_learning_path(
+    lp_id: uuid.UUID,
+    body: LearningPathUpdate,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Update a learning path."""
+    lp = (
+        db.query(LearningPath)
+        .filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id)
+        .first()
+    )
+    if not lp:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning path not found")
+    if body.name is not None and body.name != lp.name:
+        clash = (
+            db.query(LearningPath)
+            .filter(
+                LearningPath.tenant_id == user.tenant_id,
+                LearningPath.name == body.name,
+                LearningPath.id != lp_id,
+            )
+            .first()
+        )
+        if clash:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, f"A learning path named '{body.name}' already exists."
+            )
+        lp.name = body.name
+    if body.description is not None:
+        lp.description = body.description
+    if body.course_ids is not None:
+        lp.course_ids = json.dumps([str(c) for c in body.course_ids])
+    if body.is_published is not None:
+        lp.is_published = body.is_published
+    db.commit()
+    db.refresh(lp)
+    return lp
+
+
+@lp_router.delete("/{lp_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_learning_path(
+    lp_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Delete a learning path."""
+    lp = (
+        db.query(LearningPath)
+        .filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id)
+        .first()
+    )
+    if not lp:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning path not found")
+    db.delete(lp)
+    db.commit()
 
 
 # ══════════════════════════════════════════════════════════════════════════

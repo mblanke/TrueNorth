@@ -426,16 +426,35 @@ class LearningPathIn(BaseModel):
     is_published: bool = False
 
 
+class LearningPathUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    course_ids: list[uuid.UUID] | None = None
+    is_published: bool | None = None
+
+
 class LearningPathOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     name: str
     description: str
-    course_ids: str  # JSON string
+    course_ids: list[str]
     is_published: bool
     tenant_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("course_ids", mode="before")
+    @classmethod
+    def _parse_course_ids(cls, v):
+        # Stored as a JSON string in the Text column; expose a real list.
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v or "[]")
+                return parsed if isinstance(parsed, list) else []
+            except json.JSONDecodeError:
+                return []
+        return v or []
 
 
 # ── Competencies ───────────────────────────────────────────────────────
