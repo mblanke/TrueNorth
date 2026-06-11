@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ExerciseForgeComponent } from './exercise-forge.component';
@@ -41,7 +42,7 @@ describe('ExerciseForgeComponent', () => {
   };
 
   beforeEach(async () => {
-    mockApi = jasmine.createSpyObj('ApiService', ['get', 'post']);
+    mockApi = jasmine.createSpyObj('ApiService', ['get', 'post', 'listCurricula']);
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error']);
 
     mockApi.get.and.callFake((path: string): any => {
@@ -49,12 +50,17 @@ describe('ExerciseForgeComponent', () => {
       if (path.includes('presets')) return of(mockPresets);
       return of([]);
     });
+    mockApi.listCurricula.and.returnValue(of([]));
 
     await TestBed.configureTestingModule({
       imports: [ExerciseForgeComponent, NoopAnimationsModule],
       providers: [
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: convertToParamMap({}) } },
+        },
       ],
     }).compileComponents();
 

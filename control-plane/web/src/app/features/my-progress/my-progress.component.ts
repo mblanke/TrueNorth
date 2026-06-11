@@ -10,8 +10,11 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { NgxEchartsDirective, provideEcharts } from 'ngx-echarts';
+import type { EChartsOption } from 'echarts';
 import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
 import { EnterStaggerDirective } from '../../shared/motion';
+import { tnChartColors } from '../../shared/charts/echarts-theme';
 
 interface TranscriptEntry {
   source: string;
@@ -72,7 +75,9 @@ interface AutoAssessment {
     CommonModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatProgressBarModule,
     MatChipsModule, MatTooltipModule, LottieIconComponent, EnterStaggerDirective,
+    NgxEchartsDirective,
   ],
+  providers: [provideEcharts()],
   template: `
     <div class="page-container">
       <div class="page-header">
@@ -115,6 +120,14 @@ interface AutoAssessment {
           </mat-card-content>
         </mat-card>
       </div>
+
+      @if (radarOption(); as radar) {
+        <mat-card class="radar-card mt-2">
+          <h2 class="radar-title"><mat-icon>track_changes</mat-icon> Capability Radar</h2>
+          <p class="radar-sub">Demonstrated proficiency by competency category — from quizzes and range exercises</p>
+          <div echarts [options]="radar" class="radar-chart"></div>
+        </mat-card>
+      }
 
       <mat-tab-group class="mt-2">
         <mat-tab label="Transcript">
@@ -284,6 +297,14 @@ interface AutoAssessment {
   `,
   styles: [`
     .subtitle { color: var(--text-secondary); margin-bottom: 16px; }
+    .radar-card { padding: 18px 18px 6px; }
+    .radar-title {
+      display: flex; align-items: center; gap: 8px; margin: 0;
+      font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--text-primary);
+    }
+    .radar-title mat-icon { color: var(--accent); }
+    .radar-sub { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; }
+    .radar-chart { height: 320px; width: 100%; }
     .stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
     .stats-row mat-card { flex: 1; min-width: 160px; text-align: center; }
             .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
@@ -315,12 +336,15 @@ export class MyProgressComponent implements OnInit {
   transcriptColumns = ['source', 'title', 'type', 'score', 'completed'];
   private userId = '00000000-0000-0000-0000-000000000001'; // TODO: get from auth
 
+  radarOption = signal<EChartsOption | null>(null);
+
   constructor(private api: ApiService, private notify: NotificationService) {}
 
   ngOnInit() {
     this.loadTranscript();
     this.loadProgress();
     this.loadRecommendations();
+    this.loadCapabilityRadar();
     this.loadAssessments();
   }
 
@@ -350,6 +374,54 @@ export class MyProgressComponent implements OnInit {
       next: a => this.assessments.set(a),
       error: () => {},
     });
+  }
+
+  loadCapabilityRadar() {
+    this.api.getCompetencyProfile(this.userId).subscribe({
+      next: profile => this.buildRadar(profile?.assertions || []),
+      error: () => {},
+    });
+  }
+
+  private buildRadar(assertions: any[]) {
+    if (!assertions.length) return;
+    const level: Record<string, number> = { novice: 1, beginner: 2, intermediate: 3, advanced: 4, expert: 5 };
+    const byCategory = new Map<string, number[]>();
+    for (const a of assertions) {
+      const category = a.competency?.category || 'general';
+      const scores = byCategory.get(category) ?? [];
+      scores.push(level[a.proficiency] ?? 1);
+      byCategory.set(category, scores);
+    }
+    const categories = [...byCategory.keys()].slice(0, 8);
+    if (categories.length < 3) return; // radar needs at least 3 axes to read well
+    const values = categories.map(cat => {
+      const scores = byCategory.get(cat)!;
+      return +(scores.reduce((s, v) => s + v, 0) / scores.length).toFixed(2);
+    });
+
+    const c = tnChartColors();
+    this.radarOption.set({
+      textStyle: { color: c.textMuted, fontFamily: 'Inter, sans-serif' },
+      tooltip: { backgroundColor: c.card, borderColor: c.border, textStyle: { color: c.text } },
+      radar: {
+        indicator: categories.map(name => ({ name, max: 5 })),
+        splitArea: { areaStyle: { color: ['transparent'] } },
+        splitLine: { lineStyle: { color: c.border } },
+        axisLine: { lineStyle: { color: c.border } },
+        axisName: { color: c.textMuted, fontSize: 11 },
+      },
+      series: [{
+        type: 'radar',
+        data: [{
+          value: values,
+          name: 'Proficiency',
+          areaStyle: { color: c.accent, opacity: 0.25 },
+          lineStyle: { color: c.accent, width: 2 },
+          itemStyle: { color: c.accentHover },
+        }],
+      }],
+    } as EChartsOption);
   }
 
   generateRecommendation() {

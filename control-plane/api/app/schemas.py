@@ -1524,6 +1524,15 @@ class ForgeRequest(BaseModel):
     indicators: list[ForgeIndicatorIn] = Field(
         default_factory=list, description="Manual indicators (used if feed_id is None)"
     )
+    # Curriculum Forge mode: generate from learning objectives instead of threat intel
+    curriculum_id: uuid.UUID | None = Field(
+        None, description="Ground the scenario in this curriculum's RAG index"
+    )
+    learning_objectives: list[str] = Field(
+        default_factory=list,
+        max_length=15,
+        description="Learning objectives the exercise must assess (curriculum mode)",
+    )
     difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
     duration_minutes: int = Field(default=60, ge=15, le=480)
     objective_count: int = Field(default=4, ge=2, le=10)

@@ -224,90 +224,242 @@ def record_external_activity(
 # LTI 1.3 Endpoints (Tool Provider — lets Moodle/OffSec launch TrueNorth)
 # ══════════════════════════════════════════════════════════════════════════
 
+import json as _json
+import time as _time
+from html import escape as _html_escape
+
+from fastapi import Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from jose import jwt as _jwt
+from pydantic import BaseModel as _BaseModel
+
+from .. import lti13
+from ..models import Course, Quiz, User, UserRole
+
+WEB_BASE_URL = __import__("os").getenv("LTI_WEB_BASE_URL", "http://localhost:4200")
+
 lti_router = APIRouter(prefix="/lti", tags=["lti"])
 
 
 @lti_router.get("/jwks")
-def lti_jwks():
-    """Public JWKS endpoint for LTI 1.3 tool registration.
-
-    External platforms (Moodle, OffSec) fetch TrueNorth's public keys from
-    this endpoint to validate JWTs during the LTI launch flow.
-    """
-    # TODO: Generate and cache RSA key pair; return public key in JWKS format
-    # For now, return a placeholder structure
-    return {
-        "keys": [
-            {
-                "kty": "RSA",
-                "use": "sig",
-                "kid": "truenorth-lti-2026",
-                "alg": "RS256",
-                "n": "placeholder",
-                "e": "AQAB",
-            }
-        ]
-    }
+def lti_jwks(db: Session = Depends(get_db)):
+    """Public JWKS for LTI 1.3 tool registration (Moodle fetches this)."""
+    return lti13.jwks(db)
 
 
-@lti_router.post("/login")
-async def lti_oidc_login(
-    db: Session = Depends(get_db),
-):
-    """LTI 1.3 OIDC initiation endpoint.
+@lti_router.api_route("/login", methods=["GET", "POST"])
+async def lti_oidc_login(request: Request, db: Session = Depends(get_db)):
+    """LTI 1.3 OIDC initiation: validate issuer, mint state+nonce, redirect."""
+    params = dict(request.query_params)
+    if request.method == "POST":
+        form = await request.form()
+        params.update({k: str(v) for k, v in form.items()})
 
-    Step 1 of the LTI 1.3 launch flow: the platform (Moodle) redirects here
-    with iss, login_hint, target_link_uri. We generate a nonce and redirect
-    back to the platform's authorize endpoint.
-    """
-    # TODO: Implement full OIDC login initiation with pylti1p3
-    # 1. Validate issuer against registered ExternalPlatform
-    # 2. Generate nonce + state, store in LTINonce table
-    # 3. Redirect to platform's authorize_url with nonce
-    return {"status": "lti_login_endpoint_ready", "note": "Full implementation requires pylti1p3"}
+    iss = params.get("iss", "")
+    login_hint = params.get("login_hint", "")
+    target_link_uri = params.get("target_link_uri", "")
+    if not iss or not login_hint or not target_link_uri:
+        raise HTTPException(422, "Missing iss / login_hint / target_link_uri")
+
+    try:
+        redirect_url = lti13.build_login_redirect(
+            db,
+            iss=iss,
+            login_hint=login_hint,
+            target_link_uri=target_link_uri,
+            client_id=params.get("client_id"),
+            lti_message_hint=params.get("lti_message_hint"),
+        )
+    except ValueError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    return RedirectResponse(redirect_url, status_code=302)
+
+
+def _jit_user(db: Session, platform, claims: dict) -> User:
+    """Find-or-create a TrueNorth user from LTI launch claims."""
+    sub = str(claims.get("sub", ""))
+    email = str(claims.get("email") or f"lti-{sub}@{platform.slug}.local").lower()
+    name = str(claims.get("name") or claims.get("given_name") or email.split("@")[0])
+    lti_kc_id = f"lti:{platform.id}:{sub}"
+
+    user = (
+        db.query(User)
+        .filter((User.keycloak_id == lti_kc_id) | (User.email == email))
+        .first()
+    )
+    if user:
+        return user
+    user = User(
+        keycloak_id=lti_kc_id,
+        email=email,
+        display_name=name[:255],
+        role=UserRole.student,
+        tenant_id=platform.tenant_id,
+        source="lti",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    logger.info("JIT-provisioned LTI user %s from %s", email, platform.name)
+    return user
 
 
 @lti_router.post("/launch")
 async def lti_launch(
+    id_token: str = Form(...),
+    state: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    """LTI 1.3 launch endpoint.
+    """LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app."""
+    try:
+        platform, claims = await lti13.validate_launch(db, id_token, state)
+    except Exception as exc:
+        raise HTTPException(401, f"LTI launch validation failed: {exc}") from exc
 
-    Step 2: Platform posts id_token JWT here after OIDC auth. We validate
-    the JWT, extract user identity + course context, create/map user in
-    Keycloak, and redirect to the exercise/course.
-    """
-    # TODO: Implement full JWT validation with pylti1p3
-    # 1. Validate id_token JWT against platform's JWKS
-    # 2. Extract: sub, name, email, roles, resource_link, context
-    # 3. JIT-provision user in Keycloak + TrueNorth User table
-    # 4. Create enrollment if course context provided
-    # 5. Redirect to exercise/course page
-    return {"status": "lti_launch_endpoint_ready", "note": "Full implementation requires pylti1p3"}
+    message_type = claims.get(lti13.CLAIM_MESSAGE_TYPE, "")
+    user = _jit_user(db, platform, claims)
+
+    if message_type == "LtiDeepLinkingRequest":
+        return _deep_link_picker(db, platform, claims)
+
+    kind, rid = lti13.parse_resource_target(claims)
+    lti13.record_launch(db, platform, user.id, claims, kind, rid)
+
+    if kind == "quiz" and rid:
+        target = f"{WEB_BASE_URL}/training?quiz={rid}&lti=1"
+    elif kind == "exercise" and rid:
+        target = f"{WEB_BASE_URL}/exercises?exercise={rid}&lti=1"
+    elif kind == "course" and rid:
+        target = f"{WEB_BASE_URL}/training?course={rid}&lti=1"
+    else:
+        target = f"{WEB_BASE_URL}/training?lti=1"
+    return RedirectResponse(target, status_code=302)
 
 
-@lti_router.post("/deeplink")
-async def lti_deep_link(
+def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
+    """Render a minimal content picker; selection posts a signed DL response."""
+    settings = claims.get(lti13.CLAIM_DL_SETTINGS) or {}
+    return_url = settings.get("deep_link_return_url", "")
+    if not return_url:
+        raise HTTPException(422, "Deep linking request missing return URL")
+
+    # Session token so /deeplink/finish can trust the return context.
+    key = lti13.get_tool_key(db)
+    session_jwt = _jwt.encode(
+        {
+            "platform_id": str(platform.id),
+            "deployment_id": claims.get(lti13.CLAIM_DEPLOYMENT, ""),
+            "return_url": return_url,
+            "data": settings.get("data", ""),
+            "exp": int(_time.time()) + 1800,
+        },
+        key.private_key_pem,
+        algorithm="RS256",
+        headers={"kid": key.kid},
+    )
+
+    quizzes = (
+        db.query(Quiz)
+        .filter(Quiz.tenant_id == platform.tenant_id, Quiz.is_published.is_(True), Quiz.deleted_at.is_(None))
+        .order_by(Quiz.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    courses = (
+        db.query(Course)
+        .filter(Course.tenant_id == platform.tenant_id, Course.is_published.is_(True))
+        .order_by(Course.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    rows = []
+    for quiz in quizzes:
+        rows.append(
+            f'<label><input type="checkbox" name="item" value="quiz:{quiz.id}:{_html_escape(quiz.title)}"> '
+            f"&#x1F4DD; {_html_escape(quiz.title)}</label>"
+        )
+    for course in courses:
+        rows.append(
+            f'<label><input type="checkbox" name="item" value="course:{course.id}:{_html_escape(course.name)}"> '
+            f"&#x1F393; {_html_escape(course.name)}</label>"
+        )
+    items_html = "<br>".join(rows) or "<em>No published quizzes or courses yet.</em>"
+
+    html = f"""<!doctype html><html><head><title>TrueNorth — Select Content</title>
+<style>body{{font-family:system-ui;background:#071629;color:#F0F4F8;padding:40px;max-width:640px;margin:auto}}
+label{{display:block;padding:8px 12px;border:1px solid #1B3A5E;border-radius:8px;margin:6px 0;cursor:pointer}}
+button{{background:#1FB6A6;color:#071629;border:0;border-radius:8px;padding:12px 24px;font-weight:700;margin-top:16px;cursor:pointer}}
+h1{{font-size:20px}}</style></head><body>
+<h1>TrueNorth Range — add activities to your course</h1>
+<form method="post" action="/api/lti/deeplink/finish">
+<input type="hidden" name="session" value="{session_jwt}">
+{items_html}
+<br><button type="submit">Add selected to course</button>
+</form></body></html>"""
+    return HTMLResponse(html)
+
+
+@lti_router.post("/deeplink/finish")
+async def lti_deep_link_finish(
+    request: Request,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
 ):
-    """LTI 1.3 Deep Linking response endpoint.
+    """Build the signed LtiDeepLinkingResponse and auto-post it back to the platform."""
+    form = await request.form()
+    session_token = str(form.get("session", ""))
+    selections = [str(v) for v in form.getlist("item")]
 
-    Allows platform instructors to browse and select TrueNorth exercises/courses
-    to embed as LTI activities in their Moodle course.
-    """
-    # TODO: Return list of available content items for deep linking
-    return {"status": "lti_deeplink_endpoint_ready"}
+    key = lti13.get_tool_key(db)
+    try:
+        session = _jwt.decode(session_token, key.public_key_pem, algorithms=["RS256"])
+    except Exception as exc:
+        raise HTTPException(401, "Invalid deep-linking session") from exc
+
+    platform = db.get(ExternalPlatform, uuid.UUID(session["platform_id"]))
+    if not platform:
+        raise HTTPException(404, "Platform not found")
+
+    content_items = []
+    for sel in selections:
+        kind, _, rest = sel.partition(":")
+        rid, _, title = rest.partition(":")
+        if kind in ("quiz", "course", "exercise") and rid:
+            content_items.append(lti13.content_item_for(kind, rid, title or kind))
+
+    response_jwt = lti13.build_deep_link_response(
+        db, platform, session.get("deployment_id", ""), content_items, session.get("data") or None
+    )
+    html = f"""<!doctype html><html><body onload="document.forms[0].submit()">
+<form method="post" action="{_html_escape(session["return_url"])}">
+<input type="hidden" name="JWT" value="{response_jwt}">
+<noscript><button type="submit">Continue</button></noscript>
+</form></body></html>"""
+    return HTMLResponse(html)
+
+
+class GradePushIn(_BaseModel):
+    user_id: uuid.UUID
+    resource_kind: str
+    resource_id: str
+    score: float
+    max_score: float
 
 
 @lti_router.post("/grades")
 async def lti_grade_passback(
+    body: GradePushIn,
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
-    """LTI 1.3 Assignment and Grade Services (AGS) callback.
+    """Manually push a score to the launching platform's gradebook (AGS).
 
-    Pushes exercise scores back to the launching platform's gradebook.
-    Called internally when an exercise completes if it was launched via LTI.
+    Automatic pushes happen on quiz submission / exercise completion; this
+    endpoint lets operators retry or backfill.
     """
-    # TODO: Use platform's AGS endpoint to POST scores
-    return {"status": "lti_grades_endpoint_ready"}
+    pushed = await lti13.push_score_for_resource(
+        db, body.user_id, body.resource_kind, body.resource_id, body.score, body.max_score
+    )
+    if not pushed:
+        raise HTTPException(404, "No LTI launch with an AGS lineitem found for this user/resource.")
+    return {"status": "pushed"}

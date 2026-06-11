@@ -330,6 +330,8 @@ class Objective(TimestampMixin, Base):
     achieved: Mapped[bool] = mapped_column(Boolean, default=False)
     evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     achieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Optional NICE/custom competency this objective demonstrates (Curriculum Forge)
+    competency_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
 
 # -- AAR ------------------------------------------------------------------
@@ -637,6 +639,7 @@ class ExternalPlatform(TimestampMixin, Base):
     lti_issuer: Mapped[str | None] = mapped_column(Text, nullable=True)
     lti_jwks_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     lti_token_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lti_auth_login_url: Mapped[str | None] = mapped_column(Text, nullable=True)  # OIDC authorize endpoint
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -680,6 +683,40 @@ class LTINonce(Base):
     platform_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("external_platforms.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# -- LTI 1.3 tool keys + launches ------------------------------------------
+class LTIToolKey(TimestampMixin, Base):
+    """The tool's RSA keypair for LTI 1.3 message signing (one active row)."""
+
+    __tablename__ = "lti_tool_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    kid: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    private_key_pem: Mapped[str] = mapped_column(Text, nullable=False)
+    public_key_pem: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class LTILaunch(TimestampMixin, Base):
+    """A resource-link launch from an external platform; carries the AGS
+    lineitem needed for grade pass-back when the activity completes."""
+
+    __tablename__ = "lti_launches"
+    __table_args__ = (
+        Index("ix_lti_launch_user_resource", "user_id", "resource_kind", "resource_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    platform_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("external_platforms.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    lti_user_sub: Mapped[str] = mapped_column(String(255), nullable=False)
+    resource_kind: Mapped[str] = mapped_column(String(50), default="")   # quiz / exercise / course
+    resource_id: Mapped[str] = mapped_column(String(100), default="")
+    resource_link_id: Mapped[str] = mapped_column(String(255), default="")
+    context_title: Mapped[str] = mapped_column(String(500), default="")
+    ags_lineitem_url: Mapped[str] = mapped_column(Text, default="")
+    ags_scopes: Mapped[str] = mapped_column(Text, default="[]")  # JSON array
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1219,7 +1256,11 @@ class CompetencyAutoAssessment(TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
-    exercise_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=False)
+    # Source is either an exercise or a quiz attempt (Curriculum Forge).
+    exercise_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=True)
+    quiz_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("quiz_attempts.id"), nullable=True
+    )
     competency_mappings: Mapped[str] = mapped_column(Text, default="[]")  # JSON: [{competency_id, delta, reason}]
     raw_score: Mapped[int] = mapped_column(Integer, default=0)
     max_score: Mapped[int] = mapped_column(Integer, default=0)
@@ -1282,3 +1323,141 @@ class SharedCommand(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="")
     host_tag: Mapped[str] = mapped_column(String(100), default="")
     shared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Curriculum Forge — LLM curriculum ingestion + quiz engine
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class CurriculumStatus(str, enum.Enum):
+    draft = "draft"
+    ingesting = "ingesting"
+    ready = "ready"
+    error = "error"
+
+
+class CurriculumDocStatus(str, enum.Enum):
+    pending = "pending"
+    extracting = "extracting"
+    embedding = "embedding"
+    indexed = "indexed"
+    error = "error"
+
+
+class Curriculum(SoftDeleteMixin, TimestampMixin, Base):
+    """A body of source courseware (PDFs, decks, pages) ingested for RAG."""
+
+    __tablename__ = "curricula"
+    __table_args__ = (Index("ix_curricula_tenant", "tenant_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[CurriculumStatus] = mapped_column(Enum(CurriculumStatus), default=CurriculumStatus.draft)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    embedding_model: Mapped[str] = mapped_column(String(100), default="")
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+    documents: Mapped[list[CurriculumDocument]] = relationship(
+        back_populates="curriculum", cascade="all, delete-orphan"
+    )
+
+
+class CurriculumDocument(TimestampMixin, Base):
+    """One uploaded file or URL belonging to a curriculum."""
+
+    __tablename__ = "curriculum_documents"
+    __table_args__ = (Index("ix_curr_docs_curriculum", "curriculum_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    curriculum_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("curricula.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, default="")  # set for URL ingestion
+    mime_type: Mapped[str] = mapped_column(String(120), default="")
+    minio_key: Mapped[str] = mapped_column(String(600), default="")  # empty for URLs
+    status: Mapped[CurriculumDocStatus] = mapped_column(
+        Enum(CurriculumDocStatus), default=CurriculumDocStatus.pending
+    )
+    char_count: Mapped[int] = mapped_column(Integer, default=0)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str] = mapped_column(Text, default="")
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+    curriculum: Mapped[Curriculum] = relationship(back_populates="documents")
+
+
+class QuizQuestionType(str, enum.Enum):
+    mcq = "mcq"                  # single correct answer
+    multi = "multi"              # multiple correct answers
+    truefalse = "truefalse"
+    scenario = "scenario"        # scenario stem + MCQ options
+
+
+class Quiz(SoftDeleteMixin, TimestampMixin, Base):
+    """A gradeable assessment, optionally bound to a course module."""
+
+    __tablename__ = "quizzes"
+    __table_args__ = (Index("ix_quizzes_tenant", "tenant_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    module_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("course_modules.id"), nullable=True)
+    curriculum_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("curricula.id"), nullable=True)
+    pass_pct: Mapped[int] = mapped_column(Integer, default=70)
+    time_limit_minutes: Mapped[int] = mapped_column(Integer, default=0)  # 0 = untimed
+    shuffle_questions: Mapped[bool] = mapped_column(Boolean, default=True)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=0)  # 0 = unlimited
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    generated_by_model: Mapped[str] = mapped_column(String(120), default="")
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+    questions: Mapped[list[QuizQuestion]] = relationship(
+        back_populates="quiz", cascade="all, delete-orphan", order_by="QuizQuestion.ordinal"
+    )
+    attempts: Mapped[list[QuizAttempt]] = relationship(back_populates="quiz", cascade="all, delete-orphan")
+
+
+class QuizQuestion(TimestampMixin, Base):
+    """A single question. Options/correct answers stored as JSON text."""
+
+    __tablename__ = "quiz_questions"
+    __table_args__ = (Index("ix_quiz_questions_quiz", "quiz_id", "ordinal"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    quiz_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("quizzes.id"), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    question_type: Mapped[QuizQuestionType] = mapped_column(
+        Enum(QuizQuestionType), default=QuizQuestionType.mcq
+    )
+    stem: Mapped[str] = mapped_column(Text, nullable=False)
+    options: Mapped[str] = mapped_column(Text, default="[]")   # JSON: ["option text", ...]
+    correct: Mapped[str] = mapped_column(Text, default="[]")   # JSON: [option indices]
+    explanation: Mapped[str] = mapped_column(Text, default="")
+    competency_code: Mapped[str] = mapped_column(String(50), default="")  # e.g. NICE T0023
+    difficulty: Mapped[str] = mapped_column(String(20), default="intermediate")
+    points: Mapped[int] = mapped_column(Integer, default=10)
+
+    quiz: Mapped[Quiz] = relationship(back_populates="questions")
+
+
+class QuizAttempt(TimestampMixin, Base):
+    """One student's run at a quiz; answers and grading stored as JSON."""
+
+    __tablename__ = "quiz_attempts"
+    __table_args__ = (Index("ix_quiz_attempts_user", "user_id", "quiz_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    quiz_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("quizzes.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    answers: Mapped[str] = mapped_column(Text, default="{}")  # JSON: {question_id: [indices]}
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    max_score: Mapped[int] = mapped_column(Integer, default=0)
+    passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    question_order: Mapped[str] = mapped_column(Text, default="[]")  # JSON: shuffled question ids
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+    quiz: Mapped[Quiz] = relationship(back_populates="attempts")

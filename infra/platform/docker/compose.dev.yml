@@ -191,6 +191,10 @@ services:
       LRS_AUTH: dHJ1ZW5vcnRoLWxycy1rZXk6dHJ1ZW5vcnRoLWxycy1zZWNyZXQ=
       LMS_BACKEND: xapi_lrs
       SEARCH_BACKEND: opensearch
+      # AI orchestrator serves on 6000 (the code default of 8100 is stale)
+      AI_ORCHESTRATOR_URL: http://ai-orchestrator:6000
+      LTI_TOOL_BASE_URL: "${LTI_TOOL_BASE_URL:-http://localhost:8081}"
+      LTI_WEB_BASE_URL: "${LTI_WEB_BASE_URL:-http://localhost:4200}"
       CORS_ORIGINS: http://localhost:4200,http://localhost:3000
       # Pool settings per uvicorn worker
       DB_POOL_SIZE: "25"
@@ -300,7 +304,10 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       VLLM_URL: "${VLLM_URL:-}"
       VLLM_API_KEY: "${VLLM_API_KEY:-}"
-      OLLAMA_NODES: "${OLLAMA_NODES:-http://ai.guapo613.beer:11434}"
+      # Format: name=url,name=url
+      OLLAMA_NODES: "${OLLAMA_NODES:-}"
+      OLLAMA_TIMEOUT_S: "${OLLAMA_TIMEOUT_S:-300}"
+      OLLAMA_MAX_MODEL_B: "${OLLAMA_MAX_MODEL_B:-0}"
 
   # -- Web Frontend (Angular) --------------------------------------------
   web:

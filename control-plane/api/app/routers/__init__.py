@@ -10,6 +10,7 @@ from .competency import router as competency_router
 from .courses import lp_router as learning_paths_router
 from .courses import router as courses_router
 from .courses import transcript_router
+from .curriculum import router as curriculum_router
 from .detection_rules import router as detection_rules_router
 from .directory import router as directory_router
 from .exercise_forge import router as exercise_forge_router
@@ -21,6 +22,7 @@ from .kit import router as kit_router
 from .network_devices import router as network_devices_router
 from .ops_center import router as ops_center_router
 from .proxmox import router as proxmox_router
+from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
 from .scenarios import router as scenarios_router
 from .scheduling import router as scheduling_router
@@ -57,4 +59,6 @@ __all__ = [
     "exercise_forge_router",
     "adaptive_learning_router",
     "ops_center_router",
+    "curriculum_router",
+    "quizzes_router",
 ]

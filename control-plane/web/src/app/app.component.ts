@@ -319,7 +319,9 @@ export class AppComponent implements OnDestroy {
     {
       name: 'Training',
       items: [
+        { label: 'Curriculum Forge', icon: 'auto_stories', route: '/curriculum-forge' },
         { label: 'LMS',            icon: 'school',        route: '/training' },
+        { label: 'My Progress',    icon: 'trending_up',   route: '/my-progress' },
         { label: 'Competency',     icon: 'psychology',    route: '/competency' },
         { label: 'Content Catalog',icon: 'library_books', route: '/content' },
       ],

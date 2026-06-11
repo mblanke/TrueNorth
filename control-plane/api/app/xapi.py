@@ -25,6 +25,7 @@ VERBS = {
     "scored": "http://adlnet.gov/expapi/verbs/scored",
     "experienced": "http://adlnet.gov/expapi/verbs/experienced",
     "attempted": "http://adlnet.gov/expapi/verbs/attempted",
+    "answered": "http://adlnet.gov/expapi/verbs/answered",
 }
 
 

@@ -92,6 +92,18 @@ export const routes: Routes = [
     title: 'My Progress - TrueNorth Range',
   },
   {
+    path: 'curriculum-forge',
+    loadComponent: () =>
+      import('./features/curriculum-forge/curriculum-forge.component').then(m => m.CurriculumForgeComponent),
+    title: 'Curriculum Forge - TrueNorth Range',
+  },
+  {
+    path: 'quiz-player',
+    loadComponent: () =>
+      import('./features/quiz-player/quiz-player.component').then(m => m.QuizPlayerComponent),
+    title: 'Quiz - TrueNorth Range',
+  },
+  {
     path: 'competency',
     loadComponent: () =>
       import('./features/competency/competency.component').then(m => m.CompetencyComponent),

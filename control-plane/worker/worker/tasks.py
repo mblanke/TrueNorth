@@ -1081,13 +1081,43 @@ def auto_assess_competency(self, exercise_id: str, user_id: str):
         total_score, max_score, scenario_yaml = row
         pct = (total_score / max_score * 100) if max_score > 0 else 0
 
+        # Precise mappings first: objectives that carry an explicit
+        # competency_code (Curriculum Forge generates these).
+        competency_mappings = []
+        mapped_codes: set[str] = set()
+        objective_rows = db.execute(
+            text(
+                "SELECT o.competency_code, o.points, o.achieved, o.description, c.id "
+                "FROM objectives o "
+                "LEFT JOIN competencies c ON c.code = o.competency_code "
+                "WHERE o.exercise_id = :eid AND o.competency_code IS NOT NULL "
+                "AND o.competency_code != ''"
+            ),
+            {"eid": exercise_id},
+        ).fetchall()
+        for code, points, achieved, description, comp_id in objective_rows:
+            mapped_codes.add(code)
+            delta = round((points or 10) / 10, 1) if achieved else round(-(points or 10) / 20, 1)
+            competency_mappings.append(
+                {
+                    "competency_id": str(comp_id) if comp_id else "",
+                    "competency_code": code,
+                    "competency_name": description or code,
+                    "technique": "",
+                    "delta": delta,
+                    "reason": f"Objective '{description}' {'achieved' if achieved else 'missed'}",
+                }
+            )
+            if comp_id:
+                obj_pct = 100 if achieved else 0
+                _upsert_competency_assertion(db, user_id, str(comp_id), obj_pct, exercise_id)
+
         # Extract MITRE techniques from scenario
         import re
 
         mitre_ids = re.findall(r"T\d{4}(?:\.\d{3})?", scenario_yaml or "")
 
-        # Map MITRE techniques to competencies
-        competency_mappings = []
+        # Map MITRE techniques to competencies (coarse fallback)
         for technique in set(mitre_ids):
             # Determine competency category from technique range
             category = _mitre_to_nice_category(technique)
@@ -1097,7 +1127,7 @@ def auto_assess_competency(self, exercise_id: str, user_id: str):
                 {"cat": category},
             ).first()
 
-            if comp_row:
+            if comp_row and comp_row[1] not in mapped_codes:
                 # Calculate delta: positive if good score, negative if poor
                 delta = round((pct - 50) / 10, 1)  # -5 to +5 range
                 competency_mappings.append(

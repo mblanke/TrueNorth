@@ -409,6 +409,66 @@ export class ApiService {
     return this.http.get<any[]>(`${this.base}/tickets/${ticketId}/ai-actions`);
   }
 
+  // ── Curriculum Forge ─────────────────────────────────────
+  listCurricula(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/curricula`);
+  }
+  createCurriculum(data: { name: string; description?: string }): Observable<any> {
+    return this.http.post<any>(`${this.base}/curricula`, data);
+  }
+  getCurriculum(id: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/curricula/${id}`);
+  }
+  deleteCurriculum(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/curricula/${id}`);
+  }
+  uploadCurriculumDocuments(id: string, files: File[]): Observable<any> {
+    const form = new FormData();
+    files.forEach(f => form.append('files', f, f.name));
+    return this.http.post<any>(`${this.base}/curricula/${id}/documents`, form);
+  }
+  addCurriculumUrls(id: string, urls: string[]): Observable<any> {
+    return this.http.post<any>(`${this.base}/curricula/${id}/urls`, { urls });
+  }
+  searchCurriculum(id: string, query: string, k = 8): Observable<any[]> {
+    return this.http.post<any[]>(`${this.base}/curricula/${id}/search`, { query, k });
+  }
+  generateCourseFromCurriculum(id: string, data: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/curricula/${id}/generate-course`, data);
+  }
+
+  // ── Quizzes ──────────────────────────────────────────────
+  listQuizzes(curriculumId?: string): Observable<any[]> {
+    const params = curriculumId ? new HttpParams().set('curriculum_id', curriculumId) : undefined;
+    return this.http.get<any[]>(`${this.base}/quizzes`, { params });
+  }
+  getQuiz(id: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/quizzes/${id}`);
+  }
+  getQuizQuestions(id: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.base}/quizzes/${id}/questions`);
+  }
+  updateQuiz(id: string, data: any): Observable<any> {
+    return this.http.patch<any>(`${this.base}/quizzes/${id}`, data);
+  }
+  generateQuiz(data: any): Observable<any> {
+    return this.http.post<any>(`${this.base}/quizzes/generate`, data);
+  }
+  startQuizAttempt(quizId: string): Observable<any> {
+    return this.http.post<any>(`${this.base}/quizzes/${quizId}/attempts`, {});
+  }
+  submitQuizAttempt(attemptId: string, answers: Record<string, number[]>): Observable<any> {
+    return this.http.post<any>(`${this.base}/quizzes/attempts/${attemptId}/submit`, { answers });
+  }
+  quizExportUrl(quizId: string, format: 'gift' | 'moodlexml'): string {
+    return `${this.base}/quizzes/${quizId}/export?format=${format}`;
+  }
+
+  // ── Adaptive learning / competency profile ──────────────
+  getCompetencyProfile(userId: string): Observable<any> {
+    return this.http.get<any>(`${this.base}/competency/users/${userId}/profile`);
+  }
+
   // ── Wiki / Knowledge Base ────────────────────────────────
   listWikiSpaces(): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/wiki/spaces`);

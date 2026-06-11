@@ -1,6 +1,7 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -127,7 +128,34 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
                       (click)="sourceMode = 'manual'">
                 <mat-icon>edit_note</mat-icon> Manual Indicators
               </button>
+              <button mat-stroked-button
+                      [color]="sourceMode === 'curriculum' ? 'primary' : ''"
+                      (click)="sourceMode = 'curriculum'">
+                <mat-icon>auto_stories</mat-icon> From Curriculum
+              </button>
             </div>
+
+            @if (sourceMode === 'curriculum') {
+              <div class="mt-2">
+                <p class="hint">The exercise is generated to measure the learning objectives below,
+                  grounded in the selected curriculum's content. Each objective gets a competency mapping.</p>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Curriculum</mat-label>
+                  <mat-select panelClass="tn-select-panel" [(ngModel)]="curriculumId">
+                    @for (c of curricula(); track c.id) {
+                      <mat-option [value]="c.id" [disabled]="c.status !== 'ready'">
+                        {{ c.name }} ({{ c.status }})
+                      </mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <mat-form-field appearance="outline" class="full-width">
+                  <mat-label>Learning objectives (one per line)</mat-label>
+                  <textarea matInput rows="6" [(ngModel)]="objectivesText"
+                            placeholder="Detect a phishing-delivered PowerShell payload&#10;Contain a compromised workstation&#10;Write an incident summary report"></textarea>
+                </mat-form-field>
+              </div>
+            }
 
             @if (sourceMode === 'feed') {
               <mat-form-field appearance="outline" class="full-width mt-2">
@@ -456,8 +484,11 @@ export class ExerciseForgeComponent implements OnInit {
   previewing = signal(false);
   generating = signal(false);
 
-  sourceMode: 'feed' | 'manual' = 'feed';
+  sourceMode: 'feed' | 'manual' | 'curriculum' = 'feed';
   feedId: string | null = null;
+  curricula = signal<any[]>([]);
+  curriculumId: string | null = null;
+  objectivesText = '';
   selectedPreset: string | null = null;
   manualIndicators: ForgeIndicator[] = [
     { indicator_type: 'ipv4', value: '', severity: 'medium', mitre_attack_ids: [] },
@@ -472,7 +503,11 @@ export class ExerciseForgeComponent implements OnInit {
     name_override: '',
   };
 
-  constructor(private api: ApiService, private notify: NotificationService) {}
+  constructor(
+    private api: ApiService,
+    private notify: NotificationService,
+    private route: ActivatedRoute,
+  ) {}
 
   ngOnInit(): void {
     this.api.get<ThreatFeed[]>('/threat-intel/feeds').subscribe({
@@ -483,6 +518,16 @@ export class ExerciseForgeComponent implements OnInit {
       next: p => this.presets.set(p),
       error: () => {},
     });
+    this.api.listCurricula().subscribe({
+      next: c => this.curricula.set(c),
+      error: () => {},
+    });
+    // Deep link from Curriculum Forge: /exercise-forge?curriculum=<id>
+    const fromCurriculum = this.route.snapshot.queryParamMap.get('curriculum');
+    if (fromCurriculum) {
+      this.sourceMode = 'curriculum';
+      this.curriculumId = fromCurriculum;
+    }
   }
 
   stepIndex(key: WizardStep): number {
@@ -497,7 +542,18 @@ export class ExerciseForgeComponent implements OnInit {
 
   canProceedFromSource(): boolean {
     if (this.sourceMode === 'feed') return !!this.feedId;
+    if (this.sourceMode === 'curriculum') {
+      return !!this.curriculumId && this.parsedObjectives().length > 0;
+    }
     return this.manualIndicators.some(i => i.value.trim().length > 0);
+  }
+
+  parsedObjectives(): string[] {
+    return this.objectivesText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .slice(0, 15);
   }
 
   addIndicator(): void {
@@ -529,6 +585,9 @@ export class ExerciseForgeComponent implements OnInit {
     }
     if (this.sourceMode === 'feed' && this.feedId) {
       payload['feed_id'] = this.feedId;
+    } else if (this.sourceMode === 'curriculum') {
+      payload['curriculum_id'] = this.curriculumId;
+      payload['learning_objectives'] = this.parsedObjectives();
     } else {
       payload['indicators'] = this.manualIndicators.filter(i => i.value.trim());
     }

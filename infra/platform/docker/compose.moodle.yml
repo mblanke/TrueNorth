@@ -1,0 +1,62 @@
+# Optional Moodle instance for LTI 1.3 end-to-end testing.
+#
+# Usage:
+#   docker compose -f compose.dev.yml -f compose.moodle.yml up -d moodle moodle-db
+#   (add compose.windows-ports.yml on Windows hosts as usual)
+#
+# Moodle UI: http://localhost:8083  (admin / TrueNorth-Moodle1)
+#
+# LTI wiring (Site administration -> Plugins -> External tool -> Manage tools):
+#   Tool URL:            http://host.docker.internal:8980/api/lti/launch
+#   Initiate login URL:  http://host.docker.internal:8980/api/lti/login
+#   JWKS URL:            http://host.docker.internal:8980/api/lti/jwks
+#   Deep linking URL:    http://host.docker.internal:8980/api/lti/launch
+# Then register Moodle in TrueNorth (POST /api/integrations/platforms) with
+# the issuer/client/deployment values Moodle shows after activation, plus:
+#   lti_auth_login_url:  http://localhost:8083/mod/lti/auth.php
+#   lti_token_url:       http://localhost:8083/mod/lti/token.php
+#   lti_jwks_url:        http://localhost:8083/mod/lti/certs.php
+services:
+  moodle-db:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: moodleroot
+      MARIADB_DATABASE: moodle
+      MARIADB_USER: moodle
+      MARIADB_PASSWORD: moodle
+    volumes:
+      - moodle-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  moodle:
+    image: bitnami/moodle:4.4
+    depends_on:
+      moodle-db:
+        condition: service_healthy
+    environment:
+      MOODLE_DATABASE_TYPE: mariadb
+      MOODLE_DATABASE_HOST: moodle-db
+      MOODLE_DATABASE_PORT_NUMBER: "3306"
+      MOODLE_DATABASE_NAME: moodle
+      MOODLE_DATABASE_USER: moodle
+      MOODLE_DATABASE_PASSWORD: moodle
+      MOODLE_USERNAME: admin
+      MOODLE_PASSWORD: TrueNorth-Moodle1
+      MOODLE_SITE_NAME: TrueNorth LTI Test
+      MOODLE_HOST: localhost:8083
+      MOODLE_ENABLE_EMPTY_PASSWORD: "no"
+      PHP_UPLOAD_MAX_FILESIZE: 64M
+    ports:
+      - "8083:8080"
+    volumes:
+      - moodle-data:/bitnami/moodle
+      - moodle-moodledata:/bitnami/moodledata
+
+volumes:
+  moodle-db-data:
+  moodle-data:
+  moodle-moodledata:

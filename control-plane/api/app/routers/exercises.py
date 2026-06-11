@@ -249,6 +249,10 @@ async def complete_exercise(
     except Exception:
         logger.warning("Failed to dispatch auto-assess task for exercise %s", ex.id)
     if background_tasks is not None:
+        # Moodle/LTI grade pass-back (no-op unless launched via LTI)
+        background_tasks.add_task(
+            _push_exercise_lti_grade, uuid.UUID(user.id), ex.id, ex.total_score or 0, ex.max_score or 100
+        )
         max_score = max(ex.max_score or 1, 1)
         emit_lifecycle(
             background_tasks,
@@ -269,6 +273,21 @@ async def complete_exercise(
             },
         )
     return ex
+
+
+async def _push_exercise_lti_grade(
+    user_id: uuid.UUID, exercise_id: uuid.UUID, score: int, max_score: int
+) -> None:
+    from .. import lti13
+    from ..db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        await lti13.push_score_for_resource(db, user_id, "exercise", str(exercise_id), score, max_score)
+    except Exception as exc:  # advisory — never fail the completion path
+        logger.debug("LTI grade push skipped: %s", exc)
+    finally:
+        db.close()
 
 
 # ── Objectives ─────────────────────────────────────────────────────────

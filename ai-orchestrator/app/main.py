@@ -41,6 +41,8 @@ class TaskType(str, Enum):
     aar_analysis = "aar-analysis"
     exercise_forge = "exercise-forge"
     learning_recommendation = "learning-recommendation"
+    course_generate = "course-generate"
+    quiz_generate = "quiz-generate"
     general = "general"
     embedding = "embedding"
 
@@ -192,12 +194,24 @@ def _tag_model(name: str) -> set[str]:
     return tags
 
 
+# Optional ceiling on local model size (in billions of parameters) for
+# task routing. Very large local models (70B+) can take many minutes per
+# generation; cap them out of interactive routing with e.g.
+# OLLAMA_MAX_MODEL_B=35. 0 disables the cap.
+MAX_MODEL_B = int(os.getenv("OLLAMA_MAX_MODEL_B", "0"))
+
+
+def _size_ok(model_name: str) -> bool:
+    return MAX_MODEL_B <= 0 or _model_size_hint(model_name) <= MAX_MODEL_B
+
+
 def _find_best_for_tags(tags: list[str]) -> tuple[str, OllamaNode] | None:
     """Find the single best (model_name, node) for the given capability tags.
 
     Iterates *tags* in priority order.  For the first tag that has any
     matches on healthy nodes, pick the largest model (by parameter-count
-    hint), breaking ties by lowest in-flight count.
+    hint, subject to OLLAMA_MAX_MODEL_B), breaking ties by lowest
+    in-flight count.
     """
     for tag in tags:
         candidates: list[tuple[str, OllamaNode, int]] = []
@@ -205,7 +219,7 @@ def _find_best_for_tags(tags: list[str]) -> tuple[str, OllamaNode] | None:
             if not node.healthy:
                 continue
             for model_name, model_tags in node.tagged_models.items():
-                if tag in model_tags:
+                if tag in model_tags and _size_ok(model_name):
                     candidates.append((model_name, node, _model_size_hint(model_name)))
         if not candidates:
             continue
@@ -229,7 +243,7 @@ def _find_all_for_tags(tags: list[str]) -> list[tuple[str, OllamaNode]]:
             if not node.healthy:
                 continue
             for model_name, model_tags in node.tagged_models.items():
-                if tag in model_tags and (model_name, node.name) not in seen:
+                if tag in model_tags and _size_ok(model_name) and (model_name, node.name) not in seen:
                     candidates.append((model_name, node, _model_size_hint(model_name)))
                     seen.add((model_name, node.name))
         candidates.sort(key=lambda c: (-c[2], c[1]._inflight))
@@ -287,6 +301,20 @@ TASK_ROUTES: dict[TaskType, ModelRoute] = {
         fallback_model="gpt-4o",
         max_tokens_default=3000,
     ),
+    TaskType.course_generate: ModelRoute(
+        task=TaskType.course_generate,
+        tags=["instruct-large", "large", "instruct"],
+        fallback_backend=BackendType.openai,
+        fallback_model="gpt-4o",
+        max_tokens_default=6000,
+    ),
+    TaskType.quiz_generate: ModelRoute(
+        task=TaskType.quiz_generate,
+        tags=["instruct-large", "large", "instruct"],
+        fallback_backend=BackendType.openai,
+        fallback_model="gpt-4o",
+        max_tokens_default=4000,
+    ),
 }
 
 
@@ -297,11 +325,14 @@ async def lifespan(app: FastAPI):
 
     _llm_semaphore = asyncio.Semaphore(MAX_LLM_CONCURRENCY)
 
-    # Create Ollama clients (long-lived, connection-pooled)
+    # Create Ollama clients (long-lived, connection-pooled). Generation on
+    # large local models (70B+) can exceed two minutes, so the read timeout
+    # is configurable via OLLAMA_TIMEOUT_S.
+    ollama_timeout = float(os.getenv("OLLAMA_TIMEOUT_S", "300"))
     for name, node in FLEET.items():
         _ollama_clients[name] = httpx.AsyncClient(
             base_url=node.base_url,
-            timeout=httpx.Timeout(120, connect=5),
+            timeout=httpx.Timeout(ollama_timeout, connect=5),
             limits=httpx.Limits(max_connections=MAX_OLLAMA_PER_NODE + 2, max_keepalive_connections=MAX_OLLAMA_PER_NODE),
         )
         _node_semaphores[name] = asyncio.Semaphore(MAX_OLLAMA_PER_NODE)
@@ -425,10 +456,24 @@ class EmbeddingRequest(BaseModel):
 
 class ExerciseForgeRequest(BaseModel):
     threat_indicators: list[dict] = Field(
-        ...,
-        min_length=1,
+        default_factory=list,
         max_length=20,
         description="List of threat indicators with type, value, severity, mitre_attack_ids",
+    )
+    learning_objectives: list[str] = Field(
+        default_factory=list,
+        max_length=15,
+        description="Curriculum mode: learning objectives the exercise must assess",
+    )
+    curriculum_context: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Curriculum mode: retrieved curriculum chunks grounding the scenario",
+    )
+    competency_codes: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Competency codes objectives should map to",
     )
     difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
     duration_minutes: int = Field(default=60, ge=15, le=480)
@@ -447,6 +492,34 @@ class LearningRecommendationRequest(BaseModel):
     exercise_history: list[dict] = Field(default_factory=list, description="Recent exercise results")
     available_courses: list[dict] = Field(default_factory=list, description="Available course catalog")
     target_role: str = Field(default="", description="Target NICE work role code")
+    model: str = Field(default="", description="Override model")
+
+
+class CourseGenerateRequest(BaseModel):
+    """Draft a course from retrieved curriculum chunks (RAG happens upstream)."""
+
+    curriculum_name: str = Field(..., description="Human name of the source curriculum")
+    context_chunks: list[str] = Field(
+        ..., min_length=1, max_length=40, description="Retrieved curriculum text chunks"
+    )
+    difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
+    module_count: int = Field(default=6, ge=2, le=16)
+    focus: str = Field(default="", description="Optional focus/outline hint from the instructor")
+    model: str = Field(default="", description="Override model")
+
+
+class QuizGenerateRequest(BaseModel):
+    """Draft quiz questions from retrieved curriculum chunks."""
+
+    topic: str = Field(..., description="Topic or module title the quiz covers")
+    context_chunks: list[str] = Field(
+        ..., min_length=1, max_length=30, description="Retrieved curriculum text chunks"
+    )
+    question_count: int = Field(default=10, ge=3, le=30)
+    difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
+    competency_codes: list[str] = Field(
+        default_factory=list, description="NICE/custom competency codes to map questions onto"
+    )
     model: str = Field(default="", description="Override model")
 
 
@@ -1004,8 +1077,11 @@ async def get_embedding(req: EmbeddingRequest):
 
 @app.post("/ai/exercise-forge", response_model=GenerateResponse)
 async def forge_exercise(req: ExerciseForgeRequest):
-    """Generate a complete exercise scenario from threat intelligence indicators."""
+    """Generate a complete exercise scenario from threat intel or learning objectives."""
     start = time.perf_counter()
+
+    if not req.threat_indicators and not req.learning_objectives:
+        raise HTTPException(422, "Provide threat_indicators or learning_objectives.")
 
     # Build indicator summary for the prompt
     indicator_lines = []
@@ -1020,13 +1096,35 @@ async def forge_exercise(req: ExerciseForgeRequest):
 
     focus = ", ".join(req.focus_areas) if req.focus_areas else "detection, containment, analysis"
 
-    prompt = f"""Generate a complete cyber training exercise scenario as YAML for the TrueNorth Range platform.
-
-## Threat Intelligence Context
+    if req.threat_indicators:
+        context_section = f"""## Threat Intelligence Context
 The following indicators of compromise (IOCs) were observed from real threat feeds:
 {chr(10).join(indicator_lines)}
 
-MITRE ATT&CK techniques involved: {", ".join(sorted(mitre_ids)) if mitre_ids else "determine from indicators"}
+MITRE ATT&CK techniques involved: {", ".join(sorted(mitre_ids)) if mitre_ids else "determine from indicators"}"""
+    else:
+        objectives_block = "\n".join(f"- {o}" for o in req.learning_objectives)
+        curriculum_block = (
+            "\n\n## Source curriculum excerpts (ground the scenario in this material)\n"
+            + "\n\n---\n\n".join(req.curriculum_context)
+            if req.curriculum_context
+            else ""
+        )
+        comp_block = (
+            f"\n- Each exercise objective MUST carry a competency_code drawn from: {', '.join(req.competency_codes)}"
+            if req.competency_codes
+            else "\n- Set competency_code on each objective to a relevant NICE task/skill code when evident, else \"\""
+        )
+        context_section = f"""## Training Context (curriculum-driven)
+Design the attack scenario so a student demonstrating these learning objectives is
+measurably assessed by the exercise objectives:
+{objectives_block}{curriculum_block}
+
+Additional objective rules:{comp_block}"""
+
+    prompt = f"""Generate a complete cyber training exercise scenario as YAML for the TrueNorth Range platform.
+
+{context_section}
 
 ## Exercise Requirements
 - Difficulty: {req.difficulty}
@@ -1063,6 +1161,7 @@ objectives:
     params:
       <validator-specific config>
     points: <integer>
+    competency_code: "<NICE or custom competency code this objective demonstrates, or empty>"
     time_bonus: <true|false>
     time_limit_seconds: <seconds or 0>
 ```
@@ -1085,6 +1184,133 @@ Rules:
     latency = (time.perf_counter() - start) * 1000
     return GenerateResponse(
         task="exercise-forge",
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
+        latency_ms=round(latency, 1),
+    )
+
+
+@app.post("/ai/course-generate", response_model=GenerateResponse)
+async def generate_course(req: CourseGenerateRequest):
+    """Draft a structured course (modules + lessons) grounded in curriculum chunks."""
+    start = time.perf_counter()
+
+    context = "\n\n---\n\n".join(req.context_chunks)
+    focus_line = f"\nInstructor focus/outline hint: {req.focus}" if req.focus else ""
+
+    prompt = f"""You are an instructional designer for the TrueNorth cyber range training platform.
+Draft a complete course grounded ONLY in the source curriculum excerpts below. Do not invent
+facts that contradict the source material; where the source is thin, keep lessons brief.
+
+## Source curriculum: {req.curriculum_name}
+{context}
+
+## Requirements
+- Difficulty: {req.difficulty}
+- Exactly {req.module_count} ordered modules{focus_line}
+- Map the course to NICE Workforce Framework work roles where evident
+- Each module is one of: reading (lesson text), quiz (placeholder, questions generated separately),
+  scenario (hands-on range exercise recommendation)
+- Lesson text should be substantive markdown (300-700 words) teaching the module topic
+
+## Output format — STRICT JSON, no markdown fences, no commentary:
+{{
+  "name": "<course title>",
+  "description": "<2-3 sentence description>",
+  "difficulty": "{req.difficulty}",
+  "duration_hours": <integer estimate>,
+  "nice_work_roles": ["<role code>", ...],
+  "tags": ["<tag>", ...],
+  "modules": [
+    {{
+      "ordinal": <0-based integer>,
+      "title": "<module title>",
+      "description": "<1 sentence>",
+      "content_type": "reading|quiz|scenario",
+      "duration_minutes": <integer>,
+      "lesson_markdown": "<full lesson text for reading modules, empty string otherwise>",
+      "learning_objectives": ["<objective>", ...],
+      "competency_codes": ["<NICE code if known>", ...]
+    }}
+  ]
+}}"""
+
+    output, model_used, node_used, usage, cached = await _generate(
+        prompt,
+        TaskType.course_generate,
+        req.model,
+        use_cache=False,
+        max_tokens=6000,
+    )
+    latency = (time.perf_counter() - start) * 1000
+    return GenerateResponse(
+        task="course-generate",
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
+        latency_ms=round(latency, 1),
+    )
+
+
+@app.post("/ai/quiz-generate", response_model=GenerateResponse)
+async def generate_quiz(req: QuizGenerateRequest):
+    """Draft Moodle-style quiz questions grounded in curriculum chunks."""
+    start = time.perf_counter()
+
+    context = "\n\n---\n\n".join(req.context_chunks)
+    comp_line = (
+        f"\n- Map each question to one of these competency codes where applicable: {', '.join(req.competency_codes)}"
+        if req.competency_codes
+        else ""
+    )
+
+    prompt = f"""You are an assessment author for the TrueNorth cyber range training platform.
+Write quiz questions grounded ONLY in the source curriculum excerpts below.
+
+## Topic: {req.topic}
+
+## Source curriculum excerpts
+{context}
+
+## Requirements
+- Exactly {req.question_count} questions at {req.difficulty} difficulty
+- Mix of types: mcq (single correct), multi (2+ correct), truefalse, scenario
+  (short realistic incident vignette stem followed by MCQ options)
+- 4 options for mcq/multi/scenario; options must be plausible (no joke distractors)
+- Every question needs an explanation of the correct answer citing the source concept{comp_line}
+
+## Output format — STRICT JSON array, no markdown fences, no commentary:
+[
+  {{
+    "question_type": "mcq|multi|truefalse|scenario",
+    "stem": "<question text (scenario stems may be multi-sentence)>",
+    "options": ["<option A>", "<option B>", "<option C>", "<option D>"],
+    "correct": [<0-based indices of correct options>],
+    "explanation": "<why the answer is correct>",
+    "competency_code": "<code or empty string>",
+    "difficulty": "{req.difficulty}",
+    "points": <integer 5-20>
+  }}
+]
+For truefalse questions use options ["True", "False"]."""
+
+    output, model_used, node_used, usage, cached = await _generate(
+        prompt,
+        TaskType.quiz_generate,
+        req.model,
+        use_cache=False,
+        max_tokens=4000,
+    )
+    latency = (time.perf_counter() - start) * 1000
+    return GenerateResponse(
+        task="quiz-generate",
         model_used=model_used,
         node_used=node_used,
         backend=PRIMARY_BACKEND.value,

@@ -172,6 +172,7 @@ from .routers import (
     certifications_router,
     competency_router,
     courses_router,
+    curriculum_router,
     detection_rules_router,
     directory_router,
     exercise_forge_router,
@@ -184,6 +185,7 @@ from .routers import (
     network_devices_router,
     ops_center_router,
     proxmox_router,
+    quizzes_router,
     ranges_router,
     scenarios_router,
     scheduling_router,
@@ -223,6 +225,9 @@ app.include_router(threat_intel_router)
 app.include_router(detection_rules_router)
 # AI Exercise Forge (EPIC 1)
 app.include_router(exercise_forge_router)
+# Curriculum Forge (EPIC: LLM curriculum ingestion -> content/quizzes/ranges)
+app.include_router(curriculum_router)
+app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)

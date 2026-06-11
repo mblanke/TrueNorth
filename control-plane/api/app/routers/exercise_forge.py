@@ -99,10 +99,13 @@ async def preview_forge(
 ):
     """Generate a scenario preview without creating DB records."""
     indicators = _resolve_indicators(req, user.tenant_id, db)
-    if not indicators:
-        raise HTTPException(422, "No threat indicators provided or found in the specified feed.")
+    curriculum_context = await _resolve_curriculum_context(req, user.tenant_id, db)
+    if not indicators and not req.learning_objectives:
+        raise HTTPException(
+            422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode)."
+        )
 
-    scenario_yaml, model_used = await _call_forge_ai(indicators, req)
+    scenario_yaml, model_used = await _call_forge_ai(indicators, req, curriculum_context)
     mitre_techniques = _extract_mitre(scenario_yaml)
 
     return ForgePreviewOut(
@@ -128,12 +131,15 @@ async def generate_exercise(
     user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Generate a full exercise from threat intel and persist to DB."""
+    """Generate a full exercise from threat intel or curriculum objectives, and persist."""
     indicators = _resolve_indicators(req, user.tenant_id, db)
-    if not indicators:
-        raise HTTPException(422, "No threat indicators provided or found in the specified feed.")
+    curriculum_context = await _resolve_curriculum_context(req, user.tenant_id, db)
+    if not indicators and not req.learning_objectives:
+        raise HTTPException(
+            422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode)."
+        )
 
-    scenario_yaml, model_used = await _call_forge_ai(indicators, req)
+    scenario_yaml, model_used = await _call_forge_ai(indicators, req, curriculum_context)
     mitre_techniques = _extract_mitre(scenario_yaml)
 
     # Parse the generated YAML to extract name
@@ -174,6 +180,10 @@ async def generate_exercise(
     db.add(exercise)
     db.flush()
 
+    # Create Objective rows from the generated YAML so scoring and the
+    # competency capability loop work without scenario-engine involvement.
+    objectives_created = _create_objectives(db, exercise.id, parsed)
+
     # Create ForgedExercise tracking record
     indicator_ids = [str(i.get("id", "")) for i in indicators if i.get("id")]
     forged = ForgedExercise(
@@ -191,10 +201,11 @@ async def generate_exercise(
     db.commit()
 
     logger.info(
-        "Exercise forged: exercise=%s scenario=%s indicators=%d model=%s",
+        "Exercise forged: exercise=%s scenario=%s indicators=%d objectives=%d model=%s",
         exercise.id,
         scenario.id,
         len(indicators),
+        objectives_created,
         model_used,
     )
 
@@ -265,10 +276,80 @@ def _resolve_indicators(req: ForgeRequest, tenant_id: uuid.UUID, db: Session) ->
     return indicators
 
 
-async def _call_forge_ai(indicators: list[dict], req: ForgeRequest) -> tuple[str, str]:
+async def _resolve_curriculum_context(
+    req: ForgeRequest, tenant_id: uuid.UUID, db: Session
+) -> list[str]:
+    """Curriculum mode: retrieve grounding chunks for the learning objectives."""
+    if not req.curriculum_id or not req.learning_objectives:
+        return []
+    from .. import curriculum_ingest
+    from ..models import Curriculum
+
+    curriculum = (
+        db.query(Curriculum)
+        .filter(
+            Curriculum.id == req.curriculum_id,
+            Curriculum.tenant_id == tenant_id,
+            Curriculum.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not curriculum:
+        raise HTTPException(404, "Curriculum not found.")
+
+    chunks: list[str] = []
+    seen: set[str] = set()
+    for objective in req.learning_objectives[:8]:
+        for hit in await curriculum_ingest.rag_search(req.curriculum_id, objective, k=4):
+            key = hit["text"][:120]
+            if key not in seen:
+                seen.add(key)
+                chunks.append(hit["text"])
+    return chunks[:20]
+
+
+def _create_objectives(db: Session, exercise_id: uuid.UUID, parsed: dict) -> int:
+    """Persist Objective rows (with competency mapping) from generated YAML."""
+    from ..models import Objective, ObjectiveType
+
+    type_map = {
+        "detection": ObjectiveType.detection,
+        "containment": ObjectiveType.response,
+        "eradication": ObjectiveType.response,
+        "recovery": ObjectiveType.response,
+        "response": ObjectiveType.response,
+        "analysis": ObjectiveType.deliverable,
+        "deliverable": ObjectiveType.deliverable,
+    }
+    created = 0
+    for obj in parsed.get("objectives") or []:
+        if not isinstance(obj, dict):
+            continue
+        ref_id = str(obj.get("id") or f"obj-{created + 1}")
+        db.add(
+            Objective(
+                exercise_id=exercise_id,
+                ref_id=ref_id[:100],
+                objective_type=type_map.get(str(obj.get("type", "")).lower(), ObjectiveType.deliverable),
+                description=str(obj.get("name") or ref_id),
+                validator=str(obj.get("validator") or "validate.manual_ack")[:255],
+                validator_params=json.dumps(obj.get("params") or {}),
+                points=int(obj.get("points") or 0),
+                competency_code=(str(obj.get("competency_code") or "")[:50] or None),
+            )
+        )
+        created += 1
+    return created
+
+
+async def _call_forge_ai(
+    indicators: list[dict], req: ForgeRequest, curriculum_context: list[str] | None = None
+) -> tuple[str, str]:
     """Call AI orchestrator exercise-forge endpoint."""
     payload = {
         "threat_indicators": indicators,
+        "learning_objectives": req.learning_objectives,
+        "curriculum_context": curriculum_context or [],
         "difficulty": req.difficulty,
         "duration_minutes": req.duration_minutes,
         "objective_count": req.objective_count,
@@ -276,7 +357,7 @@ async def _call_forge_ai(indicators: list[dict], req: ForgeRequest) -> tuple[str
         "focus_areas": req.focus_areas,
     }
 
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(timeout=330) as client:
         try:
             resp = await client.post(
                 f"{AI_ORCHESTRATOR_URL}/ai/exercise-forge",
