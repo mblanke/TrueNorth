@@ -14,6 +14,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatBadgeModule } from '@angular/material/badge';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { EnterStaggerDirective } from '../../shared/motion';
 
 interface Annotation {
   id: string;
@@ -50,7 +51,7 @@ interface OpsStats {
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatInputModule, MatFormFieldModule, MatSelectModule,
-    MatChipsModule, MatListModule, MatBadgeModule,
+    MatChipsModule, MatListModule, MatBadgeModule, EnterStaggerDirective,
   ],
   template: `
     <div class="page-container">
@@ -70,7 +71,7 @@ interface OpsStats {
       </div>
 
       <!-- Stats Bar -->
-      <div class="stats-row">
+      <div class="stats-row" tnEnterStagger>
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">group</mat-icon>

@@ -15,6 +15,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatBadgeModule } from '@angular/material/badge';
 import { HttpClient } from '@angular/common/http';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { EnterStaggerDirective } from '../../shared/motion';
 
 interface AIBackend {
   id: string;
@@ -89,7 +90,7 @@ interface AIFleetSummary {
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, MatProgressBarModule,
-    MatBadgeModule,
+    MatBadgeModule, EnterStaggerDirective,
   ],
   template: `
     <div class="page-container">
@@ -108,7 +109,7 @@ interface AIFleetSummary {
 
       <!-- Summary -->
       @if (summary) {
-        <div class="summary-row">
+        <div class="summary-row" tnEnterStagger>
           <mat-card class="stat-card">
             <mat-icon>hub</mat-icon>
             <div class="stat-value">{{ summary.total_backends }}</div>

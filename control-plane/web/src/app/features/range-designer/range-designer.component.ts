@@ -21,7 +21,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterModule } from '@angular/router';
 import * as joint from 'jointjs';
 import { FilterCategoryPipe } from './filter-category.pipe';
 import { ApiService } from '@core/services/api.service';
@@ -142,7 +142,7 @@ function createSubnetZone(
   standalone: true,
   encapsulation: ViewEncapsulation.None,
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
+    CommonModule, FormsModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatTooltipModule,
     MatSliderModule, MatDividerModule, MatSnackBarModule, FilterCategoryPipe,
   ],
@@ -233,6 +233,10 @@ function createSubnetZone(
           </button>
           <button mat-stroked-button color="primary" (click)="saveDiagram()" [disabled]="!rangeId()">
             <mat-icon>save</mat-icon> Save
+          </button>
+          <button mat-stroked-button [routerLink]="['/topology-3d']" [queryParams]="{ range: rangeId() }"
+                  [disabled]="!rangeId()" matTooltip="View the saved diagram in 3D">
+            <mat-icon>3d_rotation</mat-icon> View in 3D
           </button>
           <button mat-stroked-button (click)="exportYaml()">
             <mat-icon>download</mat-icon> Export YAML

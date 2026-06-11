@@ -135,6 +135,12 @@ export const routes: Routes = [
     title: 'Exercise Forge - TrueNorth Range',
   },
   {
+    path: 'topology-3d',
+    loadComponent: () =>
+      import('./features/ops-center/topology-3d.component').then(m => m.Topology3dComponent),
+    title: '3D Topology - TrueNorth Range',
+  },
+  {
     path: 'ops-center/:exerciseId',
     loadComponent: () =>
       import('./features/ops-center/ops-center.component').then(m => m.OpsCenterComponent),

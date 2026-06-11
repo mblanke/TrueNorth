@@ -1,6 +1,7 @@
-import { Component, OnInit, signal, ChangeDetectorRef } from '@angular/core';
+import { Component, ElementRef, OnInit, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
+import gsap from 'gsap';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -16,6 +17,7 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '@core/services/api.service';
 import { HttpClient } from '@angular/common/http';
 import { Range, Exercise, HealthResponse } from '@core/models';
+import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective, MotionService } from '../../shared/motion';
 
 interface ClusterNode {
   node: string;
@@ -76,14 +78,14 @@ interface DeploymentProfile {
     CommonModule, RouterModule, FormsModule, MatCardModule, MatIconModule,
     MatButtonModule, MatChipsModule, MatProgressBarModule, MatTooltipModule,
     MatDividerModule, MatFormFieldModule, MatInputModule, MatSnackBarModule,
-    MatDialogModule,
+    MatDialogModule, CountUpDirective, EnterStaggerDirective, HoverLiftDirective,
   ],
   template: `
     <div class="page-container">
       <div class="page-header">
         <div class="header-left">
-          <mat-icon class="page-icon">dashboard</mat-icon>
           <div>
+            <div class="tn-kicker">Command Center</div>
             <h1>Dashboard</h1>
             <p class="subtitle">System overview and quick actions</p>
           </div>
@@ -91,34 +93,35 @@ interface DeploymentProfile {
       </div>
 
       <!-- ──── TOP STATS ROW ────────────────────────────────────────────────────────────────────── -->
-      <div class="stats-row">
-        <mat-card class="stat-card">
+      <div class="stats-row" tnEnterStagger>
+        <mat-card class="stat-card tn-stagger-item" tnHoverLift>
           <mat-card-content>
-            <mat-icon>dns</mat-icon>
-            <div class="stat-value">{{ rangeCount() }}</div>
+            <div class="tn-icon-squircle"><mat-icon>dns</mat-icon></div>
+            <div class="stat-value tn-gradient-text" [tnCountUp]="rangeCount()"></div>
             <div class="stat-label">Active Ranges</div>
           </mat-card-content>
         </mat-card>
-        <mat-card class="stat-card">
+        <mat-card class="stat-card tn-stagger-item" tnHoverLift>
           <mat-card-content>
-            <mat-icon>fitness_center</mat-icon>
-            <div class="stat-value">{{ exerciseCount() }}</div>
+            <div class="tn-icon-squircle"><mat-icon>fitness_center</mat-icon></div>
+            <div class="stat-value tn-gradient-text" [tnCountUp]="exerciseCount()"></div>
             <div class="stat-label">Exercises</div>
           </mat-card-content>
         </mat-card>
-        <mat-card class="stat-card" [matTooltip]="healthTooltip()">
+        <mat-card class="stat-card tn-stagger-item" [matTooltip]="healthTooltip()" tnHoverLift>
           <mat-card-content>
-            <mat-icon [style.color]="health()?.status === 'ok' ? 'var(--success)' : 'var(--alert)'">
-              {{ health()?.status === 'ok' ? 'check_circle' : 'error' }}
-            </mat-icon>
+            <div class="tn-icon-squircle"
+                 [style.color]="health()?.status === 'ok' ? 'var(--success)' : 'var(--alert)'">
+              <mat-icon>{{ health()?.status === 'ok' ? 'check_circle' : 'error' }}</mat-icon>
+            </div>
             <div class="stat-value">{{ health()?.status || '...' }}</div>
             <div class="stat-label">System Health</div>
           </mat-card-content>
         </mat-card>
-        <mat-card class="stat-card">
+        <mat-card class="stat-card tn-stagger-item" tnHoverLift>
           <mat-card-content>
-            <mat-icon>storage</mat-icon>
-            <div class="stat-value">{{ clusterNodes().length }}</div>
+            <div class="tn-icon-squircle"><mat-icon>storage</mat-icon></div>
+            <div class="stat-value tn-gradient-text" [tnCountUp]="clusterNodes().length"></div>
             <div class="stat-label">Proxmox Nodes</div>
           </mat-card-content>
         </mat-card>
@@ -184,36 +187,36 @@ interface DeploymentProfile {
           }
         </div>
 
-        <!-- Aggregate capacity bars -->
+        <!-- Aggregate capacity rings -->
         @if (capacity()) {
           <div class="capacity-aggregate">
-            <div class="cap-bar-group">
-              <div class="cap-label">
-                <mat-icon>developer_board</mat-icon> vCPU
-                <span class="cap-numbers">{{ capacity()!.vcpu_committed }} / {{ capacity()!.vcpu_total }} committed</span>
-              </div>
-              <div class="cap-bar-bg">
-                <div class="cap-bar-committed" [style.width.%]="capacity()!.vcpu_total ? (capacity()!.vcpu_committed / capacity()!.vcpu_total * 100) : 0"></div>
+            <div class="cap-ring-group">
+              <div class="tn-ring cap-ring" [class.warn]="capPct('vcpu') > 70" [class.alert]="capPct('vcpu') > 90"
+                   [attr.data-pct]="capPct('vcpu')">
+                <div class="ring-center">
+                  <div class="ring-value">{{ capPct('vcpu') | number:'1.0-0' }}%</div>
+                  <div class="ring-name">vCPU</div>
+                </div>
               </div>
               <div class="cap-avail">{{ capacity()!.vcpu_available }} vCPU available</div>
             </div>
-            <div class="cap-bar-group">
-              <div class="cap-label">
-                <mat-icon>memory</mat-icon> RAM
-                <span class="cap-numbers">{{ (capacity()!.ram_mb_committed / 1024) | number:'1.0-0' }}GB / {{ (capacity()!.ram_mb_total / 1024) | number:'1.0-0' }}GB</span>
-              </div>
-              <div class="cap-bar-bg">
-                <div class="cap-bar-committed" [style.width.%]="capacity()!.ram_mb_total ? (capacity()!.ram_mb_committed / capacity()!.ram_mb_total * 100) : 0"></div>
+            <div class="cap-ring-group">
+              <div class="tn-ring cap-ring" [class.warn]="capPct('ram') > 70" [class.alert]="capPct('ram') > 90"
+                   [attr.data-pct]="capPct('ram')">
+                <div class="ring-center">
+                  <div class="ring-value">{{ capPct('ram') | number:'1.0-0' }}%</div>
+                  <div class="ring-name">RAM</div>
+                </div>
               </div>
               <div class="cap-avail">{{ (capacity()!.ram_mb_available / 1024) | number:'1.0-0' }}GB available</div>
             </div>
-            <div class="cap-bar-group">
-              <div class="cap-label">
-                <mat-icon>storage</mat-icon> Storage
-                <span class="cap-numbers">{{ capacity()!.disk_gb_committed }}GB / {{ capacity()!.disk_gb_total }}GB</span>
-              </div>
-              <div class="cap-bar-bg">
-                <div class="cap-bar-committed" [style.width.%]="capacity()!.disk_gb_total ? (capacity()!.disk_gb_committed / capacity()!.disk_gb_total * 100) : 0"></div>
+            <div class="cap-ring-group">
+              <div class="tn-ring cap-ring" [class.warn]="capPct('disk') > 70" [class.alert]="capPct('disk') > 90"
+                   [attr.data-pct]="capPct('disk')">
+                <div class="ring-center">
+                  <div class="ring-value">{{ capPct('disk') | number:'1.0-0' }}%</div>
+                  <div class="ring-name">Storage</div>
+                </div>
               </div>
               <div class="cap-avail">{{ capacity()!.disk_gb_available }}GB available</div>
             </div>
@@ -224,9 +227,9 @@ interface DeploymentProfile {
       <!-- ──── DEPLOYMENT CALCULATOR ────────────────────────────────────────────────────── -->
       <h2 class="section-heading"><mat-icon>calculate</mat-icon> What Can You Deploy?</h2>
       <div class="deploy-calc">
-        <div class="profile-cards">
+        <div class="profile-cards" tnEnterStagger>
           @for (p of deploymentProfiles; track p.name) {
-            <mat-card class="profile-card" [class.cant-deploy]="!canDeploy(p)">
+            <mat-card class="profile-card tn-stagger-item" [class.cant-deploy]="!canDeploy(p)" tnHoverLift>
               <div class="profile-icon">
                 <mat-icon>{{ p.icon }}</mat-icon>
               </div>
@@ -396,13 +399,13 @@ interface DeploymentProfile {
       <h2 class="section-heading"><mat-icon>person</mat-icon> My Training Dashboard</h2>
 
       <div class="personal-row">
-        <mat-card class="personal-card">
+        <mat-card class="personal-card" tnHoverLift>
           <mat-card-header>
             <mat-icon mat-card-avatar>school</mat-icon>
             <mat-card-title>Active Courses</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="big-number">{{ myActiveCourses }}</div>
+            <div class="big-number" [tnCountUp]="myActiveCourses"></div>
             <p class="card-note">courses in progress</p>
           </mat-card-content>
           <mat-card-actions>
@@ -410,13 +413,13 @@ interface DeploymentProfile {
           </mat-card-actions>
         </mat-card>
 
-        <mat-card class="personal-card">
+        <mat-card class="personal-card" tnHoverLift>
           <mat-card-header>
             <mat-icon mat-card-avatar>trending_up</mat-icon>
             <mat-card-title>Competency Score</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="big-number accent-text">{{ myCompetencyPct }}%</div>
+            <div class="big-number accent-text"><span [tnCountUp]="myCompetencyPct"></span>%</div>
             <mat-progress-bar mode="determinate" [value]="myCompetencyPct"></mat-progress-bar>
           </mat-card-content>
           <mat-card-actions>
@@ -424,13 +427,13 @@ interface DeploymentProfile {
           </mat-card-actions>
         </mat-card>
 
-        <mat-card class="personal-card">
+        <mat-card class="personal-card" tnHoverLift>
           <mat-card-header>
             <mat-icon mat-card-avatar>emoji_events</mat-icon>
             <mat-card-title>Certifications</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="big-number">{{ myCertCount }}</div>
+            <div class="big-number" [tnCountUp]="myCertCount"></div>
             <p class="card-note">active certifications</p>
           </mat-card-content>
           <mat-card-actions>
@@ -438,13 +441,13 @@ interface DeploymentProfile {
           </mat-card-actions>
         </mat-card>
 
-        <mat-card class="personal-card">
+        <mat-card class="personal-card" tnHoverLift>
           <mat-card-header>
             <mat-icon mat-card-avatar>public</mat-icon>
             <mat-card-title>Coalition Status</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="big-number">{{ nationCount }} nations</div>
+            <div class="big-number"><span [tnCountUp]="nationCount"></span> nations</div>
             <p class="card-note">{{ coalitionCount }} coalitions active</p>
           </mat-card-content>
           <mat-card-actions>
@@ -466,17 +469,25 @@ interface DeploymentProfile {
   `,
   styles: [`
     :host { display: block; }
+    .subtitle { color: var(--text-muted); }
     .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
     .stat-card mat-card-content { text-align: center; padding: 24px; }
-    .stat-card mat-icon { font-size: 40px; width: 40px; height: 40px; color: var(--accent); }
-    .stat-value { font-size: 28px; font-weight: 600; margin: 8px 0 4px; color: var(--text-primary); }
-    .stat-label { color: var(--text-secondary); }
+    .stat-card .tn-icon-squircle { margin: 0 auto; }
+    .stat-card .tn-icon-squircle mat-icon { font-size: 24px; width: 24px; height: 24px; }
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: 40px; font-weight: 700; letter-spacing: -0.02em;
+      margin: 10px 0 4px; color: var(--text-primary);
+      min-height: 48px;
+    }
+    .stat-label { color: var(--text-secondary); font-size: 13px; letter-spacing: 0.4px; text-transform: uppercase; }
     @media (max-width: 960px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 640px) { .stats-row { grid-template-columns: 1fr; } }
 
     .section-heading {
       display: flex; align-items: center; gap: 8px; margin: 28px 0 14px;
-      font-size: 18px; font-weight: 600; color: var(--text-primary);
+      font-family: var(--font-display);
+      font-size: 18px; font-weight: 700; color: var(--text-primary);
     }
     .section-heading mat-icon { color: var(--accent); font-size: 22px; width: 22px; height: 22px; }
 
@@ -500,7 +511,9 @@ interface DeploymentProfile {
       overflow: hidden; border: 1px solid var(--border);
     }
     .gauge-bar-fill {
-      height: 100%; border-radius: 5px; background: var(--accent);
+      height: 100%; border-radius: 5px;
+      background: var(--gradient-accent);
+      box-shadow: 0 0 8px var(--accent-muted);
       transition: width 0.6s ease;
     }
     .gauge-bar-fill.warn { background: #FFA726; }
@@ -518,27 +531,23 @@ interface DeploymentProfile {
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin 1.2s linear infinite; }
 
-    /* ──── Aggregate capacity bars ────────────────────────────────────── */
+    /* ──── Aggregate capacity rings ────────────────────────────────────── */
     .capacity-aggregate {
-      flex: 0 0 320px; display: flex; flex-direction: column; gap: 16px;
-      padding: 16px; background: var(--bg-secondary); border-radius: 12px;
-      border: 1px solid var(--border);
+      flex: 0 0 320px; display: flex; flex-direction: column; gap: 22px;
+      align-items: center; justify-content: center;
+      padding: 24px 16px; background: var(--bg-secondary); border-radius: var(--radius-md);
+      border: 1px solid var(--glass-border);
     }
-    .cap-bar-group { display: flex; flex-direction: column; gap: 4px; }
-    .cap-label {
-      display: flex; align-items: center; gap: 6px; font-size: 13px;
-      font-weight: 600; color: var(--text-primary);
+    .cap-ring-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .cap-ring { --ring-size: 116px; --ring-width: 10px; filter: drop-shadow(0 0 12px var(--accent-muted)); }
+    .ring-center { text-align: center; }
+    .ring-value {
+      font-family: var(--font-display);
+      font-size: 22px; font-weight: 700; color: var(--text-primary);
     }
-    .cap-label mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--accent); }
-    .cap-numbers { margin-left: auto; font-weight: 400; color: var(--text-muted); font-size: 12px; }
-    .cap-bar-bg {
-      height: 14px; border-radius: 7px; background: var(--bg-primary);
-      border: 1px solid var(--border); overflow: hidden;
-    }
-    .cap-bar-committed {
-      height: 100%; border-radius: 7px;
-      background: linear-gradient(90deg, var(--accent), #1E88E5);
-      transition: width 0.6s ease;
+    .ring-name {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.4px;
+      text-transform: uppercase; color: var(--text-muted);
     }
     .cap-avail { font-size: 12px; color: var(--success); font-weight: 500; }
 
@@ -663,7 +672,14 @@ export class DashboardComponent implements OnInit {
     { name: 'Cloud Range (Multi-Tenant)', icon: 'cloud', vm_count: 200, vcpu_per_vm: 2, ram_mb_per_vm: 4096, disk_gb_per_vm: 60 },
   ];
 
-  constructor(private api: ApiService, private http: HttpClient, private snack: MatSnackBar, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private api: ApiService,
+    private http: HttpClient,
+    private snack: MatSnackBar,
+    private cdr: ChangeDetectorRef,
+    private motion: MotionService,
+    private host: ElementRef<HTMLElement>,
+  ) {}
 
   ngOnInit(): void {
     // Core data
@@ -684,7 +700,13 @@ export class DashboardComponent implements OnInit {
     this.refreshCluster();
 
     // Capacity & events
-    this.api.getCapacity().subscribe({ next: c => this.capacity.set(c), error: () => {} });
+    this.api.getCapacity().subscribe({
+      next: c => {
+        this.capacity.set(c);
+        this.animateRings();
+      },
+      error: () => {},
+    });
     this.loadEvents();
 
     // Personal dashboard data
@@ -704,11 +726,59 @@ export class DashboardComponent implements OnInit {
       next: (res: any) => {
         this.clusterNodes.set(res.cluster || []);
         this.clusterLoading.set(false);
+        this.animateGauges();
       },
       error: () => {
         this.clusterNodes.set([]);
         this.clusterLoading.set(false);
       },
+    });
+  }
+
+  /** Committed-capacity percentage for the ring gauges. */
+  capPct(kind: 'vcpu' | 'ram' | 'disk'): number {
+    const c = this.capacity();
+    if (!c) return 0;
+    const pct = (committed: number, total: number) => (total ? (committed / total) * 100 : 0);
+    switch (kind) {
+      case 'vcpu': return pct(c.vcpu_committed, c.vcpu_total);
+      case 'ram':  return pct(c.ram_mb_committed, c.ram_mb_total);
+      case 'disk': return pct(c.disk_gb_committed, c.disk_gb_total);
+    }
+  }
+
+  /** Sweep the conic ring gauges from 0 to their committed percentage. */
+  private animateRings(): void {
+    requestAnimationFrame(() => {
+      const rings = this.host.nativeElement.querySelectorAll<HTMLElement>('.cap-ring');
+      const reduced = this.motion.reducedMotion();
+      this.motion.runOutside(() => {
+        rings.forEach((ring) => {
+          const target = parseFloat(ring.dataset['pct'] ?? '0') || 0;
+          if (reduced) {
+            ring.style.setProperty('--ring-pct', String(target));
+            return;
+          }
+          const proxy = { value: 0 };
+          gsap.to(proxy, {
+            value: target,
+            duration: 1.1,
+            ease: 'power2.out',
+            onUpdate: () => ring.style.setProperty('--ring-pct', String(proxy.value)),
+          });
+        });
+      });
+    });
+  }
+
+  /** Grow the node CPU/RAM bars from zero when cluster data lands. */
+  private animateGauges(): void {
+    if (this.motion.reducedMotion()) return;
+    requestAnimationFrame(() => {
+      const fills = this.host.nativeElement.querySelectorAll<HTMLElement>('.gauge-bar-fill');
+      this.motion.runOutside(() => {
+        gsap.from(fills, { width: 0, duration: 0.8, ease: 'power2.out', stagger: 0.05 });
+      });
     });
   }
 

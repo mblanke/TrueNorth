@@ -18,6 +18,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { HttpClient } from '@angular/common/http';
+import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
 
 interface Course {
   id: string;
@@ -85,13 +86,13 @@ interface Transcript {
     MatCardModule, MatButtonModule, MatIconModule, MatTabsModule,
     MatTableModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSlideToggleModule, MatDividerModule, MatProgressBarModule,
-    MatChipsModule, MatTooltipModule, MatExpansionModule,
+    MatChipsModule, MatTooltipModule, MatExpansionModule, LottieIconComponent,
   ],
   template: `
     <div class="page-container">
       <div class="page-header">
         <div class="header-left">
-          <mat-icon class="page-icon">school</mat-icon>
+          <tn-lottie name="shield-pulse" [size]="64" />
           <div>
             <h1>LMS Administration</h1>
             <p class="subtitle">Manage courses, learning paths, enrollments, and individual training records.</p>

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 
 from sqlalchemy.orm import Session
@@ -230,6 +231,9 @@ def seed_infrastructure(db: Session) -> None:
 
     # Hypervisors
     if db.query(HypervisorConnection).count() == 0:
+        # Real credentials must come from the environment; the fallback is a
+        # non-working placeholder so dev seeds never ship a usable secret.
+        hv_password = os.getenv("TN_SEED_HV_PASSWORD", "changeme-set-TN_SEED_HV_PASSWORD")
         connections = [
             HypervisorConnection(
                 name="Coyote (Primary)",
@@ -237,7 +241,7 @@ def seed_infrastructure(db: Session) -> None:
                 host="192.168.1.85",
                 port=8006,
                 username="root@pam",
-                password_encrypted="powers4w",
+                password_encrypted=hv_password,
                 verify_ssl=False,
                 is_primary=True,
                 is_active=True,
@@ -251,7 +255,7 @@ def seed_infrastructure(db: Session) -> None:
                 host="192.168.1.86",
                 port=8006,
                 username="root@pam",
-                password_encrypted="powers4w",
+                password_encrypted=hv_password,
                 verify_ssl=False,
                 is_primary=False,
                 is_active=True,

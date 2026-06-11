@@ -10,6 +10,8 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
+import { EnterStaggerDirective } from '../../shared/motion';
 
 interface TranscriptEntry {
   source: string;
@@ -69,13 +71,13 @@ interface AutoAssessment {
   imports: [
     CommonModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatProgressBarModule,
-    MatChipsModule, MatTooltipModule,
+    MatChipsModule, MatTooltipModule, LottieIconComponent, EnterStaggerDirective,
   ],
   template: `
     <div class="page-container">
       <div class="page-header">
         <div class="header-left">
-          <mat-icon class="page-icon">trending_up</mat-icon>
+          <tn-lottie name="progress-orbit" [size]="64" />
           <div>
             <h1>My Progress</h1>
             <p class="subtitle">Unified transcript across all training sources.</p>
@@ -83,7 +85,7 @@ interface AutoAssessment {
         </div>
       </div>
 
-      <div class="stats-row">
+      <div class="stats-row" tnEnterStagger>
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">timer</mat-icon>

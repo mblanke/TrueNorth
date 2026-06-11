@@ -34,3 +34,6 @@ pytest-out*.txt
 # SSL / secrets
 infra/platform/docker/ssl/*.crt
 infra/platform/docker/ssl/*.key
+
+# DevTools verification artifacts
+control-plane/web/devtools-shots/

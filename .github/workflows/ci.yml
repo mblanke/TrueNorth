@@ -40,7 +40,6 @@ jobs:
           DATABASE_URL: "sqlite://"
           REDIS_URL: "redis://localhost:6379/15"
           RATE_LIMIT_ENABLED: "false"
-        working-directory: Core_Docs
 
   lint-angular:
     runs-on: ubuntu-latest
@@ -50,11 +49,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: Core_Docs/control-plane/web/package-lock.json
+          cache-dependency-path: control-plane/web/package-lock.json
       - run: npm ci
-        working-directory: Core_Docs/control-plane/web
+        working-directory: control-plane/web
       - run: npx ng lint
-        working-directory: Core_Docs/control-plane/web
+        working-directory: control-plane/web
 
   build-angular:
     runs-on: ubuntu-latest
@@ -65,11 +64,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: Core_Docs/control-plane/web/package-lock.json
+          cache-dependency-path: control-plane/web/package-lock.json
       - run: npm ci
-        working-directory: Core_Docs/control-plane/web
+        working-directory: control-plane/web
       - run: npx ng build --configuration production
-        working-directory: Core_Docs/control-plane/web
+        working-directory: control-plane/web
 
   build-docker:
     runs-on: ubuntu-latest
@@ -78,17 +77,17 @@ jobs:
       matrix:
         service:
           - name: api
-            context: Core_Docs/control-plane/api
+            context: control-plane/api
           - name: worker
-            context: Core_Docs/control-plane/worker
+            context: control-plane/worker
           - name: web
-            context: Core_Docs/control-plane/web
+            context: control-plane/web
           - name: scenario-engine
-            context: Core_Docs/scenario-engine
+            context: scenario-engine
           - name: telemetry-pipeline
-            context: Core_Docs/telemetry-pipeline
+            context: telemetry-pipeline
           - name: ai-orchestrator
-            context: Core_Docs/ai-orchestrator
+            context: ai-orchestrator
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -105,7 +104,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - run: helm lint Core_Docs/infra/k8s/helm/truenorth-range
+      - run: helm lint infra/k8s/helm/truenorth-range
 
   integration:
     runs-on: ubuntu-latest
@@ -141,4 +140,3 @@ jobs:
           DATABASE_URL: "postgresql+psycopg://forge:forge@localhost:5432/forge"
           REDIS_URL: "redis://localhost:6379/0"
           AUTH_DISABLED: "true"
-        working-directory: Core_Docs
