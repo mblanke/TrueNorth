@@ -6,6 +6,7 @@ export interface ThemeOption {
   className: string;
   colorLeft: string;
   colorRight: string;
+  scheme: 'dark' | 'light';
 }
 
 const STORAGE_KEY = 'tn-theme';
@@ -13,9 +14,10 @@ const STORAGE_KEY = 'tn-theme';
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
   readonly themes: ThemeOption[] = [
-    { id: 'northern-ops', label: 'Northern Ops',  className: 'theme-northern-ops', colorLeft: '#071629', colorRight: '#1FB6A6' },
-    { id: 'maple-steel',  label: 'Maple & Steel', className: 'theme-maple-steel',  colorLeft: '#0A0D12', colorRight: '#E03131' },
-    { id: 'aurora-soc',   label: 'Aurora SOC',    className: 'theme-aurora-soc',   colorLeft: '#05070E', colorRight: '#2DE2C5' },
+    { id: 'northern-ops', label: 'Northern Ops',  className: 'theme-northern-ops', colorLeft: '#071629', colorRight: '#1FB6A6', scheme: 'dark' },
+    { id: 'maple-steel',  label: 'Maple & Steel', className: 'theme-maple-steel',  colorLeft: '#0A0D12', colorRight: '#E03131', scheme: 'dark' },
+    { id: 'aurora-soc',   label: 'Aurora SOC',    className: 'theme-aurora-soc',   colorLeft: '#05070E', colorRight: '#2DE2C5', scheme: 'dark' },
+    { id: 'great-white-north', label: 'Great White North', className: 'theme-great-white-north', colorLeft: '#F7F8FA', colorRight: '#D52B1E', scheme: 'light' },
   ];
 
   private readonly activeThemeSignal = signal<string>('northern-ops');
@@ -43,12 +45,10 @@ export class ThemeService {
   private applyTheme(id: string): void {
     const body = document.body;
     this.themes.forEach((t) => body.classList.remove(t.className));
-    const found = this.themes.find((t) => t.id === id);
-    if (found) {
-      body.classList.add(found.className);
-      this.activeThemeSignal.set(found.id);
-    } else {
-      this.activeThemeSignal.set('northern-ops');
-    }
+    const found = this.themes.find((t) => t.id === id) ?? this.themes[0];
+    body.classList.add(found.className);
+    // Keep UA-rendered widgets (scrollbars, form controls) in step.
+    document.documentElement.style.colorScheme = found.scheme;
+    this.activeThemeSignal.set(found.id);
   }
 }

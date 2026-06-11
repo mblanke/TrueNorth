@@ -216,20 +216,33 @@ export class AuroraScene {
     const accent = this.cssColor('--accent', '#1FB6A6');
     const accentHover = this.cssColor('--accent-hover', '#3BD6C4');
     const bg = this.cssColor('--bg-primary', '#071629');
+    // Light themes need normal blending — additive light disappears on white.
+    const isLight = bg.getHSL({ h: 0, s: 0, l: 0 }).l > 0.6;
 
     this.renderer.setClearColor(bg, 1);
     this.scene.fog = new T.Fog(bg.getHex(), 40, 110);
 
     const starMat = this.stars.material as THREE.PointsMaterial;
-    starMat.color = new T.Color('#ffffff').lerp(accent, 0.25);
+    starMat.color = isLight
+      ? new T.Color('#3A4654').lerp(accent, 0.3)
+      : new T.Color('#ffffff').lerp(accent, 0.25);
+    starMat.blending = isLight ? T.NormalBlending : T.AdditiveBlending;
+    starMat.opacity = isLight ? 0.55 : 0.8;
+    starMat.needsUpdate = true;
 
     for (const mat of this.ribbonMaterials) {
       (mat.uniforms['uColorA'].value as THREE.Color).copy(accent);
       (mat.uniforms['uColorB'].value as THREE.Color).copy(accentHover);
+      mat.blending = isLight ? T.NormalBlending : T.AdditiveBlending;
+      mat.needsUpdate = true;
     }
 
     (this.star.material as THREE.LineBasicMaterial).color.copy(accent);
-    (this.glow.material as THREE.SpriteMaterial).color.copy(accentHover);
+    const glowMat = this.glow.material as THREE.SpriteMaterial;
+    glowMat.color.copy(accentHover);
+    glowMat.blending = isLight ? T.NormalBlending : T.AdditiveBlending;
+    glowMat.opacity = isLight ? 0.35 : 1;
+    glowMat.needsUpdate = true;
 
     if (this.reducedMotion) {
       this.renderer.render(this.scene, this.camera);
