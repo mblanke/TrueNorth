@@ -1,0 +1,24 @@
+# Windows host-port overrides.
+#
+# Hyper-V/WinNAT reserves dynamic TCP port ranges that often swallow
+# 8081, 8180, 8889, and 9200 (check: netsh interface ipv4 show
+# excludedportrange protocol=tcp). Container-to-container traffic is
+# unaffected; only the host-side bindings move.
+#
+# Usage:
+#   docker compose -f compose.dev.yml -f compose.windows-ports.yml up -d
+services:
+  api:
+    ports: !override
+      - "8980:8080"
+  keycloak:
+    ports: !override
+      - "8981:8080"
+  otel-collector:
+    ports: !override
+      - "4317:4317"
+      - "4318:4318"
+      - "8982:8889"
+  opensearch:
+    ports: !override
+      - "9220:9200"
