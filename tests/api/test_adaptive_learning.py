@@ -5,6 +5,16 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+import pytest
+
+# Pre-import so @patch("worker.celery_app.app") decorator can resolve the module.
+# If celery/worker isn't installed the affected test skips at runtime.
+try:
+    import worker.celery_app  # noqa: F401
+    _WORKER_CELERY_OK = True
+except Exception:
+    _WORKER_CELERY_OK = False
+
 USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 EXERCISE_ID = uuid.UUID("00000000-0000-0000-0000-000000000099")
 
@@ -105,12 +115,14 @@ class TestRecommendations:
         resp = client.get(f"/adaptive/users/{USER_ID}/recommendations/{fake_id}")
         assert resp.status_code == 404
 
-    @patch("worker.celery_app.app")
-    def test_trigger_recommendation(self, mock_celery, client):
-        mock_celery.send_task.return_value = None
-        resp = client.post(f"/adaptive/users/{USER_ID}/recommendations")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "queued"
+    def test_trigger_recommendation(self, client):
+        if not _WORKER_CELERY_OK:
+            pytest.skip("Worker package not installed (celery missing)")
+        with patch("worker.celery_app.app") as mock_celery:
+            mock_celery.send_task.return_value = None
+            resp = client.post(f"/adaptive/users/{USER_ID}/recommendations")
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "queued"
 
 
 class TestProgressSummary:

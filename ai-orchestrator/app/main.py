@@ -110,8 +110,6 @@ CACHE_MAX = int(os.getenv("AI_CACHE_MAX", "2000"))
 # ── Runtime state (set in lifespan) ────────────────────────────────────
 _llm_semaphore: asyncio.Semaphore | None = None
 _node_semaphores: dict[str, asyncio.Semaphore] = {}
-_openai_client: httpx.AsyncClient | None = None
-_anthropic_client: httpx.AsyncClient | None = None
 _ollama_clients: dict[str, httpx.AsyncClient] = {}
 _cache: dict[str, tuple[float, Any]] = {}
 _health_task: asyncio.Task | None = None
@@ -295,7 +293,7 @@ TASK_ROUTES: dict[TaskType, ModelRoute] = {
 # ── Lifespan ───────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _llm_semaphore, _openai_client, _anthropic_client, _health_task
+    global _llm_semaphore, _health_task
 
     _llm_semaphore = asyncio.Semaphore(MAX_LLM_CONCURRENCY)
 
@@ -307,24 +305,6 @@ async def lifespan(app: FastAPI):
             limits=httpx.Limits(max_connections=MAX_OLLAMA_PER_NODE + 2, max_keepalive_connections=MAX_OLLAMA_PER_NODE),
         )
         _node_semaphores[name] = asyncio.Semaphore(MAX_OLLAMA_PER_NODE)
-
-    # Cloud clients (kept for fallback)
-    _openai_client = httpx.AsyncClient(
-        base_url="https://api.openai.com/v1",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-        timeout=httpx.Timeout(90, connect=10),
-        limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
-    )
-    _anthropic_client = httpx.AsyncClient(
-        base_url="https://api.anthropic.com/v1",
-        headers={
-            "x-api-key": ANTHROPIC_API_KEY,
-            "Content-Type": "application/json",
-            "anthropic-version": "2023-06-01",
-        },
-        timeout=httpx.Timeout(90, connect=10),
-        limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
-    )
 
     # Background health monitor
     _health_task = asyncio.create_task(_health_check_loop())
@@ -342,8 +322,6 @@ async def lifespan(app: FastAPI):
     _health_task.cancel()
     for client in _ollama_clients.values():
         await client.aclose()
-    await _openai_client.aclose()
-    await _anthropic_client.aclose()
     logger.info("AI Orchestrator shutdown")
 
 
@@ -655,34 +633,15 @@ async def _call_ollama_embedding(text: str, model: str = "bge-m3:latest") -> tup
 
 # ── Cloud backends ─────────────────────────────────────────────────────
 async def _call_openai(prompt: str, model: str = "", max_tokens: int = 2000) -> tuple[str, str, str, dict]:
-    model = model or "gpt-4o"
-
-    async def _do():
-        resp = await _openai_client.post(
-            "/chat/completions",
-            json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"], model, "openai", data.get("usage", {})
-
-    return await _call_with_retry(_do)
+    from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
+    text, model_used, usage = await get_cloud_backend("openai").generate(prompt, model=model, max_tokens=max_tokens)
+    return text, model_used, "openai", usage
 
 
 async def _call_anthropic(prompt: str, model: str = "", max_tokens: int = 2000) -> tuple[str, str, str, dict]:
-    model = model or "claude-sonnet-4-20250514"
-
-    async def _do():
-        resp = await _anthropic_client.post(
-            "/messages",
-            json={"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["content"][0]["text"] if data.get("content") else ""
-        return text, model, "anthropic", data.get("usage", {})
-
-    return await _call_with_retry(_do)
+    from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
+    text, model_used, usage = await get_cloud_backend("anthropic").generate(prompt, model=model, max_tokens=max_tokens)
+    return text, model_used, "anthropic", usage
 
 
 # ── Unified router ─────────────────────────────────────────────────────
@@ -764,7 +723,9 @@ async def _generate(
         elif BackendType.anthropic == PRIMARY_BACKEND and ANTHROPIC_API_KEY:
             result = await _call_anthropic(prompt, effective_model or route.fallback_model, effective_max)
         else:
-            result = (f"[MOCK] Response for: {prompt[:200]}...", "mock", "mock", {})
+            from .backends import get_cloud_backend  # lazy
+            text, model_used, usage = await get_cloud_backend("mock").generate(prompt, max_tokens=effective_max)
+            result = (text, model_used, "mock", usage)
 
     if use_cache:
         _cache_set(key, result)
@@ -778,7 +739,9 @@ async def _cloud_fallback(prompt: str, route: ModelRoute, max_tokens: int) -> tu
     elif route.fallback_backend == BackendType.anthropic and ANTHROPIC_API_KEY:
         return await _call_anthropic(prompt, route.fallback_model, max_tokens)
     else:
-        return (f"[MOCK] Fallback response for: {prompt[:200]}...", "mock-fallback", "mock", {})
+        from .backends import get_cloud_backend  # lazy
+        text, model_used, usage = await get_cloud_backend("mock").generate(prompt, max_tokens=max_tokens)
+        return text, model_used, "mock", usage
 
 
 # ── Middleware ──────────────────────────────────────────────────────────

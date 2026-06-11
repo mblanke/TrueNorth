@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -176,3 +177,134 @@ class TestResultDataclasses:
         assert hr.healthy is True
         assert hr.status == "ok"
         assert hr.vm_statuses == []
+
+
+class TestRegistryMultiHypervisor:
+    """Verify that the new multi-hypervisor backends are registered correctly."""
+
+    def test_vsphere_api_in_registry(self):
+        from worker.provisioners import VsphereAPIProvisioner
+
+        prov = get_provisioner("vsphere_api")
+        assert isinstance(prov, VsphereAPIProvisioner)
+
+    def test_hyperv_in_registry(self):
+        import worker.provisioners.hyperv as hyperv_mod
+        from worker.provisioners import HypervProvisioner
+
+        # pywinrm may not be installed in the CI environment; patch the module-level sentinel
+        with patch.object(hyperv_mod, "winrm", MagicMock()):
+            prov = get_provisioner("hyperv")
+        assert isinstance(prov, HypervProvisioner)
+
+    def test_terraform_proxmox_in_registry(self):
+        prov = get_provisioner("terraform_proxmox")
+        assert isinstance(prov, TerraformProvisioner)
+        assert prov._hypervisor_type == "proxmox"
+
+    def test_terraform_vsphere_in_registry(self):
+        prov = get_provisioner("terraform_vsphere")
+        assert isinstance(prov, TerraformProvisioner)
+        assert prov._hypervisor_type == "vsphere"
+
+    def test_terraform_hyperv_in_registry(self):
+        prov = get_provisioner("terraform_hyperv")
+        assert isinstance(prov, TerraformProvisioner)
+        assert prov._hypervisor_type == "hyperv"
+
+
+class TestVsphereAPIProvisioner:
+    """Unit tests for VsphereAPIProvisioner using mocked httpx."""
+
+    @pytest.fixture
+    def vsphere_env(self, monkeypatch):
+        monkeypatch.setenv("VSPHERE_URL", "https://vcenter.test")
+        monkeypatch.setenv("VSPHERE_USERNAME", "admin@test")
+        monkeypatch.setenv("VSPHERE_PASSWORD", "secret")
+        monkeypatch.setenv("VSPHERE_DATACENTER", "DC1")
+        monkeypatch.setenv("VSPHERE_CLUSTER", "Cluster1")
+        monkeypatch.setenv("VSPHERE_DATASTORE", "datastore1")
+        monkeypatch.setenv("VSPHERE_NETWORK", "VM Network")
+        monkeypatch.setenv("VSPHERE_CONTENT_LIBRARY", "TrueNorth")
+
+    def _make_response(self, json_data, status_code=200):
+        m = MagicMock()
+        m.status_code = status_code
+        m.json.return_value = json_data
+        m.raise_for_status = MagicMock()
+        return m
+
+    def test_health_check_ok(self, vsphere_env):
+        from worker.provisioners.vsphere_api import VsphereAPIProvisioner
+
+        prov = VsphereAPIProvisioner()
+
+        session_token = "test-token-abc"
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = self._make_response(session_token)
+        mock_client.get.return_value = self._make_response([{"vm": "vm-1", "power_state": "POWERED_ON"}])
+        mock_client.delete.return_value = self._make_response(None, 204)
+
+        with patch("worker.provisioners.vsphere_api.httpx.Client", return_value=mock_client):
+            result = asyncio.run(prov.health_check("range-test", {}))
+
+        assert isinstance(result, HealthResult)
+
+    def test_destroy_empty_state(self, vsphere_env):
+        from worker.provisioners.vsphere_api import VsphereAPIProvisioner
+
+        prov = VsphereAPIProvisioner()
+        # Empty provisioner output — nothing to destroy
+        result = asyncio.run(prov.destroy("range-test", {}))
+        assert isinstance(result, DestroyResult)
+        assert result.status == "ok"
+
+
+class TestHypervProvisioner:
+    """Unit tests for HypervProvisioner using mocked pywinrm."""
+
+    @pytest.fixture
+    def hyperv_env(self, monkeypatch):
+        monkeypatch.setenv("HYPERV_HOST", "hyperv.test")
+        monkeypatch.setenv("HYPERV_USERNAME", "DOMAIN\\\\admin")
+        monkeypatch.setenv("HYPERV_PASSWORD", "secret")
+
+    def _mock_session(self, stdout: str = "", status_code: int = 0):
+        session = MagicMock()
+        result = MagicMock()
+        result.status_code = status_code
+        result.std_out = stdout.encode()
+        result.std_err = b""
+        session.run_ps.return_value = result
+        return session
+
+    def test_health_check_no_vms(self, hyperv_env):
+        import worker.provisioners.hyperv as hyperv_mod
+        from worker.provisioners.hyperv import HypervProvisioner
+
+        mock_winrm = MagicMock()
+        mock_winrm.Session.return_value = self._mock_session("0\n")
+        with patch.object(hyperv_mod, "winrm", mock_winrm):
+            prov = HypervProvisioner()
+            result = asyncio.run(prov.health_check("range-test", {}))
+
+        assert isinstance(result, HealthResult)
+        assert result.healthy is True
+
+    def test_destroy_removes_vms(self, hyperv_env):
+        import worker.provisioners.hyperv as hyperv_mod
+        from worker.provisioners.hyperv import HypervProvisioner
+
+        prov_output = {"vms": [{"name": "range1-dc01"}, {"name": "range1-ws01"}]}
+
+        mock_winrm = MagicMock()
+        mock_winrm.Session.return_value = self._mock_session("")
+        with patch.object(hyperv_mod, "winrm", mock_winrm):
+            prov = HypervProvisioner()
+            result = asyncio.run(prov.destroy("range-test", prov_output))
+
+        assert isinstance(result, DestroyResult)
+        assert result.status == "ok"
+        assert result.resources_removed == 2

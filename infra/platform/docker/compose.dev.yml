@@ -174,7 +174,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       # Use PgBouncer for connection pooling
       DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
@@ -189,6 +189,8 @@ services:
       PROVISIONER_BACKEND: mock
       LRS_URL: http://lrs:8080
       LRS_AUTH: dHJ1ZW5vcnRoLWxycy1rZXk6dHJ1ZW5vcnRoLWxycy1zZWNyZXQ=
+      LMS_BACKEND: xapi_lrs
+      SEARCH_BACKEND: opensearch
       CORS_ORIGINS: http://localhost:4200,http://localhost:3000
       # Pool settings per uvicorn worker
       DB_POOL_SIZE: "25"
@@ -224,6 +226,8 @@ services:
       PROVISIONER_BACKEND: mock
       LRS_URL: http://lrs:8080
       LRS_AUTH: dHJ1ZW5vcnRoLWxycy1rZXk6dHJ1ZW5vcnRoLWxycy1zZWNyZXQ=
+      LMS_BACKEND: xapi_lrs
+      SEARCH_BACKEND: opensearch
       CELERY_WORKER: "true"
       MOCK_PROVISION_DELAY: "3"
       MOCK_DESTROY_DELAY: "2"
@@ -294,6 +298,8 @@ services:
       AI_MODEL_BACKEND: "${AI_MODEL_BACKEND:-ollama}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      VLLM_URL: "${VLLM_URL:-}"
+      VLLM_API_KEY: "${VLLM_API_KEY:-}"
       OLLAMA_NODES: "${OLLAMA_NODES:-http://ai.guapo613.beer:11434}"
 
   # -- Web Frontend (Angular) --------------------------------------------
@@ -313,7 +319,7 @@ services:
     build:
       context: ../../../scenario-engine
       dockerfile: Dockerfile
-    restart: unless-stopped
+    restart: "no"
     environment:
       API_URL: http://api:8080
       REDIS_URL: redis://redis:6379/0

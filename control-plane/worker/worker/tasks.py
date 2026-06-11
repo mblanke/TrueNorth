@@ -32,9 +32,14 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 
 # -- Helper: provisioner backend -----------------------------------------
-def _get_backend():
-    """Return an instantiated provisioner for the configured backend."""
-    return get_provisioner(os.getenv("PROVISIONER_BACKEND", "mock"))
+def _get_backend(backend: str | None = None):
+    """Return an instantiated provisioner for the given backend name.
+
+    Falls back to the ``PROVISIONER_BACKEND`` environment variable, then
+    to ``"mock"`` when neither the caller nor the env provides a value.
+    """
+    resolved = backend or os.getenv("PROVISIONER_BACKEND", "mock")
+    return get_provisioner(resolved)
 
 
 # -- DB session management (one per task, no leaks) ---------------------
@@ -116,21 +121,25 @@ def provision_range(self, range_id: str):
     _update_range_state(range_id, "provisioning")
     _notify_api("range", {"id": range_id, "state": "provisioning"})
 
-    backend = os.getenv("PROVISIONER_BACKEND", "mock")
-    provisioner = _get_backend()
-
     try:
-        # Fetch template and allocations from DB
+        # Fetch template, allocations, and provisioner_backend from DB
         with _db_session() as db:
             from sqlalchemy import text
 
             row = db.execute(
-                text("SELECT t.yaml FROM ranges r JOIN templates t ON r.template_id = t.id WHERE r.id = :rid"),
+                text(
+                    "SELECT t.yaml, r.provisioner_backend "
+                    "FROM ranges r JOIN templates t ON r.template_id = t.id "
+                    "WHERE r.id = :rid"
+                ),
                 {"rid": range_id},
             ).first()
 
         template = json.loads(row[0]) if row and row[0] else {}
+        backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
         allocations = {}
+
+        provisioner = _get_backend(backend)
 
         result = asyncio.run(provisioner.provision(range_id, template, allocations))
 
@@ -191,16 +200,19 @@ def destroy_range(self, range_id: str):
     _update_range_state(range_id, "destroying")
     _notify_api("range", {"id": range_id, "state": "destroying"})
 
-    provisioner = _get_backend()
-
     try:
-        # Get provisioner output from DB
+        # Get provisioner output and backend from DB
         with _db_session() as db:
             from sqlalchemy import text
 
-            row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
+            row = db.execute(
+                text("SELECT provisioner_output, provisioner_backend FROM ranges WHERE id = :rid"),
+                {"rid": range_id},
+            ).first()
 
         prov_output = json.loads(row[0]) if row and row[0] else {}
+        backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
+        provisioner = _get_backend(backend)
 
         result = asyncio.run(provisioner.destroy(range_id, prov_output))
 

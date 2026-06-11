@@ -6,10 +6,12 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-import httpx
+import httpx  # retained for emit_statement_sync fallback
 
-LRS_URL = os.getenv("LRS_URL", "http://lrs:8000")
-LRS_AUTH = os.getenv("LRS_AUTH", "")  # Basic auth token for LRS
+from app.lms import get_lms_backend
+
+LRS_URL = os.getenv("LRS_URL", "http://lrs:8000")  # kept for backward compat
+LRS_AUTH = os.getenv("LRS_AUTH", "")  # kept for backward compat
 
 
 # cmi5 Verb IRIs
@@ -93,24 +95,12 @@ def build_statement(
 
 async def send_statement(statement: dict) -> bool:
     """Send an xAPI statement to the LRS."""
-    try:
-        headers = {"Content-Type": "application/json", "X-Experience-API-Version": "1.0.3"}
-        if LRS_AUTH:
-            headers["Authorization"] = f"Basic {LRS_AUTH}"
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{LRS_URL}/xapi/statements", json=statement, headers=headers)
-            return resp.status_code in (200, 204)
-    except Exception:
-        return False
+    return await get_lms_backend().emit_statement(statement)
 
 
 async def send_statements(statements: list[dict]) -> int:
     """Send multiple xAPI statements. Returns count of successful sends."""
-    sent = 0
-    for stmt in statements:
-        if await send_statement(stmt):
-            sent += 1
-    return sent
+    return await get_lms_backend().emit_statements(statements)
 
 
 # ── Convenience builders ───────────────────────────────────────────────
@@ -177,19 +167,7 @@ def emit_statement_sync(statement: dict, timeout: float = 2.0) -> bool:
     xAPI emission is advisory: it must never block or fail a lifecycle
     transition.
     """
-    try:
-        headers = {"Content-Type": "application/json", "X-Experience-API-Version": "1.0.3"}
-        if LRS_AUTH:
-            headers["Authorization"] = f"Basic {LRS_AUTH}"
-        with httpx.Client(timeout=timeout) as client:
-            resp = client.post(f"{LRS_URL}/xapi/statements", json=statement, headers=headers)
-            ok = resp.status_code in (200, 204)
-            if not ok:
-                _xapi_logger.warning("xAPI LRS returned %s: %s", resp.status_code, resp.text[:200])
-            return ok
-    except Exception as exc:  # pragma: no cover — LRS outage tolerated
-        _xapi_logger.warning("xAPI emit failed: %s", exc)
-        return False
+    return get_lms_backend().emit_statement_sync(statement, timeout=timeout)
 
 
 def emit_lifecycle(

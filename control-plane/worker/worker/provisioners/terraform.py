@@ -30,17 +30,38 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 TERRAFORM_BIN: str = os.environ.get("TERRAFORM_BIN", "terraform")
-TERRAFORM_DIR: str = os.environ.get("TERRAFORM_DIR", "/opt/truenorth/terraform")
 TERRAFORM_TIMEOUT: int = int(os.environ.get("TERRAFORM_TIMEOUT", "600"))
 TERRAFORM_PARALLELISM: int = int(os.environ.get("TERRAFORM_PARALLELISM", "10"))
 
+# Per-hypervisor template directories.  Each directory must contain a valid
+# Terraform root module (main.tf / variables.tf / versions.tf).
+_TERRAFORM_TEMPLATE_DIRS: dict[str, str] = {
+    "proxmox": os.environ.get("TERRAFORM_PROXMOX_DIR", "/opt/truenorth/terraform/proxmox"),
+    "vsphere": os.environ.get("TERRAFORM_VSPHERE_DIR", "/opt/truenorth/terraform/vsphere"),
+    "hyperv": os.environ.get("TERRAFORM_HYPERV_DIR", "/opt/truenorth/terraform/hyperv"),
+}
+# Workspace root — sub-directories per range are created under here.
+TERRAFORM_WORKSPACE_ROOT: str = os.environ.get("TERRAFORM_WORKSPACE_ROOT", "/opt/truenorth/terraform/workspaces")
+
 
 class TerraformProvisioner(BaseProvisioner):
-    """Terraform-based provisioner — one workspace per range."""
+    """Terraform-based provisioner — one workspace per range.
 
-    def __init__(self) -> None:
+    The ``hypervisor_type`` parameter selects which Terraform root module is
+    copied into the per-range workspace.  Supported values: ``proxmox``
+    (default), ``vsphere``, ``hyperv``.
+    """
+
+    def __init__(self, hypervisor_type: str = "proxmox") -> None:
+        if hypervisor_type not in _TERRAFORM_TEMPLATE_DIRS:
+            raise ValueError(
+                f"Unsupported hypervisor_type {hypervisor_type!r}. "
+                f"Available: {sorted(_TERRAFORM_TEMPLATE_DIRS)}"
+            )
         self._tf_bin = TERRAFORM_BIN
-        self._tf_dir = Path(TERRAFORM_DIR)
+        self._hypervisor_type = hypervisor_type
+        self._template_dir = Path(_TERRAFORM_TEMPLATE_DIRS[hypervisor_type])
+        self._workspace_root = Path(TERRAFORM_WORKSPACE_ROOT)
         self._timeout = TERRAFORM_TIMEOUT
 
     # ------------------------------------------------------------------ #
@@ -49,7 +70,7 @@ class TerraformProvisioner(BaseProvisioner):
 
     def _workspace_dir(self, range_id: str) -> Path:
         """Return the workspace directory for a range."""
-        return self._tf_dir / f"range-{range_id}"
+        return self._workspace_root / self._hypervisor_type / f"range-{range_id}"
 
     def _write_tfvars(self, ws: Path, template: dict, allocations: dict) -> Path:
         """Write a terraform.tfvars.json file and return its path."""
@@ -117,11 +138,16 @@ class TerraformProvisioner(BaseProvisioner):
         ws = self._workspace_dir(range_id)
         ws.mkdir(parents=True, exist_ok=True)
 
-        # Copy base TF files into workspace
-        base_tf = self._tf_dir / "modules"
-        if base_tf.exists():
-            for f in base_tf.glob("*.tf"):
+        # Copy Terraform module files from the hypervisor-specific template dir
+        if self._template_dir.exists():
+            for f in self._template_dir.glob("*.tf"):
                 shutil.copy2(f, ws / f.name)
+            # Copy versions lockfile if present
+            lock = self._template_dir / ".terraform.lock.hcl"
+            if lock.exists():
+                shutil.copy2(lock, ws / ".terraform.lock.hcl")
+        else:
+            logger.warning("Terraform template dir not found: %s", self._template_dir)
 
         self._write_tfvars(ws, template, allocations)
         errors: list[str] = []

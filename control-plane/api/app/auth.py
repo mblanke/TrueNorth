@@ -5,27 +5,19 @@ from __future__ import annotations
 import os
 from typing import Annotated
 
-import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .circuit_breaker import CircuitOpenError, keycloak_breaker
+from .auth_backends import get_auth_backend
 from .db import get_db
 from .models import User, UserRole
-
-KEYCLOAK_URL = os.getenv("KEYCLOAK_URL", "http://keycloak:8080")
-KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "truenorth")
-JWKS_URL = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/certs"
 
 # For dev/testing: skip JWT validation if set
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() == "true"
 
 bearer_scheme = HTTPBearer(auto_error=not AUTH_DISABLED)
-
-_jwks_cache: dict | None = None
 
 
 class TokenPayload(BaseModel):
@@ -34,45 +26,6 @@ class TokenPayload(BaseModel):
     preferred_username: str = ""
     realm_access: dict = {}
     tenant_id: str = ""
-
-
-async def _get_jwks() -> dict:
-    global _jwks_cache
-    if _jwks_cache is None:
-
-        async def _fetch() -> dict:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(JWKS_URL)
-                resp.raise_for_status()
-                return resp.json()
-
-        try:
-            _jwks_cache = await keycloak_breaker.call(_fetch)
-        except CircuitOpenError:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service temporarily unavailable",
-            ) from None
-    return _jwks_cache
-
-
-async def _decode_token(token: str) -> TokenPayload:
-    """Decode and validate a JWT from Keycloak."""
-    try:
-        jwks = await _get_jwks()
-        payload = jwt.decode(
-            token,
-            jwks,
-            algorithms=["RS256"],
-            audience="account",
-            options={"verify_aud": False},
-        )
-        return TokenPayload(**payload)
-    except JWTError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {e}",
-        ) from None
 
 
 class CurrentUser(BaseModel):
@@ -105,7 +58,8 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    token_data = await _decode_token(credentials.credentials)
+    raw_payload = await get_auth_backend().validate_token(credentials.credentials)
+    token_data = TokenPayload(**raw_payload)
 
     # Look up user in DB by keycloak_id
     user = db.query(User).filter(User.keycloak_id == token_data.sub).first()

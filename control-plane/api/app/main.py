@@ -26,6 +26,7 @@ from .auth import CurrentUser, get_current_user
 from .db import Base, engine, get_db
 from .models import Tenant, User, UserRole
 from .schemas import HealthOut
+from .search_backends import get_search_backend
 
 logger = logging.getLogger("truenorth.api")
 logging.basicConfig(
@@ -328,30 +329,14 @@ async def ingest_telemetry(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Ingest telemetry events into OpenSearch."""
-    import httpx
-
-    os_url = os.getenv("OPENSEARCH_URL", "http://opensearch:9200")
     index = f"range-{range_id}"
-    bulk_body = ""
     for event in events:
         event["range_id"] = str(range_id)
         event["tenant_id"] = user.tenant_id
         if "@timestamp" not in event:
             event["@timestamp"] = datetime.now(UTC).isoformat()
-        bulk_body += json.dumps({"index": {"_index": index}}) + "\n"
-        bulk_body += json.dumps(event) + "\n"
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{os_url}/_bulk",
-                content=bulk_body,
-                headers={"Content-Type": "application/x-ndjson"},
-            )
-            resp.raise_for_status()
-    except Exception as e:
-        logger.error("OpenSearch ingest error: %s", e)
-        raise HTTPException(502, f"OpenSearch error: {e}") from e
-    return {"accepted": len(events)}
+    accepted = await get_search_backend().ingest(index, events)
+    return {"accepted": accepted}
 
 
 @app.get("/telemetry/{range_id}/search", tags=["telemetry"])
@@ -362,20 +347,5 @@ async def search_telemetry(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Search telemetry events in OpenSearch."""
-    import httpx
-
-    os_url = os.getenv("OPENSEARCH_URL", "http://opensearch:9200")
     index = f"range-{range_id}"
-    body = {
-        "query": {"query_string": {"query": q}},
-        "size": size,
-        "sort": [{"@timestamp": {"order": "desc", "unmapped_type": "date"}}],
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(f"{os_url}/{index}/_search", json=body)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception as e:
-        logger.error("OpenSearch search error: %s", e)
-        raise HTTPException(502, f"OpenSearch error: {e}") from e
+    return await get_search_backend().search(index, q, size)
