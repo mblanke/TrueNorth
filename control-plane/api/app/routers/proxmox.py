@@ -14,9 +14,9 @@ session handling, token refresh, and proper API coverage.
 
 Environment variables
 ---------------------
-PROXMOX_HOSTS        Comma-separated host list   (default: 192.168.1.85,192.168.1.86)
+PROXMOX_HOSTS        Comma-separated host list   (default: none — set when a cluster is connected)
 PROXMOX_USER         API user                    (default: root@pam)
-PROXMOX_PASSWORD     API password                (default: powers4w)
+PROXMOX_PASSWORD     API password                (default: none — must be provided)
 PROXMOX_VERIFY_SSL   TLS verify                  (default: false)
 """
 
@@ -36,14 +36,18 @@ logger = logging.getLogger("truenorth.api.proxmox")
 router = APIRouter(prefix="/proxmox", tags=["proxmox"])
 
 # ── Config ──────────────────────────────────────────────────────────────
-_PM_HOSTS = [h.strip() for h in os.getenv("PROXMOX_HOSTS", "192.168.1.85,192.168.1.86").split(",")]
+# No hosts are assumed: until PROXMOX_HOSTS points at reachable nodes,
+# discovery returns empty and VM operations fail with a clear error.
+_PM_HOSTS = [h.strip() for h in os.getenv("PROXMOX_HOSTS", "").split(",") if h.strip()]
 _PM_USER = os.getenv("PROXMOX_USER", "root@pam")
-_PM_PASS = os.getenv("PROXMOX_PASSWORD", "powers4w")
+_PM_PASS = os.getenv("PROXMOX_PASSWORD", "")
 _PM_VERIFY = os.getenv("PROXMOX_VERIFY_SSL", "false").lower() in ("1", "true", "yes")
 
+# Optional node-name -> IP hints, e.g. "wile=192.168.1.50,roadrunner=192.168.1.51"
 _KNOWN_IPS: dict[str, str] = {
-    "coyote": "192.168.1.85",
-    "acme": "192.168.1.86",
+    name.strip(): ip.strip()
+    for name, _, ip in (pair.partition("=") for pair in os.getenv("PROXMOX_NODE_IPS", "").split(","))
+    if name.strip() and ip.strip()
 }
 _IP_TO_NAME: dict[str, str] = {v: k for k, v in _KNOWN_IPS.items()}
 
@@ -105,7 +109,7 @@ class CloneRequest(BaseModel):
     """Clone a template VM to create a new VM."""
 
     source_vmid: int = Field(..., description="Template VMID to clone from")
-    target_node: str = Field("coyote", description="Target node for the new VM")
+    target_node: str = Field(..., description="Target node for the new VM")
     new_name: str = Field(..., description="Name for the cloned VM")
     new_vmid: int | None = Field(None, description="Specific VMID (auto-assigned if omitted)")
     full_clone: bool = Field(True, description="Full clone (true) or linked clone (false)")
@@ -120,7 +124,7 @@ class CloneRequest(BaseModel):
 class VMCreateRequest(BaseModel):
     """Create a new empty VM."""
 
-    node: str = Field("coyote", description="Target node")
+    node: str = Field(..., description="Target node")
     vmid: int | None = Field(None, description="Specific VMID (auto-assigned if omitted)")
     name: str = Field(..., description="VM name")
     cores: int = Field(2, description="vCPU count")
@@ -153,7 +157,7 @@ class VMConfigUpdate(BaseModel):
 class BridgeRequest(BaseModel):
     """Create a Linux bridge on a node."""
 
-    node: str = Field("coyote", description="Node to create bridge on")
+    node: str = Field(..., description="Node to create bridge on")
     name: str = Field(..., description="Bridge name (e.g. vmbr100)")
     address: str | None = Field(None, description="IP address (e.g. 10.0.0.1)")
     netmask: str | None = Field(None, description="Netmask (e.g. 255.255.255.0)")
@@ -834,7 +838,7 @@ async def list_isos(node: str, storage: str = "local"):
 class BatchDeployItem(BaseModel):
     template_vmid: int
     name: str
-    target_node: str = "coyote"
+    target_node: str
     cores: int | None = None
     memory_mb: int | None = None
     net_bridge: str = "vmbr0"

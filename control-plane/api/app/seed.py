@@ -1,13 +1,13 @@
-"""TrueNorth Range -- Seed data for nations, coalitions, auth zones, infrastructure, AI.
+"""TrueNorth Range -- Seed data for nations, coalitions, auth zones, AI.
 
 42 nations (32 NATO + 10 key partners), 5 coalitions, 3 default auth zones,
-2 Proxmox hypervisor connections, 1 Ollama AI backend.
+1 Ollama AI backend. No hardware is seeded -- hypervisors, storage, and
+network devices are registered once they actually exist and are reachable.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 
 from sqlalchemy.orm import Session
@@ -20,9 +20,7 @@ from .models import (
     HypervisorConnection,
     Nation,
     NetworkDevice,
-    NetworkDeviceRole,
     StorageAppliance,
-    StorageProtocol,
     StorageVolume,
     Tenant,
 )
@@ -229,139 +227,10 @@ def seed_infrastructure(db: Session) -> None:
         db.commit()
         logger.info("Backfilled tenant_id on %d network devices", updated)
 
-    # Hypervisors
-    if db.query(HypervisorConnection).count() == 0:
-        # Real credentials must come from the environment; the fallback is a
-        # non-working placeholder so dev seeds never ship a usable secret.
-        hv_password = os.getenv("TN_SEED_HV_PASSWORD", "changeme-set-TN_SEED_HV_PASSWORD")
-        connections = [
-            HypervisorConnection(
-                name="Coyote (Primary)",
-                hypervisor_type="proxmox",
-                host="192.168.1.85",
-                port=8006,
-                username="root@pam",
-                password_encrypted=hv_password,
-                verify_ssl=False,
-                is_primary=True,
-                is_active=True,
-                datacenter="Home Lab",
-                notes="Primary Proxmox node - Coyote",
-                tenant_id=tenant_id,
-            ),
-            HypervisorConnection(
-                name="Acme (Secondary)",
-                hypervisor_type="proxmox",
-                host="192.168.1.86",
-                port=8006,
-                username="root@pam",
-                password_encrypted=hv_password,
-                verify_ssl=False,
-                is_primary=False,
-                is_active=True,
-                datacenter="Home Lab",
-                notes="Secondary Proxmox node - Acme",
-                tenant_id=tenant_id,
-            ),
-        ]
-        for conn in connections:
-            db.add(conn)
-        db.commit()
-        seeded_any = True
-        logger.info("Seeded %d hypervisor connections", len(connections))
-
-    # Storage
-    if db.query(StorageAppliance).count() == 0:
-        appliances = [
-            StorageAppliance(
-                name="NetApp AFF A250",
-                vendor="NetApp",
-                model="AFF A250",
-                management_ip="10.0.60.10",
-                protocol=StorageProtocol.nfs,
-                raw_capacity_tb=120,
-                usable_capacity_tb=90,
-                is_active=True,
-                notes="All-flash array used for ranges",
-                tenant_id=tenant_id,
-            ),
-        ]
-        for a in appliances:
-            db.add(a)
-        db.flush()  # get IDs for volumes
-
-        volumes = [
-            StorageVolume(
-                appliance_id=appliances[0].id,
-                tenant_id=tenant_id,
-                volume_name="range-images",
-                size_gb=40000,
-                used_gb=12000,
-                protocol=StorageProtocol.nfs,
-                mount_path="/mnt/range-images",
-            ),
-            StorageVolume(
-                appliance_id=appliances[0].id,
-                tenant_id=tenant_id,
-                volume_name="user-homes",
-                size_gb=8000,
-                used_gb=2200,
-                protocol=StorageProtocol.nfs,
-                mount_path="/mnt/user-homes",
-            ),
-        ]
-        for v in volumes:
-            db.add(v)
-        db.commit()
-        seeded_any = True
-        logger.info("Seeded %d storage appliances and %d volumes", len(appliances), len(volumes))
-
-    # Network
-    if db.query(NetworkDevice).count() == 0:
-        devices = [
-            NetworkDevice(
-                name="TOR-SW-01",
-                vendor="Arista",
-                model="7050SX3-48YC12",
-                role=NetworkDeviceRole.tor,
-                management_ip="10.0.60.1",
-                firmware_version="4.32.1F",
-                port_count=48,
-                is_active=True,
-                notes="Top-of-rack switch (primary)",
-                tenant_id=tenant_id,
-            ),
-            NetworkDevice(
-                name="SPINE-01",
-                vendor="Arista",
-                model="7280SR3",
-                role=NetworkDeviceRole.spine,
-                management_ip="10.0.60.5",
-                firmware_version="4.32.1F",
-                port_count=32,
-                is_active=True,
-                notes="Spine switch",
-                tenant_id=tenant_id,
-            ),
-            NetworkDevice(
-                name="FW-EDGE-01",
-                vendor="Fortinet",
-                model="FG-100F",
-                role=NetworkDeviceRole.firewall,
-                management_ip="10.0.60.254",
-                firmware_version="v7.0.12",
-                port_count=12,
-                is_active=True,
-                notes="Edge firewall",
-                tenant_id=tenant_id,
-            ),
-        ]
-        for d in devices:
-            db.add(d)
-        db.commit()
-        seeded_any = True
-        logger.info("Seeded %d network devices", len(devices))
-
+    # No hardware is seeded. Hypervisors, storage appliances, and network
+    # devices are registered through the UI/API once they actually exist and
+    # are reachable; the previous demo gear (two disconnected Supermicro
+    # Proxmox boxes plus fictional storage/switches) was removed on purpose.
     if not seeded_any:
         logger.info("Infrastructure seed skipped (already present)")
 
