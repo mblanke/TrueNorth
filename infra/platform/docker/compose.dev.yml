@@ -193,6 +193,9 @@ services:
       SEARCH_BACKEND: opensearch
       # AI orchestrator serves on 6000 (the code default of 8100 is stale)
       AI_ORCHESTRATOR_URL: http://ai-orchestrator:6000
+      # Curriculum RAG embedding dimension — must match the served embed model
+      # (LiteLLM "embed" = bge-small-en-v1.5 = 384). Enables semantic kNN retrieval.
+      EMBED_DIM: "${EMBED_DIM:-384}"
       LTI_TOOL_BASE_URL: "${LTI_TOOL_BASE_URL:-http://localhost:8081}"
       LTI_WEB_BASE_URL: "${LTI_WEB_BASE_URL:-http://localhost:4200}"
       CORS_ORIGINS: http://localhost:4200,http://localhost:3000
