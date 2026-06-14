@@ -196,16 +196,12 @@ def update_model_route(route_id: uuid.UUID, payload: AIModelRouteUpdate, db: Ses
     return route
 
 
-# -- Known Fleet Nodes (hardcoded for LAN discovery) -----------------------
+# -- Known Fleet Nodes (legacy Ollama LAN discovery) -----------------------
+# NOTE: this deployment serves models via vLLM behind LiteLLM (OpenAI-compatible,
+# host :4000), not Ollama. This discovery path is dormant; the entry below
+# describes the real R7725 GPU node for reference only.
 KNOWN_OLLAMA_NODES = [
-    {"node_name": "wile", "host": "192.168.1.50", "port": 11434, "gpu_model": "2x NVIDIA H200", "gpu_vram_gb": 282},
-    {
-        "node_name": "roadrunner",
-        "host": "192.168.1.51",
-        "port": 11434,
-        "gpu_model": "2x NVIDIA H200",
-        "gpu_vram_gb": 282,
-    },
+    {"node_name": "r7725", "host": "133.1.14.240", "port": 11434, "gpu_model": "2x NVIDIA H200 NVL (144GB ea)", "gpu_vram_gb": 288},
 ]
 
 

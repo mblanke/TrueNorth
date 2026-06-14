@@ -26,7 +26,11 @@ OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://opensearch:9200").rstrip("/
 
 CHUNK_CHARS = 3200      # ~800 tokens
 CHUNK_OVERLAP = 400
-EMBED_DIM = 1024        # bge-m3 dimensionality
+# Must match the dimensionality of the served embedding model. Default 1024
+# (bge-m3). Set EMBED_DIM to match if the LiteLLM "embed" model differs
+# (e.g. 384 for bge-small-en-v1.5). Vectors whose length != EMBED_DIM are
+# dropped and the chunk is indexed text-only (BM25-searchable).
+EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
 
 
 def index_name(curriculum_id: uuid.UUID | str) -> str:

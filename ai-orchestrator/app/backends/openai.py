@@ -36,6 +36,9 @@ class OpenAIBackend(BaseAIBackend):
         self._api_key = api_key or os.getenv("OPENAI_API_KEY", "")
         self._base_url = (base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
         self._default_model = default_model or os.getenv("OPENAI_DEFAULT_MODEL", _DEFAULT_MODEL)
+        # Author-time generations on large local models can run for minutes; make
+        # the timeout configurable (default 600s) so long course/quiz drafts don't abort.
+        self._timeout = float(os.getenv("OPENAI_TIMEOUT_S", "600"))
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -57,7 +60,7 @@ class OpenAIBackend(BaseAIBackend):
         messages.append({"role": "user", "content": prompt})
 
         try:
-            async with httpx.AsyncClient(timeout=90.0) as client:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(
                     f"{self._base_url}/chat/completions",
                     json={"model": effective_model, "messages": messages, "max_tokens": max_tokens},

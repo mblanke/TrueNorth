@@ -1,13 +1,14 @@
 """TrueNorth Range - AI Orchestrator API.
 
-Air-gapped AI service backed by a dynamic local Ollama fleet, with
-tag-based task-to-model routing, a largest-healthy-model safety net for
-single-model deployments, load balancing, health-aware failover, and
-caching. The mock backend is the only non-local path and exists purely as
-a CI/last-resort placeholder (no outbound cloud calls).
+Air-gapped AI service. In this deployment the primary backend is the local
+LiteLLM router (an OpenAI-compatible endpoint in front of vLLM), reached via
+the OpenAI backend with OPENAI_BASE_URL. Per-task model selection maps to
+LiteLLM aliases (e.g. "forge" = Qwen, "agent" = Mistral 24B). The legacy
+Ollama-fleet path and the mock backend remain available; mock exists purely
+as a CI/last-resort placeholder and makes no outbound cloud calls.
 
 Sized for author-time content generation (a handful of concurrent content
-creators), not for per-exercise load — the GPU fleet is not in the
+creators), not for per-exercise load — the GPU engine is not in the
 exercise-runtime path.
 """
 
@@ -103,7 +104,20 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() in ("1", "true", "yes")
 
 # Primary backend preference: "ollama", "openai", "anthropic", "mock"
+# Deployment here uses "openai" pointed at the local LiteLLM router (OPENAI_BASE_URL).
 PRIMARY_BACKEND = BackendType(os.getenv("AI_MODEL_BACKEND", "ollama"))
+
+# Local OpenAI-compatible engine (LiteLLM) — per-capability model aliases.
+# Default to the Mistral 24B "agent" alias that serves today; set AI_HEAVY_MODEL=forge
+# (etc.) once the Qwen 112B model is deployed on the vLLM fleet. No code change needed.
+AI_HEAVY_MODEL = os.getenv("AI_HEAVY_MODEL", "agent")
+AI_GENERAL_MODEL = os.getenv("AI_GENERAL_MODEL", "agent")
+AI_CODE_MODEL = os.getenv("AI_CODE_MODEL", "agent")
+
+# Embeddings: "openai" routes through the LiteLLM embed endpoint; "ollama" uses the
+# legacy local Ollama embedding API.
+AI_EMBED_BACKEND = os.getenv("AI_EMBED_BACKEND", "openai")
+AI_EMBED_MODEL = os.getenv("AI_EMBED_MODEL", "embed")
 
 # Concurrency
 MAX_LLM_CONCURRENCY = int(os.getenv("MAX_LLM_CONCURRENCY", "20"))
@@ -256,59 +270,39 @@ def _find_all_for_tags(tags: list[str]) -> list[tuple[str, OllamaNode]]:
     return results
 
 
-def _largest_healthy_model() -> list[tuple[str, OllamaNode]]:
-    """Every healthy (model, node) pair, largest model first.
-
-    Last-resort candidates when a task's capability tags match nothing in the
-    fleet. In an air-gapped, single-model deployment the one flagship model may
-    not carry every specialised tag (e.g. a general instruct model has no
-    ``code`` tag), yet it is still the right place to send the request rather
-    than silently degrading to the mock backend.
-    """
-    candidates: list[tuple[str, OllamaNode, int]] = []
-    seen: set[tuple[str, str]] = set()
-    for node in FLEET.values():
-        if not node.healthy:
-            continue
-        for model_name in node.models:
-            if not _size_ok(model_name) or (model_name, node.name) in seen:
-                continue
-            candidates.append((model_name, node, _model_size_hint(model_name)))
-            seen.add((model_name, node.name))
-    candidates.sort(key=lambda c: (-c[2], c[1]._inflight))
-    return [(c[0], c[1]) for c in candidates]
-
-
-# ── Task -> tag routing table ──────────────────────────────────────────
-# Air-gapped deployment: the local Ollama fleet serves every task. There is no
-# cloud provider, so ``fallback_backend`` is ``mock`` for all routes — it is
-# only ever reached if the entire fleet is unreachable, in which case mock
-# returns a deterministic placeholder rather than attempting an outbound call.
-# (See ``_generate`` for the largest-healthy-model safety net that keeps
-# single-model fleets serving tasks whose capability tags match nothing.)
+# ── Task -> tag/model routing table ────────────────────────────────────
+# Deployment uses the OpenAI backend pointed at the local LiteLLM router.
+# ``tags`` drive selection only on the legacy Ollama path; on the OpenAI path
+# ``fallback_model`` is the LiteLLM alias used directly. Heavy authoring tasks
+# go to AI_HEAVY_MODEL (Qwen "forge" once deployed, Mistral 24B "agent" today);
+# ``general`` to AI_GENERAL_MODEL; ``detection-rule`` to AI_CODE_MODEL.
 TASK_ROUTES: dict[TaskType, ModelRoute] = {
     TaskType.scenario_suggest: ModelRoute(
         task=TaskType.scenario_suggest,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.mock,
+        fallback_backend=BackendType.openai,
+        fallback_model=AI_HEAVY_MODEL,
         max_tokens_default=3000,
     ),
     TaskType.aar_analysis: ModelRoute(
         task=TaskType.aar_analysis,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.mock,
+        fallback_backend=BackendType.openai,
+        fallback_model=AI_HEAVY_MODEL,
         max_tokens_default=4000,
     ),
     TaskType.detection_rule: ModelRoute(
         task=TaskType.detection_rule,
         tags=["code"],
-        fallback_backend=BackendType.mock,
+        fallback_backend=BackendType.openai,
+        fallback_model=AI_CODE_MODEL,
         max_tokens_default=2000,
     ),
     TaskType.general: ModelRoute(
         task=TaskType.general,
         tags=["general"],
-        fallback_backend=BackendType.mock,
+        fallback_backend=BackendType.openai,
+        fallback_model=AI_GENERAL_MODEL,
         max_tokens_default=2000,
     ),
     TaskType.embedding: ModelRoute(
@@ -320,25 +314,29 @@ TASK_ROUTES: dict[TaskType, ModelRoute] = {
     TaskType.exercise_forge: ModelRoute(
         task=TaskType.exercise_forge,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.mock,
+        fallback_backend=BackendType.openai,
+        fallback_model=AI_HEAVY_MODEL,
         max_tokens_default=5000,
     ),
     TaskType.learning_recommendation: ModelRoute(
         task=TaskType.learning_recommendation,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.mock,
+        fallback_backend=BackendType.openai,
+        fallback_model=AI_HEAVY_MODEL,
         max_tokens_default=3000,
     ),
     TaskType.course_generate: ModelRoute(
         task=TaskType.course_generate,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.mock,
+        fallback_backend=BackendType.openai,
+        fallback_model=AI_HEAVY_MODEL,
         max_tokens_default=6000,
     ),
     TaskType.quiz_generate: ModelRoute(
         task=TaskType.quiz_generate,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.mock,
+        fallback_backend=BackendType.openai,
+        fallback_model=AI_HEAVY_MODEL,
         max_tokens_default=4000,
     ),
 }
@@ -730,10 +728,35 @@ async def _call_ollama_embedding(text: str, model: str = "bge-m3:latest") -> tup
         return await _call_with_retry(_do, retries=2)
 
 
+async def _call_openai_embedding(text: str, model: str = "") -> tuple[list[float], str, str]:
+    """Get embeddings from the OpenAI-compatible engine (LiteLLM ``embed``)."""
+    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    api_key = OPENAI_API_KEY
+    use_model = model or AI_EMBED_MODEL
+    timeout = float(os.getenv("OPENAI_TIMEOUT_S", "600"))
+
+    async def _do():
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{base_url}/embeddings",
+                json={"model": use_model, "input": text},
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["data"][0]["embedding"], data.get("model", use_model), "litellm"
+
+    return await _call_with_retry(_do, retries=2)
+
+
 # ── Cloud backends ─────────────────────────────────────────────────────
-async def _call_openai(prompt: str, model: str = "", max_tokens: int = 2000) -> tuple[str, str, str, dict]:
+async def _call_openai(
+    prompt: str, model: str = "", max_tokens: int = 2000, system_prompt: str = ""
+) -> tuple[str, str, str, dict]:
     from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
-    text, model_used, usage = await get_cloud_backend("openai").generate(prompt, model=model, max_tokens=max_tokens)
+    text, model_used, usage = await get_cloud_backend("openai").generate(
+        prompt, model=model, max_tokens=max_tokens, system_prompt=system_prompt
+    )
     return text, model_used, "openai", usage
 
 
@@ -782,20 +805,6 @@ async def _generate(
                 models_to_try: list[tuple[str, str]] = [(model_override, node_override)]
             else:
                 candidates = _find_all_for_tags(route.tags)
-                # Air-gapped / single-model safety net: if no model carries the
-                # task's capability tags, route to the largest healthy model
-                # anyway rather than dropping through to cloud/mock. Embeddings
-                # are excluded — a chat model cannot stand in for an embedder,
-                # so they keep their existing best-effort degradation.
-                if not candidates and task != TaskType.embedding:
-                    candidates = _largest_healthy_model()
-                    if candidates:
-                        logger.info(
-                            "No model tagged %s for task=%s; routing to largest healthy model %s",
-                            route.tags,
-                            task.value,
-                            candidates[0][0],
-                        )
                 models_to_try = [(m, n.name) for m, n in candidates]
 
             last_err = None
@@ -832,7 +841,9 @@ async def _generate(
                 raise HTTPException(503, f"All backends failed. Ollama: {last_err}, Cloud: {cloud_err}") from cloud_err
 
         elif BackendType.openai == PRIMARY_BACKEND and OPENAI_API_KEY:
-            result = await _call_openai(prompt, effective_model or route.fallback_model, effective_max)
+            result = await _call_openai(
+                prompt, effective_model or route.fallback_model, effective_max, system_prompt=system_prompt
+            )
         elif BackendType.anthropic == PRIMARY_BACKEND and ANTHROPIC_API_KEY:
             result = await _call_anthropic(prompt, effective_model or route.fallback_model, effective_max)
         else:
@@ -1100,10 +1111,17 @@ Data:
 
 @app.post("/ai/embedding", response_model=EmbeddingResponse)
 async def get_embedding(req: EmbeddingRequest):
-    """Generate text embeddings using local models (bge-m3 / nomic-embed-text)."""
+    """Generate text embeddings via the configured backend.
+
+    ``AI_EMBED_BACKEND=openai`` (default) routes through the local LiteLLM
+    ``embed`` endpoint; ``ollama`` uses the legacy Ollama embedding API.
+    """
     start = time.perf_counter()
     try:
-        embedding, model_used, node_used = await _call_ollama_embedding(req.text, req.model)
+        if AI_EMBED_BACKEND == "openai":
+            embedding, model_used, node_used = await _call_openai_embedding(req.text)
+        else:
+            embedding, model_used, node_used = await _call_ollama_embedding(req.text, req.model)
     except Exception as e:
         raise HTTPException(503, f"Embedding failed: {e}") from e
     latency = (time.perf_counter() - start) * 1000
