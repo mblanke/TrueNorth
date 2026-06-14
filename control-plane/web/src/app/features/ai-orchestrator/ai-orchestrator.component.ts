@@ -236,7 +236,7 @@ interface AIFleetSummary {
           </ng-template>
           <div class="tab-content">
             <div class="tab-toolbar">
-              <span class="toolbar-title">Dell Pro Max GB10 Fleet &mdash; Ollama Nodes</span>
+              <span class="toolbar-title">R7725 GPU Fleet &mdash; 2&times; NVIDIA H200 NVL</span>
               <span class="toolbar-spacer"></span>
               <button mat-raised-button color="accent" (click)="scanFleet()" [disabled]="scanning">
                 <mat-icon>{{ scanning ? 'hourglass_empty' : 'radar' }}</mat-icon>
@@ -312,7 +312,7 @@ interface AIFleetSummary {
             } @else if (!scanning) {
               <div class="empty-fleet">
                 <mat-icon>radar</mat-icon>
-                <p>No fleet scan results yet. Click <strong>Scan Fleet</strong> to discover Ollama nodes on the LAN.</p>
+                <p>No fleet scan results yet. Click <strong>Scan Fleet</strong> to probe the configured AI engine and list its models.</p>
                 <p class="fleet-hint">Scanning 192.168.1.50 (wile) &amp; 192.168.1.51 (roadrunner)</p>
               </div>
             }

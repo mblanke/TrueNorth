@@ -241,6 +241,36 @@ def _probe_ollama_node(host: str, port: int, timeout: float = 5.0) -> dict:
     return result
 
 
+def _probe_openai_engine(base_url: str, api_key: str | None, timeout: float = 5.0) -> dict:
+    """Probe an OpenAI-compatible engine (e.g. LiteLLM/vLLM) via GET /models."""
+    base = base_url.rstrip("/")
+    result: dict = {"url": base, "online": False, "models": [], "version": None, "running": []}
+    try:
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        r = httpx.get(f"{base}/models", headers=headers, timeout=timeout)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        result["models"] = [
+            {
+                "name": m.get("id", "unknown"),
+                "size_bytes": 0,
+                "family": m.get("owned_by", ""),
+                "parameter_size": "",
+                "quantization": "",
+            }
+            for m in data
+        ]
+        result["running"] = [m["name"] for m in result["models"]]
+        result["online"] = True
+    except Exception as exc:
+        logger.warning("OpenAI-compatible probe failed for %s — %s", base_url, exc)
+    return result
+
+
+# Backend types that speak the OpenAI-compatible API (LiteLLM, vLLM, Azure).
+_OPENAI_COMPATIBLE = {"openai", "azure_openai", "vllm", "litellm"}
+
+
 @router.post("/backends/{backend_id}/discover")
 def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
     """Scan known Ollama nodes on the LAN, upsert fleet node records, and return results."""
@@ -248,9 +278,15 @@ def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
     if not backend:
         raise HTTPException(404, "Backend not found")
 
+    openai_like = backend.backend_type in _OPENAI_COMPATIBLE
     scan_results = []
     for known in KNOWN_OLLAMA_NODES:
-        probe = _probe_ollama_node(known["host"], known["port"])
+        # OpenAI-compatible backends (LiteLLM/vLLM) expose models at the backend
+        # base_url, not on the Ollama port. Probe accordingly.
+        if openai_like:
+            probe = _probe_openai_engine(backend.base_url, backend.api_key_encrypted)
+        else:
+            probe = _probe_ollama_node(known["host"], known["port"])
 
         # Upsert fleet node
         existing = (
@@ -318,15 +354,21 @@ def _call_ollama(base_url: str, prompt: str, timeout: int, model: str = "llama3.
     return {"response": data.get("response", ""), "model": data.get("model", "unknown")}
 
 
-def _call_openai(base_url: str, api_key: str | None, prompt: str, timeout: int) -> dict:
-    """Call OpenAI-compatible /v1/chat/completions endpoint."""
+def _call_openai(base_url: str, api_key: str | None, prompt: str, timeout: int, model: str = "") -> dict:
+    """Call OpenAI-compatible /v1/chat/completions endpoint.
+
+    ``base_url`` may already include ``/v1`` (e.g. LiteLLM ``.../v1``); avoid
+    doubling it. ``model`` must be a name the engine actually serves.
+    """
+    base = base_url.rstrip("/")
+    url = f"{base}/chat/completions" if base.endswith("/v1") else f"{base}/v1/chat/completions"
     headers = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     r = httpx.post(
-        f"{base_url.rstrip('/')}/v1/chat/completions",
+        url,
         json={
-            "model": "gpt-3.5-turbo",
+            "model": model or "agent",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 256,
         },
@@ -430,8 +472,9 @@ def test_generate(
                 node_label = primary.base_url
             result = _call_ollama(target_url, prompt, primary.timeout_seconds, model)
             result["node"] = node_label
-        elif primary.backend_type in ("openai", "azure_openai", "anthropic"):
-            result = _call_openai(primary.base_url, primary.api_key_encrypted, prompt, primary.timeout_seconds)
+        elif primary.backend_type in ("openai", "azure_openai", "anthropic", "vllm", "litellm"):
+            req_model = model if model and model != "llama3.1:latest" else ""
+            result = _call_openai(primary.base_url, primary.api_key_encrypted, prompt, primary.timeout_seconds, req_model)
         elif primary.backend_type == "mock":
             result = _call_mock(prompt)
         else:
