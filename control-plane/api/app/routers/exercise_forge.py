@@ -34,7 +34,7 @@ logger = logging.getLogger("truenorth.api.exercise_forge")
 
 router = APIRouter(prefix="/exercise-forge", tags=["exercise-forge"])
 
-AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:8100")
+AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 
 # ── Presets ──────────────────────────────────────────────────────────────
 

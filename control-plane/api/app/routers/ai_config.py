@@ -198,13 +198,13 @@ def update_model_route(route_id: uuid.UUID, payload: AIModelRouteUpdate, db: Ses
 
 # -- Known Fleet Nodes (hardcoded for LAN discovery) -----------------------
 KNOWN_OLLAMA_NODES = [
-    {"node_name": "wile", "host": "192.168.1.50", "port": 11434, "gpu_model": "Dell Pro Max GB10", "gpu_vram_gb": 128},
+    {"node_name": "wile", "host": "192.168.1.50", "port": 11434, "gpu_model": "2x NVIDIA H200", "gpu_vram_gb": 282},
     {
         "node_name": "roadrunner",
         "host": "192.168.1.51",
         "port": 11434,
-        "gpu_model": "Dell Pro Max GB10",
-        "gpu_vram_gb": 128,
+        "gpu_model": "2x NVIDIA H200",
+        "gpu_vram_gb": 282,
     },
 ]
 

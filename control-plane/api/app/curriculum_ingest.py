@@ -21,7 +21,7 @@ import httpx
 
 logger = logging.getLogger("truenorth.api.curriculum")
 
-AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:8100")
+AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://opensearch:9200").rstrip("/")
 
 CHUNK_CHARS = 3200      # ~800 tokens

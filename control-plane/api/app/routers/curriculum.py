@@ -34,7 +34,7 @@ from ..models import (
     Quiz,
 )
 
-AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:8100")
+AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 
 logger = logging.getLogger("truenorth.api.curriculum")
 

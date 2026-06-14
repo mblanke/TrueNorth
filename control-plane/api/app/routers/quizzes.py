@@ -45,7 +45,7 @@ logger = logging.getLogger("truenorth.api.quizzes")
 
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 
-AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:8100")
+AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────

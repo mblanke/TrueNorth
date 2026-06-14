@@ -913,7 +913,7 @@ def delete_snapshot(self, range_id: str, snapshot_id: str):
 
 # ── Exercise Forge (EPIC 1) ──────────────────────────────────────────────
 
-AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:8100")
+AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.forge_exercise")

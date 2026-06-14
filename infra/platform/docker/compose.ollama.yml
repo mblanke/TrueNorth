@@ -1,0 +1,59 @@
+# TrueNorth Range — Ollama GPU Node
+# Runs ONE Ollama inference server bound to all local GPUs. Deploy a copy on
+# each GPU node (e.g. wile @ 192.168.1.50, roadrunner @ 192.168.1.51); the
+# control-plane reaches them via OLLAMA_NODES on the ai-orchestrator.
+#
+# Prerequisites on the host:
+#   - NVIDIA driver + CUDA, Docker Engine, NVIDIA Container Toolkit
+#     (verify: `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`)
+#
+# Usage:
+#   docker compose -f compose.ollama.yml up -d
+#   bash ../../../scripts/ollama-bootstrap.sh        # pull the flagship model
+#
+# Hardware target: 2× NVIDIA H200 (141 GB each → ~282 GB VRAM/node), ample for
+# a ~122B FP8 model resident with large KV cache plus an embedding model.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tn-ollama
+    restart: always
+    ports:
+      # Bound to all interfaces so the ai-orchestrator can reach it across the
+      # range network. Firewall this to the control-plane subnet in production.
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      # Keep the flagship model resident — reloading a ~122B model costs minutes
+      # and authors expect interactive turnaround. -1 = never unload.
+      OLLAMA_KEEP_ALIVE: "-1"
+      # Allow a couple of models loaded at once (flagship + embedding model).
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      # Per-node parallel request slots; mirrors MAX_OLLAMA_PER_NODE on the
+      # orchestrator. Author-time load is light (5–10 occasional users).
+      OLLAMA_NUM_PARALLEL: "2"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all          # both H200s on this node
+              capabilities: [gpu]
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  ollama-models:
+    driver: local

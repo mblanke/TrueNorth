@@ -531,7 +531,14 @@ services:
     restart: always
     environment:
       AI_MODEL_BACKEND: ${AI_MODEL_BACKEND:-ollama}
-      OLLAMA_NODES: ${OLLAMA_NODES:-http://ollama:11434}
+      # MUST be "name=url" pairs — entries without "=" are ignored by the
+      # orchestrator. Point at the GPU nodes running compose.ollama.yml.
+      OLLAMA_NODES: ${OLLAMA_NODES:-wile=http://192.168.1.50:11434,roadrunner=http://192.168.1.51:11434}
+      MAX_LLM_CONCURRENCY: ${MAX_LLM_CONCURRENCY:-4}
+      MAX_OLLAMA_PER_NODE: ${MAX_OLLAMA_PER_NODE:-2}
+      OLLAMA_TIMEOUT_S: ${OLLAMA_TIMEOUT_S:-600}
+      OLLAMA_MAX_MODEL_B: ${OLLAMA_MAX_MODEL_B:-0}
+      # Air-gapped: cloud keys are inert (no fallback path). Left for parity.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1

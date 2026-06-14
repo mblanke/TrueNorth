@@ -1,9 +1,14 @@
 """TrueNorth Range - AI Orchestrator API.
 
-Multi-backend AI service with dynamic Ollama fleet support,
-cloud fallback (OpenAI/Anthropic), tag-based task-to-model routing,
-load balancing, health-aware failover, and caching.
-Designed for 1,200+ concurrent users at 70k-VM scale.
+Air-gapped AI service backed by a dynamic local Ollama fleet, with
+tag-based task-to-model routing, a largest-healthy-model safety net for
+single-model deployments, load balancing, health-aware failover, and
+caching. The mock backend is the only non-local path and exists purely as
+a CI/last-resort placeholder (no outbound cloud calls).
+
+Sized for author-time content generation (a handful of concurrent content
+creators), not for per-exercise load — the GPU fleet is not in the
+exercise-runtime path.
 """
 
 from __future__ import annotations
@@ -251,34 +256,59 @@ def _find_all_for_tags(tags: list[str]) -> list[tuple[str, OllamaNode]]:
     return results
 
 
+def _largest_healthy_model() -> list[tuple[str, OllamaNode]]:
+    """Every healthy (model, node) pair, largest model first.
+
+    Last-resort candidates when a task's capability tags match nothing in the
+    fleet. In an air-gapped, single-model deployment the one flagship model may
+    not carry every specialised tag (e.g. a general instruct model has no
+    ``code`` tag), yet it is still the right place to send the request rather
+    than silently degrading to the mock backend.
+    """
+    candidates: list[tuple[str, OllamaNode, int]] = []
+    seen: set[tuple[str, str]] = set()
+    for node in FLEET.values():
+        if not node.healthy:
+            continue
+        for model_name in node.models:
+            if not _size_ok(model_name) or (model_name, node.name) in seen:
+                continue
+            candidates.append((model_name, node, _model_size_hint(model_name)))
+            seen.add((model_name, node.name))
+    candidates.sort(key=lambda c: (-c[2], c[1]._inflight))
+    return [(c[0], c[1]) for c in candidates]
+
+
 # ── Task -> tag routing table ──────────────────────────────────────────
+# Air-gapped deployment: the local Ollama fleet serves every task. There is no
+# cloud provider, so ``fallback_backend`` is ``mock`` for all routes — it is
+# only ever reached if the entire fleet is unreachable, in which case mock
+# returns a deterministic placeholder rather than attempting an outbound call.
+# (See ``_generate`` for the largest-healthy-model safety net that keeps
+# single-model fleets serving tasks whose capability tags match nothing.)
 TASK_ROUTES: dict[TaskType, ModelRoute] = {
     TaskType.scenario_suggest: ModelRoute(
         task=TaskType.scenario_suggest,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.openai,
-        fallback_model="gpt-4o",
+        fallback_backend=BackendType.mock,
         max_tokens_default=3000,
     ),
     TaskType.aar_analysis: ModelRoute(
         task=TaskType.aar_analysis,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.anthropic,
-        fallback_model="claude-sonnet-4-20250514",
+        fallback_backend=BackendType.mock,
         max_tokens_default=4000,
     ),
     TaskType.detection_rule: ModelRoute(
         task=TaskType.detection_rule,
         tags=["code"],
-        fallback_backend=BackendType.openai,
-        fallback_model="gpt-4o",
+        fallback_backend=BackendType.mock,
         max_tokens_default=2000,
     ),
     TaskType.general: ModelRoute(
         task=TaskType.general,
         tags=["general"],
-        fallback_backend=BackendType.openai,
-        fallback_model="gpt-4o-mini",
+        fallback_backend=BackendType.mock,
         max_tokens_default=2000,
     ),
     TaskType.embedding: ModelRoute(
@@ -290,29 +320,25 @@ TASK_ROUTES: dict[TaskType, ModelRoute] = {
     TaskType.exercise_forge: ModelRoute(
         task=TaskType.exercise_forge,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.openai,
-        fallback_model="gpt-4o",
+        fallback_backend=BackendType.mock,
         max_tokens_default=5000,
     ),
     TaskType.learning_recommendation: ModelRoute(
         task=TaskType.learning_recommendation,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.openai,
-        fallback_model="gpt-4o",
+        fallback_backend=BackendType.mock,
         max_tokens_default=3000,
     ),
     TaskType.course_generate: ModelRoute(
         task=TaskType.course_generate,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.openai,
-        fallback_model="gpt-4o",
+        fallback_backend=BackendType.mock,
         max_tokens_default=6000,
     ),
     TaskType.quiz_generate: ModelRoute(
         task=TaskType.quiz_generate,
         tags=["instruct-large", "large", "instruct"],
-        fallback_backend=BackendType.openai,
-        fallback_model="gpt-4o",
+        fallback_backend=BackendType.mock,
         max_tokens_default=4000,
     ),
 }
@@ -756,6 +782,20 @@ async def _generate(
                 models_to_try: list[tuple[str, str]] = [(model_override, node_override)]
             else:
                 candidates = _find_all_for_tags(route.tags)
+                # Air-gapped / single-model safety net: if no model carries the
+                # task's capability tags, route to the largest healthy model
+                # anyway rather than dropping through to cloud/mock. Embeddings
+                # are excluded — a chat model cannot stand in for an embedder,
+                # so they keep their existing best-effort degradation.
+                if not candidates and task != TaskType.embedding:
+                    candidates = _largest_healthy_model()
+                    if candidates:
+                        logger.info(
+                            "No model tagged %s for task=%s; routing to largest healthy model %s",
+                            route.tags,
+                            task.value,
+                            candidates[0][0],
+                        )
                 models_to_try = [(m, n.name) for m, n in candidates]
 
             last_err = None

@@ -304,10 +304,12 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       VLLM_URL: "${VLLM_URL:-}"
       VLLM_API_KEY: "${VLLM_API_KEY:-}"
-      # Format: name=url,name=url
+      # Format: name=url,name=url (entries without "=" are ignored)
       OLLAMA_NODES: "${OLLAMA_NODES:-}"
-      OLLAMA_TIMEOUT_S: "${OLLAMA_TIMEOUT_S:-300}"
+      OLLAMA_TIMEOUT_S: "${OLLAMA_TIMEOUT_S:-600}"
       OLLAMA_MAX_MODEL_B: "${OLLAMA_MAX_MODEL_B:-0}"
+      MAX_LLM_CONCURRENCY: "${MAX_LLM_CONCURRENCY:-4}"
+      MAX_OLLAMA_PER_NODE: "${MAX_OLLAMA_PER_NODE:-2}"
 
   # -- Web Frontend (Angular) --------------------------------------------
   web:
