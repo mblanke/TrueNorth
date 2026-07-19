@@ -333,8 +333,11 @@ class Exercise(SoftDeleteMixin, TimestampMixin, Base):
     )
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # kind: 'assessment' = individual practical (per-PO); 'collective' = team exercise driven by a MESL
+    kind: Mapped[str] = mapped_column(String(20), default="assessment")
     range_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("ranges.id"), nullable=False)
-    scenario_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("scenarios.id"), nullable=False)
+    # nullable: a collective exercise is driven by its MESL, not a single scenario timeline
+    scenario_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("scenarios.id"), nullable=True)
     state: Mapped[ExerciseState] = mapped_column(Enum(ExerciseState), default=ExerciseState.pending)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -343,6 +346,44 @@ class Exercise(SoftDeleteMixin, TimestampMixin, Base):
     max_score: Mapped[int] = mapped_column(Integer, default=0)
     range_obj: Mapped[Range] = relationship()
     scenario: Mapped[Scenario] = relationship()
+
+
+# -- Collective exercise: objectives + MESL (Master Event Sequence List) ----
+class ExerciseObjective(TimestampMixin, Base):
+    """A collective exercise's training objective (distinct from per-run Objective)."""
+
+    __tablename__ = "exercise_objectives"
+    __table_args__ = (Index("ix_exobj_exercise", "exercise_id"),)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    exercise_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=False)
+    ref: Mapped[str] = mapped_column(String(32), default="")  # e.g. "4.01" (EO/PO ref)
+    text: Mapped[str] = mapped_column(Text, default="")
+    moe: Mapped[str] = mapped_column(Text, default="")  # measure(s) of effectiveness
+    competency_code: Mapped[str] = mapped_column(String(50), default="")  # NICE/DCWF
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class MeslEvent(TimestampMixin, Base):
+    """A single serial of the Master Event Sequence List that drives a collective exercise."""
+
+    __tablename__ = "mesl_events"
+    __table_args__ = (Index("ix_mesl_exercise_serial", "exercise_id", "serial"),)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    exercise_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=False)
+    serial: Mapped[int] = mapped_column(Integer, default=0)  # serial number (001, 002, …)
+    phase: Mapped[str] = mapped_column(String(40), default="")  # e.g. "D1", "Phase 2"
+    scenario_time: Mapped[str] = mapped_column(String(40), default="")  # DTG / D+H+M, e.g. "D1 0900"
+    title: Mapped[str] = mapped_column(String(255), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    objective_ref: Mapped[str] = mapped_column(String(32), default="")  # links ExerciseObjective.ref
+    attack_technique: Mapped[str] = mapped_column(String(32), default="")  # optional MITRE id
+    delivery_method: Mapped[str] = mapped_column(String(20), default="cyber")  # cyber|white_cell|email|radio|physical|opfor
+    from_cell: Mapped[str] = mapped_column(String(80), default="")  # e.g. "White Cell", "OPFOR"
+    to_participant: Mapped[str] = mapped_column(String(80), default="")  # e.g. "Blue Team"
+    expected_action: Mapped[str] = mapped_column(Text, default="")
+    moe: Mapped[str] = mapped_column(Text, default="")  # assessment / measure of effectiveness
+    status: Mapped[str] = mapped_column(String(20), default="planned")  # planned|staged|delivered|responded|skipped
+    generated_by_model: Mapped[str] = mapped_column(String(120), default="")
 
 
 class Objective(TimestampMixin, Base):

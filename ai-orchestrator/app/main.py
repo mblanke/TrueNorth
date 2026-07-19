@@ -50,6 +50,7 @@ class TaskType(str, Enum):
     course_generate = "course-generate"
     quiz_generate = "quiz-generate"
     lesson_generate = "lesson-generate"
+    mesl_generate = "mesl-generate"
     general = "general"
     embedding = "embedding"
 
@@ -531,6 +532,17 @@ class CourseGenerateRequest(BaseModel):
     module_count: int = Field(default=6, ge=2, le=16)
     focus: str = Field(default="", description="Optional focus/outline hint from the instructor")
     model: str = Field(default="", description="Override model")
+
+
+class MeslGenerateRequest(BaseModel):
+    """Draft a Master Event Sequence List from collective-exercise objectives."""
+
+    exercise_name: str = Field(default="Collective Exercise")
+    objectives: list[dict] = Field(..., min_length=1, description="[{ref,text,moe}]")
+    event_count: int = Field(default=12, ge=3, le=60)
+    adversary: str = Field(default="")
+    duration_days: int = Field(default=1, ge=1, le=5)
+    model: str = Field(default="")
 
 
 class QuizGenerateRequest(BaseModel):
@@ -1376,6 +1388,53 @@ For truefalse questions use options ["True", "False"]."""
         output=output,
         usage=usage,
         cached=cached,
+        latency_ms=round(latency, 1),
+    )
+
+
+@app.post("/ai/mesl-generate", response_model=GenerateResponse)
+async def generate_mesl(req: MeslGenerateRequest):
+    """Draft a Master Event Sequence List (MESL) grounded in the exercise objectives."""
+    start = time.perf_counter()
+    objectives_block = "\n".join(
+        f"- {o.get('ref', '')}: {o.get('text', '')}" + (f" (MOE: {o.get('moe')})" if o.get("moe") else "")
+        for o in req.objectives
+    )
+    adv = f"\nAdversary / threat package: {req.adversary}." if req.adversary else ""
+
+    prompt = f"""You are a collective cyber-exercise designer for the TrueNorth Range.
+Draft a Master Event Sequence List (MESL) for the exercise "{req.exercise_name}" that measurably
+exercises the training objectives below over {req.duration_days} day(s).{adv}
+
+## Training objectives
+{objectives_block}
+
+## Requirements
+- {req.event_count} serials in chronological order; each advances one or more objectives.
+- Each serial: an objective ref, a realistic scenario time (e.g. "D1 0900"), a delivery method
+  (cyber | white_cell | email | radio | physical | opfor), a from-cell and to-participant
+  (e.g. "White Cell" -> "Blue Team"), the expected participant action, and a measure of
+  effectiveness (MOE). Cyber injects should carry a MITRE ATT&CK technique id where apt.
+
+## Output — STRICT JSON array, no markdown fences, no commentary:
+[
+  {{
+    "serial": 1, "phase": "D1", "scenario_time": "D1 0900",
+    "title": "<short inject title>", "description": "<what happens>",
+    "objective_ref": "<objective ref>", "attack_technique": "<Txxxx or empty>",
+    "delivery_method": "cyber|white_cell|email|radio|physical|opfor",
+    "from_cell": "<cell>", "to_participant": "<audience>",
+    "expected_action": "<expected participant response>", "moe": "<measure of effectiveness>"
+  }}
+]"""
+
+    output, model_used, node_used, usage, cached = await _generate(
+        prompt, TaskType.mesl_generate, req.model, use_cache=False, max_tokens=6000,
+    )
+    latency = (time.perf_counter() - start) * 1000
+    return GenerateResponse(
+        task="mesl-generate", model_used=model_used, node_used=node_used,
+        backend=PRIMARY_BACKEND.value, output=output, usage=usage, cached=cached,
         latency_ms=round(latency, 1),
     )
 

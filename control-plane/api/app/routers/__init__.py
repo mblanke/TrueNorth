@@ -16,6 +16,7 @@ from .directory import router as directory_router
 from .golden_images import router as golden_images_router
 from .exercise_forge import router as exercise_forge_router
 from .exercises import router as exercises_router
+from .exercises_collective import router as collective_exercises_router
 from .hypervisors import router as hypervisors_router
 from .integrations import lti_router
 from .integrations import router as integrations_router
@@ -35,6 +36,7 @@ from .threat_intel import router as threat_intel_router
 __all__ = [
     "ranges_router",
     "exercises_router",
+    "collective_exercises_router",
     "exercise_forge_router",
     "templates_router",
     "scenarios_router",

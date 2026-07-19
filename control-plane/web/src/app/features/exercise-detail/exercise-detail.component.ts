@@ -66,6 +66,7 @@ const NODE_ICON: Record<string, string> = {
       <header class="xd-head">
         <div>
           <a routerLink="/learning/qualifications" class="back"><mat-icon>arrow_back</mat-icon> Qualifications</a>
+          <div class="kicker">Individual Assessment</div>
           <h2>{{ d.exercise_name }}</h2>
           <div class="meta">
             <span class="chip" [class.done]="d.state==='completed'" [class.run]="d.state==='running'">{{ d.state }}</span>
@@ -179,7 +180,8 @@ const NODE_ICON: Record<string, string> = {
       .xd { padding: 4px 2px 24px; }
       .xd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
       .back { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--text-muted,#8a94a6); text-decoration: none; }
-      .xd-head h2 { margin: 6px 0 4px; }
+      .kicker { font-size: 0.72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent,#5b9bd5); font-weight: 700; margin-top: 6px; }
+      .xd-head h2 { margin: 2px 0 4px; }
       .meta { display: flex; align-items: center; gap: 10px; }
       .muted { color: var(--text-muted,#8a94a6); }
       .small { font-size: 0.8rem; }

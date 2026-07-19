@@ -122,7 +122,7 @@ interface DeploymentProfile {
           <mat-card-content>
             <div class="tn-icon-squircle"><mat-icon>storage</mat-icon></div>
             <div class="stat-value tn-gradient-text" [tnCountUp]="clusterNodes().length"></div>
-            <div class="stat-label">Proxmox Nodes</div>
+            <div class="stat-label">Hypervisor Nodes</div>
           </mat-card-content>
         </mat-card>
       </div>
@@ -173,7 +173,7 @@ interface DeploymentProfile {
           @if (clusterNodes().length === 0 && !clusterLoading()) {
             <mat-card class="node-card empty-card">
               <mat-icon class="empty-big">cloud_off</mat-icon>
-              <p>No cluster data – API offline or Proxmox unreachable</p>
+              <p>No cluster data – API offline or hypervisor unreachable</p>
               <button mat-stroked-button (click)="refreshCluster()">
                 <mat-icon>refresh</mat-icon> Retry
               </button>
@@ -182,7 +182,7 @@ interface DeploymentProfile {
           @if (clusterLoading()) {
             <mat-card class="node-card empty-card">
               <mat-icon class="empty-big spin">sync</mat-icon>
-              <p>Discovering Proxmox cluster...</p>
+              <p>Discovering hypervisor cluster...</p>
             </mat-card>
           }
         </div>

@@ -142,7 +142,8 @@ interface LearningPath {
                       *ngIf="po.exercise_id"
                       class="ex-link"
                       [routerLink]="['/exercises', po.exercise_id]"
-                    >Open exercise <mat-icon>chevron_right</mat-icon></a>
+                      title="Individual practical assessment"
+                    >Open assessment <mat-icon>chevron_right</mat-icon></a>
                   </div>
 
                   <div class="tags">

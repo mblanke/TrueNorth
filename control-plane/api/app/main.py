@@ -178,6 +178,7 @@ from .routers import (
     golden_images_router,
     exercise_forge_router,
     exercises_router,
+    collective_exercises_router,
     hypervisors_router,
     integrations_router,
     kit_router,
@@ -200,6 +201,7 @@ from .routers import (
 # Core routers
 app.include_router(ranges_router)
 app.include_router(exercises_router)
+app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)
 app.include_router(admin_router)
