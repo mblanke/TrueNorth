@@ -1,0 +1,5 @@
+TrueNorth Content Pack — CCoE / COTE
+Generated as an upload-and-run scaffold for Taz (R7725, Claude Code + GLM).
+Defensive content + orchestration only. Offensive Red Analyst tradecraft is human-authored
+(status=offensive_author). Not classified. Confirm XP/7 licensing before enabling.
+Now includes qsp_source/ (authoritative QSPs). Start here: README.md -> RUN.md. Guardrails: CLAUDE.md. Pattern: scenarios/PO_009_EXAMPLE/.

@@ -1,0 +1,1680 @@
+Annex C
+
+AMCN
+
+RQ Cyber OP Cpl
+
+RECORD OF DECISIONS
+
+Annex A
+
+AMCN
+
+RQ Cyber OP Cpl
+
+REFERENCES
+
+Annex B
+
+AMCN
+
+RQ Cyber OP Cpl
+
+TASK DISPOSITION
+
+**MILITARY PERSONNEL GENERATION TRAINING GROUP**
+
+**QUALIFICATION STANDARD**
+
+Rank Qualification – Cyber Operator Corporal 
+
+(RQ – CYBER OP Cpl)
+
+National Qualification: AMCN
+
+	Regular Force: 00378.1.N.01 Cyber Operator [CYBER OP]
+
+	Primary Reserve: 00378.1.P.02 Cyber Operator [CYBER OP]
+
+Special Force: N/A
+
+# RECORD OF AMENDMENTS
+
+| **Amendment ****Number** | **Requesting Agency** | **Revision Description** | **App****r****oval** | **Date** |
+| --- | --- | --- | --- | --- |
+|  |  |  |  |  |
+|  |  |  |  |  |
+
+# FOREWORD
+
+- This Qualification Standard (QS) for the Cyber OP MOSID 00378 is issued on the authority of the Commander of Military Personnel Generation Training Group (MPGTG).
+
+- This QS is based upon the AMCN for Cyber OP MOSID 00378 found in Cyber Op 00378 dated 18 02 2023.
+
+- This QS was developed in collaboration with representatives from from the Directorate of Cyber Operations Force Development (D Cyber Ops FD) Kingston, the Canadian Forces Network Operations Centre (CFNOC), and the Canadian Forces Information Operations Group Head Quarters (CFIOG HQ).
+
+- It was prepared in accordance with (IAW) the concept of training outlined in the A-P9-050 Series, Canadian Forces Manuals of Individual Training and Education.
+
+- This publication is effective upon receipt.
+
+- Suggestions for secretarial amendments or review shall be actioned IAW TGSO 1104.
+
+**TABLE OF CONTENTS**
+
+	
+
+RECORD OF AMENDMENTS	ii
+
+FOREWORD	iii
+
+GENERAL	1
+
+	AIM	1
+
+	OUTLINE OF TRAINING	1
+
+	BACKGROUND	1
+
+	USE OF QUALIFICATION STANDARD	1
+
+	PRIOR LEARNING ASSESSMENT AND RECOGNITION	2
+
+	QUALIFICATION/CERTIFICATION DETAILS	2
+
+PERFORMANCE OBJECTIVES	3
+
+	PO 001 Build Cyber Operation Software Tools	3
+
+	PO 002 Analyze Windows Enterprise Networks	8
+
+	PO 003 Conduct Cyber Threat Emulation	13
+
+	PO 004 Analyze Malware	15
+
+	PO 005 Analyze Digital Artifacts	18
+
+	PO 006 Conduct Advanced Analysis and Exploitation	21
+
+	PO 007 Analyze Non-IT Systems	25
+
+	PO 008 Defend a Network under Attack	29
+
+ANNEX A – REFERENCES	1
+
+ANNEX B – TASK DISPOSITION	1
+
+ANNEX C – RECORD OF DECISIONS	1
+
+| 1 | GENERAL |
+| --- | --- |
+
+## AIM
+
+- The purpose of this Qualification Standard (QS) is to describe in operational terms, the required outcome of individual training and education (IT&E) for Cyber Operators (CYBER OP) employed in the Job of Senior Cyber Defence Analyst (Sr Cyber Def Analyst).
+
+## OUTLINE OF TRAINING
+
+			- Commanders require personnel who possess the knowledge and skills necessary to perform the many tasks required of a CYBER OP employed as a Sr Cyber Def Analyst. This job is performed in support of the Sea, Land, Air and CANSOF elements. The primary responsibility is to lead a cyber team in fulfilling technical tasks of applying advanced defensive cyber operations techniques, such as threat hunting through statistical analysis.
+
+- The loading authority must ensure that candidates meet those prerequisites. 
+
+## BACKGROUND
+
+- This document contains the following Performance Objectives (POs) that the member shall achieve to meet the requirements of this qualification:
+
+| **PO** | **PO Title** |
+| --- | --- |
+| 001 | Build Cyber Operation Software Tools |
+| 002 | Analyze Windows Enterprise Networks |
+| 003 | Conduct Cyber Threat Emulation |
+| 004 | Analyze Malware |
+| 005 | Analyze Digital Artifacts |
+| 006 | Conduct Advanced Analysis and Exploitation |
+| 007 | Analyze Non-IT Systems |
+| 008 | Defend a Network Under Attack |
+
+## USE OF QUALIFICATION STANDARD
+
+- This QS shall be used by the IT&E establishment to design, develop, conduct, and evaluate the training program.
+
+- This QS will also be used by MPGTG Standards in support of validation.
+
+- The qualification code/title supported by the POs:
+
+| **Qualification Code** | **National Qualification Title** |
+| --- | --- |
+| Temp 67 | Rank Qualification Cyber Operator Corporal |
+
+	
+
+## PRIOR LEARNING ASSESSMENT AND RECOGNITION
+
+- Prior Learning Assessment and Recognition (PLAR) request goes through MPGTG PLAR Coordinator at [STG-PLAROccupations@intern.mil.ca](mailto:STG-PLAROccupations@intern.mil.ca).
+
+## QUALIFICATION/CERTIFICATION DETAILS
+
+- Nil.
+
+| 2 | PERFORMANCE OBJECTIVES |
+| --- | --- |
+
+## PO 001 Build Cyber Operation Software Tools
+
+	- Performance: Build Cyber Operations software tools.
+
+	- Conditions:
+
+	- given:
+
+		- problem/goal/optimization opportunity;
+
+		- target network connectivity;
+
+		- open-source internet connection;
+
+		- administrator credentials;
+
+		- Information Management (IM) / Information Technologies (IT) and ancillary equipment;
+
+		- network sensors;
+
+		- software and tools;
+
+		- network diagrams;
+
+		- references;
+
+		- suitable work area; and
+
+		- supervision;
+
+	- denied: nil; and
+
+	- environment: day or night, under any weather conditions, within a technical environment.
+
+	- Standard: The Senior Cyber Def Analyst shall build cyber operations software tools IAW refs (D38, D39, D40, D41, D44 and D45) by:
+
+	- interpreting operating system (OS) fundamentals, to include:
+
+		- Linux fundamentals (file system and permissions, libraries);
+
+		- windows fundamentals (kernel modules, file system, registry, active directory Group Policy Objects (GPOs);
+
+		- principles of OS (processes & threads, memory mgt);
+
+		- Linux command line utilities;
+
+		- Bourne Again Shell (BASH) shell scripts;
+
+		- windows GPOs; and 
+
+		- Linux file Permissions;
+
+	- applying mathematics fundamentals, to include:
+
+		- number systems and logic (short review);
+
+		- number systems - representation & conversion;
+
+		- binary arithmetic;
+
+		- Boolean algebra;
+
+		- linear algebra (short review);
+
+		- functions & equations;
+
+		- matrices;
+
+		- equation solving with matrices;
+
+		- applied probability & statistics (short review);
+
+		- probability theory;
+
+		- probability distributions;
+
+		- basic statistical measures;
+
+		- curve fitting;
+
+		- distribution fitting; and
+
+		- hypothesis testing;
+
+	- (FT0340) building custom testing environment, to include:
+
+		- domain name servers (DNS);
+
+		- web servers and proxies;
+
+		- mail & file servers;
+
+		- active directory domain controller; and 
+
+		- (ET0010) maintaining a collection database;
+
+	- applying mathematics for cryptography and statistical analysis, to include:
+
+		- applying machine learning math, to include:
+
+		- linear algebra
+
+		- statistical norms, means, std deviations, hypothesis testing; and
+
+		- probability concepts; 
+
+		- applying machine learning algorithms, to include:
+
+		- regression;
+
+		- decision trees;
+
+		- clustering; and 
+
+		- basics of deep learning;
+
+		- implementing a Transport Layer Security (TLS) / Secure Socket Layer (SSL) key exchange and encryption system from primitives, to include:
+
+		- block and stream ciphers;
+
+		- block chaining;
+
+		- asymmetric algorithms; and 
+
+		- hashing;
+
+	- (FT0280) developing software tools to include:
+
+		- applying C programming techniques to include:
+
+		- implementing a statistical algorithm; and 
+
+		- implementing data encoding techniques.
+
+		- applying Object Oriented Programming (OOP) principles, to include:
+
+		- object oriented programming;
+
+		- classes and objects;
+
+		- methods and interfaces;
+
+		- relationships; 
+
+		- inheritance; and
+
+		- polymorphism;
+
+		- designing a software solution, to include:
+
+		- object oriented analysis; and 
+
+		- object oriented design;
+
+		- writing custom tools, to include:
+
+		- applying a machine learning algorithm;
+
+		- developing a custom network testing toolset;
+
+		- implementing a web server; and
+
+		- implementing secure Diffie-Hellman (DH) key exchange and Advanced Encryption Standard - Counter Mode (AES-CTR) encryption from primitives;
+
+	- applying software development methodologies to include:
+
+		- (FT0300) maintaining custom network toolsets;
+
+		- (FT0290) testing custom network tool; and
+
+		- estimating development time and effort.
+
+	- Remarks: Recommendations to Training Plan and development of the content:
+
+	- the following knowledge should be included as teaching points:
+
+		- the C program constructs (such as control statements, loops, functions, pointers, and data structures), data types, and memory management should be covered for C programming techniques; and
+
+		- the processes and products, complexity measures, source code control and review, and configuration management for software development methodologies.
+
+## PO 002 Analyze Windows Enterprise Networks
+
+		- Performance: Analyze Windows enterprise networks.
+
+		- Conditions:
+
+		- given:
+
+		- Internet Protocol (IP) system traffic, host logs and data;
+
+		- open-source internet connection;
+
+		- IM/IT and ancillary equipment;
+
+		- endpoint sensors;
+
+		- software and tools;
+
+		- network diagrams;
+
+		- references;
+
+		- work area; and 
+
+		- supervision;
+
+		- denied: alerts; and
+
+		- environment: day or night, under any weather conditions, within a technical environment.
+
+		- Standard: The Sr Cyber Def Analyst shall analyze Windows enterprise networks IAW refs (D49 and D50) by:
+
+		- (GT0080) analyzing network traffic, to include:
+
+		- identifying attacks, to include:
+
+		- defense evasion, to include:
+
+		- encryption;
+
+		- masquerading; and
+
+		- obfuscation;
+
+		- Command and Control, to include:
+
+		- beaconing;
+
+		- lateral movement;
+
+		- HyperText Transfer Protocol (HTTP) communication ;
+
+		- DNS communication; and
+
+		- other protocols;
+
+		- identifying communication protocols, to include: 
+
+		- DNS;
+
+		- HTTP(s);
+
+		- Server Message Block (SMB);
+
+		- Secure Shell (SSH);
+
+		- Kerberos; and
+
+		- modern communication protocols including but not limited to:
+
+		- TLS 1.2/1.3; and 
+
+	- Quick User Datagram Protocol (UDP) Internet Connection (QUIC), DNS over TLS (DoT), DNS over HTTPS (DOH); and
+
+		- collecting metadata from network traffic;
+
+		- analyzing host logs, to include:
+
+		- identifying attacks, to include:
+
+		- persistence techniques, to include:
+
+		- legitimate AutoStart mechanisms;
+
+		- uncommon AutoStart mechanisms;
+
+		- account manipulation techniques; and
+
+		- process hijacking techniques;
+
+		- defense evasion, to include:
+
+		- autoruns evasion;
+
+		- event log evasion;
+
+		- Endpoint Detection and Response (EDR) evasion;
+
+		- Antivirus (AV) evasion; and
+
+		- evidence removal;
+
+		- selecting relevant Windows host and Active Directory (AD) logs, to include:
+
+		- AD overview and logging, to include:
+
+		- security and audit logs;
+
+		- logon events;
+
+		- other logs relevant to security logs; and
+
+		- AD protocols;
+
+		- Windows host logs, to include:
+
+		- built-in events; and
+
+		- Sysmon;
+
+		- collecting metadata from host logs, to include:
+
+		- Windows event forwarding and alternatives;
+
+		- GPOs; and
+
+		- agents;
+
+		- identifying exploits in host logs, to include:
+
+		- binary exploits; and
+
+		- Windows exploits;
+
+		- identifying persistence in host logs, to include:
+
+		- establishing persistence; and
+
+		- executing from persistence; 
+
+		- identifying indicators of cyber activity, to include:
+
+		- (GT0070) characterizing network traffic by establishing normal patterns, to include:
+
+		- pattern of life; and
+
+		- admin practices;
+
+		- characterizing host logs by establishing normal patterns, to include:
+
+		- pattern of life; and
+
+		- admin practices;
+
+		- (GT0110) analyzing anomalies in network traffic using metadata;
+
+		- analyzing anomalies in host logs using metadata, to include:
+
+		- AD logs;
+
+		- Windows logs; and 
+
+		- Sysmon;
+
+		- visualizing data;
+
+		- developing anomaly detection rules with machine learning and statistics;
+
+		- identifying Tactics, Techniques, and Procedures (TTPs) of malicious activity;
+
+		- reporting on TTPs of malicious activity;
+
+		- (FT0160) developing network sensor rules, to include:
+
+		- writing rules based on, to include:
+
+		- heuristics; and
+
+		- network signatures;
+
+		- (FT0180) testing network sensor rules functionality, to include:
+
+		- volume of false positives;
+
+		- volume of false negatives; and
+
+		- modifying rules to fix identified issues.
+
+		- Remarks: Normal is defined as the contextually expected behaviour of an endpoint or network segment. E.g., a workstation generates at most 10 dns requests per minute therefore, 1000 dns requests in a given minute are deemed not normal (Ref D37).
+
+## PO 003 Conduct Cyber Threat Emulation
+
+		- Performance: Conduct cyber threat emulation.
+
+		- Conditions:
+
+		- given:
+
+		- target network connectivity;
+
+		- open-source internet connection;
+
+		- IM/IT and ancillary equipment;
+
+		- software and tools;
+
+		- network diagrams;
+
+		- references;
+
+		- suitable work area; and 
+
+		- supervision;
+
+		- denied: nil; and
+
+		- environment: day or night, under any weather conditions, within a technical environment.
+
+		- Standard: The Sr Cyber Def Analyst shall conduct cyber threat emulation IAW refs (D46 and D47) by:
+
+		- (ET0080) scanning for network vulnerabilities by:
+
+		- (GT0100) assessing technical risk and vulnerability of cyber systems, to include:
+
+		- using automated scanning tools; and
+
+		- using custom scanning tools;
+
+		- (BT0280) assessing extent of identified vulnerabilities;
+
+		- (BT0260) gaining access to a target device/network environment by:
+
+		- exploiting Linux systems, to include:
+
+		- Set Owner User ID (SUID);
+
+		- interruptible path; and
+
+		- time of check/time of use vulnerabilities;
+
+		- exploiting web systems, to include:
+
+		- Structured Query Language (SQL) injection;
+
+		- SQL filter evasion; and
+
+		- Cross-Site Request Forgery / Cross-Site Scripting (CSRF/XSS);
+
+		- exploiting windows systems, to include:
+
+		- kerberoasting;
+
+		- over privileged accounts; and
+
+		- privilege escalation;
+
+		- (BT0270) generating authorized adverse effects on target network/device, to include:
+
+		- binary exploitation, to include:
+
+		- buffering overflows;
+
+		- formatting string; and
+
+		- Return Oriented Programming (ROP) chains;
+
+		- pivoting within a target network;
+
+		- using exploitation frameworks (e.g., Metasploit);
+
+		- Denial of Service (DOS);
+
+		- encrypt for effect;
+
+		- exfiltrate data;
+
+		- deface for effect; and
+
+		- resource theft.
+
+		- Remarks: This PO is focused solely on exploitation and not on stealth.
+
+## PO 004 Analyze Malware
+
+		- Performance: Analyze malware.
+
+		- Conditions:
+
+		- given:
+
+		- malware samples;
+
+		- analysis environment;
+
+		- open-source internet connection;
+
+		- IM/IT and ancillary equipment;
+
+		- software and tools;
+
+		- references;
+
+		- suitable work area; and 
+
+		- supervision;
+
+		- denied: nil; and
+
+		- environment: day or night, under any weather conditions, within a technical environment.
+
+		- Standard: The Sr Cyber Def Analyst shall analyze malware IAW refs (D25 and D42) by:
+
+		- (BT0400) triaging malware by:
+
+		- (GT0370) conducting basic static analysis, to include:
+
+		- strings;
+
+		- imports;
+
+		- binary characteristics such as size and entropy; and 
+
+		- attributing software behaviours to a particular OS;
+
+		- (GT0390) conducting basic dynamic analysis by:
+
+		- (GT0400) creating synthetic environment by:
+
+		- setting up a safe environment;
+
+		- faking a real environment;
+
+		- setting up logging; and
+
+		- running malware;
+
+		- (GT0380) determining the key characteristics of malicious software, to include:
+
+		- (GT0420) conducting advanced static analysis to include:
+
+		- x86 and x64 assembly;
+
+		- disassemblers;
+
+		- C constructs in assembly; and
+
+		- assembly code;
+
+		- (GT0440) conducting advanced dynamic analysis to include:
+
+		- malware execution environments;
+
+		- techniques to hide execution;
+
+		- debugging malware;
+
+		- patching malware;
+
+		- modifying the environment; and
+
+		- combining advanced static and dynamic analysis, to include:
+
+		- identifying attempts to hide execution;
+
+		- identifying checks for debuggers; and
+
+		- modifying code and environment to run malware;
+
+		- identifying advanced anti-analysis techniques to include:
+
+		- obfuscation techniques, to include:
+
+		- identifying data encoding;
+
+		- identifying packers;
+
+		- anti-disassembly;
+
+		- anti-debugging; and
+
+		- finding tail jumps and other signs of unpacking;
+
+		- defeating advanced anti-analysis techniques to include:
+
+		- defeating anti-analysis, to include: 
+
+		- manually unpacking malware;
+
+		- decoding custom encoders;
+
+		- defeating anti-disassembly;
+
+		- defeating anti-debugging; and
+
+		- analyzing difficult malware.
+
+		- (GT0520) compiling technical intelligence from analyzed malicious software by:
+
+		- conducting malware triage;
+
+		- identifying key characteristics;
+
+		- identifying anti-analysis techniques;
+
+		- defeating anti-analysis techniques; and
+
+		- producing a technical report for distribution.
+
+		- Remarks: The expectation of a Sr Cyber Def Analyst is that they can identify obvious malware, identify obvious benign software, and sending anything else to a specialist for further analysis. The Sr Cyber Def Analyst will be exposed to anti-forensics and anti-analysis techniques, as well as techniques to defeat these, but is not expected to reliably apply these techniques in real world tasks.
+
+## PO 005 Analyze Digital Artifacts
+
+		- Performance: Analyze digital artifacts.
+
+		- Conditions:
+
+		- given:
+
+		- digital media;
+
+		- target network connectivity;
+
+		- open-source internet connection;
+
+		- administrator credentials;
+
+		- IM/IT and ancillary equipment;
+
+		- software and tools;
+
+		- network diagrams;
+
+		- references;
+
+		- suitable work area; and
+
+		- supervision;
+
+		- denied: nil; and
+
+		- environment: day or night, under any weather conditions, within a technical environment.
+
+		- Standard: The Sr Cyber Def Analyst shall analyze digital artifacts for indications of compromise IAW refs (D43, D51 and D52) by:
+
+		- (BT0510) performing static media analysis by:
+
+		- (BT0490) performing file system forensics analysis, to include:
+
+		- volumes and partition;
+
+		- (BT0470) documenting original condition of digital forensic artifacts;
+
+		- identifying artifacts for digital forensics analysis (DFA);
+
+		- identifying operating systems based on network traffic; and
+
+		- (BT0430) recovering artifacts for DFA;
+
+		- conducting OS forensics, to include:
+
+		- on both Windows and Linux, to include:
+
+		- persistence mechanisms;
+
+		- Auto runs; and 
+
+		- Non autoruns;
+
+		- evidence of execution;
+
+		- system logs (windows events, Linux audit, etc.);
+
+		- external device usage;
+
+		- account usage;
+
+		- evidence of credential misuse;
+
+		- privilege escalation;
+
+		- configuration changes;
+
+		- browser usage; and
+
+		- service logs;
+
+		- (GT0220) analyzing digital media for potential cyber incident by:
+
+		- producing an activity timeline;
+
+		- (BT0450) extracting artifacts for DFA;
+
+		- (BT0420) reconstructing a malicious activity;
+
+		- (BT0520) performing digital forensic timeline analysis; and
+
+		- (GT0510) extracting malicious artifacts from other digital media;
+
+		- conducting live forensics by:
+
+		- conducting live artifact acquisition to include:
+
+		- using a remote forensics toolkit such as f response; and
+
+		- using a Digital Forensics and Incident Response (DFIR) toolkit such as GRR Rapid Response, osquery, or velociraptor;
+
+		- conducting live memory acquisition;
+
+		- (GT0500) conducting memory forensics, to include:
+
+		- malicious processes; 
+
+		- kernel forensics and rootkits; and
+
+		- (BT0440) duplicating digital media for forensic;
+
+		- (GT0470) defeating adversary attempts to hide malicious content and behaviour by:
+
+		- identifying log removal;
+
+		- identifying evidence removal;
+
+		- identifying use of poorly instrumented administrative tools; and
+
+		- defeating evidence removal with alternate investigative methods;
+
+		- (CT0210) recommending digital media recovery measures; and
+
+		- (FT0330) maintaining forensics malware lab hardware and software.
+
+		- Remarks: The performance standard for this PO is expected to be practical, a candidate must demonstrate their ability to collect and analyze relevant artifacts and not just know of their existence.
+
+## PO 006 Conduct Advanced Analysis and Exploitation
+
+		- Performance: Conduct advanced analysis and exploitation.
+
+		- Conditions:
+
+		- given:
+
+		- target network connectivity;
+
+		- internet connection;
+
+		- IM/IT and ancillary equipment;
+
+		- network sensors;
+
+		- software and tools;
+
+		- network diagrams;
+
+		- references;
+
+		- suitable work area; and
+
+		- supervision;
+
+		- denied: nil; and
+
+		- environment: day or night, under any weather conditions, within a technical environment.
+
+		- Standard: The Sr Cyber Def Analyst shall conduct advanced analysis and exploitation IAW refs (D43, D46, D47, D48, D51 and D52) by:
+
+		- explaining attacks on mis-implemented cryptography, to include:
+
+		- attacking a vulnerable block cipher mode such as AES - Electronic Code Book (ECB) / Cipher block chaining (CBC) to include explaining importance of CTR / Galois/Counter Mode (GCM);
+
+		- attacking pseudo random number generator such as MTRNG to include explaining importance of cryptographic random number generation; and
+
+		- attacking textbook Rivest-Shamir-Adleman (RSA) algorithm with small e (Bleichenbacher) to include explaining importance of e and padding;
+
+		- (FT0310) developing custom network exploitation tools by:
+
+		- identifying vulnerability;
+
+		- developing exploit for vulnerability;
+
+		- (FT0320) testing custom exploit tool functionality; and
+
+		- modifying existing tool and exploit source code;
+
+		- identifying tool indicators by: 
+
+		- hiding network activity by:
+
+		- identifying normal network activity;
+
+		- configuring C2 profile by hand and statistically;
+
+		- using redirectors;
+
+		- tunneling C2 through legitimate sites; and
+
+		- modifying intra request timing, to include:
+
+		- frequency; and
+
+		- jitter;
+
+		- controlling tool indicators by:
+
+		- hiding network activity by:
+
+		- identifying normal network activity;
+
+		- configuring C2 profile by hand and statistically;
+
+		- using redirectors;
+
+		- tunneling C2 through legitimate sites; and
+
+		- modifying intra request timing, to include:
+
+		- frequency; and
+
+		- jitter;
+
+		- hiding host activity by:
+
+		- moving laterally to include:
+
+		- identifying abnormal activity; and
+
+		- conducting lateral movement while mimicking normal login activity;
+
+		- hiding process execution by:
+
+		- processing injection;
+
+		- masquerading;
+
+		- processing hiding; and
+
+		- attacking only memory;
+
+		- living off the land by:
+
+		- identifying abnormal administrator activity; and
+
+		- using existing OS functionality to mimic normal administrator activity;
+
+		- establishing stealthy persistence (e.g., not detected by auto runs), to include:
+
+		- service hijacking;
+
+		- Dynamic Link Library (DLL) sideloading; and
+
+		- hidden privileged accounts;
+
+		- (GT0040) identifying means of compromise by:
+
+		- (GT0490) defeating anti-forensics techniques, to include:
+
+		- detecting process injection, hiding, and masquerading;
+
+		- statistically detecting living off the land techniques; and
+
+		- identifying stealthy persistence techniques;
+
+		- generating extra features (e.g., intra request times, header sizes, etc.);
+
+		- modelling communication streams using techniques from PO1 statistical analysis;
+
+		- encrypting Communication Analysis; and
+
+		- analyzing login activity to find lateral movement;
+
+		- (GT0160) evaluating adversary TTPs by:
+
+		- building an attack plan using known adversary TTPs;
+
+		- conducting pentest on friendly force following attack plan;
+
+		- evaluating success of pentest; and
+
+		- evaluating likely success of plan via wargaming;
+
+		- (GT0470) defeating adversary attempts to hide malicious content and behaviour by:
+
+		- identifying anti-forensics and anti-analysis techniques at scale;
+
+		- conducting anomaly detection and review;
+
+		- building hypotheses of likely adversary activity;
+
+		- executing likely adversary activity to determine indicators;
+
+		- searching for these indicators across a network; and
+
+		- building a better hypothesis by using information gained.
+
+		- Remarks: Task a.1 is intended to be practical. Sr Cyber Def Analysts will be given a step-by-step guide for each attack and implement it. Task a.2.a should be a known type of vulnerability (e.g., suid abuse, toc/tou, buffer overflow etc.) but should not have an existing exploit. Tasks c and d should be taught iteratively – Sr Cyber Def Analysts should implement an attack or masquerading method and then immediately work on detecting it. This PO should include applied exercises in which Sr Cyber Def Analysts take turns running stealthy attacks and attempting to detect them.
+
+## PO 007 Analyze Non-IT Systems
+
+		- Performance: Analyze non-IT systems.
+
+		- Conditions:
+
+		- given:
+
+		- simulated Platform Technologies (PT) / Operational Technologies (OT) systems;
+
+		- open internet connection;
+
+		- IM/IT and ancillary equipment;
+
+		- software and tools;
+
+		- supervision;
+
+		- work area;
+
+		- network diagrams; and
+
+		- references;
+
+		- denied: nil; and
+
+		- environment: day or night, under any weather conditions, within a technical environment.
+
+		- Standard: The Sr Cyber Def Analyst shall analyze non-IT systems IAW refs (D43 and D51-D59) by:
+
+		- analyzing PT and OT systems by:
+
+		- (GT0070) characterizing network traffic to include:
+
+		- OT protocols, to include:
+
+		- Distributed Network Protocol 3 (DNP3); and
+
+		- Modbus;
+
+		- PT protocols, to include:
+
+		- 1553;
+
+		- CANBus; and 
+
+		- Integrated Platform Management Systems (IMPS);
+
+		- characterizing host logs to include:
+
+		- embedded devices, to include:
+
+		- minimal Linux based systems;
+
+		- Busybox; and
+
+		- other Real Time Open Source (RTOS) architectures;
+
+		- Linux forensic logging, to include:
+
+		- common log file locations;
+
+		- Kernel ring buffer logs; and
+
+		- other log information, to include:
+
+		- message logs;
+
+		- sensor logs;
+
+		- device activity logs; and
+
+		- data historians;
+
+		- (GT0080) analyzing network traffic by:
+
+		- applying security monitoring to OT/PT systems;
+
+		- detecting anomalies in network traffic using metadata; and
+
+		- (GT0110) analyzing anomalies in network traffic using metadata;
+
+		- analyzing host logs by:
+
+		- applying security monitoring to OT/PT systems;
+
+		- analyzing anomalies in host logs using metadata; and
+
+		- detecting anomalies in host logs;
+
+		- applying software security principles, to include:
+
+		- software attack vectors;
+
+		- embedded system vulnerabilities;
+
+		- binary exploitation; and
+
+		- fuzzing;
+
+		- explaining hardware security, to include:
+
+		- Printed Circuit Board (PCB) security and countermeasures;
+
+		- firmware extraction; and
+
+		- communication interception;
+
+		- conducting threat emulation on OT and PT systems by:
+
+		- (FT0350) determining configuration changes required to conduct network evaluation by:
+
+		- applying digital forensics for PT/OT systems;
+
+		- explaining system recovery for PT/OT systems; and
+
+		- (GT0010) analyzing persistent collection deficiencies for PT/OT systems;
+
+		- (FT0360) determining configuration changes required to conduct incident response by:
+
+		- applying digital forensics for PT/OT systems;
+
+		- explaining system recovery for PT/OT systems; and
+
+		- (GT0010) analyzing persistent collection deficiencies for PT/OT systems;
+
+		- applying OT specific attacks by:
+
+		- gaining access to an OT network;
+
+		- establishing C2 to a compromised OT node;
+
+		- applying defense evasion techniques to avoid detection;
+
+		- executing a desired effect on the target OT network, to include:
+
+		- device restarts;
+
+		- data disruption;
+
+		- device masquerading;
+
+		- remote control; and
+
+		- system destabilization.
+
+		- Remarks: This module is expected to confirm the Sr Cyber Def Analyst’s ability to apply their knowledge and skills in new situations as well as introduce PT/OT systems. The Sr Cyber Def Analyst is not expected to operate independently on PT/OT and will require the assistance of a system engineer and a cyber officer to establish any new monitoring capabilities. The purpose of para b. is to demonstrate how simple these effects are to achieve in most PT/OT environments. The Cyber Operator will not demonstrate these effects on live systems due to significant risk of causing additional unintended malfunction. Task para-a.1.and para-a.1. b. the lists are not exhaustive and will be required to be updated as new things are coming and out of service. 
+
+		
+
+## PO 008 Defend a Network under Attack
+
+		- Performance: Defend a network under attack.
+
+		- Conditions:
+
+		- given:
+
+		- threat information;
+
+		- mission scenarios;
+
+		- internet connection;
+
+		- IM/IT and ancillary equipment;
+
+		- software and tools;
+
+		- supervision;
+
+		- work area;
+
+		- network diagrams; and
+
+		- references;
+
+		- denied: nil; and
+
+		- environment: day or night, under any weather conditions, within an operational environment.
+
+		- Standard: The Sr Cyber Def Analyst shall defend a network under attack IAW refs (D43, D51 and D52) by:
+
+		- (BT0020) planning tactical cyber activities to include:
+
+		- identifying likely attack vectors to include:
+
+		- identifying network configuration by:
+
+		- (GT0190) analyzing internal network for compromise potential; and
+
+		- (GT0340) analyzing internal cyber event and incident reports in support of mission objectives;
+
+		- (BT0230) advising on cyber threats by:
+
+		- (GT0180) evaluating all source cyber threat information;
+
+		- identifying targets;
+
+		- identifying vectors; and
+
+		- identifying intent;
+
+		- (BT0300) advising on cyber defence enhancements by:
+
+		- (GT0010) analyzing persistent collection deficiencies;
+
+		- (FT0350) determining configuration changes required to conduct network evaluation, to include:
+
+		- host hardening;
+
+		- server hardening;
+
+		- service hardening;
+
+		- enhancing logging;
+
+		- host agent deployment;
+
+		- types of host agents such as AV, EDR, DFIR and decisions between them;
+
+		- network sensor deployment; and 
+
+		- tap, span, r-span, netflow, and decisions between them; and
+
+		- (FT0360) determining configuration changes required to conduct incident response;
+
+		- developing a mission specific toolkit by:
+
+		- (FT0370) developing a deployable cyber defence toolkit;
+
+		- (FT0380) maintaining a deployable cyber defence toolkit;
+
+		- (FT0390) developing a deployable digital forensics toolkit; and
+
+		- (FT0400) maintaining a deployable digital forensics toolkit;
+
+		- monitoring network and host alerts by:
+
+		- (BT0390) validating network alerts through coordination with enterprise-wide cyber defence staff;
+
+		- evaluating true/false positives;
+
+		- tuning network and host alert rules; and
+
+		- (FT0210) recommending approval of deployment of network sensor rules;
+
+		- (BT0350) responding to a cyber event by:
+
+		- conducting initial network scale triage;
+
+		- maintaining Situational Awareness (SA) throughout a compromise;
+
+		- conducting threat hunts and iterative investigations;
+
+		- (GT0040) identifying means of compromise;
+
+		- (GT0150) determining adversary TTPs;
+
+		- extracting considerations for live adversaries and ongoing attacks; and
+
+		- (BT0220) informing direct supervisor on cyber threat(s).
+
+		- Remarks: Pre PLQ Sr-Cyber Def Analysts will be members of a team but are exposed to the planning process as there is no further general training in DP2. Post PLQ Sr Cyber Def Analysts can be expected to lead small party tasks in cyber. 
+
+# ANNEX A – REFERENCES
+
+| Ref # | **Publication** |
+| --- | --- |
+| **A** | **Canadian Military References** |
+| **A****6** | Table 3-2-1: Platoon battle Procedures Handbook |
+| **A****7** | CFNOC SOP on reporting |
+|  |  |
+| **B** | **Allied Military References** |
+|  |  |
+| **C** | **Civilian / Commercial References** |
+| **C1** | CFINTCOM/CFSMI, FireEye Threat Intelligence, MITRE ATT&CK Matrix, US CERT, NATO CERT. |
+|  |  |
+| **D** | **Other** |
+| **D1** | Static testing vs. Dynamic testing [https://www.veracode.com/blog/2013/12/static-testing-vs-dynamic-testing](https://www.veracode.com/blog/2013/12/static-testing-vs-dynamic-testing) [https://medium.com/@cypressdefense.com/differences-between-static-code-analysis-and-dynamic-testing-743cdee714fc](https://medium.com/@cypressdefense.com/differences-between-static-code-analysis-and-dynamic-testing-743cdee714fc) |
+| **D2** | Static vs. Dynamic Code Analysis: How to choose between them https://blog.overops.com/static-vs-dynamic-code-analysis-how-to-choose-between-them |
+| **D3** | Software Debugging Process [https://www.process.st/checklist/software-debugging-process/](https://www.process.st/checklist/software-debugging-process/) *See Sources at the bottom of the article* |
+| **D4** | How to Debug Small Programs [https://ericlippert.com/2014/03/05/how-to-debug-small-programs/](https://ericlippert.com/2014/03/05/how-to-debug-small-programs/) |
+| **D5** | Pro Git [https://git-scm.com/book/en/v2](https://git-scm.com/book/en/v2) Chapters: 1,2,3,5,6,A1,A3 |
+| **D6** | ISBN-13: 978-1593275099 : The practice of network security monitoring. Chapter: 12. Appendix: SO scripts and configuration |
+| **D7** | ISBN-13: 978-1593275907 : Black Hat Python. Chapter: 6 |
+| **D8** | What are OOP concepts in Java [https://stackify.com/oops-concepts-in-java/#:~:text=OOP%20concepts%20in%20Java%20are,encapsulation%2C%20inheritance%2C%20and%20polymorphism.&text=Basically%2C%20Java%20OOP%20concepts%20let,of%20them%20without%20compromising%20security](https://stackify.com/oops-concepts-in-java/) |
+| **D9** | https://stackkfy.com/solid-design-principles |
+| **D10** | UML Class Diagram [https://www.tutorialspoint.com/uml/uml_class_diagram.htm](https://www.tutorialspoint.com/uml/uml_class_diagram.htm) |
+| **D11** | UML Use Case Diagram [https://sparxsystems.com/enterprise_architect_user_guide/14.0/model_domains/usecasediagram.html](https://slack-redir.net/link?url=https%3A%2F%2Fsparxsystems.com%2Fenterprise_architect_user_guide%2F14.0%2Fmodel_domains%2Fusecasediagram.html&v=3) |
+| **D15** | Zeek.org |
+| **D16** | Different testing methodologies https://www.guru99.com/testing-methodology.html |
+| **D17** | Agile methodology https://www.perforce.com/blog/alm/what-agile-testing |
+| **D18** | Agile methodology https://stackify.com/agile-methodology/ |
+| **D19** | Developing test cases https://www.guru99.com/test-case.html |
+| **D20** | Writing Test Cases https://www.softwaretestinghelp.com/how-to-write-effective-test-cases-test-cases-procedures-and-definitions/ |
+| **D21** | What is software testing? [https://www.codeproject.com/tips/351122/what-is-software-testing-what-are-the-different-ty](https://www.codeproject.com/tips/351122/what-is-software-testing-what-are-the-different-ty) |
+| **D22** | Unit, Integration and functional testing [https://www.softwaretestinghelp.com/the-difference-between-unit-integration-and-functional-testing/](https://www.softwaretestinghelp.com/the-difference-between-unit-integration-and-functional-testing/) |
+| **D25** | ISBN-13: 978-1593272906: Practical Malware Analysis *The Hands-On Guide to Dissecting Malicious Software* |
+| **D26** | ISBN-13: 978-0735684447: Troubleshoot with the Windows Sysinternals Tools |
+| **D27** | ISBN-13: 978-1535312431: Windows Forensics |
+| **D28** | ISBN-13: 978-1593275099: Practice of network security monitoring. |
+| **D29** | ISBN-13: 978-1491962848 Network Security through data analysis. (2nd edition) |
+| **D30** | EITSM manual |
+| **D31** | MITRE ATT&CK Matrix CVE database |
+| **D32** | Threat package, SANS Digital Forensics and Incident Response, Lockheed Martin Cyber Kill Chain |
+| **D33** | NIST NVD Calculator |
+| **D35** | FMAC Handbook Shortcuts and Hints OAP 2019 |
+| **D36** | ISBN-10: 1119390648: Windows Security Monitoring: Scenarios and Patterns |
+| **D37** | Difference Between Anomaly and Abnormality – ScienceLogic [https://sciencelogic.com/blog/what-is-normal-anomaly-detection](https://sciencelogic.com/blog/what-is-normal-anomaly-detection) |
+| **D38** | ISBN: 9780136006633:* Modern Operating Systems*, 3rd Ed |
+| **D39** | ISBN: 9781849519496: Kali Linux – Assuring Security by Penetration Testing |
+| **D40** | ISBN-13‏: ‎978-1593275679: *How Linux Works: What Every Superuser Should Know* |
+| **D41** | ISBN: 9781492072942: *Practical Statistics for Data Scientists* |
+| **D42** | ISBN: 9781593272890: The IDA Pro Book, 2nd Edition: *The Unofficial Guide to the World’s Most Popular Disassembler* |
+| **D43** | ISBN-13: ‏9780321268174: *File System Forensic Analysis* |
+| **D44** | ISBN: 0735684189: Windows Internals, Part 1: System architecture, processes, threads, memory management, and more |
+| **D45** | ISBN: 9783030336486: Computer Security and the Internet: *Tools and Jewels,* Chapter 5 OS & Security |
+| **D46** | ISBN: 9780367642761: *Cyberspace, Data Analytics, And Policing* |
+| **D47** | ISBN: 9783030834104: Computer Security And The Internet*: Tools And Jewels From Malware To Bitcoin* |
+| **D48** | ISBN-13: 978-0521766333: Data Mining and Analysis:* Fundamental Concepts and Algorithms* |
+| **D49** | Implement Group Policy Objects, Microsoft Learn [https://learn.microsoft.com/en-us/training/modules/implement-group-policy-objects/](https://learn.microsoft.com/en-us/training/modules/implement-group-policy-objects/) |
+| **D50** | Secure The Windows Boot Process, Microsoft Learn [https://learn.microsoft.com/en-us/windows/security/operating-system-security/system-security/secure-the-windows-10-boot-process](https://learn.microsoft.com/en-us/windows/security/operating-system-security/system-security/secure-the-windows-10-boot-process) |
+| **D51** | ISBN: 9780124171572: *Windows Forensic Analysis Toolkit*: Advanced Analysis Techniques for Windows 8 |
+| **D52** | ISBN-13: 978-1118825099: *The Art of Memory Forensics*: Detecting Malware and Threats in Windows, Linux, and Mac Memory |
+| **D53** | CIP-013-1 – Cyber Security - Supply Chain Risk Management [https://www.nerc.com/pa/Stand/Reliability%20Standards/CIP-013-1.pdf](https://www.nerc.com/pa/Stand/Reliability%20Standards/CIP-013-1.pdf) |
+| **D54** | ISO/IEC 27036:2016-2023 — Information security for supplier relationships** ***(four parts)* [ISO/IEC 27036 Securing supplier relationshiips (iso27001security.com)](https://www.iso27001security.com/html/27036.html) |
+| **D55** | National Institute of Standards and Technology (NIST) BEST PRACTICES IN CYBER SUPPLY CHAIN RISK MANAGEMENT – Case Study  [Microsoft Word - NIST_USRP Cisco Cyber SCRM Case Study.docx](https://www.nist.gov/system/files/documents/itl/csd/NIST_USRP-Cisco-Cyber-SCRM-Case-Study.pdf) |
+| **D56** | NIST - CSF ID.SC Cybersecurity Framework identify [https://www.nist.gov/cyberframework/identify](file:///\\Eis-ls2-vv08535\img-u09$\Gosselin.C\Home\Documents\CYBER\DP2\%3cBLOCKED%3e*https:\www.nist.gov\cyberframework\identify%3cBLOCKED%3e) |
+| **D57** | Telvent Breach [Chinese Hackers Blamed for Intrusion at Energy Industry Giant Telvent – Krebs on Security](https://krebsonsecurity.com/2012/09/chinese-hackers-blamed-for-intrusion-at-energy-industry-giant-telvent/) |
+| **D58** | D. De Santo, C.S. Malavenda, S.P. Romano, C. Vecchio, *Exploiting the MIL-STD-1553 avionic data bus with an active cyber device*, Computers & Security |
+| **D59** | Uchenna P. Daniel Ani, Hongmei (Mary) He & Ashutosh Tiwari (2017) *Review of cybersecurity issues in industrial critical infrastructure: manufacturing in perspective*, Journal of Cyber Security Technology |
+
+Notes:
+
+Note 1: CFNOC CND Tp SOPs are available by contacting the Computer Network Defence Troop via e-mail: ++CFNOC_CND Tp@ADM(IM) CFNOC@Ottawa-Hull or by phone at: 613-945-7416
+
+# ANNEX B – TASK DISPOSITION
+
+| *,+ | Task # | Sr Cyber Defence Analyst | Sr Red Analyst | Sr Blue Analyst | Sr IH Analyst | Sr Digital Forensics Analyst | Sr Cyber Sp Analyst | Malware Analyst | Jr Instr | Task Statement | **PO #** | **T/ NT** | **Substantiation for Training Priority and No-train Decisions** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **DUTY AREA A – POLICY** |
+|  | AT0030 | X | X | X | X | X | X | X |  | Advise on unit cyber-SOPs |  | NT | Experienced, already trained |
+| * | NEW | X | X | X | X | X | X | X |  | Implement cyber security orders and directives |  | NT | Experienced, already trained |
+| **DUTY AREA B – OPERATIONS** |
+|  | BT0010 | X | X | X | X | X |  |  |  | Advise on tactical cyber activities |  | NT | Experienced, already trained |
+|  | BT0020 | X | X | X | X | X |  |  | X | Plan tactical cyber activities | 008 | T |  |
+|  | BT0050 | X | X | X | X | X |  |  |  | Manage tactical cyber activities REVISED |  | NT | PLQ |
+|  | BT0220 | X | X | X | X | X |  | X |  | Inform on cyber threats | 008 | T |  |
+|  | BT0230 | X | X | X | X | X |  | X |  | Advise on cyber threats | 008 | T |  |
+|  | BT0240 | X | X |  |  |  |  |  |  | Conduct cyber threat emulation REVISED | 003 | T |  |
+| * | NEW | X | X |  |  |  |  |  |  | Conduct threat emulation on PT and OT systems | 007 | T |  |
+|  | BT0250 | X | X |  |  |  |  |  |  | Conduct penetration testing |  | NT | Technical skills trained, processes and management will be learned on the job and skill review assessment (SRA) |
+| * | NEW | X | X |  |  |  |  |  |  | Support social engineering operations |  | NT | Will learn on the job and SRA |
+|  | BT0260 | X | X |  |  |  |  |  |  | Gain access to a target device/network environment REVISED | 003 | T |  |
+|  | BT0270 | X | X |  |  |  |  |  |  | Generate authorized adverse effects on a target network/device | 003 | T |  |
+|  | BT0280 | X | X | X |  |  |  |  |  | Assess extent of identified vulnerabilities | 003 | T |  |
+|  | BT0290 | X | X | X |  |  |  |  |  | Demonstrate identified cyber defense gaps to supported units |  | NT | Will learn on the job and SRA |
+|  | BT0300 | X | X | X |  |  |  |  |  | Advise on cyber defense enhancements | 008 | T | Focused on mitigating exploited vulnerabilities and enhancing logging and defensive posture |
+|  | BT0310 | X | X |  |  |  |  |  |  | Assess the effectiveness of adversary cyber capabilities REVISED |  | NT | Implicit in ability to conduct exploitation |
+| * | NEW | X | X |  |  |  |  |  |  | Control tool indicators | 006 | T |  |
+| * | NEW | X | X |  |  |  |  |  |  | Determine tool indicators | 006 | T |  |
+|  | BT0330 | X |  | X | X |  |  |  |  | Triage indicators of events |  | NT | Experienced, already trained |
+|  | BT0340 | X |  |  | X |  |  |  |  | Track cyber events |  | NT | Experienced, already trained |
+|  | BT0350 | X |  |  |  |  |  |  |  | Respond to a cyber event | 008 | T |  |
+| * | NEW | X | X |  |  | X |  |  |  | Extract network indicators |  | NT | Experienced, already trained |
+| * | NEW | X | X |  |  | X |  |  |  | Extract artifacts |  | NT | Experienced, already trained |
+|  | BT0370 | X |  |  |  |  |  |  |  | Identify network mapping and operating system (OS) fingerprinting activities |  | NT | Experienced, already trained |
+|  | BT0380 | X |  |  | X |  |  |  |  | Validate intrusion detection system (IDS) alerts against network traffic |  | NT | Experienced, already trained |
+|  | BT0390 | X |  |  | X |  |  |  |  | Validate network alerts through coordination with enterprise-wide cyber defense staff | 008 | T | Low trg pri (LTP) (extent - who are the other GoC organizations) |
+|  | BT0400 | X |  |  |  | X |  |  |  | Triage malware | 004 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Collect metadata from network traffic | 002 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Collect metadata from host logs | 002 | T |  |
+| * | BT0410 | X |  |  |  | X |  | X |  | Identify device applications (task splitted) REVISED |  | NT | Experienced, already trained |
+| * | NEW | X |  |  |  |  |  |  |  | Identify operating systems based on network traffic | 005 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Conduct live artifact acquisition | 005 | T |  |
+|  | BT0420 | X |  |  |  | X |  |  |  | Reconstruct a malicious activity REVISED | 005 | T |  |
+|  | BT0430 | X |  |  |  | X |  |  |  | Recover artifacts for digital forensics analysis | 005 | T |  |
+| * | NEW | X |  |  |  |  |  | X |  | Identify artifacts for digital forensics analysis | 005 | T |  |
+|  | BT0440 | X |  |  |  | X |  |  |  | Duplicate digital media for forensics REVISED | 005 | T |  |
+|  | BT0450 | X |  |  |  | X |  |  |  | Extract artifacts for digital forensics analysis | 005 | T |  |
+|  | BT0460 | X |  |  |  | X |  | X |  | Decrypt seized data |  | NT | Commercial tools |
+|  | BT0470 | X |  |  |  | X |  |  |  | Document original condition of digital forensic artifacts | 005 | T |  |
+|  | BT0480 |  |  |  |  | X |  | X |  | Perform dynamic analysis of a boot process |  | NT | Experienced, already trained |
+|  | BT0490 | X |  |  |  | X |  |  |  | Perform file system forensic analysis | 005 | T |  |
+|  | BT0510 | X |  |  |  | X |  |  |  | Perform static media analysis | 005 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Produce an activity timeline | 005 | T |  |
+|  | BT0520 | X |  |  |  | X |  |  |  | Perform digital forensic timeline analysis | 005 | T |  |
+|  | BT0530 | X |  | X |  | X |  |  |  | Scan for malware on digital media |  | NT | Experienced, already trained |
+| * | NEW | X |  |  |  |  |  |  |  | Conduct OS forensics | 005 | T |  |
+|  | BT0540 |  |  |  |  | X |  |  |  | Attribute a forensic artifact to a particular operating system |  | NT | Experienced, already trained |
+| * | NEW | X |  |  |  |  |  | X |  | Attribute software behaviour to a particular operating system | 004 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Identify indicators of cyber activity | 002 | T |  |
+|  | BT0580 | X |  |  |  |  |  |  |  | Produce a request for information (RFI) – REVISED from DP1 |  | NT | Experienced, already trained |
+| **DUTY AREA C - REPORTING** |
+|  | CT0010 | X |  |  |  |  |  |  |  | Inform on cyber security best practices/policy REVISED |  | NT | Experienced, already trained |
+|  | CT0020 | X | X | X | X | X | X |  |  | Lead reporting activities |  | NT | Experienced, already trained |
+|  | CT0050 | X |  |  |  |  | X | X |  | Initiate technical report |  | NT | Experienced, already trained |
+|  | CT0060 | X | X | X | X | X | X | X |  | Update technical report |  | NT | Experienced, already trained |
+|  | CT0070 | X | X | X | X | X | X | X |  | Vet technical report - REVISED |  | NT | Experienced, already trained |
+|  | CT0090 | X |  |  | X |  |  |  |  | Draft cyber event report |  | NT | Experienced, already trained |
+|  | CT0100 | X |  |  | X |  |  |  |  | Review cyber event report |  | NT | Experienced, already trained |
+|  | CT0120 | X |  |  | X |  |  |  |  | Update cyber event report |  | NT | Experienced, already trained |
+|  | CT0130 | X | X | X | X | X | X | X |  | document analysis notes REVISED from DP1 |  | NT | Experienced, already trained |
+|  | CT0140 | X | X | X | X | X | X | X |  | Update reporting database |  | NT | Experienced, already trained |
+|  | CT0160 | X |  |  | X |  |  | X |  | Advise chain of command (CoC) on current cyber threat |  | NT | Simple if the technical aspects are well understood |
+|  | CT0170 | X | X | X |  |  |  |  |  | Brief client on network evaluation process |  | NT | Experienced, already trained |
+|  | CT0180 | X | X | X |  |  |  |  |  | Report risks and vulnerabilities to client |  | NT | Experienced, already trained |
+|  | CT0190 | X | X | X |  |  | X |  |  | Report analysis findings to client |  | NT | Experienced, already trained |
+|  | CT0200 | X | X | X | X |  |  |  |  | Recommend cyber incident recovery measures |  | NT | Experienced, already trained |
+|  | CT0210 | X |  |  |  | X |  | X |  | Recommend digital media recovery measures | 005 | T |  |
+|  | CT0240 | X |  |  | X |  |  |  |  | Recommend mitigation action to prevent reoccurrence of cyber incident |  | NT | Experienced, already trained |
+|  | CT0250 |  |  |  |  |  |  |  |  | Approve mitigation action to prevent reoccurrence of cyber incident |  |  | Moved to Sgt RQ |
+|  | CT0260 | X |  |  |  |  |  | X |  | Prepare cyber tactical briefings |  | NT | Experienced, already trained |
+|  | CT0270 | X | X | X | X | X | X | X |  | Brief on tactical cyber operations |  | NT | Experienced, already trained |
+|  | CT0280 | X | X | X | X | X |  | X |  | Prepare briefings on operational cyber events/trends |  | NT | Experienced, already trained |
+| * | NEW | X |  |  |  |  |  |  |  | Identify Tactics, Techniques, and Procedures (TTPs) of malicious activity | 002 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Report on TTPs of malicious activity | 002 | T |  |
+| **DUTY AREA D – STANDARDS ****&**** TRAINING** |
+| No tasks apply to jobs at these rank levels. |
+| **DUTY AREA E - COLLECTION** |
+|  | ET0010 | X |  |  |  |  | X |  |  | Maintain collection database | 001 | T |  |
+|  | ET0020 | X | X | X |  | X | X |  |  | Safeguard cyber forensic evidence |  | NT | Experienced, already trained |
+| * | NEW | X | X |  |  |  |  |  |  | Safeguard client data |  | NT | Experienced, already trained |
+|  | ET0050 | X | X |  |  | X |  |  |  | Collect intrusion artifacts (e.g., source code, malware, and trojans) |  | NT | Experienced, already trained |
+|  | ET0060 | X | X | X |  | X |  |  |  | Collect metadata, network traffic and logs REVISED from DP1 |  | NT | Experienced, already trained |
+| * | NEW | X |  |  |  | X |  |  |  | Conduct live memory acquisition | 005 | T |  |
+|  | ET0070 | X |  |  |  | X |  | X |  | Capture live memory from operating system |  | NT | Experienced, already trained |
+| * | NEW | X |  |  |  |  |  |  |  | Produce network map of implicated systems |  | NT | Experienced, already trained |
+|  | ET0080 | X | X | X |  |  |  |  |  | Scan for network vulnerabilities | 003 | T |  |
+|  | ET0090 |  | X | X |  |  | X |  |  | Develop logical network map |  | NT | Experienced, already trained |
+|  | ET0100 | X | X | X | X |  | X |  |  | Determine location of physical network assets |  | NT | Experienced, already trained |
+|  | ET0120 | X |  |  |  | X |  |  |  | Transport cyber evidence |  | NT | Experienced, already trained |
+|  | ET0140 | X |  |  |  | X |  |  |  | Destroy cyber evidence |  | NT | Experienced, already trained |
+| **DUTY AREA F – TOOL SET MAINTENANCE** |
+|  | FT0010 | X | X | X |  | X | X | X |  | Install hardware REVISED from DP1 |  | NT | Experienced, already trained |
+|  | FT0020 | X | X | X |  | X | X | X |  | Remove hardware REVISED from DP1 |  | NT | Experienced, already trained |
+|  | FT0030 | X | X | X |  | X | X | X |  | Configure hardware |  | NT | Experienced, already trained |
+|  | FT0040 | X | X | X |  | X | X | X |  | Install software REVISED from DP1 |  | NT | Experienced, already trained |
+|  | FT0050 | X | X | X |  | X | X | X |  | Remove software REVISED from DP1 |  | NT | Experienced, already trained |
+|  | FT0060 | X | X | X |  | X | X | X |  | Configure software |  | NT | Experienced, already trained |
+|  | FT0070 |  |  |  |  |  | X |  |  | Coordinate software licensing |  |  | Moved to Sgt RQ |
+|  | FT0080 | X | X | X |  | X |  |  |  | Troubleshoot toolset software deficiencies |  | NT | Experienced, already trained |
+|  | FT0090 | X | X | X |  | X | X |  |  | Determine software deficiencies |  | NT | Experienced, already trained |
+|  | FT0100 |  |  |  |  |  | X |  |  | Recommend corrective measures to software deficiencies |  | NT | Experienced, already trained |
+|  | FT0110 | X | X | X |  | X | X |  |  | Troubleshoot toolset hardware deficiencies |  | NT | Experienced, already trained |
+|  | FT0120 |  |  |  |  |  | X |  |  | Recommend corrective measures to hardware deficiencies |  | NT | Experienced, already trained |
+|  | FT0130 | X |  |  |  |  |  |  |  | Load network sensor rules to sensors |  | NT | Experienced, already trained |
+|  | FT0140 | X |  |  |  |  |  |  |  | Remove network sensor rules from sensors |  | NT | Experienced, already trained |
+|  | FT0160 | X |  |  | X | X |  |  |  | Develop network sensor rules | 002 | T |  |
+|  | FT0170 |  |  |  | X | X |  |  |  | Lead development of network sensor rules |  | NT | Lead at higher rank level |
+|  | FT0180 | X |  |  | X | X |  |  |  | Test network sensor rule functionality | 002 | T |  |
+|  | FT0190 |  |  |  | X |  |  |  |  | Lead testing of network sensor rules |  | NT | This task is at higher rank level |
+|  | FT0200 |  |  |  | X | X |  |  |  | Recommend deployment of network sensor rules |  | NT | This task is at higher rank level |
+|  | FT0210 | X |  |  | X | X |  |  |  | Recommend approval of deployment of network sensors rules | 008 | T |  |
+|  | FT0220 |  |  |  |  |  |  |  |  | Approve deployment of network sensors rules |  | NT | This task is at higher rank level |
+|  | FT0230 | X |  |  | X |  |  |  |  | Recommend deactivation of network sensors rules |  | NT | Trained with FT0160 |
+|  | FT0240 | X |  |  | X |  |  |  |  | Recommend approval of deactivation of network sensor rules |  | NT | Experienced, already trained |
+|  | FT0260 |  |  |  |  |  |  |  |  | Determine standard toolset configurations |  | NT | Moved to sgt RQ |
+|  | FT0270 |  |  |  |  |  |  |  |  | Enforce standard toolset configurations |  | NT | Moved to sgt RQ |
+|  | FT0280 | X | X | X |  |  | X |  |  | Develop software tools REVISED | 001 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Apply software development methodologies | 001 | T |  |
+|  | FT0290 | X | X | X |  |  | X |  |  | Test custom network tool REVISED | 001 | T |  |
+|  | FT0300 | X |  |  |  |  |  |  |  | Maintain custom network toolsets REVISED | 001 | T |  |
+|  | FT0310 | X | X |  |  |  |  |  |  | Develop custom network exploitation tools | 006 | T |  |
+|  | FT0320 | X | X |  |  |  |  |  |  | Test custom exploitation tool functionality | 006 | T |  |
+| * | NEW | X | X |  |  |  |  |  |  | Modify existing tool and exploit source code | 006 | T |  |
+|  | FT0330 | X |  |  |  |  |  |  |  | Maintain forensics malware lab hardware/software | 005 | T |  |
+|  | FT0340 | X | X |  |  | X |  |  |  | Build custom testing environment | 001 | T |  |
+|  | FT0350 | X | X | X |  |  |  |  |  | Determine configuration changes required to conduct network evaluation | 007/008 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Maintain network SA |  | NT | Experienced, already trained |
+| * | NEW | X | X | X | X | X | X | X | X | Implement cyber security orders and directives |  | NT | Experienced, already trained |
+|  | FT0360 | X |  |  | X |  |  |  |  | Determine configuration changes required to conduct incident response | 007/008 | T |  |
+|  | FT0370 | X | X | X |  |  | X |  |  | Develop a deployable cyber defence toolkit REVISED | 008 | T |  |
+|  | FT0380 | X | X | X | X |  | X |  |  | Maintain deployable cyber defense toolkit | 008 | T |  |
+|  | FT0390 | X |  |  |  | X | X |  |  | Develop a deployable digital forensics toolkit | 008 | T |  |
+|  | FT0400 | X |  |  |  | X | X |  |  | Maintain a deployable digital forensic toolkit | 008 | T |  |
+| **DUTY AREA G - ANALYSIS** |
+|  | GT0010 | X |  |  |  |  | X |  |  | Analyze persistent collection deficiencies | 007/008 | T |  |
+|  | GT0020 | X |  |  |  |  | X |  |  | Lead analysis of persistent collection deficiencies |  | T | PLQ + prior training |
+|  | GT0030 |  |  |  |  |  |  |  |  | Supervise analysis of persistent collection deficiencies |  | NT | Moved to Sgt RQ |
+|  | GT0040 | X |  |  |  |  |  |  |  | Identify means of compromise REVISED | 006/008 | T |  |
+|  | GT0050 | X |  |  | X | X |  |  |  | Lead analysis of identified malicious activity to determine exploitation methods |  | NT | PLQ + prior training |
+|  | GT0070 | X |  |  |  | X |  |  |  | Characterize network traffic to establish normal patterns | 002/007 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Characterize host logs to establish normal patterns | 002 | T |  |
+|  | GT0080 | X |  |  |  | X |  |  |  | Analyze network traffic REVISED | 002/007 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Analyze host logs | 002/007 | T |  |
+| * | NEW |  |  |  |  |  |  |  |  | Analyze PT and OT systems | 007 | T |  |
+|  | GT0090 | X |  | X |  |  |  |  |  | Analyze site cyber defense policies for compliance with regulations and directions |  | NT | Experienced, already trained |
+|  | GT0100 | X | X | X |  |  |  |  |  | Assess technical risk and vulnerability of cyber systems | 003 | T |  |
+|  | GT0110 | X |  |  |  | X |  |  |  | Analyze anomalies in network traffic using metadata | 002/007 | T |  |
+| * | NEW | X |  |  |  |  |  |  |  | Analyze anomalies in host logs using metadata | 002/007 | T |  |
+|  | GT0120 | X | X | X |  |  |  |  |  | Assess non-technical risk and vulnerability of cyber systems |  | NT | Experienced, already trained |
+|  | GT0130 | X |  |  |  |  |  |  |  | Analyze trends in cyber defence |  | NT | Experienced, already trained |
+|  | GT0140 | X |  |  | X |  |  |  |  | Determine threats to network security |  | NT | Experienced, already trained |
+|  | GT0150 | X |  |  | X | X |  |  |  | Determine adversary tactics, techniques and procedures (TTPs) | 008 | T |  |
+|  | GT0160 | X | X |  |  |  |  |  |  | Evaluate adversary TTPs | 006 | T |  |
+|  | GT0170 | X |  | X |  |  |  |  |  | Evaluate friendly TTPs |  | NT | Experienced, already trained |
+|  | GT0180 | X |  |  | X |  |  |  |  | Evaluate all source cyber threat information | 008 | T |  |
+|  | GT0190 | X | X |  |  |  |  |  |  | Analyze internal network for compromise potential | 008 | T |  |
+|  | GT0200 |  | X |  |  |  |  |  |  | Lead analysis of internal network for compromise potential |  | NT | PLQ + prior training |
+|  | GT0220 | X |  |  |  | X |  |  |  | Analyze digital media for potential cyber incident | 005 | T |  |
+|  | GT0230 | X |  |  |  | X |  |  |  | Lead analysis of digital media for potential cyber incident activity |  | NT | PLQ + prior training |
+|  | GT0250 | X |  |  |  |  |  |  |  | Analyze SIEM alerts* *REVISED |  | NT | Experienced, already trained |
+|  | GT0260 | X |  |  |  |  |  |  |  | Lead analysis of network sensor data for cyber event activity |  | NT | PLQ + prior training |
+|  | GT0310 | X |  | X |  |  |  |  |  | Analyze internal network for compliance with Canadian Armed Forces (CAF) cyber policy and procedures |  | NT | Experienced, already trained |
+|  | GT0320 |  |  |  |  |  |  |  |  | Lead analysis of internal networks for compliance with CAF cyber policies and procedures |  | NT | Sgt RQ |
+|  | GT0340 | X |  |  | X |  |  |  |  | Analyze internal cyber event and incident reports in support of mission objectives | 008 | T |  |
+|  | GT0350 | X |  |  | X |  |  |  |  | Lead analysis of internal cyber event and incident reports in support of mission objectives |  | NT | PLQ + prior training |
+|  | GT0370 | X |  |  |  | X |  | X |  | Conduct basic static analysis | 004 | T |  |
+|  | GT0380 | X |  |  |  | X |  | X |  | Determine the key characteristics of malicious software | 004 | T |  |
+|  | GT0390 | X |  |  |  | X |  | X |  | Conduct basic dynamic analysis of malicious software REVISED | 004 | T |  |
+|  | GT0400 | X |  |  |  | X |  | X |  | Create synthetic environment REVISED | 004 | T |  |
+|  | GT0420 | X |  |  |  | X |  | X |  | Conduct advanced static analysis | 004 | T |  |
+|  | GT0430 | X |  |  |  |  |  | X |  | Determine the internal design and structure of malicious software |  | NT | Moved to Malware USQ |
+|  | GT0440 | X |  |  |  |  |  | X |  | Conduct advanced dynamic analysis REVISED | 004 | T |  |
+|  | GT0460 | X |  |  |  |  |  | X |  | Reverse engineer obfuscated software |  | NT | Moved to Malware USQ |
+|  | GT0470 | X |  |  |  | X |  | X |  | Defeat adversary attempts to hide malicious content and behaviour | 005/006 | T |  |
+|  | GT0480 | X |  |  |  |  |  | X |  | Reverse engineer malicious software |  | NT | Moved to Malware USQ |
+|  | GT0490 | X |  |  |  | X |  | X |  | Defeat adversary use of anti-forensic techniques | 006 | T |  |
+|  | GT0500 | X |  |  |  | X |  | X |  | Conduct memory forensics | 005 | T |  |
+|  | GT0510 | X |  |  |  | X |  | X |  | Extract malicious artifacts from other digital media (e.g., documents, pictures, videos) REVISED | 005 | T |  |
+|  | GT0520 | X |  |  |  | X |  | X |  | Compile technical intelligence from analyzed malicious software | 004 | T |  |
+| **DUTY AREA H – PERS MANAGEMENT** |
+| No tasks apply to jobs at these rank levels. |
+
+*Notes.*
+
+The plus sign (+) indicates that the task has not been previously trained.
+
+The asterisk (*) indicates change made to the task statement or creation of a new task.
+
+T/NT –** **Train/No Train.
+
+T/NT decisions IAW CFITES Vol. 3, p. 20-23, para. 53-59.
+
+# ANNEX C – RECORD OF DECISIONS
+
+| **Title** | Cyber Operator (MOSID 00378) Cpl RQ – Senior Cyber Defence Analyst (qual code AMCN) Qualification Standard and Plan |
+| --- | --- |
+| **Location of Review Board** | Carling Campus, Ottawa ON |
+| **Dates** | 13-17 Jun 22 |
+| **Board Composition** |
+|  | Surname | Initials | Rank | Unit |
+| Co-Chair (content) | Adams | M.M | Capt | D Cyber FD |
+| Co-Chair (process) | Murugan | G | Capt | D Cyber FD |
+| SME | Potvin | M | Capt | D Cyber FD |
+| SME | Neely | D | Sgt | CFNOC |
+| SME | Crockett | S | PO2 | CFNOC |
+| SME | Blondin | Y.G.B | WO | CFIOG HQ |
+| SME | Ryan | E.J.A | MWO | CFNOC |
+| SME | Ladouceur | D.J | Maj | CFNOC |
+| SME | Aladjkov | K.T | WO | CFNOC |
+| Scribe | Whitney | R | Sgt | D Cyber FD |
+|  |  |  |  |  |
+| **Ser #** | **Details** | **Action** |
+| 1 | Board reviews Cyber MTL, changes reflected Below OS/Pte/Avr/LS/Cpl Red Analyst Digital Forensics Both removed from this level, left at MS/MCpl | Nil |
+| 2 | Duty Area A – Policy CWO – moved tasks into MWO as there is no CWO cyber operator positions | MTL updated to reflect the changes |
+| 3 | BT240 – Changed wording to better reflect task. ‘Adversary specific’ removed as there is no reason to limit CTE to a specific adversary | TDO to Staff required amendments to DPGR Spec Maintenance thru the CoC to update MTL |
+| 4 | New task support social engineering ops Moved from Red to MS/MCpl | As per Ser #3 |
+| 5 | BT320 – Conduct cyber defence audits (change audits to assess) to reflect lack of policy to audit against. | As per Ser #3 |
+| 6 | New tasks– added to Pte RQ Extract network indicators (NT) Extract artifacts | As per Ser #3 |
+| 7 | The board will interpret network sensors to include all sources of cyber relevant information, not just network traffic. Also include host/cloud. All references to networks should be changed to cyber systems to reflect the full scope of cyber operator responsibilities. Cyber systems are being interpreted in this document to refer to IM/IT/IP/OT/PT/Cloud/SAAS/PAAS/Serverless/IaC/etc… | Nil |
+| 8 | GT0250 - Analyze SIEM alerts (added SIEM, deleted IDS) | As per Ser #3 |
+| 9 | Sr Cyber Operator moved from MCpl to Cpl/MCpl. There is no reason to withhold this training until MCpl as PLQ is no longer incorporated in this RQ | Nil |
+| 10 | Board began reviewing the task disposition list to select train / no-train tasks | TPWB |
+| 11 | BT0390 is Trained; low pri and is supervised. Coordinating with enterprise cyber staff will be learned on job over time and not set in the course. | Nil |
+| 12 | Leadership tasks changed to no train. Simple if the tech aspects are well understood and any necessary leadership will be taught on PLQ. | Nil |
+| 13 | Board discussed and agreed to keep the POs separate. Defence and Incident response PO 8/9. | TPWB |
+| 14 | The board discussed and agreed upon the layout of the POs and in the order, it should be taught. PO 001: Math/Computing/Theory PO 002: Network/Host Analysis (IDEAS ++) PO 003: Basic exploitation - ETC ++ PO 004: Basic malware analysis - MASC ++ PO 005: Advanced forensics - DigForIT PO 006: Advanced Analysis and Exploitation PO 007: Platform and OT system security - SPOTS PO 008: Incident response - (Pre – Cyber Ex) PO 009: Defend cyberspace under attack (Cyber Ex) | Sequence of instructions to be reviewed by instructional staff after first pilot |
+| 15 | Where tasks are noted as PO 6/8 the technical portions will be PO 6 and PO 8 will be process/delivery | Courseware developers |
+| 16 | Where tasks are noted as PO 7/8, they will be taught in an OT system context on 7 and IT systems on 8 | Courseware developers |
+| 17 | Board discussed PO1. PO1 consists primarily of enabling knowledge and abilities to complete other tasks and does not map cleanly. New tasks will be created to represent this pre-requisite knowledge. Interpret OS fundamentals Explain mathematics fundamentals Implement mathematics for cryptography and statistics | As per Ser #3 |
+| 18 | These are added to the existing tasks FT0300 (maintain custom network toolsets), FT0340 (build custom testing environment), FT0280 (develop custom network toolsets) FT0290 (test custom network tools) FT0290 The tool may be used for network assessment but could be for other purposes | As per Ser #3 |
+| 19 | PO 001 review of Tasks and fitting it into PO. Added Databases to para c, understanding Network Servers. | Nil |
+| 20 | Board discussion and agreed upon adding Build Custom Testing Environment and added FT0340 as a task. Board agreed upon the updates and changes made to PO 001. | As per Ser #3 |
+|  | DAY 2 |  |
+| 21 | Board reviewed PO 001. 1.d.2 intended to be at the level to use and troubleshoot automated machine learning tools such as elastic machine learning. 1.d.3 intended to have the cyber operator use cryptographic primitives such as block ciphers, hashes, asymmetric algorithms to implement high level cryptographic systems. | Nil |
+| 22 | Discussing verbiage to properly capture what expectation we have of a DP2 candidate – “Implement a TLS/SSH key exchange and encryption system using a cryptographic library” Task: Implement mathematics for cryptography and statistical analysis. | Nil |
+| 23 | Board reviewed and discussed given para. No change required, consensus across the board that they are accurate | Nil |
+| 24 | Board discussion involved all 8 POs and the current issues with the training. Discussed the fact that we are not going to be able to fix the cyber operator trade. We are building the DPs to help the future of the trade, not working on solving the current issues that exist in the trade. The focus should be on what we want our Cpl/MCpl to do. | D Cyber FD for consideration |
+| 25 | Discussion around integration with other agencies and the way forward for more integration spaces, possibilities to gain OJE experience by working with other GoC departments. | D Cyber FD for consideration |
+| 26 | PO 002 review; 2.a.1 IP system traffic, host logs and data. Changed the wording to better capture what is given. | As per Ser #3 |
+| 27 | PO 002 Analyze Windows Enterprise Networks: para 5.a – k updated and included task# or “new” if no task number | As per Ser #3 |
+| 28 | **PO 002** para 3.a.1. changed name to “Develop network sensor rules” para 3. c.1.Selecting and collecting relevant windows host and AD logs. Para 3.c.1.a. Active directory overview and logging Security and audit logs Logon logs Other logs relevant to security logs AD protocols Para3. c.2. Identifying exploits in host logs Binary exploits Windows exploits Identify indicators of malicious activity Updated sub para’s and better explained sub tasks. | Nil |
+| 29 | Back to PO1 in order to align task# with tasks for clarity | Nil |
+| 30 | **PO 003:** Para.11. Added tasks with Tasks# a - f Reviewed tasks and updated to reflect the tasks listed in Para. 11 Updated Conditions and removed endpoint sensors from given. |  |
+| 31 | Review of PO 003 to ensure changes complete and board consensus | Nil |
+| 32 | **PO 004** Reviewed and updated given conditions Updating Task Numbers and tasks a – c | As per Ser #3 |
+| 33 | GT0430 / GT0460 / GT0480 Moved to Malware OSQ, board consensus | As per Ser #3 |
+| 34 | Visitors came by to visit the board members and look at progress: Maj Carter, Kristine Osgoode | Nil |
+| 35 | New task: Recognize advanced anti-analysis techniques, lower proficiency from original task to defeat anti-analysis. Defeating anti-analysis will remain in the malware OSQ. | As per Ser #3 |
+| 36 | Board agrees that PO 004 has been updated and tasks are properly justified and assigned. | Nil |
+| 37 | Maj Carter speaks to the board, structure of Cyber Op trade and reserve career path. Expanded on career path and specialization. Using USQ/OSQ in order to enhance your knowledge of a particular topic. Issues with retention and how to possibly help keep people in. What can we do? What would help retain people? We have the opportunity to structure the occupation into a flexible manner. Better management and communication. Work the DP boards with a bit of assumption to setup the Cpl/MCpl RQ in a way to have realistic expectations of the tasks that need completion Discussed Willis College program, STEP and new contract, what our expectation is of the students coming onto DP1.2 from DP1.1 Introduced HackerRank Assessment Tool; discussed possibilities to build evaluations in it to confirm training. Certification vs Assessment; Why is it important and are we able to lean on that in order to prove effectiveness of the member. Board feels it’s important to pay for certifications. | Nil |
+| 38 | **PO 005** Reviewed and updated task Numbers; New – conduct digital media duplication New – conduct live artifact acquisition New – identify operating systems based on network traffic New – Produce an activity timeline New – conduct OS forensics New – Conduct live memory acquisition The six above are new tasks for PO 005. | As per Ser #3 |
+| 39 | Board discussed changes made to PO 005 and came to an agreement that it is good to go, all changes approved. | Nil |
+|  | DAY 3 |  |
+| 40 | Review of Day2 RoD /Board agrees on RoD | Nil |
+| 41 | **PO 006** Intent - more advanced exploitation and analysis techniques, clean up exploits to reduce footprint, configure and deploy persistence, and analysis to find evidence of these techniques being used. Fix, test, update and blend C2 into normal traffic, reducing chances of discovery. | Nil |
+| 42 | Discussed the documented attacks and their purpose for the PO, moved them to examples and reworded a.1. to better reflect the methods, not the actual attacks. The intent of the cryptography exploitation is more of a general understanding and less about making them super hackers The verbiage needs to reflect that the candidate can recognize the attacks (level 2 maybe 3) Added remarks to show they will be given step by step and not need to implement towards a new concept. | As per Ser #3 |
+| 43 | New task, Explaining attacks on miss-implemented cryptography. **PO 003** – added BT0270, Generate authorized adverse effects on target network devices. Moved back to this PO vice having it on PO 006 after assessment that the actual effects are not advanced. | As per Ser #3 |
+| 44 | Rank Names: Packeteer: OS/Pte/Avr Technomancer : Cpl/MCpl Master Technomancer : MS/MCpl Techxorcist : PO2/Sgt Neuromancer: PO1/WO Cryptozoologist: MWO Certified by the board. Changing names will increase morale and bring the troops mirth. | Requesting D Cyber FD Trg Dev Advisor/Authority approval |
+| 45 | PO 006 Review and updated Conditions, Given. | Nil |
+| 46 | **PO 007** Intent – Expose the Senior Cyber Def Analyst to PT and OT systems as well as have them apply the methodologies from PO1-6 in a new environment. | As per Ser #3 |
+| 47 | New Tasks: -Characterize host logs to establish normal patterns -Analyze host logs -Analyze anomalies in host logs using metadata Removed: -GT0020/GT0050 (No Train; PLQ and future OSQs) |  |
+| 48 | **PO 008 / PO 009** Merged into the same PO; there was a lot of overlap and will have a more streamlined flow. PO name: Defend a Network under attack. | Nil |
+| 49 | Reviewed tasks and subtasks to reflect incident response and the tasks required of the members to understand and successfully employ their knowledge and skills are tested during the PC. | Nil |
+| 50 | Engaged in discussion about the feasibility of the level of network that the students will have to build and defend. The expectation of the student is that they are able to setup a small network, harden and defend it. Create/deploy a GPO in order to have software installed through the GPO. For the exercise the students should be provided a network. Each student will be responsible for hardening a specific service/server and they will collectively defend the network under supervision of a techxorcist or equivalent. Board consensus, all approved changes. | Nil |
+| 51 | Boards starts reviewing Annex F – Training delivery reform potential. PO 001 – 008 will be taught by RMC, however if they are unavailable, Annex F has listed a number of fairly equal courses that are commercial. SANS, OSCP, Netrunner, as examples. Board continued to populate the table in Annex F, providing a number of alternatives, commercially available courses that would satisfy the PO and either certify or be required to take an assessment afterwards. | Nil |
+|  | DAY 4 |  |
+| 52 | Review of Day3 RoD Board agrees on RoD |  |
+| 53 | Discussed equivalences and added cert codes to the courses under remarks in the Annex. Also commenting that in order to be successful the POs should be done in order from 1 to 8. Who decides when a packeteer is ready to go on the DP2 course; a team (Mentor team) may end up being in charge of the course loading and training. Board discussed pre-req for attending DP2, possibility of DP1 + work in the environment for a min of 12 months. Board discussed that depending on experience at CFNOC 12 months may not be sufficient as the only relevant experience is hands on technical practice. Board decided that the most appropriate route is a formal pre-course package to ensure they receive all expected experience as a packeteer. Board discussed likely failure rate. There are going to be failures and this needs to be explained to CoC that not everyone has the aptitude to continue as a Cyber Operator. The cyber operator COT and intake processes do not ensure that there is aptitude to achieve competency in the trade. An OJPR will lower the failure rate by ensuring packeteers have the required baseline competence to continue learning. There are voiced issues that if going through COTS courses it will take significantly longer to complete then just the RMC course. The commercial course will also lack the scholastic environment provided by a proper training establishment. | Instructional staff to review after pilot serial |
+| 54 | QL4/OJPR was revisited. The board agrees that there is a requirement to have this implemented before mbrs are loaded onto the DP2. The board estimates that there are some mbrs at CFNOC who could immediately complete an OJPR based on their prior experience. The board discussed that if the DP2 is approved and contracted prior to the OJPR that the CAF should accept the increased risk of failure by sending packeteers as they are available. | Instructional staff to review after pilot serial |
+| 55 | Continued review of POs. Changed some wording to better reflect intent of POs and verified that remarks accurately reflected and explained any vague comments. | Nil |
+|  | DAY 5 |  |
+| 56 | Review of Day4 RoD Board agrees on RoD | Nil |
+| 57 | Remark added to TDR noting that the suggested OJPR should be centrally managed and tracked. | Nil |
+| 58 | Board opened day 5 with discussions on OJPR and what it should look like while fleshing out a rough draft. The board agrees that there is a gap between DP1 and DP2 due to the lack of a large and realistic training environment. The DP1 scenarios lack false positives in most scenarios and dealing with them is a significant part of real world cyber. The board agrees that the DP2 COTS option is likely to have a high failure rate, and this can be mitigated by ensuring packeteers get an appropriate breadth of experience in real world cyber before commencing. This will lower the failure rate, resulting in significant cost savings for the CAF and better morale for the trade. As part of the draft, the board created a table to identify the delta’s between DP1 and DP2. This will help build the OJPR, eliminate the deltas and allow the member to refresh their skills. | Instructional staff to assist TDO in producing a draft OJPR |
+| 59 | The board drafted some likely points which should be included in a pre-course package. The board agrees this should be done post OFP but prior to DP2. It should have its own MITE code and be administered by the training authority.  The intent of the pre-course package would be to have the candidate’s supervisor sign off on a form indicating that the candidate has in fact had the opportunity to work within a specified list of job roles for enough time to ensure they have a general understanding of how that job role contributes to the operation of the overall organization. This completed form would be sent to the CTU, where the candidate would be granted a MITE code, thereby clearing them to proceed to DP2. D Cyber FD and the CFSCE cyber det will finalize this action item. | Instructional staff to review after pilot serial |
+|  | Post-Board |  |
+|  | MPGTG HQ converted QSP to QS format. Details captured in Chap 3 of TP are attached below: TRAINING STRATEGY The training requirement will be achieved through a Rationalized Training Delivery (RTD): Mod 1: This module will be a pre-course package to be completed at the unit prior to candidates being loaded on module 2; Mod 2 – 9 – RTD: These modules will be taught by Royal Military College (RMC): and/or Entail contractor developed and delivered materials aligned with Cyber Op training and education requirements; TRAINING DURATION Training and education for POs 001–008 will be delivered by RMC and or Entail contractor developed and delivered materials aligned with Cyber Op training and education requirements. As such, no EOs have been developed for POs 001–008 given the difficulty involved in developing a training plan flexible enough to account for all program designs. Additionally, there is currently a lack of subject matter experts within the CAF to develop the content. Based on availability at RMC to accommodate. Permission is required from the TA and D Cyber Ops FD to deviate from the prescribed course capacity. COURSE LOADING The authority to load members onto this course lies with the Cyber Ops Career Manager. SCHEDULING Training will be scheduled by the Combat Training Centre (CTC) in MITE, in consultation with MPGTG HQ and D Cyber Ops FD, to meet the training requirements. PREREQUISITES To be selected for this course the loading authority must ensure that candidates have completed the Basic Military Qualification (BMQ) course (AINT) and Cyber Defence Analyst (ALJQ). QUALIFICATION Successful completion of this course constitutes the primary means of attaining the CYBER OP RQ CPL (AMCN). Additionally, the following MITE eight course IDs will be granted: XXXXXX. PRIOR LEARNING ASSESSMENT AND RECOGNITION (PLAR) PLARs shall be conducted in accordance with DAOD 5031-1 – Canadian Forces Military Equivalencies Program and CFITES Volume 12 – Canadian Forces Military Equivalencies Programme: Prior Learning Assessment. |  |
+
+			9/31
+
+Date of QS Approval/Basic Date: 14 March 2024
+
+Change Date: N/A
+
+Change Number: N/A
+
+A - 1/3
+
+B - 1/17
+
+iv
+
+			14/31
+
+6/31
+
+C - 1/7
+
+iii
+
+6
+
+ii

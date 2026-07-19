@@ -1,0 +1,10 @@
+{
+  "actor": {"account": {"name": "<candidate_id>"}},
+  "verb":  {"id": "http://adlnet.gov/expapi/verbs/passed"},
+  "object": {"id": "https://ccoe.forces.gc.ca/xapi/mite/121794/po/PO_007",
+             "definition": {"name": {"en-CA": "Analyze Malicious Activity in Network Traffic"}}},
+  "context": {"extensions": {
+    "https://ccoe.forces.gc.ca/ext/nice_dcwf_task": "TODO-map",
+    "https://ccoe.forces.gc.ca/ext/component_version": "v2.1.0",
+    "https://ccoe.forces.gc.ca/ext/cfites_assessment": "PC-practical"}}
+}

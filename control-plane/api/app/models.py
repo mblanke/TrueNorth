@@ -236,6 +236,38 @@ class Template(SoftDeleteMixin, TimestampMixin, Base):
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+# -- Golden image / template library --------------------------------------
+class GoldenImage(SoftDeleteMixin, TimestampMixin, Base):
+    """A clonable golden VM image / hypervisor template — the 'template library'.
+
+    Registry of base images (seeded from vm_iso_catalogue.csv). Maps a topology OS
+    alias (e.g. 'windows-server-2019') to the actual hypervisor template name so
+    range provisioning can clone the right per-node image.
+    """
+
+    __tablename__ = "golden_images"
+    __table_args__ = (
+        UniqueConstraint("catalogue_id", "hypervisor", name="uq_image_hypervisor"),
+        Index("ix_golden_hypervisor", "hypervisor"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    catalogue_id: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g. srv2019
+    os_family: Mapped[str] = mapped_column(String(40), default="")  # windows/linux/appliance
+    version: Mapped[str] = mapped_column(String(60), default="")
+    role: Mapped[str] = mapped_column(String(160), default="")
+    hypervisor: Mapped[str] = mapped_column(String(20), default="vsphere")  # vsphere/proxmox/hyperv
+    template_name: Mapped[str] = mapped_column(String(120), default="")  # name in the hypervisor store
+    datastore: Mapped[str] = mapped_column(String(120), default="")  # home datastore (NFS) — configurable
+    os_aliases: Mapped[str] = mapped_column(Text, default="[]")  # JSON: topology os names mapping here
+    sensor_baked: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    build_status: Mapped[str] = mapped_column(String(20), default="planned")  # planned/building/built/failed
+    checksum: Mapped[str] = mapped_column(String(128), default="")
+    golden_gb: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+
 # -- Scenarios ------------------------------------------------------------
 class Scenario(SoftDeleteMixin, TimestampMixin, Base):
     __tablename__ = "scenarios"
@@ -423,6 +455,7 @@ class ModuleProgressStatus(str, enum.Enum):
 class CompetencyFramework(str, enum.Enum):
     nice = "nice"
     mitre_attack = "mitre_attack"
+    nist_csf = "nist_csf"  # NIST Cybersecurity Framework 2.0 (functions/categories)
     custom = "custom"
 
 
@@ -439,6 +472,40 @@ class IntegrationAuthType(str, enum.Enum):
     oauth2 = "oauth2"
     api_key = "api_key"
     saml = "saml"
+
+
+# -- CFITES / QSP qualification-spine enums -------------------------------
+class QSPEnvironment(str, enum.Enum):
+    """Assessment environment per the QSP Annex D/E assessment plan."""
+
+    cste = "CSTE"
+    cste_sterile = "CSTE-sterile"
+    cote = "COTE"
+    mobile = "mobile"
+
+
+class POTier(str, enum.Enum):
+    core = "core"
+    gate = "gate"
+
+
+class POStatus(str, enum.Enum):
+    """Build-state per PO, mirroring crosswalk.csv `status`."""
+
+    todo = "todo"
+    example = "example"
+    needs_spec = "needs_spec"
+    offensive_author = "offensive_author"
+    cots_gate = "cots_gate"
+    done = "done"
+
+
+class ContentKind(str, enum.Enum):
+    """Purpose of a piece of module content within the teach->check->assess flow."""
+
+    teach = "teach"
+    check = "check"
+    assess = "assess"
 
 
 # -- Course ---------------------------------------------------------------
@@ -461,6 +528,10 @@ class Course(TimestampMixin, Base):
     tags: Mapped[str] = mapped_column(Text, default="")  # JSON array of tags
     nice_work_roles: Mapped[str] = mapped_column(Text, default="")  # JSON array of NICE work role codes
     course_meta: Mapped[str] = mapped_column(Text, default="{}")  # JSON: prerequisites, learning objectives, etc.
+    # CFITES anchor: the QSP qualification this course delivers (nullable for generic courses)
+    qualification_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("qualifications.id"), nullable=True
+    )
 
     modules: Mapped[list[CourseModule]] = relationship(back_populates="course", order_by="CourseModule.ordinal")
     enrollments: Mapped[list[Enrollment]] = relationship(back_populates="course")
@@ -481,12 +552,192 @@ class CourseModule(TimestampMixin, Base):
     # For scenario type: scenario_id; for external_lti: platform_id + resource_link
     content_ref: Mapped[str] = mapped_column(
         Text, default=""
-    )  # JSON: {scenario_id, platform_id, resource_link_url, etc.}
+    )  # DEPRECATED loose JSON link; new code uses typed ModuleContent rows below
     duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
     is_required: Mapped[bool] = mapped_column(Boolean, default=True)
     pass_threshold: Mapped[int] = mapped_column(Integer, default=70)  # percentage needed to pass
+    # CFITES anchor: the PO this module maps to (nullable for generic modules)
+    po_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("performance_objectives.id"), nullable=True
+    )
 
     course: Mapped[Course] = relationship(back_populates="modules")
+    contents: Mapped[list[ModuleContent]] = relationship(
+        back_populates="module", order_by="ModuleContent.ordinal"
+    )
+
+
+# -- CFITES / QSP qualification spine ------------------------------------
+# The structured decomposition of crosswalk.csv + the QSP chapters:
+#   Qualification (NQual) -> PerformanceObjective (PO) -> EnablingObjective (EO)
+# Everything CFITES hangs off this backbone. QSP .docx text is never stored here;
+# it is read on-box by GLM/Taz. Only the derived contract (crosswalk.csv) is ingested.
+class Qualification(TimestampMixin, Base):
+    """A CAF qualification standard (one QSP document)."""
+
+    __tablename__ = "qualifications"
+    __table_args__ = (Index("ix_qual_tenant", "tenant_id"),)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    qsp_code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)  # ALJQ/TEMP67/TEMP64/ALRA
+    nqual: Mapped[str] = mapped_column(String(32), nullable=False)  # granted qual: ALJQ/ACPZ/ALRA-RED/ALRA
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    mite_course_code: Mapped[str] = mapped_column(String(32), default="")  # record-of-authority course id
+    component_version: Mapped[str] = mapped_column(String(20), default="v2.1.0")  # NICE/DCWF pin
+    target_role: Mapped[str] = mapped_column(String(120), default="")
+    # Developmental progression DERIVED FROM the QSPs (not a fixed DP1-5 scale):
+    #   dp_order = position in the rank-based progression (1=foundational/Pte, 2=senior/Cpl, …);
+    #   track = "progression" (rank ladder) | "specialty" (parallel stream e.g. Red/Malware).
+    dp_order: Mapped[int] = mapped_column(Integer, default=0)
+    track: Mapped[str] = mapped_column(String(20), default="progression")
+    rank_level: Mapped[str] = mapped_column(String(40), default="")  # e.g. "Pte", "Cpl"
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+    performance_objectives: Mapped[list[PerformanceObjective]] = relationship(
+        back_populates="qualification", order_by="PerformanceObjective.po_code"
+    )
+
+
+class PerformanceObjective(TimestampMixin, Base):
+    """A PO — one row of crosswalk.csv. Assessed by exactly one scenario family."""
+
+    __tablename__ = "performance_objectives"
+    __table_args__ = (
+        UniqueConstraint("qualification_id", "po_code", name="uq_qual_po"),
+        Index("ix_po_qual", "qualification_id"),
+        Index("ix_po_status", "status"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    qualification_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("qualifications.id"), nullable=False
+    )
+    po_code: Mapped[str] = mapped_column(String(32), nullable=False)  # e.g. PO_007, PO_001-005
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    tier: Mapped[POTier] = mapped_column(Enum(POTier), default=POTier.core)
+    conditions: Mapped[str] = mapped_column(Text, default="")
+    critical_events: Mapped[str] = mapped_column(Text, default="[]")  # JSON array
+    assessment_type: Mapped[str] = mapped_column(String(120), default="")
+    duration_min: Mapped[int] = mapped_column(Integer, default=0)
+    pass_standard: Mapped[str] = mapped_column(String(120), default="")
+    deliverable: Mapped[str] = mapped_column(String(255), default="")
+    environment: Mapped[QSPEnvironment] = mapped_column(Enum(QSPEnvironment), default=QSPEnvironment.cote)
+    target_role: Mapped[str] = mapped_column(String(120), default="")
+    nice_dcwf_task: Mapped[str] = mapped_column(String(120), default="")
+    scenario_count: Mapped[int] = mapped_column(Integer, default=0)
+    build_hours: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[POStatus] = mapped_column(Enum(POStatus), default=POStatus.todo)
+
+    qualification: Mapped[Qualification] = relationship(back_populates="performance_objectives")
+    enabling_objectives: Mapped[list[EnablingObjective]] = relationship(
+        back_populates="performance_objective", order_by="EnablingObjective.eo_code"
+    )
+
+
+class EnablingObjective(TimestampMixin, Base):
+    """An EO — decomposed from the PO `eos` column and QSP Chapter 4."""
+
+    __tablename__ = "enabling_objectives"
+    __table_args__ = (
+        UniqueConstraint("po_id", "eo_code", name="uq_po_eo"),
+        Index("ix_eo_po", "po_id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    po_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("performance_objectives.id"), nullable=False)
+    eo_code: Mapped[str] = mapped_column(String(32), nullable=False)  # e.g. 007.01
+    title: Mapped[str] = mapped_column(String(255), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    maps_to_critical_event: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    performance_objective: Mapped[PerformanceObjective] = relationship(back_populates="enabling_objectives")
+
+
+# Many-to-many: a Lesson teaches one or more EOs.
+class LessonObjective(Base):
+    __tablename__ = "lesson_objectives"
+    __table_args__ = (UniqueConstraint("lesson_id", "eo_id", name="uq_lesson_eo"),)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    lesson_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("lessons.id"), nullable=False)
+    eo_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("enabling_objectives.id"), nullable=False)
+
+
+class Lesson(SoftDeleteMixin, TimestampMixin, Base):
+    """Per-EO teaching content — the 'curriculum' the range section surfaces.
+
+    This is the teaching object that did not exist before: EOs previously appeared
+    only as assessment validators. Generated on-box by GLM/Taz, grounded in QSP text.
+    """
+
+    __tablename__ = "lessons"
+    __table_args__ = (Index("ix_lessons_tenant", "tenant_id"),)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body_markdown: Mapped[str] = mapped_column(Text, default="")
+    media_refs: Mapped[str] = mapped_column(Text, default="[]")  # JSON array of asset refs
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    competency_codes: Mapped[str] = mapped_column(Text, default="[]")  # JSON array (NICE/DCWF)
+    source_curriculum_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("curricula.id"), nullable=True
+    )
+    generated_by_model: Mapped[str] = mapped_column(String(120), default="")
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+
+class ModuleContent(TimestampMixin, Base):
+    """Typed, FK'd content link (replaces CourseModule.content_ref JSON blob)."""
+
+    __tablename__ = "module_content"
+    __table_args__ = (Index("ix_modcontent_module_ordinal", "module_id", "ordinal"),)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    module_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("course_modules.id"), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    content_kind: Mapped[ContentKind] = mapped_column(Enum(ContentKind), default=ContentKind.teach)
+    lesson_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("lessons.id"), nullable=True)
+    quiz_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("quizzes.id"), nullable=True)
+    scenario_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("scenarios.id"), nullable=True)
+    external_ref: Mapped[str] = mapped_column(Text, default="")  # JSON for lti/reading/video links
+
+    module: Mapped[CourseModule] = relationship(back_populates="contents")
+
+
+class RangeObjectiveMap(TimestampMixin, Base):
+    """Which QSP POs a range template supports — 'curriculum in the range section'."""
+
+    __tablename__ = "range_objective_map"
+    __table_args__ = (
+        UniqueConstraint("template_id", "po_id", name="uq_template_po"),
+        Index("ix_rom_template", "template_id"),
+        Index("ix_rom_po", "po_id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    template_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("templates.id"), nullable=False)
+    po_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("performance_objectives.id"), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), default="manual")  # catalogue|manual|forge
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+
+class ObjectiveCompetencyMap(TimestampMixin, Base):
+    """Curated PO/EO -> competency link (NICE work-role/task + NIST CSF 2.0).
+
+    Deterministic seed (no LLM) so the qualification->framework crosswalk is
+    auditable for accreditation. A PO maps to many competencies across frameworks.
+    """
+
+    __tablename__ = "objective_competency_map"
+    __table_args__ = (
+        Index("ix_ocm_po", "po_id"),
+        Index("ix_ocm_eo", "eo_id"),
+        Index("ix_ocm_comp", "competency_id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    po_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("performance_objectives.id"), nullable=True
+    )
+    eo_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("enabling_objectives.id"), nullable=True
+    )
+    competency_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("competencies.id"), nullable=False)
+    relation_type: Mapped[str] = mapped_column(String(20), default="primary")  # primary|supporting
+    source: Mapped[str] = mapped_column(String(40), default="curated")
 
 
 # -- Learning Path --------------------------------------------------------

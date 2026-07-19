@@ -30,6 +30,9 @@ import logging
 import os
 import uuid
 from datetime import UTC, datetime
+from typing import Any
+
+import yaml
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -44,6 +47,7 @@ from ..models import (
     ExerciseState,
     Objective,
     Range,
+    RangeState,
     Scenario,
 )
 from ..rbac import Permission, require_permission
@@ -65,6 +69,40 @@ router = APIRouter(prefix="/exercises", tags=["exercises"])
 
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str, detail: str = "") -> None:
     db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid, detail=detail))
+
+
+def _dispatch_task(task_name: str, *args: Any) -> str | None:
+    """Fire a Celery worker task via the Redis broker (swallows errors if worker is down)."""
+    from ..celery_client import dispatch
+
+    return dispatch(task_name, *args)
+
+
+def _scenario_definition(db: Session, ex: Exercise) -> dict:
+    """Build the scenario_definition dict for run_scenario_v2 from the exercise's scenario + objectives.
+
+    Objectives come from the DB Objective rows (their ref_id is what the mock runner marks achieved),
+    the timeline is parsed from the Scenario YAML. Robust if the YAML has no timeline.
+    """
+    definition: dict = {"timeline": [], "objectives": []}
+    scenario = db.query(Scenario).filter(Scenario.id == ex.scenario_id).first()
+    if scenario and scenario.yaml:
+        try:
+            parsed = yaml.safe_load(scenario.yaml) or {}
+            if isinstance(parsed, dict) and isinstance(parsed.get("timeline"), list):
+                definition["timeline"] = parsed["timeline"]
+        except yaml.YAMLError:
+            pass
+    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
+    definition["objectives"] = [
+        {"ref_id": o.ref_id, "validator": o.validator, "points": o.points} for o in objectives
+    ]
+    # Fallback: if the YAML carried no timeline, synthesize one step per objective so the run walks.
+    if not definition["timeline"]:
+        definition["timeline"] = [
+            {"t": f"{i}:00", "action": f"inject.{o.ref_id}"} for i, o in enumerate(objectives)
+        ]
+    return definition
 
 
 # ── CRUD ───────────────────────────────────────────────────────────────
@@ -170,6 +208,9 @@ async def start_exercise(
     db.refresh(ex)
     _audit(db, user, "start", "exercise", str(ex.id))
     db.commit()
+    # Dispatch the scenario runner (mock mode walks the timeline + auto-achieves objectives).
+    definition = _scenario_definition(db, ex)
+    _dispatch_task("run_scenario_v2", str(ex.id), definition)
     if background_tasks is not None:
         emit_lifecycle(
             background_tasks,
@@ -180,6 +221,92 @@ async def start_exercise(
             activity_id=str(ex.id),
             activity_name=ex.name,
         )
+    return ex
+
+
+@router.get("/{exercise_id}/scenario-detail")
+def scenario_detail(
+    exercise_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
+) -> dict:
+    """Parsed scenario for the detail view: metadata + timeline + noise floor + objectives."""
+    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
+    if not ex:
+        raise HTTPException(404, "Exercise not found")
+    scenario = db.query(Scenario).filter(Scenario.id == ex.scenario_id).first()
+    parsed: dict = {}
+    if scenario and scenario.yaml:
+        try:
+            parsed = yaml.safe_load(scenario.yaml) or {}
+        except yaml.YAMLError:
+            parsed = {}
+    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).order_by(Objective.ref_id).all()
+    return {
+        "exercise_id": str(ex.id),
+        "exercise_name": ex.name,
+        "state": ex.state.value,
+        "total_score": ex.total_score,
+        "max_score": ex.max_score,
+        "range_id": str(ex.range_id),
+        "scenario_id": str(ex.scenario_id) if ex.scenario_id else None,
+        "scenario_name": scenario.name if scenario else "",
+        "po_id": parsed.get("po_id", ""),
+        "environment": parsed.get("environment", ""),
+        "duration_min": parsed.get("duration_min", 0),
+        "timeline": parsed.get("timeline", []),
+        "noise_floor": parsed.get("noise_floor", []),
+        "objectives": [
+            {
+                "ref_id": o.ref_id,
+                "type": o.objective_type.value,
+                "points": o.points,
+                "achieved": o.achieved,
+                "evidence": o.evidence or "",
+                "validator": o.validator,
+                "competency_code": o.competency_code or "",
+            }
+            for o in objectives
+        ],
+    }
+
+
+@router.post("/{exercise_id}/run", response_model=ExerciseOut)
+async def run_exercise(
+    exercise_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_START)),
+) -> Exercise:
+    """One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**"""
+    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
+    if not ex:
+        raise HTTPException(404, "Exercise not found")
+    # Replay: reset a finished/cancelled exercise back to pending before re-running.
+    if ex.state in (ExerciseState.completed, ExerciseState.cancelled):
+        for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():
+            obj.achieved = False
+            obj.achieved_at = None
+        ex.state = ExerciseState.pending
+        ex.total_score = 0
+        ex.completed_at = None
+        db.commit()
+    if ex.state != ExerciseState.pending:
+        raise HTTPException(409, f"Exercise is {ex.state.value}, expected pending")
+    # provision the range if it hasn't been (mock provisioner flips it to ready via the worker)
+    rng = db.query(Range).filter(Range.id == ex.range_id).first()
+    if rng and rng.state.can_transition_to(RangeState.provisioning):
+        rng.state = RangeState.provisioning
+        db.commit()
+        _dispatch_task("provision_range", str(rng.id))
+    # start the exercise + dispatch the scenario runner
+    ex.state = ExerciseState.running
+    ex.started_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(ex)
+    _audit(db, user, "run", "exercise", str(ex.id))
+    db.commit()
+    definition = _scenario_definition(db, ex)
+    _dispatch_task("run_scenario_v2", str(ex.id), definition)
     return ex
 
 

@@ -132,6 +132,9 @@ export class ApiService {
   startExercise(id: string): Observable<Exercise> {
     return this.http.post<Exercise>(`${this.base}/exercises/${id}/start`, {});
   }
+  runExercise(id: string): Observable<Exercise> {
+    return this.http.post<Exercise>(`${this.base}/exercises/${id}/run`, {});
+  }
   pauseExercise(id: string): Observable<Exercise> {
     return this.http.post<Exercise>(`${this.base}/exercises/${id}/pause`, {});
   }

@@ -1,0 +1,11 @@
+scenario:
+  po_id: {{PO_ID}}
+  title: "{{TITLE}}"
+  environment: {{ENV}}
+  duration_min: {{DURATION}}
+  range_template: ../range.tf
+  golden_templates: [ {{TEMPLATES}} ]
+  injects:      # one per critical event + context; defensive framing, no payloads
+  noise_floor:  # benign-but-suspicious (usersim) so the check discriminates
+  validators: [ ]
+  variant: variant_B/timeline.yaml

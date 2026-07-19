@@ -1,0 +1,18 @@
+scenario:
+  po_id: PO_007
+  title: "Analyze Malicious Activity in Network Traffic — Variant B (retest)"
+  environment: COTE
+  duration_min: 240
+  range_template: ../range.tf
+  golden_templates: [srv2019, precomp-host, win10-22h2, securityonion, kali, usersim]
+  # Same three critical events, different narrative/hosts/timings + reshuffled noise floor.
+  injects:
+    - {id: inj-01, t_offset_min: 0,   attack_technique: T1046, description: "Discovery sweep from a different foothold host.", critical: true}
+    - {id: inj-02, t_offset_min: 60,  attack_technique: T1021, description: "Lateral path via an alternate remote service.",       critical: true}
+    - {id: inj-03, t_offset_min: 110, attack_technique: T1048, description: "Exfil over an alternate protocol from a different host.", critical: true}
+    - {id: inj-04, t_offset_min: 145, attack_technique: T1071, description: "Beaconing post-foothold — context, not scored.",          critical: false}
+  noise_floor:
+    - {id: nf-01, description: "Software-update service pulling large packages over the wire.", why_plausible: "Resembles exfil."}
+    - {id: nf-02, description: "Backup agent enumerating SMB shares.",                          why_plausible: "Resembles discovery + lateral."}
+    - {id: nf-03, description: "Endpoint EDR heartbeat/telemetry burst.",                       why_plausible: "Resembles beaconing (inj-04)."}
+  validators: [../validators/crit_scanning.md, ../validators/crit_lateral.md, ../validators/crit_exfil.md, ../validators/deliverable_report.md, ../validators/manual_ack_analysis.md]

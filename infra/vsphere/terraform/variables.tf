@@ -78,16 +78,19 @@ variable "template_name" {
 }
 
 variable "vm_definitions" {
-  description = "List of VMs to create from the range template"
+  description = "List of VMs to create from the range template (per-VM golden template)"
   type = list(object({
-    name     = string
-    role     = string
-    cores    = number
-    memory   = number
-    disk_gb  = number
-    ip       = string
-    gateway  = string
-    vlan_tag = number
+    name          = string
+    role          = string
+    os            = optional(string, "linux")
+    template_name = string
+    cores         = number
+    memory        = number
+    disk_gb       = number
+    ip            = string
+    gateway       = string
+    netmask       = optional(number, 24)
+    vlan_tag      = number
   }))
   default = []
 }

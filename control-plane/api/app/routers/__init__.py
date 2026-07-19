@@ -13,6 +13,7 @@ from .courses import transcript_router
 from .curriculum import router as curriculum_router
 from .detection_rules import router as detection_rules_router
 from .directory import router as directory_router
+from .golden_images import router as golden_images_router
 from .exercise_forge import router as exercise_forge_router
 from .exercises import router as exercises_router
 from .hypervisors import router as hypervisors_router
@@ -22,6 +23,7 @@ from .kit import router as kit_router
 from .network_devices import router as network_devices_router
 from .ops_center import router as ops_center_router
 from .proxmox import router as proxmox_router
+from .qsp import router as qsp_router
 from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
 from .scenarios import router as scenarios_router
@@ -49,6 +51,7 @@ __all__ = [
     "hypervisors_router",
     "ai_config_router",
     "directory_router",
+    "golden_images_router",
     "ad_sync_router",
     "auth_zones_router",
     "storage_router",
@@ -60,5 +63,6 @@ __all__ = [
     "adaptive_learning_router",
     "ops_center_router",
     "curriculum_router",
+    "qsp_router",
     "quizzes_router",
 ]

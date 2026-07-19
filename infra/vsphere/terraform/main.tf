@@ -57,8 +57,11 @@ data "vsphere_network" "net" {
   datacenter_id = data.vsphere_datacenter.dc.id
 }
 
-data "vsphere_virtual_machine" "template" {
-  name          = var.template_name
+# One data source per DISTINCT golden template referenced by the range,
+# so a single range can be mixed-OS (clone each node from its own template).
+data "vsphere_virtual_machine" "templates" {
+  for_each      = toset([for vm in var.vm_definitions : vm.template_name])
+  name          = each.value
   datacenter_id = data.vsphere_datacenter.dc.id
 }
 
@@ -79,32 +82,42 @@ resource "vsphere_virtual_machine" "range_vm" {
   num_cpus = each.value.cores
   memory   = each.value.memory
 
-  guest_id = data.vsphere_virtual_machine.template.guest_id
+  guest_id = data.vsphere_virtual_machine.templates[each.value.template_name].guest_id
 
   network_interface {
     network_id   = data.vsphere_network.net.id
-    adapter_type = data.vsphere_virtual_machine.template.network_interface_types[0]
+    adapter_type = data.vsphere_virtual_machine.templates[each.value.template_name].network_interface_types[0]
   }
 
   disk {
     label            = "disk0"
     size             = each.value.disk_gb
     eagerly_scrub    = false
-    thin_provisioned = data.vsphere_virtual_machine.template.disks[0].thin_provisioned
+    thin_provisioned = data.vsphere_virtual_machine.templates[each.value.template_name].disks[0].thin_provisioned
   }
 
   clone {
-    template_uuid = data.vsphere_virtual_machine.template.id
+    template_uuid = data.vsphere_virtual_machine.templates[each.value.template_name].id
 
     customize {
-      linux_options {
-        host_name = each.value.name
-        domain    = "range.local"
+      # OS-aware guest customization so mixed Windows/Linux ranges customize correctly.
+      dynamic "linux_options" {
+        for_each = can(regex("(?i)win", each.value.os)) ? [] : [1]
+        content {
+          host_name = each.value.name
+          domain    = "range.local"
+        }
+      }
+      dynamic "windows_options" {
+        for_each = can(regex("(?i)win", each.value.os)) ? [1] : []
+        content {
+          computer_name = substr(replace(each.value.name, "_", "-"), 0, 15)
+        }
       }
 
       network_interface {
         ipv4_address = each.value.ip
-        ipv4_netmask = 24
+        ipv4_netmask = each.value.netmask
       }
 
       ipv4_gateway    = each.value.gateway

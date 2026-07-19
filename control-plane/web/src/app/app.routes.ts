@@ -25,23 +25,117 @@ export const routes: Routes = [
     title: 'Templates - TrueNorth Range',
   },
   {
-    path: 'range-designer',
-    loadComponent: () =>
-      import('./features/range-designer/range-designer.component').then(m => m.RangeDesignerComponent),
-    title: 'Range Designer - TrueNorth Range',
-  },
-  {
     path: 'scenarios',
     loadComponent: () =>
       import('./features/scenarios/scenarios.component').then(m => m.ScenariosComponent),
     title: 'Scenarios - TrueNorth Range',
   },
+  // -- Authoring Studio hub (consolidates the design/authoring screens) --
   {
-    path: 'scenario-builder',
-    loadComponent: () =>
-      import('./features/scenario-builder/scenario-builder.component').then(m => m.ScenarioBuilderComponent),
-    title: 'Scenario Builder - TrueNorth Range',
+    path: 'authoring',
+    loadComponent: () => import('./shared/hub-shell.component').then(m => m.HubShellComponent),
+    data: {
+      title: 'Authoring Studio',
+      tabs: [
+        { label: 'Ranges', path: 'ranges' },
+        { label: 'Scenarios', path: 'scenarios' },
+        { label: 'Detections', path: 'detections' },
+        { label: 'Forge', path: 'forge' },
+        { label: 'Content', path: 'content' },
+      ],
+    },
+    children: [
+      { path: '', redirectTo: 'ranges', pathMatch: 'full' },
+      {
+        path: 'ranges',
+        loadComponent: () =>
+          import('./features/range-designer/range-designer.component').then(m => m.RangeDesignerComponent),
+        title: 'Authoring · Ranges - TrueNorth Range',
+      },
+      {
+        path: 'scenarios',
+        loadComponent: () =>
+          import('./features/scenario-builder/scenario-builder.component').then(m => m.ScenarioBuilderComponent),
+        title: 'Authoring · Scenarios - TrueNorth Range',
+      },
+      {
+        path: 'detections',
+        loadComponent: () =>
+          import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
+        title: 'Authoring · Detections - TrueNorth Range',
+      },
+      {
+        path: 'forge',
+        loadComponent: () =>
+          import('./features/exercise-forge/exercise-forge.component').then(m => m.ExerciseForgeComponent),
+        title: 'Authoring · Forge - TrueNorth Range',
+      },
+      {
+        path: 'content',
+        loadComponent: () =>
+          import('./features/content-catalog/content-catalog.component').then(m => m.ContentCatalogComponent),
+        title: 'Authoring · Content - TrueNorth Range',
+      },
+    ],
   },
+  // -- Learning hub (consolidates curriculum, courses, progress, competency) --
+  {
+    path: 'learning',
+    loadComponent: () => import('./shared/hub-shell.component').then(m => m.HubShellComponent),
+    data: {
+      title: 'Learning',
+      tabs: [
+        { label: 'Qualifications', path: 'qualifications' },
+        { label: 'Curriculum', path: 'curriculum' },
+        { label: 'Courses', path: 'courses' },
+        { label: 'My Progress', path: 'progress' },
+        { label: 'Competency', path: 'competency' },
+      ],
+    },
+    children: [
+      { path: '', redirectTo: 'qualifications', pathMatch: 'full' },
+      {
+        path: 'qualifications',
+        loadComponent: () =>
+          import('./features/qsp-curriculum/qsp-curriculum.component').then(m => m.QspCurriculumComponent),
+        title: 'QSP Curriculum - TrueNorth Range',
+      },
+      {
+        path: 'curriculum',
+        loadComponent: () =>
+          import('./features/curriculum-forge/curriculum-forge.component').then(m => m.CurriculumForgeComponent),
+        title: 'Curriculum - TrueNorth Range',
+      },
+      {
+        path: 'courses',
+        loadComponent: () =>
+          import('./features/training/training.component').then(m => m.TrainingComponent),
+        title: 'Courses - TrueNorth Range',
+      },
+      {
+        path: 'progress',
+        loadComponent: () =>
+          import('./features/my-progress/my-progress.component').then(m => m.MyProgressComponent),
+        title: 'My Progress - TrueNorth Range',
+      },
+      {
+        path: 'competency',
+        loadComponent: () =>
+          import('./features/competency/competency.component').then(m => m.CompetencyComponent),
+        title: 'Competency - TrueNorth Range',
+      },
+    ],
+  },
+  // -- Legacy paths kept as redirects into the hubs (no broken links) --
+  { path: 'range-designer', redirectTo: 'authoring/ranges', pathMatch: 'full' },
+  { path: 'scenario-builder', redirectTo: 'authoring/scenarios', pathMatch: 'full' },
+  { path: 'detection-editor', redirectTo: 'authoring/detections', pathMatch: 'full' },
+  { path: 'exercise-forge', redirectTo: 'authoring/forge', pathMatch: 'full' },
+  { path: 'content', redirectTo: 'authoring/content', pathMatch: 'full' },
+  { path: 'curriculum-forge', redirectTo: 'learning/curriculum', pathMatch: 'full' },
+  { path: 'training', redirectTo: 'learning/courses', pathMatch: 'full' },
+  { path: 'my-progress', redirectTo: 'learning/progress', pathMatch: 'full' },
+  { path: 'competency', redirectTo: 'learning/competency', pathMatch: 'full' },
   {
     path: 'exercises',
     loadComponent: () =>
@@ -73,41 +167,10 @@ export const routes: Routes = [
     title: 'Admin - TrueNorth Range',
   },
   {
-    path: 'content',
-    loadComponent: () =>
-      import('./features/content-catalog/content-catalog.component').then(m => m.ContentCatalogComponent),
-    title: 'Content Catalog - TrueNorth Range',
-  },
-  // -- LMS & Training --
-  {
-    path: 'training',
-    loadComponent: () =>
-      import('./features/training/training.component').then(m => m.TrainingComponent),
-    title: 'Training Portal - TrueNorth Range',
-  },
-  {
-    path: 'my-progress',
-    loadComponent: () =>
-      import('./features/my-progress/my-progress.component').then(m => m.MyProgressComponent),
-    title: 'My Progress - TrueNorth Range',
-  },
-  {
-    path: 'curriculum-forge',
-    loadComponent: () =>
-      import('./features/curriculum-forge/curriculum-forge.component').then(m => m.CurriculumForgeComponent),
-    title: 'Curriculum Forge - TrueNorth Range',
-  },
-  {
     path: 'quiz-player',
     loadComponent: () =>
       import('./features/quiz-player/quiz-player.component').then(m => m.QuizPlayerComponent),
     title: 'Quiz - TrueNorth Range',
-  },
-  {
-    path: 'competency',
-    loadComponent: () =>
-      import('./features/competency/competency.component').then(m => m.CompetencyComponent),
-    title: 'Competency Framework - TrueNorth Range',
   },
   {
     path: 'integrations',
@@ -135,22 +198,16 @@ export const routes: Routes = [
     title: 'Login - TrueNorth Range',
   },
   {
-    path: 'detection-editor',
-    loadComponent: () =>
-      import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
-    title: 'Detection Rule Editor - TrueNorth Range',
-  },
-  {
-    path: 'exercise-forge',
-    loadComponent: () =>
-      import('./features/exercise-forge/exercise-forge.component').then(m => m.ExerciseForgeComponent),
-    title: 'Exercise Forge - TrueNorth Range',
-  },
-  {
     path: 'topology-3d',
     loadComponent: () =>
       import('./features/ops-center/topology-3d.component').then(m => m.Topology3dComponent),
     title: '3D Topology - TrueNorth Range',
+  },
+  {
+    path: 'exercises/:id',
+    loadComponent: () =>
+      import('./features/exercise-detail/exercise-detail.component').then(m => m.ExerciseDetailComponent),
+    title: 'Exercise - TrueNorth Range',
   },
   {
     path: 'ops-center/:exerciseId',

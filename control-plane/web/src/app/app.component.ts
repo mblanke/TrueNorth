@@ -294,46 +294,29 @@ export class AppComponent implements OnDestroy {
 
   navSections: NavSection[] = [
     {
-      name: 'Range Operations',
+      name: 'Operate',
       items: [
-        { label: 'Dashboard',    icon: 'dashboard',     route: '/dashboard' },
-        { label: 'Ranges',       icon: 'dns',           route: '/ranges' },
-        { label: 'Exercises',    icon: 'fitness_center',route: '/exercises' },
-        { label: 'Telemetry',    icon: 'leaderboard',   route: '/telemetry' },
-        { label: 'Scoring',      icon: 'assessment',    route: '/scoring' },
-        { label: 'Ops Center',   icon: 'radar',         route: '/ops-center/select' },
-        { label: '3D Topology',  icon: '3d_rotation',   route: '/topology-3d' },
+        { label: 'Dashboard',  icon: 'dashboard',      route: '/dashboard' },
+        { label: 'Ranges',     icon: 'dns',            route: '/ranges' },
+        { label: 'Exercises',  icon: 'fitness_center', route: '/exercises' },
+        { label: 'Ops Center', icon: 'radar',          route: '/ops-center/select' },
       ],
     },
     {
-      name: 'Design',
+      name: 'Create & Learn',
       items: [
-        { label: 'Range Designer',   icon: 'architecture',  route: '/range-designer' },
-        { label: 'Templates',        icon: 'description',   route: '/templates' },
-        { label: 'Scenario Builder', icon: 'build',         route: '/scenario-builder' },
-        { label: 'Scenarios',        icon: 'play_circle',   route: '/scenarios' },
-        { label: 'Exercise Forge',   icon: 'auto_fix_high', route: '/exercise-forge' },
-        { label: 'Detection Editor', icon: 'shield',        route: '/detection-editor' },
-      ],
-    },
-    {
-      name: 'Training',
-      items: [
-        { label: 'Curriculum Forge', icon: 'auto_stories', route: '/curriculum-forge' },
-        { label: 'LMS',            icon: 'school',        route: '/training' },
-        { label: 'My Progress',    icon: 'trending_up',   route: '/my-progress' },
-        { label: 'Competency',     icon: 'psychology',    route: '/competency' },
-        { label: 'Content Catalog',icon: 'library_books', route: '/content' },
+        { label: 'Authoring Studio', icon: 'auto_fix_high', route: '/authoring' },
+        { label: 'Learning',         icon: 'school',        route: '/learning' },
       ],
     },
     {
       name: 'Platform',
       items: [
-        { label: 'Infrastructure',  icon: 'storage',             route: '/infrastructure' },
-        { label: 'AI Orchestrator', icon: 'memory',              route: '/ai-orchestrator' },
-        { label: 'Users',           icon: 'people',              route: '/users' },
-        { label: 'Integrations',    icon: 'device_hub',          route: '/integrations' },
-        { label: 'Admin',           icon: 'admin_panel_settings',route: '/admin' },
+        { label: 'Infrastructure',  icon: 'storage',              route: '/infrastructure' },
+        { label: 'AI Orchestrator', icon: 'memory',               route: '/ai-orchestrator' },
+        { label: 'Integrations',    icon: 'device_hub',           route: '/integrations' },
+        { label: 'Users',           icon: 'people',               route: '/users' },
+        { label: 'Admin',           icon: 'admin_panel_settings', route: '/admin' },
       ],
     },
   ];

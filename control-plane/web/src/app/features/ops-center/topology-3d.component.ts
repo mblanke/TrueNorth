@@ -41,7 +41,7 @@ import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
               }
             </mat-select>
           </mat-form-field>
-          <button mat-stroked-button [routerLink]="['/range-designer']" [queryParams]="{ range: selectedRangeId }"
+          <button mat-stroked-button [routerLink]="['/authoring/ranges']" [queryParams]="{ range: selectedRangeId }"
                   [disabled]="!selectedRangeId" matTooltip="Open this range in the 2D designer">
             <mat-icon>architecture</mat-icon> 2D Designer
           </button>

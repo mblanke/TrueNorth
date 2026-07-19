@@ -1,0 +1,20 @@
+# Scenario timeline schema (lint target). Taz-generated timelines must conform.
+scenario:
+  po_id: string
+  title: string
+  environment: [CSTE, CSTE-sterile, COTE, mobile]
+  duration_min: int          # must match crosswalk row
+  range_template: string
+  golden_templates: [string] # every entry MUST exist + be enabled in vm_catalogue.csv
+  injects:
+    - id: string
+      t_offset_min: int
+      attack_technique: string   # e.g. T1046
+      description: string        # defensive/observable framing - NOT attack code
+      critical: bool             # true => candidate must detect/report it
+  noise_floor:
+    - id: string
+      description: string
+      why_plausible: string
+  validators: [string]
+  variant: string

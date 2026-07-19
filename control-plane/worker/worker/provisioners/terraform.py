@@ -73,13 +73,55 @@ class TerraformProvisioner(BaseProvisioner):
         return self._workspace_root / self._hypervisor_type / f"range-{range_id}"
 
     def _write_tfvars(self, ws: Path, template: dict, allocations: dict) -> Path:
-        """Write a terraform.tfvars.json file and return its path."""
-        tfvars = {
+        """Write terraform.tfvars.json matching the module's declared variables.
+
+        Emits `vm_definitions` (not `vms`), `range_id`, provider credentials (from the
+        rendered `template["credentials"]` or env), and placement (datacenter/cluster/
+        datastore/network for vSphere; api/token/node/storage for Proxmox).
+        """
+        creds = template.get("credentials", {}) or {}
+        # Project each rendered VM to EXACTLY the module's vm_definitions object schema
+        # (strict object types reject extra attributes; netmask must be a prefix number).
+        vm_defs = [
+            {
+                "name": vm.get("name"),
+                "role": vm.get("role", "generic"),
+                "os": vm.get("os", "linux"),
+                "template_name": vm.get("template_name", ""),
+                "cores": vm.get("cores", 2),
+                "memory": vm.get("memory", vm.get("memory_mb", 4096)),
+                "disk_gb": vm.get("disk_gb", 60),
+                "ip": vm.get("ip", ""),
+                "gateway": vm.get("gateway", ""),
+                "netmask": vm.get("prefix", 24),
+                "vlan_tag": vm.get("vlan_tag", vm.get("vlan_id", 0)),
+            }
+            for vm in template.get("vms", [])
+        ]
+        tfvars: dict = {
+            "range_id": template.get("range_id", ws.name),
             "range_name": template.get("name", "unnamed"),
-            "vms": template.get("vms", []),
-            "networks": template.get("networks", []),
-            "allocations": allocations,
+            "vm_definitions": vm_defs,
         }
+        if self._hypervisor_type == "vsphere":
+            tfvars.update({
+                "vsphere_server": creds.get("host") or os.getenv("VSPHERE_SERVER", os.getenv("VSPHERE_URL", "")),
+                "vsphere_user": creds.get("username") or os.getenv("VSPHERE_USERNAME", ""),
+                "vsphere_password": creds.get("password") or os.getenv("VSPHERE_PASSWORD", ""),
+                "datacenter": creds.get("datacenter") or os.getenv("VSPHERE_DATACENTER", ""),
+                "cluster": os.getenv("VSPHERE_CLUSTER", ""),
+                "datastore": os.getenv("VSPHERE_DATASTORE", ""),      # NetApp NFS datastore name
+                "network": os.getenv("VSPHERE_NETWORK", "VM Network"),
+                "allow_unverified_ssl": not creds.get("verify_ssl", False),
+            })
+        elif self._hypervisor_type == "proxmox":
+            tfvars.update({
+                "pm_api_url": creds.get("host") or os.getenv("PROXMOX_URL", ""),
+                "pm_api_token_id": os.getenv("PROXMOX_TOKEN_ID", ""),
+                "pm_api_token_secret": os.getenv("PROXMOX_TOKEN_SECRET", ""),
+                "target_nodes": [os.getenv("PROXMOX_NODE", "pve")],
+                "storage_pool": os.getenv("PROXMOX_STORAGE", "local-lvm"),
+            })
         tfvars_path = ws / "terraform.tfvars.json"
         tfvars_path.write_text(json.dumps(tfvars, indent=2))
         return tfvars_path
@@ -202,7 +244,12 @@ class TerraformProvisioner(BaseProvisioner):
                 (ws / "tf_output.json").write_text(out)
 
             outputs = self._parse_outputs(ws)
-            vms = outputs.get("vms", {}).get("value", [])
+            # The modules output `vms` as a map {name: ip}; normalize to a list of dicts.
+            vms_raw = outputs.get("vms", {}).get("value", {})
+            if isinstance(vms_raw, dict):
+                vms = [{"name": k, "ip": v} for k, v in vms_raw.items()]
+            else:
+                vms = vms_raw or []
             networks = outputs.get("networks", {}).get("value", [])
 
             # capture state

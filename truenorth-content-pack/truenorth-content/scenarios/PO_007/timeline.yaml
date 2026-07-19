@@ -1,0 +1,47 @@
+scenario:
+  po_id: PO_007
+  title: "Analyze Malicious Activity in Network Traffic"
+  environment: COTE
+  duration_min: 240            # matches crosswalk row ALJQ/PO_007
+  range_template: ./range.tf
+  golden_templates: [srv2019, precomp-host, win10-22h2, securityonion, kali, usersim]
+  # Medium: pcap + IDS + NOC. Injects are STAGED pcap/IDS artifacts already captured at scenario
+  # start (defensive framing) — the candidate analyses captured traffic, no live attack runs.
+  injects:
+    - id: inj-01-recon
+      t_offset_min: 0
+      attack_technique: T1046      # Network Service Discovery
+      description: "pcap/IDS artifacts of an internal port/service sweep from the foothold host (precomp-host)."
+      critical: true               # -> crit_scanning  (EO 007.01)
+    - id: inj-02-lateral
+      t_offset_min: 45
+      attack_technique: T1021      # Remote Services
+      description: "pcap showing SMB/RPC session establishment DC -> file server (srv2019) from the foothold."
+      critical: true               # -> crit_lateral   (EO 007.02)
+    - id: inj-03-exfil
+      t_offset_min: 95
+      attack_technique: T1048      # Exfiltration Over Alternative Protocol
+      description: "pcap/IDS artifacts of large outbound transfer over an alternate protocol from srv2019."
+      critical: true               # -> crit_exfil     (EO 007.03)
+    - id: inj-04-c2
+      t_offset_min: 130
+      attack_technique: T1071      # Application Layer Protocol
+      description: "Beaconing pattern in the pcap (regular intervals, small frames) post-foothold — context, not scored."
+      critical: false
+  noise_floor:
+    - id: nf-01
+      description: "Nightly backup job pushing a large outbound transfer from srv2019."
+      why_plausible: "Resembles exfil (inj-03); candidate must distinguish benign backup vs malicious exfil."
+    - id: nf-02
+      description: "Legitimate admin running remote PowerShell / SMB admin shares across hosts."
+      why_plausible: "Resembles lateral movement (inj-02) in the pcap."
+    - id: nf-03
+      description: "Vulnerability scanner sweep during the maintenance window."
+      why_plausible: "Resembles the recon port sweep (inj-01)."
+  validators:
+    - validators/crit_scanning.md
+    - validators/crit_lateral.md
+    - validators/crit_exfil.md
+    - validators/deliverable_report.md
+    - validators/manual_ack_analysis.md
+  variant: variant_B/timeline.yaml

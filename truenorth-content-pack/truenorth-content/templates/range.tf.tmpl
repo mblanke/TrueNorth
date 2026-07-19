@@ -1,0 +1,9 @@
+# vSphere range template {{PO_ID}} — isolated, no egress, instant-clone.
+terraform { required_providers { vsphere = { source = "hashicorp/vsphere" } } }
+variable "vlan_id" { default = {{VLAN_ID}} }
+resource "vsphere_distributed_port_group" "range" {
+  name    = "range-{{PO_ID}}-${var.vlan_id}"
+  vlan_id = var.vlan_id   # per-range isolation; DFW/NGFW denies egress
+}
+# For each golden template (must exist + enabled in vm_catalogue.csv), instant-clone from
+# the vCenter Content Library onto vsphere_distributed_port_group.range.

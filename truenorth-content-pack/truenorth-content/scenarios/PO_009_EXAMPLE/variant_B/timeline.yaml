@@ -1,0 +1,16 @@
+scenario:
+  po_id: PO_009
+  title: "Analyze Malicious Activity in Logs — Variant B (retest)"
+  environment: COTE
+  duration_min: 240
+  range_template: ../range.tf
+  golden_templates: [srv2019, precomp-host, win10-22h2, securityonion, cloudlog-emu, usersim]
+  # Same three critical events, different narrative/hosts/timings + reshuffled noise floor.
+  injects:
+    - {id: inj-01, t_offset_min: 0,  attack_technique: T1046, description: "Discovery from a different foothold.", critical: true}
+    - {id: inj-02, t_offset_min: 55, attack_technique: T1021, description: "Lateral path via alternate service.",  critical: true}
+    - {id: inj-03, t_offset_min: 100,attack_technique: T1048, description: "Exfil over alternate protocol.",       critical: true}
+  noise_floor:
+    - {id: nf-01, description: "Software-update service pulling large packages.", why_plausible: "Resembles exfil."}
+    - {id: nf-02, description: "Backup agent enumerating shares.",               why_plausible: "Resembles discovery."}
+  validators: [../validators/crit_scanning.md, ../validators/crit_lateral.md, ../validators/crit_exfil.md, ../validators/deliverable_report.md, ../validators/manual_ack_analysis.md]

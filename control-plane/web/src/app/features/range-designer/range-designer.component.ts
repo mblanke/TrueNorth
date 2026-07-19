@@ -947,12 +947,14 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
         }
         try {
           this.graph.fromJSON(diagram);
-          this.updateCounts();
-          this.paper.scaleContentToFit({ padding: 40, maxScale: 1.5 });
-          this.snack.open('Diagram loaded', '', { duration: 1500, panelClass: 'snack-success' });
         } catch {
           this.snack.open('Saved diagram was corrupted — starting blank', 'Dismiss', { duration: 4000, panelClass: 'snack-error' });
+          return;
         }
+        // Non-fatal cosmetics: a fit/scale hiccup must not blank an otherwise-valid diagram.
+        try { this.updateCounts(); } catch { /* ignore */ }
+        try { this.paper.scaleContentToFit({ padding: 40, maxScale: 1.5 }); } catch { /* ignore */ }
+        this.snack.open('Diagram loaded', '', { duration: 1500, panelClass: 'snack-success' });
       },
       error: (err) => this.snack.open(err?.error?.detail || 'Load failed', 'Dismiss', { duration: 4000, panelClass: 'snack-error' }),
     });

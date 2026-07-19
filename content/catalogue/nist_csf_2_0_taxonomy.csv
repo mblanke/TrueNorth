@@ -1,0 +1,29 @@
+code,name,kind,function_code,function_name
+GV,Govern,function,GV,Govern
+GV.OC,Organizational Context,category,GV,Govern
+GV.RM,Risk Management Strategy,category,GV,Govern
+GV.RR,"Roles, Responsibilities, and Authorities",category,GV,Govern
+GV.PO,Policy,category,GV,Govern
+GV.OV,Oversight,category,GV,Govern
+GV.SC,Cybersecurity Supply Chain Risk Management,category,GV,Govern
+ID,Identify,function,ID,Identify
+ID.AM,Asset Management,category,ID,Identify
+ID.RA,Risk Assessment,category,ID,Identify
+ID.IM,Improvement,category,ID,Identify
+PR,Protect,function,PR,Protect
+PR.AA,"Identity Management, Authentication, and Access Control",category,PR,Protect
+PR.AT,Awareness and Training,category,PR,Protect
+PR.DS,Data Security,category,PR,Protect
+PR.PS,Platform Security,category,PR,Protect
+PR.IR,Technology Infrastructure Resilience,category,PR,Protect
+DE,Detect,function,DE,Detect
+DE.CM,Continuous Monitoring,category,DE,Detect
+DE.AE,Adverse Event Analysis,category,DE,Detect
+RS,Respond,function,RS,Respond
+RS.MA,Incident Management,category,RS,Respond
+RS.AN,Incident Analysis,category,RS,Respond
+RS.CO,Incident Response Reporting and Communication,category,RS,Respond
+RS.MI,Incident Mitigation,category,RS,Respond
+RC,Recover,function,RC,Recover
+RC.RP,Incident Recovery Plan Execution,category,RC,Recover
+RC.CO,Incident Recovery Communication,category,RC,Recover

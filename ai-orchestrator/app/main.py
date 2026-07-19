@@ -49,6 +49,7 @@ class TaskType(str, Enum):
     learning_recommendation = "learning-recommendation"
     course_generate = "course-generate"
     quiz_generate = "quiz-generate"
+    lesson_generate = "lesson-generate"
     general = "general"
     embedding = "embedding"
 

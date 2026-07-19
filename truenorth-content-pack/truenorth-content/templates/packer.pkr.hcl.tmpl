@@ -1,0 +1,4 @@
+# Golden image build {{TEMPLATE_ID}} (vSphere-iso) -> vCenter Content Library.
+# Bake sensor per catalogue ({{SENSOR}}). Do NOT run packer build here.
+source "vsphere-iso" "{{TEMPLATE_ID}}" { /* iso, hardware, provisioners */ }
+build { sources = ["source.vsphere-iso.{{TEMPLATE_ID}}"] }

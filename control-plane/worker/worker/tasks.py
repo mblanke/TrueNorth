@@ -109,6 +109,27 @@ class ReliableTask(Task):
 
 
 # -- Provisioning -------------------------------------------------------
+def _hypervisor_creds(db, hypervisor_type: str) -> dict:
+    """Look up the primary/active hypervisor connection's endpoint+creds (empty → env fallback)."""
+    from sqlalchemy import text
+
+    row = db.execute(
+        text(
+            "SELECT host, port, username, password_encrypted, api_token, verify_ssl, datacenter "
+            "FROM hypervisor_connections WHERE hypervisor_type = :t AND is_active = TRUE "
+            "ORDER BY is_primary DESC LIMIT 1"
+        ),
+        {"t": hypervisor_type},
+    ).first()
+    if row is None:
+        return {}
+    return {
+        "host": row[0], "port": row[1], "username": row[2],
+        "password": row[3] or "", "api_token": row[4] or "",
+        "verify_ssl": bool(row[5]), "datacenter": row[6] or "",
+    }
+
+
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
 def provision_range(self, range_id: str):
     """Provision a single range using the configured backend.
@@ -135,9 +156,47 @@ def provision_range(self, range_id: str):
                 {"rid": range_id},
             ).first()
 
-        template = json.loads(row[0]) if row and row[0] else {}
+        # The template column holds YAML (see content/ranges/*.yaml); tolerate JSON too.
+        raw = row[0] if row and row[0] else ""
+        template = {}
+        if raw:
+            try:
+                template = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                try:
+                    import yaml as _yaml
+
+                    template = _yaml.safe_load(raw) or {}
+                except Exception:  # noqa: BLE001 — provisioners don't require template content
+                    template = {}
         backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
-        allocations = {}
+        allocations: dict = {}
+
+        # Render topology -> vm_definitions: resolve each node's OS to a golden template
+        # and allocate static IPs. Without this the provisioners see no `vms` (0 VMs).
+        if template.get("nodes") or template.get("assets"):
+            from .render import golden_image_resolver, render_topology
+
+            hv = "proxmox" if "proxmox" in backend else "vsphere"
+            with _db_session() as db2:
+                resolver = golden_image_resolver(db2, hv)
+                creds = _hypervisor_creds(db2, hv)
+            rendered = render_topology(template, range_id, resolver)
+            template = {
+                **template,
+                "name": rendered["range_name"],
+                "vms": rendered["vm_definitions"],
+                "networks": rendered["network_definitions"],
+                "credentials": creds,
+                "hypervisor": hv,
+            }
+            allocations = {"vlan_map": rendered["vlan_map"]}
+            logger.info(
+                "[provision] rendered %d VMs across %d networks (backend=%s)",
+                len(rendered["vm_definitions"]), len(rendered["network_definitions"]), backend,
+            )
+            if rendered["unresolved"]:
+                logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
         provisioner = _get_backend(backend)
 
@@ -412,7 +471,11 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
 
             db.execute(
                 text(
-                    "UPDATE exercises SET state = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = :eid"
+                    "UPDATE exercises SET state = 'completed', completed_at = NOW(), updated_at = NOW(), "
+                    "total_score = COALESCE((SELECT SUM(points) FROM objectives "
+                    "WHERE exercise_id = :eid AND achieved = TRUE), 0), "
+                    "max_score = COALESCE((SELECT SUM(points) FROM objectives WHERE exercise_id = :eid), 0) "
+                    "WHERE id = :eid"
                 ),
                 {"eid": exercise_id},
             )

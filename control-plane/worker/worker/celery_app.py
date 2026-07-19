@@ -111,6 +111,11 @@ app.conf.task_routes.update(
     }
 )
 
+# -- Register task modules -------------------------------------------------
+# Importing at the end (after `app` is configured) registers every @app.task
+# with this Celery app. Without this the worker starts with an empty task list.
+from . import tasks  # noqa: F401, E402
+
 # -- Chaos engineering hooks (disabled by default) -------------------------
 # Importing the module registers Celery signals; actual injection is
 # controlled by CHAOS_ENABLED env var.

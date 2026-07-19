@@ -31,7 +31,7 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
         <div class="header-left">
           <div>
             <div class="tn-kicker">AI Training Pipeline</div>
-            <h1>Curriculum Forge</h1>
+            <h1>Curriculum</h1>
             <p class="subtitle">Ingest courseware → generate courses, quizzes, and capability-measuring ranges</p>
           </div>
         </div>
@@ -156,7 +156,7 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
             @if (lastCourse(); as lc) {
               <div class="gen-result">
                 ✓ Drafted “{{ lc.name }}” — {{ lc.module_count }} modules ({{ lc.quiz_module_count }} quizzes)
-                <a routerLink="/training">Review in LMS</a>
+                <a routerLink="/learning/courses">Review in LMS</a>
               </div>
             }
 
@@ -187,7 +187,7 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
             <h2 class="panel-title mt"><mat-icon>radar</mat-icon> Generate range</h2>
             <p class="muted small">Turn learning objectives into a deployable exercise that measures them.</p>
-            <a mat-stroked-button class="full-width" [routerLink]="['/exercise-forge']"
+            <a mat-stroked-button class="full-width" [routerLink]="['/authoring/forge']"
                [queryParams]="{ curriculum: cur.id }">
               <mat-icon>architecture</mat-icon> Open Exercise Forge (curriculum mode)
             </a>

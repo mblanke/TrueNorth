@@ -69,13 +69,9 @@ def _audit(db: Session, user: CurrentUser, action: str, resource_type: str, reso
 
 
 def _dispatch_task(task_name: str, *args: Any) -> str | None:
-    try:
-        from celery import current_app
+    from ..celery_client import dispatch
 
-        result = current_app.send_task(f"worker.tasks.{task_name}", args=args)
-        return result.id
-    except Exception:
-        return None
+    return dispatch(task_name, *args)
 
 
 # ── CRUD ───────────────────────────────────────────────────────────────

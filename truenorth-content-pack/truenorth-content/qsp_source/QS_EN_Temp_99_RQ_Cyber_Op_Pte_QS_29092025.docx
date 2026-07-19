@@ -1,0 +1,1230 @@
+Annex A
+
+Temp 99
+
+RQ Cyber Op Pte
+
+References
+
+Annex B
+
+Temp 99
+
+RQ Cyber Op Pte
+
+Task Disposition
+
+Annex C
+
+Temp 99
+
+RQ Cyber Op Pte
+
+Record of Decisions
+
+**MILITARY PERSONNEL GENERATION TRAINING GROUP**
+
+**QUALIFICATION STANDARD**
+
+**Rank Qualification Cyber Operator Private**
+
+National Qualification: Temp 99
+
+	Regular Force: 00378.1.N.01 Cyber Operator
+
+	Primary Reserve: 00378.1.P.02 Cyber Operator
+
+	Special Force: N/A
+
+# RECORD OF AMENDMENTS
+
+| **Amendment** **N****umber** | **Requesting Agency** | **Revision Description** | **App****r****oval** | **Date** |
+| --- | --- | --- | --- | --- |
+|  |  |  |  |  |
+|  |  |  |  |  |
+
+# FOREWORD
+
+- This Qualification Standard (QS) for Cyber Operators (Cyber Op) is issued on the authority of the Commander of Military Personnel Generation Training Group (MPGTG).
+
+- This QS is based upon the Rank Qualification (RQ) (XXXX) for Cyber Op MOSID 00378 found in Cyber Op Occupation Specification (Ref A01) dated 29-09-2017.
+
+- This QS was developed in collaboration with representatives from:
+
+- Canadian Forces Network Operations Centre (CFNOC);
+
+- Cyber Training Unit (CTU);
+
+- Directorate of Cyber Operations Force Development (DCOFD);
+
+- 34 Signal Regiment (34 Sigs Reg); and
+
+- CAF Cyber Command HQ.
+
+- It was prepared in accordance with (IAW) the concept of training outlined in the A-P9-050 Series, Canadian Forces Manuals of Individual Training and Education.
+
+- This publication is effective upon receipt.
+
+- Suggestions for secretarial amendments or review shall be actioned IAW Formation Standing Orders (FSO) 1104B.
+
+# TABLE OF CONTENTS
+
+	
+
+RECORD OF AMENDMENTS	ii
+
+FOREWORD	iii
+
+TABLE OF CONTENTS	iv
+
+GENERAL	1
+
+	AIM	1
+
+	PREREQUISITES	1
+
+	BACKGROUND	1
+
+	USE OF QUALIFICATION STANDARD	2
+
+	PRIOR LEARNING ASSESSMENT AND RECOGNITION	2
+
+	QUALIFICATION/CERTIFICATION DETAILS	2
+
+	PERFORMANCE OBJECTIVES	3
+
+	PO 001 Develop Scripts for Simple Task Automation	3
+
+	PO 002 Maintain Hardware Environment	4
+
+	PO 003 Maintain Software Environment	5
+
+	PO 004 Characterize a Network	6
+
+	PO 005 Deploy Active Directory Environment	7
+
+	PO 006 Set up Log and Traffic Collection	8
+
+	PO 007 Configure Security Appliances	9
+
+	PO 008 Conduct Network Discovery	10
+
+	PO 009 Inform on Cyber Threats	12
+
+	PO 010 Identify Malicious Behaviour in Network Traffic	14
+
+	PO 011 Triage Artifacts	16
+
+	PO 012 Identify Malicious Behaviour in Host Logs	18
+
+	PO 013 Extract Artifacts for Digital Forensics Analysis	19
+
+	PO 014 Investigate Cyber Incident	20
+
+	PO 015 Apply Cyber Security Orders and Directives	21
+
+ANNEX A – REFERENCES	1
+
+ANNEX B – TASK DISPOSITION	1
+
+ANNEX C – RECORD OF DECISIONS	1
+
+| 1 | GENERAL |
+| --- | --- |
+
+## AIM
+
+- The purpose of this Qualification Standard (QS) is to describe in operational terms, the required outcome of individual training and education (IT&E) for Pte Cyber Operators.
+
+## PREREQUISITES
+
+- This QS was developed with the intent that the candidates will meet the following prerequisites prior to being course loaded:
+
+- English language profile of BBB; and
+
+- Basic Military Qualification (BMQ) (AINT).
+
+- The loading authority must ensure that candidates meet those prerequisites. 
+
+## BACKGROUND
+
+- This document contains the following Performance Objectives (POs) that the member shall achieve to meet the requirements of this qualification:
+
+| **PO** | **PO Title** |
+| --- | --- |
+| 001 | Develop scripts for simple task automation |
+| 002 | Maintain hardware environment |
+| 003 | Maintain software environment |
+| 004 | Characterize a network |
+| 005 | Deploy Active Directory environment |
+| 006 | Set up log and traffic collection |
+| 007 | Configure security appliances |
+| 008 | Conduct network discovery |
+| 009 | Inform on cyber threats |
+| 010 | Identify malicious behaviour in network traffic |
+| 011 | Triage artifacts |
+| 012 | Identify malicious behaviour in host logs |
+| 013 | Extract artifacts for digital forensic analysis |
+| 014 | Investigate cyber incident |
+| 015 | Apply cyber security orders and directives |
+
+## USE OF QUALIFICATION STANDARD
+
+- This QS shall be used by the IT&E establishment to design, develop, conduct, and evaluate the training program.
+
+- This QS will also be used by MPGTG Standards in support of validation.
+
+- The qualification code/title supported by the POs:
+
+| **Qualification Code** | **National Qualification Title** |
+| --- | --- |
+| Temp 99 | Rank Qualification Cyber Operator Private |
+
+	
+
+## PRIOR LEARNING ASSESSMENT AND RECOGNITION
+
+- Prior Learning Assessment and Recognition (PLAR) request goes through MPGTG PLAR Coordinator at +MPGTG PLAR Occupations@MPGTG Stds@Borden [STG-PLAROccupations@forces.gc.ca](mailto:STG-PLAROccupations@forces.gc.ca).
+
+## QUALIFICATION/CERTIFICATION DETAILS
+
+- Nil.
+
+| 2 | PERFORMANCE OBJECTIVES |
+| --- | --- |
+
+##  PO 001 Develop Scripts for Simple Task Automation
+
+- Performance: Develop Scripts for Simple Task Automation.
+
+- Conditions:
+
+- given:
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW C5, develop scripts for simple task automation by:
+
+- (FT0280) developing software tools to include:
+
+- building a basic unconditional program; and
+
+- building a script.
+
+- Remarks:
+
+- the scope of the PO is for the Pte RQ Cyber Operator to create simple scripts to conduct basic task automation;
+
+- training should be in line with a first-year post-secondary level introduction to programming course; and
+
+- no access to Artificial Intelligence (AI)/assistance to ensure that the member has foundational comprehension of programming concepts.
+
+## PO 002 Maintain Hardware Environment
+
+- Performance: Maintain hardware environment.
+
+- Conditions:
+
+- given:
+
+- hardware;
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW ref C1, maintain hardware environment by:
+
+- (FT0010) installing hardware;
+
+- (FT0030) configuring hardware;
+
+- verifying functionality of hardware to include:
+
+- testing functionality of hardware; and
+
+- (FT0110) troubleshooting toolset hardware deficiencies; and
+
+- (FT0020) removing hardware.
+
+- Remarks: Nil.
+
+## PO 003 Maintain Software Environment
+
+- Performance: Maintain software environment. 
+
+- Conditions:
+
+- given:
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs C1 and C17, maintain software environment by:
+
+- deploying Operating Systems (OS) to include:
+
+- Windows; and
+
+- Linux;
+
+- configuring OS;
+
+- (FT0040) installing software;
+
+- (FT0050) removing software;
+
+- (FT0060) configuring software; and
+
+- (FT0080) troubleshooting toolset software deficiencies.
+
+- Remarks: Nil.
+
+## PO 004 Characterize a Network
+
+- Performance: Characterize a network.
+
+- Conditions:
+
+- given:
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night, within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW ref C3, characterize a network by:
+
+- identifying routing and subnetting;
+
+- identifying network services; and
+
+- identifying additional network functionality.
+
+- Remarks: Nil.
+
+## PO 005 Deploy Active Directory Environment
+
+- Performance: Deploy Active Directory environment.
+
+- Conditions:
+
+- given:
+
+- licenses;
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW ref C7, deploy Active Directory (AD) environment by:
+
+- designing a Windows identity infrastructure;
+
+- managing an AD; and
+
+- managing AD tasks with PowerShell.
+
+- Remarks: Nil.
+
+## PO 006 Set up Log and Traffic Collection
+
+- Performance: Set up log and traffic collection.
+
+- Conditions:
+
+- given:
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night, within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs C3, C4, C8 set up log and traffic collection by:
+
+- (ET0051) deploying endpoint agents to include:
+
+- installing endpoint agents;
+
+- configuring audit logs; and
+
+- removing endpoint agents;
+
+- (ET0052) deploying taps to include:
+
+- installing taps; and
+
+- configuring taps;
+
+- (ET0060) collecting network traffic and logs to include:
+
+- log forwarding; 
+
+- (ET0061) collecting metadata from network traffic; and
+
+- (ET0062) collecting metadata from host logs;
+
+- (ET0053) validating log and traffic collection.
+
+- Remarks: Nil.
+
+## PO 007 Configure Security Appliances
+
+- Performance: Configure security appliances.
+
+- Conditions:
+
+- given:
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night, within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs C2, C8, C10, and C20 - C35, configure security appliances by:
+
+- deploying security appliances to include:
+
+- firewall;
+
+- Host-based Intrusion Detection System (HIDS); and
+
+- Network-based Intrusion Detection System (NIDS)/Intrusion Prevention System (IPS); and
+
+- creating protocol specific rules for security appliances to include:
+
+- (FT0160) developing network sensor rule;
+
+- creating basic rules for security appliances; 
+
+- (FT0130) loading network sensor rules to sensors; and
+
+- (FT0180) testing network sensor rule functionality.
+
+- Remarks: Nil.
+
+## PO 008 Conduct Network Discovery
+
+- Performance: Conduct network discovery.
+
+- Conditions:
+
+- given:
+
+- references; and
+
+- supervision;
+
+- denied: nil;
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW references C1-C3, C4, C8, C17, C36 - C38, and D26 - D30, conduct network discovery by:
+
+- characterizing infrastructure to include:
+
+- identifying key infrastructure;
+
+- identifying endpoints to include:
+
+- (BT0541) attributing software behaviour to a particular OS; 
+
+- (BT0411) identifying operating systems based on network traffic; and
+
+- (BT0410) identifying device applications;
+
+- (ET0100) determining location of physical network asset; and
+
+- (ET0090) developing logical network map;
+
+- characterizing digital identity behaviour to include:
+
+- identifying digital identity types on the network; 
+
+- identifying users’ actions; and
+
+- (GT0070) characterizing network traffic to establish normal patterns; and
+
+- enumerating a network to include:
+
+- identifying endpoints;
+
+- conducting different types of network scans; 
+
+- (ET0090) developing logical network map; and
+
+-  (ET0080) scanning for vulnerabilities.
+
+- Remarks: The task GT0080 “Analyze network traffic” is not reflected specifically in one area of the PO. 
+
+## PO 009 Inform on Cyber Threats
+
+- Performance: Inform on cyber threats.
+
+- Conditions:
+
+- given:
+
+- analyst notes;
+
+- data of the incident;
+
+- intelligence reports;
+
+- reporting template;
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs B1 and C2, (BT0220) inform on cyber threats by:
+
+- (CT0160) advising chain of command (CoC) on current cyber threat by:
+
+- (CT0260) preparing cyber tactical briefings IAW reference B1 to include:
+
+- collecting technical details / notes to include:
+
+- analyst notes;
+
+- intelligence reports; and
+
+- Common Vulnerabilities and Exploits (CVE) data;
+
+- reconstructing malicious activity to include:
+
+- confirming incident data;
+
+- analyzing incident data; and
+
+- (BT0515) producing an activity timeline;
+
+- compiling future actions to include:
+
+- mitigations; and 
+
+- recovery;
+
+- (BT0300) advising on cyber defence enhancement by providing a briefing to the CoC; and
+
+- producing a technical report by:
+
+- collecting technical details / notes to include:
+
+- analyst notes;
+
+- intelligence reports; and
+
+- CVE data;
+
+- reconstructing malicious activity to include:
+
+- confirming incident data;
+
+- analyzing incident data; and
+
+- (BT0515) producing an activity timeline;
+
+- (CT0050) initiating technical report to include:
+
+-  collating relevant data;
+
+- (CT0200) recommending cyber incident recovery measures;
+
+- (BT0300) advising cyber defence enhancements;
+
+- submitting the report to include:
+
+- producing an executive summary; and
+
+- (CT0282) reporting on tactics, techniques, and procedures (TTPs) of malicious activity; and
+
+- (CT0060) updating technical report.
+
+- Remarks: Advise CoC section refers to direct supervisor and informing at the section level.
+
+## PO 010 Identify Malicious Behaviour in Network Traffic
+
+- Performance: Identify malicious behaviour in network traffic.
+
+- Conditions:
+
+- given:
+
+- network incident data;
+
+- reporting template;
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs C2, C8, C9, and D1 - D13, (BT0421) identify malicious behaviour in network traffic by:
+
+- identifying anomalies in network traffic;
+
+- (CT0281) identifying TTPs of malicious activity;
+
+- (BT0542) identifying indicators of cyber activity;
+
+- identifying related events in network logs;
+
+- identifying related Indicators of Compromise (IoCs)/artifacts for extraction;
+
+- (GT0110) analyzing anomalies in network traffic using metadata; 
+
+- (BT0420) reconstructing a malicious activity; and
+
+- (BT0515) producing an activity timeline.
+
+- Remarks:
+
+- the task BT0370 “Identify network mapping and operating system (OS) fingerprinting activities” is not necessary to state but will be included as a learning objective in the TP;
+
+- the tasks GT0080 “Analyze network traffic” and CT0130 “Document analysis notes” are encompassing tasks that span across the entire PO; 
+
+- this PO falls under the task “confirm malicious activity” in PO Investigate Cyber Incident. The Pte Cyber Operator is expected to inspect network traffic and identify adversary actions semi-independently; 
+
+- identifying TTPs does not include attribution. It is identifying the common name for a technique (ex -brute force, port scan) and its purpose in the event; and
+
+-  “identifying anomalies in network traffic” in this PO does not entail being able to take network traffic and find anomalous behaviour without any indicators. The students should have some generic indicator (Adversary TTP Ex: Adversary leverages DNS/Phishing/Brute Force in their attacks) to scope where they conduct anomaly analysis.
+
+## PO 011 Triage Artifacts
+
+- Performance: Triage artifacts.
+
+- Conditions:
+
+- given:
+
+- artifacts;
+
+- reporting template;
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs C10, C12, C15, and D14 - D17, (BT0400) triage artifacts by:
+
+- (FT0345) preparing an analysis environment by (GT0400) creating synthetic environment;
+
+- (GT0380) determining the key characteristics of malicious software;
+
+- (GT0410) analyzing malicious software to include:
+
+- (GT0370) conducting basic static analysis;
+
+- (GT0390) conducting basic dynamic analysis;
+
+- (GT0460) reverse engineering obfuscated software to include:
+
+- (GT0492) identifying adversary use of anti-forensics techniques; and
+
+- (GT0491) identifying adversary attempts to hide malicious content and behaviour; and
+
+- (GT0520) compiling technical intelligence from analyzed malicious software.
+
+- Remarks:
+
+- the task CT0130 “Document analysis notes” is encompassing task that span across the entire PO;
+
+- the member should be able to recognize if the artifact is benign, a commonly known malicious artifact (ex: mimikatz, CobaltStrike, etc.), exhibiting clear malicious behaviour (behaviours and IoCs are identified; Ex: keyloggers, droppers, etc.), or requires further analysis by a reverse engineering team;
+
+- the member is expected to de-obfuscate common encoding methods such as base64, URL encoding, XOR, ROT-N, etc.;
+
+- should identify that artifacts are packed/encrypted, but not expected to defeat the technique unless explicitly taught;
+
+- the member is expected to identify behaviours/IoCs/defeat common encoding methods when encountering basic scripting in any programming language (Ex: PowerShell, Python, JavaScript, Bash, etc.).
+
+## PO 012 Identify Malicious Behaviour in Host Logs
+
+- Performance: Identify malicious behaviour in host logs.
+
+- Conditions:
+
+- given:
+
+- host incident data;
+
+- reporting template;
+
+- references; and
+
+- supervision.
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs C13, D3, and D18 - D24, (BT0422) identify malicious behaviour in host logs by:
+
+- identifying anomalies in host logs;
+
+- (CT0281) identifying TTPs of malicious activity IAW D1;
+
+- identifying related events in host logs;
+
+- identifying related Indicators of Compromise (IoCs)/artifacts for extraction;
+
+- (BT0420) reconstructing a malicious activity; and
+
+- (BT0515) producing an activity timeline.
+
+- Remarks:
+
+- the tasks GT0081 “analyze host logs” and CT0130 “document analysis notes” are encompassing tasks that span across the entire PO; and
+
+- identifying TTPs does not include attribution. It is identifying the common name for a technique (ex: brute force, port scan) and its purpose in the event. 
+
+## PO 013 Extract Artifacts for Digital Forensics Analysis
+
+- Performance: Extract artifacts for digital forensics analysis.
+
+- Conditions:
+
+- given:
+
+- digital media for forensic imaging;
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs C14 - C17, (BT0450) extract artifacts for digital forensics analysis by:
+
+- (ET0020) safeguarding cyber forensic evidence;
+
+- (BT0470) documenting original condition of digital forensic artifacts;
+
+- (BT0440) cloning digital media for forensics;
+
+- (ET0075) conducting live memory acquisition;
+
+- (ET0050) collecting artifact; and
+
+- (BT0430) recovering artifacts for digital forensics analysis to include:
+
+- (BT0435) Identify artifacts for digital forensics analysis;
+
+- (GT0510) extracting malicious artifacts from other digital media;
+
+- extracting deleted artifacts; and
+
+- (BT0540) attributing a forensic artifact to a particular operating system.
+
+- Remarks: Extracting artifacts for this PO, refers to dead disks (computer systems) not live artifacts from network/host investigations.
+
+## PO 014 Investigate Cyber Incident
+
+- Performance: Investigate cyber incident.
+
+- Conditions:
+
+- given:
+
+- incident data;
+
+- reporting template;
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW refs C15 and C16, (BT0352) investigate cyber incidents by:
+
+- identifying a cyber incident by:
+
+- identifying data sources;
+
+- (BT0330) triaging indicators of events; and
+
+- (GT0250) analyzing security alerts;
+
+- confirming malicious activity to include:
+
+- identifying malicious behaviour; 
+
+- (BT0542) identifying indicators of cyber activity
+
+- (BT0362) extracting artifacts;
+
+- extracting IoCs;
+
+- (BT0361) extracting network indicators;
+
+- (GT0150) determining adversary TTPs; and
+
+- (GT0180) evaluating all source cyber threat information;
+
+- determining impact of incident to include:
+
+- (BT0515) producing an activity timeline;
+
+- (GT0180) evaluating all source cyber threat information;
+
+- (BT0560) researching real time open-source cyber events for Indications and Warnings (I&W) IAW reference C14;
+
+- (GT0280) analyzing all source Indications & Warnings (I&W) of cyber events and incidents;
+
+- identifying affected resources; and
+
+- (GT0040) identifying means of compromise; and
+
+- producing a complete technical report.
+
+- Remarks: 
+
+- the tasks BT0350 “monitor network sensors for cyber events” and CT0130 “Document analysis notes” are encompassing tasks that span across the entire PO; and 
+
+- BT0380 “validate intrusion detection system (IDS) alerts against network traffic" is similar to para 3.b. in that validating IDS alerts also confirms malicious activity, however, “confirming malicious activity” better scopes the task.
+
+## PO 015 Apply Cyber Security Orders and Directives
+
+- Performance: Apply cyber security orders and directives.
+
+- Conditions:
+
+- given:
+
+- references; and
+
+- supervision;
+
+- denied: nil; and
+
+- environment: day or night within a technical environment.
+
+- Standard: The Pte Cyber Operator shall, IAW ref A02, (AT0005) apply cyber security orders and directives to include:
+
+- handling classified material IAW reference A02; and
+
+- verifying authority to conduct network collection to include:
+
+- confirming rules of engagement (ROE);
+
+- confirming authorized tools; and
+
+- validating IP ranges and targets.
+
+- Remarks:
+
+- the topics are to be taught as it uniquely applies to cyber operators, not as generic policy; and
+
+- the member is expected to understand that there are limitations on open source researching as they are handling classified information.
+
+# ANNEX A – REFERENCES
+
+| **Ref #** | **Publication** |
+| --- | --- |
+| **A** | **Canadian Military References** |
+| **01** | A-PD-055-002/PP-002 CYBER OP MOS ID 00378 Occupational Specifications |
+| **02** | NDSOD Ch 5, 6, and 7 National Defence Security Orders and Directives ([http://intranet.mil.ca/en/health-safety-security/security-policies-ndsod.page](http://intranet.mil.ca/en/health-safety-security/security-policies-ndsod.page)) |
+| **03** | DAOD 2006-1 [DAOD 2006-1, Procedures for the Safeguarding and Authorized Disclosure of Information in the DND and the CAF - Canada.ca](https://www.canada.ca/en/department-national-defence/corporate/policies-standards/defence-administrative-orders-directives/2000-series/2006/2006-1-procedures-safeguarding-authorized-disclosure-information.html) |
+| **04** | ADM(IM) IT Security Policies and Standards ([http://admim-smagi.mil.ca/en/security/policies-standards/index.page](http://admim-smagi.mil.ca/en/security/policies-standards/index.page)) |
+| **05** | JDN 2017-02, CAF Joint Doctrine Note- Cyber Operations |
+| **06** | DAOD 6002-2 ([http**://**intranet.mil.ca/en/defence-admin-orders-directives/6000/6002-2.page](http://intranet.mil.ca/en/defence-admin-orders-directives/6000/6002-2.page)) |
+| **07** | Canadian Armed Forces Ethos : Trusted to Serve ([https://www.canada.ca/en/department-national-defence/corporate/reports-publications/canadian-armed-forces-ethos-trusted-to-serve.html](https://www.canada.ca/en/department-national-defence/corporate/reports-publications/canadian-armed-forces-ethos-trusted-to-serve.html)) |
+|  |  |
+| **B** | **Allied Military References** |
+| **B1** | TSG 158-0020 CONDUCT A MILITARY BRIEFING [https://web.archive.org/web/20181123040438/https://tsg3.us/tnsg_lib/pldc_school/off_advanced/tnsg_158_0020_conduct_briefing/tnsg_158_0020.pdf](https://mcas-proxyweb.mcas.ms/certificate-checker?login=false&originalUrl=https%3A%2F%2Fweb.archive.org.mcas.ms%2Fweb%2F20181123040438%2Fhttps%3A%2F%2Ftsg3.us%2Ftnsg_lib%2Fpldc_school%2Foff_advanced%2Ftnsg_158_0020_conduct_briefing%2Ftnsg_158_0020.pdf%3FMcasTsid%3D20892&McasCSRF=5f588876b52695598cf8c5a3af6fdf90068f437ef0d77f61585bea1e5c14642b) |
+|  |  |
+| **C** | **Civilian /Commercial References** |
+| **C1** | ISBN: 9781260454031, CompTIA A+ Certification All-in-One Exam Guide, Tenth Edition (Exams 220-1001 & 220-1002) |
+| **C2** | ISBN: 9780136770312, CompTIA Security+ SY0-601 Cert Guide |
+| **C3** | ISBN: 9781118137550, CompTIA Network+ Study Guide Authorized Courseware: Exam N10-005, Second Edition |
+| **C4** | ISBN: 9781491962848, Network Security Through Data Analysis: From Data to Action, Second Edition |
+| **C5** | ISBN: 9781119398721, Big Java Late Objects, 2nd edition |
+| **C6** | ISBN: 9781449320683, Windows PowerShell Cookbook: The Complete Guide to Scripting Microsoft's Command Shell, 3rd Edition |
+| **C7** | ISBN: 9781801070393, Mastering Active Directory: Design, deploy, and protect Active Directory Domain Services for Windows Server 2022, 3rd Edition |
+| **C8** | ISBN: 9780979958717, Nmap Network Scanning: The Official Nmap Project Guide to Network Discovery and Security Scanning |
+| **C9** | ISBN: 9781597490993, Snort Intrusion Detection and Prevention Toolkit |
+| **C10** | ISBN: 9780321247445, Introduction to Computer Security |
+| **C11** | ISBN: 9780128006047, Targeted Cyber Attacks |
+| **C12** | ISBN: 9781593272906, Practical Malware Analysis: The Hands-On Guide to Dissecting Malicious Software |
+| **C13** | ISBN: 9780996182720, The Hunter's Handbook—Endgame's Guide to Adversary Hunting |
+| **C14** | ISBN: 9781593277932, Practical Forensic Imaging: Securing Digital Evidence with Linux Tools |
+| **C15** | ISBN: 9781118825099, The Art of Memory Forensics: Detecting Malware and Threats in Windows, Linux, and Mac Memory |
+| **C16** | ISBN: 9798985645040, 11 Strategies of a World-Class Cybersecurity Operations Center |
+| **C17** | ISBN: 9781264798964, CompTIA Linux+ Certification All-in-One Exam Guide, Second Edition (Exam XK0-005) |
+|  |  |
+| **D** | **Other** |
+| **D1** | MITRE ATT&CK Framework (https://attack.mitre.org/matrices/enterprise/) |
+
+# ANNEX B – TASK DISPOSITION
+
+| **+,*** | **Task #** | **Task Statement** | **PO #** | **T/NT** | **Substantiation for ****Tr****g**** Priority** | **Substantiation for ****No-Trai****n** |
+| --- | --- | --- | --- | --- | --- | --- |
+|  | AT0005 | Apply cyber security orders and directives | 015 | T | H |  |
+| * | AT0006 | Implement cyber security orders and directives |  | NT |  | Not a Pte task |
+|  | BT0010 | Advise on tactical cyber activities |  | NT |  | Can be learnt on the job |
+|  | BT0020 | Plan tactical cyber activities |  | NT |  | Not a Pte task |
+|  | BT0210 | Transfer customer enquiries to appropriate sections |  | NT |  | Can be learnt on the job |
+|  | BT0220 | Inform on cyber threats | 009 | T | L - Advise alerts/relevant info to supervisor - covered by other trained tasks |  |
+|  | BT0240 | Conduct cyber threat emulation |  | NT |  | Specialty on the job / Not a Pte task |
+|  | BT0245 | Conduct threat emulation on PT and OT systems |  | NT |  | Not a Pte task |
+|  | BT0250 | Conduct penetration testing |  | NT |  | Specialty, not a Pte task |
+|  | BT0255 | Support social engineering operations |  | NT |  | Not a Pte task |
+| * | BT0260 | Gain access to a target device/network environment |  | NT |  | Specialty, not a Pte task |
+|  | BT0270 | Generate authorized adverse effects on a target network/device |  | NT |  | Specialty, not a Pte task |
+|  | BT0280 | Assess extent of identified vulnerabilities |  | NT |  | not a Pte task |
+|  | BT0290 | Demonstrate identified cyber defence gaps to supported units |  | NT |  | Specialty, not a Pte task |
+|  | BT0300 | Advise on cyber defence enhancements | 009 | T | M |  |
+|  | BT0310 | Assess the effectiveness of adversary cyber capabilities |  | NT |  | Specialty / not a Pte task / not a real task now |
+|  | BT0311 | Control tool indicators |  | NT |  | Not a Pte task |
+|  | BT0312 | Determine tool indicators |  | NT |  | Not a Pte task |
+|  | BT0320 | Conduct cyber defence audits |  | NT |  | Not a Pte task |
+|  | BT0325 | Conduct cyber defence assessment |  | NT |  | Not a Pte task |
+|  | BT0330 | Triage indicators of events | 014 | T | H |  |
+|  | BT0340 | Track Cyber events |  | NT | H | Not a Pte task |
+|  | BT0350 | Monitor network sensors for cyber events | 014 | T | H |  |
+|  | BT0351 | Respond to a cyber event |  | NT |  | Not a Pte task |
+|  | BT0352 | Investigate cyber incident | 014 | T | H |  |
+|  | BT0361 | Extract network indicators | 014 | T | H |  |
+|  | BT0362 | Extract artifacts | 014 | T | H |  |
+|  | BT0370 | Identify network mapping and operating system (OS) fingerprinting activities | 010 | T | H |  |
+|  | BT0380 | Validate intrusion detection system (IDS) alerts against network traffic | 014 | T | H |  |
+|  | BT0400 | Triage artifacts | 011 | T | H |  |
+|  | BT0410 | Identify device applications | 008 | T | H |  |
+|  | BT0411 | Identify operating systems based on network traffic | 008 | T | H |  |
+|  | BT0412 | Conduct live artifact acquisition |  | NT |  | Not a Pte task |
+|  | BT0420 | Reconstruct a malicious activity | 010/012 | T | H |  |
+|  | BT0421 | Identify malicious behaviour in network traffic | 010 | T | H |  |
+|  | BT0422 | Identify malicious behaviour in host logs | 012 | T | H |  |
+|  | BT0430 | Recover artifacts for digital forensics analysis | 013 | T | H |  |
+|  | BT0435 | Identify artifacts for digital forensics analysis | 013 | T | L |  |
+| * | BT0440 | Duplicate Clone digital media for forensics REVISED | 013 | T | L |  |
+|  | BT0450 | Extract artifacts for digital forensics analysis | 013 | T | H |  |
+|  | BT0460 | Decrypt seized data |  | NT |  | Can't train without being on the job |
+|  | BT0470 | Document original condition of digital forensic artifacts | 013 | T | H |  |
+|  | BT0480 | Perform dynamic analysis of a boot process |  | NT |  | Not a Pte task |
+|  | BT0490 | Perform file system forensic analysis |  | NT |  | Not a Pte task |
+|  | BT0500 | Perform live forensic analysis |  | NT |  | Not a Pte task |
+|  | BT0510 | Perform static media analysis |  | NT |  | Not a Pte task |
+|  | BT0515 | Produce an activity timeline | 009/010/012/014 | T | H |  |
+|  | BT0520 | Perform digital forensic timeline analysis |  | NT |  | Not a Pte task |
+|  | BT0530 | Scan for viruses on digital media |  | NT |  | Can be learnt on the job |
+|  | BT0535 | Conduct OS forensics |  | NT |  | Specialization |
+|  | BT0540 | Attribute a forensic artifact to a particular operating system | 013 | T | H |  |
+|  | BT0541 | Attribute software behaviour to a particular operating system | 008 | T | H |  |
+|  | BT0542 | Identify indicators of cyber activity | 010/014 | T | H |  |
+|  | BT0550 | Monitor public and private sources for attribution and campaign correlation to cyber events |  | NT |  | Not a Cyber Op task |
+| * | BT0560 | Research real time open-source cyber events for Indications and Warnings (I&W) | 014 | T | H |  |
+|  | BT0570 | Identify intelligence gaps |  | NT |  | Not a Pte task |
+|  | BT0580 | Produce a request for information (RFI) |  | NT |  | Can be learnt on the job |
+|  | CT0010 | Inform on cyber security best practices/policy |  | NT |  | Not a Pte task |
+|  | CT0050 | Initiate technical report | 009 | T | H |  |
+|  | CT0060 | Update technical report | 009 | T | L |  |
+|  | CT0090 | Draft cyber event report |  | NT |  | Not a Pte task |
+|  | CT0100 | Review cyber event report |  | NT |  | Can be learnt on the job |
+|  | CT0120 | Update cyber event report |  | NT |  | Not a Pte task |
+|  | CT0130 | Document analysis notes | 010/011/012/014 | T | H |  |
+|  | CT0140 | Update reporting database |  | NT |  | Learnt on the job |
+|  | CT0150 | Fuse cyber threat and defence information to inform risk assessments |  | NT |  | Not a Pte task |
+|  | CT0160 | Advise chain of command (CoC) on current cyber threat | 009 | T | M |  |
+|  | CT0170 | Brief client on network evaluation process |  | NT |  | Not a Pte task |
+|  | CT0180 | Report risks and vulnerabilities to client |  | NT |  | Not a Pte task |
+|  | CT0190 | Report analysis findings to client |  | NT |  | Not a Pte task |
+|  | CT0200 | Recommend cyber incident recovery measures | 009 | T | L |  |
+|  | CT0210 | Recommend digital media recovery measures |  | NT |  | Specialization |
+|  | CT0240 | Recommend mitigation action to prevent reoccurrence of cyber incident |  | NT |  | Not a Pte task |
+|  | CT0260 | Prepare cyber tactical briefings | 009 | T | L |  |
+|  | CT0281 | Identify Tactics, Techniques, and Procedures (TTPs) of malicious activity | 010/012 | T | H |  |
+|  | CT0282 | Report on TTPs of malicious activity | 009 | T | H |  |
+|  | CT0300 | Attribute malicious activity |  | NT |  | Not a Pte task |
+|  | ET0010 | Maintain collection database |  | NT |  | Not a general Pte task |
+|  | ET0020 | Safeguard cyber forensic evidence | 013 | T | H |  |
+| * | ET0050 | Collect artifacts (e.g., source code, malware, and trojans) | 013 | T | H |  |
+|  | ET0051 | Deploy endpoint agent | 006 | T | L |  |
+|  | ET0052 | Deploy taps | 006 | T | L |  |
+|  | ET0053 | Validate log and traffic collection | 006 | T | L |  |
+|  | ET0060 | Collect network traffic and logs | 006 | T | H |  |
+|  | ET0061 | Collect metadata from network traffic | 006 | T | M |  |
+|  | ET0062 | Collect metadata from host logs | 006 | T | M |  |
+|  | ET0070 | Capture live memory from operating system |  | NT |  |  |
+|  | ET0075 | Conduct live memory acquisition | 013 | T | H |  |
+|  | ET0080 | Scan for vulnerabilities | 008 | T | H |  |
+|  | ET0090 | Develop logical network map | 008 | T | H |  |
+|  | ET0095 | Produce network map of implicated systems |  | NT |  | Not a Pte task |
+|  | ET0100 | Determine location of physical network assets | 008 | T | H |  |
+|  | ET0120 | Transport cyber evidence |  | NT |  | Can be learnt on the job |
+|  | ET0140 | Destroy cyber evidence |  | NT |  | Can be learnt on the job |
+|  | FT0010 | Install hardware | 002 | T | H |  |
+|  | FT0020 | Remove hardware | 002 | T | H |  |
+|  | FT0030 | Configure hardware | 002 | T | H |  |
+|  | FT0040 | Install software | 003 | T | H |  |
+|  | FT0050 | Remove software | 003 | T | H |  |
+|  | FT0060 | Configure software | 003 | T | H |  |
+|  | FT0080 | Troubleshoot toolset software deficiencies | 003 | T | H |  |
+|  | FT0090 | Determine software deficiencies |  | NT |  | Learnt on the job |
+|  | FT0100 | Recommend corrective measures to software deficiencies |  | NT |  | Not a Pte task |
+|  | FT0110 | Troubleshoot toolset hardware deficiencies | 002 | T | H |  |
+|  | FT0120 | Recommend corrective measures to hardware deficiencies |  | NT |  | Not a Pte task |
+|  | FT0130 | Load network sensor rules to sensors | 007 | T | H |  |
+|  | FT0160 | Develop network sensor rules | 007 | T | H |  |
+|  | FT0180 | Test network sensor rule functionality | 007 | T | H |  |
+|  | FT0200 | Recommend deployment of network sensor rules |  | NT |  | Learnt on the job |
+|  | FT0230 | Recommend deactivation of network sensors rules |  | NT |  | Learnt on the job |
+|  | FT0260 | Determine standard toolset configurations |  | NT |  | Not a Pte task |
+|  | FT0280 | Develop software tools | 001 | T | H |  |
+|  | FT0285 | Apply software development methodologies |  | NT |  | Not a Pte task |
+|  | FT0290 | Test custom tool |  | NT |  | Not a Pte task |
+|  | FT0310 | Develop custom network exploitation tools |  | NT |  | Not a Pte task |
+|  | FT0320 | Test custom exploitation tool functionality |  | NT |  | Not a Pte task |
+|  | FT0325 | Modify existing tool and exploit source code |  | NT |  | Not a Pte task |
+|  | FT0340 | Build custom testing environment |  | NT |  | Not a Pte task |
+|  | FT0345 | Prepare an analysis environment | 011 | T | M |  |
+|  | FT0350 | Determine configuration changes required to conduct network evaluation |  | NT |  | Not a Pte task |
+|  | FT0360 | Determine configuration changes required to conduct incident response |  | NT |  | Not a Pte task |
+|  | FT0370 | Develop a deployable cyber defence toolkit |  | NT |  | Learnt on the job |
+| * | FT0380 | Maintain deployable cyber defence audit toolkit REVISED |  | NT |  | Learnt on the job |
+|  | FT0400 | Maintain deployable digital forensic toolkits |  | NT |  | Learnt on the job |
+|  | GT0010 | Analyze persistent collection deficiencies |  | NT |  | Not a Pte task |
+|  | GT0040 | Identify means of compromise | 014 | T | H |  |
+|  | GT0070 | Characterize network traffic to establish normal patterns | 008 | T | H |  |
+|  | GT0075 | Characterize host logs to establish normal patterns |  | NT |  | Learnt on the job |
+|  | GT0080 | Analyze network traffic | 008/010 | T | H |  |
+|  | GT0081 | Analyze host logs | 012 | T | H |  |
+|  | GT0082 | Analyze PT and OT systems |  | NT |  | Not a Pte task |
+|  | GT0090 | Analyze site cyber defence policies for compliance with regulations and directions |  | NT |  | Not a Pte task |
+|  | GT0100 | Assess technical risk and vulnerability of cyber systems |  | NT |  | Not a Pte task |
+|  | GT0110 | Analyze anomalies in network traffic using metadata | 010 | T | H |  |
+|  | GT0115 | Analyze anomalies in host logs using metadata |  | NT |  | Not an explicit task |
+|  | GT0120 | Assess non-technical risk and vulnerability of cyber systems |  | NT |  | Learnt on the job |
+|  | GT0130 | Analyze trends in cyber defence |  | NT |  | Learnt on the job / Intelligence job |
+|  | GT0140 | Determine threats to network security |  | NT |  | Not a Pte task |
+|  | GT0150 | Determine adversary tactics, techniques and procedures (TTPs) | 014 | T | M |  |
+|  | GT0160 | Evaluate adversary TTPs |  | NT |  | Not a Pte task |
+|  | GT0170 | Evaluate friendly TTPs |  | NT |  | Not a Pte task |
+|  | GT0180 | Evaluate all source cyber threat information | 014 | T | H |  |
+|  | GT0190 | Analyze internal network for compromise potential |  | NT |  | Specialization / Not a Pte task |
+|  | GT0220 | Analyze digital media for potential cyber incident |  | NT |  | Not a Pte task |
+|  | GT0230 | Lead analysis of digital media for potential cyber incident activity |  | NT |  | Not a Pte task |
+|  | GT0250 | Analyze security alerts | 014 | T | H |  |
+|  | GT0280 | Analyze all source Indications & Warnings (I&W) of cyber events and incidents | 014 | T | H |  |
+|  | GT0310 | Analyze internal network for compliance with Canadian Armed Forces (CAF) cyber policy and procedures |  | NT |  | Not a Pte task |
+|  | GT0340 | Analyze internal cyber event and incident reports in support of mission objectives |  | NT |  | Not a Pte task |
+|  | GT0370 | Conduct basic static analysis | 011 | T | H |  |
+|  | GT0380 | Determine the key characteristics of malicious software | 011 | T | H |  |
+|  | GT0390 | Conduct basic dynamic analysis | 011 | T | H |  |
+|  | GT0400 | Create synthetic environment | 011 | T | H |  |
+|  | GT0410 | Analyze malicious software | 011 | T | H |  |
+|  | GT0460 | Reverse engineer obfuscated software | 011 | T | H |  |
+|  | GT0470 | Defeat adversary attempts to hide malicious content and behaviour |  | NT |  | Not a Pte task |
+|  | GT0490 | Defeat use of anti-forensic techniques |  | NT |  | Not a Pte task |
+|  | GT0491 | Identify adversary attempts to hide malicious content and behaviour | 011 | T | H |  |
+|  | GT0492 | Identify adversary use of anti-forensic techniques | 011 | T | H |  |
+|  | GT0500 | Conduct memory forensics |  | NT |  | Specialization |
+|  | GT0510 | Extract malicious artifacts from other digital media (e.g., documents, pictures, videos) | 013 | T | H |  |
+| * | GT0520 | Compile technical intelligence from analyzed malicious software | 011 | T | H |  |
+
+*Notes.*
+
+The plus sign (+) indicates that the task has not been previously trained.
+
+The asterisk (*) indicates change made to the task statement or creation of a new task.
+
+T/NT –** **Train/No Train.
+
+T/NT decisions IAW CFITES Vol. 3, p. 20-23, para. 53-59.
+
+# ANNEX C – RECORD OF DECISIONS
+
+| **T****itle** | RQ Cyber Operator Pte - QSWB |
+| --- | --- |
+| **L****ocation of Board** | JIIFC classroom, CFS Leitrim |
+| **Dates** | 12 -16 Aug 24 |
+| **Version** |  |
+|  |
+| **Board Composition** | **Surname** | **Initials** | **Rank** | **Unit** |
+| Co-Chair (content) | Kim | KM | Capt | CTU |
+| Co-Chair (process) | Gosselin | C | Capt | CTU |
+| SME | Croft | CMJ | Sgt | CTU |
+| SME | Billings | T | Sgt | CTU |
+| SME | Derome | RBJ | MCpl | CTU |
+| SME | Crockett | S | PO1 | NCRU |
+| SME | Adams | M | Maj | RMC |
+| SME | Tung | L | MCpl | 34 Sig Regt |
+| SME | Yao | A | MCpl | 34 Sig Regt |
+| SME | Gallo | JF | MCpl | 34 Sig Regt |
+| SME | Morrison | BG | WO | CFNOC |
+| SME | Herlihy | DJ | Cpl | CFNOC |
+| SME | Nester | R | Cpl | CFNOC |
+| SME | Lariviere | J | Cpl | CFNOC |
+| SME | Aladjikov | KT | MWO | DCOFD |
+| SME | Mok | O | Cpl | 34 Sig Regt |
+| Secretary | Somma | DL | Lt | CFIOG |
+| Advisor | Young | C | Maj | DCOFD |
+|  |
+| **Ser #** | **Details** | **Action** |
+| **Day 1** |  |  |
+|  | The Chairperson(s) briefly reviewed a draft validation report for a validation conducted 5 July – 6 Aug 2024. It was decided that they would try and schedule the author to review the validation with the board. By the time it became evident that the author was unable to review the validation with the board, the board was well underway in creating the QS. To not break the flow of creation, it was decided to review the validation at the end of the board. |  |
+|  | Board was commenced and expectations were given to board members. The desired outcome is to confirm that both the College and CAF training modules are current to operational requirements. It is also to ensure that the College portion meets the expectations of the later CAF training modules. |  |
+|  | Board was instructed they will review the old QS and see if it is still relevant. |  |
+|  | Board chair instructed that the board would need to review what the expectation of a Cyber Op for P RES and REG F. |  |
+|  | Board discussed and came to conclusion that basic skill sets are going to be the same for P RES and REG F, where the issue lies is with security clearances and the time required to get one and the requirement to be Level II. |  |
+|  | After discussion, board decided that the QS is the same for the Reg F as it is with the P RES, its just “how” the training will be delivered will be different as P RES members have difficulty with courses due to the required length. Some discussion was given to modularize the training. Further examination will be required after the QSP is finalized as to what can be modularized for P RES members. |  |
+|  | Doc review was completed with a major emphasis on the work requirement table (WRT) previously called master task list (MTL). Review of the WRT revealed that the task list is out of date and not in line with previous recommendations with the output from previous QS boards sat for Pte RQ and Cpl RQ. The WRT no longer reflect on the tasks of the Cyber Operator trade. The board recommends that the JBS is re-opened for review and writing. Review of the Occupation Specification (OS) revealed that the current approved document needs to be reviewed due to the comments listed below. | TDOs to format QS and MESCR OS to be forwarded to DPGR for submission |
+|  | The board discussed that the minimum medical standards for the Cyber Operators should be reviewed as these were made to mirror Communicator Research, but the two trades do not require the same medical standard. (ie. Hearing requirements are different). | MESCR OS |
+|  | Recommended by the board members that all the distributed “analyst” (ie. Cyber Defence, Red, Blue, Incident Handling, etc.) jobs, be collapsed into a singular generic “analyst” job as the distributed analyst positions do not exist. The described USQs are also out of date. | MESCR OS |
+|  | It was emphasised by the board that there needs to be an “English Essential” requirement as all industry jargon and standards are delivered in English. So, while training could be given in both French and English, on the job they will be required to operate in English. When working with international partners, the working language is English. | MESCR OS |
+|  | Board highly recommends to the P Res take a language test prior to acceptance, and also having it conveyed that the job is performed in English as per industry standard. | If serial10 is not actioned, efforts must be made to address this. Training is currently offered only in English |
+| **Day 2** |  |  |
+|  | Board discussed the need to review the security clearance required to complete Pte as LEVEL II is required on the job. After the QS is more formalized a review will need to be performed to establish exactly where and when and what type of security clearance is needed. |  |
+|  | Board moved onto task analysis of Train (T) and No Train (NT). |  |
+|  | While reviewing T/NT the scope of each task was noted so that when time to develop a scalar diagram came, they would be able to look back and understand to what level the Pte will need to be trained. |  |
+|  | After reviewing, it was found that a good deal of tasks identified on the WRT are NOT the responsibility of a Pte Cyber Op having just completed their Pte RQ. |  |
+|  | Due to the changes to the Cpl which is sitting waiting for approval for the Cpl QS, it was found that the WRT that is used in the Cpl RQ QS has changed from what was the standard in Pte RQ QS. After discovering that there are new “Trained” tasks that were added to the Cpl QS, the board reviewed all of those tasks to see if their foundation is required at the Pte level. All tasks were added to the working copy of the QS to establish if there is crossover or wording changes so that they reflect each other. There were concerns amongst the board members with aligning Pte tasks with the Cpl tasks as the latter has not been approved and updated on the WRT. It was concluded to move on with the Cpl tasks as they are from the latest writing board and better reflect the current landscape of tasks that Cyber Operators are given. Pte and Cpl tasks will be reflected in revised QS once completed as some of the Cpl tasks need to have foundational knowledge and skills taught on the Pte. |  |
+|  | AT0005 “Apply cyber security orders and directives” Board discussed how this task applies to Cyber Operators and not the General Population, but those that are only Cyber specific. CAF general Cyber directives (realm specific), not unit-level directives. (Not IBTS). It was suggested to change the verb to be a more discrete task. |  |
+|  | BT0280 “Assess extent of identified vulnerabilities” was decided to be a NT task. The scope of potential damage of the specific vulnerability - within their given arcs of fire. |  |
+|  | BT0340 “Track Cyber Events” was discussed to mean: to identify the timeline / kill chain within their given investigation. It was decided to be a NT as it is not a Pte task. |  |
+|  | Board discussed the performance expectation of BT0350 to “Monitor a network sensors for cyber event” to be used in remarks section (para 4.) that this is not a definitive task with a start or end point, as they are expected to “monitor”, but the task is to “react”. |  |
+|  | BT0361 “Extract network indicators” was discussed to include metadata. |  |
+|  | BT0362 “Extract artifacts” was discussed to mean extracting files, images, etc. / network, from malware, hard disks, etc. |  |
+|  | BT0370 “Identify network mapping and operating system (OS) fingerprinting activities” was discussed to mean identification through scanning. |  |
+|  | BT0400 “Triage artifacts” was discussed to mean identify if something is benign/malicious/suspicious. They need to triage all artifacts, not just known malware. |  |
+|  | BT0412 “Conduct live artifact acquisition” was discussed to mean artifact acquisition from computer memory dumps. |  |
+|  | BT0430 “Recover artifacts for digital forensics analysis” includes actions such as copying hard drive, extracting specific files from a hard drive; no forensic analysis is involved during this process. |  |
+|  | BT0470 “Document original condition of digital forensic artifacts” was discussed to mean hashing, timestamps, labels, etc. |  |
+|  | Changed BT0535 Conduct OS forensics from T to NT as this task is not at a Pte level. |  |
+|  | BT0560 “Research real time open-source cyber events for Indications and Warnings (I&W)” was discussed to mean researching open-source exploit databases such as CVEs. Cyber Ops need to understand how to conduct this research without the adversary knowing. |  |
+|  | CT0160 “Advise chain of command (CoC) on current cyber threat” was discussed to mean: to be only at the level of section level reports, team level advice, and briefing their supervisor. |  |
+|  | CT0260 “Prepare cyber tactical briefings” was discussed to mean briefing the section for the Pte Cyber Op. |  |
+|  | CT0281 “Identify Tactics, Techniques, and Procedures (TTPs) of malicious activity” was discussed to mean recognizing different mechanisms of the malicious activity (Ex: Identify Scans, brute-forcing, etc.). |  |
+|  | ET0020 “Safeguard cyber forensic evidence” was discussed to mean to properly handling evidence/artifacts (malware, devices, files, etc.). |  |
+|  | ET0075 “Conduct live memory acquisition” was discussed to mean: the utilization of tools. Pte’s are not expected to understand the theory behind how the tool accomplishes this task. |  |
+|  | ET0070 “Capture live memory from operating system” was discussed to mean running a tool, doesn't have to understand the theory behind how the tool achieves this task. |  |
+|  | ET0080 “Scan for vulnerabilities” was discussed to mean running a tool and extracting information. Board decided to follow industry standard internal and external scanning. |  |
+|  | ET0095 “Produce network map of implicated systems” was discussed to mean creating a network map within their scope of investigation. |  |
+|  | ET0100 “Determine location of physical network assets” includes determining nomenclature, Ips, etc. of network assets. |  |
+|  | FT0090 “Determine software deficiencies” was discussed to mean tasks such as identifying if dependencies are missing but not identifying flaws in the source code of the software. |  |
+|  | FT0110 “Troubleshoot toolset hardware deficiencies” was discussed to mean basic troubleshooting. |  |
+|  | FT0200 “Recommend deployment of network sensor rules” was discussed to mean recommending network sensor rules to supervisor for an approval. |  |
+|  | FT0230 “Recommend deactivation of network sensors rules” was discussed to mean recommending network sensor rules to supervisor for an approval. |  |
+|  | FT0280 “Develop software tools” Board discussed that a new Pte should be able to create a simple script and be able to run it but not develop large scale software. |  |
+|  | FT0290 “Test custom tool” was decided to be a NT as this task is not at a Pte level. |  |
+|  | GT0160 “Evaluate adversary TTPs” was discussed to mean administrating adversary TTPs to evaluate effectiveness on Networks. |  |
+|  | GT0180 “Evaluate all source cyber threat information” was discussed to mean cross checking open-source research. |  |
+|  | GT0250 “Analyze network sensor data for cyber event activity” was revised and changed from previous board to “Analyze security alerts”. GT0250 reworded “Analyze SIEM alerts to remove SIEM as this is too specific; now reads “Analyze Security Alerts” The task was too restrictive. The board decided to make it more generic. Board discussed SIEM and where and when it should be taught. It was decided to merge some sub-tasks of the “SIEM” and merged with “deploy network security appliances”. The breaking up of “SIEM” was decided to be conducted the following week. |  |
+|  | GT0340 “Analyze internal cyber event and incident reports in support of mission objectives” was discussed to mean read previous reports from other analysts in relation to the mission. |  |
+|  | GT0460 “Reverse engineer obfuscated software” was discussed to mean basic obfuscation such as base64for the Pte Cyber Op. |  |
+|  | Two new tasks created for WRT as they better identify the performance expectation. GT0491 “Identify adversary attempts to hide malicious content & behaviour” to mean a basic level (identify that anti-detection is occurring). GT0492 “Identify adversary use of anti-forensic techniques” The Pte Cyber Op are not expected to defeat the two techniques above but are expected to identify the behaviours. |  |
+|  | GT0520 “Compile technical intelligence from analyzed malicious software” The board recommended to move this task to Duty Area C – Reporting because the scope is to report on triage malware. | MESCR EQ |
+|  | Prior to board commencement the old QS was printed and placed on the wall so as to try and use some of what already was created. After taking into consideration all the new tasks that were added, plus all the tasks that were removed (as per annex B) the development of a scalar of the old course did not align in any meaningful way. It was decided to start over and re-scalar the new material. This was required as the original scope of the Cyber Op QS did not capture the actual tasks or expectations of what is required by a Cyber OP on day one. |  |
+|  | Tasks were grouped and organized as to what made most logical sense. |  |
+| **Day** **3** |  |  |
+|  | Board grouped and placement was discussed, and board members confirmed all the tasks that had been added or removed were now reflected on the wall to scalar. |  |
+|  | Board found through examination of the required training that a great deal of foundational knowledge that is required for a “Cyber Op” has not been trained. |  |
+|  | Board discussed a possible 6 POs that are required to support the foundational knowledge/skills for Cyber Op. These 6 do not reflect the entire Pte RQ. |  |
+|  | Suggested PO or working PO titles are: - Install OS - Assemble computer - Configure switching a routing -  Set up small AD Domain to include: -  Make the domain, - deploy GPU - Collection - Install EDR logs - Collect Data - Install taps - Validate data - IDS |  |
+|  | Board then took those heading and develop a scalar with the tasks and sub tasks required to support the large task. |  |
+| **Day 4** |  |  |
+|  | Security classification was discussed again to ensure new candidates receive the training they can while they wait for their clearance. There were discussions of how to help prevent skill fade as there can be a large gap of time between the Pte RQ module 1 and the Pte RQ module 2, 3, and 4. It was suggested by the board that they should start the Security Clearance request as early in the process as they can be due to the amount of time required to get the clearance which is required for Cpl RQ. It was suggested that the security clearance for the Pte RQ training should be lowered to Enhanced Reliability from Secret. The training material is not reliant on Secret information to effectively train Cyber Ops and would resolve some issues with students waiting to be loaded on course. This notion was tabled for the time being who would be responsible and how the Security Clearance could be lowered are beyond the scope of this board. | MESCR OS |
+|  | Board continued to build the scalar and flesh out all the sub tasks that are required. Distinctive groups started to form. |  |
+| **Day 5** |  |  |
+|  | Board was informed that they would need to continue with the scalar and start fitting in any WRT points that have not found a home yet. As it is a QSTP board, the board will continue with what remains with the QS the following week during the TP board as they can not continue until the QS is sorted out. |  |
+|  | Discussions between the board members was made regarding “network” & “host” and the desire to maybe separate the two as the information and knowledge just for those two topics could be more than a year just on that. |  |
+|  | It was decided by the board that the scope of network and host analysis was to be a task under “Investigate Cyber Incidents” and renamed to: - Identify behaviour in network - Identify behaviour in host It was presumed that all requisite knowledge required for the task is covered in previous POs, lowering the total amount of time required to train these specific POs. This is the reason the EO “Triage Alert” was created. High level tasks were discussed that would trigger a response. Which is where the need to react is found, and that is what a Cyber Op needs to do. |  |
+|  | Alerts & IoC & Cyber threat intelligence are all search and respond tasks, these tasks were then broken into sub tasks: - Running alert tools - Investigate - Seach for IoC |  |
+| **Day 6** |  |  |
+|  | QS was extended on the week 2 of TP board, Aug 19, 2024, to talk about the changes made for other PO’s. With the extension of the QS, the people on the board changed to include Cpl Mok and no longer contains Cpl Herlihy, Cpl Nester, Cpl Lariviere, MCpl Tung, Maj Adams, and MWO Aladjikov. |  |
+|  | Board decided to remove 6.1 Security information and event management (SIEM) as a PO. |  |
+|  | It was decided that Cloud Security does not need to be taught as the concepts behind Cloud Security are the same as Network Security. |  |
+|  | It was decided by the board that PO 008 was to be named “Conduct Network Discovery”. Topics included in this PO were agreed and ready to be developed. |  |
+|  | Board decided to change location to conduct future meetings due to mold from the previous classroom which has caused headaches, coughing, nausea, brain fog and eye irritation. |  |
+| **Day 7** |  |  |
+|  | The board reviewed ROD from day 1 - 6 and made changes from the past week of discussion before moving on to the POs. |  |
+|  | Board discussed to revisit the master event list & parking lot. Then the board decided to split into groups to fill/finish the remaining PO since it is time consuming. |  |
+|  | Board discussed to have IPS and NIDS as a whole application for “Configure Security Appliances". It was also decided not to cover EDR as much in Security Appliances. It's considered a knowledge piece. |  |
+|  | In PO 009 “Inform on cyber threats”, the board agreed to have GT0150 “Determine adversary tactics, techniques and procedures (TTPs)” moved to PO 014 “Investigate Cyber Incident”. |  |
+|  | In PO 010 “Identify malicious behaviour in network traffic”, the board concluded that students don't know the difference between anomalies and normal traffic. |  |
+|  | In PO 011 “Triage artifacts”, the board agreed that members should be able to recognize anomalous behaviour when conducted through basic programming patterns (functions, loops, variables, etc.) with common programming languages (C, python, PowerShell, bash, JavaScript, Java, PHP, etc.). |  |
+|  | Upon completion of the QSWB, a review of the draft training validation was conducted. Upon review, it was concluded that the board did agree with certain points of the validation in relation to software development, programming, specific programming languages, and the setup of log and traffic collection. The board emphatically agreed that the Pte/Junior Cpl do not directly interact with clients. The board disagreed with the recommendation to focus on: - SOAR/SIEMs: as these tools frequently change on the job/section and the tool itself allows new users to bypass learning/understanding basic skills which will hamper a new graduates ability to perform tasks on the job. This was originally taught in a previous version of the course and was removed for this reason. - Offensive Capabilities: - It was determined that Offensive capability skills are considered a specialty in the trade and has been approved as a Unique Specialty Qualification. - Students that are employed in these sections upon graduation have prior qualifications gained from previous experience and are considered the exception. It was noticed that the validation itself had certain errors. Ex: direct interaction with clients was mentioned in multiple POs where this is not a task. |  |
+|  | The QS board adjourned at the end of the day. |  |
+| Post-board activities |  |
+|  | The name of some of the PO and tasks were changed as a result of discussions during the post-board activities of the TP. |  |
+|  | Discussed about the environment conditions in the QS of the new Pte RQ course. Discussed that "under any weather conditions" doesn't apply in the context of Cyber Op occupation. The discussion involved that in theory the cyber operators could be employed in outside environments, but no recollection of ever being employed in "any weather conditions" Decided to reword to "day or night within a technical environment". Technical environment in this context will be any indoor environment with the necessary technical equipment to carry out tasks. This rewording is to be replicated across the rest of the POs. |  |
+|  | Changed BT0412 “Conduct live artifact acquisition” to a NT as this is not a Pte level task. Added FT0080 “Troubleshoot toolset software deficiencies” to PO 003 as the Pte Cyber Op has to still troubleshoot software. Added FT0130 “Load network sensor rules to sensor” to PO 007 as students need to add rules to test sensor. Revised FT0370 “Develop a deployable cyber defence audit toolkit” and changed to “Develop a deployable cyber defence toolkit”; changed due to restrictive nature of original wording. Added GT0080 “Analyze network traffic” to PO 008 and PO 010 in the remarks section. Added GT0081 “Analyze host logs” to PO 012 in the remarks section. Changed GT0100 “Assess technical risk and vulnerability of cyber systems” to a NT as this is not a Pte Task. Added GT0110 “Analyze anomalies in network traffic using metadata” to PO 010. Finished looking through the WRT. | MESCR EQ |
+|  | PO 001 “Develop scripts for simple task automation”: Reviewed and changed PO name from “Develop Software tools” to “Develop scripts for simple task automation”. |  |
+|  | PO 002 “Maintain hardware environment”: Removed remarks scoping the PO as it was only necessary for the TP design. |  |
+|  | PO 003 “Maintain software environment”: Amended the Standards para 3.a "Deploy Windows operating system (OS)" to "Deploy operating systems (OS)” to be able to include Windows and Linux. Removed Training remark: “equivalent to a post-secondary Operating Systems course”. This remark is factually incorrect. Operating systems courses at the post secondary level are much more in depth (resource allocation, dispatching, processors, access methods, job control languages) which does not align with the scope of this PO. |  |
+|  | PO 004 “Characterize a network”: Changed name of the PO from “Configure routing and switching” to “Characterize a network”. This change was made because after the PO was fleshed out, it was identified that at no point do the students actually configure switching and routing. Changed Standard para 3 to be in line with the changes made to the TP. |  |
+|  | PO 006 “Set up log and traffic collection”: Added ET0062 "Collect metadata from host logs" to Standards para 3.c.3. |  |
+|  | PO 007 “Configure security appliances”: The standard was observed to be very different from the TP. This is as the QS specifies specific types of devices, but the learning objectives of the devices is very similar and better suited to be taught together. |  |
+|  | PO 008 “Conduct network discovery”: It was noted that PO 008 does focus on regular user behaviour for network traffic but not host logs. This is because in operations, a host indicator is always brought by a network indicator, therefore host baselining is usually not a task that is performed. This was amended. Updated the Standard: Added BT0411 "Identify operating systems based on network traffic" para 3.a.2.b. Added task "Enumerate a network" para 3.c. Changed ET0095 "Produce network map of implicated systems" to a NT as it's not a Pte task. Updated remarks section: Added GT0080 “Analyze network traffic” as it's an all encompassing task for the entire PO. |  |
+|  | PO 010 "Identify malicious behaviour in network traffic": Discussed if the point "identifying anomalies in network traffic" should be added as a task on the WRT. It was decided not to, as it would not be an explicit task given to Cyber Operators. It would be an implied task of "analyze network traffic". |  |
+|  | PO 011 “Triage artifacts”: The old PO 006 was removed and integrated to PO 011. Removed most sub paragraphs in the Standards that were not tasks from the WRT as they are TP topics. Removed the para "Characterizing malware" as it was redundant with the combination of the para 3.c. Added GT0400 “Creating synthetic environment" to para 3.a. Changed GT0075 "Characterize host logs to establish normal patterns" to a NT as the requisite knowledge/skills are taught through the PO, however the task itself is not trained. This task can be learnt on the job. |  |
+|  | PO 012 "Identify malicious behaviour in host logs": Discussed GT0115 "Analyze anomalies in host logs using metadata". It was identified that students will be using metadata to analyze host logs. Therefore, it was seen that it must be added to the QS and TP. It should be noted that the board agreed there is no need in the future to keep this named task as a "train". It is too granular. |  |
+|  | PO 013 “Extract artifacts for digital forensics analysis”: Added "digital media for forensic imaging" as a given in the conditions. Changed BT0440 “Duplicate digital media for forensics” to “Clone digital media for forensics” because duplicating in the context of Digital Forensics has a dedicated meaning (copy means duplicate); therefore, the task itself was improperly named. Para 3.g was removed from the Standards “Document source and metadata of forensic artifacts” as this is covered in the rest of the tasks above. Remarks section: - Cell phones and devices were removed to the remark and to limit the acquisition to computer systems. Acquiring data from a cell phone or electronic device is a complicated task and it would not fit the context of an introductory course. | MESCR EQ |
+|  | PO 014 “Investigate cyber incident”: Added the following tasks to Standards: BT0330 “Triage indicators of events” para 3.a.2. GT0250 “Analyze security alerts” to para-Alpha 3.a.3. BT0542 “Identify indicators of cyber activity” para 3.b.2. BT0560 “Research real time open-source cyber events for indications and warnings (I&W)” to Standards para 3.c.3. GT0280 “Analyze all source indications & warnings (I&W) of cyber events and incidents” para 3. c.3. a. |  |
+|  | PO 015 “Apply cyber security orders and directives”: It is important to stress the dangers of installing unauthorized tools and configurations, the sharing of tools/configurations/capabilities/classified IoCs. The TDO recommended to remove this PO as this can be learn at the unit. In the remarks, it is claimed that general policy will not be taught. Rather, it is the policy as it applies uniquely to cyber. That being said, the board failed to identify how this differs than any sort of INDOC briefing someone would get when arriving at a unit and learning its SOP's. Proposed for this to be a NT. The board agreed that the relevancy of this entire PO is questionable. It doesn't seem apparent that there is anything specific to cyber that this PO covers. It appears to be a generic policy PO that can be covered by a DLN course. Other points that are not covered in the DLN course is covered in other POs as well. |  |
+
+A - 1/2
+
+B - 1/8
+
+C-1/12
+
+iii
+
+6
+
+ii
+
+6
+
+Date of QS Approval/Basic Date:29 September 2025
+
+Change Date: N/A
+
+Change Number: N/A
+
+iv

@@ -1,0 +1,23 @@
+template_id,os_family,version,role,reuse_tier,enabled,build_hours,golden_gb,sensor_baked,notes
+win-xp-sp3,windows,XP SP3,legacy victim,med,no,10,12,no,CONFIRM licensing + EO justification before enabling. Isolated no-egress ranges ONLY. Prefer win7 unless XP-era behaviour required.
+win7-sp1,windows,7 SP1,legacy victim,med,yes,10,25,yes,Default legacy/vulnerable host
+win10-22h2,windows,10 22H2,victim/analyst workstation,very_high,yes,14,35,yes,Workhorse image - most scenarios
+win11-24h2,windows,11 24H2,current-estate victim,high,yes,14,40,yes,Pairs with EDR-present scenarios
+srv2016,windows,Server 2016,legacy DC/file,med,yes,12,30,yes,Legacy AD/file
+srv2019,windows,Server 2019,DC/DNS/DHCP/Exchange/IIS/MSSQL base,very_high,yes,16,35,yes,Build once - derive role snapshots (per ALJQ PO 004 roles)
+srv2022,windows,Server 2022,modern DC/member,high,yes,14,35,yes,Current estate
+kali,linux,rolling,analyst/attacker workstation,very_high,yes,10,30,no,Red Analyst + triage labs
+ubuntu-lts,linux,24.04,web/app/db victim,high,yes,8,15,yes,Victim services
+rocky,linux,9,enterprise linux victim,med,yes,8,15,yes,-
+remnux,linux,latest,malware analysis workstation,high,yes,10,25,no,ALRA static/dynamic
+sift,linux,latest,DFIR/forensics workstation,high,yes,10,30,no,Log analysis + IR capstones
+securityonion,linux,2.4,sensor + telemetry appliance,very_high,yes,16,60,n/a,Baked into most range templates - OpenSearch feed
+pfsense,appliance,latest,range gateway/firewall,very_high,yes,6,4,n/a,VLAN isolation + no egress
+svc-emulators,linux,-,DNS/NTP/mail service emulation,high,yes,12,20,yes,Red Analyst internet-service emulation
+ca-host,linux,-,certificate authority,med,yes,8,10,yes,Red Analyst signed-cert requirement
+usersim,linux,-,user-simulation / traffic generator,very_high,yes,20,15,no,THE NOISE FLOOR - generates false positives / benign traffic
+precomp-host,windows,10/2019,pre-compromised start-state,very_high,yes,12,35,yes,Staged artifacts for log/IR analysis start
+c2-server,linux,-,C2 (Cobalt Strike/Sliver/Empire),med,no,8,20,no,AUTHOR-REQUIRED - Standards/instructor. Red Analyst only.
+blueteam-soc,mixed,-,blue-team SOC stack,med,yes,20,80,yes,Live Red-v-Blue MSEL (Temp 64 PO 004)
+detonation-host,windows,10,sterile malware detonation,high,yes,12,35,no,Isolated dynamic analysis (ALRA) - no egress ever
+cloudlog-emu,linux,-,cloud log emulation (Azure/AWS sets),med,yes,10,20,n/a,ALJQ 009.03 cloud analysis EO

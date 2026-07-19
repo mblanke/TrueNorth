@@ -1,0 +1,10 @@
+{
+  "actor": {"account": {"name": "<candidate_id>"}},
+  "verb":  {"id": "http://adlnet.gov/expapi/verbs/passed"},
+  "object": {"id": "https://ccoe.forces.gc.ca/xapi/mite/{{MITE_CODE}}/po/{{PO_ID}}",
+             "definition": {"name": {"en-CA": "{{TITLE}}"}}},
+  "context": {"extensions": {
+    "https://ccoe.forces.gc.ca/ext/nice_dcwf_task": "{{TASK_ID}}",
+    "https://ccoe.forces.gc.ca/ext/component_version": "{{COMPONENT_VERSION}}",
+    "https://ccoe.forces.gc.ca/ext/cfites_assessment": "{{ASSESSMENT_TYPE}}"}}
+}

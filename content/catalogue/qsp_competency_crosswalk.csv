@@ -1,0 +1,16 @@
+qsp_code,po_code,nice_work_role,nice_work_role_name,nice_task_ids,nist_csf_functions,nist_csf_categories,rationale
+ALJQ,PO_001-005,PR-CDA-001,Cyber Defense Analyst,T0155;T0164,ID;PR,ID.AM;PR.AT,Foundational knowledge/skills gate (FKSA) - asset awareness + trained-workforce baseline.
+ALJQ,PO_006,PR-CDA-001,Cyber Defense Analyst,T0023;T0164;T0166,ID;DE,ID.AM;DE.CM;DE.AE,Analyze DND network traffic - identify architecture then detect anomalies via monitoring.
+ALJQ,PO_007,PR-CDA-001,Cyber Defense Analyst,T0023;T0166;T0290;T0295,DE,DE.AE;DE.CM,Analyze malicious activity in network traffic - scanning/exfil/lateral detection from pcap/IDS.
+ALJQ,PO_008,IN-FOR-002,Cyber Defense Forensics Analyst,T0027;T0036;T0048;T0182,DE;RS,DE.AE;RS.AN,Triage potential malware - static+dynamic findings feed adverse-event and incident analysis.
+ALJQ,PO_009,PR-CDA-001,Cyber Defense Analyst,T0166;T0258;T0293,DE,DE.AE;DE.CM,Analyze malicious activity in host+cloud logs - event correlation and detection.
+ALJQ,PO_010,PR-CIR-001,Cyber Defense Incident Responder,T0041;T0047;T0161;T0163;T0170,RS;RC,RS.MA;RS.AN;RS.MI;RS.CO;RC.RP,Respond to cyber incidents - full IR lifecycle incl. reconstructable timeline and recovery.
+TEMP67,PO_008,PR-CDA-001,Senior Cyber Defense Analyst,T0164;T0166;T0175;T0214;T0296,PR;DE;RS,PR.PS;PR.IR;DE.CM;DE.AE;RS.MI,Defend a network under live attack - protect/harden, detect under noise, mitigate in real time.
+TEMP64,PO_001,AN-EXP-001,Exploitation Analyst (Adversary Emulation - DCWF),T0028;T0266,ID,ID.RA,Conduct cyber reconnaissance - adversary-emulation lens informs defensive risk assessment.
+TEMP64,PO_002,AN-EXP-001,Exploitation Analyst (Adversary Emulation - DCWF),T0266;T0591,ID;PR,ID.RA;PR.AA,Gain access/exploitation - validates access-control and risk posture (red).
+TEMP64,PO_003,AN-EXP-001,Exploitation Analyst (Adversary Emulation - DCWF),T0591;T0643,ID;DE,ID.RA;DE.AE,Post-exploitation (lateral/persistence/C2) - drives detection-engineering value for blue.
+TEMP64,PO_004,AN-EXP-001,Exploitation Analyst (Adversary Emulation - DCWF),T0563;T0643,ID;DE;RS,ID.IM;DE.AE;RS.AN,Threat emulation vs blue team - improvement + detection + response validation via MSEL.
+ALRA,PO_001,IN-FOR-002,Malware Reverse Engineer (DCWF),T0113;T0165;T0182,DE;RS,DE.AE;RS.AN,Analyse low-level code (C/assembly) - foundation for malware adverse-event/incident analysis.
+ALRA,PO_002,IN-FOR-002,Malware Reverse Engineer (DCWF),T0027;T0182;T0216,DE;RS,DE.AE;RS.AN,Conduct static analysis - malware characterization for detection and response.
+ALRA,PO_003,IN-FOR-002,Malware Reverse Engineer (DCWF),T0036;T0182;T0288,DE;RS,DE.AE;RS.AN,Conduct dynamic analysis - detonation-derived indicators for detection and response.
+ALRA,PO_004,IN-FOR-002,Malware Reverse Engineer (DCWF),T0103;T0182;T0286,RS;DE,RS.AN;DE.AE,Conduct memory forensics - artifact analysis supporting incident analysis.

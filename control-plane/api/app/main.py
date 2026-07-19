@@ -175,6 +175,7 @@ from .routers import (
     curriculum_router,
     detection_rules_router,
     directory_router,
+    golden_images_router,
     exercise_forge_router,
     exercises_router,
     hypervisors_router,
@@ -185,6 +186,7 @@ from .routers import (
     network_devices_router,
     ops_center_router,
     proxmox_router,
+    qsp_router,
     quizzes_router,
     ranges_router,
     scenarios_router,
@@ -213,6 +215,7 @@ app.include_router(integrations_router)
 app.include_router(lti_router)
 # Infrastructure & Directory routers
 app.include_router(hypervisors_router)
+app.include_router(golden_images_router)
 app.include_router(ai_config_router)
 app.include_router(directory_router)
 app.include_router(ad_sync_router)
@@ -225,6 +228,8 @@ app.include_router(threat_intel_router)
 app.include_router(detection_rules_router)
 # AI Exercise Forge (EPIC 1)
 app.include_router(exercise_forge_router)
+# CFITES / QSP qualification spine (crosswalk -> qualifications/POs/EOs)
+app.include_router(qsp_router)
 # Curriculum Forge (EPIC: LLM curriculum ingestion -> content/quizzes/ranges)
 app.include_router(curriculum_router)
 app.include_router(quizzes_router)

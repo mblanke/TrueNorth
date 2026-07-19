@@ -409,7 +409,7 @@ interface DeploymentProfile {
             <p class="card-note">courses in progress</p>
           </mat-card-content>
           <mat-card-actions>
-            <button mat-button routerLink="/training">Go to Training</button>
+            <button mat-button routerLink="/learning/courses">Go to Training</button>
           </mat-card-actions>
         </mat-card>
 
@@ -461,7 +461,7 @@ interface DeploymentProfile {
       <div class="quick-actions">
         <button mat-stroked-button routerLink="/range-designer"><mat-icon>architecture</mat-icon> Design Range</button>
         <button mat-stroked-button routerLink="/scenario-builder"><mat-icon>build</mat-icon> Build Scenario</button>
-        <button mat-stroked-button routerLink="/training"><mat-icon>school</mat-icon> Browse Courses</button>
+        <button mat-stroked-button routerLink="/learning/courses"><mat-icon>school</mat-icon> Browse Courses</button>
         <button mat-stroked-button routerLink="/infrastructure"><mat-icon>dns</mat-icon> Manage Infra</button>
         <button mat-stroked-button routerLink="/ai-orchestrator"><mat-icon>psychology</mat-icon> AI Config</button>
       </div>

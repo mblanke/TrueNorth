@@ -1,0 +1,46 @@
+scenario:
+  po_id: PO_009
+  title: "Analyze Malicious Activity in Logs"
+  environment: COTE
+  duration_min: 240
+  range_template: ./range.tf
+  golden_templates: [srv2019, precomp-host, win10-22h2, securityonion, cloudlog-emu, usersim]
+  # Injects are STAGED artifacts already present in the logs at scenario start (defensive framing).
+  injects:
+    - id: inj-01-recon
+      t_offset_min: 0
+      attack_technique: T1046      # Network Service Discovery
+      description: "Log artifacts of an internal port/service sweep from a foothold host."
+      critical: true               # -> crit_scanning
+    - id: inj-02-lateral
+      t_offset_min: 40
+      attack_technique: T1021      # Remote Services
+      description: "Authentication + remote-service log trail showing movement DC->file server."
+      critical: true               # -> crit_lateral
+    - id: inj-03-exfil
+      t_offset_min: 90
+      attack_technique: T1048      # Exfiltration Over Alternative Protocol
+      description: "Outbound transfer artifacts indicating data staging + exfiltration."
+      critical: true               # -> crit_exfil
+    - id: inj-04-cloud
+      t_offset_min: 120
+      attack_technique: T1530      # Data from Cloud Storage
+      description: "Cloud-log entries (cloudlog-emu) for EO 009.03 cloud analysis."
+      critical: false
+  noise_floor:
+    - id: nf-01
+      description: "Nightly backup job producing large outbound transfer."
+      why_plausible: "Resembles exfil (inj-03); candidate must distinguish benign vs malicious."
+    - id: nf-02
+      description: "Legitimate admin running remote PowerShell across hosts."
+      why_plausible: "Resembles lateral movement (inj-02)."
+    - id: nf-03
+      description: "Vulnerability scanner sweep on maintenance window."
+      why_plausible: "Resembles recon (inj-01)."
+  validators:
+    - validators/crit_scanning.md
+    - validators/crit_lateral.md
+    - validators/crit_exfil.md
+    - validators/deliverable_report.md
+    - validators/manual_ack_analysis.md
+  variant: variant_B/timeline.yaml
