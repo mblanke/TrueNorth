@@ -623,7 +623,7 @@ class Qualification(TimestampMixin, Base):
     nqual: Mapped[str] = mapped_column(String(32), nullable=False)  # granted qual: ALJQ/ACPZ/ALRA-RED/ALRA
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     mite_course_code: Mapped[str] = mapped_column(String(32), default="")  # record-of-authority course id
-    component_version: Mapped[str] = mapped_column(String(20), default="v2.1.0")  # NICE/DCWF pin
+    component_version: Mapped[str] = mapped_column(String(20), default="SP800-181r1")  # NICE/DCWF pin
     target_role: Mapped[str] = mapped_column(String(120), default="")
     # Developmental progression DERIVED FROM the QSPs (not a fixed DP1-5 scale):
     #   dp_order = position in the rank-based progression (1=foundational/Pte, 2=senior/Cpl, …);

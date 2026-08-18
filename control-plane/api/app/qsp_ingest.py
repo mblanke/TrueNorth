@@ -97,7 +97,7 @@ def parse_crosswalk(csv_text: str) -> list[dict]:
             {
                 "qsp_code": qsp_code,
                 "nqual": (raw.get("nqual") or qsp_code).strip(),
-                "component_version": (raw.get("component_version") or "v2.1.0").strip(),
+                "component_version": (raw.get("component_version") or "SP800-181r1").strip(),
                 "po": {
                     "po_code": po_code,
                     "title": (raw.get("po_title") or "").strip(),

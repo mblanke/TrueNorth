@@ -12,8 +12,20 @@ Nothing provisions VMs or grants a qualification without an explicit human gate.
           not the 1,200 FVEY surge. Decide surge model: cloud-burst vs mobile-kit vs FVEY partner-pool.
 
 ## 1. Finish the contract (crosswalk.csv) — do before batch generation
-- [ ] [H] Fill all `nice_dcwf_task` = TODO-map from NICE Components v2.1.0 CSV (defensive roles)
-          and DCWF (Red Analyst PO_001-004). Version-pin stays v2.1.0.
+- [x] [H] Fill all `nice_dcwf_task` = TODO-map. DONE 2026-08-18 — but read the caveats:
+          * The mappings already existed in `content/catalogue/qsp_competency_crosswalk.csv`
+            (work role + task ids + rationale, added in c0a2384). This was a RECONCILIATION,
+            not new authoring: they were propagated into crosswalk.csv, not invented here.
+          * **Version-pin corrected, v2.1.0 -> SP800-181r1.** The ids in use are `T0xxx`
+            tasks and `PR-CDA-001`-style work roles, which are NIST SP 800-181 rev 1 —
+            NOT NICE Components v2.1.0. Claiming v2.1.0 while carrying rev-1 identifiers
+            is an accreditation discrepancy. No authoritative v2.1.0 components file was
+            reachable to re-map against, and inventing v2.1.0 ids was not acceptable.
+          * **STILL OPEN [H]:** if the programme must cite NICE v2.1.0, obtain the official
+            components file and re-map. Tracked by tests/api/test_qsp_crosswalk_integrity.py.
+- [ ] [H] Red Analyst (TEMP64 PO_001-004) still needs true **DCWF** codes. Only a NICE mapping
+          (AN-EXP-001) was available, so those rows carry a `DCWF-TODO` marker rather than
+          reading as complete. A test asserts the marker stays until real DCWF codes land.
 - [ ] [H] Fill blank `duration_min` (Red Analyst PO_001-003; ALRA cots_gate rows) from QSP Annex D/E.
 - [ ] [H] Replace `PO_TODO` (TEMP67, status=needs_spec) with the real remaining Cpl POs from
           QS_EN_Temp_67 (Chapter 2). Add rows + scenario/build estimates.
