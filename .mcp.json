@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "codex": {
+      "command": "/home/maadmin/.local/bin/codex-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
