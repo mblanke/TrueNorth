@@ -111,11 +111,23 @@ xAPI (`xapi.py`) and AAR/PDF reporting (`reporting.py`, fpdf2) present with test
 present HELK as a core component; the code does not support that. Treat HELK as
 `STALE-DOC`/`PLANNED`.
 
-## Multi-tenancy — `IMPLEMENTED`, `UNTESTED` at the boundary
+## Multi-tenancy — was `BROKEN`, now `IMPLEMENTED` for ranges
 
-`tenant_id` appears 58 times in `models.py`. There is no test asserting that a query
-cannot cross tenants — the highest-value missing test in the repo, since a single
-missing filter leaks silently and no existing test would notice.
+`tenant_id` appears 58 times in `models.py`, and `list_ranges` filtered on it — but
+**11 of 13 range endpoints did not**, including `PUT`, `DELETE`, `provision`, `destroy`
+and `batch-provision`. Any tenant could read, modify, provision or destroy another
+tenant's range given its UUID.
+
+It survived because a test named `test_cross_tenant_access_denied` asserted
+`status_code == 200` — it codified the IDOR instead of catching it, and read as green
+coverage. Fixed 2026-08-18: all by-id lookups now go through a `_tenant_range()` helper
+returning 404 (not 403 — "exists but not yours" is itself disclosure), the batch query
+is scoped, the misleading test now asserts 404, and
+`tests/api/test_tenant_isolation.py` covers list, by-id and aggregate leakage.
+
+**Still open:** the same audit has not been run on the other 27 routers. `ranges` was
+checked because it was the first one tested; there is no reason to assume it was the
+only one.
 
 ## Security posture — `PARTIAL`
 

@@ -136,7 +136,14 @@ class TestMultiTenantIsolation:
         assert str(other.id) not in ids
 
     def test_cross_tenant_access_denied(self, client, db_session):
-        """Direct GET returns the range, but it is excluded from list."""
+        """A foreign range must not be readable by id, not merely hidden from lists.
+
+        This test previously asserted `status_code == 200` — it codified the IDOR
+        rather than catching it. Because it was named "access_denied" and passed, the
+        leak read as covered. `list_ranges` filtered on tenant_id; every by-id handler
+        did not, so any tenant could read, modify, provision or destroy another
+        tenant's range given its UUID.
+        """
         from app.models import Range, RangeState
 
         tmpl = _make_template(client)
@@ -149,7 +156,10 @@ class TestMultiTenantIsolation:
         db_session.add(other)
         db_session.commit()
         resp = client.get(f"/ranges/{other.id}")
-        assert resp.status_code == 200
+        assert resp.status_code == 404, (
+            f"LEAK: another tenant's range was readable by id (status "
+            f"{resp.status_code})"
+        )
         ids = [r["id"] for r in client.get("/ranges").json()]
         assert str(other.id) not in ids
 

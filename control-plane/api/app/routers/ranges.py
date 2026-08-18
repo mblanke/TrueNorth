@@ -75,6 +75,26 @@ def _dispatch_task(task_name: str, *args: Any) -> str | None:
 
 
 # ── CRUD ───────────────────────────────────────────────────────────────
+def _tenant_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
+    """Fetch a range scoped to the caller's tenant, or 404.
+
+    Every by-id lookup must go through here. `list_ranges` filtered on tenant_id but
+    the by-id handlers did not, so any tenant could read, modify, provision or DESTROY
+    another tenant's range given its UUID.
+
+    404 rather than 403 on a foreign id: "this exists but is not yours" is itself
+    disclosure, and it lets a caller enumerate ids across tenants.
+    """
+    rng = (
+        db.query(Range)
+        .filter(Range.id == range_id, Range.tenant_id == uuid.UUID(user.tenant_id))
+        .first()
+    )
+    if not rng:
+        raise HTTPException(404, "Range not found")
+    return rng
+
+
 @router.post("", response_model=RangeOut, status_code=201)
 def create_range(
     body: RangeIn,
@@ -148,9 +168,7 @@ def get_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> Range:
     """Retrieve a single range.  **Permission: range:read**"""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     return rng
 
 
@@ -162,9 +180,7 @@ def update_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
 ) -> Range:
     """Update a range.  **Permission: range:update**"""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(rng, field, value)
     db.commit()
@@ -181,9 +197,7 @@ def delete_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_DELETE)),
 ):
     """Delete a range record.  **Permission: range:delete**"""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     db.delete(rng)
     db.commit()
     _audit(db, user, "delete", "range", str(range_id))
@@ -198,9 +212,7 @@ def get_range_diagram(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> dict:
     """Retrieve persisted JointJS diagram for a range.  **Permission: range:read**"""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     return {"range_id": str(rng.id), "diagram_json": rng.diagram_json or {"cells": []}}
 
 
@@ -215,9 +227,7 @@ def save_range_diagram(
 
     Accepts the raw output of ``joint.dia.Graph.toJSON()``.
     """
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     if not isinstance(body, dict):
         raise HTTPException(400, "Diagram body must be a JSON object")
     rng.diagram_json = body
@@ -236,9 +246,7 @@ async def provision_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
     """Provision a range (async Celery task).  **Permission: range:provision**"""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.provisioning):
         raise HTTPException(409, f"Cannot provision range in state {rng.state.value}")
     rng.state = RangeState.provisioning
@@ -257,9 +265,7 @@ async def destroy_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_DESTROY)),
 ) -> Range:
     """Destroy a range (async Celery task).  **Permission: range:destroy**"""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.destroying):
         raise HTTPException(409, f"Cannot destroy range in state {rng.state.value}")
     rng.state = RangeState.destroying
@@ -278,9 +284,7 @@ async def stop_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
     """Stop a running range.  **Permission: range:provision**"""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.stopped):
         raise HTTPException(409, f"Cannot stop range in state {rng.state.value}")
     rng.state = RangeState.stopped
@@ -297,7 +301,12 @@ def batch_provision_ranges(
 ) -> BatchProvisionOut:
     """Batch-provision multiple ranges.  **Permission: range:batch_provision**"""
     range_ids = [str(rid) for rid in body.range_ids]
-    ranges_found = db.query(Range).filter(Range.id.in_(body.range_ids)).all()
+    ranges_found = (
+        db.query(Range)
+        .filter(Range.id.in_(body.range_ids),
+                Range.tenant_id == uuid.UUID(user.tenant_id))
+        .all()
+    )
     if len(ranges_found) != len(body.range_ids):
         raise HTTPException(400, f"Only {len(ranges_found)} of {len(body.range_ids)} ranges found")
     for rng in ranges_found:
@@ -319,9 +328,7 @@ def list_snapshots(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> list[SnapshotOut]:
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     return (
         db.query(RangeSnapshot)
         .filter(RangeSnapshot.range_id == range_id)
@@ -338,9 +345,7 @@ def create_snapshot(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> SnapshotOut:
     """Create a snapshot of the current range state."""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.stopped):
         raise HTTPException(409, f"Cannot snapshot range in state '{rng.state.value}'")
 
@@ -371,9 +376,7 @@ def restore_snapshot(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> RangeOut:
     """Restore a range from a snapshot."""
-    rng = db.query(Range).filter(Range.id == range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
+    rng = _tenant_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
 
