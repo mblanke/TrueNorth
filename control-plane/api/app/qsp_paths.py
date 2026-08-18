@@ -53,6 +53,23 @@ DP_PROGRESSION: dict[str, dict] = {
                "title": "Malware Analyst — Reverse Engineer"},
 }
 
+# The developmental-period ladder the career map draws. Periods with no ingested
+# QSP render as "not yet defined" placeholders so the whole career arc stays visible
+# instead of stopping wherever ingest happens to have reached.
+#
+# Rank labels are ONLY set for periods backed by a source QSP (qsp_source/INDEX.md):
+# DP1 = Pte (ALJQ), DP2 = Cpl (TEMP67/TEMP64/ALRA). No CAF source on-box establishes
+# the DP3-5 rank progression, so those rungs carry no rank rather than a guessed one —
+# fabricated rank data must never reach CAF users. Ingesting a real DP3 QSP fills the
+# rung in from `Qualification.rank_level` with no code or UI change.
+DP_LADDER: list[dict] = [
+    {"dp_order": 1, "rank_level": "Pte", "label": "Basic occupation"},
+    {"dp_order": 2, "rank_level": "Cpl", "label": "Journeyman"},
+    {"dp_order": 3, "rank_level": "", "label": ""},
+    {"dp_order": 4, "rank_level": "", "label": ""},
+    {"dp_order": 5, "rank_level": "", "label": ""},
+]
+
 
 # NICE work-role -> short catalog abbreviation for course codes.
 _ROLE_ABBREV: dict[str, str] = {
@@ -205,7 +222,7 @@ def import_competency_crosswalk(
 
 # ── Learning-plan generation ──────────────────────────────────────────────
 
-def _tier_rank(po: PerformanceObjective) -> tuple:
+def tier_rank(po: PerformanceObjective) -> tuple:
     """Order key: gate first, core next, capstones last, then by po_code."""
     tier_v = po.tier.value if po.tier else "core"
     is_capstone = "capstone" in (po.assessment_type or "").lower()
@@ -315,7 +332,7 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
     for qual in quals:
         pos = sorted(
             db.query(PerformanceObjective).filter_by(qualification_id=qual.id).all(),
-            key=_tier_rank,
+            key=tier_rank,
         )
         course_ids = [po_course[str(po.id)] for po in pos]
         title = qual.title or f"{qual.nqual} qualification"
@@ -333,7 +350,7 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
         if role and role not in {"-", "TODO", "n/a"}:
             roles.setdefault(role, []).append(po)
     for role, pos in sorted(roles.items()):
-        ordered = sorted(pos, key=_tier_rank)
+        ordered = sorted(pos, key=tier_rank)
         course_ids = [po_course[str(po.id)] for po in ordered]
         _get_or_create_path(
             db, name=f"Role: {role}",
@@ -348,7 +365,7 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
     for qual in sorted(progression_quals, key=lambda q: q.dp_order):
         pos = sorted(
             db.query(PerformanceObjective).filter_by(qualification_id=qual.id).all(),
-            key=_tier_rank,
+            key=tier_rank,
         )
         prog_course_ids.extend(po_course[str(po.id)] for po in pos)
     if prog_course_ids:
@@ -361,7 +378,7 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
     for qual in [q for q in quals if q.track == "specialty"]:
         pos = sorted(
             db.query(PerformanceObjective).filter_by(qualification_id=qual.id).all(),
-            key=_tier_rank,
+            key=tier_rank,
         )
         course_ids = [po_course[str(po.id)] for po in pos]
         _get_or_create_path(
