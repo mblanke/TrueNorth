@@ -33,8 +33,12 @@ Focus: **$ARGUMENTS** (if empty, review the full working diff.)
 ## Hard rules
 
 - **Never commit.** Reviewing is not merging.
-- Serialize model calls. The local server runs `--parallel 1`; concurrent fan-out just
-  queues and looks like a hang.
-- **Codex currently runs `glm-5.2` — the same model as Taz.** Until it is pointed at a
-  different backend, its "independent" pass is the same brain with a different prompt.
-  Weight it accordingly and say so in the report.
+- **Check which mode the box is in first**: `/opt/llm-stack/taz-status.sh`.
+  - *Fleet* — four vLLM models concurrent. Fan out freely; Codex runs `coder-fast`
+    (Qwen3-Coder), genuinely independent of anything else in the loop.
+  - *Flagship* — GLM-5.2 alone, `--parallel 1`. **Serialize**: concurrent calls just
+    queue and look like a hang. Codex falls back to the CPU Qwen, still independent
+    but ~10 tok/s, so budget minutes per pass.
+- **Consensus is not evidence.** Two models agreeing measures shared priors, not
+  correctness. Use them to generate candidate problems, then confirm each by running
+  something — a test, a query, a reproduction. A finding nobody executed is a guess.
