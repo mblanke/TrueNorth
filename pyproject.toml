@@ -9,6 +9,10 @@ name = "truenorth-range"
 version = "0.1.0"
 description = "TrueNorth Range - AI-enhanced cyber training platform"
 requires-python = ">=3.11"
+# Kept in lockstep with control-plane/api/requirements.txt -- that file is what the API
+# image installs, and this list had drifted badly (missing minio, pypdf, python-docx,
+# python-pptx, html2text, python-multipart, proxmoxer and the whole opentelemetry set),
+# so `pip install -e .` produced an environment that could not import app.main.
 dependencies = [
     "fastapi==0.115.0",
     "uvicorn[standard]==0.30.6",
@@ -25,6 +29,23 @@ dependencies = [
     "jsonschema==4.23.0",
     "jinja2==3.1.4",
     "fpdf2==2.7.9",
+    "minio==7.2.7",
+    "pypdf==4.3.1",
+    "python-docx==1.1.2",
+    "python-pptx==1.0.2",
+    "html2text==2024.2.26",
+    "python-multipart==0.0.9",
+    "aiosmtplib>=2.0",
+    "proxmoxer>=2.0",
+    "requests>=2.28",
+    "opentelemetry-api==1.25.0",
+    "opentelemetry-sdk==1.25.0",
+    "opentelemetry-instrumentation-fastapi==0.46b0",
+    "opentelemetry-instrumentation-sqlalchemy==0.46b0",
+    "opentelemetry-instrumentation-httpx==0.46b0",
+    "opentelemetry-instrumentation-celery==0.46b0",
+    "opentelemetry-instrumentation-redis==0.46b0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.25.0",
 ]
 
 [project.optional-dependencies]

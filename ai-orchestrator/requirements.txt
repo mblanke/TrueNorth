@@ -1,5 +1,5 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-httpx==0.27.0
+httpx==0.27.2  # aligned with api/worker/scenario-engine: 0.27.0 here made a combined install impossible
 pydantic==2.8.2
 python-dotenv==1.0.1

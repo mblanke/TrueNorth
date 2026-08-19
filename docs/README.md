@@ -1,6 +1,12 @@
 # TrueNorth Range
 
-![CI](https://img.shields.io/badge/CI-passing-brightgreen) ![Coverage](https://img.shields.io/badge/coverage-87%25-green) ![Version](https://img.shields.io/badge/version-1.0.0-blue) ![License](https://img.shields.io/badge/license-Proprietary-red)
+![Version](https://img.shields.io/badge/version-1.0.0-blue) ![License](https://img.shields.io/badge/license-Proprietary-red)
+
+> **Test status:** 461 passed, 27 skipped (`.venv/bin/python -m pytest -q`).
+> The 27 skips are integration tests requiring external services and are skipped
+> by design. Previous CI-passing and 87%-coverage badges were static images with
+> no pipeline or coverage artifact behind them, so they have been removed rather
+> than left to imply a guarantee that does not exist.
 
 **AI-enhanced cyber training platform for building, running, and evaluating incident response exercises on isolated virtual environments.**
 
