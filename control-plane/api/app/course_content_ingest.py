@@ -167,6 +167,34 @@ def _resolve_po(db: Session, ref: dict | None, course_code: str, ordinal: int):
     return po.id
 
 
+def _claim_po(db: Session, module: CourseModule, course_code: str, ordinal: int, stats: dict) -> None:
+    """Make this module the one that delivers its PO.
+
+    ``qsp_progress`` takes the first module it finds for a performance objective, so a
+    second claimant is silently ignored. Spine-generated placeholder courses
+    (``qsp_paths._po_course``) bind a module to every PO precisely because no real
+    content existed; authored content supersedes them and the placeholder releases its
+    claim. Two *authored* courses claiming the same PO is an error, not a race.
+    """
+    others = db.query(CourseModule).filter(CourseModule.po_id == module.po_id, CourseModule.id != module.id).all()
+    for other in others:
+        course = db.query(Course).filter_by(id=other.course_id).one_or_none()
+        meta = {}
+        if course is not None:
+            try:
+                meta = json.loads(course.course_meta or "{}")
+            except (TypeError, ValueError):
+                meta = {}
+        if meta.get("provenance"):
+            raise ValueError(
+                f"{course_code} module {ordinal} claims a performance objective already "
+                f"delivered by authored course {course.name!r}; each objective may have "
+                "only one delivering module"
+            )
+        other.po_id = None  # placeholder yields to real content
+        stats["placeholders_superseded"] = stats.get("placeholders_superseded", 0) + 1
+
+
 def _find_course(db: Session, course_code: str, tenant_id: str | None) -> Course | None:
     """Locate the catalogue course by its course_meta.course_code."""
     for course in db.query(Course).filter_by(tenant_id=tenant_id).all():
@@ -197,6 +225,7 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
         "questions": 0,
         "questions_without_key": 0,
         "modules_bound_to_po": 0,
+        "placeholders_superseded": 0,
         "bound_to_qualification": False,
     }
 
@@ -236,6 +265,7 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
         module.pass_threshold = m["pass_threshold"]
         module.po_id = _resolve_po(db, m["po"], doc["course_code"], m["ordinal"])
         if module.po_id is not None:
+            _claim_po(db, module, doc["course_code"], m["ordinal"], stats)
             stats["modules_bound_to_po"] += 1
         module.content_ref = json.dumps(
             {

@@ -240,7 +240,22 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
         "duration_min": po.duration_min,
     })
 
-    existing_mod = db.query(CourseModule).filter_by(po_id=po.id).first()
+    # Only adopt a module belonging to a spine-generated placeholder course. Authored
+    # courses (content/courses/*.yaml) also bind modules to POs, and adopting one would
+    # rename that course and overwrite its provenance on the next run.
+    existing_mod = None
+    for candidate in db.query(CourseModule).filter_by(po_id=po.id).all():
+        cand_course = db.query(Course).filter_by(id=candidate.course_id).one_or_none()
+        if cand_course is None:
+            continue
+        try:
+            cand_meta = json.loads(cand_course.course_meta or "{}")
+        except (TypeError, ValueError):
+            cand_meta = {}
+        if cand_meta.get("provenance"):  # authored content — leave it alone
+            continue
+        existing_mod = candidate
+        break
     if existing_mod is not None:
         course = db.query(Course).filter_by(id=existing_mod.course_id).one()
         course.name = display_name  # refresh title on re-run
