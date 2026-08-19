@@ -3,6 +3,20 @@
 Read this after restarting tmux. Everything below is committed and pushed
 (`origin/feat/aar-pdf-designer-xapi`).
 
+## The box was rebooted at the end of this session
+
+Driver episode is closed: NVIDIA is back on **580.173.02** across kernel module,
+DKMS and userspace, with **no apt holds** (unattended-upgrades can resume normally).
+DKMS is built for kernel 6.8.0-138, which is what boots.
+
+If anything GPU-related looks wrong after the reboot, check these three agree:
+```bash
+grep -oE '[0-9]+\.[0-9]+\.[0-9]+' /proc/driver/nvidia/version | head -1   # loaded
+modinfo nvidia | awk '/^version:/{print $2}'                              # on disk
+ls /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.*.*.* | sed 's/.*so\.//'      # userspace
+nvidia-smi -L
+```
+
 ## First command after a reboot
 
 ```bash
