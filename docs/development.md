@@ -12,6 +12,7 @@
 - [Running Tests](#running-tests)
 - [Code Style and Linting](#code-style-and-linting)
 - [Database Migrations](#database-migrations)
+- [Seed Data and Content Import](#seed-data-and-content-import)
 - [Adding New API Endpoints](#adding-new-api-endpoints)
 - [Adding New Scenario Injectors](#adding-new-scenario-injectors)
 - [Adding New Packer Templates](#adding-new-packer-templates)
@@ -441,6 +442,125 @@ alembic current
 3. **Include both** upgrade and downgrade functions
 4. **Never modify** an already-applied migration
 5. **Add data migrations** as separate revisions from schema changes
+
+---
+
+## Seed Data and Content Import
+
+### Where seeding happens
+
+`control-plane/api/app/seed.py` seeds **reference data only** — nations, coalitions,
+auth zones, infrastructure, and AI backends. It deliberately seeds **no courses and no
+scenarios**; content carries provenance and enters through an importer, never through a
+Python literal.
+
+It is called from `_seed_dev_data()` in `app/main.py` on **every** startup, from the
+`lifespan` handler. There is no env flag gating it — each seed function is itself
+responsible for returning early when its table is already populated, which is why
+idempotency is mandatory rather than a nicety.
+
+```python
+from .seed import (
+    seed_ai_backends,
+    seed_auth_zones,
+    seed_infrastructure,
+    seed_nations_and_coalitions,
+)
+```
+
+> **The import root is `app`, not `control_plane.api.app`.** `pytest.ini` puts
+> `control-plane/api` on the path. The repository directory is `control-plane`
+> (hyphenated), which is **not** a valid Python package name — `import control_plane`
+> can never work. Inside the API package use relative imports (`from .seed import ...`);
+> from tests use `from app import seed`.
+
+`_seed_dev_data()` wraps its work in `try/except Exception` and logs
+`"Seed failed (may already exist)"`. That swallows `ImportError` too, so a broken seed
+import shows up as a benign-looking warning rather than a crash. `tests/api/test_seed_integrity.py`
+exists specifically to make that failure loud — it asserts every seed function `main.py`
+imports actually exists.
+
+### Adding a seed function
+
+1. Add the function to `seed.py`, taking a single `Session` argument.
+2. Make it **idempotent** — return early if its table is already populated.
+3. Import **and call** it in `_seed_dev_data()`; importing without calling is a silent no-op.
+4. Add its name to `REQUIRED_SEED_FUNCTIONS` in `tests/api/test_seed_integrity.py`.
+
+### Importing content (do not seed it)
+
+Content enters through deterministic CSV importers so it stays auditable for
+accreditation. Each is idempotent (upsert on a natural key):
+
+| Content | Endpoint | Source file |
+|---|---|---|
+| QSP/CFITES spine (Qualification → PO → EO) | `POST /api/v1/qsp/import-crosswalk` | `truenorth-content-pack/truenorth-content/crosswalk.csv` |
+| NICE/CSF competency crosswalk | `POST /api/v1/qsp/import-competency-crosswalk` | `content/catalogue/qsp_competency_crosswalk.csv` + `nist_csf_2_0_taxonomy.csv` |
+| Golden-image catalogue | `POST /api/v1/golden-images/import-catalogue` | `content/catalogue/vm_iso_catalogue.csv` |
+| Academic programme catalogue | `POST /api/v1/courses/import-programme` | `content/catalogue/cyber_operator_programme.csv` |
+| Authored course content (modules, labs, quizzes) | `POST /api/v1/courses/import-course-content` | `content/courses/*.yaml` |
+
+```bash
+curl -F 'file=@content/catalogue/cyber_operator_programme.csv' \
+     -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8080/api/v1/courses/import-programme
+```
+
+Each importer follows the same shape: a **pure** `parse_*(csv_text) -> list[dict]`
+function with no DB access (so it is unit-testable), plus an `import_*(db, csv_text)`
+that upserts. Copy `app/qsp_ingest.py` or `app/programme_ingest.py` when adding another.
+
+### Citing sources in course content
+
+Course files under `content/courses/` cite sources by **key**, not by free text:
+
+```yaml
+modules:
+  - ordinal: 1
+    refs: [nist-sp-800-183, owasp-iot]
+```
+
+Every key must exist in `content/catalogue/references.yaml`, and
+`tests/api/test_course_content_ingest.py` fails the build if one does not.
+
+**Do not add a reference without opening its URL and confirming the title and year.**
+This rule exists because the draft this content grew from invented citations: it cited
+NISTIR 8286 as "Securing the Internet of Things" (it is *Integrating Cybersecurity and
+Enterprise Risk Management*), NIST SP 800-183 as "IoT Threat Landscape 2024" (it is
+*Networks of 'Things'*, 2016), and OWASP IoT Top 10 items as "T1/T9" (they are I1–I10,
+and I9 is Insecure Default Settings, not Insecure Network Services — that is I2).
+
+Watch for withdrawn publications. NIST SP 800-61 Rev. 2 was withdrawn on 2025-04-03 and
+superseded by Rev. 3; SP 800-63-3 is superseded by 800-63-4. A test asserts neither is
+cited.
+
+Loading the whole library into a dev database:
+
+```bash
+curl -F "file=@content/catalogue/cyber_operator_programme.csv" \
+     -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8080/api/v1/courses/import-programme
+
+for f in content/courses/*.yaml; do
+  curl -F "file=@$f" -H "Authorization: Bearer $TOKEN" \
+       http://localhost:8080/api/v1/courses/import-course-content
+done
+```
+
+Both importers are idempotent, so re-running is safe.
+
+### Provenance rules
+
+Content whose source cannot be cited is imported **unpublished** and **unbound** from
+the qualification spine, and records `provenance` in `course_meta`. See
+`app/programme_ingest.py` — the cyber-operator programme catalogue is entirely
+`provenance=unsourced`, and `tests/api/test_programme_ingest.py` enforces that none of
+it can reach a published or spine-bound state.
+
+This mirrors the norm stated in `app/qsp_paths.py`: rungs with no CAF source carry no
+rank label rather than a guessed one, because *fabricated data must never reach CAF
+users*. Never "correct" invented data into apparent legitimacy — replace it with a
+sourced file.
 
 ---
 
