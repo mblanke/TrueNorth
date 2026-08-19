@@ -182,3 +182,74 @@ def import_programme(db: Session, csv_text: str, tenant_id: str | None = None) -
 
     db.commit()
     return stats
+
+
+def generate_programme_paths(db: Session, tenant_id: str | None = None) -> dict:
+    """Build LearningPaths for the academic programme from imported catalogue courses.
+
+    These are *delivery* paths — the order courses are taught in, term by term. They
+    are deliberately separate from the CFITES developmental path built by
+    ``qsp_paths.generate_learning_paths``, which is derived from the QSP spine and
+    carries qualification meaning. A programme path asserts only "these courses are
+    scheduled in this order", which is what the calendar actually says.
+
+    Paths are created unpublished. Idempotent.
+    """
+    # Imported locally: these are the same helpers the QSP path generator uses, and
+    # reusing them keeps both generators producing structurally identical paths.
+    from .qsp_paths import _get_or_create_path, _linear_prereq
+
+    courses = db.query(Course).filter_by(tenant_id=tenant_id).all()
+    by_term: dict[str, list[tuple[str, str, Course]]] = {}
+    by_programme: dict[tuple[str, int], list[tuple[str, str, Course]]] = {}
+
+    for course in courses:
+        try:
+            meta = json.loads(course.course_meta or "{}")
+        except (TypeError, ValueError):
+            continue
+        term = str(meta.get("term_code") or "").strip()
+        code = str(meta.get("course_code") or "").strip()
+        programme = str(meta.get("programme") or "").strip()
+        if not term or not code or not programme:
+            continue
+        entry = (code, str(meta.get("term_label") or term), course)
+        by_term.setdefault(term, []).append(entry)
+        by_programme.setdefault((programme, int(meta.get("dp_order") or 0)), []).append(entry)
+
+    stats = {"term_paths": 0, "programme_paths": 0}
+
+    for term, entries in sorted(by_term.items()):
+        entries.sort(key=lambda e: e[0])
+        course_ids = [str(c.id) for _, _, c in entries]
+        label = entries[0][1]
+        _get_or_create_path(
+            db,
+            name=f"Programme term — {label}",
+            description=(
+                f"Scheduled delivery for {label} ({term}). Unsourced draft schedule; carries no qualification claim."
+            ),
+            course_ids=course_ids,
+            prereq=_linear_prereq(course_ids),
+            tenant_id=tenant_id,
+        )
+        stats["term_paths"] += 1
+
+    for (programme, dp_order), entries in sorted(by_programme.items()):
+        entries.sort(key=lambda e: e[0])
+        course_ids = [str(c.id) for _, _, c in entries]
+        _get_or_create_path(
+            db,
+            name=f"Programme — {programme} DP{dp_order}",
+            description=(
+                f"Full course sequence for {programme} developmental period {dp_order}. "
+                "Unsourced draft schedule; carries no qualification claim."
+            ),
+            course_ids=course_ids,
+            prereq=_linear_prereq(course_ids),
+            tenant_id=tenant_id,
+        )
+        stats["programme_paths"] += 1
+
+    db.commit()
+    return stats

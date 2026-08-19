@@ -549,6 +549,68 @@ done
 
 Both importers are idempotent, so re-running is safe.
 
+### Putting content on the developmental path
+
+The developmental path — what `GET /api/v1/qsp/curriculum-map` renders — is built from
+the **QSP spine**, not from the course catalogue. Its nodes are `Qualification` rows
+laid out in DP columns by `dp_order`; the objectives on each node are
+`PerformanceObjective` rows from `crosswalk.csv`. Learner position is resolved by
+`qsp_progress`, which walks exactly one link:
+
+```
+PerformanceObjective <- CourseModule.po_id -> Course <- Enrollment -> ModuleProgress
+```
+
+**`CourseModule.po_id` is the only way authored content reaches the path.** A course
+with no mapped module contributes nothing to the map and nothing to progress, however
+good its content is.
+
+Mapping is declared per module, and is never inferred:
+
+```yaml
+modules:
+  - ordinal: 1
+    title: Log Sources and Collection
+    po: {qsp_code: ALJQ, po_code: PO_009}   # optional
+```
+
+A course may also declare a top-level `qsp_code`, which sets `Course.qualification_id`.
+
+Rules the importer enforces:
+
+- A declared PO that does not exist in the ingested spine is a **422, not a silent
+  skip** — a dropped mapping would leave the module looking wired up while delivering
+  nothing.
+- Mapping one module never causes the others to be guessed.
+- `tests/api/test_developmental_path_binding.py` asserts that any `po:` appearing in a
+  course file corresponds to a real row in `crosswalk.csv`.
+
+**Do not add these mappings yourself.** Asserting that a module satisfies a performance
+objective is a CFITES claim that partly determines whether a CAF member is certified
+qualified. That is Standards' decision. The shipped draft content declares no mappings,
+and a test holds it that way.
+
+To see what still needs mapping:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/qsp/po-coverage
+```
+
+which reports, per objective, whether any module delivers it, plus how many modules are
+still unbound.
+
+Separately, the academic programme has its own **delivery** paths, generated from the
+catalogue and carrying no qualification meaning:
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8080/api/v1/courses/generate-programme-paths
+```
+
+This creates one unpublished `LearningPath` per term plus one per programme/DP. These
+sit alongside the CFITES paths from `qsp_paths.generate_learning_paths`; they say only
+"these courses are taught in this order".
+
 ### Provenance rules
 
 Content whose source cannot be cited is imported **unpublished** and **unbound** from

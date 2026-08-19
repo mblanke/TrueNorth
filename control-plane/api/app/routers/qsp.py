@@ -644,6 +644,20 @@ def _edges(quals: list[Qualification], stages: list[dict]) -> list[dict]:
     return edges
 
 
+@router.get("/po-coverage")
+def po_coverage(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """Which performance objectives have a module delivering them, and which do not.
+
+    A PO with no module can never show progress on the career map, because
+    `CourseModule.po_id` is the only link the progress resolver walks. This is the
+    working list for deciding which authored modules Standards should map.
+    """
+    return qsp_paths.po_coverage(db, tenant_id=user.tenant_id or None)
+
+
 @router.get("/curriculum-map")
 def curriculum_map(
     db: Session = Depends(get_db),

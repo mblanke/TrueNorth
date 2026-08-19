@@ -613,3 +613,73 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
 
     db.commit()
     return stats
+
+
+def po_coverage(db: Session, tenant_id: str | None = None) -> dict:
+    """Which performance objectives have a course module delivering them.
+
+    ``CourseModule.po_id`` is the only link ``qsp_progress`` walks, so a PO with no
+    module is a PO no learner can make progress against — it renders on the career
+    map as permanently not-started regardless of what courseware exists. This report
+    is what Standards needs in order to decide which authored modules should be
+    mapped to which objectives.
+    """
+    qual_q = db.query(Qualification)
+    course_q = db.query(Course)
+    if tenant_id is not None:
+        qual_q = qual_q.filter(Qualification.tenant_id == tenant_id)
+        course_q = course_q.filter(Course.tenant_id == tenant_id)
+    quals = qual_q.order_by(Qualification.dp_order, Qualification.qsp_code).all()
+    qual_by_id = {str(q.id): q for q in quals}
+
+    if not quals:
+        return {"objective_count": 0, "covered": 0, "uncovered": 0,
+                "unbound_modules": 0, "objectives": []}
+
+    pos = (
+        db.query(PerformanceObjective)
+        .filter(PerformanceObjective.qualification_id.in_([q.id for q in quals]))
+        .all()
+    )
+    courses = course_q.all()
+    course_names = {str(c.id): c.name for c in courses}
+    course_ids = [c.id for c in courses]
+
+    modules_by_po: dict[str, list[CourseModule]] = {}
+    module_q = db.query(CourseModule).filter(CourseModule.course_id.in_(course_ids))
+    for module in module_q.filter(CourseModule.po_id.isnot(None)).all():
+        modules_by_po.setdefault(str(module.po_id), []).append(module)
+
+    objectives = []
+    for po in sorted(pos, key=lambda p: (qual_by_id.get(str(p.qualification_id)).dp_order
+                                         if qual_by_id.get(str(p.qualification_id)) else 0,
+                                         p.po_code)):
+        qual = qual_by_id.get(str(po.qualification_id))
+        delivering = modules_by_po.get(str(po.id), [])
+        objectives.append({
+            "qsp_code": qual.qsp_code if qual else "",
+            "dp_order": qual.dp_order if qual else 0,
+            "po_code": po.po_code,
+            "title": po.title,
+            "tier": po.tier.value if po.tier else "",
+            "status": po.status.value if po.status else "",
+            "module_count": len(delivering),
+            "delivered_by": [
+                {"course": course_names.get(str(m.course_id), ""), "module": m.title}
+                for m in delivering
+            ],
+        })
+
+    covered = sum(1 for o in objectives if o["module_count"] > 0)
+    unbound_modules = (
+        db.query(CourseModule)
+        .filter(CourseModule.course_id.in_(course_ids), CourseModule.po_id.is_(None))
+        .count()
+    )
+    return {
+        "objective_count": len(objectives),
+        "covered": covered,
+        "uncovered": len(objectives) - covered,
+        "unbound_modules": unbound_modules,
+        "objectives": objectives,
+    }

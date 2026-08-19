@@ -17,6 +17,17 @@ Guardrails, same as ``programme_ingest``:
   enforces membership, which is how invented citations are kept out.
 * ``provenance`` from the file is preserved on every course it touches.
 
+Binding to the CFITES spine is **explicit and optional**. A module may declare::
+
+    po: {qsp_code: ALJQ, po_code: PO_009}
+
+which sets ``CourseModule.po_id`` — the single link ``qsp_progress`` walks to place a
+learner on the developmental path. A course may declare a top-level ``qsp_code`` which
+sets ``Course.qualification_id``. Neither is ever inferred: asserting that a module
+satisfies a performance objective is a CFITES claim that determines whether a CAF
+member is qualified, and that is Standards' decision, not this importer's. A declared
+PO that does not resolve against the ingested spine is an error, not a silent skip.
+
 Re-import is idempotent (upsert on ``(course_id, ordinal)`` and ``module_id``).
 """
 
@@ -31,6 +42,8 @@ from .models import (
     Course,
     CourseModule,
     ModuleContentType,
+    PerformanceObjective,
+    Qualification,
     Quiz,
     QuizQuestion,
     QuizQuestionType,
@@ -62,6 +75,17 @@ def answer_indices(answer: str, options: list[str]) -> list[int]:
             if 0 <= idx < len(options):
                 out.append(idx)
     return sorted(set(out))
+
+
+def _po_ref(raw) -> dict | None:
+    """Normalise an optional module-level ``po:`` binding."""
+    if not isinstance(raw, dict):
+        return None
+    qsp = str(raw.get("qsp_code") or "").strip()
+    po = str(raw.get("po_code") or "").strip()
+    if not qsp or not po:
+        return None
+    return {"qsp_code": qsp, "po_code": po}
 
 
 def parse_course_content(yaml_text: str) -> dict:
@@ -98,6 +122,7 @@ def parse_course_content(yaml_text: str) -> dict:
                 "topics": list(raw.get("topics") or []),
                 "lab": str(raw.get("lab") or "").strip(),
                 "refs": list(raw.get("refs") or []),
+                "po": _po_ref(raw.get("po")),
                 "quiz_title": (raw.get("quiz") or {}).get("title") or "",
                 "quiz_pass": int((raw.get("quiz") or {}).get("pass_threshold") or 70),
                 "questions": options_by_q,
@@ -113,8 +138,33 @@ def parse_course_content(yaml_text: str) -> dict:
         "provenance": str(doc.get("provenance") or "unsourced").lower(),
         "status": str(doc.get("status") or "draft").lower(),
         "source": doc.get("source") or {},
+        "qsp_code": (str(doc.get("qsp_code")).strip() if doc.get("qsp_code") else None),
         "modules": modules,
     }
+
+
+def _resolve_po(db: Session, ref: dict | None, course_code: str, ordinal: int):
+    """Resolve a declared ``po:`` binding to a PerformanceObjective id.
+
+    Returns None when the module declares no binding. Raises when it declares one
+    that does not exist — a mapping that silently fails would leave the module
+    invisible on the developmental path while appearing to be wired up.
+    """
+    if ref is None:
+        return None
+    qual = db.query(Qualification).filter_by(qsp_code=ref["qsp_code"]).one_or_none()
+    if qual is None:
+        raise ValueError(
+            f"{course_code} module {ordinal} maps to qsp_code={ref['qsp_code']!r}, "
+            "which is not in the ingested spine; import crosswalk.csv first"
+        )
+    po = db.query(PerformanceObjective).filter_by(qualification_id=qual.id, po_code=ref["po_code"]).one_or_none()
+    if po is None:
+        raise ValueError(
+            f"{course_code} module {ordinal} maps to {ref['qsp_code']}/{ref['po_code']}, "
+            "which is not a performance objective in the crosswalk"
+        )
+    return po.id
 
 
 def _find_course(db: Session, course_code: str, tenant_id: str | None) -> Course | None:
@@ -146,7 +196,20 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
         "quizzes": 0,
         "questions": 0,
         "questions_without_key": 0,
+        "modules_bound_to_po": 0,
+        "bound_to_qualification": False,
     }
+
+    # Optional course-level CFITES binding.
+    if doc["qsp_code"]:
+        qual = db.query(Qualification).filter_by(qsp_code=doc["qsp_code"]).one_or_none()
+        if qual is None:
+            raise ValueError(
+                f"course {doc['course_code']} declares qsp_code={doc['qsp_code']!r}, "
+                "which is not in the ingested spine; import crosswalk.csv first"
+            )
+        course.qualification_id = qual.id
+        stats["bound_to_qualification"] = True
 
     course.duration_hours = doc["duration_hours"] or course.duration_hours
     course.difficulty = doc["difficulty"]
@@ -171,6 +234,9 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
         module.duration_minutes = m["duration_minutes"]
         module.is_required = m["is_required"]
         module.pass_threshold = m["pass_threshold"]
+        module.po_id = _resolve_po(db, m["po"], doc["course_code"], m["ordinal"])
+        if module.po_id is not None:
+            stats["modules_bound_to_po"] += 1
         module.content_ref = json.dumps(
             {
                 "objectives": m["objectives"],

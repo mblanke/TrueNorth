@@ -236,6 +236,25 @@ async def import_course_content(
     return {"imported": True, **stats}
 
 
+@router.post("/generate-programme-paths")
+def generate_programme_paths(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """Build unpublished LearningPaths for the imported programme, term by term.
+
+    Delivery schedule only. These paths carry no qualification claim and are separate
+    from the CFITES developmental paths generated from the QSP spine.
+    """
+    try:
+        stats = programme_ingest.generate_programme_paths(db, tenant_id=tenant_uuid(user))
+    except Exception as exc:  # noqa: BLE001 — surface DB errors to the caller
+        db.rollback()
+        logger.exception("programme path generation failed")
+        raise HTTPException(status_code=422, detail=f"path generation failed: {exc}") from exc
+    return {"generated": True, **stats}
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # Enrollments
 # ══════════════════════════════════════════════════════════════════════════
