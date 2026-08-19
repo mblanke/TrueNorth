@@ -37,6 +37,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
+from ..tenancy import get_owned
 from ..db import get_db
 from ..models import AuditLog, Team, TeamMembership, Tenant, User, UserRole
 from ..rbac import Permission, require_permission
@@ -169,9 +170,7 @@ def update_user(
     user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
 ) -> User:
     """Update a user's profile fields.  **Permission: user:update**"""
-    target = db.query(User).filter(User.id == user_id).first()
-    if not target:
-        raise HTTPException(404, "User not found")
+    target = get_owned(db, User, user_id, user, not_found="User not found")
     update_data = body.model_dump(exclude_unset=True)
     if "role" in update_data:
         update_data["role"] = UserRole(update_data["role"])
@@ -191,9 +190,7 @@ def delete_user(
     user: CurrentUser = Depends(require_permission(Permission.USER_DELETE)),
 ):
     """Delete (deactivate) a user.  **Permission: user:delete**"""
-    target = db.query(User).filter(User.id == user_id).first()
-    if not target:
-        raise HTTPException(404, "User not found")
+    target = get_owned(db, User, user_id, user, not_found="User not found")
     target.is_active = False
     db.commit()
     _audit(db, user, "delete", "user", str(user_id))
@@ -243,9 +240,7 @@ def update_team(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> Team:
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(404, "Team not found")
+    team = get_owned(db, Team, team_id, user, not_found="Team not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(team, field, value)
     db.commit()
@@ -260,9 +255,7 @@ def delete_team(
     user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
 ):
     """Delete a team and its memberships.  **Permission: user:update**"""
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(404, "Team not found")
+    team = get_owned(db, Team, team_id, user, not_found="Team not found")
     db.query(TeamMembership).filter(TeamMembership.team_id == team_id).delete()
     db.delete(team)
     db.commit()
@@ -280,12 +273,8 @@ def add_team_member(
     user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
 ) -> dict:
     """Add a user to a team.  **Permission: user:update**"""
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(404, "Team not found")
-    target = db.query(User).filter(User.id == user_id).first()
-    if not target:
-        raise HTTPException(404, "User not found")
+    team = get_owned(db, Team, team_id, user, not_found="Team not found")
+    target = get_owned(db, User, user_id, user, not_found="User not found")
     existing = (
         db.query(TeamMembership).filter(TeamMembership.team_id == team_id, TeamMembership.user_id == user_id).first()
     )
@@ -315,13 +304,11 @@ def list_team_members(
     user: CurrentUser = Depends(require_permission(Permission.USER_READ)),
 ) -> list[dict]:
     """List members of a team.  **Permission: user:read**"""
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
-        raise HTTPException(404, "Team not found")
+    team = get_owned(db, Team, team_id, user, not_found="Team not found")
     memberships = db.query(TeamMembership).filter(TeamMembership.team_id == team_id).all()
     results = []
     for m in memberships:
-        u = db.query(User).filter(User.id == m.user_id).first()
+        u = get_owned(db, User, m.user_id, user)
         results.append(
             {
                 "user_id": str(m.user_id),

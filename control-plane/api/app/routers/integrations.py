@@ -15,6 +15,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
+from ..tenancy import get_owned
 from ..db import get_db
 from ..models import (
     ExternalActivity,
@@ -87,7 +88,7 @@ def get_platform(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Get details of a registered platform."""
-    p = db.query(ExternalPlatform).filter(ExternalPlatform.id == platform_id).first()
+    p = get_owned(db, ExternalPlatform, platform_id, user)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
     return p
@@ -101,7 +102,7 @@ def update_platform(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Update a registered platform."""
-    p = db.query(ExternalPlatform).filter(ExternalPlatform.id == platform_id).first()
+    p = get_owned(db, ExternalPlatform, platform_id, user)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
     for field, value in body.model_dump(exclude_unset=True).items():
@@ -118,7 +119,7 @@ def deregister_platform(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Remove a registered platform."""
-    p = db.query(ExternalPlatform).filter(ExternalPlatform.id == platform_id).first()
+    p = get_owned(db, ExternalPlatform, platform_id, user)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
     db.delete(p)
@@ -134,7 +135,7 @@ async def test_connectivity(
     """Test connectivity to an external platform."""
     import httpx
 
-    p = db.query(ExternalPlatform).filter(ExternalPlatform.id == platform_id).first()
+    p = get_owned(db, ExternalPlatform, platform_id, user)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
 

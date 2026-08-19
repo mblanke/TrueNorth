@@ -39,6 +39,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
+from ..tenancy import get_owned
 from ..db import get_db
 from ..models import (
     AfterActionReport,
@@ -78,14 +79,14 @@ def _dispatch_task(task_name: str, *args: Any) -> str | None:
     return dispatch(task_name, *args)
 
 
-def _scenario_definition(db: Session, ex: Exercise) -> dict:
+def _scenario_definition(db: Session, ex: Exercise, user: CurrentUser) -> dict:
     """Build the scenario_definition dict for run_scenario_v2 from the exercise's scenario + objectives.
 
     Objectives come from the DB Objective rows (their ref_id is what the mock runner marks achieved),
     the timeline is parsed from the Scenario YAML. Robust if the YAML has no timeline.
     """
     definition: dict = {"timeline": [], "objectives": []}
-    scenario = db.query(Scenario).filter(Scenario.id == ex.scenario_id).first()
+    scenario = get_owned(db, Scenario, ex.scenario_id, user)
     if scenario and scenario.yaml:
         try:
             parsed = yaml.safe_load(scenario.yaml) or {}
@@ -113,12 +114,8 @@ def create_exercise(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_CREATE)),
 ) -> Exercise:
     """Create a new exercise.  **Permission: exercise:create**"""
-    rng = db.query(Range).filter(Range.id == body.range_id).first()
-    if not rng:
-        raise HTTPException(404, "Range not found")
-    sc = db.query(Scenario).filter(Scenario.id == body.scenario_id).first()
-    if not sc:
-        raise HTTPException(404, "Scenario not found")
+    rng = get_owned(db, Range, body.range_id, user, not_found="Range not found")
+    sc = get_owned(db, Scenario, body.scenario_id, user, not_found="Scenario not found")
     ex = Exercise(
         name=body.name,
         range_id=body.range_id,
@@ -160,9 +157,7 @@ def get_exercise(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
 ) -> Exercise:
     """Retrieve a single exercise.  **Permission: exercise:read**"""
-    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not ex:
-        raise HTTPException(404, "Exercise not found")
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     return ex
 
 
@@ -174,9 +169,7 @@ def update_exercise(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_CREATE)),
 ) -> Exercise:
     """Update an exercise.  **Permission: exercise:create**"""
-    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not ex:
-        raise HTTPException(404, "Exercise not found")
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     if ex.state not in (ExerciseState.pending,):
         raise HTTPException(409, f"Cannot edit exercise in state {ex.state.value}")
     for field, value in body.model_dump(exclude_unset=True).items():
@@ -197,9 +190,7 @@ async def start_exercise(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_START)),
 ) -> Exercise:
     """Start a pending exercise.  **Permission: exercise:start**"""
-    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not ex:
-        raise HTTPException(404, "Exercise not found")
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     if ex.state != ExerciseState.pending:
         raise HTTPException(409, f"Exercise is {ex.state.value}, expected pending")
     ex.state = ExerciseState.running
@@ -209,7 +200,7 @@ async def start_exercise(
     _audit(db, user, "start", "exercise", str(ex.id))
     db.commit()
     # Dispatch the scenario runner (mock mode walks the timeline + auto-achieves objectives).
-    definition = _scenario_definition(db, ex)
+    definition = _scenario_definition(db, ex, user)
     _dispatch_task("run_scenario_v2", str(ex.id), definition)
     if background_tasks is not None:
         emit_lifecycle(
@@ -231,10 +222,8 @@ def scenario_detail(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
 ) -> dict:
     """Parsed scenario for the detail view: metadata + timeline + noise floor + objectives."""
-    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not ex:
-        raise HTTPException(404, "Exercise not found")
-    scenario = db.query(Scenario).filter(Scenario.id == ex.scenario_id).first()
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    scenario = get_owned(db, Scenario, ex.scenario_id, user)
     parsed: dict = {}
     if scenario and scenario.yaml:
         try:
@@ -278,9 +267,7 @@ async def run_exercise(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_START)),
 ) -> Exercise:
     """One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**"""
-    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not ex:
-        raise HTTPException(404, "Exercise not found")
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     # Replay: reset a finished/cancelled exercise back to pending before re-running.
     if ex.state in (ExerciseState.completed, ExerciseState.cancelled):
         for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():
@@ -293,7 +280,7 @@ async def run_exercise(
     if ex.state != ExerciseState.pending:
         raise HTTPException(409, f"Exercise is {ex.state.value}, expected pending")
     # provision the range if it hasn't been (mock provisioner flips it to ready via the worker)
-    rng = db.query(Range).filter(Range.id == ex.range_id).first()
+    rng = get_owned(db, Range, ex.range_id, user)
     if rng and rng.state.can_transition_to(RangeState.provisioning):
         rng.state = RangeState.provisioning
         db.commit()
@@ -305,7 +292,7 @@ async def run_exercise(
     db.refresh(ex)
     _audit(db, user, "run", "exercise", str(ex.id))
     db.commit()
-    definition = _scenario_definition(db, ex)
+    definition = _scenario_definition(db, ex, user)
     _dispatch_task("run_scenario_v2", str(ex.id), definition)
     return ex
 
@@ -318,9 +305,7 @@ async def pause_exercise(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_PAUSE)),
 ) -> Exercise:
     """Pause a running exercise.  **Permission: exercise:pause**"""
-    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not ex:
-        raise HTTPException(404, "Exercise not found")
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     if ex.state != ExerciseState.running:
         raise HTTPException(409, f"Exercise is {ex.state.value}, expected running")
     ex.state = ExerciseState.paused
@@ -350,9 +335,7 @@ async def complete_exercise(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
 ) -> Exercise:
     """Complete an exercise and tally scores.  **Permission: exercise:complete**"""
-    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not ex:
-        raise HTTPException(404, "Exercise not found")
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     if ex.state not in (ExerciseState.running, ExerciseState.paused):
         raise HTTPException(409, f"Exercise is {ex.state.value}, cannot complete")
     ex.state = ExerciseState.completed
@@ -478,10 +461,8 @@ def generate_aar(
     user: CurrentUser = Depends(require_permission(Permission.AAR_GENERATE)),
 ) -> AfterActionReport:
     """Generate After-Action Report.  **Permission: aar:generate**"""
-    ex = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not ex:
-        raise HTTPException(404, "Exercise not found")
-    sc = db.query(Scenario).filter(Scenario.id == ex.scenario_id).first()
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    sc = get_owned(db, Scenario, ex.scenario_id, user)
     objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
 
     report = {

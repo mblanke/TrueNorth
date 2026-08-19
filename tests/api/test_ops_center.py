@@ -8,6 +8,10 @@ from app.models import AnalystAnnotation, Exercise
 
 EXERCISE_ID = uuid.UUID("00000000-0000-0000-0000-000000000099")
 USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+# The tenant `get_current_user` returns when AUTH_DISABLED is set. Rows seeded without
+# it are invisible to the API's tenant-scoped lookups -- and unreachable in production
+# too, since every create endpoint stamps tenant_id.
+TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
 def _create_exercise(db, exercise_id=EXERCISE_ID):
@@ -16,21 +20,21 @@ def _create_exercise(db, exercise_id=EXERCISE_ID):
     # Create template
     t = db.query(Template).first()
     if not t:
-        t = Template(id=uuid.uuid4(), name="Test Template", yaml="name: test")
+        t = Template(id=uuid.uuid4(), name="Test Template", yaml="name: test", tenant_id=TENANT_ID)
         db.add(t)
         db.flush()
 
     # Create scenario
     s = db.query(Scenario).first()
     if not s:
-        s = Scenario(id=uuid.uuid4(), name="Test Scenario", yaml="name: test")
+        s = Scenario(id=uuid.uuid4(), name="Test Scenario", yaml="name: test", tenant_id=TENANT_ID)
         db.add(s)
         db.flush()
 
     # Create range
     r = db.query(Range).first()
     if not r:
-        r = Range(id=uuid.uuid4(), name="Test Range", template_id=t.id)
+        r = Range(id=uuid.uuid4(), name="Test Range", template_id=t.id, tenant_id=TENANT_ID)
         db.add(r)
         db.flush()
 
@@ -38,6 +42,7 @@ def _create_exercise(db, exercise_id=EXERCISE_ID):
         id=exercise_id,
         range_id=r.id,
         scenario_id=s.id,
+        tenant_id=TENANT_ID,
         name="Ops Test Exercise",
         started_at=datetime.now(UTC),
     )

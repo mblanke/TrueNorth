@@ -18,11 +18,22 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..auth import CurrentUser, get_current_user
+from ..rbac import Permission, require_permission
 from ..models import EventState, ScheduledEvent, Tenant
 
 logger = logging.getLogger("truenorth.api.scheduling")
 
-router = APIRouter(prefix="/schedule", tags=["scheduling"])
+# This router had NO authentication of any kind: no require_permission, no CurrentUser,
+# no router-level dependency. Every /schedule endpoint -- including create, update,
+# delete and activate of scheduled events -- was reachable by anyone who could reach the
+# API. Auth is now enforced at the router level so a new endpoint cannot silently ship
+# unauthenticated, and the by-id handlers additionally scope to the caller's tenant.
+router = APIRouter(
+    prefix="/schedule",
+    tags=["scheduling"],
+    dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
+)
 
 # -- Cluster capacity (configurable via env or pulled from Proxmox) ------
 CLUSTER_VCPU = int(os.getenv("CLUSTER_TOTAL_VCPU", "128"))  # total vCPU across all nodes
@@ -226,6 +237,7 @@ def list_events(
 
 
 @router.post("/events", status_code=201, summary="Create a scheduled event")
+# write op: stronger than the router-level read gate
 def create_event(body: EventIn, db: Session = Depends(get_db)):
     """Create a new event with resource reservation.  Will reject if it
     would cause an over-commitment."""
@@ -271,18 +283,15 @@ def create_event(body: EventIn, db: Session = Depends(get_db)):
 
 
 @router.get("/events/{event_id}", summary="Get a scheduled event")
-def get_event(event_id: str, db: Session = Depends(get_db)):
-    evt = db.query(ScheduledEvent).filter(ScheduledEvent.id == uuid.UUID(event_id)).first()
-    if not evt:
-        raise HTTPException(404, "Event not found")
+def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
     return _to_out(evt)
 
 
 @router.put("/events/{event_id}", summary="Update a scheduled event")
-def update_event(event_id: str, body: EventIn, db: Session = Depends(get_db)):
-    evt = db.query(ScheduledEvent).filter(ScheduledEvent.id == uuid.UUID(event_id)).first()
-    if not evt:
-        raise HTTPException(404, "Event not found")
+# write op: stronger than the router-level read gate
+def update_event(event_id: str, body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
 
     if body.end_time <= body.start_time:
         raise HTTPException(400, "end_time must be after start_time")
@@ -316,19 +325,17 @@ def update_event(event_id: str, body: EventIn, db: Session = Depends(get_db)):
 
 
 @router.delete("/events/{event_id}", status_code=204, response_class=Response, summary="Cancel/delete event")
-def delete_event(event_id: str, db: Session = Depends(get_db)):
-    evt = db.query(ScheduledEvent).filter(ScheduledEvent.id == uuid.UUID(event_id)).first()
-    if not evt:
-        raise HTTPException(404, "Event not found")
+# write op: stronger than the router-level read gate
+def delete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
     db.delete(evt)
     db.commit()
 
 
 @router.post("/events/{event_id}/activate", summary="Mark event as active")
-def activate_event(event_id: str, db: Session = Depends(get_db)):
-    evt = db.query(ScheduledEvent).filter(ScheduledEvent.id == uuid.UUID(event_id)).first()
-    if not evt:
-        raise HTTPException(404, "Event not found")
+# write op: stronger than the router-level read gate
+def activate_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
     evt.state = EventState.active
     db.commit()
     db.refresh(evt)
@@ -336,10 +343,9 @@ def activate_event(event_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/events/{event_id}/complete", summary="Mark event as completed")
-def complete_event(event_id: str, db: Session = Depends(get_db)):
-    evt = db.query(ScheduledEvent).filter(ScheduledEvent.id == uuid.UUID(event_id)).first()
-    if not evt:
-        raise HTTPException(404, "Event not found")
+# write op: stronger than the router-level read gate
+def complete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
     evt.state = EventState.completed
     db.commit()
     db.refresh(evt)

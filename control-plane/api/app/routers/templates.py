@@ -25,6 +25,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
+from ..tenancy import get_owned
 from ..db import get_db
 from ..models import AuditLog, Template, UserRole
 from ..rbac import Permission, require_permission
@@ -82,9 +83,7 @@ def get_template(
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
 ) -> Template:
     """Retrieve a single template.  **Permission: template:read**"""
-    tmpl = db.query(Template).filter(Template.id == template_id).first()
-    if not tmpl:
-        raise HTTPException(404, "Template not found")
+    tmpl = get_owned(db, Template, template_id, user, not_found="Template not found")
     return tmpl
 
 
@@ -96,9 +95,7 @@ def update_template(
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_UPDATE)),
 ) -> Template:
     """Update an existing template.  **Permission: template:update**"""
-    tmpl = db.query(Template).filter(Template.id == template_id).first()
-    if not tmpl:
-        raise HTTPException(404, "Template not found")
+    tmpl = get_owned(db, Template, template_id, user, not_found="Template not found")
     # Non-admins can only update own-tenant templates
     if tmpl.tenant_id and tmpl.tenant_id != uuid.UUID(user.tenant_id) and user.role != UserRole.admin:
         raise HTTPException(403, "Not authorized to update this template")
@@ -119,9 +116,7 @@ def delete_template(
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_DELETE)),
 ):
     """Delete a template.  **Permission: template:delete**"""
-    tmpl = db.query(Template).filter(Template.id == template_id).first()
-    if not tmpl:
-        raise HTTPException(404, "Template not found")
+    tmpl = get_owned(db, Template, template_id, user, not_found="Template not found")
     db.delete(tmpl)
     db.commit()
     _audit(db, user, "delete", "template", str(template_id))

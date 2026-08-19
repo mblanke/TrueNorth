@@ -16,6 +16,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from ..auth import CurrentUser, get_current_user
+from ..tenancy import get_owned, tenant_uuid
 from ..db import get_db
 from ..models import (
     Course,
@@ -122,7 +123,12 @@ def get_course(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Get a single course with its modules."""
-    course = db.query(Course).options(joinedload(Course.modules)).filter(Course.id == course_id).first()
+    course = (
+        db.query(Course)
+        .options(joinedload(Course.modules))
+        .filter(Course.id == course_id, Course.tenant_id == tenant_uuid(user))
+        .first()
+    )
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
     return course
@@ -136,7 +142,7 @@ def update_course(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Update course metadata."""
-    course = db.query(Course).filter(Course.id == course_id).first()
+    course = get_owned(db, Course, course_id, user)
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
     updates = body.model_dump(exclude_unset=True)
@@ -158,7 +164,7 @@ def delete_course(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Delete a course and its modules."""
-    course = db.query(Course).filter(Course.id == course_id).first()
+    course = get_owned(db, Course, course_id, user)
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
     db.query(CourseModule).filter(CourseModule.course_id == course_id).delete()
@@ -179,7 +185,7 @@ def enroll_user(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Enroll a user in a course."""
-    course = db.query(Course).filter(Course.id == course_id).first()
+    course = get_owned(db, Course, course_id, user)
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
     # Check for existing enrollment
@@ -336,7 +342,7 @@ def get_learning_path(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Get a single learning path."""
-    lp = db.query(LearningPath).filter(LearningPath.id == lp_id).first()
+    lp = get_owned(db, LearningPath, lp_id, user)
     if not lp:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning path not found")
     return lp
@@ -434,7 +440,7 @@ def get_transcript(
     # 2. Course enrollments
     enrollments = db.query(Enrollment).filter(Enrollment.user_id == user_id).all()
     for enr in enrollments:
-        course = db.query(Course).filter(Course.id == enr.course_id).first()
+        course = get_owned(db, Course, enr.course_id, user)
         if course:
             entries.append(
                 TranscriptEntry(

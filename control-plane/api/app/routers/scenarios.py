@@ -26,6 +26,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
+from ..tenancy import get_owned
 from ..db import get_db
 from ..models import AuditLog, Scenario, UserRole
 from ..rbac import Permission, require_permission
@@ -89,9 +90,7 @@ def get_scenario(
     user: CurrentUser = Depends(require_permission(Permission.SCENARIO_READ)),
 ) -> Scenario:
     """Retrieve a single scenario.  **Permission: scenario:read**"""
-    sc = db.query(Scenario).filter(Scenario.id == scenario_id).first()
-    if not sc:
-        raise HTTPException(404, "Scenario not found")
+    sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
     return sc
 
 
@@ -103,9 +102,7 @@ def update_scenario(
     user: CurrentUser = Depends(require_permission(Permission.SCENARIO_UPDATE)),
 ) -> Scenario:
     """Update a scenario.  **Permission: scenario:update**"""
-    sc = db.query(Scenario).filter(Scenario.id == scenario_id).first()
-    if not sc:
-        raise HTTPException(404, "Scenario not found")
+    sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
     if sc.tenant_id and sc.tenant_id != uuid.UUID(user.tenant_id) and user.role != UserRole.admin:
         raise HTTPException(403, "Not authorized")
     try:
@@ -129,8 +126,6 @@ def delete_scenario(
     user: CurrentUser = Depends(require_permission(Permission.SCENARIO_DELETE)),
 ):
     """Delete a scenario.  **Permission: scenario:delete**"""
-    sc = db.query(Scenario).filter(Scenario.id == scenario_id).first()
-    if not sc:
-        raise HTTPException(404, "Scenario not found")
+    sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
     db.delete(sc)
     db.commit()

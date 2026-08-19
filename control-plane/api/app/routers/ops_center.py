@@ -17,6 +17,7 @@ from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
+from ..tenancy import get_owned
 from ..db import get_db
 from ..models import (
     AnalystAnnotation,
@@ -78,9 +79,7 @@ async def create_annotation(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Create an analyst annotation and broadcast to ops channel."""
-    exercise = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not exercise:
-        raise HTTPException(404, "Exercise not found")
+    exercise = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
 
     annotation = AnalystAnnotation(
         id=uuid.uuid4(),
@@ -214,9 +213,7 @@ async def instructor_inject(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Instructor sends a live inject during an exercise."""
-    exercise = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not exercise:
-        raise HTTPException(404, "Exercise not found")
+    exercise = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
 
     inject_event = {
         "inject_type": body.inject_type,
@@ -250,11 +247,12 @@ def get_ops_stats(
     exercise_id: uuid.UUID = Path(...),
     request: Request = None,
     db: Session = Depends(get_db),
+    # permission is enforced by the decorator's dependencies=[...]; this binds the
+    # identity so lookups can be tenant-scoped.
+    user: CurrentUser = Depends(get_current_user),
 ):
     """Get live ops statistics for an exercise."""
-    exercise = db.query(Exercise).filter(Exercise.id == exercise_id).first()
-    if not exercise:
-        raise HTTPException(404, "Exercise not found")
+    exercise = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
 
     annotations_count = (
         db.query(func.count(AnalystAnnotation.id)).filter(AnalystAnnotation.exercise_id == exercise_id).scalar()

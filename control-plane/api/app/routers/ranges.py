@@ -33,6 +33,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
+from ..tenancy import get_owned, owned_or_404, tenant_uuid
 from ..db import get_db
 from ..models import Exercise, ExerciseState, Range, RangeSnapshot, RangeState, Template
 from ..rbac import Permission, require_permission
@@ -102,9 +103,7 @@ def create_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_CREATE)),
 ) -> Range:
     """Create a new range.  **Permission: range:create**"""
-    tmpl = db.query(Template).filter(Template.id == body.template_id).first()
-    if not tmpl:
-        raise HTTPException(404, "Template not found")
+    tmpl = get_owned(db, Template, body.template_id, user, not_found="Template not found")
     rng = Range(
         name=body.name,
         template_id=body.template_id,
@@ -301,14 +300,9 @@ def batch_provision_ranges(
 ) -> BatchProvisionOut:
     """Batch-provision multiple ranges.  **Permission: range:batch_provision**"""
     range_ids = [str(rid) for rid in body.range_ids]
-    ranges_found = (
-        db.query(Range)
-        .filter(Range.id.in_(body.range_ids),
-                Range.tenant_id == uuid.UUID(user.tenant_id))
-        .all()
-    )
-    if len(ranges_found) != len(body.range_ids):
-        raise HTTPException(400, f"Only {len(ranges_found)} of {len(body.range_ids)} ranges found")
+    # owned_or_404 refuses partial results: a batch must not silently act on the
+    # subset the caller happens to own.
+    ranges_found = owned_or_404(db, Range, body.range_ids, user)
     for rng in ranges_found:
         if not rng.state.can_transition_to(RangeState.provisioning):
             raise HTTPException(409, f"Range {rng.id} in state {rng.state.value} cannot be provisioned")
@@ -380,6 +374,8 @@ def restore_snapshot(
     if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
 
+    # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
+    # caller, so filtering snapshots by that same range_id is transitively scoped.
     snap = (
         db.query(RangeSnapshot)
         .filter(
@@ -407,6 +403,8 @@ def delete_snapshot(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_DESTROY)),
 ):
+    # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
+    # caller, so filtering snapshots by that same range_id is transitively scoped.
     snap = (
         db.query(RangeSnapshot)
         .filter(
