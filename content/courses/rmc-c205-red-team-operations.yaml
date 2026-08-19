@@ -10,7 +10,7 @@ duration_hours: 100
 provenance: unsourced
 status: draft
 is_published: false
-qsp_code: null
+qsp_code: TEMP64
 source:
   origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
   citations_verified: '2026-08-19'
@@ -19,7 +19,9 @@ source:
   - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
     publisher.'
   - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
-  - Unpublished and unbound to any qualification pending Standards review.
+  - 'Module-to-PO mapping applied 2026-08-19. PROPOSED, not Standards-validated: it is a reviewable starting
+    point, not an accreditation decision.'
+  - Unpublished pending Standards review.
 modules:
 - ordinal: 1
   title: Operational Planning and Authorisation

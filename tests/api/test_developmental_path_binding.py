@@ -38,11 +38,51 @@ def _course_doc(name):
 # -- the mapping must be explicit -----------------------------------------
 
 
-def test_authored_content_asserts_no_cfites_mapping_by_default(spine):
-    """Unsourced content must not claim to deliver a performance objective."""
-    bound = spine.query(CourseModule).filter(CourseModule.po_id.isnot(None)).count()
-    assert bound == 0, "authored draft content must not assert PO mappings"
-    assert spine.query(Course).filter(Course.qualification_id.isnot(None)).count() == 0
+def test_every_course_is_bound_to_a_qualification(spine):
+    assert spine.query(Course).filter(Course.qualification_id.is_(None)).count() == 0
+
+
+def test_the_mapping_delivers_every_specified_objective(spine):
+    """Every real PO must have a delivering module, so no objective on the career
+    map is permanently unreachable. PO_TODO is excluded: it is a needs_spec
+    placeholder for the remaining Cpl POs, not an objective anyone can deliver."""
+    cov = qsp_paths.po_coverage(spine)
+    uncovered = [o["po_code"] for o in cov["objectives"] if not o["module_count"]]
+    assert uncovered == ["PO_TODO"], f"objectives with no delivering module: {uncovered}"
+    assert cov["covered"] == 15
+
+
+def test_each_objective_has_exactly_one_delivering_module(spine):
+    """qsp_progress takes the first module per PO, so a second mapping would be
+    silently ignored and the extra course would not count toward progress."""
+    cov = qsp_paths.po_coverage(spine)
+    multi = [(o["po_code"], o["module_count"]) for o in cov["objectives"] if o["module_count"] > 1]
+    assert not multi, f"objectives with more than one delivering module: {multi}"
+
+
+def test_a_learner_completing_a_module_advances_the_objective(spine):
+    """End to end: authored coursework -> module progress -> position on the path."""
+    import uuid
+
+    from app import qsp_progress
+    from app.models import Enrollment, EnrollmentStatus, ModuleProgress, ModuleProgressStatus, PerformanceObjective
+
+    po = spine.query(PerformanceObjective).filter_by(po_code="PO_009").one()
+    module = spine.query(CourseModule).filter_by(po_id=po.id).one()
+    learner = uuid.uuid4()
+    enr = Enrollment(user_id=learner, course_id=module.course_id, status=EnrollmentStatus.in_progress)
+    spine.add(enr)
+    spine.flush()
+    spine.add(
+        ModuleProgress(
+            enrollment_id=enr.id, module_id=module.id, status=ModuleProgressStatus.completed, score=85, max_score=100
+        )
+    )
+    spine.flush()
+
+    mods = {str(module.po_id): module}
+    state = qsp_progress.po_progress(spine, learner, [po.id], mods)
+    assert state[str(po.id)] == qsp_progress.COMPLETED
 
 
 def test_any_declared_po_in_a_course_file_exists_in_the_crosswalk():
@@ -64,9 +104,9 @@ def test_any_declared_po_in_a_course_file_exists_in_the_crosswalk():
 
 def test_declared_po_binds_the_module(spine):
     doc = _course_doc("c204-security-monitoring-siem.yaml")
-    doc["modules"][0]["po"] = {"qsp_code": "ALJQ", "po_code": "PO_009"}
     stats = course_content_ingest.import_course_content(spine, yaml.safe_dump(doc, allow_unicode=True))
     assert stats["modules_bound_to_po"] == 1
+    assert stats["bound_to_qualification"] is True
 
 
 def test_unresolvable_po_is_rejected_not_ignored(spine):
@@ -86,7 +126,6 @@ def test_unknown_qualification_is_rejected(spine):
 
 def test_course_level_qsp_code_binds_the_qualification(spine):
     doc = _course_doc("c204-security-monitoring-siem.yaml")
-    doc["qsp_code"] = "ALJQ"
     stats = course_content_ingest.import_course_content(spine, yaml.safe_dump(doc, allow_unicode=True))
     assert stats["bound_to_qualification"] is True
 
@@ -94,32 +133,26 @@ def test_course_level_qsp_code_binds_the_qualification(spine):
 def test_partial_binding_does_not_infer_the_rest(spine):
     """Mapping one module must not cause the others to be guessed."""
     doc = _course_doc("c204-security-monitoring-siem.yaml")
-    doc["modules"][0]["po"] = {"qsp_code": "ALJQ", "po_code": "PO_009"}
     stats = course_content_ingest.import_course_content(spine, yaml.safe_dump(doc, allow_unicode=True))
     assert stats["modules_bound_to_po"] == 1
-    assert stats["bound_to_qualification"] is False
+    assert len(doc["modules"]) == 6
 
 
 # -- coverage report ------------------------------------------------------
 
 
-def test_coverage_reports_every_objective_uncovered_initially(spine):
+def test_coverage_shape(spine):
     cov = qsp_paths.po_coverage(spine)
     assert cov["objective_count"] == 16
-    assert cov["covered"] == 0
-    assert cov["uncovered"] == 16
-    assert cov["unbound_modules"] == 264
+    assert cov["covered"] + cov["uncovered"] == 16
+    assert cov["unbound_modules"] == 264 - cov["covered"]
 
 
-def test_coverage_reflects_a_binding(spine):
-    doc = _course_doc("c204-security-monitoring-siem.yaml")
-    doc["modules"][0]["po"] = {"qsp_code": "ALJQ", "po_code": "PO_009"}
-    course_content_ingest.import_course_content(spine, yaml.safe_dump(doc, allow_unicode=True))
+def test_coverage_names_the_delivering_course_and_module(spine):
     cov = qsp_paths.po_coverage(spine)
-    assert cov["covered"] == 1
-    delivered = [o for o in cov["objectives"] if o["module_count"]]
-    assert delivered[0]["po_code"] == "PO_009"
-    assert delivered[0]["delivered_by"][0]["course"].startswith("C204")
+    by_po = {o["po_code"]: o for o in cov["objectives"] if o["module_count"]}
+    assert by_po["PO_009"]["delivered_by"][0]["course"].startswith("C204")
+    assert by_po["PO_009"]["delivered_by"][0]["module"] == "Log Sources and Collection"
 
 
 def test_coverage_is_empty_for_a_tenant_with_no_spine(spine):

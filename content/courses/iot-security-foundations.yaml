@@ -10,7 +10,7 @@ duration_hours: 10
 provenance: unsourced
 status: draft
 is_published: false
-qsp_code: null
+qsp_code: ALJQ
 source:
   origin: fleet-authored draft recovered from session 746200b4 on 2026-08-19
   citations_verified: '2026-08-19'
@@ -20,7 +20,9 @@ source:
     against its publisher.
   - The draft's NICE DCWF / NIST CSF mappings were DROPPED as invalid. Framework mapping belongs to crosswalk.csv,
     which is auditable.
-  - The draft set is_published=true; this file is unpublished pending Standards review.
+  - 'Module-to-PO mapping applied 2026-08-19. PROPOSED, not Standards-validated: it is a reviewable starting
+    point, not an accreditation decision.'
+  - Unpublished pending Standards review.
 modules:
 - ordinal: 1
   title: IoT Security Landscape & Anatomy

@@ -70,9 +70,19 @@ def test_every_course_file_is_a_draft_and_unpublished():
         assert doc["status"] in {"draft", "proposed"}, name
 
 
-def test_no_course_file_is_bound_to_a_qualification():
+def test_every_course_file_declares_a_qualification():
+    """Courses deliver toward a qualification; the mapping is proposed, not validated."""
+    valid = {"ALJQ", "TEMP67", "TEMP64", "ALRA"}
     for name, doc in _all_docs():
-        assert doc["qsp_code"] is None, f"{name} asserts a CFITES binding it cannot support"
+        assert doc["qsp_code"] in valid, f"{name} has an unrecognised qsp_code"
+
+
+def test_every_course_file_records_the_mapping_as_proposed():
+    """The mapping must never read as Standards-validated."""
+    for name, doc in _all_docs():
+        notes = " ".join(doc["source"]["notes"]).lower()
+        assert "proposed" in notes, f"{name} does not record the mapping as proposed"
+        assert "not standards-validated" in notes, name
 
 
 def test_every_module_has_objectives_topics_and_a_lab():
@@ -185,8 +195,15 @@ def test_every_question_has_an_answer_key():
 # -- import ----------------------------------------------------------------
 
 
+CROSSWALK = ROOT / "truenorth-content-pack/truenorth-content/crosswalk.csv"
+
+
 @pytest.fixture
 def seeded(db_session):
+    # Course files declare a qsp_code, so the spine must exist before content loads.
+    from app import qsp_ingest
+
+    qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
     import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
     return db_session
 
@@ -237,6 +254,10 @@ def test_import_refuses_when_the_catalogue_course_is_absent(db_session):
 
 
 def test_import_endpoint(client):
+    client.post(
+        "/qsp/import-crosswalk",
+        files={"file": ("crosswalk.csv", CROSSWALK.read_bytes(), "text/csv")},
+    )
     client.post(
         "/courses/import-programme",
         files={"file": ("c.csv", CATALOGUE.read_bytes(), "text/csv")},

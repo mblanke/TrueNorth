@@ -585,10 +585,19 @@ Rules the importer enforces:
 - `tests/api/test_developmental_path_binding.py` asserts that any `po:` appearing in a
   course file corresponds to a real row in `crosswalk.csv`.
 
-**Do not add these mappings yourself.** Asserting that a module satisfies a performance
-objective is a CFITES claim that partly determines whether a CAF member is certified
-qualified. That is Standards' decision. The shipped draft content declares no mappings,
-and a test holds it that way.
+**The shipped mapping is PROPOSED, not Standards-validated.** Asserting that a module
+satisfies a performance objective is a CFITES claim that partly determines whether a CAF
+member is certified qualified, so the current mapping is a reviewable starting point for
+Standards, not an accreditation decision. Every course file records that in
+`source.notes`, and a test asserts it still says so.
+
+15 of the 16 objectives have a delivering module. The exception is `TEMP67 / PO_TODO`,
+a `needs_spec` placeholder for the remaining Cpl POs — there is nothing real to deliver
+against, and a test asserts it stays the only gap.
+
+**One module per objective.** `qsp_progress` takes the first module it finds for a PO, so
+a second mapping to the same objective is silently ignored and that course would not
+count toward progress. A test enforces one-to-one.
 
 To see what still needs mapping:
 
