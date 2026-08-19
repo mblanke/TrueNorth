@@ -107,7 +107,9 @@ services:
       - DISABLE_SECURITY_PLUGIN=true
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
     ports:
-      - "9200:9200"
+      # Loopback only: OpenSearch has no auth plugin enabled and holds telemetry
+      # plus curriculum indices. It was answering _cat/indices on the LAN.
+      - "127.0.0.1:9200:9200"
     volumes:
       - os-data:/usr/share/opensearch/data
 
@@ -174,7 +176,11 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8081:8080"
+      # Loopback only. This host sits on a routable LAN and the API runs with
+      # AUTH_DISABLED=true in dev, so publishing on 0.0.0.0 meant any machine on
+      # the subnet could read every tenant's data with no token. The web UI is
+      # unaffected: nginx proxies /api/ to api:8080 over the compose network.
+      - "127.0.0.1:8081:8080"
     environment:
       # Use PgBouncer for connection pooling
       DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
@@ -300,7 +306,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "6000:6000"
+      # Loopback only: internal service, no reason to be reachable off-host.
+      - "127.0.0.1:6000:6000"
     environment:
       # OpenAI-compatible backend -> local LiteLLM router on the host :4000.
       AI_MODEL_BACKEND: "${AI_MODEL_BACKEND:-openai}"
