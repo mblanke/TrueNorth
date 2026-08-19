@@ -1,0 +1,375 @@
+# C302 - Red-Team Fundamentals - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C302
+title: Red-Team Fundamentals
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Authorisation, Ethics and Rules of Engagement
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Establish written authorisation before any offensive activity.
+  - Define rules of engagement covering scope, timing and prohibited actions.
+  - Explain the legal and professional consequences of exceeding scope.
+  topics:
+  - Written authorisation and its necessity.
+  - Scope definition and boundaries.
+  - Prohibited actions and safety constraints.
+  - Deconfliction and emergency stop.
+  lab: 'Lab: Draft a complete rules of engagement document for an internal assessment, including scope,
+    prohibited actions, deconfliction contacts and emergency stop conditions.'
+  refs:
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Offensive security activity without written authorisation is:'
+      options:
+      - A) Acceptable if internal
+      - B) Potentially unlawful regardless of employer or intent
+      - C) Standard practice
+      - D) Permitted in a lab only
+      answer: B
+    - question: 'Rules of engagement must define:'
+      options:
+      - A) Tooling only
+      - B) Scope, timing, prohibited actions and escalation contacts
+      - C) The report format
+      - D) The fee
+      answer: B
+    - question: 'An emergency stop condition exists to:'
+      options:
+      - A) End the test early for convenience
+      - B) Halt activity immediately if it risks harm to operations or safety
+      - C) Protect the tester's reputation
+      - D) Reduce cost
+      answer: B
+    - question: 'Discovering a system outside the agreed scope requires the tester to:'
+      options:
+      - A) Test it anyway
+      - B) Stop and seek explicit authorisation before proceeding
+      - C) Report it as a finding
+      - D) Ignore it entirely
+      answer: B
+    - question: 'Deconfliction contacts exist so that defenders can:'
+      options:
+      - A) Stop the test
+      - B) Verify whether observed activity is the authorised test or a real intrusion
+      - C) Score the team
+      - D) Prepare the report
+      answer: B
+- ordinal: 2
+  title: Reconnaissance and Enumeration
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Conduct passive reconnaissance within scope.
+  - Enumerate services and attack surface systematically.
+  - Document findings to support later phases.
+  topics:
+  - Passive versus active reconnaissance.
+  - Service and version enumeration.
+  - Attack surface mapping.
+  - Reconnaissance documentation.
+  lab: 'Lab: Perform authorised enumeration of a lab environment, produce an attack surface map with services
+    and versions, and identify the three most promising entry points with justification.'
+  refs:
+  - nist-sp-800-115
+  - mitre-attack
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Passive reconnaissance is distinguished by:'
+      options:
+      - A) Using no tools
+      - B) Gathering information without directly interacting with the target
+      - C) Being unauthorised
+      - D) Being faster
+      answer: B
+    - question: 'Service version enumeration matters because it:'
+      options:
+      - A) Confirms uptime
+      - B) Identifies known vulnerabilities associated with specific versions
+      - C) Measures bandwidth
+      - D) Establishes ownership
+      answer: B
+    - question: 'Aggressive scanning of production systems risks:'
+      options:
+      - A) Nothing
+      - B) Service disruption, which may breach the rules of engagement
+      - C) Better results
+      - D) Faster completion
+      answer: B
+    - question: 'Documenting reconnaissance thoroughly is important because:'
+      options:
+      - A) It lengthens the report
+      - B) Later findings must be traceable to how the target was discovered
+      - C) It proves effort
+      - D) Clients require raw output
+      answer: B
+    - question: 'Attack surface mapping should include:'
+      options:
+      - A) Only web services
+      - B) All reachable services, interfaces and identities in scope
+      - C) Only unpatched hosts
+      - D) Physical assets only
+      answer: B
+- ordinal: 3
+  title: Initial Access Techniques
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe common initial access vectors.
+  - Evaluate the realism and risk of each vector.
+  - Conduct authorised social engineering safely.
+  topics:
+  - Exploitation of exposed services.
+  - Credential attacks and password spraying.
+  - Authorised phishing and pretexting.
+  - Safety and welfare considerations.
+  lab: 'Lab: Design an authorised phishing assessment including the pretext, the safeguards protecting
+    participants, and the metrics that would be reported without identifying individuals.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Password spraying differs from brute force because it:'
+      options:
+      - A) Targets one account with many passwords
+      - B) Tries a few common passwords across many accounts to avoid lockout
+      - C) Uses hashes
+      - D) Requires no credentials
+      answer: B
+    - question: 'Authorised phishing results should be reported:'
+      options:
+      - A) Naming individuals who clicked
+      - B) In aggregate, focusing on process and control weaknesses
+      - C) Publicly
+      - D) To line managers individually
+      answer: B
+    - question: 'A pretext that induces genuine distress in participants is:'
+      options:
+      - A) Most effective and therefore justified
+      - B) Ethically unacceptable and a welfare risk
+      - C) Standard practice
+      - D) Required for realism
+      answer: B
+    - question: 'Testing initial access against production credentials risks:'
+      options:
+      - A) Nothing
+      - B) Account lockouts affecting real users and operations
+      - C) Better fidelity only
+      - D) Faster access
+      answer: B
+    - question: 'The objective of an initial access assessment is to:'
+      options:
+      - A) Embarrass users
+      - B) Identify weaknesses in controls and process so they can be improved
+      - C) Achieve access at any cost
+      - D) Rank employees
+      answer: B
+- ordinal: 4
+  title: Post-Exploitation and Privilege Escalation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate a compromised host safely.
+  - Identify privilege escalation opportunities.
+  - Operate with minimal impact on the target environment.
+  topics:
+  - Host enumeration after access.
+  - Local privilege escalation paths.
+  - Credential access considerations.
+  - Operational impact minimisation.
+  lab: 'Lab: From a foothold in the lab, enumerate privilege escalation opportunities, escalate by one
+    documented path, and record every change made to the system for later cleanup.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Recording every change made during a test is necessary because:'
+      options:
+      - A) It proves skill
+      - B) The environment must be restored and defenders must distinguish test artefacts
+      - C) Clients request it
+      - D) It aids scoring
+      answer: B
+    - question: 'Dumping credentials during an authorised test should be:'
+      options:
+      - A) Routine and unrestricted
+      - B) Explicitly authorised, minimised and handled as sensitive data
+      - C) Avoided entirely always
+      - D) Reported publicly
+      answer: B
+    - question: 'A common local privilege escalation path is:'
+      options:
+      - A) Strong file permissions
+      - B) A writable service binary or misconfigured sudo rule
+      - C) Patched kernels
+      - D) Disabled accounts
+      answer: B
+    - question: 'Minimising operational impact means:'
+      options:
+      - A) Testing less
+      - B) Choosing techniques that achieve the objective with least disruption and footprint
+      - C) Avoiding documentation
+      - D) Testing off-hours only
+      answer: B
+    - question: 'Persistence established during a test must be:'
+      options:
+      - A) Left in place
+      - B) Documented and fully removed at conclusion
+      - C) Hidden from the client
+      - D) Reused later
+      answer: B
+- ordinal: 5
+  title: Adversary Emulation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design an emulation plan based on a real adversary's behaviour.
+  - Execute techniques mapped to ATT&CK.
+  - Measure defensive detection and response.
+  topics:
+  - Emulation versus generic testing.
+  - Threat-informed emulation planning.
+  - Technique execution and evidence generation.
+  - Purple teaming and detection measurement.
+  lab: 'Lab: Build an emulation plan for a chosen adversary covering five ATT&CK techniques, execute them
+    in the lab, and record for each whether it was detected, when and by what.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Adversary emulation differs from generic penetration testing because it:'
+      options:
+      - A) Is less technical
+      - B) Replicates the behaviour of a specific relevant threat actor
+      - C) Requires no authorisation
+      - D) Avoids exploitation
+      answer: B
+    - question: 'Purple teaming means:'
+      options:
+      - A) Red and blue working in isolation
+      - B) Offensive and defensive teams collaborating to improve detection
+      - C) A third-party assessment
+      - D) Automated testing
+      answer: B
+    - question: 'The primary measure of a successful emulation is:'
+      options:
+      - A) Whether access was achieved
+      - B) What the defenders detected, missed and how they responded
+      - C) Number of hosts compromised
+      - D) Time taken
+      answer: B
+    - question: 'Executing a technique that generates no detection indicates:'
+      options:
+      - A) The technique failed
+      - B) A visibility or detection gap worth remediating
+      - C) Good security
+      - D) A tooling error
+      answer: B
+    - question: 'Emulation plans should be based on:'
+      options:
+      - A) The most sophisticated actor known
+      - B) Adversaries plausibly relevant to the organisation
+      - C) The tester's preference
+      - D) The newest techniques
+      answer: B
+- ordinal: 6
+  title: Reporting and Remediation Support
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write findings that drive remediation rather than impress.
+  - Assign severity defensibly.
+  - Support the defender in verifying fixes.
+  topics:
+  - Finding structure and evidence.
+  - Severity rating and business context.
+  - Remediation guidance quality.
+  - Retest and verification.
+  lab: 'Lab: Write three findings from your lab activity with reproduction steps, business impact, justified
+    severity and specific remediation guidance, then define how each would be retested.'
+  refs:
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A finding''s severity should reflect:'
+      options:
+      - A) Technical elegance
+      - B) Exploitability and business impact in context
+      - C) Time to find
+      - D) Tool output
+      answer: B
+    - question: 'Remediation guidance is most useful when it is:'
+      options:
+      - A) Generic best practice
+      - B) Specific to the finding and actionable by the owner
+      - C) A vendor recommendation
+      - D) A standard reference only
+      answer: B
+    - question: 'A report that lists tool output without analysis:'
+      options:
+      - A) Is thorough
+      - B) Transfers the analytical burden to the client and adds little value
+      - C) Is preferred
+      - D) Reduces false positives
+      answer: B
+    - question: 'Retesting after remediation is important because:'
+      options:
+      - A) It extends the engagement
+      - B) Fixes frequently fail to fully address the underlying weakness
+      - C) Clients expect it
+      - D) It updates severity
+      answer: B
+    - question: 'The purpose of a red team report is to:'
+      options:
+      - A) Demonstrate the team's capability
+      - B) Enable the organisation to become measurably harder to compromise
+      - C) Justify the fee
+      - D) Rank defenders
+      answer: B

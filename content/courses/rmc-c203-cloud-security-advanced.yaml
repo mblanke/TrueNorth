@@ -1,0 +1,381 @@
+# RMC C203 - Cloud Security - Advanced - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C203
+title: Cloud Security - Advanced
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Multi-Account and Multi-Cloud Architecture
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design account and subscription structure for security isolation.
+  - Manage security consistently across multiple providers.
+  - Assess the trade-offs of multi-cloud adoption.
+  topics:
+  - Account structure and blast radius.
+  - Landing zones and guardrails at scale.
+  - Multi-cloud consistency challenges.
+  - Provider concentration and portability.
+  lab: 'Lab: Design a multi-account structure for an organisation with four business units and three environments,
+    defining the guardrails applied at each level and the blast radius of each boundary.'
+  refs:
+  - nist-sp-800-145
+  - nist-sp-800-207
+  - cis-benchmarks
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'The primary security benefit of separate cloud accounts is:'
+      options:
+      - A) Cost allocation
+      - B) A hard boundary limiting blast radius and permission scope
+      - C) Faster networking
+      - D) Simpler billing
+      answer: B
+    - question: 'Multi-cloud adoption increases security complexity mainly because:'
+      options:
+      - A) More bandwidth is needed
+      - B) Security models, identity and telemetry differ between providers
+      - C) Costs rise
+      - D) Latency increases
+      answer: B
+    - question: 'A landing zone provides:'
+      options:
+      - A) A network segment
+      - B) A pre-configured, guardrailed foundation for new workloads
+      - C) A backup region
+      - D) A billing account
+      answer: B
+    - question: 'Provider concentration risk is mitigated by:'
+      options:
+      - A) Using one provider well
+      - B) Understanding dependencies and having a considered exit position
+      - C) Multi-cloud always
+      - D) Longer contracts
+      answer: B
+    - question: 'Guardrails applied at the organisation level rather than per account:'
+      options:
+      - A) Are easier to bypass
+      - B) Cannot be overridden by individual account administrators
+      - C) Reduce visibility
+      - D) Increase cost
+      answer: B
+- ordinal: 2
+  title: Cloud Identity at Scale
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design federated identity across cloud estates.
+  - Detect and remediate permission sprawl.
+  - Implement privileged access for cloud administration.
+  topics:
+  - Federated cloud identity design.
+  - Permission analysis and least privilege at scale.
+  - Privilege escalation paths in cloud IAM.
+  - Just-in-time cloud administration.
+  lab: 'Lab: Analyse a cloud estate''s IAM for privilege escalation paths, identify every path from a
+    low-privilege identity to administrative access, and remediate the two shortest.'
+  refs:
+  - nist-sp-800-63-4
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A cloud privilege escalation path often exists where an identity can:'
+      options:
+      - A) Read logs
+      - B) Modify policies or assume a more privileged role
+      - C) List resources
+      - D) Create tags
+      answer: B
+    - question: 'Permission sprawl in cloud environments arises because:'
+      options:
+      - A) Providers grant defaults
+      - B) Permissions are granted for tasks and rarely removed afterwards
+      - C) Policies expire
+      - D) Identities are deleted
+      answer: B
+    - question: 'Federating cloud access to a central identity provider improves:'
+      options:
+      - A) Latency
+      - B) Consistent lifecycle, MFA enforcement and deprovisioning
+      - C) Cost
+      - D) Availability
+      answer: B
+    - question: 'The ability to pass a role to a service is dangerous when:'
+      options:
+      - A) The role is read-only
+      - B) A less privileged identity can pass a more privileged role to a service it controls
+      - C) Logging is enabled
+      - D) The service is managed
+      answer: B
+    - question: 'Just-in-time cloud administration reduces risk by:'
+      options:
+      - A) Removing audit
+      - B) Eliminating standing administrative privilege
+      - C) Simplifying policy
+      - D) Reducing cost
+      answer: B
+- ordinal: 3
+  title: Infrastructure as Code Security
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Secure infrastructure defined as code.
+  - Implement policy as code in the pipeline.
+  - Manage state and secrets in automated provisioning.
+  topics:
+  - Infrastructure as code patterns.
+  - Policy as code and pre-deployment gates.
+  - State file protection.
+  - Secrets in provisioning pipelines.
+  lab: 'Lab: Add policy-as-code checks to an infrastructure pipeline that block three specific misconfigurations,
+    and demonstrate both a blocked and an allowed deployment.'
+  refs:
+  - nist-sp-800-218
+  - nist-sp-800-190
+  - cis-benchmarks
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Policy as code is most valuable when enforced:'
+      options:
+      - A) After deployment
+      - B) Before deployment, blocking the misconfiguration from ever existing
+      - C) During audit
+      - D) At renewal
+      answer: B
+    - question: 'Infrastructure state files require protection because they:'
+      options:
+      - A) Are large
+      - B) Frequently contain sensitive values and a full map of the environment
+      - C) Change often
+      - D) Are text based
+      answer: B
+    - question: 'Hardcoding secrets in infrastructure code is dangerous because:'
+      options:
+      - A) It slows deployment
+      - B) The secret persists in version control history and is widely readable
+      - C) It breaks idempotency
+      - D) It requires encryption
+      answer: B
+    - question: 'Infrastructure as code improves security posture primarily by making configuration:'
+      options:
+      - A) Faster to deploy
+      - B) Reviewable, repeatable and auditable
+      - C) Cheaper
+      - D) Provider agnostic
+      answer: B
+    - question: 'Drift between code and deployed reality should be:'
+      options:
+      - A) Expected and ignored
+      - B) Detected and reconciled, since the code otherwise misrepresents the environment
+      - C) Resolved by redeploying always
+      - D) Documented only
+      answer: B
+- ordinal: 4
+  title: Cloud Workload Protection
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Secure containerised and serverless workloads at scale.
+  - Implement runtime protection appropriate to the platform.
+  - Manage the workload supply chain.
+  topics:
+  - Container orchestration security.
+  - Runtime detection for cloud workloads.
+  - Image supply chain and admission control.
+  - Serverless attack surface.
+  lab: 'Lab: Configure admission control to reject unsigned or vulnerable container images, then demonstrate
+    rejection and document the exception process for legitimate cases.'
+  refs:
+  - nist-sp-800-190
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Admission control in an orchestrator enforces policy:'
+      options:
+      - A) After workloads run
+      - B) At the point workloads are scheduled, preventing non-compliant deployment
+      - C) During image build
+      - D) At registry push only
+      answer: B
+    - question: 'Runtime protection for containers is necessary because:'
+      options:
+      - A) Images are always vulnerable
+      - B) Build-time scanning cannot detect compromise or misuse during execution
+      - C) Orchestrators lack logging
+      - D) Containers are long-lived
+      answer: B
+    - question: 'An orchestrator''s control plane is a critical asset because it:'
+      options:
+      - A) Stores application data
+      - B) Can schedule arbitrary workloads across the entire cluster
+      - C) Handles networking only
+      - D) Manages billing
+      answer: B
+    - question: 'Serverless functions reduce some attack surface but retain risk from:'
+      options:
+      - A) Kernel patching
+      - B) Over-permissioned execution roles and vulnerable dependencies
+      - C) Physical access
+      - D) Host firewalls
+      answer: B
+    - question: 'Signing container images provides:'
+      options:
+      - A) Encryption of layers
+      - B) Assurance of origin and integrity before execution
+      - C) Vulnerability scanning
+      - D) Smaller images
+      answer: B
+- ordinal: 5
+  title: Cloud Incident Response
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Adapt incident response for cloud environments.
+  - Acquire evidence from cloud services.
+  - Contain incidents affecting cloud control planes.
+  topics:
+  - Cloud-specific response considerations.
+  - Evidence acquisition in cloud.
+  - Control plane compromise response.
+  - Provider engagement.
+  lab: 'Lab: Produce a cloud incident response playbook for a compromised administrative identity, covering
+    containment, evidence acquisition and the recovery of trust in the control plane.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  - nist-sp-800-145
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Responding to a compromised cloud administrative identity must include:'
+      options:
+      - A) Password reset only
+      - B) Revoking active sessions and tokens, not just changing credentials
+      - C) Instance restart
+      - D) Network isolation only
+      answer: B
+    - question: 'Evidence acquisition in cloud differs because:'
+      options:
+      - A) Disks are unavailable
+      - B) Snapshots and API-based collection replace physical acquisition, and logs may be provider held
+      - C) Nothing is logged
+      - D) Encryption prevents it
+      answer: B
+    - question: 'Ephemeral cloud resources complicate investigation because they:'
+      options:
+      - A) Are encrypted
+      - B) May be destroyed before evidence is collected
+      - C) Cannot be snapshotted
+      - D) Lack identity
+      answer: B
+    - question: 'Provider engagement during a cloud incident is needed when:'
+      options:
+      - A) Always immediately
+      - B) Evidence or capability lies within the provider's responsibility boundary
+      - C) Never
+      - D) After closure
+      answer: B
+    - question: 'Re-establishing trust after control plane compromise requires:'
+      options:
+      - A) Rebuilding instances only
+      - B) Reviewing all identities, policies and persistence created during the compromise window
+      - C) Rotating one key
+      - D) Provider confirmation
+      answer: B
+- ordinal: 6
+  title: Cloud Governance and Assurance
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Establish continuous compliance in a dynamic environment.
+  - Assure cloud security to third parties.
+  - Balance central control with delivery velocity.
+  topics:
+  - Continuous compliance monitoring.
+  - Evidence generation for assurance.
+  - Shared responsibility in audit.
+  - Control versus velocity.
+  lab: 'Lab: Design a continuous compliance capability that produces audit evidence automatically, and
+    identify which controls still require manual attestation and why.'
+  refs:
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  - cis-benchmarks
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Continuous compliance is necessary in cloud because:'
+      options:
+      - A) Auditors demand it
+      - B) The environment changes faster than periodic assessment can track
+      - C) It is cheaper
+      - D) Providers require it
+      answer: B
+    - question: 'Automatically generated audit evidence is preferable because it is:'
+      options:
+      - A) Shorter
+      - B) Current, consistent and not dependent on manual collection
+      - C) Provider supplied
+      - D) Less detailed
+      answer: B
+    - question: 'In a shared responsibility audit, the customer must evidence:'
+      options:
+      - A) The provider's controls
+      - B) The controls within their own responsibility boundary
+      - C) Nothing
+      - D) Physical security
+      answer: B
+    - question: 'Excessive central control over cloud delivery typically results in:'
+      options:
+      - A) Better security
+      - B) Teams circumventing governance through shadow deployments
+      - C) Faster delivery
+      - D) Lower cost
+      answer: B
+    - question: 'Relying solely on a provider''s compliance certification is insufficient because it:'
+      options:
+      - A) Is untrustworthy
+      - B) Covers the provider's responsibilities, not the customer's configuration
+      - C) Expires quickly
+      - D) Is not audited
+      answer: B

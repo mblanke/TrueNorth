@@ -1,0 +1,372 @@
+# C403 - Capstone Implementation - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C403
+title: Capstone Implementation
+version: '1.0'
+difficulty: intermediate
+duration_hours: 40
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Build Discipline and Version Control
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Maintain a disciplined build and version control practice.
+  - Record decisions as the implementation evolves.
+  - Manage dependencies and reproducibility.
+  topics:
+  - Version control workflow.
+  - Decision records during build.
+  - Dependency management and pinning.
+  - Reproducible environments.
+  lab: 'Lab: Establish your capstone repository with a documented branching approach, dependency pinning
+    and a decision record template, then record your first three implementation decisions.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Recording decisions during implementation is valuable because:'
+      options:
+      - A) It satisfies assessors
+      - B) Reasoning is forgotten quickly and later reviewers need it
+      - C) It lengthens the report
+      - D) It replaces comments
+      answer: B
+    - question: 'Pinning dependencies makes a project:'
+      options:
+      - A) Slower
+      - B) Reproducible, so results can be replicated later
+      - C) More secure automatically
+      - D) Smaller
+      answer: B
+    - question: 'Committing only at the end of the project risks:'
+      options:
+      - A) Cleaner history
+      - B) Losing work and having no record of how the solution evolved
+      - C) Faster development
+      - D) Fewer conflicts
+      answer: B
+    - question: 'A reproducible environment matters because:'
+      options:
+      - A) It runs faster
+      - B) Results that cannot be reproduced cannot be verified
+      - C) It uses less disk
+      - D) Assessors require containers
+      answer: B
+    - question: 'Secrets discovered committed to version control must be:'
+      options:
+      - A) Deleted in a later commit
+      - B) Rotated, since history retains them
+      - C) Ignored if private
+      - D) Encrypted in place
+      answer: B
+- ordinal: 2
+  title: Iterative Development and Testing
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Develop iteratively with continuous verification.
+  - Write tests that establish correctness.
+  - Manage technical debt deliberately.
+  topics:
+  - Iteration and increments.
+  - Test strategy for a research build.
+  - Continuous verification.
+  - Deliberate technical debt.
+  lab: 'Lab: Implement one capstone increment end to end with tests, verify it against your success criteria,
+    and record any technical debt you deliberately accepted and why.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Delivering in increments is preferable because:'
+      options:
+      - A) It is faster overall
+      - B) Each increment can be verified, reducing the risk of late discovery of failure
+      - C) It needs fewer tests
+      - D) It simplifies scope
+      answer: B
+    - question: 'Technical debt accepted deliberately should be:'
+      options:
+      - A) Hidden
+      - B) Recorded with the reason and the conditions for repayment
+      - C) Avoided entirely
+      - D) Left to the assessor
+      answer: B
+    - question: 'Tests in a research build primarily serve to:'
+      options:
+      - A) Satisfy process
+      - B) Establish that results depend on the intended behaviour, not a bug
+      - C) Increase coverage metrics
+      - D) Slow development
+      answer: B
+    - question: 'Discovering the approach does not work halfway through should prompt:'
+      options:
+      - A) Concealment
+      - B) Documented pivot or scope revision, which is a legitimate outcome
+      - C) Abandonment
+      - D) Fabricating results
+      answer: B
+    - question: 'Continuous verification against success criteria prevents:'
+      options:
+      - A) Slow progress
+      - B) Building something that works but does not answer the question
+      - C) Test failures
+      - D) Scope creep only
+      answer: B
+- ordinal: 3
+  title: Data Collection and Evaluation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Collect evidence systematically.
+  - Analyse results honestly including negative findings.
+  - Assess whether results support the claims made.
+  topics:
+  - Systematic data collection.
+  - Analysis and interpretation.
+  - Negative and null results.
+  - Claim and evidence alignment.
+  lab: 'Lab: Execute your evaluation, collect the planned evidence, analyse the results, and write a statement
+    of what the evidence does and does not support.'
+  refs:
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A negative result is:'
+      options:
+      - A) A project failure
+      - B) A legitimate and often valuable finding if honestly reported
+      - C) To be omitted
+      - D) A methodology error
+      answer: B
+    - question: 'Claims in a capstone must be:'
+      options:
+      - A) Ambitious
+      - B) Proportionate to the evidence actually collected
+      - C) Comparable to industry
+      - D) Novel
+      answer: B
+    - question: 'Discarding results that contradict the hypothesis is:'
+      options:
+      - A) Acceptable cleanup
+      - B) Research misconduct
+      - C) Standard practice
+      - D) A judgement call
+      answer: B
+    - question: 'Systematic collection means evidence is gathered:'
+      options:
+      - A) Opportunistically
+      - B) According to the planned method, consistently across conditions
+      - C) Only when favourable
+      - D) Automatically
+      answer: B
+    - question: 'If results are inconclusive, the correct action is to:'
+      options:
+      - A) Strengthen the claim
+      - B) Report them as inconclusive and analyse why
+      - C) Collect until favourable
+      - D) Change the question retroactively
+      answer: B
+- ordinal: 4
+  title: Supervision and Progress Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Use supervision effectively.
+  - Report progress honestly including difficulties.
+  - Adapt the plan as understanding develops.
+  topics:
+  - Effective use of supervision.
+  - Honest progress reporting.
+  - Plan adaptation and re-scoping.
+  - Escalating blockers early.
+  lab: 'Lab: Prepare a supervision session with a written progress summary, three specific questions and
+    an honest account of your current largest blocker.'
+  refs:
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Concealing difficulty from a supervisor typically:'
+      options:
+      - A) Preserves confidence
+      - B) Delays help until the problem is harder to recover from
+      - C) Improves independence
+      - D) Is expected
+      answer: B
+    - question: 'The most effective supervision sessions are those where the student:'
+      options:
+      - A) Reports only progress
+      - B) Arrives with specific questions and a clear statement of the current state
+      - C) Awaits direction
+      - D) Presents finished work
+      answer: B
+    - question: 'Adapting the plan mid-project is:'
+      options:
+      - A) A sign of failure
+      - B) Normal and expected as understanding develops, if documented
+      - C) Not permitted
+      - D) Only for methodology
+      answer: B
+    - question: 'A blocker should be escalated:'
+      options:
+      - A) When it becomes critical
+      - B) As soon as it is identified as likely to affect the schedule
+      - C) At the next scheduled meeting
+      - D) In the final report
+      answer: B
+    - question: 'Progress reporting should include:'
+      options:
+      - A) Achievements only
+      - B) Achievements, difficulties, decisions and revised expectations
+      - C) Hours worked
+      - D) Code volume
+      answer: B
+- ordinal: 5
+  title: Integration and System Verification
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Integrate components into a working whole.
+  - Verify the integrated system against requirements.
+  - Handle integration failures methodically.
+  topics:
+  - Integration strategy.
+  - End-to-end verification.
+  - Failure isolation.
+  - Requirement traceability.
+  lab: 'Lab: Integrate your capstone components, verify the system end to end against each stated requirement,
+    and produce a traceability matrix from requirement to evidence.'
+  refs:
+  - nist-sp-800-218
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A traceability matrix links:'
+      options:
+      - A) Code to authors
+      - B) Requirements to the evidence that each is satisfied
+      - C) Tasks to dates
+      - D) Tests to tools
+      answer: B
+    - question: 'Integrating everything at the end rather than incrementally:'
+      options:
+      - A) Saves time
+      - B) Concentrates risk at the point where least time remains
+      - C) Simplifies testing
+      - D) Is recommended
+      answer: B
+    - question: 'Isolating an integration failure is best done by:'
+      options:
+      - A) Rewriting components
+      - B) Systematically narrowing which interface or component is responsible
+      - C) Restarting the build
+      - D) Adding logging everywhere
+      answer: B
+    - question: 'A requirement with no corresponding evidence indicates:'
+      options:
+      - A) An unnecessary requirement
+      - B) Either unverified work or an untested claim
+      - C) Good scoping
+      - D) Successful integration
+      answer: B
+    - question: 'End-to-end verification differs from unit testing because it:'
+      options:
+      - A) Is faster
+      - B) Exercises the assembled system as a user or assessor would
+      - C) Needs no data
+      - D) Replaces unit tests
+      answer: B
+- ordinal: 6
+  title: Preparing for Assessment
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Prepare a demonstrable and reproducible deliverable.
+  - Anticipate assessor questions.
+  - Ensure the work can be evaluated independently.
+  topics:
+  - Deliverable packaging.
+  - Reproducibility for assessors.
+  - Anticipating scrutiny.
+  - Documentation completeness.
+  lab: 'Lab: Package your capstone so an assessor can reproduce your results from documentation alone,
+    then have a peer attempt it and record every point where they became stuck.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'The best test of reproducibility documentation is:'
+      options:
+      - A) Self-review
+      - B) Someone else following it without your help
+      - C) Length
+      - D) Tool validation
+      answer: B
+    - question: 'Anticipating assessor questions helps you:'
+      options:
+      - A) Avoid difficult topics
+      - B) Identify weaknesses in the work while there is still time to address them
+      - C) Shorten the defence
+      - D) Predict the grade
+      answer: B
+    - question: 'A deliverable that only runs on your machine:'
+      options:
+      - A) Is acceptable if documented
+      - B) Cannot be independently verified and undermines the work
+      - C) Is normal
+      - D) Is preferred for security
+      answer: B
+    - question: 'Documentation should be written for:'
+      options:
+      - A) Yourself
+      - B) A competent reader with no prior knowledge of your project
+      - C) The supervisor
+      - D) Future students
+      answer: B
+    - question: 'A peer getting stuck on your reproduction steps indicates:'
+      options:
+      - A) Peer incompetence
+      - B) A genuine documentation gap to fix
+      - C) Environmental difference only
+      - D) Nothing important
+      answer: B

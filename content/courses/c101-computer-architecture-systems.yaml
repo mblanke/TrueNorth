@@ -1,0 +1,374 @@
+# C101 - Computer Architecture & Systems - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C101
+title: Computer Architecture & Systems
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Digital Logic and CPU Organization
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the fetch-decode-execute cycle and the role of the ALU, registers and control unit.
+  - Explain how instruction set architecture differs from microarchitecture.
+  - Relate pipelining and out-of-order execution to observable side effects.
+  topics:
+  - Von Neumann vs Harvard architectures.
+  - Registers, ALU, control unit, buses.
+  - Instruction pipelines, hazards and stalls.
+  - Speculative execution and its security consequences.
+  lab: 'Lab: Trace a short assembly routine through a CPU simulator, recording register state at each
+    stage of the pipeline, and identify where a stall occurs.'
+  refs:
+  - nist-sp-800-193
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: In the fetch-decode-execute cycle, which component holds the address of the next instruction?
+      options:
+      - A) Accumulator
+      - B) Program counter
+      - C) Stack pointer
+      - D) Status register
+      answer: B
+    - question: Which architecture uses physically separate storage for instructions and data?
+      options:
+      - A) Von Neumann
+      - B) Harvard
+      - C) RISC-V
+      - D) Superscalar
+      answer: B
+    - question: 'A pipeline hazard that occurs because an instruction needs a result not yet computed
+        is a:'
+      options:
+      - A) Structural hazard
+      - B) Control hazard
+      - C) Data hazard
+      - D) Cache hazard
+      answer: C
+    - question: 'Speculative execution became a security concern primarily because it can:'
+      options:
+      - A) Corrupt the instruction cache
+      - B) Leave measurable traces in microarchitectural state
+      - C) Disable memory protection
+      - D) Reorder disk writes
+      answer: B
+    - question: 'Instruction set architecture (ISA) defines:'
+      options:
+      - A) The physical layout of transistors
+      - B) The contract between software and hardware
+      - C) The clock frequency
+      - D) The cache replacement policy
+      answer: B
+- ordinal: 2
+  title: Memory Hierarchy and Storage
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain the trade-offs across registers, cache, RAM and persistent storage.
+  - Describe cache coherence and locality of reference.
+  - Identify how memory hierarchy affects timing-based attacks.
+  topics:
+  - Cache levels L1/L2/L3 and hit/miss cost.
+  - Temporal and spatial locality.
+  - Virtual memory, paging and the TLB.
+  - DMA and memory-mapped I/O.
+  lab: 'Lab: Measure access latency across cache levels with a stride-access benchmark, plot the results,
+    and identify each cache boundary from the timing steps.'
+  refs:
+  - nist-sp-800-193
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Which storage tier has the lowest access latency?
+      options:
+      - A) L3 cache
+      - B) Main memory
+      - C) CPU registers
+      - D) NVMe SSD
+      answer: C
+    - question: 'The TLB caches translations between:'
+      options:
+      - A) Virtual and physical addresses
+      - B) Logical and physical disk blocks
+      - C) Instructions and microcode
+      - D) Host and network byte order
+      answer: A
+    - question: Repeatedly accessing the same address benefits from which property?
+      options:
+      - A) Spatial locality
+      - B) Temporal locality
+      - C) Write-back caching
+      - D) Branch prediction
+      answer: B
+    - question: 'Timing attacks against caches are possible because:'
+      options:
+      - A) Caches are encrypted
+      - B) Cache hits and misses take measurably different time
+      - C) The TLB is shared with the GPU
+      - D) DMA bypasses the CPU
+      answer: B
+    - question: 'Direct Memory Access (DMA) allows a device to:'
+      options:
+      - A) Execute privileged instructions
+      - B) Transfer data to memory without CPU involvement
+      - C) Modify the instruction set
+      - D) Bypass the page table permanently
+      answer: B
+- ordinal: 3
+  title: Operating System Interfaces and Privilege
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish user mode from kernel mode and describe the transition mechanism.
+  - Explain how system calls mediate access to hardware.
+  - Describe how privilege rings underpin process isolation.
+  topics:
+  - CPU privilege rings and protected mode.
+  - System call interface and traps.
+  - Interrupts, exceptions and handlers.
+  - Process isolation and memory protection.
+  lab: 'Lab: Use strace on a small program to enumerate its system calls, then map three of them to the
+    kernel resource each one touches.'
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A system call transitions the processor from:'
+      options:
+      - A) Kernel mode to user mode
+      - B) User mode to kernel mode
+      - C) Real mode to protected mode
+      - D) Ring 3 to ring 2
+      answer: B
+    - question: 'On x86, unprivileged application code normally executes in:'
+      options:
+      - A) Ring 0
+      - B) Ring 1
+      - C) Ring 2
+      - D) Ring 3
+      answer: D
+    - question: 'Memory protection between processes is primarily enforced by:'
+      options:
+      - A) The compiler
+      - B) The memory management unit and page tables
+      - C) The filesystem
+      - D) The network stack
+      answer: B
+    - question: 'A hardware interrupt is best described as:'
+      options:
+      - A) A compiler optimisation
+      - B) An asynchronous signal that diverts execution to a handler
+      - C) A type of cache miss
+      - D) A scheduling algorithm
+      answer: B
+    - question: Which of these is NOT a reason system calls are comparatively expensive?
+      options:
+      - A) Privilege transition overhead
+      - B) Cache and TLB effects
+      - C) Argument validation by the kernel
+      - D) They are always written in assembly
+      answer: D
+- ordinal: 4
+  title: Firmware, Boot and Root of Trust
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the platform boot sequence from power-on to operating system handoff.
+  - Explain measured boot and verified boot and how they differ.
+  - Assess firmware resiliency requirements for protection, detection and recovery.
+  topics:
+  - UEFI and legacy BIOS boot flow.
+  - Secure boot signature verification.
+  - TPM measurement and PCR values.
+  - Firmware update, rollback protection and recovery.
+  lab: 'Lab: Read the TPM PCR values on a test system before and after a configuration change, and explain
+    which measurement changed and why.'
+  refs:
+  - nist-sp-800-193
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Verified boot differs from measured boot in that verified boot:'
+      options:
+      - A) Records hashes for later attestation
+      - B) Refuses to execute code that fails signature checks
+      - C) Only runs on ARM platforms
+      - D) Requires network connectivity
+      answer: B
+    - question: 'TPM Platform Configuration Registers (PCRs) store:'
+      options:
+      - A) Encryption keys in plaintext
+      - B) Cumulative hash measurements of boot components
+      - C) The UEFI variable store
+      - D) Firmware source code
+      answer: B
+    - question: NIST SP 800-193 organises firmware resiliency around which three principles?
+      options:
+      - A) Confidentiality, integrity, availability
+      - B) Protection, detection, recovery
+      - C) Identify, protect, respond
+      - D) Prevent, deter, delay
+      answer: B
+    - question: 'Rollback protection in firmware updates prevents:'
+      options:
+      - A) Installing a newer signed image
+      - B) Reverting to an older vulnerable signed image
+      - C) Measuring the bootloader
+      - D) Using an external programmer
+      answer: B
+    - question: 'The root of trust for a platform is best described as:'
+      options:
+      - A) The operating system kernel
+      - B) A component that is implicitly trusted and cannot be verified by anything below it
+      - C) The administrator account
+      - D) The network gateway
+      answer: B
+- ordinal: 5
+  title: Peripherals, Buses and Physical Interfaces
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify common system buses and their relative bandwidth and trust characteristics.
+  - Explain the risk introduced by DMA-capable external ports.
+  - Describe debug interfaces and why they matter to an attacker.
+  topics:
+  - PCIe, USB, SPI and I2C.
+  - Thunderbolt/DMA attack surface and IOMMU mitigation.
+  - JTAG and UART debug headers.
+  - Peripheral firmware and supply-chain exposure.
+  lab: 'Lab: Identify the exposed debug headers on a device photograph or development board, document
+    what each interface would grant an attacker, and propose a mitigation for each.'
+  refs:
+  - nist-sp-800-193
+  - cis-benchmarks
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'An IOMMU mitigates DMA attacks by:'
+      options:
+      - A) Encrypting the PCIe bus
+      - B) Restricting which physical memory a device may address
+      - C) Disabling USB ports
+      - D) Signing device firmware
+      answer: B
+    - question: 'JTAG is primarily an interface for:'
+      options:
+      - A) High-speed storage
+      - B) Boundary scan and hardware debugging
+      - C) Wireless networking
+      - D) Power delivery
+      answer: B
+    - question: Which bus is most commonly used to attach a SPI flash chip holding platform firmware?
+      options:
+      - A) PCIe
+      - B) SPI
+      - C) SATA
+      - D) Ethernet
+      answer: B
+    - question: 'A UART header on a production device is a concern mainly because it may expose:'
+      options:
+      - A) A serial console with privileged access
+      - B) The device MAC address
+      - C) The screen resolution
+      - D) The battery level
+      answer: A
+    - question: 'Peripheral devices matter to supply-chain risk because they:'
+      options:
+      - A) Cannot be updated
+      - B) Run their own firmware that the host generally does not verify
+      - C) Always use encrypted links
+      - D) Are exempt from procurement review
+      answer: B
+- ordinal: 6
+  title: Virtualisation and Platform Hardening
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain the difference between type 1 and type 2 hypervisors.
+  - Describe hardware virtualisation extensions and nested paging.
+  - Apply a recognised benchmark to harden a platform configuration.
+  topics:
+  - Hypervisor types and the virtual machine monitor.
+  - Intel VT-x / AMD-V and second-level address translation.
+  - VM escape and isolation boundaries.
+  - Configuration hardening with published benchmarks.
+  lab: 'Lab: Harden a virtual machine against a CIS Benchmark for its operating system, record the pass
+    rate before and after, and document any control you deliberately did not apply and why.'
+  refs:
+  - cis-benchmarks
+  - nist-sp-800-190
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A type 1 hypervisor runs:'
+      options:
+      - A) As an application on a host OS
+      - B) Directly on the hardware
+      - C) Inside a container
+      - D) Only in firmware
+      answer: B
+    - question: 'Second-level address translation (EPT/NPT) reduces overhead by:'
+      options:
+      - A) Removing the need for a TLB
+      - B) Handling guest-to-host page translation in hardware
+      - C) Compressing guest memory
+      - D) Disabling paging in the guest
+      answer: B
+    - question: 'A VM escape is an attack in which code:'
+      options:
+      - A) Crashes the guest OS
+      - B) Breaks out of the guest into the hypervisor or host
+      - C) Consumes excessive CPU
+      - D) Migrates a VM between hosts
+      answer: B
+    - question: 'Containers differ from virtual machines principally because containers:'
+      options:
+      - A) Cannot be networked
+      - B) Share the host kernel
+      - C) Require more memory
+      - D) Cannot be orchestrated
+      answer: B
+    - question: 'CIS Benchmarks are best described as:'
+      options:
+      - A) Mandatory legal requirements
+      - B) Consensus-based configuration hardening recommendations
+      - C) A vulnerability scanner
+      - D) An incident response standard
+      answer: B

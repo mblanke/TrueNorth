@@ -1,0 +1,374 @@
+# C208 - Windows Forensics - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C208
+title: Windows Forensics
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Windows Artefact Landscape
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the principal forensic artefact sources on Windows.
+  - Explain what each artefact does and does not prove.
+  - Prioritise artefact collection for a given question.
+  topics:
+  - Registry hives and their purpose.
+  - Event logs and channels.
+  - Filesystem metadata and the MFT.
+  - Artefact reliability and interpretation limits.
+  lab: 'Lab: Given an investigative question about program execution, list the artefacts that could answer
+    it, rank them by reliability, and state what each would prove.'
+  refs:
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'The Master File Table on NTFS records:'
+      options:
+      - A) Only file contents
+      - B) Metadata for every file and directory on the volume
+      - C) Registry keys
+      - D) Event log entries
+      answer: B
+    - question: 'An artefact showing a program was present does NOT by itself prove:'
+      options:
+      - A) The file existed
+      - B) That the program was executed
+      - C) The file path
+      - D) The file size
+      answer: B
+    - question: 'Windows registry hives are best described as:'
+      options:
+      - A) Log files
+      - B) Structured configuration databases
+      - C) Executable images
+      - D) Temporary caches
+      answer: B
+    - question: 'Prioritising artefact collection should be driven by:'
+      options:
+      - A) Collection speed
+      - B) The specific investigative question and artefact volatility
+      - C) Tool availability
+      - D) Disk size
+      answer: B
+    - question: 'Interpreting a single artefact in isolation risks:'
+      options:
+      - A) Slower analysis
+      - B) Drawing a conclusion the evidence does not support
+      - C) Hash mismatch
+      - D) Chain of custody failure
+      answer: B
+- ordinal: 2
+  title: Execution and Persistence Artefacts
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify evidence of program execution.
+  - Locate common persistence mechanisms.
+  - Distinguish legitimate from suspicious autostart entries.
+  topics:
+  - Prefetch, Amcache and ShimCache.
+  - Run keys, services and scheduled tasks.
+  - WMI persistence.
+  - Baseline comparison for autostarts.
+  lab: 'Lab: Analyse an image to enumerate all autostart entries, compare against a known-good baseline,
+    and identify the entry established by the attacker.'
+  refs:
+  - nist-sp-800-86
+  - mitre-attack
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Prefetch files are primarily evidence of:'
+      options:
+      - A) File creation
+      - B) Program execution
+      - C) Network connection
+      - D) User logon
+      answer: B
+    - question: 'Comparing autostarts against a baseline is effective because:'
+      options:
+      - A) Baselines are always current
+      - B) Malicious entries stand out against known-good state
+      - C) It is fast
+      - D) It requires no tooling
+      answer: B
+    - question: 'WMI event subscriptions are used by attackers because they:'
+      options:
+      - A) Are easy to detect
+      - B) Provide persistence without a file on disk in obvious locations
+      - C) Require admin rights only once
+      - D) Are logged verbosely by default
+      answer: B
+    - question: 'ShimCache entries indicate that a file was:'
+      options:
+      - A) Definitely executed
+      - B) Present and seen by the system, which is weaker than proof of execution
+      - C) Deleted
+      - D) Downloaded
+      answer: B
+    - question: 'A service configured to run a binary from a user temp directory is:'
+      options:
+      - A) Normal
+      - B) Highly suspicious and warrants investigation
+      - C) A performance optimisation
+      - D) A Windows default
+      answer: B
+- ordinal: 3
+  title: Windows Event Log Analysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Navigate the Windows event log structure.
+  - Identify security-relevant event identifiers.
+  - Reconstruct authentication and process activity from logs.
+  topics:
+  - Channels, providers and event IDs.
+  - Logon types and their meaning.
+  - Process creation auditing.
+  - Log clearing and anti-forensics.
+  lab: 'Lab: Reconstruct a lateral movement sequence from supplied event logs, identifying the logon type
+    used at each hop and the account involved.'
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A Windows logon type 3 indicates:'
+      options:
+      - A) Interactive console logon
+      - B) Network logon
+      - C) Service logon
+      - D) Batch logon
+      answer: B
+    - question: 'Event ID 4625 records:'
+      options:
+      - A) Successful logon
+      - B) Failed logon attempt
+      - C) Log cleared
+      - D) Process created
+      answer: B
+    - question: 'Clearing the security event log generates:'
+      options:
+      - A) No record
+      - B) Its own event, which is itself an indicator
+      - C) A system crash
+      - D) A registry change only
+      answer: B
+    - question: 'Process creation auditing is valuable because it records:'
+      options:
+      - A) Network flows
+      - B) The command line and parent process of executions
+      - C) File contents
+      - D) Registry values
+      answer: B
+    - question: 'Logon type 10 indicates:'
+      options:
+      - A) Network logon
+      - B) Remote interactive logon such as RDP
+      - C) Service logon
+      - D) Unlock
+      answer: B
+- ordinal: 4
+  title: Filesystem and Registry Forensics
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Recover deleted file information from filesystem metadata.
+  - Analyse registry keys for user and system activity.
+  - Interpret timestamps correctly across artefact types.
+  topics:
+  - MFT analysis and file recovery.
+  - USN journal and change tracking.
+  - User activity registry keys.
+  - MACB timestamps and manipulation.
+  lab: 'Lab: Recover evidence of a deleted file from filesystem metadata, correlate with registry evidence
+    of user access, and reconcile the timestamps across both sources.'
+  refs:
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Deleting a file on NTFS typically:'
+      options:
+      - A) Overwrites the data immediately
+      - B) Marks the record unallocated while data may persist
+      - C) Clears the MFT entirely
+      - D) Zeroes the volume
+      answer: B
+    - question: 'The USN journal records:'
+      options:
+      - A) Network connections
+      - B) Changes made to files and directories on a volume
+      - C) Logon events
+      - D) Registry edits
+      answer: B
+    - question: 'Timestomping refers to:'
+      options:
+      - A) Clock synchronisation
+      - B) Deliberate manipulation of file timestamps to mislead analysis
+      - C) Timezone conversion
+      - D) Log rotation
+      answer: B
+    - question: 'Correlating timestamps across independent artefact sources helps detect:'
+      options:
+      - A) Disk errors
+      - B) Manipulation, since attackers rarely alter every source consistently
+      - C) Clock drift only
+      - D) Bad sectors
+      answer: B
+    - question: 'Recovering a filename after deletion is often possible because:'
+      options:
+      - A) Filenames are encrypted
+      - B) Metadata records persist until reused
+      - C) The registry stores them
+      - D) Backups exist
+      answer: B
+- ordinal: 5
+  title: Memory Forensics
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Acquire memory safely from a live system.
+  - Analyse memory for processes, connections and injected code.
+  - Recognise the limits of memory analysis.
+  topics:
+  - Memory acquisition methods.
+  - Process and handle enumeration.
+  - Code injection detection.
+  - Limits and interpretation caveats.
+  lab: 'Lab: Analyse a memory image to enumerate processes, identify one with injected code, and extract
+    the associated network connections.'
+  refs:
+  - volatility3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Memory should be acquired:'
+      options:
+      - A) After shutdown
+      - B) Before powering off, while the system is running
+      - C) After disk imaging
+      - D) Only if disk analysis fails
+      answer: B
+    - question: 'Volatility 3 is used to:'
+      options:
+      - A) Capture network packets
+      - B) Analyse memory images for forensic artefacts
+      - C) Image disks
+      - D) Parse event logs
+      answer: B
+    - question: 'Process hollowing is detectable in memory by:'
+      options:
+      - A) A missing process name
+      - B) A discrepancy between the on-disk image and the in-memory image
+      - C) High CPU usage
+      - D) An open handle
+      answer: B
+    - question: 'A limitation of memory analysis is that:'
+      options:
+      - A) It cannot see processes
+      - B) It captures a single point in time and volatile data may already be gone
+      - C) It requires the disk
+      - D) It cannot be automated
+      answer: B
+    - question: 'Acquiring memory with a tool running on the target inevitably:'
+      options:
+      - A) Corrupts the image
+      - B) Perturbs the system state being captured
+      - C) Requires reboot
+      - D) Fails on modern Windows
+      answer: B
+- ordinal: 6
+  title: Reporting Forensic Findings
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a forensic report that separates fact from inference.
+  - Present a defensible timeline.
+  - Communicate confidence and limitations honestly.
+  topics:
+  - Report structure and audience.
+  - Fact, inference and opinion.
+  - Timeline presentation.
+  - Confidence, limitations and peer review.
+  lab: 'Lab: Write a forensic report for the earlier host investigation, explicitly labelling each statement
+    as observed fact or analytical inference, and state the limitations of your conclusions.'
+  refs:
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A forensic report must clearly distinguish:'
+      options:
+      - A) Tools from techniques
+      - B) What was observed from what is inferred
+      - C) Cost from effort
+      - D) Internal from external
+      answer: B
+    - question: 'Stating the limitations of an analysis:'
+      options:
+      - A) Weakens the report
+      - B) Strengthens it by bounding the conclusions appropriately
+      - C) Is optional
+      - D) Is only for court
+      answer: B
+    - question: 'Peer review of forensic findings primarily guards against:'
+      options:
+      - A) Tool failure
+      - B) Analytical error and confirmation bias
+      - C) Evidence loss
+      - D) Slow reporting
+      answer: B
+    - question: 'If evidence is inconclusive, the report should:'
+      options:
+      - A) Choose the most likely narrative
+      - B) State plainly that the evidence does not support a conclusion
+      - C) Omit the question
+      - D) Recommend more tools
+      answer: B
+    - question: 'Reproducibility in a forensic report means another analyst could:'
+      options:
+      - A) Reach any conclusion
+      - B) Follow the documented method and observe the same artefacts
+      - C) Use different evidence
+      - D) Skip verification
+      answer: B

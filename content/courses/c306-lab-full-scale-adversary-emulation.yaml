@@ -1,0 +1,379 @@
+# C306 - Lab: Full-Scale Adversary Emulation - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C306
+title: 'Lab: Full-Scale Adversary Emulation'
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Emulation Planning
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select an adversary to emulate based on relevance.
+  - Build an emulation plan from threat intelligence.
+  - Define objectives and measurement in advance.
+  topics:
+  - Adversary selection and justification.
+  - Intelligence to emulation plan translation.
+  - Objective and success definition.
+  - Safety constraints and authorisation.
+  lab: 'Lab: Select a relevant adversary, translate published reporting into an emulation plan covering
+    at least eight ATT&CK techniques, and define how each will be measured.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Adversary selection for emulation should be based on:'
+      options:
+      - A) Notoriety
+      - B) Plausible relevance to the organisation's sector and exposure
+      - C) Technique count
+      - D) Recency alone
+      answer: B
+    - question: 'An emulation plan translates intelligence into:'
+      options:
+      - A) A threat report
+      - B) Concrete, executable technique sequences with expected artefacts
+      - C) A risk register
+      - D) A detection rule
+      answer: B
+    - question: 'Defining measurement before execution prevents:'
+      options:
+      - A) Technical failure
+      - B) Retrospective rationalisation of whatever the defenders happened to catch
+      - C) Authorisation issues
+      - D) Scope creep
+      answer: B
+    - question: 'Emulation must remain within:'
+      options:
+      - A) The tester's comfort
+      - B) Written authorisation and defined safety constraints
+      - C) The intelligence report
+      - D) The tooling capability
+      answer: B
+    - question: 'Published threat reporting used for emulation should be:'
+      options:
+      - A) Accepted verbatim
+      - B) Assessed for reliability and adapted to the target environment
+      - C) Ignored
+      - D) Replicated exactly regardless of relevance
+      answer: B
+- ordinal: 2
+  title: Infrastructure and Tooling
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build emulation infrastructure safely.
+  - Select tooling appropriate to the emulated behaviour.
+  - Ensure infrastructure is controlled and removable.
+  topics:
+  - Emulation infrastructure design.
+  - Command-and-control tooling in a controlled context.
+  - Isolation from production.
+  - Teardown and cleanup.
+  lab: 'Lab: Stand up isolated emulation infrastructure in the lab, verify it cannot reach production,
+    execute a controlled callback, and document the full teardown procedure.'
+  refs:
+  - nist-sp-800-115
+  - mitre-attack
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Emulation infrastructure must be:'
+      options:
+      - A) Indistinguishable from real attacker infrastructure in every way
+      - B) Controlled, documented and fully removable at conclusion
+      - C) Publicly hosted
+      - D) Permanent
+      answer: B
+    - question: 'Verifying isolation from production before execution prevents:'
+      options:
+      - A) Detection
+      - B) Unintended impact on live systems and data
+      - C) Slow callbacks
+      - D) Tool failure
+      answer: B
+    - question: 'Teardown documentation matters because:'
+      options:
+      - A) It is required for billing
+      - B) Residual emulation infrastructure and implants are a real security risk
+      - C) It proves completion
+      - D) Tools require it
+      answer: B
+    - question: 'Tooling selection should be driven by:'
+      options:
+      - A) Familiarity
+      - B) Whether it produces the artefacts characteristic of the emulated behaviour
+      - C) Cost
+      - D) Popularity
+      answer: B
+    - question: 'Reusing production credentials in emulation infrastructure is:'
+      options:
+      - A) Efficient
+      - B) Unacceptable, as it extends real risk into the exercise
+      - C) Required for realism
+      - D) Standard
+      answer: B
+- ordinal: 3
+  title: Execution Across the Kill Chain
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute a full-chain emulation from access to objective.
+  - Maintain detailed execution records.
+  - Adapt execution when defences intervene.
+  topics:
+  - Full-chain execution sequencing.
+  - Execution logging and timestamping.
+  - Adaptation and defender interaction.
+  - Objective achievement and stopping.
+  lab: 'Lab: Execute the emulation plan end to end in the lab, recording a timestamped log of every technique
+    executed, the artefacts generated and whether defenders responded.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A timestamped execution log is essential because it:'
+      options:
+      - A) Proves effort
+      - B) Allows precise correlation with defensive telemetry and response times
+      - C) Supports billing
+      - D) Replaces the report
+      answer: B
+    - question: 'If defenders detect and block a technique, the emulation team should:'
+      options:
+      - A) Bypass silently and continue
+      - B) Record the detection as a success and decide with the exercise controller whether to continue
+      - C) Stop entirely
+      - D) Escalate privileges
+      answer: B
+    - question: 'Executing techniques out of a realistic sequence reduces:'
+      options:
+      - A) Effort
+      - B) The validity of conclusions about chained detection opportunities
+      - C) Safety
+      - D) Documentation
+      answer: B
+    - question: 'Achieving the objective without detection indicates:'
+      options:
+      - A) A skilled team only
+      - B) A significant defensive gap requiring remediation
+      - C) Good security
+      - D) Poor planning
+      answer: B
+    - question: 'Emulation should stop when:'
+      options:
+      - A) Access is achieved
+      - B) Objectives are met or a safety or authorisation boundary is reached
+      - C) Detection occurs
+      - D) Time expires only
+      answer: B
+- ordinal: 4
+  title: Detection Measurement
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Measure what defenders detected and when.
+  - Distinguish detection from response.
+  - Attribute gaps to visibility, detection or process.
+  topics:
+  - Detection timing and completeness.
+  - Detection versus response measurement.
+  - Gap attribution methodology.
+  - Evidence collection from the defensive side.
+  lab: 'Lab: For each executed technique, determine whether telemetry existed, whether a detection fired
+    and whether a response occurred, then classify every gap by its root cause.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A technique that generated telemetry but no alert represents a gap in:'
+      options:
+      - A) Visibility
+      - B) Detection logic
+      - C) Response
+      - D) Authorisation
+      answer: B
+    - question: 'A technique that generated no telemetry at all represents a gap in:'
+      options:
+      - A) Detection logic
+      - B) Visibility
+      - C) Process
+      - D) Tooling only
+      answer: B
+    - question: 'Detection and response must be measured separately because:'
+      options:
+      - A) They use different tools
+      - B) An alert that nobody acts on provides no protective value
+      - C) Response is optional
+      - D) Detection is automated
+      answer: B
+    - question: 'Classifying gaps by root cause is important because:'
+      options:
+      - A) It assigns blame
+      - B) The remediation differs entirely for visibility, logic and process gaps
+      - C) It shortens the report
+      - D) It sets severity
+      answer: B
+    - question: 'Time to detect should be measured from:'
+      options:
+      - A) Alert to closure
+      - B) Technique execution to detection
+      - C) Report to review
+      - D) Exercise start
+      answer: B
+- ordinal: 5
+  title: Purple Team Collaboration
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Run a collaborative detection improvement session.
+  - Iterate detection with immediate re-testing.
+  - Build durable working relationships between teams.
+  topics:
+  - Purple team session structure.
+  - Detect, tune, re-test iteration.
+  - Knowledge transfer between teams.
+  - Sustaining collaboration.
+  lab: 'Lab: Run a purple team session for three techniques that went undetected: author detections collaboratively,
+    re-execute each technique immediately, and verify the new detection fires.'
+  refs:
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'The defining characteristic of purple teaming is:'
+      options:
+      - A) A separate third team
+      - B) Offensive and defensive teams working together with shared objectives
+      - C) Automated testing
+      - D) External assessment
+      answer: B
+    - question: 'Immediate re-testing after authoring a detection:'
+      options:
+      - A) Wastes time
+      - B) Verifies the detection actually works against the real technique
+      - C) Alerts the adversary
+      - D) Requires new authorisation
+      answer: B
+    - question: 'Purple teaming is more efficient than sequential red then blue work because:'
+      options:
+      - A) It uses fewer people
+      - B) Feedback is immediate rather than delayed by a reporting cycle
+      - C) It requires less planning
+      - D) It avoids documentation
+      answer: B
+    - question: 'A detection authored but never tested against the technique:'
+      options:
+      - A) Counts as coverage
+      - B) May not fire and provides false assurance
+      - C) Is preferred
+      - D) Is automatically valid
+      answer: B
+    - question: 'The lasting value of purple teaming comes from:'
+      options:
+      - A) The exercise report
+      - B) Improved detections and a durable working relationship between teams
+      - C) Technique count
+      - D) Executive visibility
+      answer: B
+- ordinal: 6
+  title: Reporting and Programme Value
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Report emulation results in terms of defensive improvement.
+  - Prioritise remediation from measured gaps.
+  - Demonstrate programme value over successive exercises.
+  topics:
+  - Result framing and audience.
+  - Gap prioritisation.
+  - Trend measurement across exercises.
+  - Programme business case.
+  lab: 'Lab: Produce an emulation report framed around defensive improvement, with a prioritised gap remediation
+    plan and the metrics you would track across future exercises.'
+  refs:
+  - mitre-attack
+  - nist-cswp-29
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'An emulation report should be framed primarily around:'
+      options:
+      - A) How the red team succeeded
+      - B) What defenders can now improve, with evidence
+      - C) Tooling used
+      - D) Time taken
+      answer: B
+    - question: 'Gaps should be prioritised by:'
+      options:
+      - A) Order discovered
+      - B) Likelihood of real-world use and impact if exploited
+      - C) Ease of detection authoring
+      - D) Technique identifier
+      answer: B
+    - question: 'Tracking detection coverage across successive exercises demonstrates:'
+      options:
+      - A) Red team skill
+      - B) Whether the defensive programme is measurably improving
+      - C) Budget usage
+      - D) Tool effectiveness only
+      answer: B
+    - question: 'A report emphasising red team achievement over defensive learning tends to:'
+      options:
+      - A) Improve funding
+      - B) Damage the collaborative relationship and reduce future value
+      - C) Increase detection
+      - D) Shorten remediation
+      answer: B
+    - question: 'The strongest business case for an emulation programme is:'
+      options:
+      - A) Compromise achieved
+      - B) Demonstrated reduction in detection and response times over time
+      - C) Number of exercises
+      - D) Techniques executed
+      answer: B

@@ -1,0 +1,375 @@
+# C102 - Operating-System Fundamentals - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C102
+title: Operating-System Fundamentals
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Processes, Threads and Scheduling
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish a process from a thread and describe the resources each owns.
+  - Explain how a scheduler selects the next runnable task.
+  - Interpret process state from standard operating-system tooling.
+  topics:
+  - Process control block and address space.
+  - Threads, concurrency and race conditions.
+  - Preemptive scheduling, priorities and time slices.
+  - Context switching cost.
+  lab: 'Lab: Run a multi-threaded workload, capture per-thread CPU time with ps and top, and demonstrate
+    a race condition then fix it with a lock.'
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: Threads within one process share which of the following?
+      options:
+      - A) Program counter
+      - B) Stack
+      - C) Address space
+      - D) Register set
+      answer: C
+    - question: 'A context switch requires the kernel to:'
+      options:
+      - A) Reboot the scheduler
+      - B) Save and restore process execution state
+      - C) Flush the disk cache
+      - D) Reload firmware
+      answer: B
+    - question: 'A race condition occurs when:'
+      options:
+      - A) A process exceeds its time slice
+      - B) Output depends on unsynchronised timing of concurrent access
+      - C) Memory is exhausted
+      - D) A file descriptor leaks
+      answer: B
+    - question: 'A zombie process is one that has:'
+      options:
+      - A) Consumed all CPU
+      - B) Terminated but whose exit status has not been reaped
+      - C) Been swapped to disk
+      - D) Lost its controlling terminal
+      answer: B
+    - question: 'Preemptive scheduling means the kernel can:'
+      options:
+      - A) Never interrupt a running task
+      - B) Interrupt a running task before it yields voluntarily
+      - C) Only schedule kernel threads
+      - D) Run tasks in strict arrival order
+      answer: B
+- ordinal: 2
+  title: Memory Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain virtual memory, paging and demand loading.
+  - Describe how memory protection prevents cross-process access.
+  - Recognise memory-related failure and attack patterns.
+  topics:
+  - Virtual address spaces and page tables.
+  - Page faults, swapping and thrashing.
+  - Heap, stack and memory allocators.
+  - ASLR, NX/DEP and stack canaries.
+  lab: 'Lab: Observe ASLR by printing a stack address across repeated runs, then disable ASLR in a test
+    VM and show the address becomes predictable.'
+  refs:
+  - cis-benchmarks
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Address Space Layout Randomisation makes exploitation harder by:'
+      options:
+      - A) Encrypting the stack
+      - B) Randomising the location of memory regions
+      - C) Preventing all buffer overflows
+      - D) Disabling the heap
+      answer: B
+    - question: 'A page fault occurs when a process accesses:'
+      options:
+      - A) A page not currently mapped in physical memory
+      - B) A closed file descriptor
+      - C) An invalid system call number
+      - D) A busy network socket
+      answer: A
+    - question: 'The NX (no-execute) bit prevents:'
+      options:
+      - A) Reading protected memory
+      - B) Executing code from data pages
+      - C) Writing to the stack
+      - D) Swapping pages to disk
+      answer: B
+    - question: 'Thrashing describes a system that is:'
+      options:
+      - A) Spending more time paging than executing
+      - B) Running too many threads
+      - C) Saturating the network
+      - D) Rejecting new logins
+      answer: A
+    - question: 'A stack canary detects:'
+      options:
+      - A) Heap fragmentation
+      - B) Overwriting of the saved return address region
+      - C) Integer division by zero
+      - D) File permission errors
+      answer: B
+- ordinal: 3
+  title: Filesystems and Permissions
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe filesystem structure including inodes, directories and links.
+  - Apply discretionary access control correctly to files and directories.
+  - Explain how special permission bits change execution context.
+  topics:
+  - Inodes, hard links and symbolic links.
+  - POSIX permission bits and umask.
+  - setuid, setgid and the sticky bit.
+  - Access control lists and mount options.
+  lab: 'Lab: Create a setuid binary in an isolated VM, demonstrate the privilege change, then remediate
+    it and verify with find that no unexpected setuid files remain.'
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'The setuid bit on an executable causes it to run with the privileges of:'
+      options:
+      - A) The invoking user
+      - B) The file owner
+      - C) Root always
+      - D) The parent process
+      answer: B
+    - question: 'A hard link differs from a symbolic link because a hard link:'
+      options:
+      - A) Points to a path string
+      - B) References the same inode
+      - C) Can cross filesystems
+      - D) Cannot be deleted
+      answer: B
+    - question: 'The sticky bit on a shared directory such as /tmp ensures that:'
+      options:
+      - A) Files are encrypted
+      - B) Only the file owner may delete their own files
+      - C) Files are read-only
+      - D) The directory cannot be listed
+      answer: B
+    - question: 'A umask of 022 results in new files being created with permissions:'
+      options:
+      - A) 755
+      - B) 644
+      - C) 600
+      - D) 777
+      answer: B
+    - question: 'Mounting a filesystem with the noexec option prevents:'
+      options:
+      - A) Reading files
+      - B) Executing binaries located on that filesystem
+      - C) Creating symbolic links
+      - D) Changing ownership
+      answer: B
+- ordinal: 4
+  title: Users, Authentication and Privilege Escalation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain local account and credential storage on modern systems.
+  - Describe controlled privilege elevation mechanisms.
+  - Identify common local privilege escalation paths.
+  topics:
+  - Account databases and password hashing.
+  - sudo policy and least privilege.
+  - Capabilities and mandatory access control.
+  - Common escalation paths and their indicators.
+  lab: 'Lab: Audit a test system for privilege escalation exposure - writable PATH entries, permissive
+    sudo rules and setuid binaries - and produce a prioritised remediation list.'
+  refs:
+  - nist-sp-800-63-4
+  - cis-benchmarks
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Password hashes on a modern Linux system are normally stored in:'
+      options:
+      - A) /etc/passwd
+      - B) /etc/shadow
+      - C) /etc/group
+      - D) /etc/hosts
+      answer: B
+    - question: 'A salt is added to a password hash primarily to:'
+      options:
+      - A) Speed up verification
+      - B) Prevent precomputed rainbow-table attacks
+      - C) Reduce hash length
+      - D) Enable password recovery
+      answer: B
+    - question: 'The principle of least privilege states that a subject should have:'
+      options:
+      - A) Administrative rights by default
+      - B) Only the access required to perform its function
+      - C) Access to all data it can read
+      - D) Permanent credentials
+      answer: B
+    - question: 'A writable directory appearing early in a privileged user''s PATH enables:'
+      options:
+      - A) Denial of service only
+      - B) Malicious binary substitution
+      - C) Network sniffing
+      - D) Kernel panics
+      answer: B
+    - question: 'Mandatory access control differs from discretionary access control because:'
+      options:
+      - A) Users can always change the policy
+      - B) Policy is set centrally and users cannot override it
+      - C) It applies only to network traffic
+      - D) It requires no labels
+      answer: B
+- ordinal: 5
+  title: Logging, Auditing and System Observability
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Configure system logging so that security-relevant events are captured.
+  - Explain log retention, integrity and centralisation requirements.
+  - Use audit tooling to attribute an action to a user and process.
+  topics:
+  - syslog, journald and log facilities.
+  - Audit subsystems and rule design.
+  - Log integrity, forwarding and retention.
+  - Baseline noise versus signal.
+  lab: 'Lab: Write an audit rule that records every execution of a chosen binary, trigger it, then locate
+    the event and identify the responsible user, process and timestamp.'
+  refs:
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'NIST SP 800-92 is the NIST guide to:'
+      options:
+      - A) Firewall policy
+      - B) Computer security log management
+      - C) Digital identity
+      - D) Container security
+      answer: B
+    - question: 'Forwarding logs to a separate host primarily protects against:'
+      options:
+      - A) Disk fragmentation
+      - B) An attacker deleting local logs to hide activity
+      - C) Clock drift
+      - D) Network congestion
+      answer: B
+    - question: 'Accurate time synchronisation matters for logging because it:'
+      options:
+      - A) Reduces log size
+      - B) Allows events to be correlated across systems
+      - C) Encrypts log records
+      - D) Prevents log rotation
+      answer: B
+    - question: Which is the greatest practical risk of logging everything at maximum verbosity?
+      options:
+      - A) Improved detection
+      - B) Storage exhaustion and signal lost in noise
+      - C) Loss of timestamps
+      - D) Reduced CPU usage
+      answer: B
+    - question: 'Log integrity is best supported by:'
+      options:
+      - A) Storing logs only locally
+      - B) Append-only or cryptographically signed storage
+      - C) Rotating logs hourly
+      - D) Compressing logs
+      answer: B
+- ordinal: 6
+  title: System Hardening and Baseline Configuration
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply a recognised hardening baseline to an operating system.
+  - Justify deviations from a baseline with documented risk acceptance.
+  - Verify hardening state through repeatable automated checks.
+  topics:
+  - Attack surface reduction and service minimisation.
+  - Benchmark-driven configuration.
+  - Patch management and update cadence.
+  - Configuration drift and continuous verification.
+  lab: 'Lab: Apply a CIS Benchmark profile to a test VM, script a re-check that reports the pass rate,
+    and document every control you exempted with its justification.'
+  refs:
+  - cis-benchmarks
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Attack surface reduction is best achieved by:'
+      options:
+      - A) Adding monitoring agents
+      - B) Removing or disabling unnecessary services and software
+      - C) Increasing log verbosity
+      - D) Adding more user accounts
+      answer: B
+    - question: 'Configuration drift refers to:'
+      options:
+      - A) Clock skew between hosts
+      - B) Systems gradually diverging from their approved baseline
+      - C) Network latency variation
+      - D) Memory leakage
+      answer: B
+    - question: 'A documented exemption from a hardening control should always record:'
+      options:
+      - A) Only the control number
+      - B) The rationale, compensating control and approver
+      - C) The hostname alone
+      - D) Nothing, if approved verbally
+      answer: B
+    - question: 'The main advantage of automated baseline verification over manual review is:'
+      options:
+      - A) It removes the need for patching
+      - B) It is repeatable and detects drift consistently
+      - C) It eliminates false positives
+      - D) It replaces risk assessment
+      answer: B
+    - question: 'Within the NIST Risk Management Framework, authorisation to operate is granted based
+        on:'
+      options:
+      - A) Vendor assurances
+      - B) Assessed residual risk accepted by an authorising official
+      - C) Passing a single scan
+      - D) Completion of training
+      answer: B

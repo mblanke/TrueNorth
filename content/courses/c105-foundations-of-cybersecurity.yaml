@@ -1,0 +1,374 @@
+# C105 - Foundations of Cybersecurity - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C105
+title: Foundations of Cybersecurity
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Security Principles and the CIA Triad
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain confidentiality, integrity and availability with concrete examples.
+  - Apply foundational design principles to a system description.
+  - Distinguish threat, vulnerability, risk and impact.
+  topics:
+  - CIA triad and supporting properties.
+  - Least privilege, defence in depth, fail-safe defaults.
+  - Threat, vulnerability, risk and impact.
+  - Authenticity, non-repudiation and accountability.
+  lab: 'Lab: Given a small system description, produce a table identifying three assets, the CIA property
+    most at risk for each, and one control per asset.'
+  refs:
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A ransomware attack that encrypts files primarily harms which property first?
+      options:
+      - A) Confidentiality
+      - B) Availability
+      - C) Non-repudiation
+      - D) Authenticity
+      answer: B
+    - question: 'Defence in depth means:'
+      options:
+      - A) Relying on the strongest single control
+      - B) Layering independent controls so one failure is not fatal
+      - C) Encrypting everything
+      - D) Deploying two firewalls from one vendor
+      answer: B
+    - question: 'A vulnerability is best defined as:'
+      options:
+      - A) A threat actor
+      - B) A weakness that a threat can exploit
+      - C) The cost of a breach
+      - D) A security control
+      answer: B
+    - question: 'Fail-safe defaults means that on failure a system should:'
+      options:
+      - A) Permit access to preserve availability
+      - B) Deny access unless explicitly permitted
+      - C) Log and continue
+      - D) Reboot
+      answer: B
+    - question: 'Non-repudiation provides assurance that:'
+      options:
+      - A) Data is encrypted
+      - B) An actor cannot credibly deny having performed an action
+      - C) Systems stay online
+      - D) Backups exist
+      answer: B
+- ordinal: 2
+  title: Threat Actors and Attack Surfaces
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Characterise threat actors by motivation and capability.
+  - Describe the phases of an intrusion using a recognised model.
+  - Enumerate the attack surface of a given system.
+  topics:
+  - Actor categories and motivations.
+  - Cyber kill chain and adversary lifecycle.
+  - MITRE ATT&CK tactics and techniques.
+  - Attack surface enumeration.
+  lab: 'Lab: Using MITRE ATT&CK, map a short published intrusion narrative to tactics and techniques,
+    and identify one detection opportunity per tactic.'
+  refs:
+  - mitre-attack
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'MITRE ATT&CK organises adversary behaviour primarily into:'
+      options:
+      - A) Vulnerabilities and patches
+      - B) Tactics, techniques and procedures
+      - C) Risk scores
+      - D) Compliance controls
+      answer: B
+    - question: 'In ATT&CK, a tactic represents:'
+      options:
+      - A) A specific tool
+      - B) The adversary's tactical objective or goal
+      - C) A CVE identifier
+      - D) A log source
+      answer: B
+    - question: Which actor type is typically best resourced and most persistent?
+      options:
+      - A) Script kiddie
+      - B) Hacktivist
+      - C) Nation-state
+      - D) Insider by accident
+      answer: C
+    - question: 'Attack surface is best described as:'
+      options:
+      - A) The number of employees
+      - B) The sum of points where an attacker can attempt entry or extraction
+      - C) The patch level
+      - D) The firewall ruleset
+      answer: B
+    - question: 'An intrusion model such as the kill chain is useful mainly because it:'
+      options:
+      - A) Predicts the exact attacker
+      - B) Structures detection and disruption opportunities by phase
+      - C) Replaces logging
+      - D) Assigns blame
+      answer: B
+- ordinal: 3
+  title: Access Control and Identity
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare access control models and their appropriate use.
+  - Explain authentication factors and multi-factor authentication.
+  - Describe the authorisation decision flow.
+  topics:
+  - Identification, authentication, authorisation, accounting.
+  - DAC, MAC, RBAC and ABAC.
+  - Authentication factors and MFA.
+  - Session management and credential lifecycle.
+  lab: 'Lab: Design an RBAC model for a small organisation with four job functions, define permissions
+    per role, and identify one toxic combination that separation of duties should prevent.'
+  refs:
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Role-based access control assigns permissions to:'
+      options:
+      - A) Individual users directly
+      - B) Roles that users are assigned to
+      - C) Devices only
+      - D) Network segments
+      answer: B
+    - question: Which pair represents two genuinely different authentication factors?
+      options:
+      - A) Password and PIN
+      - B) Password and hardware token
+      - C) Fingerprint and retina scan
+      - D) Two passwords
+      answer: B
+    - question: 'Separation of duties is intended to prevent:'
+      options:
+      - A) Slow processing
+      - B) A single individual completing a sensitive process unchecked
+      - C) Password reuse
+      - D) Network congestion
+      answer: B
+    - question: 'Attribute-based access control decides using:'
+      options:
+      - A) Only the user's role
+      - B) Attributes of subject, resource, action and environment
+      - C) IP address alone
+      - D) Group membership only
+      answer: B
+    - question: 'Accounting in the AAA model refers to:'
+      options:
+      - A) Financial reporting
+      - B) Recording what an authenticated subject did
+      - C) Granting permissions
+      - D) Verifying identity
+      answer: B
+- ordinal: 4
+  title: Cryptography in Practice
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish symmetric from asymmetric cryptography and their roles.
+  - Explain what hashing does and does not provide.
+  - Describe how certificates establish trust.
+  topics:
+  - Symmetric ciphers and key distribution.
+  - Public key cryptography and digital signatures.
+  - Cryptographic hashing and integrity.
+  - Certificates, chains and trust anchors.
+  lab: 'Lab: Generate a key pair, sign a file, verify the signature, then modify one byte of the file
+    and demonstrate that verification fails.'
+  refs:
+  - nist-sp-800-57pt1r5
+  - nist-sp-800-52r2
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A cryptographic hash function provides:'
+      options:
+      - A) Confidentiality
+      - B) Integrity verification
+      - C) Key exchange
+      - D) Non-repudiation alone
+      answer: B
+    - question: 'A digital signature is created using the signer''s:'
+      options:
+      - A) Public key
+      - B) Private key
+      - C) Symmetric key
+      - D) Session key
+      answer: B
+    - question: 'The primary practical problem symmetric cryptography faces at scale is:'
+      options:
+      - A) Speed
+      - B) Secure key distribution among many parties
+      - C) Key length
+      - D) Block size
+      answer: B
+    - question: 'A certificate authority''s role is to:'
+      options:
+      - A) Encrypt all traffic
+      - B) Vouch that a public key belongs to a named subject
+      - C) Store private keys
+      - D) Issue passwords
+      answer: B
+    - question: 'Hashing a password with a salt primarily defeats:'
+      options:
+      - A) Brute force entirely
+      - B) Precomputed rainbow tables
+      - C) Phishing
+      - D) Keylogging
+      answer: B
+- ordinal: 5
+  title: Security Governance and Frameworks
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the purpose of a cybersecurity framework.
+  - Explain the functions of the NIST Cybersecurity Framework 2.0.
+  - Relate policy, standard, procedure and guideline.
+  topics:
+  - Policy hierarchy and document types.
+  - NIST CSF 2.0 functions and outcomes.
+  - Control selection and tailoring.
+  - Compliance versus security.
+  lab: 'Lab: Map five existing controls in a described environment onto NIST CSF 2.0 functions and identify
+    which function is least covered.'
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: NIST CSF 2.0 added which function relative to version 1.1?
+      options:
+      - A) Detect
+      - B) Govern
+      - C) Respond
+      - D) Recover
+      answer: B
+    - question: 'A policy differs from a procedure in that a policy states:'
+      options:
+      - A) Step-by-step instructions
+      - B) Intent and requirement, not implementation detail
+      - C) Vendor product names
+      - D) Firewall rules
+      answer: B
+    - question: 'Compliance with a standard guarantees:'
+      options:
+      - A) Complete security
+      - B) That specified controls are in place, not that risk is eliminated
+      - C) No breaches
+      - D) Insurance payout
+      answer: B
+    - question: 'Tailoring a control baseline means:'
+      options:
+      - A) Ignoring controls that are inconvenient
+      - B) Adjusting the baseline to the system's risk and context with justification
+      - C) Adding every optional control
+      - D) Copying another organisation's baseline
+      answer: B
+    - question: 'The Govern function of CSF 2.0 is primarily concerned with:'
+      options:
+      - A) Packet filtering
+      - B) Establishing and monitoring cybersecurity risk management strategy and expectations
+      - C) Malware removal
+      - D) Backup scheduling
+      answer: B
+- ordinal: 6
+  title: Security Operations and the Analyst Role
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the function of a security operations centre.
+  - Explain triage and escalation of an alert.
+  - Apply an evidence-based approach to reporting a finding.
+  topics:
+  - SOC tiers, roles and workflow.
+  - Alert triage, enrichment and escalation.
+  - True positive, false positive and the cost of each.
+  - Writing defensible findings.
+  lab: 'Lab: Triage three provided alerts, classify each as true or false positive with stated evidence,
+    and write an escalation note for the one requiring further action.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A false negative in detection means:'
+      options:
+      - A) An alert fired with no real activity
+      - B) Real malicious activity produced no alert
+      - C) An alert was duplicated
+      - D) A rule failed to compile
+      answer: B
+    - question: 'Alert enrichment refers to:'
+      options:
+      - A) Increasing alert volume
+      - B) Adding context such as asset owner and threat intelligence to aid decision
+      - C) Deleting low-severity alerts
+      - D) Rewriting detection rules
+      answer: B
+    - question: 'Excessive false positives are damaging chiefly because they:'
+      options:
+      - A) Consume disk space
+      - B) Cause analyst fatigue so real detections are missed
+      - C) Break the SIEM
+      - D) Violate policy
+      answer: B
+    - question: 'A defensible finding must always include:'
+      options:
+      - A) The analyst's opinion only
+      - B) The specific evidence and where it was observed
+      - C) A vendor recommendation
+      - D) An estimated financial loss
+      answer: B
+    - question: 'Escalation criteria exist primarily to:'
+      options:
+      - A) Reduce staffing
+      - B) Ensure consistent, timely handling of events that exceed a tier's authority
+      - C) Improve tool performance
+      - D) Satisfy auditors only
+      answer: B

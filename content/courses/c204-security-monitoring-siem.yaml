@@ -1,0 +1,377 @@
+# C204 - Security Monitoring & SIEM - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C204
+title: Security Monitoring & SIEM
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Log Sources and Collection
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify security-relevant log sources across an environment.
+  - Design a collection architecture with adequate coverage.
+  - Assess log quality and completeness.
+  topics:
+  - Endpoint, network, identity and application logs.
+  - Collection agents and forwarders.
+  - Coverage gaps and blind spots.
+  - Log quality, fidelity and retention.
+  lab: 'Lab: Produce a log source inventory for a described environment, map each source to the attack
+    techniques it could evidence, and identify the largest visibility gap.'
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'A log source inventory is primarily used to:'
+      options:
+      - A) Estimate storage cost
+      - B) Understand what activity can and cannot be detected
+      - C) Assign licences
+      - D) Schedule backups
+      answer: B
+    - question: Which log source best evidences process execution on a host?
+      options:
+      - A) Firewall logs
+      - B) Endpoint process creation events
+      - C) DNS logs
+      - D) DHCP leases
+      answer: B
+    - question: 'A visibility gap means:'
+      options:
+      - A) A dashboard is missing
+      - B) Activity can occur without producing collected telemetry
+      - C) Logs are duplicated
+      - D) Retention is too long
+      answer: B
+    - question: 'Retention requirements should be driven by:'
+      options:
+      - A) Disk capacity alone
+      - B) Investigation needs and regulatory obligation
+      - C) Vendor default
+      - D) Log volume
+      answer: B
+    - question: 'Collecting only alerts rather than raw events limits:'
+      options:
+      - A) Storage
+      - B) The ability to investigate retrospectively beyond what already alerted
+      - C) Alert accuracy
+      - D) Parsing
+      answer: B
+- ordinal: 2
+  title: Normalisation and Enrichment
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain why normalisation is required for correlation.
+  - Apply enrichment to improve alert decision quality.
+  - Evaluate the cost of parsing and schema drift.
+  topics:
+  - Parsing and field normalisation.
+  - Common schemas and taxonomies.
+  - Enrichment with asset, identity and threat context.
+  - Schema drift and parser maintenance.
+  lab: 'Lab: Write a parser for a non-standard log format, normalise its fields to a common schema, and
+    enrich the output with asset criticality from a lookup table.'
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Normalisation enables correlation because it:'
+      options:
+      - A) Reduces volume
+      - B) Maps different sources onto consistent field names and meanings
+      - C) Encrypts fields
+      - D) Sorts events
+      answer: B
+    - question: 'Enriching an alert with asset criticality primarily improves:'
+      options:
+      - A) Parsing speed
+      - B) Prioritisation of response
+      - C) Storage efficiency
+      - D) Rule syntax
+      answer: B
+    - question: 'Schema drift occurs when:'
+      options:
+      - A) Clocks desynchronise
+      - B) A source changes its log format and existing parsers silently break
+      - C) Rules are updated
+      - D) Retention expires
+      answer: B
+    - question: 'A silently failing parser is dangerous because:'
+      options:
+      - A) It uses CPU
+      - B) Detections depending on those fields stop working without an obvious error
+      - C) It duplicates events
+      - D) It rejects enrichment
+      answer: B
+    - question: 'Threat intelligence enrichment is most useful when the indicators are:'
+      options:
+      - A) Numerous
+      - B) Timely, relevant and accompanied by context
+      - C) Free
+      - D) Historical only
+      answer: B
+- ordinal: 3
+  title: Detection Engineering
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write detection logic that expresses a hypothesis clearly.
+  - Map detections to adversary techniques.
+  - Test detections against true and false positive cases.
+  topics:
+  - Detection as code and version control.
+  - Sigma rule structure.
+  - Technique mapping and coverage measurement.
+  - Detection testing and validation.
+  lab: 'Lab: Write a Sigma rule for a specific technique, test it against a positive sample and a benign
+    lookalike, then refine it until both outcomes are correct.'
+  refs:
+  - sigma
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Sigma is best described as:'
+      options:
+      - A) A SIEM product
+      - B) A generic, vendor-neutral signature format for log-based detection
+      - C) A packet analyser
+      - D) A threat feed
+      answer: B
+    - question: 'Managing detections as code primarily provides:'
+      options:
+      - A) Faster queries
+      - B) Version history, review and repeatable deployment
+      - C) Lower storage
+      - D) Automatic tuning
+      answer: B
+    - question: 'Mapping detections to ATT&CK techniques enables:'
+      options:
+      - A) Faster parsing
+      - B) Measurement of coverage and identification of gaps
+      - C) Reduced licence cost
+      - D) Better retention
+      answer: B
+    - question: 'A detection that fires on every execution of a common administrative tool is likely:'
+      options:
+      - A) High fidelity
+      - B) Too broad, generating unsustainable false positives
+      - C) Undetectable
+      - D) Correctly tuned
+      answer: B
+    - question: 'Testing a detection against a benign lookalike is important to establish:'
+      options:
+      - A) Query performance
+      - B) That the rule discriminates rather than merely matching
+      - C) Storage impact
+      - D) Rule syntax
+      answer: B
+- ordinal: 4
+  title: Correlation and Alerting
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build correlation logic across multiple sources.
+  - Design alert severity and routing.
+  - Manage alert volume sustainably.
+  topics:
+  - Correlation across sources and time.
+  - Aggregation, thresholds and deduplication.
+  - Severity assignment and routing.
+  - Alert volume management.
+  lab: 'Lab: Build a correlation rule that combines a failed-authentication burst with a subsequent success
+    from the same source, and tune it so routine password errors do not trigger it.'
+  refs:
+  - nist-sp-800-92
+  - sigma
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Correlating failed then successful authentication from one source may indicate:'
+      options:
+      - A) Normal login
+      - B) Successful brute force or password spraying
+      - C) Certificate renewal
+      - D) Clock skew
+      answer: B
+    - question: 'Deduplication of alerts primarily addresses:'
+      options:
+      - A) Detection accuracy
+      - B) Analyst workload from repeated identical alerts
+      - C) Log retention
+      - D) Parsing errors
+      answer: B
+    - question: 'Alert severity should reflect:'
+      options:
+      - A) Rule complexity
+      - B) Potential impact and confidence in the detection
+      - C) Event count
+      - D) Source type
+      answer: B
+    - question: 'Time windows in correlation rules must balance:'
+      options:
+      - A) Storage and CPU only
+      - B) Catching related events against accumulating unrelated coincidences
+      - C) Severity and routing
+      - D) Parsing and enrichment
+      answer: B
+    - question: 'An unsustainable alert volume most directly causes:'
+      options:
+      - A) SIEM outage
+      - B) Analysts triaging superficially and missing real detections
+      - C) Log loss
+      - D) Rule corruption
+      answer: B
+- ordinal: 5
+  title: Threat Hunting with SIEM Data
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Formulate a testable hunting hypothesis.
+  - Execute a hunt using available telemetry.
+  - Convert hunt findings into durable detections.
+  topics:
+  - Hypothesis-driven hunting.
+  - Stacking, frequency analysis and outlier detection.
+  - Documenting hunt scope and results.
+  - Operationalising findings as detections.
+  lab: 'Lab: Formulate a hypothesis about unusual parent-child process relationships, hunt for it in provided
+    data, and convert any finding into a Sigma rule.'
+  refs:
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A good hunting hypothesis is:'
+      options:
+      - A) Broad and open-ended
+      - B) Specific and testable against available data
+      - C) Based on a vendor alert
+      - D) Unrelated to the environment
+      answer: B
+    - question: 'Frequency analysis, or stacking, finds:'
+      options:
+      - A) The most common events
+      - B) Rare outliers that may indicate malicious activity
+      - C) Duplicate logs
+      - D) Parsing errors
+      answer: B
+    - question: 'A hunt that finds nothing is:'
+      options:
+      - A) A failure
+      - B) A useful result that bounds where the activity is not present
+      - C) Wasted effort
+      - D) Evidence of compromise
+      answer: B
+    - question: 'Hunt findings should be operationalised by:'
+      options:
+      - A) Emailing the team
+      - B) Creating a tested detection so the finding is caught automatically next time
+      - C) Deleting the data
+      - D) Increasing retention only
+      answer: B
+    - question: 'Documenting hunt scope matters because:'
+      options:
+      - A) It satisfies audit only
+      - B) It records what was and was not examined, bounding the conclusion
+      - C) It speeds queries
+      - D) It assigns severity
+      answer: B
+- ordinal: 6
+  title: Metrics and Continuous Improvement
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define meaningful security monitoring metrics.
+  - Measure detection coverage against a framework.
+  - Drive improvement from incident and near-miss review.
+  topics:
+  - Detection coverage measurement.
+  - Mean time to detect and respond.
+  - False positive and negative rates.
+  - Feedback loops from incidents.
+  lab: 'Lab: Define five monitoring metrics for a SOC, state how each would be measured from available
+    data, and identify which could be gamed and how you would guard against that.'
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Mean time to detect measures the interval between:'
+      options:
+      - A) Alert and closure
+      - B) Adversary activity occurring and it being detected
+      - C) Detection and containment
+      - D) Report and review
+      answer: B
+    - question: 'Counting alerts closed per analyst is a poor primary metric because it:'
+      options:
+      - A) Is hard to measure
+      - B) Incentivises rapid closure over accurate investigation
+      - C) Requires tooling
+      - D) Changes daily
+      answer: B
+    - question: 'Measuring detection coverage against ATT&CK helps identify:'
+      options:
+      - A) Licence usage
+      - B) Techniques for which no detection exists
+      - C) Storage growth
+      - D) Analyst workload
+      answer: B
+    - question: 'A near miss should be reviewed because it:'
+      options:
+      - A) Was not an incident
+      - B) Reveals control weaknesses before they cause harm
+      - C) Affects metrics
+      - D) Is required by policy
+      answer: B
+    - question: 'False negative rate is difficult to measure directly because:'
+      options:
+      - A) It requires more storage
+      - B) Undetected activity is by definition not observed
+      - C) Rules change
+      - D) Analysts vary
+      answer: B

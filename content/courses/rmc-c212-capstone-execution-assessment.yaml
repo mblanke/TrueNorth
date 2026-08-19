@@ -1,0 +1,372 @@
+# RMC C212 - Capstone Execution & Assessment - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C212
+title: Capstone Execution & Assessment
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Executing Advanced Technical Work
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute a demanding technical project systematically.
+  - Maintain rigour under time pressure.
+  - Recognise and respond to approach failure.
+  topics:
+  - Systematic execution practice.
+  - Maintaining rigour under pressure.
+  - Recognising failure early.
+  - Pivoting with evidence.
+  lab: 'Lab: Execute your capstone''s core technical work, maintaining a lab notebook that records every
+    experiment, its parameters and its outcome including failures.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'A lab notebook recording failed experiments is valuable because:'
+      options:
+      - A) It shows effort
+      - B) Failures constrain the solution space and prevent repeating dead ends
+      - C) Assessors require it
+      - D) It lengthens the report
+      answer: B
+    - question: 'Rigour is most at risk when:'
+      options:
+      - A) The project starts
+      - B) Time is short and shortcuts appear attractive
+      - C) Results are positive
+      - D) Supervision is frequent
+      answer: B
+    - question: 'Recognising that an approach has failed is best supported by:'
+      options:
+      - A) Persistence
+      - B) Pre-defined criteria and trigger points set during planning
+      - C) Supervisor instruction
+      - D) Peer opinion
+      answer: B
+    - question: 'Selectively recording only successful runs constitutes:'
+      options:
+      - A) Efficient documentation
+      - B) A form of results manipulation that invalidates conclusions
+      - C) Standard practice
+      - D) Data reduction
+      answer: B
+    - question: 'Pivoting should be justified by:'
+      options:
+      - A) Difficulty encountered
+      - B) Evidence that the original approach cannot answer the question
+      - C) Time remaining
+      - D) Supervisor preference
+      answer: B
+- ordinal: 2
+  title: Rigorous Evaluation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute the planned evaluation faithfully.
+  - Analyse results with appropriate statistical care.
+  - Distinguish signal from artefact.
+  topics:
+  - Faithful execution of the evaluation plan.
+  - Statistical care and significance.
+  - Artefact and confound identification.
+  - Sensitivity analysis.
+  lab: 'Lab: Run your evaluation, analyse results with attention to variance and confounds, and perform
+    a sensitivity analysis showing how conclusions change under different assumptions.'
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A confound is a factor that:'
+      options:
+      - A) Improves results
+      - B) Offers an alternative explanation for the observed effect
+      - C) Increases variance
+      - D) Reduces sample size
+      answer: B
+    - question: 'Sensitivity analysis examines:'
+      options:
+      - A) Data privacy
+      - B) How robust conclusions are to changes in assumptions or parameters
+      - C) Statistical power
+      - D) Runtime performance
+      answer: B
+    - question: 'Changing the evaluation plan after seeing results risks:'
+      options:
+      - A) Improved rigour
+      - B) Fitting the analysis to the desired outcome
+      - C) Better statistics
+      - D) Clearer presentation
+      answer: B
+    - question: 'A result observed once should be:'
+      options:
+      - A) Reported as established
+      - B) Repeated to establish it is not an artefact
+      - C) Discarded
+      - D) Extrapolated
+      answer: B
+    - question: 'Reporting variance alongside a mean is important because:'
+      options:
+      - A) It fills space
+      - B) A mean without spread can conceal unreliable or inconsistent behaviour
+      - C) Assessors require it
+      - D) It aids comparison only
+      answer: B
+- ordinal: 3
+  title: Producing the Final Artefact
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Deliver a complete, usable technical artefact.
+  - Document it to professional standards.
+  - Ensure it can be maintained or extended by others.
+  topics:
+  - Artefact completeness and quality.
+  - Professional documentation.
+  - Maintainability and extensibility.
+  - Release and packaging.
+  lab: 'Lab: Finalise your capstone artefact with complete documentation, verify a peer can build and
+    run it from documentation alone, and record every gap they encounter.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'An artefact that only its author can operate:'
+      options:
+      - A) Is acceptable for research
+      - B) Has substantially reduced value and cannot be independently verified
+      - C) Is normal
+      - D) Is more secure
+      answer: B
+    - question: 'Professional documentation should include:'
+      options:
+      - A) The code only
+      - B) Purpose, assumptions, build and run instructions, and known limitations
+      - C) A changelog only
+      - D) API reference only
+      answer: B
+    - question: 'Known limitations should be documented because:'
+      options:
+      - A) It lowers expectations
+      - B) Users making decisions from the artefact need to know where it does not apply
+      - C) Assessors require it
+      - D) It shortens support
+      answer: B
+    - question: 'Maintainability is improved most by:'
+      options:
+      - A) Extensive comments alone
+      - B) Clear structure, tests and documented design decisions
+      - C) Fewer files
+      - D) A single language
+      answer: B
+    - question: 'The best test of build documentation is:'
+      options:
+      - A) Author review
+      - B) A peer building from it without assistance
+      - C) CI passing
+      - D) Length
+      answer: B
+- ordinal: 4
+  title: Written Assessment
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a dissertation-standard technical report.
+  - Argue conclusions from evidence.
+  - Meet academic and professional writing standards.
+  topics:
+  - Report structure at advanced level.
+  - Argumentation from evidence.
+  - Critical engagement with prior work.
+  - Academic integrity.
+  lab: 'Lab: Produce your final written report, then perform a structured self-review checking each conclusion
+    traces to specific evidence presented in the results.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Every conclusion in a technical report should:'
+      options:
+      - A) Be interesting
+      - B) Trace to specific evidence presented in the report
+      - C) Cite prior work
+      - D) Appear in the abstract
+      answer: B
+    - question: 'Critical engagement with prior work means:'
+      options:
+      - A) Criticising it
+      - B) Assessing its strengths, limitations and relationship to your findings
+      - C) Citing extensively
+      - D) Summarising it
+      answer: B
+    - question: 'Using generated or third-party text without attribution is:'
+      options:
+      - A) Acceptable if edited
+      - B) An academic integrity breach
+      - C) Standard practice
+      - D) Permitted for background
+      answer: B
+    - question: 'An abstract should state:'
+      options:
+      - A) The motivation only
+      - B) The problem, approach, key result and its significance
+      - C) The methodology in detail
+      - D) The conclusions only
+      answer: B
+    - question: 'If results do not support the original hypothesis, the report should:'
+      options:
+      - A) Reframe the hypothesis retroactively
+      - B) Report the finding honestly and analyse why
+      - C) Omit the hypothesis
+      - D) Extend the evaluation until it does
+      answer: B
+- ordinal: 5
+  title: Oral Defence
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Defend the work under expert examination.
+  - Demonstrate command of the subject beyond the report.
+  - Handle challenge to core assumptions.
+  topics:
+  - Defence preparation.
+  - Demonstrating depth of understanding.
+  - Responding to fundamental challenge.
+  - Professional conduct under examination.
+  lab: 'Lab: Undergo a full mock defence with expert examiners, and produce a written response to each
+    challenge you could not answer satisfactorily.'
+  refs:
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'An examiner challenging a core assumption is:'
+      options:
+      - A) Being obstructive
+      - B) Testing whether you understand the foundations of your own work
+      - C) Out of scope
+      - D) Signalling failure
+      answer: B
+    - question: 'If you realise during a defence that you made an error, you should:'
+      options:
+      - A) Defend the original position
+      - B) Acknowledge it and discuss its impact on the conclusions
+      - C) Deflect to limitations
+      - D) Request a pause
+      answer: B
+    - question: 'Demonstrating depth means being able to:'
+      options:
+      - A) Recite the report
+      - B) Explain why choices were made and what would change under different conditions
+      - C) Cite more work
+      - D) Present longer
+      answer: B
+    - question: 'Preparation for defence is best done by:'
+      options:
+      - A) Rereading the report
+      - B) Having others attack the work and identifying weak answers
+      - C) Memorising slides
+      - D) Reviewing references
+      answer: B
+    - question: 'Professional conduct under examination includes:'
+      options:
+      - A) Never conceding
+      - B) Engaging with challenge honestly rather than defensively
+      - C) Deferring to examiners
+      - D) Limiting answers
+      answer: B
+- ordinal: 6
+  title: Professional Transition
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Articulate the professional value of the capstone.
+  - Plan continued development beyond the programme.
+  - Contribute the work back to the professional community.
+  topics:
+  - Articulating capability to employers.
+  - Continuing professional development planning.
+  - Contributing to the community.
+  - Sustaining practice after study.
+  lab: 'Lab: Produce a professional summary of your capstone suitable for a technical employer, and a
+    twelve-month development plan identifying the capabilities you will build next.'
+  refs:
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Articulating capstone value to an employer should emphasise:'
+      options:
+      - A) The grade
+      - B) The demonstrated ability to scope, execute and evaluate independent technical work
+      - C) Technologies used
+      - D) Hours invested
+      answer: B
+    - question: 'Contributing work back to the community is valuable because it:'
+      options:
+      - A) Builds reputation only
+      - B) Allows others to verify, build on and benefit from the work
+      - C) Satisfies the programme
+      - D) Is required
+      answer: B
+    - question: 'A development plan should be based on:'
+      options:
+      - A) General interest
+      - B) Capability gaps identified through honest reflection
+      - C) Market trends alone
+      - D) Employer direction
+      answer: B
+    - question: 'Skills decay after a programme is best countered by:'
+      options:
+      - A) Reading
+      - B) Deliberate, applied practice on real problems
+      - C) Certification
+      - D) Attending conferences
+      answer: B
+    - question: 'Publishing negative or inconclusive results benefits the community because it:'
+      options:
+      - A) Is unusual
+      - B) Prevents others repeating an approach that does not work
+      - C) Improves reputation
+      - D) Is easier to write
+      answer: B

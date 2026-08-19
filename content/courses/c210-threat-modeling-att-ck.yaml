@@ -1,0 +1,375 @@
+# C210 - Threat Modeling & ATT&CK - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C210
+title: Threat Modeling & ATT&CK
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Threat Modelling Foundations
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain the purpose and timing of threat modelling.
+  - Select an appropriate threat modelling methodology.
+  - Scope a threat model to be useful rather than exhaustive.
+  topics:
+  - Purpose and outcomes of threat modelling.
+  - STRIDE, PASTA and attack trees.
+  - Scoping and level of abstraction.
+  - Common failure modes.
+  lab: 'Lab: Scope a threat model for a described system, choose a methodology with justification, and
+    state explicitly what is in and out of scope.'
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Threat modelling is most effective when performed:'
+      options:
+      - A) After deployment
+      - B) During design and revisited when the design changes
+      - C) Annually only
+      - D) After an incident
+      answer: B
+    - question: 'An attack tree represents:'
+      options:
+      - A) Network topology
+      - B) Decomposition of an attacker goal into alternative paths
+      - C) Control inventory
+      - D) Asset value
+      answer: B
+    - question: 'A threat model that attempts to enumerate every conceivable threat usually:'
+      options:
+      - A) Improves coverage
+      - B) Becomes unusable and is abandoned
+      - C) Reduces risk
+      - D) Satisfies audit
+      answer: B
+    - question: 'Choosing the right abstraction level matters because:'
+      options:
+      - A) Diagrams must be small
+      - B) Too much detail obscures the significant risks
+      - C) Tools require it
+      - D) It reduces cost
+      answer: B
+    - question: 'The most valuable output of threat modelling is:'
+      options:
+      - A) A diagram
+      - B) Prioritised, actionable mitigations owned by someone
+      - C) A threat list
+      - D) A compliance record
+      answer: B
+- ordinal: 2
+  title: System Decomposition
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Produce a data flow diagram with correct trust boundaries.
+  - Identify assets, entry points and privilege levels.
+  - Validate the model against the real implementation.
+  topics:
+  - Data flow diagram notation.
+  - Trust boundaries and privilege levels.
+  - Entry points and assets.
+  - Model validation.
+  lab: 'Lab: Build a data flow diagram for a three-tier application, mark trust boundaries and privilege
+    levels, then validate it against the actual configuration and note discrepancies.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A trust boundary is crossed whenever data moves between components with:'
+      options:
+      - A) Different owners
+      - B) Different levels of trust or privilege
+      - C) Different languages
+      - D) Different hosts
+      answer: B
+    - question: 'An entry point in a threat model is:'
+      options:
+      - A) The login page only
+      - B) Any location where external input enters the system
+      - C) The database
+      - D) The firewall
+      answer: B
+    - question: 'Validating a threat model against the implementation is necessary because:'
+      options:
+      - A) Diagrams degrade
+      - B) Models drift from reality and stale models mislead
+      - C) Tools require it
+      - D) It is faster
+      answer: B
+    - question: 'A process element in a data flow diagram represents:'
+      options:
+      - A) Stored data
+      - B) Something that transforms or acts on data
+      - C) A trust boundary
+      - D) An external actor
+      answer: B
+    - question: 'Omitting a data store from the model risks:'
+      options:
+      - A) A cleaner diagram
+      - B) Missing threats to data at rest
+      - C) Faster review
+      - D) Lower cost
+      answer: B
+- ordinal: 3
+  title: Applying STRIDE
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply STRIDE systematically to each model element.
+  - Derive concrete threats rather than generic categories.
+  - Link each threat to a candidate mitigation.
+  topics:
+  - STRIDE categories per element type.
+  - Threat statement construction.
+  - Mitigation mapping.
+  - Prioritisation and residual risk.
+  lab: 'Lab: Apply STRIDE to every element of your data flow diagram, write each threat as a concrete
+    scenario, and map each to a specific mitigation with an owner.'
+  refs:
+  - nist-sp-800-218
+  - owasp-top-10
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A useful threat statement describes:'
+      options:
+      - A) A category such as tampering
+      - 'B) A concrete scenario: who does what, to what, with what effect'
+      - C) A CVE number
+      - D) A control
+      answer: B
+    - question: 'Information disclosure threats are most directly mitigated by:'
+      options:
+      - A) Rate limiting
+      - B) Access control and encryption
+      - C) Logging
+      - D) Input validation
+      answer: B
+    - question: 'Denial of service threats to a data flow are mitigated by:'
+      options:
+      - A) Encryption
+      - B) Rate limiting, quotas and resource controls
+      - C) Signing
+      - D) Authentication alone
+      answer: B
+    - question: 'Spoofing threats against an external entity are countered by:'
+      options:
+      - A) Authorisation
+      - B) Authentication
+      - C) Auditing
+      - D) Encryption
+      answer: B
+    - question: 'A threat with no owner assigned is likely to:'
+      options:
+      - A) Be mitigated first
+      - B) Remain unmitigated
+      - C) Be reclassified
+      - D) Be accepted formally
+      answer: B
+- ordinal: 4
+  title: MITRE ATT&CK in Depth
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Navigate the ATT&CK matrix structure.
+  - Map observed or hypothesised behaviour to techniques.
+  - Use ATT&CK to reason about detection and mitigation.
+  topics:
+  - Tactics, techniques and sub-techniques.
+  - Enterprise, mobile and ICS matrices.
+  - Groups, software and campaigns.
+  - Detection and mitigation entries.
+  lab: 'Lab: Map a described intrusion to ATT&CK tactics and techniques, then for three techniques identify
+    the data sources ATT&CK lists for detection and check whether you collect them.'
+  refs:
+  - mitre-attack
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'In ATT&CK, a sub-technique represents:'
+      options:
+      - A) A broader goal
+      - B) A more specific means of achieving a technique
+      - C) A threat group
+      - D) A mitigation
+      answer: B
+    - question: 'ATT&CK data sources are useful because they indicate:'
+      options:
+      - A) Which vendor to buy
+      - B) What telemetry is needed to detect a technique
+      - C) Attack likelihood
+      - D) Threat actor identity
+      answer: B
+    - question: 'Using ATT&CK to claim complete coverage is misleading because:'
+      options:
+      - A) It changes often
+      - B) It documents observed behaviour, not every possible technique
+      - C) It is proprietary
+      - D) It lacks detail
+      answer: B
+    - question: 'An ATT&CK group entry describes:'
+      options:
+      - A) A software family
+      - B) A set of related intrusion activity tracked as an adversary
+      - C) A mitigation
+      - D) A data source
+      answer: B
+    - question: 'The ICS matrix exists because industrial environments:'
+      options:
+      - A) Use the same techniques
+      - B) Have distinct technology and consequences requiring separate modelling
+      - C) Are more secure
+      - D) Lack telemetry
+      answer: B
+- ordinal: 5
+  title: Threat-Informed Defence
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Prioritise defensive investment using threat intelligence.
+  - Assess detection coverage against relevant techniques.
+  - Plan improvement based on gaps.
+  topics:
+  - Relevance filtering by sector and adversary.
+  - Coverage assessment and heatmaps.
+  - Prioritisation of gaps.
+  - Continuous reassessment.
+  lab: 'Lab: Build a coverage heatmap for ten techniques relevant to a described organisation, identify
+    the three highest-priority gaps, and justify the prioritisation.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Prioritising techniques by relevance means considering:'
+      options:
+      - A) All techniques equally
+      - B) Which adversaries plausibly target this organisation and how
+      - C) Alphabetical order
+      - D) Technique identifier
+      answer: B
+    - question: 'A coverage heatmap can mislead if it counts:'
+      options:
+      - A) Tested detections
+      - B) Untested or low-fidelity detections as full coverage
+      - C) Data sources
+      - D) Mitigations
+      answer: B
+    - question: 'Threat-informed defence differs from compliance-driven security by prioritising:'
+      options:
+      - A) Control checklists
+      - B) Defences against how adversaries actually operate
+      - C) Documentation
+      - D) Audit findings
+      answer: B
+    - question: 'Coverage assessment should be repeated because:'
+      options:
+      - A) Heatmaps fade
+      - B) Both the environment and adversary behaviour change
+      - C) Tools expire
+      - D) Auditors require it
+      answer: B
+    - question: 'The highest-priority gap is generally the one that is:'
+      options:
+      - A) Easiest to fix
+      - B) Most likely to be used against you with the greatest impact
+      - C) Newest in ATT&CK
+      - D) Most discussed
+      answer: B
+- ordinal: 6
+  title: Communicating Threat Models
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Present a threat model to technical and non-technical audiences.
+  - Track mitigations through to verification.
+  - Maintain a threat model as a living artefact.
+  topics:
+  - Audience-appropriate presentation.
+  - Mitigation tracking and verification.
+  - Model maintenance triggers.
+  - Integrating with development workflow.
+  lab: 'Lab: Present your threat model in a one-page summary for a delivery manager and a detailed annex
+    for engineers, and define the triggers that would require the model to be revised.'
+  refs:
+  - nist-sp-800-218
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A threat model becomes a living artefact when it is:'
+      options:
+      - A) Stored centrally
+      - B) Revised whenever the design or threat landscape changes
+      - C) Approved once
+      - D) Published
+      answer: B
+    - question: 'Presenting a threat model to a delivery manager should emphasise:'
+      options:
+      - A) STRIDE categories
+      - B) Risk, required decisions and effort
+      - C) Diagram notation
+      - D) Technique identifiers
+      answer: B
+    - question: 'Mitigations should be tracked to:'
+      options:
+      - A) Design approval
+      - B) Implementation and verification that they work
+      - C) Ticket creation
+      - D) Handover
+      answer: B
+    - question: 'A trigger for revising a threat model would be:'
+      options:
+      - A) A new team member
+      - B) A new external integration or trust boundary
+      - C) A tool upgrade
+      - D) Quarterly scheduling alone
+      answer: B
+    - question: 'Threat modelling integrated into development workflow is more effective because it:'
+      options:
+      - A) Requires fewer people
+      - B) Happens while design decisions can still change cheaply
+      - C) Produces shorter documents
+      - D) Avoids review
+      answer: B

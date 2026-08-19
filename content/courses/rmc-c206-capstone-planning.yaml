@@ -1,0 +1,373 @@
+# RMC C206 - Capstone Planning - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C206
+title: Capstone Planning
+version: '1.0'
+difficulty: intermediate
+duration_hours: 20
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Advanced Capstone Scoping
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define a capstone problem of professional significance.
+  - Scope advanced technical work realistically.
+  - Align the project with operational need.
+  topics:
+  - Problem significance at advanced level.
+  - Scoping technically demanding work.
+  - Operational relevance and stakeholder need.
+  - Feasibility assessment.
+  lab: 'Lab: Define an advanced capstone problem with demonstrable operational relevance, state its significance,
+    and assess feasibility against the time and access available.'
+  refs:
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'An advanced capstone should be distinguished by:'
+      options:
+      - A) Greater length
+      - B) Depth of technical contribution and operational relevance
+      - C) More references
+      - D) Broader scope
+      answer: B
+    - question: 'Operational relevance means the work:'
+      options:
+      - A) Uses current tools
+      - B) Addresses a problem a practitioner actually faces
+      - C) Is classified
+      - D) Involves hardware
+      answer: B
+    - question: 'Feasibility assessment must account for:'
+      options:
+      - A) Interest level
+      - B) Access to data, systems and approvals as well as technical difficulty
+      - C) Supervisor availability
+      - D) Reference availability
+      answer: B
+    - question: 'A problem requiring access you cannot obtain should be:'
+      options:
+      - A) Attempted anyway
+      - B) Reframed to work within achievable access
+      - C) Escalated
+      - D) Deferred
+      answer: B
+    - question: 'Significance should be justified by:'
+      options:
+      - A) Assertion
+      - B) Evidence that the problem matters and is not already solved
+      - C) Supervisor endorsement
+      - D) Novelty alone
+      answer: B
+- ordinal: 2
+  title: Research Design
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design rigorous evaluation for advanced technical work.
+  - Select appropriate comparison and control.
+  - Plan for reproducibility from the outset.
+  topics:
+  - Evaluation design and rigour.
+  - Baselines, controls and comparison.
+  - Reproducibility planning.
+  - Data management planning.
+  lab: 'Lab: Design your evaluation including baseline comparison, the data you will collect, and the
+    artefacts you will publish to make the work reproducible.'
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A baseline comparison is required because:'
+      options:
+      - A) Assessors expect it
+      - B) Improvement claims are meaningless without a reference
+      - C) It doubles the data
+      - D) It simplifies analysis
+      answer: B
+    - question: 'Planning reproducibility from the outset is easier than retrofitting because:'
+      options:
+      - A) Tools require it
+      - B) Capturing environment, data and procedure is difficult to reconstruct later
+      - C) It reduces work
+      - D) Assessors check early
+      answer: B
+    - question: 'A data management plan should address:'
+      options:
+      - A) Storage size only
+      - B) Collection, storage, protection, retention and sharing of data
+      - C) Analysis methods
+      - D) Publication venue
+      answer: B
+    - question: 'Evaluating only on data used to develop the approach produces:'
+      options:
+      - A) Valid results
+      - B) Optimistic results that may not generalise
+      - C) Conservative results
+      - D) Reproducible results
+      answer: B
+    - question: 'Rigour in evaluation primarily means:'
+      options:
+      - A) More data
+      - B) Design that would expose the approach failing if it does
+      - C) Advanced statistics
+      - D) Longer duration
+      answer: B
+- ordinal: 3
+  title: Access, Ethics and Approvals
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Secure the access and approvals required for advanced work.
+  - Handle sensitive data and systems appropriately.
+  - Plan for constraints imposed by classification or sensitivity.
+  topics:
+  - Access negotiation and lead times.
+  - Sensitive data handling.
+  - Ethical and institutional approval.
+  - Working within classification constraints.
+  lab: 'Lab: Identify every approval and access requirement for your capstone, estimate the lead time
+    for each, and produce a contingency plan for the one most likely to be refused or delayed.'
+  refs:
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Access requests should be initiated:'
+      options:
+      - A) When the work begins
+      - B) During planning, since lead times often exceed expectations
+      - C) After approval of the proposal
+      - D) By the supervisor
+      answer: B
+    - question: 'Sensitive data used in a capstone must be:'
+      options:
+      - A) Anonymised always
+      - B) Handled per its classification with documented protection measures
+      - C) Avoided entirely
+      - D) Stored locally
+      answer: B
+    - question: 'A contingency for refused access should be planned because:'
+      options:
+      - A) Refusal is certain
+      - B) Discovering refusal late can invalidate the whole project
+      - C) Approvals are slow
+      - D) Supervisors require it
+      answer: B
+    - question: 'Classification constraints may affect a capstone by:'
+      options:
+      - A) Improving rigour
+      - B) Limiting what can be published or assessed openly
+      - C) Removing ethics requirements
+      - D) Simplifying scope
+      answer: B
+    - question: 'Work that cannot be assessed due to sensitivity should be:'
+      options:
+      - A) Attempted anyway
+      - B) Restructured so an assessable, releasable component exists
+      - C) Classified
+      - D) Abandoned
+      answer: B
+- ordinal: 4
+  title: Technical Risk Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify technical risks specific to advanced work.
+  - Plan mitigations and fallback approaches.
+  - Set decision points for changing approach.
+  topics:
+  - Technical risk identification.
+  - Fallback approach design.
+  - Decision points and triggers.
+  - Sunk cost and pivoting.
+  lab: 'Lab: Produce a technical risk register with a fallback approach for each significant risk and
+    a defined trigger point at which you would switch approaches.'
+  refs:
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A defined trigger point for changing approach prevents:'
+      options:
+      - A) Poor planning
+      - B) Sunk cost reasoning keeping you on a failing approach too long
+      - C) Scope creep
+      - D) Supervisor intervention
+      answer: B
+    - question: 'A fallback approach should be:'
+      options:
+      - A) Equally ambitious
+      - B) Achievable with the remaining time if the primary approach fails
+      - C) Undefined until needed
+      - D) The same approach retried
+      answer: B
+    - question: 'The greatest technical risk in advanced projects is usually:'
+      options:
+      - A) Tool failure
+      - B) The core technical assumption proving invalid
+      - C) Data loss
+      - D) Version conflicts
+      answer: B
+    - question: 'Sunk cost reasoning in a project manifests as:'
+      options:
+      - A) Careful planning
+      - B) Continuing a failing approach because of effort already invested
+      - C) Early pivoting
+      - D) Scope reduction
+      answer: B
+    - question: 'Technical risks should be reassessed:'
+      options:
+      - A) At the start only
+      - B) Continuously, as understanding of the problem develops
+      - C) At submission
+      - D) When they occur
+      answer: B
+- ordinal: 5
+  title: Proposal Development
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a proposal to a professional standard.
+  - Justify methodology to a technical audience.
+  - Present a credible delivery plan.
+  topics:
+  - Advanced proposal structure.
+  - Methodological justification.
+  - Delivery planning and milestones.
+  - Anticipating reviewer challenge.
+  lab: 'Lab: Produce your full capstone proposal to professional standard, including methodology justification,
+    milestone plan and an explicit statement of what would constitute failure.'
+  refs:
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Stating what would constitute failure:'
+      options:
+      - A) Invites rejection
+      - B) Demonstrates rigour by making the project falsifiable
+      - C) Is unnecessary
+      - D) Reduces ambition
+      answer: B
+    - question: 'Methodology justification should explain:'
+      options:
+      - A) That the method is popular
+      - B) Why this method produces evidence that answers the question
+      - C) The tools used
+      - D) The supervisor's preference
+      answer: B
+    - question: 'Milestones are valuable because they:'
+      options:
+      - A) Fill the schedule
+      - B) Provide early signals of whether the plan is realistic
+      - C) Satisfy assessors
+      - D) Reduce scope
+      answer: B
+    - question: 'A proposal reviewer is primarily assessing:'
+      options:
+      - A) Writing quality
+      - B) Whether the plan can plausibly deliver a meaningful, evaluable result
+      - C) Topic novelty
+      - D) Reference count
+      answer: B
+    - question: 'The most common failure in advanced proposals is:'
+      options:
+      - A) Insufficient references
+      - B) Underestimating the effort required for the technical core
+      - C) Poor formatting
+      - D) Weak literature review
+      answer: B
+- ordinal: 6
+  title: Review and Refinement
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Incorporate expert review into the plan.
+  - Refine scope based on feedback.
+  - Commit to a plan while retaining adaptability.
+  topics:
+  - Expert review process.
+  - Scope refinement.
+  - Balancing commitment and flexibility.
+  - Final plan approval.
+  lab: 'Lab: Submit your proposal for expert review, produce a response addressing each substantive point,
+    and issue a final revised plan with a clear change log.'
+  refs:
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Expert review is most valuable when the reviewer:'
+      options:
+      - A) Agrees with the approach
+      - B) Has domain expertise and challenges the assumptions
+      - C) Is the supervisor
+      - D) Is a peer
+      answer: B
+    - question: 'A change log accompanying a revised plan:'
+      options:
+      - A) Adds length
+      - B) Shows what changed and why, making review efficient
+      - C) Is optional
+      - D) Replaces the plan
+      answer: B
+    - question: 'Committing to a plan means:'
+      options:
+      - A) Never changing it
+      - B) Proceeding decisively while retaining defined points for reassessment
+      - C) Ignoring feedback
+      - D) Fixing the scope permanently
+      answer: B
+    - question: 'Feedback recommending a substantial scope reduction should be:'
+      options:
+      - A) Resisted to preserve ambition
+      - B) Taken seriously, as over-scoping is the most common cause of failure
+      - C) Deferred
+      - D) Escalated
+      answer: B
+    - question: 'The final plan should be:'
+      options:
+      - A) Aspirational
+      - B) Realistic, evaluable and agreed with the supervisor
+      - C) Confidential
+      - D) Flexible in all respects
+      answer: B

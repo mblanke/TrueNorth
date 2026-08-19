@@ -1,0 +1,375 @@
+# C108 - Linux System Administration - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C108
+title: Linux System Administration
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Shell, Filesystem and Core Tooling
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Navigate and manipulate the filesystem confidently from the shell.
+  - Compose commands using pipes, redirection and filters.
+  - Locate files and content efficiently across a system.
+  topics:
+  - Filesystem hierarchy standard.
+  - Redirection, pipes and exit codes.
+  - grep, find, sed and awk.
+  - Text processing for log triage.
+  lab: 'Lab: Write a one-line pipeline that extracts failed authentication attempts from a log, counts
+    them per source address, and prints the top five.'
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'In the filesystem hierarchy, host-specific configuration belongs in:'
+      options:
+      - A) /var
+      - B) /etc
+      - C) /usr
+      - D) /opt
+      answer: B
+    - question: 'A command''s exit code of 0 conventionally means:'
+      options:
+      - A) Failure
+      - B) Success
+      - C) Warning
+      - D) Not executed
+      answer: B
+    - question: 'The construct 2>&1 redirects:'
+      options:
+      - A) stdout to stderr
+      - B) stderr to the current destination of stdout
+      - C) stdin to stdout
+      - D) stderr to a file named 1
+      answer: B
+    - question: Which tool is best suited to field-based extraction from structured text?
+      options:
+      - A) ls
+      - B) awk
+      - C) chmod
+      - D) tar
+      answer: B
+    - question: 'Log files are conventionally stored under:'
+      options:
+      - A) /etc/log
+      - B) /var/log
+      - C) /usr/log
+      - D) /tmp/log
+      answer: B
+- ordinal: 2
+  title: Package, Service and Process Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Manage software packages and repositories safely.
+  - Control services with the init system.
+  - Diagnose resource consumption by process.
+  topics:
+  - Package managers and repository trust.
+  - systemd units, targets and dependencies.
+  - Process inspection and signals.
+  - Resource limits and cgroups.
+  lab: 'Lab: Create a systemd unit for a small service with a restart policy, start and enable it, then
+    simulate a crash and prove the restart behaviour from the journal.'
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Package signature verification protects against:'
+      options:
+      - A) Disk failure
+      - B) Installation of tampered or spoofed packages
+      - C) Dependency conflicts
+      - D) Slow downloads
+      answer: B
+    - question: 'Enabling a systemd unit means it will:'
+      options:
+      - A) Start immediately only
+      - B) Start automatically at boot
+      - C) Be removed on reboot
+      - D) Run once then exit
+      answer: B
+    - question: 'SIGKILL differs from SIGTERM because SIGKILL:'
+      options:
+      - A) Can be caught and handled
+      - B) Cannot be caught, blocked or ignored
+      - C) Only pauses the process
+      - D) Requires root always
+      answer: B
+    - question: 'cgroups are used primarily to:'
+      options:
+      - A) Encrypt processes
+      - B) Limit and account for resource usage by process groups
+      - C) Schedule cron jobs
+      - D) Manage users
+      answer: B
+    - question: 'A zombie process is cleaned up when:'
+      options:
+      - A) The system reboots only
+      - B) Its parent reaps the exit status
+      - C) SIGKILL is sent to it
+      - D) Its memory is freed
+      answer: B
+- ordinal: 3
+  title: Users, Groups and Access Control
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Administer local accounts and group membership.
+  - Configure controlled privilege escalation.
+  - Apply mandatory access control where appropriate.
+  topics:
+  - Account provisioning and lifecycle.
+  - sudo policy design and logging.
+  - File ACLs beyond POSIX bits.
+  - SELinux and AppArmor concepts.
+  lab: 'Lab: Create a service account with no interactive login, grant it one specific sudo command, verify
+    the restriction holds, and confirm the invocation is logged.'
+  refs:
+  - cis-benchmarks
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A service account should normally be configured with:'
+      options:
+      - A) A shell of /bin/bash and a password
+      - B) No interactive login shell
+      - C) Root group membership
+      - D) A shared password
+      answer: B
+    - question: 'Granting sudo ALL=(ALL) NOPASSWD:ALL to a user effectively gives:'
+      options:
+      - A) Read-only access
+      - B) Unrestricted root privilege without reauthentication
+      - C) Access to one command
+      - D) Group-only rights
+      answer: B
+    - question: 'SELinux enforces:'
+      options:
+      - A) Discretionary access control
+      - B) Mandatory access control via labels and policy
+      - C) Network filtering
+      - D) Disk quotas
+      answer: B
+    - question: 'POSIX ACLs are useful when:'
+      options:
+      - A) Only owner and group permissions are needed
+      - B) Per-user permissions beyond owner/group/other are required
+      - C) Files are read-only
+      - D) The filesystem is remote
+      answer: B
+    - question: 'Reviewing group membership regularly matters because:'
+      options:
+      - A) Groups expire
+      - B) Privilege accumulates as people change roles
+      - C) Groups consume disk
+      - D) It speeds authentication
+      answer: B
+- ordinal: 4
+  title: Networking and Remote Access
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Configure network interfaces and verify connectivity.
+  - Harden remote administrative access.
+  - Diagnose network problems from the host.
+  topics:
+  - Interface and route configuration.
+  - SSH configuration and key-based authentication.
+  - Host firewall configuration.
+  - Host-side network diagnostics.
+  lab: 'Lab: Harden an SSH service by disabling password and root login, enforcing key authentication,
+    then verify the configuration and confirm a password attempt is refused.'
+  refs:
+  - cis-benchmarks
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Disabling PermitRootLogin in SSH primarily:'
+      options:
+      - A) Prevents all remote access
+      - B) Forces administrators to log in as themselves before escalating
+      - C) Disables key authentication
+      - D) Blocks SFTP
+      answer: B
+    - question: 'SSH key-based authentication is stronger than passwords mainly because:'
+      options:
+      - A) Keys are shorter
+      - B) The private key is never transmitted to the server
+      - C) Keys never expire
+      - D) It requires no configuration
+      answer: B
+    - question: Which command shows listening sockets and owning processes?
+      options:
+      - A) ping
+      - B) ss -tulpn
+      - C) traceroute
+      - D) dig
+      answer: B
+    - question: 'A host-based firewall complements a network firewall by:'
+      options:
+      - A) Replacing it
+      - B) Enforcing policy even for traffic that never crosses the network boundary
+      - C) Encrypting traffic
+      - D) Providing routing
+      answer: B
+    - question: 'An SSH host key warning on connection may indicate:'
+      options:
+      - A) A password change
+      - B) A machine-in-the-middle attempt or a legitimate host rebuild
+      - C) Disk corruption
+      - D) An expired certificate
+      answer: B
+- ordinal: 5
+  title: Storage, Backup and Recovery
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Manage partitions, filesystems and logical volumes.
+  - Design a backup scheme that meets stated recovery objectives.
+  - Verify that backups are actually restorable.
+  topics:
+  - Partitioning, filesystems and mount options.
+  - Logical volume management.
+  - Backup strategies and retention.
+  - Restore testing and recovery objectives.
+  lab: 'Lab: Create a logical volume, place a filesystem on it with secure mount options, back it up,
+    delete a file, and demonstrate a successful restore.'
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A recovery point objective defines:'
+      options:
+      - A) How long recovery may take
+      - B) The maximum acceptable data loss measured in time
+      - C) The backup medium
+      - D) The retention period
+      answer: B
+    - question: 'An untested backup should be regarded as:'
+      options:
+      - A) Fully reliable
+      - B) An unverified assumption, not a control
+      - C) Equivalent to a snapshot
+      - D) A compliance artefact only
+      answer: B
+    - question: 'Mounting a data filesystem with nodev prevents:'
+      options:
+      - A) File creation
+      - B) Interpretation of device special files on that filesystem
+      - C) Symbolic links
+      - D) Execution of scripts
+      answer: B
+    - question: 'Logical volume management primarily provides:'
+      options:
+      - A) Encryption
+      - B) Flexible resizing and abstraction over physical devices
+      - C) Deduplication always
+      - D) RAID parity
+      answer: B
+    - question: 'Storing backups only on the same host as the data primarily fails to protect against:'
+      options:
+      - A) Accidental deletion
+      - B) Host loss, ransomware or site failure
+      - C) File corruption
+      - D) Permission errors
+      answer: B
+- ordinal: 6
+  title: Monitoring, Hardening and Maintenance
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Establish monitoring for availability and security events.
+  - Apply a hardening baseline and manage patching.
+  - Investigate an anomaly using host telemetry.
+  topics:
+  - Metrics, thresholds and alerting.
+  - Baseline hardening and drift detection.
+  - Patch cadence and change control.
+  - Host-based investigation workflow.
+  lab: 'Lab: Investigate a test host showing unexplained outbound connections; correlate process, user
+    and network evidence, and produce a short finding with a recommended containment action.'
+  refs:
+  - cis-benchmarks
+  - nist-sp-800-92
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Alert thresholds set too tightly typically cause:'
+      options:
+      - A) Missed incidents
+      - B) Alert fatigue from excessive false positives
+      - C) Lower CPU usage
+      - D) Better retention
+      answer: B
+    - question: 'Correlating a suspicious connection to a responsible process requires:'
+      options:
+      - A) Only the firewall log
+      - B) Host telemetry linking socket, PID and user
+      - C) The DNS cache alone
+      - D) The MAC address
+      answer: B
+    - question: 'Emergency patching outside change control should still:'
+      options:
+      - A) Skip documentation
+      - B) Be recorded and reviewed retrospectively
+      - C) Avoid testing
+      - D) Be applied by anyone
+      answer: B
+    - question: 'Baseline drift detection is valuable because it identifies:'
+      options:
+      - A) Hardware faults
+      - B) Unauthorised or unintended configuration change
+      - C) Network latency
+      - D) Licence expiry
+      answer: B
+    - question: 'The first containment action for a compromised host is usually to:'
+      options:
+      - A) Reinstall immediately
+      - B) Isolate it while preserving volatile evidence
+      - C) Delete suspicious files
+      - D) Reboot it
+      answer: B

@@ -1,0 +1,371 @@
+# C404 - Capstone Assessment & Presentation - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C404
+title: Capstone Assessment & Presentation
+version: '1.0'
+difficulty: intermediate
+duration_hours: 60
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Technical Writing for Assessment
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Structure a technical report for an assessor.
+  - Write with precision and appropriate register.
+  - Present evidence clearly and honestly.
+  topics:
+  - Report structure and flow.
+  - Precision, hedging and overclaiming.
+  - Presenting data and evidence.
+  - Referencing and attribution.
+  lab: 'Lab: Draft your capstone report, then review it specifically for overclaiming, replacing every
+    unsupported assertion with a statement proportionate to your evidence.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Overclaiming in a technical report is problematic because it:'
+      options:
+      - A) Lengthens the text
+      - B) Misleads the reader and undermines credibility when detected
+      - C) Is hard to write
+      - D) Reduces the word count
+      answer: B
+    - question: 'The results section should contain:'
+      options:
+      - A) Interpretation and conclusions
+      - B) What was observed, with interpretation separated
+      - C) Methodology
+      - D) Related work
+      answer: B
+    - question: 'Failing to attribute another''s work is:'
+      options:
+      - A) A formatting error
+      - B) Plagiarism, regardless of intent
+      - C) Acceptable if paraphrased
+      - D) A minor omission
+      answer: B
+    - question: 'Hedged language such as suggests rather than proves is appropriate when:'
+      options:
+      - A) Always
+      - B) The evidence supports an indication but not a definitive conclusion
+      - C) Never in technical writing
+      - D) The result is negative
+      answer: B
+    - question: 'A figure included in a report should:'
+      options:
+      - A) Stand alone with a caption explaining what it shows and why it matters
+      - B) Be self-explanatory without caption
+      - C) Replace the text
+      - D) Be decorative
+      answer: A
+- ordinal: 2
+  title: Analysis and Discussion
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Interpret results in context.
+  - Discuss limitations candidly.
+  - Distinguish what was demonstrated from what is speculated.
+  topics:
+  - Interpretation and context.
+  - Limitations and threats to validity.
+  - Speculation clearly labelled.
+  - Comparison with prior work.
+  lab: 'Lab: Write the discussion section of your capstone, explicitly listing the limitations of your
+    work and stating what a reader should not conclude from your results.'
+  refs:
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Stating what a reader should NOT conclude:'
+      options:
+      - A) Weakens the work
+      - B) Strengthens credibility by bounding the claims precisely
+      - C) Is unnecessary
+      - D) Belongs in the abstract
+      answer: B
+    - question: 'Limitations should be:'
+      options:
+      - A) Minimised or omitted
+      - B) Stated candidly, since assessors will identify them regardless
+      - C) Listed without explanation
+      - D) Placed in an appendix
+      answer: B
+    - question: 'Comparing your results with prior work is valuable because it:'
+      options:
+      - A) Adds references
+      - B) Establishes whether the finding is consistent, novel or contradictory
+      - C) Fills space
+      - D) Demonstrates reading
+      answer: B
+    - question: 'Speculation about future implications should be:'
+      options:
+      - A) Presented as findings
+      - B) Clearly labelled as speculation, separate from evidence
+      - C) Omitted entirely
+      - D) Placed in results
+      answer: B
+    - question: 'A small sample size means conclusions should be:'
+      options:
+      - A) Stated confidently
+      - B) Appropriately qualified as indicative rather than general
+      - C) Withheld
+      - D) Extrapolated
+      answer: B
+- ordinal: 3
+  title: Oral Presentation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Structure a presentation for a mixed audience.
+  - Communicate technical depth within time constraints.
+  - Use visual material effectively.
+  topics:
+  - Presentation structure and narrative.
+  - Depth versus time management.
+  - Effective visual design.
+  - Rehearsal and timing.
+  lab: 'Lab: Deliver a fifteen-minute presentation of your capstone to peers, then revise it based on
+    which points the audience could not follow.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A presentation should open with:'
+      options:
+      - A) Methodology detail
+      - B) The problem and why it matters
+      - C) Acknowledgements
+      - D) Literature review
+      answer: B
+    - question: 'Slides dense with text typically:'
+      options:
+      - A) Convey more information
+      - B) Compete with the speaker and reduce comprehension
+      - C) Aid note taking
+      - D) Demonstrate rigour
+      answer: B
+    - question: 'Running over time in a presentation usually means:'
+      options:
+      - A) The content was rich
+      - B) The conclusions - the most important part - get cut
+      - C) Good engagement
+      - D) Assessors allow extra time
+      answer: B
+    - question: 'Rehearsing aloud is valuable because it:'
+      options:
+      - A) Memorises the script
+      - B) Reveals timing problems and passages that do not work when spoken
+      - C) Improves slides
+      - D) Reduces nerves only
+      answer: B
+    - question: 'When the audience cannot follow a section, the usual cause is:'
+      options:
+      - A) Audience inattention
+      - B) Assumed knowledge that was not established
+      - C) Insufficient detail
+      - D) Poor slide colour
+      answer: B
+- ordinal: 4
+  title: Defending Technical Decisions
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Justify design and methodological choices under questioning.
+  - Respond to criticism constructively.
+  - Acknowledge error gracefully.
+  topics:
+  - Anticipating challenge.
+  - Justification versus defensiveness.
+  - Handling questions you cannot answer.
+  - Acknowledging mistakes.
+  lab: 'Lab: Undergo a mock viva with peers asking adversarial questions about your methodology, and record
+    every question you could not answer well for follow-up.'
+  refs:
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'When asked a question you cannot answer, the best response is:'
+      options:
+      - A) Speculate confidently
+      - B) Acknowledge the limit of your knowledge and describe how you would find out
+      - C) Redirect the question
+      - D) Claim it is out of scope
+      answer: B
+    - question: 'Defending a decision means explaining:'
+      options:
+      - A) That it was the only option
+      - B) The alternatives considered and why this one was chosen
+      - C) That the supervisor approved it
+      - D) That it worked
+      answer: B
+    - question: 'If an assessor identifies a genuine flaw, the best response is to:'
+      options:
+      - A) Dispute it
+      - B) Acknowledge it and discuss its impact on the conclusions
+      - C) Minimise it
+      - D) Blame the timeline
+      answer: B
+    - question: 'Becoming defensive under questioning tends to:'
+      options:
+      - A) Demonstrate conviction
+      - B) Prevent the productive discussion that assessors are seeking
+      - C) Shorten the viva
+      - D) Improve marks
+      answer: B
+    - question: 'Adversarial questioning in a viva is intended to:'
+      options:
+      - A) Undermine the candidate
+      - B) Test the depth of understanding behind the work
+      - C) Reduce marks
+      - D) Fill time
+      answer: B
+- ordinal: 5
+  title: Peer Review and Feedback
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Give constructive technical critique.
+  - Receive critique without defensiveness.
+  - Distinguish substantive from stylistic feedback.
+  topics:
+  - Constructive critique technique.
+  - Receiving feedback productively.
+  - Substantive versus stylistic issues.
+  - Reciprocal review practice.
+  lab: 'Lab: Review two peer capstones, providing written critique that identifies substantive issues
+    with specific evidence, and act on the reviews you receive.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Constructive critique identifies:'
+      options:
+      - A) Everything wrong
+      - B) The most significant issues, with specific evidence and suggested direction
+      - C) Only positives
+      - D) Stylistic preferences
+      answer: B
+    - question: 'Substantive feedback concerns:'
+      options:
+      - A) Formatting and grammar
+      - B) Methodology, evidence and the validity of conclusions
+      - C) Slide design
+      - D) Reference style
+      answer: B
+    - question: 'Receiving critique defensively typically:'
+      options:
+      - A) Protects the work
+      - B) Wastes the reviewer's effort and forfeits the improvement
+      - C) Is expected
+      - D) Improves the relationship
+      answer: B
+    - question: 'Reviewing others'' work improves your own because it:'
+      options:
+      - A) Provides material to reuse
+      - B) Develops the critical eye you then apply to your own work
+      - C) Builds relationships
+      - D) Fills time
+      answer: B
+    - question: 'Feedback consisting only of praise is:'
+      options:
+      - A) Ideal
+      - B) Of little value to the author
+      - C) Constructive
+      - D) Professionally appropriate
+      answer: B
+- ordinal: 6
+  title: Reflection and Professional Development
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Reflect critically on the project and your performance.
+  - Identify capability gaps and development needs.
+  - Articulate the professional value of the work.
+  topics:
+  - Structured reflection.
+  - Identifying development needs.
+  - Articulating transferable capability.
+  - Continuing professional development.
+  lab: 'Lab: Write a structured reflection identifying three things you would do differently, the capability
+    gaps the project exposed, and a concrete development plan for the next twelve months.'
+  refs:
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Useful reflection focuses on:'
+      options:
+      - A) What went well only
+      - B) What you would do differently and what you learned about your own practice
+      - C) External obstacles
+      - D) The final grade
+      answer: B
+    - question: 'Identifying a capability gap is valuable because it:'
+      options:
+      - A) Excuses weaknesses
+      - B) Directs deliberate development rather than leaving it to chance
+      - C) Lowers expectations
+      - D) Explains the result
+      answer: B
+    - question: 'Attributing all difficulty to external factors in reflection:'
+      options:
+      - A) Is usually accurate
+      - B) Avoids the learning that reflection is intended to produce
+      - C) Is professional
+      - D) Is expected
+      answer: B
+    - question: 'A development plan should be:'
+      options:
+      - A) Aspirational and broad
+      - B) Specific, time-bound and verifiable
+      - C) Employer-directed
+      - D) Optional
+      answer: B
+    - question: 'The professional value of a capstone lies mainly in:'
+      options:
+      - A) The artefact produced
+      - B) The demonstrated ability to scope, execute and evaluate independent technical work
+      - C) The grade
+      - D) The presentation
+      answer: B

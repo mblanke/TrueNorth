@@ -1,0 +1,373 @@
+# C203 - Identity & Access Management - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C203
+title: Identity & Access Management
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Identity Lifecycle
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe joiner, mover and leaver processes.
+  - Explain identity proofing and account provisioning.
+  - Identify risks arising from poor lifecycle management.
+  topics:
+  - Identity proofing and enrolment.
+  - Provisioning and deprovisioning.
+  - Role change and privilege accumulation.
+  - Orphaned and dormant accounts.
+  lab: 'Lab: Audit a directory export for dormant accounts, accounts without owners and privilege accumulation
+    across role changes, then produce a prioritised remediation list.'
+  refs:
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Privilege accumulation typically occurs when:'
+      options:
+      - A) Accounts are deleted promptly
+      - B) Users change roles and retain former entitlements
+      - C) MFA is enforced
+      - D) Passwords rotate
+      answer: B
+    - question: 'An orphaned account is one that:'
+      options:
+      - A) Has never logged in
+      - B) Has no identifiable owner or responsible manager
+      - C) Is locked
+      - D) Belongs to a contractor
+      answer: B
+    - question: 'Identity proofing establishes:'
+      options:
+      - A) What a user may access
+      - B) That a claimed identity corresponds to a real person
+      - C) Session duration
+      - D) Password strength
+      answer: B
+    - question: 'The highest-risk failure in the leaver process is:'
+      options:
+      - A) Delayed equipment return
+      - B) Access not revoked promptly on departure
+      - C) Missing exit interview
+      - D) Unreturned badge
+      answer: B
+    - question: 'Automated deprovisioning is valuable primarily because it:'
+      options:
+      - A) Reduces licence cost
+      - B) Removes reliance on a manual step that is often missed
+      - C) Improves performance
+      - D) Simplifies auditing only
+      answer: B
+- ordinal: 2
+  title: Authentication Mechanisms
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare authentication factors and their resistance to attack.
+  - Explain phishing-resistant authentication.
+  - Assess authentication assurance for a use case.
+  topics:
+  - Knowledge, possession and inherence factors.
+  - OTP, push and FIDO2/WebAuthn.
+  - Phishing resistance and channel binding.
+  - Authentication assurance levels.
+  lab: 'Lab: Compare three MFA methods against a phishing scenario and a SIM-swap scenario, and recommend
+    one with a stated residual risk.'
+  refs:
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Which MFA method is considered phishing-resistant?
+      options:
+      - A) SMS one-time code
+      - B) FIDO2/WebAuthn security key
+      - C) Email one-time code
+      - D) Push approval without number matching
+      answer: B
+    - question: 'SMS-based one-time codes are weakened by:'
+      options:
+      - A) Short code length only
+      - B) SIM swapping and interception
+      - C) Clock drift
+      - D) Certificate expiry
+      answer: B
+    - question: 'MFA fatigue attacks exploit:'
+      options:
+      - A) Weak passwords only
+      - B) Repeated push prompts until a user approves one
+      - C) Expired tokens
+      - D) Federation
+      answer: B
+    - question: 'FIDO2 resists phishing largely because the credential is bound to:'
+      options:
+      - A) The user's password
+      - B) The origin of the relying party
+      - C) The device serial
+      - D) The IP address
+      answer: B
+    - question: 'Increasing password complexity rules alone tends to:'
+      options:
+      - A) Strongly improve security
+      - B) Encourage predictable patterns and reuse
+      - C) Prevent phishing
+      - D) Eliminate credential stuffing
+      answer: B
+- ordinal: 3
+  title: Authorisation Models
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design role-based access control for an organisation.
+  - Apply attribute-based policies where roles are insufficient.
+  - Enforce separation of duties and least privilege.
+  topics:
+  - RBAC design and role explosion.
+  - ABAC and policy expression.
+  - Separation of duties and toxic combinations.
+  - Entitlement review.
+  lab: 'Lab: Design an RBAC model for six job functions, identify two toxic entitlement combinations,
+    and express one access rule as an attribute-based policy where RBAC is inadequate.'
+  refs:
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Role explosion occurs when:'
+      options:
+      - A) Too few roles exist
+      - B) Roles proliferate to capture fine-grained exceptions
+      - C) Users have no roles
+      - D) Roles are automated
+      answer: B
+    - question: 'Attribute-based access control is preferable when decisions depend on:'
+      options:
+      - A) Job title alone
+      - B) Contextual factors such as time, location, device and data sensitivity
+      - C) Group membership only
+      - D) Username
+      answer: B
+    - question: 'A toxic combination is a set of entitlements that together:'
+      options:
+      - A) Exceed a licence
+      - B) Allow one person to complete a sensitive process without oversight
+      - C) Slow authentication
+      - D) Conflict technically
+      answer: B
+    - question: 'Entitlement review is most effective when performed by:'
+      options:
+      - A) The security team alone
+      - B) The business owner who understands what the access is for
+      - C) The service desk
+      - D) An automated tool only
+      answer: B
+    - question: 'Least privilege applied to an administrator means:'
+      options:
+      - A) No administrative access
+      - B) Elevated access only when needed and only to what is needed
+      - C) Permanent domain admin
+      - D) Shared admin accounts
+      answer: B
+- ordinal: 4
+  title: Privileged Access Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain the specific risks of privileged accounts.
+  - Implement just-in-time and session-recorded privileged access.
+  - Protect credentials for service and break-glass accounts.
+  topics:
+  - Privileged account inventory.
+  - Just-in-time elevation and approval.
+  - Session recording and monitoring.
+  - Service accounts and break-glass procedures.
+  lab: 'Lab: Design a privileged access workflow for a database administrator including request, approval,
+    time limit and session recording, and define the break-glass exception path.'
+  refs:
+  - nist-sp-800-63-4
+  - cis-benchmarks
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Just-in-time privileged access reduces risk by:'
+      options:
+      - A) Removing approval steps
+      - B) Limiting the window during which elevated rights exist
+      - C) Sharing credentials
+      - D) Extending session length
+      answer: B
+    - question: 'A break-glass account should be:'
+      options:
+      - A) Used daily
+      - B) Tightly controlled, monitored and alerted on every use
+      - C) Shared widely
+      - D) Exempt from logging
+      answer: B
+    - question: 'Session recording of privileged access primarily supports:'
+      options:
+      - A) Performance tuning
+      - B) Accountability and post-incident reconstruction
+      - C) Licence compliance
+      - D) Faster access
+      answer: B
+    - question: 'Service account credentials are high risk because they are often:'
+      options:
+      - A) Short-lived
+      - B) Long-lived, widely shared and excluded from rotation
+      - C) Protected by MFA
+      - D) Rarely privileged
+      answer: B
+    - question: 'Standing administrative privilege is dangerous chiefly because:'
+      options:
+      - A) It is expensive
+      - B) A compromise of the account grants immediate high-impact access
+      - C) It slows logins
+      - D) It complicates reporting
+      answer: B
+- ordinal: 5
+  title: Federation and Single Sign-On
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain federated identity and assertion-based trust.
+  - Compare SAML and OpenID Connect at a conceptual level.
+  - Identify risks specific to federated architectures.
+  topics:
+  - Identity provider and relying party roles.
+  - Assertions, claims and tokens.
+  - SAML and OIDC flows.
+  - Federation trust risks.
+  lab: 'Lab: Trace a single sign-on flow end to end, identify where the trust decision is made, and describe
+    the impact if the identity provider were compromised.'
+  refs:
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'In federation, the relying party trusts:'
+      options:
+      - A) The user's password
+      - B) Assertions issued by the identity provider
+      - C) The network
+      - D) The browser
+      answer: B
+    - question: 'Compromise of an identity provider is severe because it:'
+      options:
+      - A) Affects one application
+      - B) Can grant access to every federated relying party
+      - C) Only affects logging
+      - D) Requires physical access
+      answer: B
+    - question: OpenID Connect adds what to OAuth 2.0?
+      options:
+      - A) Authorisation
+      - B) An identity layer with an ID token
+      - C) Encryption
+      - D) Session management only
+      answer: B
+    - question: 'Token lifetime should be set considering:'
+      options:
+      - A) Only user convenience
+      - B) The trade-off between re-authentication burden and exposure if stolen
+      - C) Network speed
+      - D) Certificate validity
+      answer: B
+    - question: 'Validating the audience claim in a token prevents:'
+      options:
+      - A) Expired tokens
+      - B) A token issued for one service being replayed at another
+      - C) Weak signatures
+      - D) Clock skew
+      answer: B
+- ordinal: 6
+  title: Monitoring and Governance of Access
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Detect anomalous authentication and access behaviour.
+  - Conduct access certification campaigns.
+  - Measure the effectiveness of identity controls.
+  topics:
+  - Authentication telemetry and anomalies.
+  - Impossible travel and behavioural signals.
+  - Access certification and attestation.
+  - Identity control metrics.
+  lab: 'Lab: Analyse an authentication log for anomalous patterns, identify two accounts warranting investigation,
+    and state the specific evidence supporting each.'
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Impossible travel detection flags:'
+      options:
+      - A) Failed logins
+      - B) Successful logins from geographically distant locations too close in time
+      - C) Password changes
+      - D) New devices
+      answer: B
+    - question: 'A spike in failed authentications across many accounts from one source suggests:'
+      options:
+      - A) Password expiry
+      - B) Password spraying
+      - C) Certificate failure
+      - D) Clock skew
+      answer: B
+    - question: 'Access certification is the process of:'
+      options:
+      - A) Issuing certificates
+      - B) Periodically confirming that granted access is still appropriate
+      - C) Training users
+      - D) Encrypting credentials
+      answer: B
+    - question: 'Rubber-stamped certification campaigns are a problem because they:'
+      options:
+      - A) Take too long
+      - B) Create an appearance of control without reducing excess access
+      - C) Are expensive
+      - D) Require tooling
+      answer: B
+    - question: 'A useful identity control metric would be:'
+      options:
+      - A) Number of users
+      - B) Time from role change to entitlement removal
+      - C) Directory size
+      - D) Number of groups
+      answer: B

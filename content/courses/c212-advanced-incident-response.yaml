@@ -1,0 +1,376 @@
+# C212 - Advanced Incident Response - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C212
+title: Advanced Incident Response
+version: '1.0'
+difficulty: intermediate
+duration_hours: 20
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Large-Scale Incident Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Manage an incident spanning many systems and teams.
+  - Structure a response organisation at scale.
+  - Maintain situational awareness across parallel workstreams.
+  topics:
+  - Incident command at scale.
+  - Workstream structure and handover.
+  - Situational awareness and common operating picture.
+  - Shift handover discipline.
+  lab: 'Lab: Design a response organisation for an incident affecting 500 hosts across three sites, defining
+    workstreams, leads and the handover process between shifts.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'A common operating picture exists to ensure:'
+      options:
+      - A) Faster tooling
+      - B) All workstreams share the same current understanding
+      - C) Fewer meetings
+      - D) Lower cost
+      answer: B
+    - question: 'Shift handover during a prolonged incident should be:'
+      options:
+      - A) Informal
+      - B) Structured and documented to prevent loss of context
+      - C) Skipped if busy
+      - D) Verbal only
+      answer: B
+    - question: 'Splitting response into workstreams primarily addresses:'
+      options:
+      - A) Cost control
+      - B) Parallelism while maintaining coordination
+      - C) Evidence handling
+      - D) Reporting
+      answer: B
+    - question: 'Incident command should be separated from hands-on analysis because:'
+      options:
+      - A) Analysts are junior
+      - B) Coordination degrades when the commander is absorbed in technical work
+      - C) It reduces headcount
+      - D) Policy requires it
+      answer: B
+    - question: 'Responder fatigue in a prolonged incident is best managed by:'
+      options:
+      - A) Longer shifts
+      - B) Planned rotation with structured handover
+      - C) More tooling
+      - D) Reduced documentation
+      answer: B
+- ordinal: 2
+  title: Advanced Adversary Techniques
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Recognise sophisticated persistence and evasion.
+  - Investigate credential theft and lateral movement at depth.
+  - Identify anti-forensic activity.
+  topics:
+  - Living-off-the-land techniques.
+  - Credential theft and pass-the-hash.
+  - Advanced persistence mechanisms.
+  - Anti-forensics and log manipulation.
+  lab: 'Lab: Investigate a scenario involving living-off-the-land lateral movement, identify the credential
+    theft technique used, and determine what anti-forensic steps the attacker took.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Living-off-the-land techniques are difficult to detect because they:'
+      options:
+      - A) Are encrypted
+      - B) Use legitimate built-in tools that also have benign uses
+      - C) Run in memory only
+      - D) Require no credentials
+      answer: B
+    - question: 'Pass-the-hash succeeds because some authentication protocols accept:'
+      options:
+      - A) The plaintext password only
+      - B) The hash itself as proof of knowledge
+      - C) Any credential
+      - D) Kerberos tickets only
+      answer: B
+    - question: 'Evidence that logs were cleared should be treated as:'
+      options:
+      - A) An operational error
+      - B) A strong indicator of deliberate anti-forensic activity
+      - C) Normal maintenance
+      - D) Inconclusive
+      answer: B
+    - question: 'Detecting living-off-the-land activity relies chiefly on:'
+      options:
+      - A) File hashes
+      - B) Context - parent process, command line and behavioural anomaly
+      - C) Signatures
+      - D) Port numbers
+      answer: B
+    - question: 'An attacker using valid credentials is difficult to detect because activity:'
+      options:
+      - A) Is encrypted
+      - B) Appears authorised and blends with legitimate use
+      - C) Occurs off-hours only
+      - D) Bypasses logging
+      answer: B
+- ordinal: 3
+  title: Threat Intelligence Integration
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply intelligence to guide an active response.
+  - Pivot on indicators to expand scope accurately.
+  - Avoid intelligence-driven confirmation bias.
+  topics:
+  - Intelligence-led scoping.
+  - Indicator pivoting technique.
+  - Confidence and source evaluation.
+  - Bias risks in active response.
+  lab: 'Lab: Given a set of indicators and an active incident, pivot to identify additional affected systems,
+    and document which conclusions are evidence-based and which are intelligence-assumed.'
+  refs:
+  - nist-sp-800-150
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Pivoting on an indicator means:'
+      options:
+      - A) Discarding it
+      - B) Using it to find related infrastructure, files or activity
+      - C) Publishing it
+      - D) Blocking it
+      answer: B
+    - question: 'Assuming an incident matches a known actor''s playbook risks:'
+      options:
+      - A) Faster response
+      - B) Missing activity that does not fit the assumed pattern
+      - C) Better scoping
+      - D) Improved attribution
+      answer: B
+    - question: 'Intelligence should be evaluated for:'
+      options:
+      - A) Volume
+      - B) Source reliability, timeliness and relevance to your environment
+      - C) Cost
+      - D) Format
+      answer: B
+    - question: 'Blocking every indicator from a feed without review can:'
+      options:
+      - A) Improve security cheaply
+      - B) Cause outages if the feed contains shared or legitimate infrastructure
+      - C) Reduce noise
+      - D) Aid attribution
+      answer: B
+    - question: 'The correct treatment of an intelligence-derived hypothesis is to:'
+      options:
+      - A) Accept it as fact
+      - B) Test it against evidence in your own environment
+      - C) Ignore it
+      - D) Report it as a finding
+      answer: B
+- ordinal: 4
+  title: Recovery at Scale and Business Continuity
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan recovery for a large-scale compromise.
+  - Decide between rebuild and remediation.
+  - Sequence recovery to avoid reinfection.
+  topics:
+  - Recovery sequencing and dependencies.
+  - Rebuild versus remediate decisions.
+  - Trust re-establishment and credential reset.
+  - Continuity activation.
+  lab: 'Lab: Produce a recovery plan for a domain-wide compromise, sequencing credential reset, rebuild
+    and service restoration so that recovered systems are not reinfected.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Restoring systems before eradicating attacker access typically results in:'
+      options:
+      - A) Faster recovery
+      - B) Reinfection of the restored systems
+      - C) Better evidence
+      - D) Lower cost
+      answer: B
+    - question: 'After a domain-wide compromise, credential reset must include:'
+      options:
+      - A) User passwords only
+      - B) Service accounts, trusts and key material as well as user credentials
+      - C) Administrator accounts only
+      - D) Nothing if malware is removed
+      answer: B
+    - question: 'Recovery sequencing must account for:'
+      options:
+      - A) Alphabetical order
+      - B) Service dependencies and the trust relationships between systems
+      - C) Hostname length
+      - D) Backup age only
+      answer: B
+    - question: 'Restoring from a backup taken after the initial compromise risks:'
+      options:
+      - A) Data loss
+      - B) Restoring the attacker's persistence along with the data
+      - C) Slower recovery
+      - D) Licence issues
+      answer: B
+    - question: 'Deciding to rebuild rather than remediate is driven mainly by:'
+      options:
+      - A) Cost
+      - B) Confidence that all attacker access and persistence can be removed
+      - C) Time available
+      - D) Vendor advice
+      answer: B
+- ordinal: 5
+  title: Legal, Regulatory and Third-Party Dimensions
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify legal and regulatory obligations during an incident.
+  - Coordinate with external parties appropriately.
+  - Preserve evidence to a legally defensible standard.
+  topics:
+  - Notification obligations and timelines.
+  - Law enforcement and regulator engagement.
+  - Legal privilege considerations.
+  - Third-party and supplier incidents.
+  lab: 'Lab: For a described breach involving personal data and a third-party supplier, identify the notification
+    obligations, the parties to engage and the evidence preservation requirements.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Notification timelines are typically triggered by:'
+      options:
+      - A) Incident closure
+      - B) Awareness of a qualifying breach, not its resolution
+      - C) Media reporting
+      - D) Executive approval
+      answer: B
+    - question: 'Evidence intended for legal proceedings must be:'
+      options:
+      - A) Summarised only
+      - B) Collected and handled with documented integrity and chain of custody
+      - C) Encrypted only
+      - D) Shared publicly
+      answer: B
+    - question: 'When a supplier suffers a breach affecting your data, you generally:'
+      options:
+      - A) Have no obligations
+      - B) Retain accountability to your own regulators and customers
+      - C) Transfer all liability
+      - D) Must wait for their report
+      answer: B
+    - question: 'Engaging law enforcement may affect response because it can:'
+      options:
+      - A) Remove your obligations
+      - B) Introduce evidence preservation requirements and timing considerations
+      - C) Guarantee recovery
+      - D) Replace your investigation
+      answer: B
+    - question: 'Speculating in writing about liability during an incident is unwise because:'
+      options:
+      - A) It wastes time
+      - B) Such records may be disclosable and premature conclusions are often wrong
+      - C) It confuses responders
+      - D) It is prohibited
+      answer: B
+- ordinal: 6
+  title: Building Response Capability
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assess incident response maturity objectively.
+  - Plan capability development against identified gaps.
+  - Justify investment in response capability.
+  topics:
+  - Maturity assessment approaches.
+  - Capability roadmap development.
+  - Build versus buy for response services.
+  - Demonstrating value.
+  lab: 'Lab: Assess a described organisation''s response capability across people, process, technology
+    and information, and produce a costed twelve-month improvement roadmap.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Response capability maturity should be assessed across:'
+      options:
+      - A) Tooling alone
+      - B) People, process, technology and information together
+      - C) Headcount
+      - D) Budget
+      answer: B
+    - question: 'Retaining an external incident response provider is most valuable when:'
+      options:
+      - A) Internal capability is strong
+      - B) Surge capacity or specialist skills are needed rapidly
+      - C) Costs must be reduced
+      - D) Compliance requires it
+      answer: B
+    - question: 'A retainer arranged after an incident begins is problematic because:'
+      options:
+      - A) It costs more only
+      - B) Contracting delays response when time matters most
+      - C) Providers refuse
+      - D) It is not permitted
+      answer: B
+    - question: 'Demonstrating the value of response capability is best done through:'
+      options:
+      - A) Incident counts
+      - B) Measured reduction in detection and containment times and exercise outcomes
+      - C) Tool inventory
+      - D) Team size
+      answer: B
+    - question: 'The most common capability gap in practice is:'
+      options:
+      - A) Insufficient tooling
+      - B) Untested process and unclear decision authority
+      - C) Too few analysts
+      - D) Poor threat intelligence
+      answer: B

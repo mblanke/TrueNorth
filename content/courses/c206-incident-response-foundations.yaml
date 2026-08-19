@@ -1,0 +1,373 @@
+# C206 - Incident Response Foundations - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C206
+title: Incident Response Foundations
+version: '1.0'
+difficulty: intermediate
+duration_hours: 20
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Incident Response Fundamentals
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define an incident and distinguish it from an event.
+  - Describe the incident response lifecycle.
+  - Explain the purpose of an incident response plan.
+  topics:
+  - Event, alert and incident definitions.
+  - Response lifecycle phases.
+  - Plan, policy and procedure.
+  - Roles and authority during response.
+  lab: 'Lab: Classify ten supplied events as event, alert or incident with justification, and identify
+    which require formal declaration.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'An incident differs from an event because an incident:'
+      options:
+      - A) Is logged
+      - B) Actually or imminently jeopardises confidentiality, integrity or availability
+      - C) Generates an alert
+      - D) Involves a user
+      answer: B
+    - question: 'The primary purpose of an incident response plan is to:'
+      options:
+      - A) Satisfy audit
+      - B) Enable fast, consistent and authorised action under pressure
+      - C) Assign blame
+      - D) Reduce logging
+      answer: B
+    - question: 'Declaring an incident formally matters because it:'
+      options:
+      - A) Notifies the vendor
+      - B) Activates authority, resources and communication obligations
+      - C) Stops the attack
+      - D) Creates evidence
+      answer: B
+    - question: Who should have authority to declare an incident?
+      options:
+      - A) Any user
+      - B) A defined role named in the plan
+      - C) The vendor
+      - D) The auditor
+      answer: B
+    - question: 'An incident response plan that has never been exercised is:'
+      options:
+      - A) Adequate
+      - B) Of unproven effectiveness
+      - C) Non-compliant
+      - D) A detective control
+      answer: B
+- ordinal: 2
+  title: Preparation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the capabilities required before an incident occurs.
+  - Establish communication and escalation paths.
+  - Prepare tooling and access in advance.
+  topics:
+  - Capability and readiness assessment.
+  - Contact lists and escalation paths.
+  - Tooling, access and jump kits.
+  - Training and exercises.
+  lab: 'Lab: Produce a readiness checklist for a small organisation covering people, process, technology
+    and information, and identify the two largest gaps.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Out-of-band communication is prepared in advance because:'
+      options:
+      - A) It is cheaper
+      - B) Primary channels may be compromised or unavailable during an incident
+      - C) It is faster
+      - D) Regulators require it
+      answer: B
+    - question: 'A jump kit exists to ensure responders have:'
+      options:
+      - A) Spare hardware for users
+      - B) Trusted tools and media not dependent on the compromised environment
+      - C) Documentation only
+      - D) Network access
+      answer: B
+    - question: 'Pre-authorised containment actions are valuable because they:'
+      options:
+      - A) Remove accountability
+      - B) Avoid delay waiting for approval during a fast-moving incident
+      - C) Reduce logging
+      - D) Replace the plan
+      answer: B
+    - question: 'Preparation includes knowing asset ownership because:'
+      options:
+      - A) It assigns cost
+      - B) Responders must reach a decision-maker quickly for each affected system
+      - C) It sets severity
+      - D) It speeds scanning
+      answer: B
+    - question: 'The most common preparation failure is:'
+      options:
+      - A) Too many tools
+      - B) Contact and escalation information that is out of date
+      - C) Excessive training
+      - D) Over-documentation
+      answer: B
+- ordinal: 3
+  title: Detection and Analysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Triage an alert to determine whether an incident has occurred.
+  - Establish initial scope and severity.
+  - Record findings in a defensible manner.
+  topics:
+  - Triage and initial assessment.
+  - Scoping and impact determination.
+  - Severity classification.
+  - Contemporaneous notes and evidence handling.
+  lab: 'Lab: Triage a supplied alert set, determine whether an incident has occurred, establish initial
+    scope, and write the declaration note with supporting evidence.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Initial scoping seeks to determine:'
+      options:
+      - A) Who is to blame
+      - B) What systems, accounts and data are potentially affected
+      - C) The cost
+      - D) The vendor
+      answer: B
+    - question: 'Contemporaneous notes are important because:'
+      options:
+      - A) They speed response
+      - B) Recollection degrades and decisions must be explainable later
+      - C) They satisfy the SIEM
+      - D) They replace evidence
+      answer: B
+    - question: 'Severity classification should be based primarily on:'
+      options:
+      - A) Alert count
+      - B) Actual and potential impact to the organisation
+      - C) The tool that detected it
+      - D) Time of day
+      answer: B
+    - question: 'Declaring scope too narrowly early in an incident risks:'
+      options:
+      - A) Over-response
+      - B) Missing compromised systems and incomplete eradication
+      - C) Excessive logging
+      - D) Delayed reporting
+      answer: B
+    - question: 'The analysis phase should conclude with:'
+      options:
+      - A) A fix applied
+      - B) An understanding sufficient to choose containment actions
+      - C) A press release
+      - D) System rebuild
+      answer: B
+- ordinal: 4
+  title: Containment, Eradication and Recovery
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select containment actions proportionate to the threat.
+  - Eradicate the root cause rather than the symptom.
+  - Recover systems with verification before return to service.
+  topics:
+  - Short-term and long-term containment.
+  - Root cause identification.
+  - Eradication and rebuild decisions.
+  - Recovery verification and monitoring.
+  lab: 'Lab: For a described compromise, propose short-term and long-term containment, state the eradication
+    approach, and define the criteria for returning the system to service.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Short-term containment aims to:'
+      options:
+      - A) Permanently fix the issue
+      - B) Limit immediate damage while a fuller plan is developed
+      - C) Restore service
+      - D) Collect evidence only
+      answer: B
+    - question: 'Rebuilding from known-good media is preferred over cleaning because:'
+      options:
+      - A) It is faster
+      - B) It provides higher assurance that attacker persistence is removed
+      - C) It preserves evidence
+      - D) It is cheaper
+      answer: B
+    - question: 'Eradication that removes malware but not the initial access vector results in:'
+      options:
+      - A) Successful closure
+      - B) Likely reinfection through the same route
+      - C) Better metrics
+      - D) Reduced scope
+      answer: B
+    - question: 'Before returning a system to service, responders should:'
+      options:
+      - A) Close the ticket
+      - B) Verify the system is clean and apply heightened monitoring
+      - C) Restore all access
+      - D) Delete logs
+      answer: B
+    - question: 'Containment decisions must balance damage limitation against:'
+      options:
+      - A) Cost only
+      - B) Evidence preservation and alerting the adversary
+      - C) Staff availability
+      - D) Reporting deadlines
+      answer: B
+- ordinal: 5
+  title: Post-Incident Activity
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Conduct a blameless post-incident review.
+  - Identify systemic causes and durable improvements.
+  - Track remediation actions to completion.
+  topics:
+  - Post-incident review structure.
+  - Blameless culture and honest reporting.
+  - Systemic versus proximate cause.
+  - Action tracking and verification.
+  lab: 'Lab: Facilitate a post-incident review for a supplied scenario, produce a timeline, identify three
+    systemic causes, and define owned actions with verification criteria.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A blameless review is adopted primarily to:'
+      options:
+      - A) Protect managers
+      - B) Encourage honest disclosure of what actually happened
+      - C) Avoid documentation
+      - D) Speed closure
+      answer: B
+    - question: 'A systemic cause differs from a proximate cause because it:'
+      options:
+      - A) Happened first
+      - B) Explains why the conditions allowing the incident existed
+      - C) Is technical
+      - D) Is easier to fix
+      answer: B
+    - question: 'Post-incident actions without named owners typically:'
+      options:
+      - A) Complete faster
+      - B) Are not completed
+      - C) Require less tracking
+      - D) Are lower priority by design
+      answer: B
+    - question: 'The incident timeline is valuable because it:'
+      options:
+      - A) Assigns fault
+      - B) Exposes detection and response delays that can be improved
+      - C) Satisfies insurers
+      - D) Replaces the report
+      answer: B
+    - question: 'Lessons learned should feed back into:'
+      options:
+      - A) The final report only
+      - B) Detection, prevention, process and training
+      - C) The risk register only
+      - D) Vendor selection
+      answer: B
+- ordinal: 6
+  title: Reporting and Communication
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Communicate incident status appropriately to different audiences.
+  - Meet notification obligations.
+  - Write an incident report that supports decisions.
+  topics:
+  - Audience-appropriate communication.
+  - Notification and disclosure obligations.
+  - Report structure and content.
+  - Handling uncertainty in reporting.
+  lab: 'Lab: Write two status updates for the same incident - one for a technical team and one for executive
+    leadership - and identify what changes between them and why.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Executive communication during an incident should emphasise:'
+      options:
+      - A) Technical detail
+      - B) Impact, decisions required and current confidence
+      - C) Tool output
+      - D) Log excerpts
+      answer: B
+    - question: 'Stating facts and uncertainties separately is important because:'
+      options:
+      - A) It is shorter
+      - B) Decisions depend on knowing what is confirmed versus assumed
+      - C) It satisfies legal
+      - D) It reduces updates
+      answer: B
+    - question: 'Notification obligations are typically driven by:'
+      options:
+      - A) Internal preference
+      - B) Regulation, contract and the nature of affected data
+      - C) Incident severity alone
+      - D) Media interest
+      answer: B
+    - question: 'Speculating about attribution early in an incident is unwise because:'
+      options:
+      - A) It is difficult
+      - B) Early conclusions are often wrong and can misdirect response
+      - C) It takes time
+      - D) It requires intelligence access
+      answer: B
+    - question: 'An incident report''s primary audience is:'
+      options:
+      - A) The attacker
+      - B) Those who must make decisions and improvements from it
+      - C) The public
+      - D) The toolset
+      answer: B

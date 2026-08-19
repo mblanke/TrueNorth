@@ -1,0 +1,377 @@
+# C107 - Secure Software Development - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C107
+title: Secure Software Development
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Secure Development Lifecycle
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the phases of a secure software development framework.
+  - Explain why security defects are cheaper to fix earlier in the lifecycle.
+  - Define security requirements alongside functional requirements.
+  topics:
+  - SSDF practice groups and outcomes.
+  - Security requirements engineering.
+  - Shift-left and cost-of-defect curves.
+  - Roles and responsibilities across the lifecycle.
+  lab: 'Lab: Take a short feature specification and write five security requirements for it, each stated
+    as a testable acceptance criterion.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: NIST SP 800-218 defines which framework?
+      options:
+      - A) Risk Management Framework
+      - B) Secure Software Development Framework
+      - C) Cybersecurity Framework
+      - D) Zero Trust Architecture
+      answer: B
+    - question: 'Security defects are cheaper to remediate early because:'
+      options:
+      - A) Developers work faster early
+      - B) Later fixes require rework across design, code, tests and deployed systems
+      - C) Early defects are less severe
+      - D) Testing is skipped early
+      answer: B
+    - question: 'A good security requirement is:'
+      options:
+      - A) The system shall be secure
+      - B) Stated so that it can be objectively verified
+      - C) Written after release
+      - D) Owned by the security team alone
+      answer: B
+    - question: 'Shift-left in application security means:'
+      options:
+      - A) Deferring testing to production
+      - B) Moving security activities earlier into design and development
+      - C) Reducing test coverage
+      - D) Outsourcing security
+      answer: B
+    - question: Which SSDF practice group covers preparing the organisation?
+      options:
+      - A) Produce Well-Secured Software
+      - B) Prepare the Organization
+      - C) Respond to Vulnerabilities
+      - D) Protect the Software
+      answer: B
+- ordinal: 2
+  title: Threat Modelling for Applications
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Produce a data flow diagram with trust boundaries.
+  - Apply STRIDE to identify threats per element.
+  - Prioritise threats and select proportionate mitigations.
+  topics:
+  - Data flow diagrams and trust boundaries.
+  - STRIDE threat categories.
+  - Abuse cases and attacker goals.
+  - Risk ranking and mitigation selection.
+  lab: 'Lab: Draw a data flow diagram for a small web application, mark every trust boundary, apply STRIDE
+    to three elements, and produce a ranked mitigation table.'
+  refs:
+  - nist-sp-800-218
+  - owasp-top-10
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'In STRIDE, the S stands for:'
+      options:
+      - A) Scanning
+      - B) Spoofing
+      - C) Sanitisation
+      - D) Segmentation
+      answer: B
+    - question: 'A trust boundary on a data flow diagram marks where:'
+      options:
+      - A) The network ends
+      - B) Data crosses between components of differing trust levels
+      - C) Encryption begins
+      - D) Logging starts
+      answer: B
+    - question: 'STRIDE''s Repudiation category is countered principally by:'
+      options:
+      - A) Encryption
+      - B) Logging and non-repudiation controls
+      - C) Rate limiting
+      - D) Input validation
+      answer: B
+    - question: 'Threat modelling is most valuable when performed:'
+      options:
+      - A) After deployment
+      - B) During design, and revisited as the design changes
+      - C) Only after an incident
+      - D) Once at project inception only
+      answer: B
+    - question: 'Elevation of Privilege threats are best mitigated by:'
+      options:
+      - A) Compression
+      - B) Authorisation checks and least privilege
+      - C) Caching
+      - D) Load balancing
+      answer: B
+- ordinal: 3
+  title: Common Vulnerability Classes
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Recognise the most impactful software weakness classes.
+  - Explain the root cause of injection and broken access control.
+  - Trace a weakness from CWE to a concrete code pattern.
+  topics:
+  - Injection, XSS and deserialisation.
+  - Broken access control and IDOR.
+  - Memory safety and integer errors.
+  - CWE taxonomy and the Top 25.
+  lab: 'Lab: Given a vulnerable application, find one injection flaw and one broken access control flaw,
+    map each to its CWE identifier, and write a proof of concept for each.'
+  refs:
+  - cwe-top-25
+  - owasp-top-10
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Insecure Direct Object Reference is a form of:'
+      options:
+      - A) Injection
+      - B) Broken access control
+      - C) Cryptographic failure
+      - D) Misconfiguration
+      answer: B
+    - question: 'Cross-site scripting is fundamentally a failure of:'
+      options:
+      - A) Authentication
+      - B) Output encoding in the correct context
+      - C) Key management
+      - D) Session timeout
+      answer: B
+    - question: 'Insecure deserialisation is dangerous because it may allow:'
+      options:
+      - A) Slow parsing
+      - B) Attacker-controlled object construction leading to code execution
+      - C) Log truncation
+      - D) Certificate errors
+      answer: B
+    - question: 'The CWE Top 25 is derived from analysis of:'
+      options:
+      - A) Vendor advisories only
+      - B) Real CVE records and their weakness mappings
+      - C) Penetration test reports
+      - D) Compliance audits
+      answer: B
+    - question: 'An integer overflow becomes a security issue most often when the result is used as:'
+      options:
+      - A) A log message
+      - B) A buffer size or bounds check
+      - C) A timestamp
+      - D) A colour value
+      answer: B
+- ordinal: 4
+  title: Defensive Coding Techniques
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply input validation, output encoding and parameterisation correctly.
+  - Implement authorisation checks that cannot be bypassed.
+  - Handle errors without leaking sensitive information.
+  topics:
+  - Allowlist validation and canonicalisation.
+  - Context-aware output encoding.
+  - Server-side authorisation enforcement.
+  - Safe error handling and logging hygiene.
+  lab: 'Lab: Remediate three flaws in a supplied application - an injection, a missing authorisation check
+    and a verbose error handler - and demonstrate each fix with a failing-then-passing test.'
+  refs:
+  - owasp-top-10
+  - nist-sp-800-218
+  - cwe-top-25
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Authorisation checks must be enforced:'
+      options:
+      - A) In the client for responsiveness
+      - B) On the server, for every request
+      - C) Only at login
+      - D) At the load balancer only
+      answer: B
+    - question: 'Canonicalisation before validation matters because:'
+      options:
+      - A) It speeds parsing
+      - B) Alternate encodings can otherwise bypass the validator
+      - C) It shortens input
+      - D) It enables caching
+      answer: B
+    - question: 'A verbose stack trace returned to a user can leak:'
+      options:
+      - A) Nothing of value
+      - B) File paths, library versions and internal structure
+      - C) The user's password
+      - D) The TLS key
+      answer: B
+    - question: 'Output encoding must be chosen based on:'
+      options:
+      - A) The input source
+      - B) The context where the data is rendered
+      - C) The database engine
+      - D) The user's locale
+      answer: B
+    - question: Which is the strongest mitigation against injection generally?
+      options:
+      - A) Blocklisting dangerous characters
+      - B) Separating code from data via parameterisation
+      - C) Length limits
+      - D) Obfuscation
+      answer: B
+- ordinal: 5
+  title: Security Testing and Verification
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare static, dynamic and interactive testing approaches.
+  - Integrate automated security testing into a pipeline.
+  - Interpret findings and triage false positives.
+  topics:
+  - SAST, DAST and software composition analysis.
+  - Fuzzing fundamentals.
+  - Pipeline integration and gating.
+  - Triage, severity and remediation tracking.
+  lab: 'Lab: Run a static analyser and a dependency scanner against a project, triage the output into
+    true and false positives with reasons, and propose which findings should block a release.'
+  refs:
+  - nist-sp-800-218
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Static application security testing analyses:'
+      options:
+      - A) The running application
+      - B) Source or binary code without executing it
+      - C) Network traffic
+      - D) User behaviour
+      answer: B
+    - question: 'Software composition analysis primarily identifies:'
+      options:
+      - A) Custom code defects
+      - B) Known vulnerabilities in third-party dependencies
+      - C) Misconfigured firewalls
+      - D) Weak passwords
+      answer: B
+    - question: 'Fuzzing is most effective at finding:'
+      options:
+      - A) Business logic flaws
+      - B) Crashes and memory-safety defects from malformed input
+      - C) Missing documentation
+      - D) Licensing issues
+      answer: B
+    - question: 'Gating a pipeline on every static analysis finding usually results in:'
+      options:
+      - A) Better security immediately
+      - B) Developer bypass and erosion of trust due to false positives
+      - C) Faster builds
+      - D) Fewer dependencies
+      answer: B
+    - question: 'Dynamic testing complements static testing because it:'
+      options:
+      - A) Reads more code
+      - B) Exercises the running system including configuration and environment
+      - C) Is always faster
+      - D) Needs no test data
+      answer: B
+- ordinal: 6
+  title: Supply Chain and Release Security
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain software supply chain risk and its control points.
+  - Describe artefact signing and provenance.
+  - Manage vulnerability disclosure and patching responsibilities.
+  topics:
+  - Dependency risk and transitive packages.
+  - Build integrity, signing and SBOM.
+  - Reproducible builds and provenance.
+  - Vulnerability disclosure and response.
+  lab: 'Lab: Generate a software bill of materials for a project, identify its transitive dependencies
+    with known vulnerabilities, and produce a prioritised upgrade plan.'
+  refs:
+  - nist-sp-800-218
+  - cwe-top-25
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A software bill of materials records:'
+      options:
+      - A) Build duration
+      - B) The components and dependencies contained in a software artefact
+      - C) Developer names
+      - D) Test coverage
+      answer: B
+    - question: 'Signing build artefacts primarily provides:'
+      options:
+      - A) Confidentiality
+      - B) Integrity and origin assurance for consumers
+      - C) Compression
+      - D) Faster deployment
+      answer: B
+    - question: 'Transitive dependencies are a particular risk because they are:'
+      options:
+      - A) Always malicious
+      - B) Pulled in indirectly and often not reviewed by the consuming team
+      - C) Never updated
+      - D) Excluded from builds
+      answer: B
+    - question: 'A reproducible build allows a third party to:'
+      options:
+      - A) Read the source faster
+      - B) Independently verify the binary corresponds to the stated source
+      - C) Skip signing
+      - D) Avoid dependency pinning
+      answer: B
+    - question: 'The SSDF practice group covering vulnerability handling after release is:'
+      options:
+      - A) Prepare the Organization
+      - B) Respond to Vulnerabilities
+      - C) Protect the Software
+      - D) Produce Well-Secured Software
+      answer: B

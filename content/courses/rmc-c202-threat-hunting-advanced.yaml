@@ -1,0 +1,379 @@
+# RMC C202 - Threat Hunting - Advanced - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C202
+title: Threat Hunting - Advanced
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Advanced Hunting Analytics
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply statistical techniques to large-scale telemetry.
+  - Design analytics that surface behaviour rather than artefacts.
+  - Evaluate analytic performance rigorously.
+  topics:
+  - Statistical baselining at scale.
+  - Behavioural versus artefact analytics.
+  - Analytic precision and recall.
+  - Evaluation methodology.
+  lab: 'Lab: Build a behavioural analytic over process telemetry, evaluate its precision and recall against
+    labelled data, and tune it to an operationally acceptable balance.'
+  refs:
+  - mitre-attack
+  - sigma
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Precision measures the proportion of results that are:'
+      options:
+      - A) Detected out of all true events
+      - B) True positives out of all flagged events
+      - C) Missed
+      - D) Benign
+      answer: B
+    - question: 'Behavioural analytics are more durable than artefact-based ones because they:'
+      options:
+      - A) Use less data
+      - B) Target what the adversary must do rather than a changeable indicator
+      - C) Run faster
+      - D) Need no baseline
+      answer: B
+    - question: 'An analytic with high recall but low precision will:'
+      options:
+      - A) Miss most activity
+      - B) Catch most activity but bury analysts in false positives
+      - C) Be operationally ideal
+      - D) Require no tuning
+      answer: B
+    - question: 'Evaluating an analytic requires:'
+      options:
+      - A) Production deployment
+      - B) Labelled data containing both malicious and benign cases
+      - C) Vendor validation
+      - D) A larger dataset only
+      answer: B
+    - question: 'Baselining at scale is complicated principally by:'
+      options:
+      - A) Storage cost
+      - B) Heterogeneity, where normal differs greatly between populations
+      - C) Query speed
+      - D) Log formats
+      answer: B
+- ordinal: 2
+  title: Hunting Advanced Adversaries
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Hunt for techniques designed to evade detection.
+  - Detect living-off-the-land and fileless activity.
+  - Identify long-dwell, low-signal intrusions.
+  topics:
+  - Evasion-aware hunting.
+  - Fileless and in-memory techniques.
+  - Low and slow activity detection.
+  - Dwell time and historical hunting.
+  lab: 'Lab: Hunt for in-memory execution and living-off-the-land activity across a fleet, and identify
+    the smallest reliable signal that distinguishes it from legitimate administration.'
+  refs:
+  - mitre-attack
+  - volatility3
+  - sigma
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Fileless techniques evade detection primarily by:'
+      options:
+      - A) Encrypting files
+      - B) Avoiding writing artefacts to disk that file-based detection would see
+      - C) Running slowly
+      - D) Using rare ports
+      answer: B
+    - question: 'Low-and-slow activity is difficult to detect because it:'
+      options:
+      - A) Uses encryption
+      - B) Stays below thresholds tuned for volume or rate
+      - C) Runs at night
+      - D) Uses valid certificates
+      answer: B
+    - question: 'Historical hunting against retained data is valuable because:'
+      options:
+      - A) It is cheaper
+      - B) Newly learned techniques can be searched for in the past
+      - C) Data is cleaner
+      - D) It needs no hypothesis
+      answer: B
+    - question: 'Detecting living-off-the-land activity depends heavily on:'
+      options:
+      - A) File hashes
+      - B) Command line and parent-child context rather than the binary itself
+      - C) Network ports
+      - D) Certificate data
+      answer: B
+    - question: 'A long dwell time typically indicates:'
+      options:
+      - A) A noisy adversary
+      - B) An adversary operating within the environment's tolerance for anomaly
+      - C) Automated malware
+      - D) Failed intrusion
+      answer: B
+- ordinal: 3
+  title: Threat Intelligence Driven Hunting
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert intelligence reporting into hunting hypotheses.
+  - Assess intelligence quality and applicability.
+  - Avoid over-fitting hunts to reported behaviour.
+  topics:
+  - Intelligence to hypothesis translation.
+  - Source evaluation and confidence.
+  - Applicability to the local environment.
+  - Over-fitting and analytic tunnel vision.
+  lab: 'Lab: Take a published threat report, derive five hunting hypotheses applicable to your environment,
+    and identify which reported indicators are too fragile to be worth hunting.'
+  refs:
+  - nist-sp-800-150
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Hunting only for the exact indicators in a report risks:'
+      options:
+      - A) Excessive results
+      - B) Missing the same actor using changed infrastructure
+      - C) Longer runtime
+      - D) Poor documentation
+      answer: B
+    - question: 'Intelligence should be assessed for applicability by asking:'
+      options:
+      - A) How recent it is
+      - B) Whether the described technology and exposure exist in your environment
+      - C) Who published it
+      - D) Its length
+      answer: B
+    - question: 'Behavioural descriptions in a report are more valuable for hunting than:'
+      options:
+      - A) Technique mappings
+      - B) Specific IP addresses and hashes
+      - C) Timelines
+      - D) Victim sectors
+      answer: B
+    - question: 'Confidence language in intelligence reporting should be:'
+      options:
+      - A) Ignored
+      - B) Carried through into your own assessments rather than hardened into fact
+      - C) Increased
+      - D) Standardised
+      answer: B
+    - question: 'Analytic tunnel vision occurs when a hunter:'
+      options:
+      - A) Uses too much data
+      - B) Fixates on the expected pattern and misses activity that does not match
+      - C) Documents excessively
+      - D) Tests hypotheses
+      answer: B
+- ordinal: 4
+  title: Hunting at Scale
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute hunts across very large estates efficiently.
+  - Manage data volume and query cost.
+  - Prioritise hunting effort under constraint.
+  topics:
+  - Query efficiency and data reduction.
+  - Sampling and its risks.
+  - Distributed hunting approaches.
+  - Effort prioritisation.
+  lab: 'Lab: Design a hunt executable across 50,000 endpoints within a defined query budget, stating what
+    you sample, what you examine exhaustively, and what that choice might miss.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Sampling during a hunt introduces the risk of:'
+      options:
+      - A) Slower queries
+      - B) Missing activity present only on unsampled systems
+      - C) Excess false positives
+      - D) Data corruption
+      answer: B
+    - question: 'Data reduction before analysis should be designed so that it:'
+      options:
+      - A) Minimises volume above all
+      - B) Preserves the signal the hypothesis depends on
+      - C) Removes all common events
+      - D) Is fully automated
+      answer: B
+    - question: 'Hunting at scale should prioritise by:'
+      options:
+      - A) Alphabetical host order
+      - B) Asset criticality and exposure
+      - C) Data availability
+      - D) Query speed
+      answer: B
+    - question: 'Stating what a hunt could not cover is important because:'
+      options:
+      - A) It excuses gaps
+      - B) Conclusions about absence must be bounded by actual coverage
+      - C) It shortens the report
+      - D) Auditors require it
+      answer: B
+    - question: 'An expensive query run repeatedly should be:'
+      options:
+      - A) Run more often
+      - B) Optimised or converted into a scheduled analytic
+      - C) Abandoned
+      - D) Run manually
+      answer: B
+- ordinal: 5
+  title: Adversary Infrastructure Analysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Analyse adversary infrastructure from observed indicators.
+  - Pivot across data sources to expand understanding.
+  - Recognise the limits of infrastructure inference.
+  topics:
+  - Infrastructure indicators and pivoting.
+  - Passive DNS and certificate data.
+  - Clustering related infrastructure.
+  - Inference limits and shared hosting.
+  lab: 'Lab: From a single observed domain, pivot across available data to identify related infrastructure,
+    then document which relationships are strong evidence and which are coincidental.'
+  refs:
+  - nist-sp-800-150
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Shared hosting weakens infrastructure clustering because:'
+      options:
+      - A) It is encrypted
+      - B) Unrelated parties legitimately share the same addresses
+      - C) It changes often
+      - D) It is not logged
+      answer: B
+    - question: 'Certificate data is useful for pivoting because certificates:'
+      options:
+      - A) Are always unique
+      - B) Often carry reused names or characteristics across an actor's infrastructure
+      - C) Cannot be forged
+      - D) Are private
+      answer: B
+    - question: 'A strong infrastructure relationship is one supported by:'
+      options:
+      - A) A single shared IP
+      - B) Multiple independent characteristics that co-occur
+      - C) Temporal proximity alone
+      - D) Vendor attribution
+      answer: B
+    - question: 'Blocking infrastructure identified by weak inference risks:'
+      options:
+      - A) Nothing
+      - B) Blocking legitimate services and causing outages
+      - C) Alerting the adversary only
+      - D) Reduced detection
+      answer: B
+    - question: 'Infrastructure analysis supports hunting mainly by:'
+      options:
+      - A) Providing attribution
+      - B) Expanding the set of indicators and behaviours to search for
+      - C) Reducing data volume
+      - D) Confirming intent
+      answer: B
+- ordinal: 6
+  title: Leading a Hunting Capability
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Lead and develop a hunting team.
+  - Set direction and prioritise across competing demands.
+  - Demonstrate and sustain programme value.
+  topics:
+  - Team development and skills.
+  - Direction setting and prioritisation.
+  - Stakeholder management.
+  - Sustaining a programme long term.
+  lab: 'Lab: Produce a twelve-month hunting capability plan covering skills development, prioritised focus
+    areas, required investment and how you will demonstrate value to leadership.'
+  refs:
+  - mitre-attack
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A hunting team without protected time will:'
+      options:
+      - A) Self-organise effectively
+      - B) Be consumed by reactive alert work
+      - C) Produce more findings
+      - D) Require fewer skills
+      answer: B
+    - question: 'Hunting capability is best developed by:'
+      options:
+      - A) Tool purchases
+      - B) Deliberate skills development combined with improved data access
+      - C) Increasing headcount
+      - D) Outsourcing
+      answer: B
+    - question: 'Programme value is most credibly demonstrated by:'
+      options:
+      - A) Hunt count
+      - B) Detections created, gaps closed and measurable coverage improvement
+      - C) Incidents found
+      - D) Reports produced
+      answer: B
+    - question: 'Competing demands should be prioritised against:'
+      options:
+      - A) Analyst preference
+      - B) The organisation's threat profile and current visibility gaps
+      - C) Ease of execution
+      - D) Recency of reporting
+      answer: B
+    - question: 'A hunting programme sustains support long term by:'
+      options:
+      - A) Finding incidents regularly
+      - B) Consistently producing durable defensive improvement and communicating it
+      - C) Minimising cost
+      - D) Avoiding scrutiny
+      answer: B

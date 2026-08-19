@@ -1,0 +1,375 @@
+# C201 - Network Defense & Firewalls - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C201
+title: Network Defense & Firewalls
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Defensive Architecture
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design a layered network defence for a stated environment.
+  - Place controls appropriately relative to trust boundaries.
+  - Explain the limits of perimeter-centric defence.
+  topics:
+  - Defence in depth applied to networks.
+  - Trust zones and boundary placement.
+  - North-south versus east-west traffic.
+  - Perimeter erosion and its consequences.
+  lab: 'Lab: Given a network diagram with a flat internal network, redesign it into trust zones, place
+    controls at each boundary, and justify each placement.'
+  refs:
+  - nist-sp-800-41r1
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'East-west traffic refers to:'
+      options:
+      - A) Traffic crossing the internet boundary
+      - B) Traffic between internal systems
+      - C) Backup traffic
+      - D) Management traffic only
+      answer: B
+    - question: 'Perimeter-only defence fails principally because:'
+      options:
+      - A) Firewalls are unreliable
+      - B) An attacker inside the perimeter faces little further restriction
+      - C) It is expensive
+      - D) It cannot be logged
+      answer: B
+    - question: 'A trust zone is defined by:'
+      options:
+      - A) Physical location
+      - B) A set of systems sharing a common security policy and trust level
+      - C) VLAN number
+      - D) Subnet size
+      answer: B
+    - question: 'Placing a control at a trust boundary is effective because:'
+      options:
+      - A) Bandwidth is higher there
+      - B) All traffic changing trust level must traverse it
+      - C) It reduces latency
+      - D) Logging is simpler
+      answer: B
+    - question: 'Defence in depth assumes:'
+      options:
+      - A) Each layer is perfect
+      - B) Any single layer may fail and others must still constrain the attacker
+      - C) Only one layer is needed
+      - D) Layers must be from one vendor
+      answer: B
+- ordinal: 2
+  title: Firewall Technologies
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare packet filtering, stateful inspection and application-layer firewalls.
+  - Explain next-generation firewall capabilities.
+  - Select firewall technology appropriate to a requirement.
+  topics:
+  - Packet filters and stateful inspection.
+  - Application proxies and deep inspection.
+  - Next-generation features and identity awareness.
+  - Throughput, inspection and performance trade-offs.
+  lab: 'Lab: Configure a stateful firewall to permit a specific application flow, then demonstrate that
+    a same-port but different-application flow is still blocked by an application-aware rule.'
+  refs:
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A stateful firewall permits return traffic because it:'
+      options:
+      - A) Trusts all inbound traffic
+      - B) Maintains a connection state table
+      - C) Uses a default-allow policy
+      - D) Inspects payloads
+      answer: B
+    - question: 'An application-layer proxy differs from a packet filter because it:'
+      options:
+      - A) Is faster
+      - B) Terminates and reconstructs the connection, inspecting application data
+      - C) Works only on UDP
+      - D) Requires no rules
+      answer: B
+    - question: 'Deep packet inspection is substantially limited by:'
+      options:
+      - A) IPv6
+      - B) Widespread end-to-end encryption
+      - C) VLAN tagging
+      - D) NAT
+      answer: B
+    - question: 'Enabling full inspection on a firewall typically:'
+      options:
+      - A) Increases throughput
+      - B) Reduces maximum throughput due to processing cost
+      - C) Has no effect
+      - D) Disables logging
+      answer: B
+    - question: 'Identity-aware firewall rules bind policy to:'
+      options:
+      - A) IP address only
+      - B) Authenticated user or group identity
+      - C) MAC address
+      - D) TCP port
+      answer: B
+- ordinal: 3
+  title: Rule Design and Policy Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write firewall rules following default-deny and least privilege.
+  - Manage rule lifecycle including review and removal.
+  - Detect and remediate shadowed and redundant rules.
+  topics:
+  - Default-deny and explicit permits.
+  - Rule ordering and evaluation.
+  - Rule documentation and ownership.
+  - Shadowed, redundant and expired rules.
+  lab: 'Lab: Audit a supplied firewall ruleset for shadowed, redundant and overly broad rules, produce
+    a cleanup plan, and identify which rules cannot be removed without further information.'
+  refs:
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A shadowed rule is one that:'
+      options:
+      - A) Logs excessively
+      - B) Can never match because an earlier rule always matches first
+      - C) Has no owner
+      - D) Permits all traffic
+      answer: B
+    - question: 'Every firewall rule should ideally record:'
+      options:
+      - A) Only source and destination
+      - B) Business justification, owner and review date
+      - C) The engineer's name only
+      - D) The creation timestamp only
+      answer: B
+    - question: 'An any-any permit rule near the top of a ruleset:'
+      options:
+      - A) Improves performance
+      - B) Effectively negates the rules beneath it
+      - C) Is required for management
+      - D) Only affects logging
+      answer: B
+    - question: 'Periodic rule review is necessary because:'
+      options:
+      - A) Rules degrade technically
+      - B) Business need changes and stale permits accumulate
+      - C) Firewalls forget rules
+      - D) Vendors require it
+      answer: B
+    - question: 'Before removing an undocumented rule, the safest step is to:'
+      options:
+      - A) Delete and observe
+      - B) Log matches to determine whether it is still in use
+      - C) Duplicate it
+      - D) Broaden it
+      answer: B
+- ordinal: 4
+  title: Intrusion Detection and Prevention
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare signature-based and anomaly-based detection.
+  - Position sensors to achieve required visibility.
+  - Tune detection to balance false positives and negatives.
+  topics:
+  - Signature, anomaly and behavioural detection.
+  - Sensor placement and visibility gaps.
+  - Inline prevention versus passive detection.
+  - Tuning, baselining and suppression.
+  lab: 'Lab: Deploy a detection rule for a known pattern, generate matching and near-miss traffic, then
+    tune the rule to eliminate the false positive without losing the true detection.'
+  refs:
+  - nist-sp-800-94
+  - sigma
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Anomaly-based detection requires:'
+      options:
+      - A) A signature database
+      - B) An established baseline of normal behaviour
+      - C) Inline deployment
+      - D) Encrypted traffic
+      answer: B
+    - question: 'Deploying an IPS inline introduces the risk of:'
+      options:
+      - A) Missing traffic
+      - B) Blocking legitimate traffic and becoming a failure point
+      - C) Reduced logging
+      - D) Signature drift
+      answer: B
+    - question: 'A sensor placed only at the internet boundary will miss:'
+      options:
+      - A) Inbound scanning
+      - B) Lateral movement between internal hosts
+      - C) Outbound beaconing
+      - D) DNS queries
+      answer: B
+    - question: 'Suppressing an alert should be accompanied by:'
+      options:
+      - A) Nothing further
+      - B) A documented reason and periodic re-review
+      - C) Deleting the rule
+      - D) Disabling the sensor
+      answer: B
+    - question: 'Signature-based detection is inherently unable to detect:'
+      options:
+      - A) Known malware
+      - B) Genuinely novel techniques with no existing signature
+      - C) Port scans
+      - D) Protocol violations
+      answer: B
+- ordinal: 5
+  title: Network Access Control and Segmentation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain port-based network access control.
+  - Implement segmentation to contain lateral movement.
+  - Apply zero trust principles to network access decisions.
+  topics:
+  - 802.1X and supplicant authentication.
+  - Segmentation strategies and enforcement points.
+  - Policy decision and enforcement points.
+  - Continuous verification of access.
+  lab: 'Lab: Design a segmentation scheme that would contain a compromised workstation, define the enforcement
+    points, and state which lateral paths remain open and why.'
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: '802.1X authenticates:'
+      options:
+      - A) The application user only
+      - B) A device or user before granting network port access
+      - C) The firewall
+      - D) The DHCP server
+      answer: B
+    - question: 'In zero trust terminology, the component making the access decision is the:'
+      options:
+      - A) Policy enforcement point
+      - B) Policy decision point
+      - C) Resource
+      - D) Subject
+      answer: B
+    - question: 'Segmentation contains lateral movement by:'
+      options:
+      - A) Encrypting all traffic
+      - B) Restricting which systems can communicate with which
+      - C) Increasing bandwidth
+      - D) Removing routing
+      answer: B
+    - question: 'Continuous verification means access is:'
+      options:
+      - A) Granted once at login for the session
+      - B) Re-evaluated as context and risk change
+      - C) Never granted
+      - D) Based only on IP
+      answer: B
+    - question: 'A flat network is dangerous chiefly because:'
+      options:
+      - A) It is slow
+      - B) One compromised host can reach every other host
+      - C) It cannot use DHCP
+      - D) It requires more cabling
+      answer: B
+- ordinal: 6
+  title: Defensive Operations and Response
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Monitor defensive controls for effectiveness.
+  - Respond to a network-based incident with proportionate containment.
+  - Feed lessons learned back into control configuration.
+  topics:
+  - Control health and coverage monitoring.
+  - Containment options and their trade-offs.
+  - Blocking, sinkholing and rate limiting.
+  - Post-incident tuning.
+  lab: 'Lab: Given an active outbound command-and-control connection, propose three containment options,
+    evaluate the evidence-preservation trade-off of each, and recommend one with justification.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Immediately blocking an attacker''s command-and-control channel may:'
+      options:
+      - A) Always be correct
+      - B) Alert the adversary and cost visibility before scope is understood
+      - C) Destroy disk evidence
+      - D) Violate policy
+      answer: B
+    - question: 'Sinkholing redirects malicious traffic to:'
+      options:
+      - A) The original destination
+      - B) A controlled host for observation and containment
+      - C) A random address
+      - D) The firewall management interface
+      answer: B
+    - question: 'Control coverage monitoring answers the question:'
+      options:
+      - A) How fast is the network
+      - B) Are the controls actually seeing the traffic we assume
+      - C) Who owns the rule
+      - D) What is the licence cost
+      answer: B
+    - question: 'Post-incident tuning should be driven by:'
+      options:
+      - A) Vendor defaults
+      - B) What the incident revealed about detection and prevention gaps
+      - C) Alert volume alone
+      - D) Budget cycles
+      answer: B
+    - question: 'A containment action should be chosen by weighing:'
+      options:
+      - A) Speed only
+      - B) Risk of continued compromise against loss of evidence and adversary awareness
+      - C) Cost only
+      - D) Vendor recommendation only
+      answer: B

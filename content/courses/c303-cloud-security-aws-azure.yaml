@@ -1,0 +1,376 @@
+# C303 - Cloud Security (AWS/Azure) - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C303
+title: Cloud Security (AWS/Azure)
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Cloud Models and Shared Responsibility
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain the essential characteristics and service models of cloud computing.
+  - Apply the shared responsibility model to a given service.
+  - Identify where responsibility boundaries are commonly misunderstood.
+  topics:
+  - Essential characteristics and deployment models.
+  - IaaS, PaaS and SaaS.
+  - Shared responsibility boundaries.
+  - Common misconceptions and gaps.
+  lab: 'Lab: For three services across IaaS, PaaS and SaaS, produce a responsibility matrix showing which
+    security controls belong to the provider and which to the customer.'
+  refs:
+  - nist-sp-800-145
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'NIST SP 800-145 defines cloud computing by:'
+      options:
+      - A) Vendor list
+      - B) Five essential characteristics, three service models and four deployment models
+      - C) Pricing model
+      - D) Security controls
+      answer: B
+    - question: 'Under IaaS, patching the guest operating system is the responsibility of:'
+      options:
+      - A) The provider
+      - B) The customer
+      - C) Shared equally
+      - D) The auditor
+      answer: B
+    - question: 'The most commonly misunderstood aspect of shared responsibility is:'
+      options:
+      - A) Physical security
+      - B) That data protection and access configuration remain the customer's responsibility
+      - C) Network cabling
+      - D) Hypervisor patching
+      answer: B
+    - question: 'Rapid elasticity as an essential characteristic means resources can be:'
+      options:
+      - A) Purchased annually
+      - B) Provisioned and released quickly to match demand
+      - C) Shared between tenants
+      - D) Measured precisely
+      answer: B
+    - question: 'In SaaS, the customer typically retains responsibility for:'
+      options:
+      - A) Application code
+      - B) Identity, access configuration and their own data
+      - C) Infrastructure patching
+      - D) Physical security
+      answer: B
+- ordinal: 2
+  title: Cloud Identity and Access Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design least-privilege cloud identity policies.
+  - Explain the risk of over-permissive roles and trust relationships.
+  - Secure credentials and workload identity.
+  topics:
+  - Cloud IAM policy structure.
+  - Roles, trust policies and assumption.
+  - Workload identity versus static keys.
+  - Permission analysis and reduction.
+  lab: 'Lab: Audit a set of cloud IAM policies for over-permissive grants and unused permissions, then
+    rewrite the two worst policies to least privilege and prove the workload still functions.'
+  refs:
+  - nist-sp-800-63-4
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Long-lived static access keys are risky primarily because they:'
+      options:
+      - A) Expire
+      - B) Can be leaked and reused indefinitely until manually revoked
+      - C) Are slow
+      - D) Cannot be scoped
+      answer: B
+    - question: 'A wildcard permission granting all actions on all resources is:'
+      options:
+      - A) A useful default
+      - B) A severe over-permission that should be scoped down
+      - C) Required for automation
+      - D) Read-only
+      answer: B
+    - question: 'Workload identity is preferable to static keys because credentials are:'
+      options:
+      - A) Longer
+      - B) Short-lived and issued automatically to the workload
+      - C) Shared
+      - D) Stored in code
+      answer: B
+    - question: 'An overly permissive role trust policy allows:'
+      options:
+      - A) Faster assumption
+      - B) Unintended principals to assume the role and inherit its permissions
+      - C) Better logging
+      - D) Cheaper operation
+      answer: B
+    - question: 'Reviewing unused permissions is valuable because:'
+      options:
+      - A) It reduces cost
+      - B) Permissions granted but never used represent unnecessary risk
+      - C) It speeds API calls
+      - D) Policies expire
+      answer: B
+- ordinal: 3
+  title: Cloud Network and Data Protection
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design network isolation in a cloud environment.
+  - Protect data at rest and in transit using cloud services.
+  - Prevent inadvertent public exposure of resources.
+  topics:
+  - Virtual networks, subnets and security groups.
+  - Encryption at rest and key management.
+  - Public exposure and misconfiguration.
+  - Private connectivity patterns.
+  lab: 'Lab: Identify every publicly reachable resource in a lab cloud account, determine which are unintended,
+    and remediate them without breaking the intended access paths.'
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-57pt1r5
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'The most common cause of cloud data exposure is:'
+      options:
+      - A) Provider breach
+      - B) Customer misconfiguration such as overly public storage access
+      - C) Weak encryption
+      - D) Network interception
+      answer: B
+    - question: 'Customer-managed encryption keys provide:'
+      options:
+      - A) Stronger algorithms
+      - B) Control over key lifecycle and the ability to revoke access to data
+      - C) Faster encryption
+      - D) Free storage
+      answer: B
+    - question: 'Security groups in a cloud virtual network act as:'
+      options:
+      - A) Routing tables
+      - B) Stateful filters controlling traffic to and from resources
+      - C) Load balancers
+      - D) Identity policies
+      answer: B
+    - question: 'Private connectivity to a cloud service avoids:'
+      options:
+      - A) All cost
+      - B) Traversing the public internet for that traffic
+      - C) Authentication
+      - D) Encryption requirements
+      answer: B
+    - question: 'Encryption at rest protects primarily against:'
+      options:
+      - A) A compromised application identity
+      - B) Access to the underlying storage media or snapshots
+      - C) Misconfigured permissions
+      - D) Network sniffing
+      answer: B
+- ordinal: 4
+  title: Container and Serverless Security
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain container isolation and its limitations.
+  - Secure the container image supply chain.
+  - Describe serverless-specific security considerations.
+  topics:
+  - Container isolation and shared kernel risk.
+  - Image provenance, scanning and registries.
+  - Runtime configuration and privilege.
+  - Serverless execution and permissions.
+  lab: 'Lab: Scan a container image for vulnerabilities and misconfigurations, remediate the two highest-severity
+    findings, and rebuild demonstrating a reduced attack surface.'
+  refs:
+  - nist-sp-800-190
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Containers provide weaker isolation than virtual machines because they:'
+      options:
+      - A) Use more memory
+      - B) Share the host kernel
+      - C) Cannot be networked
+      - D) Lack namespaces
+      answer: B
+    - question: 'Running a container as root inside the container is risky because:'
+      options:
+      - A) It is slower
+      - B) It increases the impact of a container escape
+      - C) It prevents logging
+      - D) It breaks networking
+      answer: B
+    - question: 'Image provenance matters because an unverified base image may:'
+      options:
+      - A) Be larger
+      - B) Contain backdoors or vulnerable components inherited by every build
+      - C) Build slowly
+      - D) Lack documentation
+      answer: B
+    - question: 'Serverless functions require careful permission scoping because:'
+      options:
+      - A) They run longer
+      - B) An over-permissioned function is a ready path to broader cloud access
+      - C) They cannot be logged
+      - D) They share memory
+      answer: B
+    - question: 'Scanning images only at build time misses:'
+      options:
+      - A) Base image size
+      - B) Vulnerabilities disclosed after the image was built but still running
+      - C) Configuration errors
+      - D) Licence issues
+      answer: B
+- ordinal: 5
+  title: Cloud Logging, Monitoring and Detection
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enable and protect cloud audit logging.
+  - Detect suspicious control plane activity.
+  - Design monitoring appropriate to cloud-scale change.
+  topics:
+  - Control plane audit logging.
+  - Log protection and tamper resistance.
+  - Cloud detection use cases.
+  - Monitoring dynamic infrastructure.
+  lab: 'Lab: Configure audit logging with tamper protection in a lab account, then generate and detect
+    three suspicious control plane actions.'
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Cloud audit logs should be written to storage that is:'
+      options:
+      - A) In the same account with full admin access
+      - B) Protected against deletion and modification, ideally in a separate account
+      - C) Public
+      - D) Local to each resource
+      answer: B
+    - question: 'Disabling logging in a cloud account is significant because it:'
+      options:
+      - A) Saves cost only
+      - B) Is a recognised evasion technique and should itself alert
+      - C) Improves performance
+      - D) Is routine
+      answer: B
+    - question: 'Monitoring dynamic cloud infrastructure requires:'
+      options:
+      - A) Static asset lists
+      - B) Detection tied to identity and behaviour rather than fixed hostnames
+      - C) Fewer log sources
+      - D) Manual inventory
+      answer: B
+    - question: 'A sudden creation of resources in an unused region may indicate:'
+      options:
+      - A) Normal scaling
+      - B) Compromise, for example cryptomining or staging
+      - C) A billing error
+      - D) A provider migration
+      answer: B
+    - question: 'Control plane monitoring is essential because it captures:'
+      options:
+      - A) Application errors
+      - B) Who changed the environment's configuration and identity model
+      - C) Network payloads
+      - D) Container logs
+      answer: B
+- ordinal: 6
+  title: Cloud Governance and Posture Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Establish guardrails that prevent insecure configuration.
+  - Assess posture continuously against a baseline.
+  - Balance developer autonomy with control.
+  topics:
+  - Preventive guardrails versus detective controls.
+  - Landing zones and account structure.
+  - Posture management and drift.
+  - Autonomy, friction and adoption.
+  lab: 'Lab: Design a set of five preventive guardrails for a cloud environment, state what each blocks,
+    and identify the legitimate use case each might obstruct and how you would handle it.'
+  refs:
+  - nist-sp-800-207
+  - cis-benchmarks
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A preventive guardrail differs from a detective control because it:'
+      options:
+      - A) Alerts faster
+      - B) Stops the insecure configuration from being created at all
+      - C) Costs less
+      - D) Requires no policy
+      answer: B
+    - question: 'Separating workloads into distinct cloud accounts primarily provides:'
+      options:
+      - A) Cost savings
+      - B) A strong blast-radius and permission boundary
+      - C) Faster networking
+      - D) Simpler billing only
+      answer: B
+    - question: 'Guardrails that block common legitimate patterns typically result in:'
+      options:
+      - A) Better security
+      - B) Teams seeking exceptions or workarounds that undermine the control
+      - C) Faster delivery
+      - D) Lower cost
+      answer: B
+    - question: 'Continuous posture assessment is necessary because cloud environments:'
+      options:
+      - A) Are static
+      - B) Change constantly, so point-in-time assessment goes stale immediately
+      - C) Lack APIs
+      - D) Are provider managed
+      answer: B
+    - question: 'The most effective time to prevent a cloud misconfiguration is:'
+      options:
+      - A) During audit
+      - B) At deployment, through policy-as-code in the pipeline
+      - C) After detection
+      - D) At renewal
+      answer: B

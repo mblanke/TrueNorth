@@ -1,0 +1,373 @@
+# C402 - Capstone Project Planning - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C402
+title: Capstone Project Planning
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Problem Definition and Scoping
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define a capstone problem that is significant and tractable.
+  - Scope work achievable within the available time.
+  - State success criteria that can be evaluated.
+  topics:
+  - Problem selection and significance.
+  - Scoping and feasibility.
+  - Success criteria definition.
+  - Stakeholder identification.
+  lab: 'Lab: Write a capstone problem statement with scope boundaries, three success criteria and an explicit
+    statement of what is out of scope and why.'
+  refs:
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'A well-scoped capstone problem is:'
+      options:
+      - A) As broad as possible
+      - B) Significant enough to matter and narrow enough to complete
+      - C) Purely theoretical
+      - D) Chosen by the supervisor
+      answer: B
+    - question: 'Success criteria should be defined:'
+      options:
+      - A) At submission
+      - B) At planning, so progress can be assessed objectively
+      - C) By the assessor only
+      - D) After results are known
+      answer: B
+    - question: 'Stating what is out of scope is valuable because it:'
+      options:
+      - A) Shortens the plan
+      - B) Prevents scope creep and sets assessor expectations
+      - C) Reduces effort
+      - D) Is required formatting
+      answer: B
+    - question: 'A problem statement that cannot be falsified or evaluated is:'
+      options:
+      - A) Ambitious
+      - B) Unsuitable, since success cannot be demonstrated
+      - C) Preferred for research
+      - D) Easier to complete
+      answer: B
+    - question: 'Identifying stakeholders early helps because they:'
+      options:
+      - A) Provide funding
+      - B) Define what would make the outcome useful and may constrain the approach
+      - C) Perform the work
+      - D) Assess the project
+      answer: B
+- ordinal: 2
+  title: Literature and Prior Work
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Survey existing work relevant to the problem.
+  - Evaluate source quality and relevance.
+  - Position the project relative to prior work.
+  topics:
+  - Source discovery and selection.
+  - Evaluating source credibility.
+  - Synthesis rather than summary.
+  - Positioning and contribution.
+  lab: 'Lab: Produce an annotated review of eight sources relevant to your capstone, evaluating each for
+    credibility and relevance, and state precisely what gap your project addresses.'
+  refs:
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Evaluating a source''s credibility involves considering:'
+      options:
+      - A) Length
+      - B) Author expertise, evidence provided, methodology and potential bias
+      - C) Publication date only
+      - D) Search rank
+      answer: B
+    - question: 'A literature review should:'
+      options:
+      - A) Summarise each source in turn
+      - B) Synthesise across sources to establish what is known and unknown
+      - C) List titles
+      - D) Cite only recent work
+      answer: B
+    - question: 'Vendor whitepapers should be treated as:'
+      options:
+      - A) Peer-reviewed evidence
+      - B) Potentially useful but subject to commercial bias
+      - C) Unusable
+      - D) Primary sources
+      answer: B
+    - question: 'Positioning your project relative to prior work establishes:'
+      options:
+      - A) Novelty for its own sake
+      - B) What contribution the work makes beyond what already exists
+      - C) Word count
+      - D) Supervisor approval
+      answer: B
+    - question: 'Finding that the problem is already solved should lead you to:'
+      options:
+      - A) Proceed anyway
+      - B) Refine the problem or shift to an unaddressed aspect
+      - C) Abandon the capstone
+      - D) Ignore the prior work
+      answer: B
+- ordinal: 3
+  title: Methodology and Design
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select a methodology appropriate to the problem.
+  - Design an approach that produces evaluable evidence.
+  - Identify threats to the validity of results.
+  topics:
+  - Methodology selection.
+  - Experimental and evaluation design.
+  - Data collection planning.
+  - Validity threats and mitigation.
+  lab: 'Lab: Design your capstone methodology including what evidence you will collect, how you will evaluate
+    it, and the three greatest threats to the validity of your conclusions.'
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Methodology should be selected based on:'
+      options:
+      - A) Familiarity
+      - B) What kind of evidence would actually answer the question
+      - C) Available tools
+      - D) Supervisor preference
+      answer: B
+    - question: 'A threat to validity is:'
+      options:
+      - A) A project risk
+      - B) A reason the results might not mean what you claim they mean
+      - C) A security threat
+      - D) A schedule risk
+      answer: B
+    - question: 'Planning data collection in advance prevents:'
+      options:
+      - A) Extra work
+      - B) Discovering at analysis time that necessary data was never captured
+      - C) Tool failure
+      - D) Scope creep
+      answer: B
+    - question: 'A single successful demonstration establishes:'
+      options:
+      - A) General effectiveness
+      - B) Feasibility in that specific case, not generalisable performance
+      - C) Statistical significance
+      - D) Nothing at all
+      answer: B
+    - question: 'Comparing against a baseline is important because:'
+      options:
+      - A) It doubles the work
+      - B) Improvement claims are meaningless without a reference point
+      - C) Assessors require it
+      - D) It reduces validity threats
+      answer: B
+- ordinal: 4
+  title: Risk, Ethics and Approvals
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify project risks and mitigations.
+  - Obtain necessary ethical and technical approvals.
+  - Plan for safe conduct of security experimentation.
+  topics:
+  - Project risk identification.
+  - Ethical review requirements.
+  - Authorisation for technical work.
+  - Safe experimentation practice.
+  lab: 'Lab: Produce a risk register for your capstone with mitigations, identify every approval required
+    before technical work begins, and document the safety constraints on your experimentation.'
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Security experimentation involving live systems requires:'
+      options:
+      - A) Supervisor awareness only
+      - B) Explicit documented authorisation from the system owner
+      - C) Nothing if in a lab
+      - D) A risk register only
+      answer: B
+    - question: 'Research involving human participants typically requires:'
+      options:
+      - A) No approval
+      - B) Ethical review before data collection begins
+      - C) Approval after collection
+      - D) Only consent forms
+      answer: B
+    - question: 'A project risk register should include:'
+      options:
+      - A) Only technical risks
+      - B) Technical, schedule, access and ethical risks with mitigations
+      - C) Security threats only
+      - D) Costs
+      answer: B
+    - question: 'Discovering mid-project that a required approval was not obtained means:'
+      options:
+      - A) Continue and seek it later
+      - B) Stop the affected work until the approval is resolved
+      - C) Document and proceed
+      - D) Change the methodology
+      answer: B
+    - question: 'Handling real malware in a capstone requires:'
+      options:
+      - A) Antivirus
+      - B) Documented isolation, handling procedures and institutional approval
+      - C) A fast machine
+      - D) Nothing special
+      answer: B
+- ordinal: 5
+  title: Planning and Resource Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Produce a realistic project schedule.
+  - Identify dependencies and critical path.
+  - Plan for contingency and reduced scope.
+  topics:
+  - Work breakdown and estimation.
+  - Dependencies and critical path.
+  - Contingency planning.
+  - Minimum viable outcome.
+  lab: 'Lab: Produce a work breakdown and schedule for your capstone, identify the critical path, and
+    define a reduced-scope outcome you could still deliver if you lost three weeks.'
+  refs:
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A minimum viable outcome is defined in advance so that:'
+      options:
+      - A) Ambition is reduced
+      - B) Delays result in a reduced but complete deliverable rather than nothing
+      - C) Effort is minimised
+      - D) Assessment is easier
+      answer: B
+    - question: 'The critical path is the sequence of tasks that:'
+      options:
+      - A) Are hardest
+      - B) Determines the minimum project duration
+      - C) Cost most
+      - D) Are done first
+      answer: B
+    - question: 'Estimation for unfamiliar technical work should include:'
+      options:
+      - A) Best case only
+      - B) Substantial contingency, as unfamiliar work is routinely underestimated
+      - C) No buffer
+      - D) Fixed durations
+      answer: B
+    - question: 'Discovering a dependency on access you do not have should be handled:'
+      options:
+      - A) At the point of need
+      - B) During planning, as access requests often take longer than the work
+      - C) By changing topic
+      - D) By the supervisor
+      answer: B
+    - question: 'A schedule with no slack is:'
+      options:
+      - A) Efficient
+      - B) Fragile, as any single delay propagates to the deadline
+      - C) Preferred
+      - D) Realistic
+      answer: B
+- ordinal: 6
+  title: Proposal and Review
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a persuasive and precise project proposal.
+  - Present and defend the proposal.
+  - Incorporate review feedback constructively.
+  topics:
+  - Proposal structure and content.
+  - Presenting and defending decisions.
+  - Receiving and acting on critique.
+  - Proposal revision.
+  lab: 'Lab: Produce your full capstone proposal, present it for peer review, and produce a revision log
+    showing how each substantive piece of feedback was addressed or why it was not.'
+  refs:
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A proposal should convince the reader that the project is:'
+      options:
+      - A) Interesting only
+      - B) Significant, feasible and evaluable
+      - C) Novel above all
+      - D) Inexpensive
+      answer: B
+    - question: 'Defending a design decision means:'
+      options:
+      - A) Refusing to change it
+      - B) Explaining the reasoning and trade-offs considered
+      - C) Citing the supervisor
+      - D) Deferring to the reviewer
+      answer: B
+    - question: 'Feedback you disagree with should be:'
+      options:
+      - A) Ignored
+      - B) Considered, and either acted on or explicitly answered with reasoning
+      - C) Accepted always
+      - D) Escalated
+      answer: B
+    - question: 'A revision log is valuable because it:'
+      options:
+      - A) Adds length
+      - B) Demonstrates that review was taken seriously and shows the reasoning
+      - C) Satisfies formatting
+      - D) Replaces the proposal
+      answer: B
+    - question: 'The most common proposal weakness is:'
+      options:
+      - A) Excessive detail
+      - B) Scope that is too broad to complete and evaluate
+      - C) Too many references
+      - D) Poor formatting
+      answer: B

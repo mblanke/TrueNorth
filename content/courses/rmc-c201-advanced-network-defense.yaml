@@ -1,0 +1,380 @@
+# RMC C201 - Advanced Network Defense - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C201
+title: Advanced Network Defense
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Defensive Architecture at Scale
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design defensive architecture for a large, distributed enterprise.
+  - Apply zero trust principles beyond the network perimeter.
+  - Assess architectural trade-offs under operational constraint.
+  topics:
+  - Enterprise-scale defensive design.
+  - Zero trust maturity and staged adoption.
+  - Policy enforcement distribution.
+  - Operational cost of architectural choices.
+  lab: 'Lab: Design a staged zero trust adoption plan for a large legacy estate, sequencing changes so
+    that each stage delivers value without requiring full replacement.'
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Zero trust adoption in a legacy estate is best approached:'
+      options:
+      - A) As a single replacement programme
+      - B) In stages, each delivering value independently
+      - C) By perimeter hardening only
+      - D) Through procurement alone
+      answer: B
+    - question: 'A policy enforcement point should be placed:'
+      options:
+      - A) Only at the perimeter
+      - B) As close to the protected resource as practical
+      - C) At the identity provider
+      - D) On the endpoint only
+      answer: B
+    - question: 'The greatest practical obstacle to zero trust is usually:'
+      options:
+      - A) Technology availability
+      - B) Legacy systems and applications that cannot participate
+      - C) Vendor support
+      - D) Bandwidth
+      answer: B
+    - question: 'Distributing enforcement increases:'
+      options:
+      - A) Simplicity
+      - B) Resilience but also configuration and consistency burden
+      - C) Latency always
+      - D) Perimeter reliance
+      answer: B
+    - question: 'Architecture decisions should account for operational cost because:'
+      options:
+      - A) Budgets are fixed
+      - B) A design the organisation cannot operate correctly will degrade into insecurity
+      - C) Vendors charge more
+      - D) Auditors require it
+      answer: B
+- ordinal: 2
+  title: Advanced Segmentation and Isolation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Implement micro-segmentation in a complex environment.
+  - Design isolation for high-value assets.
+  - Verify segmentation continuously rather than once.
+  topics:
+  - Micro-segmentation approaches.
+  - Identity-based segmentation.
+  - High-value asset isolation patterns.
+  - Continuous segmentation verification.
+  lab: 'Lab: Design and verify an isolation zone for a high-value asset, including the break-glass access
+    path, and build an automated check that detects if the isolation is weakened.'
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Continuous verification of segmentation is necessary because:'
+      options:
+      - A) Devices fail
+      - B) Rules drift through operational changes and exceptions
+      - C) Traffic grows
+      - D) Audits are annual
+      answer: B
+    - question: 'Identity-based segmentation binds policy to:'
+      options:
+      - A) IP address
+      - B) Workload or user identity rather than network location
+      - C) VLAN tag
+      - D) Physical port
+      answer: B
+    - question: 'A break-glass access path into an isolated zone must be:'
+      options:
+      - A) Always open
+      - B) Tightly controlled, monitored and alerted on use
+      - C) Undocumented
+      - D) Shared
+      answer: B
+    - question: 'Micro-segmentation increases security but also:'
+      options:
+      - A) Reduces logging
+      - B) Increases policy complexity that must be managed
+      - C) Removes the need for monitoring
+      - D) Simplifies troubleshooting
+      answer: B
+    - question: 'Isolation of a high-value asset should account for:'
+      options:
+      - A) Network traffic only
+      - B) Management, backup, monitoring and update paths as well as user access
+      - C) User access only
+      - D) Physical location
+      answer: B
+- ordinal: 3
+  title: Deception and Active Defence
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Deploy deception technology appropriately.
+  - Distinguish legitimate active defence from unlawful action.
+  - Measure the value of deception.
+  topics:
+  - Honeypots, honeytokens and decoys.
+  - Deception placement and realism.
+  - Legal boundaries of active defence.
+  - Measuring deception effectiveness.
+  lab: 'Lab: Deploy honeytokens across a lab environment, verify that access generates a high-fidelity
+    alert, and document why each placement would be attractive to an attacker.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Honeytokens produce high-fidelity alerts because:'
+      options:
+      - A) They are heavily monitored
+      - B) They have no legitimate use, so any access is suspicious
+      - C) They are encrypted
+      - D) They log more detail
+      answer: B
+    - question: 'Hacking back against an attacker is:'
+      options:
+      - A) Standard active defence
+      - B) Generally unlawful and outside legitimate defensive action
+      - C) Permitted with authorisation
+      - D) Encouraged
+      answer: B
+    - question: 'Deception placement should be guided by:'
+      options:
+      - A) Convenience
+      - B) Where an attacker would plausibly look during their operation
+      - C) Network capacity
+      - D) Asset value only
+      answer: B
+    - question: 'An unrealistic decoy is ineffective because attackers:'
+      options:
+      - A) Cannot reach it
+      - B) Recognise and avoid it, and may realise they are observed
+      - C) Trigger it accidentally
+      - D) Report it
+      answer: B
+    - question: 'The main operational value of deception is:'
+      options:
+      - A) Blocking attacks
+      - B) Early, high-confidence detection with very low false positive cost
+      - C) Attribution
+      - D) Reducing log volume
+      answer: B
+- ordinal: 4
+  title: Encrypted Traffic Defence
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Defend effectively where traffic inspection is unavailable.
+  - Evaluate the trade-offs of TLS interception.
+  - Apply metadata and behavioural analysis at scale.
+  topics:
+  - Limits of payload inspection.
+  - TLS interception trade-offs and risks.
+  - Metadata and flow-based defence.
+  - Endpoint visibility as compensation.
+  lab: 'Lab: Compare three approaches to defending encrypted traffic - interception, metadata analysis
+    and endpoint visibility - and produce a recommendation with the residual risk of each.'
+  refs:
+  - rfc-8446
+  - nist-sp-800-52r2
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'TLS interception introduces risk because it:'
+      options:
+      - A) Slows traffic
+      - B) Creates a decryption point that is itself a high-value target and may weaken validation
+      - C) Breaks routing
+      - D) Requires new certificates only
+      answer: B
+    - question: 'Where interception is not feasible, the strongest compensating visibility is usually:'
+      options:
+      - A) More firewall rules
+      - B) Endpoint telemetry, which sees data before encryption
+      - C) Longer log retention
+      - D) Deeper packet capture
+      answer: B
+    - question: 'Certificate pinning by an application will:'
+      options:
+      - A) Assist interception
+      - B) Break TLS interception for that application
+      - C) Have no effect
+      - D) Weaken the connection
+      answer: B
+    - question: 'Metadata analysis of encrypted traffic can still reveal:'
+      options:
+      - A) Payload contents
+      - B) Timing, volume, destinations and behavioural patterns
+      - C) Credentials
+      - D) File names
+      answer: B
+    - question: 'Intercepting traffic to certain categories such as health or banking is typically:'
+      options:
+      - A) Required
+      - B) Excluded on privacy and legal grounds
+      - C) Technically impossible
+      - D) Automatic
+      answer: B
+- ordinal: 5
+  title: Defensive Automation and Orchestration
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Automate response actions safely.
+  - Design orchestration that keeps humans in the loop appropriately.
+  - Manage the risk of automated action.
+  topics:
+  - Automation candidates and criteria.
+  - Playbook design and guardrails.
+  - Human-in-the-loop decision points.
+  - Failure modes of automation.
+  lab: 'Lab: Design an automated containment playbook with explicit guardrails, define which steps require
+    human approval and why, and specify the rollback for every automated action.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'An automated action that isolates a host should:'
+      options:
+      - A) Run without constraint
+      - B) Have guardrails preventing mass isolation from a faulty detection
+      - C) Require no logging
+      - D) Be irreversible
+      answer: B
+    - question: 'The best candidates for automation are actions that are:'
+      options:
+      - A) High impact and rare
+      - B) Repetitive, well-understood and low-risk to reverse
+      - C) Complex and judgement-based
+      - D) Executive decisions
+      answer: B
+    - question: 'Every automated action should have:'
+      options:
+      - A) A dashboard
+      - B) A defined rollback and an audit record
+      - C) A vendor contract
+      - D) A severity rating
+      answer: B
+    - question: 'Automation built on a noisy detection will:'
+      options:
+      - A) Improve accuracy
+      - B) Amplify the false positives into operational disruption
+      - C) Reduce alert volume safely
+      - D) Self-tune
+      answer: B
+    - question: 'Human-in-the-loop is most warranted when the action is:'
+      options:
+      - A) Reversible and routine
+      - B) High impact, irreversible or dependent on business context
+      - C) Frequent
+      - D) Well tested
+      answer: B
+- ordinal: 6
+  title: Measuring Defensive Effectiveness
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Measure whether defences actually work.
+  - Use adversary emulation to validate controls.
+  - Report defensive posture credibly to leadership.
+  topics:
+  - Control effectiveness testing.
+  - Emulation-based validation.
+  - Posture reporting and honest metrics.
+  - Continuous improvement cycle.
+  lab: 'Lab: Design a quarterly control validation programme specifying what is tested, how, and how results
+    are reported, then produce a sample posture report from hypothetical results.'
+  refs:
+  - mitre-attack
+  - nist-cswp-29
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A control that has never been tested should be reported as:'
+      options:
+      - A) Effective
+      - B) Implemented but unvalidated
+      - C) Ineffective
+      - D) Not applicable
+      answer: B
+    - question: 'Adversary emulation validates controls better than a checklist because it:'
+      options:
+      - A) Is cheaper
+      - B) Tests whether controls actually stop or detect real behaviour
+      - C) Is faster
+      - D) Requires less skill
+      answer: B
+    - question: 'Reporting only favourable metrics to leadership:'
+      options:
+      - A) Maintains confidence usefully
+      - B) Produces decisions based on a false picture of risk
+      - C) Is standard practice
+      - D) Simplifies reporting
+      answer: B
+    - question: 'Control effectiveness should be re-tested because:'
+      options:
+      - A) Tests expire
+      - B) Configuration drift and environmental change degrade controls over time
+      - C) Vendors update
+      - D) Auditors require it
+      answer: B
+    - question: 'A credible posture report includes:'
+      options:
+      - A) Coverage claims only
+      - B) What was tested, what was found, what remains unknown
+      - C) Tool inventory
+      - D) Budget usage
+      answer: B

@@ -1,0 +1,376 @@
+# C106 - Cryptography Basics - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C106
+title: Cryptography Basics
+version: '1.0'
+difficulty: intermediate
+duration_hours: 60
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Classical Ciphers and Cryptanalysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain substitution and transposition ciphers and their weaknesses.
+  - Perform frequency analysis against a monoalphabetic cipher.
+  - Articulate Kerckhoffs's principle and its modern significance.
+  topics:
+  - Caesar, Vigenere and substitution ciphers.
+  - Transposition and permutation.
+  - Frequency analysis and known-plaintext attacks.
+  - Kerckhoffs's principle.
+  lab: 'Lab: Break a supplied monoalphabetic substitution ciphertext using frequency analysis and document
+    the reasoning that recovered each letter mapping.'
+  refs:
+  - nist-sp-800-57pt1r5
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Kerckhoffs''s principle states that a cryptosystem should be secure even if:'
+      options:
+      - A) The key is known
+      - B) Everything except the key is public knowledge
+      - C) The plaintext is known
+      - D) The algorithm is secret
+      answer: B
+    - question: 'Frequency analysis is effective against a monoalphabetic substitution cipher because:'
+      options:
+      - A) The key is short
+      - B) Plaintext letter frequencies are preserved in the ciphertext
+      - C) The cipher is additive
+      - D) The alphabet is reversed
+      answer: B
+    - question: 'A transposition cipher works by:'
+      options:
+      - A) Replacing letters with others
+      - B) Rearranging the order of the plaintext characters
+      - C) Adding a keystream
+      - D) Compressing the text
+      answer: B
+    - question: 'Security through obscurity is discouraged because it:'
+      options:
+      - A) Is slow
+      - B) Fails once the design becomes known and cannot be re-secured by key change
+      - C) Uses too much memory
+      - D) Requires certificates
+      answer: B
+    - question: 'The Vigenere cipher improves on Caesar by using:'
+      options:
+      - A) A longer alphabet
+      - B) Multiple shift values driven by a keyword
+      - C) Transposition
+      - D) Public keys
+      answer: B
+- ordinal: 2
+  title: Symmetric Encryption
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe block and stream cipher operation.
+  - Select an appropriate mode of operation and explain why ECB is unsuitable.
+  - Explain the role of initialisation vectors and nonces.
+  topics:
+  - Block ciphers, AES and key sizes.
+  - 'Modes: ECB, CBC, CTR, GCM.'
+  - Initialisation vectors, nonces and reuse hazards.
+  - Padding and padding oracles.
+  lab: 'Lab: Encrypt an image file in ECB and in CBC mode, view both outputs, and explain from the visible
+    result why ECB leaks structure.'
+  refs:
+  - nist-sp-800-57pt1r5
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'ECB mode is unsuitable for most data because identical plaintext blocks:'
+      options:
+      - A) Cause padding errors
+      - B) Produce identical ciphertext blocks, revealing structure
+      - C) Cannot be decrypted
+      - D) Require a nonce
+      answer: B
+    - question: 'Reusing a nonce with the same key in CTR mode:'
+      options:
+      - A) Is required for correctness
+      - B) Allows an attacker to recover plaintext relationships
+      - C) Improves performance
+      - D) Has no effect
+      answer: B
+    - question: 'AES-GCM provides both confidentiality and:'
+      options:
+      - A) Key exchange
+      - B) Authenticity of the ciphertext
+      - C) Compression
+      - D) Non-repudiation
+      answer: B
+    - question: 'A stream cipher differs from a block cipher because it:'
+      options:
+      - A) Requires padding
+      - B) Encrypts data as a keystream combined per bit or byte
+      - C) Uses only public keys
+      - D) Cannot use an IV
+      answer: B
+    - question: 'The purpose of an initialisation vector is to:'
+      options:
+      - A) Authenticate the sender
+      - B) Ensure identical plaintexts encrypt differently under the same key
+      - C) Extend the key length
+      - D) Pad the final block
+      answer: B
+- ordinal: 3
+  title: Hash Functions and Message Authentication
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the required properties of a cryptographic hash function.
+  - Distinguish a hash from a MAC and from a digital signature.
+  - Select appropriate algorithms for password storage.
+  topics:
+  - Preimage, second preimage and collision resistance.
+  - SHA-2 and SHA-3 families.
+  - HMAC and message authentication.
+  - Password hashing and key derivation.
+  lab: 'Lab: Compute SHA-256 digests for a file before and after a one-byte change, then generate an HMAC
+    over the same file and demonstrate that an attacker without the key cannot forge it.'
+  refs:
+  - nist-sp-800-57pt1r5
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Collision resistance means it is infeasible to find:'
+      options:
+      - A) The input for a given output
+      - B) Two distinct inputs with the same hash output
+      - C) The key from the hash
+      - D) A shorter input
+      answer: B
+    - question: 'A MAC differs from a plain hash because a MAC:'
+      options:
+      - A) Is shorter
+      - B) Incorporates a secret key so it cannot be forged without it
+      - C) Is reversible
+      - D) Uses public key cryptography
+      answer: B
+    - question: 'A general-purpose fast hash such as SHA-256 is unsuitable for password storage because
+        it:'
+      options:
+      - A) Produces collisions
+      - B) Is fast, enabling large-scale offline guessing
+      - C) Cannot be salted
+      - D) Has no fixed output
+      answer: B
+    - question: 'A key derivation function for passwords is designed to be deliberately:'
+      options:
+      - A) Fast and parallelisable
+      - B) Slow and memory-hard
+      - C) Reversible
+      - D) Keyless
+      answer: B
+    - question: A digital signature provides what a MAC does not?
+      options:
+      - A) Integrity
+      - B) Non-repudiation, since only the private key holder could produce it
+      - C) Confidentiality
+      - D) Speed
+      answer: B
+- ordinal: 4
+  title: Public Key Cryptography and Key Exchange
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain the mathematical basis of RSA and elliptic curve cryptography at a conceptual level.
+  - Describe Diffie-Hellman key exchange and forward secrecy.
+  - Compare key sizes across algorithm families for equivalent strength.
+  topics:
+  - RSA, ECC and comparative key sizes.
+  - Diffie-Hellman and ephemeral variants.
+  - Forward secrecy.
+  - Hybrid encryption in practice.
+  lab: 'Lab: Establish a TLS session in a lab, identify the negotiated key exchange and cipher suite from
+    the handshake, and state whether the session provides forward secrecy.'
+  refs:
+  - rfc-8446
+  - nist-sp-800-57pt1r5
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Forward secrecy ensures that compromise of a long-term private key does not:'
+      options:
+      - A) Affect future sessions
+      - B) Allow decryption of previously recorded sessions
+      - C) Reveal the certificate
+      - D) Break the signature
+      answer: B
+    - question: 'Elliptic curve cryptography offers equivalent security to RSA with:'
+      options:
+      - A) Larger keys
+      - B) Substantially smaller keys
+      - C) No keys
+      - D) Identical key sizes
+      answer: B
+    - question: 'In hybrid encryption, public key cryptography is typically used to:'
+      options:
+      - A) Encrypt the entire message
+      - B) Establish or transport a symmetric session key
+      - C) Hash the message
+      - D) Compress the payload
+      answer: B
+    - question: 'Diffie-Hellman allows two parties to:'
+      options:
+      - A) Authenticate each other
+      - B) Derive a shared secret over an untrusted channel
+      - C) Sign a document
+      - D) Exchange certificates
+      answer: B
+    - question: 'Unauthenticated Diffie-Hellman is vulnerable to:'
+      options:
+      - A) Replay only
+      - B) Machine-in-the-middle attack
+      - C) Padding oracle
+      - D) Birthday attack
+      answer: B
+- ordinal: 5
+  title: Public Key Infrastructure and TLS
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the structure of an X.509 certificate and its chain of trust.
+  - Explain certificate validation including revocation checking.
+  - Configure TLS according to recognised guidance.
+  topics:
+  - X.509 fields, extensions and SANs.
+  - Chain building and trust anchors.
+  - Revocation via CRL and OCSP.
+  - TLS version and cipher suite selection.
+  lab: 'Lab: Inspect a server certificate chain, verify each signature link to the root, identify the
+    SAN entries, and check the revocation status of the leaf certificate.'
+  refs:
+  - rfc-8446
+  - nist-sp-800-52r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: TLS 1.3 is specified in which RFC?
+      options:
+      - A) RFC 5246
+      - B) RFC 8446
+      - C) RFC 2246
+      - D) RFC 6101
+      answer: B
+    - question: 'Hostname verification in TLS should be performed against the certificate''s:'
+      options:
+      - A) Common Name only
+      - B) Subject Alternative Name extension
+      - C) Serial number
+      - D) Issuer field
+      answer: B
+    - question: 'OCSP provides:'
+      options:
+      - A) Certificate issuance
+      - B) Real-time certificate revocation status
+      - C) Key generation
+      - D) Cipher negotiation
+      answer: B
+    - question: 'A self-signed certificate fails validation in a default client because:'
+      options:
+      - A) It uses weak crypto
+      - B) Its issuer is not a trusted anchor in the client's store
+      - C) It has no SAN
+      - D) It is expired
+      answer: B
+    - question: 'TLS 1.3 improved security partly by:'
+      options:
+      - A) Adding more cipher suites
+      - B) Removing legacy algorithms and mandating forward secrecy for its key exchange
+      - C) Disabling certificates
+      - D) Reverting to RSA key transport
+      answer: B
+- ordinal: 6
+  title: Key Management and Cryptographic Failure Modes
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the cryptographic key lifecycle.
+  - Identify common implementation failures that defeat strong algorithms.
+  - Explain crypto-agility and why algorithms must be replaceable.
+  topics:
+  - Key generation, storage, rotation and destruction.
+  - Entropy and random number generation.
+  - Common implementation pitfalls.
+  - Crypto-agility and algorithm migration.
+  lab: 'Lab: Review a supplied code sample that uses a predictable seed and a hardcoded key, document
+    each failure against key-management guidance, and rewrite it correctly.'
+  refs:
+  - nist-sp-800-57pt1r5
+  - cwe-top-25
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Using a predictable seed for a random number generator results in:'
+      options:
+      - A) Slower encryption
+      - B) Predictable keys that an attacker can reproduce
+      - C) Longer ciphertext
+      - D) Padding errors
+      answer: B
+    - question: 'Key rotation limits the impact of compromise by:'
+      options:
+      - A) Making keys longer
+      - B) Bounding the amount of data exposed under any single key
+      - C) Preventing key theft
+      - D) Removing the need for storage
+      answer: B
+    - question: 'Crypto-agility means a system can:'
+      options:
+      - A) Encrypt faster
+      - B) Replace algorithms and key sizes without redesign
+      - C) Operate without keys
+      - D) Skip certificate validation
+      answer: B
+    - question: 'The most common cause of real-world cryptographic failure is:'
+      options:
+      - A) Broken primitives such as AES
+      - B) Implementation and key-management mistakes
+      - C) Insufficient key length in AES
+      - D) Hash collisions in SHA-256
+      answer: B
+    - question: 'Cryptographic keys should be generated using:'
+      options:
+      - A) A standard language random function
+      - B) A cryptographically secure random number generator
+      - C) A timestamp
+      - D) A user-supplied passphrase directly
+      answer: B

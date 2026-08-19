@@ -11,10 +11,11 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
+from .. import course_content_ingest, programme_ingest
 from ..auth import CurrentUser, get_current_user
 from ..tenancy import get_owned, tenant_uuid
 from ..db import get_db
@@ -46,6 +47,9 @@ from ..schemas import (
 )
 
 logger = logging.getLogger("truenorth.courses")
+
+# Upload ceiling for the programme catalogue CSV (mirrors qsp.MAX_CSV_BYTES).
+MAX_CSV_BYTES = 4 * 1024 * 1024
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
@@ -170,6 +174,66 @@ def delete_course(
     db.query(CourseModule).filter(CourseModule.course_id == course_id).delete()
     db.delete(course)
     db.commit()
+
+
+@router.post("/import-programme")
+async def import_programme(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """Upload a programme catalogue CSV and upsert its courses (idempotent).
+
+    Courses are created unpublished and, unless the row names a real ``qsp_code``,
+    unbound from the qualification spine. See ``programme_ingest`` for why.
+    """
+    raw = await file.read()
+    if len(raw) > MAX_CSV_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="programme catalogue too large",
+        )
+    try:
+        csv_text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"programme catalogue must be UTF-8 CSV: {exc}") from exc
+    try:
+        stats = programme_ingest.import_programme(db, csv_text, tenant_id=tenant_uuid(user))
+    except Exception as exc:  # noqa: BLE001 — surface parse/DB errors to the caller
+        db.rollback()
+        logger.exception("programme catalogue import failed")
+        raise HTTPException(status_code=422, detail=f"programme import failed: {exc}") from exc
+    return {"imported": True, **stats}
+
+
+@router.post("/import-course-content")
+async def import_course_content(
+    file: UploadFile,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """Upload an authored course YAML and attach its modules/quizzes (idempotent).
+
+    The course must already exist in the programme catalogue. Everything created
+    here is unpublished.
+    """
+    raw = await file.read()
+    if len(raw) > MAX_CSV_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="course file too large",
+        )
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"course file must be UTF-8 YAML: {exc}") from exc
+    try:
+        stats = course_content_ingest.import_course_content(db, text, tenant_id=tenant_uuid(user))
+    except Exception as exc:  # noqa: BLE001 — surface parse/DB errors to the caller
+        db.rollback()
+        logger.exception("course content import failed")
+        raise HTTPException(status_code=422, detail=f"course content import failed: {exc}") from exc
+    return {"imported": True, **stats}
 
 
 # ══════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,374 @@
+# C104 - Intro to Programming (Python) - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C104
+title: Intro to Programming (Python)
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Python Fundamentals and Control Flow
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write correct programs using Python's core types and control structures.
+  - Explain mutability and how it affects assignment and function arguments.
+  - Use functions and scope correctly to structure a program.
+  topics:
+  - Types, variables and operators.
+  - Conditionals, loops and comprehensions.
+  - Functions, arguments and return values.
+  - Mutability, references and scope.
+  lab: 'Lab: Write a script that parses a log file, counts events by type, and prints a sorted summary;
+    include a function with a default argument and explain why a mutable default is dangerous.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: Which Python type is immutable?
+      options:
+      - A) list
+      - B) dict
+      - C) tuple
+      - D) set
+      answer: C
+    - question: 'Using a mutable object as a default argument is dangerous because the default is:'
+      options:
+      - A) Copied on every call
+      - B) Evaluated once at function definition and shared across calls
+      - C) Always None
+      - D) Converted to a tuple
+      answer: B
+    - question: What does a list comprehension return?
+      options:
+      - A) A generator
+      - B) A new list
+      - C) The original list modified in place
+      - D) A set
+      answer: B
+    - question: 'In Python, assigning one list to another variable results in:'
+      options:
+      - A) A deep copy
+      - B) A shallow copy
+      - C) Both names referring to the same object
+      - D) An error
+      answer: C
+    - question: 'The scope resolution order in Python is:'
+      options:
+      - A) Global, Local, Builtin
+      - B) Local, Enclosing, Global, Builtin
+      - C) Builtin, Global, Local
+      - D) Enclosing, Builtin, Local
+      answer: B
+- ordinal: 2
+  title: Data Structures and File Handling
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select an appropriate data structure for a given access pattern.
+  - Read and write structured data formats safely.
+  - Handle errors and resource cleanup correctly.
+  topics:
+  - Lists, dicts, sets and their complexity.
+  - File I/O and context managers.
+  - JSON and CSV parsing.
+  - Exception handling and cleanup.
+  lab: 'Lab: Write a tool that ingests a CSV of host records, validates each row, writes valid rows to
+    JSON and rejected rows to an error file, using context managers throughout.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Average-case lookup in a Python dict is:'
+      options:
+      - A) O(n)
+      - B) O(log n)
+      - C) O(1)
+      - D) O(n log n)
+      answer: C
+    - question: 'The main benefit of a with statement for file handling is that it:'
+      options:
+      - A) Speeds up reads
+      - B) Guarantees the file is closed even if an exception occurs
+      - C) Locks the file
+      - D) Compresses output
+      answer: B
+    - question: 'Catching a bare except is discouraged because it:'
+      options:
+      - A) Is slower
+      - B) Swallows unexpected errors including control-flow exceptions
+      - C) Cannot be nested
+      - D) Requires a finally block
+      answer: B
+    - question: Which structure is best for testing membership of a large collection?
+      options:
+      - A) list
+      - B) set
+      - C) tuple
+      - D) string
+      answer: B
+    - question: 'json.load differs from json.loads in that json.load reads from:'
+      options:
+      - A) A string
+      - B) A file-like object
+      - C) A bytes object
+      - D) A dict
+      answer: B
+- ordinal: 3
+  title: Secure Coding Practices
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify common vulnerability classes in application code.
+  - Apply input validation and output encoding correctly.
+  - Explain why secrets must not be embedded in source.
+  topics:
+  - Injection flaws and parameterised queries.
+  - Input validation and canonicalisation.
+  - Secret management and configuration.
+  - Dependency and supply-chain risk.
+  lab: 'Lab: Take a deliberately vulnerable script containing a command injection and a hardcoded credential,
+    exploit both in a lab VM, then remediate and prove the fix.'
+  refs:
+  - owasp-top-10
+  - cwe-top-25
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'The correct defence against SQL injection is:'
+      options:
+      - A) Escaping quotes manually
+      - B) Parameterised queries with bound variables
+      - C) Blocking the apostrophe character
+      - D) Using a WAF only
+      answer: B
+    - question: 'Passing unsanitised user input to a shell command risks:'
+      options:
+      - A) Cross-site scripting
+      - B) Command injection
+      - C) Buffer overflow
+      - D) Clickjacking
+      answer: B
+    - question: 'Hardcoded credentials in source code are dangerous primarily because they:'
+      options:
+      - A) Slow compilation
+      - B) Persist in version history and are readable by anyone with repository access
+      - C) Break linting
+      - D) Prevent packaging
+      answer: B
+    - question: 'Validating input against an allowlist is preferred over a denylist because:'
+      options:
+      - A) It is faster
+      - B) It defines what is acceptable rather than trying to enumerate all bad input
+      - C) It requires no maintenance
+      - D) It supports Unicode better
+      answer: B
+    - question: 'The OWASP Top 10 is best described as:'
+      options:
+      - A) A compliance certification
+      - B) A consensus awareness document of critical web application security risks
+      - C) A scanning tool
+      - D) A secure coding language
+      answer: B
+- ordinal: 4
+  title: Automation for Security Tasks
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Automate repetitive analysis tasks with scripts.
+  - Interact with HTTP APIs and parse their responses.
+  - Apply rate limiting and error handling to automated requests.
+  topics:
+  - Scripting workflow design.
+  - HTTP requests, status codes and pagination.
+  - Parsing and normalising API responses.
+  - Retries, backoff and rate limits.
+  lab: 'Lab: Write a script that queries a local API for host records, handles pagination and HTTP errors
+    with backoff, and outputs a normalised report.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'An HTTP 429 status code indicates:'
+      options:
+      - A) Not found
+      - B) Too many requests
+      - C) Unauthorised
+      - D) Server error
+      answer: B
+    - question: 'Exponential backoff means retry intervals:'
+      options:
+      - A) Stay constant
+      - B) Increase multiplicatively after each failure
+      - C) Decrease over time
+      - D) Are chosen randomly with no bound
+      answer: B
+    - question: 'Verifying TLS certificates in an automated client is important because disabling it:'
+      options:
+      - A) Slows the request
+      - B) Removes protection against interception
+      - C) Breaks JSON parsing
+      - D) Prevents redirects
+      answer: B
+    - question: 'An HTTP 401 differs from 403 in that 401 indicates:'
+      options:
+      - A) The resource does not exist
+      - B) Authentication is required or has failed
+      - C) The method is not allowed
+      - D) The server is overloaded
+      answer: B
+    - question: 'Storing an API token in an environment variable rather than in code primarily:'
+      options:
+      - A) Improves performance
+      - B) Keeps the secret out of version control
+      - C) Encrypts the token
+      - D) Rotates the token
+      answer: B
+- ordinal: 5
+  title: Testing, Debugging and Code Quality
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write unit tests that meaningfully exercise behaviour.
+  - Debug a failing program systematically.
+  - Apply static analysis to find defects before runtime.
+  topics:
+  - Unit testing and assertions.
+  - Test fixtures and isolation.
+  - Debuggers, tracebacks and logging.
+  - Linting and static analysis.
+  lab: 'Lab: Write unit tests for the log parser from module 1 including an edge case that currently fails,
+    fix the defect, and run a linter to clean the remaining warnings.'
+  refs:
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A unit test should ideally:'
+      options:
+      - A) Depend on live network services
+      - B) Test one behaviour in isolation and be repeatable
+      - C) Cover the whole system at once
+      - D) Require manual setup
+      answer: B
+    - question: 'Static analysis differs from testing because it:'
+      options:
+      - A) Executes the program
+      - B) Examines code without executing it
+      - C) Requires production data
+      - D) Measures performance
+      answer: B
+    - question: 'A Python traceback should be read:'
+      options:
+      - A) Top to bottom, the first line is the error
+      - B) Bottom to top, the last line names the exception
+      - C) In random order
+      - D) Only the middle matters
+      answer: B
+    - question: 'Test coverage of 100 percent guarantees:'
+      options:
+      - A) The code is correct
+      - B) Every line executed during tests, not that behaviour is correct
+      - C) No security flaws
+      - D) Optimal performance
+      answer: B
+    - question: 'A regression test is written primarily to:'
+      options:
+      - A) Improve speed
+      - B) Ensure a fixed defect does not reappear
+      - C) Replace documentation
+      - D) Measure coverage
+      answer: B
+- ordinal: 6
+  title: Building a Small Security Tool
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Decompose a requirement into modules with clear responsibilities.
+  - Package and document a tool for use by others.
+  - Evaluate the operational safety of an automated security tool.
+  topics:
+  - Project structure and dependency management.
+  - Command-line interface design.
+  - Documentation and usage examples.
+  - Safe defaults and destructive-action guards.
+  lab: 'Lab: Build a small CLI tool that scans a directory for files with world-writable permissions and
+    reports findings; include a dry-run default and require an explicit flag before any change is made.'
+  refs:
+  - nist-sp-800-218
+  - cis-benchmarks
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A security tool that can modify a system should default to:'
+      options:
+      - A) Applying changes immediately
+      - B) A dry-run that reports without changing anything
+      - C) Silent operation
+      - D) Running as root
+      answer: B
+    - question: 'Pinning dependency versions helps primarily by:'
+      options:
+      - A) Reducing file size
+      - B) Making builds reproducible and limiting unexpected upstream changes
+      - C) Improving runtime speed
+      - D) Removing the need for tests
+      answer: B
+    - question: 'A good command-line interface for a security tool should:'
+      options:
+      - A) Assume defaults silently
+      - B) Make destructive actions explicit and require confirmation
+      - C) Hide errors
+      - D) Always run interactively
+      answer: B
+    - question: 'World-writable files are a concern because any user can:'
+      options:
+      - A) Read them only
+      - B) Modify their contents, enabling tampering
+      - C) Change their owner
+      - D) Encrypt them
+      answer: B
+    - question: 'Documenting a tool''s assumptions matters most because:'
+      options:
+      - A) It satisfies linting
+      - B) Operators need to know the conditions under which results are valid
+      - C) It shortens the code
+      - D) It replaces testing
+      answer: B

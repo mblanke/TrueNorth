@@ -1,0 +1,380 @@
+# RMC C210 - Cloud-Native Defense - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C210
+title: Cloud-Native Defense
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Cloud-Native Architecture and Threat Model
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe cloud-native architectural patterns.
+  - Threat model a microservices architecture.
+  - Identify security properties that differ from monoliths.
+  topics:
+  - Microservices and service mesh.
+  - Ephemerality and immutable infrastructure.
+  - Cloud-native threat modelling.
+  - Differences from traditional architectures.
+  lab: 'Lab: Threat model a microservices application including its service mesh and control plane, and
+    identify the three trust boundaries most often overlooked.'
+  refs:
+  - nist-sp-800-190
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Immutable infrastructure improves security by:'
+      options:
+      - A) Preventing all compromise
+      - B) Replacing rather than patching instances, limiting persistence and drift
+      - C) Encrypting disks
+      - D) Reducing cost
+      answer: B
+    - question: 'A service mesh introduces a new trust boundary at:'
+      options:
+      - A) The database
+      - B) The sidecar proxy and mesh control plane
+      - C) The load balancer
+      - D) The CDN
+      answer: B
+    - question: 'Microservices increase attack surface relative to a monolith because:'
+      options:
+      - A) They are larger
+      - B) Internal calls become network calls requiring their own authn and authz
+      - C) They are slower
+      - D) They use more memory
+      answer: B
+    - question: 'Ephemeral workloads complicate security by:'
+      options:
+      - A) Reducing logging
+      - B) Making traditional host-based inventory and investigation unreliable
+      - C) Preventing monitoring
+      - D) Requiring more identities
+      answer: B
+    - question: 'The mesh control plane is high value because it can:'
+      options:
+      - A) Read application data
+      - B) Alter routing and policy across every service
+      - C) Scale workloads
+      - D) Issue certificates only
+      answer: B
+- ordinal: 2
+  title: Workload Identity and Service-to-Service Authorisation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Implement strong workload identity.
+  - Enforce service-to-service authorisation.
+  - Manage certificate lifecycle at scale.
+  topics:
+  - Workload identity issuance.
+  - Mutual TLS between services.
+  - Authorisation policy for service calls.
+  - Automated certificate rotation.
+  lab: 'Lab: Configure mutual TLS and an authorisation policy between two services so that only the intended
+    caller is permitted, then demonstrate an unauthorised call being rejected.'
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-52r2
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'In a service mesh, mutual TLS is typically terminated by:'
+      options:
+      - A) The application process itself
+      - B) The sidecar proxy alongside the workload
+      - C) The ingress gateway only
+      - D) The orchestrator control plane
+      answer: B
+    - question: 'Authentication alone is insufficient between services because:'
+      options:
+      - A) It is slow
+      - B) Knowing who is calling does not decide whether they may perform the action
+      - C) Certificates expire
+      - D) It lacks encryption
+      answer: B
+    - question: 'Short-lived workload certificates reduce risk by:'
+      options:
+      - A) Improving performance
+      - B) Limiting the window in which a stolen credential is useful
+      - C) Simplifying rotation
+      - D) Reducing storage
+      answer: B
+    - question: 'Network-level controls alone are insufficient in a mesh because:'
+      options:
+      - A) They are slow
+      - B) Many services legitimately share network paths and identity is the meaningful boundary
+      - C) They cannot be configured
+      - D) Encryption prevents them
+      answer: B
+    - question: 'Automated certificate rotation is essential at scale because:'
+      options:
+      - A) Certificates are weak
+      - B) Manual rotation cannot keep pace and expiry causes outages
+      - C) It reduces cost
+      - D) Policy requires it
+      answer: B
+- ordinal: 3
+  title: Kubernetes and Orchestrator Security
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Secure an orchestrator control plane.
+  - Apply workload security policy.
+  - Detect orchestrator-level attack activity.
+  topics:
+  - Control plane security and access.
+  - RBAC in orchestrators.
+  - Pod security and workload constraints.
+  - Orchestrator attack detection.
+  lab: 'Lab: Audit a cluster''s role bindings for excessive privilege, restrict the two worst, and configure
+    detection for suspicious control plane activity such as privileged pod creation.'
+  refs:
+  - nist-sp-800-190
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A container running privileged is dangerous because it:'
+      options:
+      - A) Uses more CPU
+      - B) Can typically access host resources and escape isolation
+      - C) Cannot be logged
+      - D) Bypasses the scheduler
+      answer: B
+    - question: 'Orchestrator RBAC bindings granting cluster-admin should be:'
+      options:
+      - A) The default
+      - B) Rare, justified and closely monitored
+      - C) Applied per namespace
+      - D) Automated
+      answer: B
+    - question: 'Mounting the host filesystem into a container enables:'
+      options:
+      - A) Better performance
+      - B) Potential host compromise from within the container
+      - C) Persistent storage safely
+      - D) Faster builds
+      answer: B
+    - question: 'The orchestrator API server should be:'
+      options:
+      - A) Publicly accessible for convenience
+      - B) Restricted, authenticated and audited
+      - C) Unauthenticated internally
+      - D) Exposed to all pods
+      answer: B
+    - question: 'Service account tokens automatically mounted into pods are risky because:'
+      options:
+      - A) They expire
+      - B) A compromised pod inherits whatever API access the token grants
+      - C) They are encrypted
+      - D) They cannot be rotated
+      answer: B
+- ordinal: 4
+  title: Supply Chain for Cloud-Native Workloads
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Secure the build and deployment pipeline.
+  - Establish artefact provenance and verification.
+  - Manage dependency risk continuously.
+  topics:
+  - Pipeline security and access.
+  - Provenance, attestation and signing.
+  - SBOM and dependency monitoring.
+  - Deployment verification.
+  lab: 'Lab: Implement signing and verification for build artefacts so that only attested images deploy,
+    and demonstrate rejection of an unsigned image.'
+  refs:
+  - nist-sp-800-218
+  - nist-sp-800-190
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A compromised build pipeline is severe because it:'
+      options:
+      - A) Slows delivery
+      - B) Can inject malicious code into artefacts that pass all downstream trust checks
+      - C) Costs more
+      - D) Breaks tests
+      answer: B
+    - question: 'Artefact attestation records:'
+      options:
+      - A) The artefact size
+      - B) Verifiable claims about how and from what the artefact was built
+      - C) Deployment time
+      - D) Runtime behaviour
+      answer: B
+    - question: 'Continuous dependency monitoring is needed because:'
+      options:
+      - A) Dependencies change
+      - B) Vulnerabilities are disclosed after deployment in already-running software
+      - C) Licences expire
+      - D) Builds drift
+      answer: B
+    - question: 'Verifying signatures at deployment rather than only at build:'
+      options:
+      - A) Duplicates effort
+      - B) Ensures what actually deploys is what was built and approved
+      - C) Slows deployment unnecessarily
+      - D) Replaces scanning
+      answer: B
+    - question: 'Pipeline credentials should be:'
+      options:
+      - A) Long-lived for stability
+      - B) Short-lived, scoped and auditable
+      - C) Shared across pipelines
+      - D) Stored in the repository
+      answer: B
+- ordinal: 5
+  title: Cloud-Native Detection and Response
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Detect attacks against cloud-native workloads.
+  - Investigate ephemeral and distributed systems.
+  - Respond without disrupting legitimate scaling.
+  topics:
+  - Runtime detection for containers.
+  - Distributed tracing for investigation.
+  - Evidence capture from ephemeral workloads.
+  - Response in auto-scaling environments.
+  lab: 'Lab: Detect a container escape attempt in a lab cluster, capture evidence from the ephemeral workload
+    before it is replaced, and contain without disrupting the wider service.'
+  refs:
+  - nist-sp-800-190
+  - nist-sp-800-61r3
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Investigating an ephemeral workload requires:'
+      options:
+      - A) Waiting for it to terminate
+      - B) Capturing evidence before the workload is replaced or scaled away
+      - C) Disk imaging only
+      - D) Provider support
+      answer: B
+    - question: 'Killing a compromised pod in an auto-scaling deployment may:'
+      options:
+      - A) Resolve the incident
+      - B) Simply cause a replacement to be scheduled, possibly re-compromised
+      - C) Stop the service
+      - D) Preserve evidence
+      answer: B
+    - question: 'Container escape detection relies on observing:'
+      options:
+      - A) Image contents
+      - B) Runtime behaviour indicating interaction with host resources
+      - C) Network volume
+      - D) Build metadata
+      answer: B
+    - question: 'Distributed tracing aids investigation by:'
+      options:
+      - A) Storing payloads
+      - B) Reconstructing a request's path across many services
+      - C) Detecting malware
+      - D) Blocking traffic
+      answer: B
+    - question: 'Containment in cloud-native environments should consider:'
+      options:
+      - A) Host isolation only
+      - B) The orchestrator's reconciliation behaviour, which may undo manual actions
+      - C) Network only
+      - D) Nothing specific
+      answer: B
+- ordinal: 6
+  title: Cloud-Native Security Operations
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Operate security for rapidly changing environments.
+  - Embed security into delivery workflows.
+  - Measure security posture in a dynamic estate.
+  topics:
+  - Security in continuous delivery.
+  - Policy as code operations.
+  - Developer enablement and friction.
+  - Dynamic posture measurement.
+  lab: 'Lab: Design a security operating model for a platform team shipping many times per day, specifying
+    what is automated, what is gated and what is monitored after the fact.'
+  refs:
+  - nist-sp-800-218
+  - nist-cswp-29
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Security gates that block frequent deployment tend to:'
+      options:
+      - A) Improve quality
+      - B) Be circumvented or removed under delivery pressure
+      - C) Reduce incidents
+      - D) Increase adoption
+      answer: B
+    - question: 'In a high-velocity environment, the most effective security investment is usually:'
+      options:
+      - A) More manual review
+      - B) Automated guardrails that make the secure path the easy path
+      - C) Additional approvals
+      - D) Quarterly audits
+      answer: B
+    - question: 'Measuring posture in a dynamic estate requires:'
+      options:
+      - A) Annual assessment
+      - B) Continuous, automated evaluation tied to current state
+      - C) Asset registers
+      - D) Manual sampling
+      answer: B
+    - question: 'Developer friction from security controls matters because:'
+      options:
+      - A) Developers complain
+      - B) High friction predicts circumvention and shadow infrastructure
+      - C) It slows delivery only
+      - D) It increases cost
+      answer: B
+    - question: 'Post-deployment monitoring complements pre-deployment gating because:'
+      options:
+      - A) Gates are unnecessary
+      - B) Not every risk can be evaluated before deployment
+      - C) It is cheaper
+      - D) It replaces testing
+      answer: B

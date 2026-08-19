@@ -1,0 +1,45 @@
+programme,institution,dp_order,qsp_code,term_code,term_label,term_start,term_end,weeks,course_code,course_title,duration_hours,provenance,status
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-F,DP 1 Year 1 Fall — Foundations I,2026-09-01,2026-12-31,15,C101,Computer Architecture & Systems,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-F,DP 1 Year 1 Fall — Foundations I,2026-09-01,2026-12-31,15,C102,Operating-System Fundamentals,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-F,DP 1 Year 1 Fall — Foundations I,2026-09-01,2026-12-31,15,C103,Intro to Networking,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-F,DP 1 Year 1 Fall — Foundations I,2026-09-01,2026-12-31,15,C104,Intro to Programming (Python),,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-F,DP 1 Year 1 Fall — Foundations I,2026-09-01,2026-12-31,15,C105,Foundations of Cybersecurity,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-F,DP 1 Year 1 Fall — Foundations I,2026-09-01,2026-12-31,10,C106,Cryptography Basics,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-S,DP 1 Year 1 Spring — Foundations II,2027-01-01,2027-04-30,15,C107,Secure Software Development,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-S,DP 1 Year 1 Spring — Foundations II,2027-01-01,2027-04-30,15,C108,Linux System Administration,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-S,DP 1 Year 1 Spring — Foundations II,2027-01-01,2027-04-30,15,C109,Network Services & Protocols,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-S,DP 1 Year 1 Spring — Foundations II,2027-01-01,2027-04-30,15,C110,Intro to Risk Management,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-F,DP 1 Year 2 Fall — Core I,2027-09-01,2027-12-31,15,C201,Network Defense & Firewalls,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-F,DP 1 Year 2 Fall — Core I,2027-09-01,2027-12-31,15,C202,Secure Communications (TLS/VPN),,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-F,DP 1 Year 2 Fall — Core I,2027-09-01,2027-12-31,15,C203,Identity & Access Management,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-F,DP 1 Year 2 Fall — Core I,2027-09-01,2027-12-31,15,C204,Security Monitoring & SIEM,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-F,DP 1 Year 2 Fall — Core I,2027-09-01,2027-12-31,15,C205,Lab: Hardened Lab Network,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-F,DP 1 Year 2 Fall — Core I,2027-09-01,2027-12-31,3,C206,Incident Response Foundations,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-S,DP 1 Year 2 Spring — Core II,2028-01-01,2028-04-30,15,C207,Incident Response Foundations,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-S,DP 1 Year 2 Spring — Core II,2028-01-01,2028-04-30,15,C208,Windows Forensics,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-S,DP 1 Year 2 Spring — Core II,2028-01-01,2028-04-30,15,C209,Malware Analysis 101,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-S,DP 1 Year 2 Spring — Core II,2028-01-01,2028-04-30,15,C210,Threat Modeling & ATT&CK,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-S,DP 1 Year 2 Spring — Core II,2028-01-01,2028-04-30,15,C211,Lab: Simulated Incident Exercise,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y2-S,DP 1 Year 2 Spring — Core II,2028-01-01,2028-04-30,3,C212,Advanced Incident Response,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-F,DP 1 Year 3 Fall — Core III,2028-09-01,2028-12-31,15,C301,Advanced Threat Hunting,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-F,DP 1 Year 3 Fall — Core III,2028-09-01,2028-12-31,15,C302,Red-Team Fundamentals,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-F,DP 1 Year 3 Fall — Core III,2028-09-01,2028-12-31,15,C303,Cloud Security (AWS/Azure),,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-F,DP 1 Year 3 Fall — Core III,2028-09-01,2028-12-31,15,C304,IoT & Embedded Device Security,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-F,DP 1 Year 3 Fall — Core III,2028-09-01,2028-12-31,15,C305,Advanced Malware Reverse-Engineering,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-F,DP 1 Year 3 Fall — Core III,2028-09-01,2028-12-31,15,C306,Lab: Full-Scale Adversary Emulation,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-S,DP 1 Year 3 Spring — Capstone,2029-01-01,2029-04-30,15,C401,Professional Ethics & Legal Frameworks,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-S,DP 1 Year 3 Spring — Capstone,2029-01-01,2029-04-30,15,C402,Capstone Project Planning,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-S,DP 1 Year 3 Spring — Capstone,2029-01-01,2029-04-30,6,C403,Capstone Implementation,,unsourced,proposed
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-S,DP 1 Year 3 Spring — Capstone,2029-01-01,2029-04-30,9,C404,Capstone Assessment & Presentation,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-F,DP 2 Fall — Advanced Technical I,2029-09-01,2029-12-31,15,RMC C201,Advanced Network Defense,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-F,DP 2 Fall — Advanced Technical I,2029-09-01,2029-12-31,15,RMC C202,Threat Hunting — Advanced,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-F,DP 2 Fall — Advanced Technical I,2029-09-01,2029-12-31,15,RMC C203,Cloud Security — Advanced,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-F,DP 2 Fall — Advanced Technical I,2029-09-01,2029-12-31,15,RMC C204,IoT Firmware Reverse-Engineering,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-F,DP 2 Fall — Advanced Technical I,2029-09-01,2029-12-31,15,RMC C205,Red-Team Operations,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-F,DP 2 Fall — Advanced Technical I,2029-09-01,2029-12-31,3,RMC C206,Capstone Planning,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-S,DP 2 Spring — Advanced Technical II,2030-01-01,2030-04-30,15,RMC C207,Advanced Malware Analysis,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-S,DP 2 Spring — Advanced Technical II,2030-01-01,2030-04-30,15,RMC C208,Incident Response — End-to-End,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-S,DP 2 Spring — Advanced Technical II,2030-01-01,2030-04-30,15,RMC C209,Cyber Threat Intelligence,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-S,DP 2 Spring — Advanced Technical II,2030-01-01,2030-04-30,15,RMC C210,Cloud-Native Defense,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-S,DP 2 Spring — Advanced Technical II,2030-01-01,2030-04-30,15,RMC C211,Advanced IoT Security,,unsourced,proposed
+cyber-operator,Royal Military College,2,QSP-TODO,DP2-S,DP 2 Spring — Advanced Technical II,2030-01-01,2030-04-30,15,RMC C212,Capstone Execution & Assessment,,unsourced,proposed

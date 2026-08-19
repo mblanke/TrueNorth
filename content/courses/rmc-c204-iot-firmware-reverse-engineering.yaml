@@ -1,0 +1,378 @@
+# RMC C204 - IoT Firmware Reverse-Engineering - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C204
+title: IoT Firmware Reverse-Engineering
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Firmware Acquisition
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Obtain firmware through multiple acquisition routes.
+  - Select an acquisition method appropriate to the device.
+  - Handle hardware safely during extraction.
+  topics:
+  - Vendor update acquisition.
+  - Flash chip reading and desoldering.
+  - Debug interface extraction.
+  - Safety and device preservation.
+  lab: 'Lab: Acquire firmware from a device by two independent routes, compare the images, and document
+    any differences between the vendor update and the on-device image.'
+  refs:
+  - binwalk
+  - nist-sp-800-193
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Comparing a vendor update image with the on-device image can reveal:'
+      options:
+      - A) Nothing useful
+      - B) Device-specific data, configuration or modifications not present in the update
+      - C) Only version differences
+      - D) Encryption keys always
+      answer: B
+    - question: 'Reading a flash chip directly is preferred when:'
+      options:
+      - A) Updates are available
+      - B) The vendor image is unavailable or the on-device state matters
+      - C) The device is new
+      - D) Debug ports are open
+      answer: B
+    - question: 'Extracting firmware via a debug interface such as UART typically requires:'
+      options:
+      - A) Desoldering
+      - B) Identifying the pinout and an accessible bootloader or shell
+      - C) Vendor cooperation
+      - D) Network access
+      answer: B
+    - question: 'Destructive extraction should be considered only when:'
+      options:
+      - A) It is faster
+      - B) Non-destructive routes are exhausted and the device can be sacrificed
+      - C) The device is cheap
+      - D) Always
+      answer: B
+    - question: 'Firmware acquired from an untrusted source should be:'
+      options:
+      - A) Trusted if it works
+      - B) Verified against vendor hashes or signatures where possible
+      - C) Used directly
+      - D) Discarded
+      answer: B
+- ordinal: 2
+  title: Firmware Unpacking and Filesystem Analysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify firmware image structure.
+  - Extract embedded filesystems and components.
+  - Analyse the extracted filesystem systematically.
+  topics:
+  - Image structure and headers.
+  - Filesystem identification and extraction.
+  - Entropy analysis and encryption detection.
+  - Systematic filesystem review.
+  lab: 'Lab: Unpack a firmware image, extract its filesystem, and produce an inventory of binaries, configuration
+    files, credentials and cryptographic material found.'
+  refs:
+  - binwalk
+  - nist-sp-800-193
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'High uniform entropy across an entire firmware image suggests:'
+      options:
+      - A) Plain filesystem
+      - B) Encryption or whole-image compression
+      - C) Corruption
+      - D) Padding
+      answer: B
+    - question: 'Binwalk is primarily used to:'
+      options:
+      - A) Emulate firmware
+      - B) Identify and extract embedded files and filesystems within an image
+      - C) Patch binaries
+      - D) Read flash chips
+      answer: B
+    - question: 'Hardcoded credentials found in a firmware filesystem are significant because they:'
+      options:
+      - A) Are usually rotated
+      - B) Typically apply to every device of that model and cannot be changed by users
+      - C) Are encrypted
+      - D) Are device specific
+      answer: B
+    - question: 'A squashfs image inside firmware is:'
+      options:
+      - A) An encryption container
+      - B) A compressed read-only filesystem commonly used in embedded devices
+      - C) A bootloader
+      - D) A kernel image
+      answer: B
+    - question: 'Private keys embedded in firmware are a serious finding because they:'
+      options:
+      - A) Expire quickly
+      - B) Are shared across all devices and can be extracted by anyone
+      - C) Are per device
+      - D) Cannot be used remotely
+      answer: B
+- ordinal: 3
+  title: Embedded Binary Analysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Analyse binaries for non-x86 architectures.
+  - Identify vulnerabilities in embedded code.
+  - Trace input handling through embedded binaries.
+  topics:
+  - ARM and MIPS architecture basics.
+  - Cross-architecture analysis tooling.
+  - Memory safety in embedded C.
+  - Input handling and attack surface tracing.
+  lab: 'Lab: Analyse an embedded binary handling network input, trace the input path to a memory operation,
+    and assess whether the bounds checking is adequate.'
+  refs:
+  - cwe-top-25
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: Embedded devices commonly use which architectures?
+      options:
+      - A) x86 only
+      - B) ARM and MIPS among others
+      - C) SPARC only
+      - D) RISC-V exclusively
+      answer: B
+    - question: 'Memory safety issues are prevalent in embedded firmware because it is often:'
+      options:
+      - A) Written in memory-safe languages
+      - B) Written in C with limited mitigations and rarely updated
+      - C) Formally verified
+      - D) Interpreted
+      answer: B
+    - question: 'Tracing input to a memory operation is important because it establishes:'
+      options:
+      - A) Code quality
+      - B) Whether attacker-controlled data reaches an unsafe operation
+      - C) Performance
+      - D) Architecture
+      answer: B
+    - question: 'Embedded binaries frequently lack mitigations such as:'
+      options:
+      - A) Compilation
+      - B) ASLR, stack canaries and non-executable memory
+      - C) Symbols
+      - D) Networking
+      answer: B
+    - question: 'A fixed-size buffer filled from network input without length validation is:'
+      options:
+      - A) Efficient
+      - B) A likely buffer overflow vulnerability
+      - C) Standard practice
+      - D) Safe if small
+      answer: B
+- ordinal: 4
+  title: Emulation and Dynamic Analysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Emulate firmware to enable dynamic analysis.
+  - Overcome hardware dependencies in emulation.
+  - Fuzz embedded services safely.
+  topics:
+  - Full and partial emulation approaches.
+  - Hardware dependency stubbing.
+  - Debugging emulated firmware.
+  - Fuzzing embedded network services.
+  lab: 'Lab: Emulate a firmware image sufficiently to run its web service, attach a debugger, and fuzz
+    one input handler recording any crashes with reproducing input.'
+  refs:
+  - nist-sp-800-115
+  - cwe-top-25
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Firmware emulation frequently fails because the image expects:'
+      options:
+      - A) More memory
+      - B) Specific hardware peripherals that the emulator does not provide
+      - C) Network access
+      - D) A newer kernel
+      answer: B
+    - question: 'Partial emulation is useful when:'
+      options:
+      - A) The whole system emulates cleanly
+      - B) Only a specific service or binary needs to be executed
+      - C) Hardware is available
+      - D) Source code exists
+      answer: B
+    - question: 'Fuzzing an embedded service is valuable because it:'
+      options:
+      - A) Proves correctness
+      - B) Efficiently finds input handling defects that manual review may miss
+      - C) Replaces static analysis
+      - D) Confirms architecture
+      answer: B
+    - question: 'A crash found by fuzzing should be:'
+      options:
+      - A) Reported immediately as a vulnerability
+      - B) Triaged to determine whether it is exploitable and reproducible
+      - C) Ignored if rare
+      - D) Patched directly
+      answer: B
+    - question: 'Running firmware on real hardware rather than emulation offers:'
+      options:
+      - A) Easier debugging
+      - B) Higher fidelity but less instrumentation and control
+      - C) Faster iteration
+      - D) Better tooling
+      answer: B
+- ordinal: 5
+  title: Update Mechanisms and Secure Boot
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Analyse a device's update mechanism for weaknesses.
+  - Assess secure boot implementation.
+  - Identify rollback and downgrade exposure.
+  topics:
+  - Update transport and verification.
+  - Signature verification implementation.
+  - Secure boot chain analysis.
+  - Rollback protection.
+  lab: 'Lab: Analyse a device''s update mechanism end to end, determine whether updates are authenticated
+    and rollback-protected, and demonstrate any weakness found in the lab.'
+  refs:
+  - nist-sp-800-193
+  - nist-ir-8259
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'An update mechanism that fetches firmware over unauthenticated HTTP allows:'
+      options:
+      - A) Faster updates
+      - B) An attacker positioned on the network to supply malicious firmware
+      - C) Better compatibility
+      - D) Rollback
+      answer: B
+    - question: 'Signature verification performed after the image is written to flash is:'
+      options:
+      - A) Equivalent to verifying before
+      - B) Dangerous, since a failed device may already be compromised or bricked
+      - C) Standard practice
+      - D) More efficient
+      answer: B
+    - question: 'Rollback protection prevents an attacker from:'
+      options:
+      - A) Installing newer firmware
+      - B) Downgrading to an older signed version with known vulnerabilities
+      - C) Reading firmware
+      - D) Modifying configuration
+      answer: B
+    - question: 'A secure boot chain is only as strong as:'
+      options:
+      - A) Its longest link
+      - B) Its root of trust and the weakest verification step in the chain
+      - C) The kernel
+      - D) The bootloader alone
+      answer: B
+    - question: 'Devices that cannot be updated at all represent:'
+      options:
+      - A) Lower risk
+      - B) Permanent exposure to any vulnerability discovered in their lifetime
+      - C) Simpler management
+      - D) Better security
+      answer: B
+- ordinal: 6
+  title: Coordinated Disclosure for Embedded Devices
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assess the real-world impact of an embedded vulnerability.
+  - Conduct disclosure with embedded device vendors.
+  - Account for the long tail of unpatched devices.
+  topics:
+  - Impact assessment for embedded flaws.
+  - Vendor engagement challenges.
+  - Supply chain and white-label devices.
+  - Long-tail exposure and mitigation advice.
+  lab: 'Lab: Prepare a disclosure package for a vulnerability found in the lab device, including impact
+    assessment, affected model identification and mitigation advice for users who cannot patch.'
+  refs:
+  - nist-ir-8259
+  - nist-sp-800-218
+  - cwe-top-25
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Embedded vulnerability disclosure is complicated by white-label devices because:'
+      options:
+      - A) They are rare
+      - B) The same flawed firmware ships under many brands with different vendors
+      - C) They lack firmware
+      - D) They are unsupported
+      answer: B
+    - question: 'Mitigation advice for embedded devices is important because:'
+      options:
+      - A) Patches are always available
+      - B) Many devices will never receive a fix and users need compensating measures
+      - C) Users can rewrite firmware
+      - D) Vendors handle it
+      answer: B
+    - question: 'Impact assessment for an embedded flaw should consider:'
+      options:
+      - A) The device cost
+      - B) Deployment scale, network exposure and the consequence of compromise
+      - C) Firmware size
+      - D) Architecture
+      answer: B
+    - question: 'An unresponsive embedded vendor should lead the researcher to:'
+      options:
+      - A) Publish immediately
+      - B) Escalate through a coordinating body and consider user-protective mitigation advice
+      - C) Contact customers directly
+      - D) Abandon disclosure
+      answer: B
+    - question: 'End-of-life embedded devices present risk because:'
+      options:
+      - A) They fail often
+      - B) They remain deployed and networked long after security support ends
+      - C) They are undocumented
+      - D) They lack updates only
+      answer: B

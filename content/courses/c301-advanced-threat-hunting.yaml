@@ -1,0 +1,378 @@
+# C301 - Advanced Threat Hunting - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C301
+title: Advanced Threat Hunting
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Hunting Methodology
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish hunting from alerting and incident response.
+  - Apply a structured hunting methodology.
+  - Define hunt scope, duration and success criteria.
+  topics:
+  - Hunting versus monitoring.
+  - Hypothesis-driven and data-driven hunting.
+  - Hunt planning and scoping.
+  - Measuring hunt outcomes.
+  lab: 'Lab: Plan a hunt including hypothesis, data sources, scope, duration and success criteria, and
+    state in advance what result would falsify the hypothesis.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Threat hunting differs from alert triage because hunting:'
+      options:
+      - A) Waits for alerts
+      - B) Proactively searches for activity that produced no alert
+      - C) Is automated
+      - D) Requires an incident
+      answer: B
+    - question: 'A falsifiable hypothesis is valuable because it:'
+      options:
+      - A) Is easier to prove
+      - B) Allows the hunt to conclude definitively either way
+      - C) Reduces data needs
+      - D) Avoids documentation
+      answer: B
+    - question: 'Data-driven hunting starts from:'
+      options:
+      - A) A specific adversary hypothesis
+      - B) Exploration of the data for anomalies
+      - C) An alert
+      - D) A vendor report
+      answer: B
+    - question: 'Defining hunt duration in advance prevents:'
+      options:
+      - A) Thorough analysis
+      - B) Unbounded effort with no decision point
+      - C) Documentation
+      - D) Scope creep only
+      answer: B
+    - question: 'The primary output of a mature hunting programme is:'
+      options:
+      - A) Incidents found
+      - B) New detections and improved visibility, whether or not activity was found
+      - C) Analyst hours
+      - D) Data volume
+      answer: B
+- ordinal: 2
+  title: Data Sources and Analytic Techniques
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select data sources appropriate to a hypothesis.
+  - Apply statistical and stacking techniques at scale.
+  - Recognise the limits of each analytic approach.
+  topics:
+  - Source selection and coverage.
+  - Stacking, clustering and outlier detection.
+  - Baselining and rarity analysis.
+  - Analytic limitations and false confidence.
+  lab: 'Lab: Apply frequency analysis to process execution data across a fleet to identify rare parent-child
+    relationships, then investigate the three rarest and classify each.'
+  refs:
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Rarity analysis assumes that:'
+      options:
+      - A) Rare is always malicious
+      - B) Malicious activity is often rare, so rarity is a useful filter not a verdict
+      - C) Common is malicious
+      - D) Frequency is irrelevant
+      answer: B
+    - question: 'Stacking works best when the population is:'
+      options:
+      - A) Highly heterogeneous
+      - B) Reasonably homogeneous so outliers are meaningful
+      - C) Very small
+      - D) Unlabelled
+      answer: B
+    - question: 'Baselining before hunting is important because:'
+      options:
+      - A) It reduces data
+      - B) Anomaly is only meaningful relative to established normal
+      - C) It speeds queries
+      - D) It satisfies audit
+      answer: B
+    - question: 'A hunt limited to one data source risks:'
+      options:
+      - A) Faster results
+      - B) Concluding absence of activity when only that source lacks visibility
+      - C) Better accuracy
+      - D) Lower cost
+      answer: B
+    - question: 'Clustering similar events helps a hunter by:'
+      options:
+      - A) Deleting duplicates
+      - B) Reducing volume to distinct behaviours worth examining
+      - C) Improving retention
+      - D) Assigning severity
+      answer: B
+- ordinal: 3
+  title: Hunting for Persistence and Lateral Movement
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Hunt for persistence mechanisms across a fleet.
+  - Detect lateral movement patterns in authentication data.
+  - Distinguish administrative activity from adversary activity.
+  topics:
+  - Persistence hunting across endpoints.
+  - Authentication graph analysis.
+  - Remote execution techniques.
+  - Administrative baseline discrimination.
+  lab: 'Lab: Hunt for anomalous remote execution across authentication and process data, build a lateral
+    movement graph, and separate legitimate administrative patterns from suspicious ones.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Lateral movement is often visible as:'
+      options:
+      - A) Inbound internet traffic
+      - B) Unusual authentication paths between hosts that normally do not communicate
+      - C) High CPU
+      - D) DNS failures
+      answer: B
+    - question: 'Distinguishing admin activity from adversary activity requires:'
+      options:
+      - A) Blocking admins
+      - B) Knowing the expected administrative baseline and jump host patterns
+      - C) More alerts
+      - D) Fewer accounts
+      answer: B
+    - question: 'Hunting persistence across a fleet is effective because:'
+      options:
+      - A) Persistence is rare in absolute terms and stands out when compared fleet-wide
+      - B) Persistence is always malicious
+      - C) Endpoints are identical
+      - D) It needs no baseline
+      answer: A
+    - question: 'An account authenticating to many hosts in a short period suggests:'
+      options:
+      - A) Normal behaviour always
+      - B) Possible credential misuse or automated lateral movement
+      - C) Password expiry
+      - D) Clock skew
+      answer: B
+    - question: 'Jump hosts complicate lateral movement hunting because they:'
+      options:
+      - A) Log less
+      - B) Legitimately produce many-to-many authentication patterns
+      - C) Are unmanaged
+      - D) Use different protocols
+      answer: B
+- ordinal: 4
+  title: Hunting in Encrypted and Cloud Environments
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Hunt effectively where payload inspection is unavailable.
+  - Apply cloud-native telemetry to hunting.
+  - Recognise cloud-specific adversary techniques.
+  topics:
+  - Metadata-based hunting.
+  - TLS fingerprinting and behavioural signals.
+  - Cloud audit logs and control plane activity.
+  - Cloud-specific techniques.
+  lab: 'Lab: Hunt for suspicious activity in cloud audit logs, focusing on identity and control plane
+    changes, and identify three actions that would warrant investigation.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-145
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Where payloads are encrypted, hunting relies primarily on:'
+      options:
+      - A) Decryption
+      - B) Metadata, timing, volume and behavioural patterns
+      - C) Signatures
+      - D) File hashes
+      answer: B
+    - question: 'Cloud control plane logs are valuable because they record:'
+      options:
+      - A) Application data
+      - B) Administrative and configuration actions against cloud resources
+      - C) Network payloads
+      - D) Endpoint processes
+      answer: B
+    - question: 'Creation of a new identity with broad permissions in cloud audit logs is:'
+      options:
+      - A) Routine
+      - B) A high-value hunting signal warranting verification
+      - C) Undetectable
+      - D) Always automated
+      answer: B
+    - question: 'Disabling cloud audit logging is significant because it:'
+      options:
+      - A) Improves performance
+      - B) Is both an evasion technique and a strong indicator itself
+      - C) Reduces cost only
+      - D) Is required for scaling
+      answer: B
+    - question: 'Cloud environments differ for hunting principally because:'
+      options:
+      - A) They are more secure
+      - B) The control plane is a distinct and critical attack surface with its own telemetry
+      - C) They lack logging
+      - D) They use no identities
+      answer: B
+- ordinal: 5
+  title: Operationalising Hunt Results
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert hunt findings into durable detections.
+  - Feed findings into visibility improvement.
+  - Document hunts for reuse and repeatability.
+  topics:
+  - Detection authoring from hunt output.
+  - Visibility gap remediation.
+  - Hunt documentation and reuse.
+  - Automation of repeatable hunts.
+  lab: 'Lab: Take a hunt that found a technique, author a tested detection for it, document the hunt for
+    repeatability, and identify the visibility gap that allowed it to go undetected.'
+  refs:
+  - sigma
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Every hunt should conclude with:'
+      options:
+      - A) An incident
+      - B) Documented findings plus detection or visibility improvements
+      - C) A new tool
+      - D) A closed ticket
+      answer: B
+    - question: 'A repeatable hunt should eventually be:'
+      options:
+      - A) Discarded
+      - B) Automated as a scheduled analytic or detection
+      - C) Performed manually forever
+      - D) Assigned to juniors
+      answer: B
+    - question: 'If a hunt reveals a visibility gap, the correct response is to:'
+      options:
+      - A) Note it only
+      - B) Remediate the telemetry gap so future detection is possible
+      - C) Increase alert volume
+      - D) Change the hypothesis
+      answer: B
+    - question: 'Documenting a hunt that found nothing is valuable because it:'
+      options:
+      - A) Fills reports
+      - B) Records coverage achieved and avoids duplicated effort
+      - C) Justifies budget
+      - D) Satisfies audit
+      answer: B
+    - question: 'Detections authored from hunts should be validated against:'
+      options:
+      - A) The hunt data only
+      - B) Both the positive case and representative benign activity
+      - C) Vendor samples
+      - D) Nothing
+      answer: B
+- ordinal: 6
+  title: Building a Hunting Programme
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Establish a hunting capability with defined outputs.
+  - Measure hunting effectiveness meaningfully.
+  - Integrate hunting with detection and response functions.
+  topics:
+  - Programme structure and cadence.
+  - Skills and team composition.
+  - Meaningful hunt metrics.
+  - Integration with SOC functions.
+  lab: 'Lab: Design a twelve-month hunting programme including cadence, prioritised hypotheses, required
+    data sources and the metrics you would report to leadership.'
+  refs:
+  - mitre-attack
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Measuring a hunting programme by incidents found is flawed because:'
+      options:
+      - A) Incidents are rare
+      - B) It penalises hunts that correctly establish absence and improve coverage
+      - C) Incidents are hard to count
+      - D) It is subjective
+      answer: B
+    - question: 'Hunting hypotheses should be prioritised by:'
+      options:
+      - A) Analyst interest
+      - B) Relevance of the technique to the organisation and current visibility
+      - C) Ease of query
+      - D) Data volume
+      answer: B
+    - question: 'A hunting programme without dedicated time typically:'
+      options:
+      - A) Runs efficiently
+      - B) Is displaced by alert queue work and never happens
+      - C) Produces more findings
+      - D) Needs fewer people
+      answer: B
+    - question: 'Hunting should feed detection engineering because:'
+      options:
+      - A) They share tools
+      - B) Hunt findings identify what detections are missing
+      - C) It reduces headcount
+      - D) Metrics require it
+      answer: B
+    - question: 'A useful hunting metric would be:'
+      options:
+      - A) Queries run
+      - B) New validated detections produced and visibility gaps closed
+      - C) Hours worked
+      - D) Data searched
+      answer: B

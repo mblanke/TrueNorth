@@ -1,0 +1,376 @@
+# RMC C205 - Red-Team Operations - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C205
+title: Red-Team Operations
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Operational Planning and Authorisation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan a full red team operation with defined objectives.
+  - Establish authorisation, oversight and deconfliction.
+  - Design operational security for the red team itself.
+  topics:
+  - Objective-based operation design.
+  - Authorisation, oversight and control.
+  - Deconfliction and white cell function.
+  - Red team operational security.
+  lab: 'Lab: Produce a complete operation plan including objectives, authorisation chain, white cell arrangements,
+    deconfliction procedure and stop conditions.'
+  refs:
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'A white cell in a red team operation exists to:'
+      options:
+      - A) Perform the attack
+      - B) Maintain oversight, deconflict and hold stop authority
+      - C) Defend the network
+      - D) Write the report
+      answer: B
+    - question: 'Objective-based operations differ from vulnerability assessment because they:'
+      options:
+      - A) Find more vulnerabilities
+      - B) Test whether a defined adversary goal can be achieved and detected
+      - C) Are automated
+      - D) Require less authorisation
+      answer: B
+    - question: 'Red team operational security matters because:'
+      options:
+      - A) It improves stealth scores
+      - B) Compromise of red team tooling or data would create real organisational risk
+      - C) Defenders may cheat
+      - D) It reduces cost
+      answer: B
+    - question: 'Stop conditions must be defined so that:'
+      options:
+      - A) The team can quit when tired
+      - B) Activity halts immediately if safety, legality or operations are threatened
+      - C) The exercise stays on schedule
+      - D) Detection ends the test
+      answer: B
+    - question: 'If the red team achieves access to a system outside authorised scope, they must:'
+      options:
+      - A) Continue to prove impact
+      - B) Stop, report to the white cell and await direction
+      - C) Document quietly
+      - D) Remove evidence
+      answer: B
+- ordinal: 2
+  title: Tradecraft and Evasion
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply tradecraft appropriate to the emulated threat.
+  - Balance evasion against the exercise objective.
+  - Understand detection mechanisms being evaded.
+  topics:
+  - Tradecraft fundamentals.
+  - Detection mechanisms and evasion trade-offs.
+  - Operational tempo and footprint.
+  - Evasion versus learning value.
+  lab: 'Lab: Execute a technique in both a noisy and an evasive manner, compare the telemetry generated
+    by each, and document which detections fired in each case.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Maximum evasion is not always desirable in an exercise because:'
+      options:
+      - A) It is difficult
+      - B) If nothing is detectable, defenders learn little about their gaps
+      - C) It takes longer
+      - D) It is unrealistic
+      answer: B
+    - question: 'Understanding the detection being evaded is important because it:'
+      options:
+      - A) Makes evasion easier only
+      - B) Allows the finding to be reported as a specific, fixable gap
+      - C) Reduces effort
+      - D) Improves tooling
+      answer: B
+    - question: 'Operational footprint refers to:'
+      options:
+      - A) Team size
+      - B) The artefacts and telemetry the operation generates
+      - C) Network bandwidth
+      - D) Duration
+      answer: B
+    - question: 'Evasion techniques used should be:'
+      options:
+      - A) The most advanced available
+      - B) Representative of the threat being emulated
+      - C) Undocumented
+      - D) Automated
+      answer: B
+    - question: 'Tradecraft that leaves no record at all is problematic for an exercise because:'
+      options:
+      - A) It is unrealistic
+      - B) Findings cannot be evidenced or reconstructed afterwards
+      - C) It is unlawful
+      - D) Tools fail
+      answer: B
+- ordinal: 3
+  title: Command and Control
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design resilient command and control for an operation.
+  - Select channels appropriate to the target environment.
+  - Operate command and control within authorisation limits.
+  topics:
+  - Channel selection and profiles.
+  - Redundancy and fallback.
+  - Traffic shaping and blending.
+  - Control and containment of implants.
+  lab: 'Lab: Configure a command and control channel with a defined communication profile and fallback,
+    verify it operates only within the authorised scope, and document the removal procedure.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Command and control redundancy is used to:'
+      options:
+      - A) Increase bandwidth
+      - B) Maintain access if the primary channel is blocked
+      - C) Evade attribution
+      - D) Reduce latency
+      answer: B
+    - question: 'Blending command and control traffic with legitimate traffic aims to:'
+      options:
+      - A) Improve speed
+      - B) Avoid standing out in network telemetry
+      - C) Reduce cost
+      - D) Simplify configuration
+      answer: B
+    - question: 'Every implant deployed during an operation must be:'
+      options:
+      - A) Left for persistence testing
+      - B) Inventoried and fully removed at conclusion
+      - C) Encrypted only
+      - D) Documented after the fact
+      answer: B
+    - question: 'Command and control infrastructure used in an authorised operation should be:'
+      options:
+      - A) Shared with other clients
+      - B) Dedicated, controlled and destroyed after the engagement
+      - C) Publicly hosted
+      - D) Reused
+      answer: B
+    - question: 'Beaconing intervals with jitter are used to:'
+      options:
+      - A) Reduce server load
+      - B) Avoid the regular timing pattern that detection looks for
+      - C) Improve reliability
+      - D) Save bandwidth
+      answer: B
+- ordinal: 4
+  title: Objective Execution
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute toward defined objectives across a full operation.
+  - Manage the operation over an extended period.
+  - Document activity to enable defensive reconstruction.
+  topics:
+  - Objective sequencing.
+  - Long-duration operation management.
+  - Activity logging discipline.
+  - Handover within the red team.
+  lab: 'Lab: Execute a multi-stage operation toward a defined objective, maintaining a complete activity
+    log with timestamps, and produce the reconstruction the blue team would need.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'The red team''s activity log is essential to the exercise because it:'
+      options:
+      - A) Proves effort
+      - B) Lets defenders reconstruct what happened and compare against what they saw
+      - C) Supports invoicing
+      - D) Replaces the report
+      answer: B
+    - question: 'During a long operation, red team handover requires:'
+      options:
+      - A) Nothing formal
+      - B) Documented state so the incoming operator does not repeat or contradict prior activity
+      - C) A new authorisation
+      - D) Tool changes
+      answer: B
+    - question: 'Achieving the objective early in an operation should prompt:'
+      options:
+      - A) Immediate termination
+      - B) Discussion with the white cell about further objectives or deeper testing
+      - C) Silence
+      - D) Scope expansion unilaterally
+      answer: B
+    - question: 'Activity that could plausibly be mistaken for a real intrusion must be:'
+      options:
+      - A) Concealed
+      - B) Deconflictable so defenders can verify it is the exercise
+      - C) Avoided entirely
+      - D) Reported afterwards
+      answer: B
+    - question: 'Objectives should be defined in terms of:'
+      options:
+      - A) Techniques executed
+      - B) Business-meaningful outcomes an adversary would seek
+      - C) Hosts compromised
+      - D) Time elapsed
+      answer: B
+- ordinal: 5
+  title: Blue Team Interaction and Handover
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Transition from covert operation to collaborative review.
+  - Deliver findings in a way defenders can act on.
+  - Support detection improvement directly.
+  topics:
+  - Operation closure and disclosure.
+  - Joint reconstruction sessions.
+  - Detection gap walkthrough.
+  - Collaborative improvement.
+  lab: 'Lab: Run a joint reconstruction session comparing the red team log against blue team telemetry,
+    identifying for each action whether it was visible, detected or missed.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A joint reconstruction session compares:'
+      options:
+      - A) Tooling
+      - B) What the red team did against what the blue team observed
+      - C) Budgets
+      - D) Techniques against ATT&CK only
+      answer: B
+    - question: 'An action that was visible in telemetry but not detected indicates:'
+      options:
+      - A) A visibility gap
+      - B) A detection logic gap
+      - C) A response gap
+      - D) No gap
+      answer: B
+    - question: 'Red team findings are most actionable when expressed as:'
+      options:
+      - A) Narrative of the compromise
+      - B) Specific detection and control improvements tied to observed actions
+      - C) Severity ratings
+      - D) Technique lists
+      answer: B
+    - question: 'Withholding operational detail from defenders after the exercise:'
+      options:
+      - A) Preserves future exercise value
+      - B) Prevents the learning the exercise exists to produce
+      - C) Is standard practice
+      - D) Protects tradecraft appropriately
+      answer: B
+    - question: 'The success of a red team operation should ultimately be judged by:'
+      options:
+      - A) Whether objectives were achieved
+      - B) The measurable defensive improvement that followed
+      - C) Stealth maintained
+      - D) Duration
+      answer: B
+- ordinal: 6
+  title: Programme Ethics and Sustainability
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sustain a red team capability ethically.
+  - Manage the human factors of offensive work.
+  - Maintain organisational trust in the capability.
+  topics:
+  - Ethical constraints in sustained operations.
+  - Team welfare and burnout.
+  - Trust, transparency and organisational relationships.
+  - Capability governance.
+  lab: 'Lab: Draft a red team charter covering ethical constraints, oversight, team welfare provisions
+    and the standards by which the capability''s conduct will be judged.'
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A red team that is distrusted by the organisation will:'
+      options:
+      - A) Operate more realistically
+      - B) Lose access, cooperation and ultimately effectiveness
+      - C) Find more issues
+      - D) Require less oversight
+      answer: B
+    - question: 'Ethical constraints on a red team should be:'
+      options:
+      - A) Decided per operation by the team
+      - B) Set out in a charter with independent oversight
+      - C) Implicit
+      - D) Determined by the client
+      answer: B
+    - question: 'Offensive work carries human factors risk including:'
+      options:
+      - A) None specific
+      - B) Normalisation of intrusive behaviour and burnout from adversarial framing
+      - C) Physical injury only
+      - D) Skill decay
+      answer: B
+    - question: 'Transparency with leadership about red team limitations is important because:'
+      options:
+      - A) It reduces expectations usefully
+      - B) Overstated assurance from a limited exercise creates false confidence
+      - C) It justifies budget
+      - D) It is required
+      answer: B
+    - question: 'A red team charter should define:'
+      options:
+      - A) Tooling standards
+      - B) Purpose, authority, constraints, oversight and conduct standards
+      - C) Team size
+      - D) Reporting templates
+      answer: B

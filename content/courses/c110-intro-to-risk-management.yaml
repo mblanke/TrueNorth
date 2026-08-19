@@ -1,0 +1,374 @@
+# C110 - Intro to Risk Management - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C110
+title: Intro to Risk Management
+version: '1.0'
+difficulty: intermediate
+duration_hours: 60
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Risk Fundamentals
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define risk in terms of likelihood and impact.
+  - Distinguish inherent, residual and accepted risk.
+  - Explain the relationship between threat, vulnerability and asset value.
+  topics:
+  - Risk equation and its components.
+  - Inherent versus residual risk.
+  - Asset identification and valuation.
+  - Risk appetite and tolerance.
+  lab: 'Lab: For a described system, identify five assets, assign each a criticality rating with justification,
+    and calculate an inherent risk rating for two threat scenarios.'
+  refs:
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Residual risk is the risk that remains after:'
+      options:
+      - A) The threat is removed
+      - B) Controls have been applied
+      - C) The asset is retired
+      - D) Insurance is purchased
+      answer: B
+    - question: 'Risk appetite describes:'
+      options:
+      - A) The number of risks recorded
+      - B) The amount and type of risk an organisation is willing to pursue
+      - C) The cost of controls
+      - D) The audit schedule
+      answer: B
+    - question: 'A risk with high impact but very low likelihood should be:'
+      options:
+      - A) Always accepted
+      - B) Assessed on both dimensions, often warranting contingency planning
+      - C) Ignored
+      - D) Treated as a vulnerability
+      answer: B
+    - question: 'Asset valuation matters because it:'
+      options:
+      - A) Sets the patch schedule
+      - B) Determines proportionate control investment
+      - C) Defines the threat actor
+      - D) Fixes the likelihood
+      answer: B
+    - question: 'Inherent risk is assessed:'
+      options:
+      - A) After controls
+      - B) Before considering existing controls
+      - C) Only for new systems
+      - D) By auditors only
+      answer: B
+- ordinal: 2
+  title: Risk Assessment Methods
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare qualitative and quantitative assessment approaches.
+  - Conduct a structured risk assessment following recognised guidance.
+  - Communicate uncertainty honestly in assessment output.
+  topics:
+  - Qualitative scales and matrices.
+  - 'Quantitative measures: SLE, ARO, ALE.'
+  - Assessment scope and boundaries.
+  - Bias and uncertainty in estimation.
+  lab: 'Lab: Calculate annualised loss expectancy for two scenarios, then produce the same assessment
+    qualitatively, and explain where the two approaches disagree and why.'
+  refs:
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Annualised loss expectancy is calculated as:'
+      options:
+      - A) SLE divided by ARO
+      - B) SLE multiplied by ARO
+      - C) ARO minus SLE
+      - D) SLE plus ARO
+      answer: B
+    - question: 'Single loss expectancy represents:'
+      options:
+      - A) Losses per year
+      - B) The expected monetary loss from one occurrence
+      - C) The control cost
+      - D) The recovery time
+      answer: B
+    - question: 'A qualitative risk matrix is most useful when:'
+      options:
+      - A) Precise loss data exists
+      - B) Data is limited and relative prioritisation is the goal
+      - C) Regulatory fines are known
+      - D) Only one asset exists
+      answer: B
+    - question: 'Quantitative assessment is often criticised because:'
+      options:
+      - A) It is too fast
+      - B) Input estimates can convey false precision
+      - C) It ignores impact
+      - D) It cannot be documented
+      answer: B
+    - question: 'Defining assessment scope matters because:'
+      options:
+      - A) It sets the budget
+      - B) Conclusions are only valid within the boundary assessed
+      - C) It selects the assessor
+      - D) It fixes the risk rating
+      answer: B
+- ordinal: 3
+  title: Risk Treatment and Controls
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select among avoid, mitigate, transfer and accept.
+  - Distinguish preventive, detective and corrective controls.
+  - Justify control selection against cost and residual risk.
+  topics:
+  - The four treatment options.
+  - Control types and functions.
+  - Compensating controls.
+  - Cost-benefit of control selection.
+  lab: 'Lab: For three assessed risks, recommend a treatment option each with justification, name a specific
+    control, and state the expected residual risk after treatment.'
+  refs:
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Purchasing cyber insurance is an example of risk:'
+      options:
+      - A) Avoidance
+      - B) Transfer
+      - C) Mitigation
+      - D) Acceptance
+      answer: B
+    - question: 'Discontinuing a service to eliminate its risk entirely is risk:'
+      options:
+      - A) Avoidance
+      - B) Transfer
+      - C) Acceptance
+      - D) Mitigation
+      answer: A
+    - question: An intrusion detection system is primarily which control type?
+      options:
+      - A) Preventive
+      - B) Detective
+      - C) Corrective
+      - D) Deterrent
+      answer: B
+    - question: 'A compensating control is used when:'
+      options:
+      - A) The primary control is cheaper
+      - B) The intended control is not feasible and equivalent protection is needed
+      - C) Risk is accepted
+      - D) No risk exists
+      answer: B
+    - question: 'Risk acceptance should always be:'
+      options:
+      - A) Informal
+      - B) Documented and approved by an accountable owner
+      - C) Decided by the analyst
+      - D) Permanent
+      answer: B
+- ordinal: 4
+  title: Governance, Compliance and Assurance
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the role of governance in risk management.
+  - Explain the purpose of audit and independent assurance.
+  - Distinguish compliance obligations from risk-driven decisions.
+  topics:
+  - Governance structures and accountability.
+  - Three lines model.
+  - Audit, evidence and findings.
+  - Regulatory versus risk-based drivers.
+  lab: 'Lab: Map five controls in a described environment to their accountable owner and the assurance
+    activity that verifies each, identifying any control with no verification.'
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'The Govern function in NIST CSF 2.0 addresses:'
+      options:
+      - A) Malware removal
+      - B) Risk management strategy, roles, policy and oversight
+      - C) Packet capture
+      - D) Backup testing
+      answer: B
+    - question: 'Independent assurance is valuable primarily because it:'
+      options:
+      - A) Is cheaper
+      - B) Reduces the risk of self-assessment bias
+      - C) Removes the need for controls
+      - D) Guarantees compliance
+      answer: B
+    - question: 'Compliance and security differ in that compliance:'
+      options:
+      - A) Always produces security
+      - B) Demonstrates conformance to specified requirements at a point in time
+      - C) Is continuous by nature
+      - D) Replaces risk assessment
+      answer: B
+    - question: 'An audit finding without evidence is:'
+      options:
+      - A) Still actionable
+      - B) Not defensible and should not be raised
+      - C) A best practice
+      - D) A control
+      answer: B
+    - question: 'Accountability for a risk decision should sit with:'
+      options:
+      - A) The security analyst
+      - B) The business owner who bears the consequence
+      - C) The auditor
+      - D) The vendor
+      answer: B
+- ordinal: 5
+  title: Business Continuity and Resilience
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define recovery time and recovery point objectives.
+  - Explain business impact analysis.
+  - Describe continuity and disaster recovery planning.
+  topics:
+  - Business impact analysis.
+  - RTO, RPO and maximum tolerable downtime.
+  - Continuity strategies and alternate sites.
+  - Plan testing and exercise.
+  lab: 'Lab: Conduct a short business impact analysis for two processes, derive RTO and RPO for each,
+    and identify the single point of failure that most threatens the tighter objective.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Recovery time objective specifies:'
+      options:
+      - A) Acceptable data loss
+      - B) The target duration within which a process must be restored
+      - C) Backup frequency
+      - D) Retention period
+      answer: B
+    - question: 'Business impact analysis primarily determines:'
+      options:
+      - A) Threat likelihood
+      - B) The consequence over time of losing a process
+      - C) Control cost
+      - D) Vendor risk
+      answer: B
+    - question: 'A continuity plan that is never exercised is:'
+      options:
+      - A) Adequate if documented
+      - B) Of unproven effectiveness and likely to fail under pressure
+      - C) Compliant by default
+      - D) A detective control
+      answer: B
+    - question: 'A tighter RPO generally requires:'
+      options:
+      - A) Less frequent backup
+      - B) More frequent replication or backup
+      - C) Longer retention
+      - D) Slower recovery
+      answer: B
+    - question: 'Maximum tolerable downtime is:'
+      options:
+      - A) Always equal to RTO
+      - B) The outer limit beyond which the impact becomes unacceptable
+      - C) The backup window
+      - D) The patch window
+      answer: B
+- ordinal: 6
+  title: Third-Party and Supply Chain Risk
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assess risk introduced by suppliers and service providers.
+  - Specify security requirements in contractual terms.
+  - Monitor third-party risk through the relationship lifecycle.
+  topics:
+  - Supplier risk assessment and tiering.
+  - Contractual security requirements and right to audit.
+  - Fourth-party and concentration risk.
+  - Ongoing monitoring and offboarding.
+  lab: 'Lab: Produce a supplier assessment questionnaire of ten questions for a cloud provider handling
+    sensitive data, and state what evidence would satisfy each question.'
+  refs:
+  - nist-sp-800-37r2
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Fourth-party risk refers to risk arising from:'
+      options:
+      - A) Your direct suppliers
+      - B) Your suppliers' own suppliers
+      - C) Your customers
+      - D) Regulators
+      answer: B
+    - question: 'Concentration risk occurs when:'
+      options:
+      - A) Many suppliers are used
+      - B) Many critical services depend on a single provider
+      - C) Contracts are short
+      - D) Costs are high
+      answer: B
+    - question: 'A right-to-audit clause is valuable because it:'
+      options:
+      - A) Reduces price
+      - B) Provides a contractual basis to verify supplier claims
+      - C) Transfers all risk
+      - D) Guarantees uptime
+      answer: B
+    - question: 'Supplier offboarding should always include:'
+      options:
+      - A) A final invoice only
+      - B) Return or verified destruction of data and revocation of access
+      - C) A reference letter
+      - D) Contract renewal
+      answer: B
+    - question: 'Relying solely on a supplier''s certification is insufficient because it:'
+      options:
+      - A) Costs too much
+      - B) Covers a defined scope at a point in time, which may not match your use
+      - C) Is always fraudulent
+      - D) Cannot be verified
+      answer: B

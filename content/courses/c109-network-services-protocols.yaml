@@ -1,0 +1,376 @@
+# C109 - Network Services & Protocols - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C109
+title: Network Services & Protocols
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: DNS Architecture and Security
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain iterative and recursive DNS resolution.
+  - Describe common DNS record types and their use.
+  - Identify DNS-based attack and abuse techniques.
+  topics:
+  - Resolver, root, TLD and authoritative servers.
+  - Record types and zone files.
+  - Cache poisoning and DNSSEC.
+  - DNS tunnelling and exfiltration.
+  lab: 'Lab: Trace a full resolution with dig +trace, then analyse a capture containing DNS tunnelling
+    and identify the indicators that distinguish it from normal queries.'
+  refs:
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'A recursive resolver differs from an authoritative server because it:'
+      options:
+      - A) Holds the zone data
+      - B) Queries other servers on the client's behalf until it has an answer
+      - C) Only serves TLDs
+      - D) Never caches
+      answer: B
+    - question: 'DNSSEC provides:'
+      options:
+      - A) Confidentiality of queries
+      - B) Origin authentication and integrity of DNS data
+      - C) Faster resolution
+      - D) Load balancing
+      answer: B
+    - question: 'DNS tunnelling is typically indicated by:'
+      options:
+      - A) Few short queries to common domains
+      - B) High volume of long, high-entropy subdomain labels to one domain
+      - C) Repeated NXDOMAIN for typos
+      - D) Use of TCP for zone transfer
+      answer: B
+    - question: 'An MX record specifies:'
+      options:
+      - A) The mail exchanger for a domain
+      - B) The IPv6 address
+      - C) A domain alias
+      - D) The name server
+      answer: A
+    - question: 'Cache poisoning aims to:'
+      options:
+      - A) Exhaust resolver memory
+      - B) Insert a false record so clients are directed to an attacker host
+      - C) Disable DNSSEC
+      - D) Increase TTL values
+      answer: B
+- ordinal: 2
+  title: Web Protocols and Services
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe HTTP request and response structure.
+  - Explain how TLS integrates with HTTP.
+  - Identify security-relevant HTTP headers.
+  topics:
+  - HTTP methods, status codes and headers.
+  - Cookies, sessions and same-origin policy.
+  - HTTPS and certificate handling.
+  - Security headers and their effect.
+  lab: 'Lab: Capture an HTTPS session setup, identify the certificate and negotiated parameters, then
+    audit a web server''s response headers against recommended security headers.'
+  refs:
+  - rfc-8446
+  - owasp-top-10
+  - nist-sp-800-52r2
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'The HTTP Strict-Transport-Security header instructs a browser to:'
+      options:
+      - A) Disable JavaScript
+      - B) Only connect to the host over HTTPS for a stated period
+      - C) Block cookies
+      - D) Cache responses
+      answer: B
+    - question: 'The same-origin policy restricts based on:'
+      options:
+      - A) IP address only
+      - B) Scheme, host and port
+      - C) User agent
+      - D) Cookie name
+      answer: B
+    - question: 'A cookie marked HttpOnly cannot be:'
+      options:
+      - A) Sent over HTTP
+      - B) Accessed by client-side JavaScript
+      - C) Stored on disk
+      - D) Set by the server
+      answer: B
+    - question: 'An HTTP 302 response indicates:'
+      options:
+      - A) Permanent redirect
+      - B) Temporary redirect
+      - C) Server error
+      - D) Not modified
+      answer: B
+    - question: 'Content-Security-Policy primarily mitigates:'
+      options:
+      - A) SQL injection
+      - B) Cross-site scripting by restricting allowed content sources
+      - C) Brute force
+      - D) DNS poisoning
+      answer: B
+- ordinal: 3
+  title: Email Protocols and Abuse
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe SMTP message flow and envelope versus header addressing.
+  - Explain SPF, DKIM and DMARC and how they interact.
+  - Analyse an email header to establish provenance.
+  topics:
+  - SMTP, IMAP and POP.
+  - Envelope sender versus From header.
+  - SPF, DKIM and DMARC alignment.
+  - Phishing indicators in headers.
+  lab: 'Lab: Analyse a suspicious email''s full headers, determine the true sending infrastructure, evaluate
+    SPF/DKIM/DMARC results, and state whether the From address is trustworthy.'
+  refs:
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'SPF validates:'
+      options:
+      - A) The message body
+      - B) Whether the sending IP is authorised for the envelope sender domain
+      - C) The DKIM signature
+      - D) The recipient address
+      answer: B
+    - question: 'DKIM provides:'
+      options:
+      - A) Transport encryption
+      - B) A cryptographic signature over selected headers and body
+      - C) IP reputation
+      - D) Spam scoring
+      answer: B
+    - question: 'DMARC adds to SPF and DKIM by specifying:'
+      options:
+      - A) The encryption algorithm
+      - B) Alignment requirements and a policy for handling failures
+      - C) The mail server address
+      - D) The message size limit
+      answer: B
+    - question: 'The envelope sender differs from the From header because the envelope sender is:'
+      options:
+      - A) Displayed to the user
+      - B) Used for transport and bounce handling, and often not shown
+      - C) Always identical
+      - D) Signed by DKIM
+      answer: B
+    - question: 'A Received header chain should be read:'
+      options:
+      - A) Top to bottom chronologically
+      - B) Bottom to top, earliest hop at the bottom
+      - C) Alphabetically
+      - D) By timestamp only
+      answer: B
+- ordinal: 4
+  title: Directory and Authentication Services
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe directory service structure and query mechanics.
+  - Explain network authentication protocol operation.
+  - Identify weaknesses in authentication service deployment.
+  topics:
+  - LDAP structure, DN and search.
+  - Kerberos tickets and the KDC.
+  - Single sign-on and federation.
+  - Common directory attack paths.
+  lab: 'Lab: Query a test directory with LDAP filters to enumerate users and group membership, then document
+    which of those queries an unauthenticated user should not be able to perform.'
+  refs:
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'In Kerberos, the ticket granting ticket is obtained from:'
+      options:
+      - A) The service server
+      - B) The key distribution centre's authentication service
+      - C) The client cache
+      - D) The DNS server
+      answer: B
+    - question: 'An LDAP distinguished name is:'
+      options:
+      - A) A password hash
+      - B) The unique path identifying an entry in the directory tree
+      - C) A group alias
+      - D) A server address
+      answer: B
+    - question: 'Anonymous LDAP bind is a concern because it may permit:'
+      options:
+      - A) Password changes
+      - B) Enumeration of directory contents without credentials
+      - C) Schema modification
+      - D) Replication
+      answer: B
+    - question: 'Kerberos mitigates replay attacks primarily using:'
+      options:
+      - A) Long passwords
+      - B) Timestamps and limited ticket lifetimes
+      - C) TLS only
+      - D) IP allowlists
+      answer: B
+    - question: 'Federation allows a service to:'
+      options:
+      - A) Store all user passwords locally
+      - B) Trust identity assertions issued by another identity provider
+      - C) Bypass authorisation
+      - D) Disable MFA
+      answer: B
+- ordinal: 5
+  title: Time, Logging and Supporting Services
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain why accurate time is a security requirement.
+  - Configure centralised logging transport.
+  - Describe network management protocol risks.
+  topics:
+  - NTP hierarchy and stratum.
+  - Syslog transport and reliability.
+  - SNMP versions and community strings.
+  - Service exposure review.
+  lab: 'Lab: Configure a host to synchronise with a trusted time source and forward logs to a central
+    collector over an authenticated transport; verify both from the collector side.'
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'SNMP version 2c is weak primarily because it:'
+      options:
+      - A) Uses UDP
+      - B) Transmits community strings without encryption
+      - C) Has no MIB
+      - D) Cannot be polled
+      answer: B
+    - question: 'Accurate NTP matters for security chiefly because it enables:'
+      options:
+      - A) Faster networking
+      - B) Reliable correlation and ordering of events across systems
+      - C) Certificate issuance
+      - D) Better compression
+      answer: B
+    - question: 'Sending syslog over plain UDP risks:'
+      options:
+      - A) Duplicate messages only
+      - B) Loss and undetected spoofing or tampering of log records
+      - C) Excessive CPU
+      - D) Port exhaustion
+      answer: B
+    - question: 'An NTP server at stratum 1 is:'
+      options:
+      - A) Furthest from a reference clock
+      - B) Directly attached to a reference clock
+      - C) A client only
+      - D) Unsynchronised
+      answer: B
+    - question: 'Reviewing exposed services periodically is important because:'
+      options:
+      - A) Services expire
+      - B) Unneeded listening services expand attack surface over time
+      - C) It improves throughput
+      - D) It rotates keys
+      answer: B
+- ordinal: 6
+  title: Service Hardening and Segmentation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply least-functionality principles to network services.
+  - Design segmentation appropriate to service sensitivity.
+  - Validate hardening through testing.
+  topics:
+  - Service minimisation and secure defaults.
+  - Segmentation and micro-segmentation.
+  - Zero trust principles applied to services.
+  - Validation through scanning and review.
+  lab: 'Lab: Given a flat network hosting four services, propose a segmented design with an explicit allowed-flow
+    matrix, then validate the intended restrictions with a scan.'
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Zero trust architecture assumes:'
+      options:
+      - A) The internal network is trusted
+      - B) No implicit trust is granted based on network location
+      - C) Perimeter controls are sufficient
+      - D) VPNs remove the need for authorisation
+      answer: B
+    - question: 'An allowed-flow matrix documents:'
+      options:
+      - A) Bandwidth per link
+      - B) Which sources may reach which destinations on which services
+      - C) Server uptime
+      - D) Patch levels
+      answer: B
+    - question: 'Micro-segmentation differs from traditional segmentation by operating at:'
+      options:
+      - A) The physical layer
+      - B) A finer granularity, often per workload
+      - C) The application layer only
+      - D) The perimeter
+      answer: B
+    - question: 'Running a service with the minimum required privileges limits:'
+      options:
+      - A) Its performance
+      - B) The impact if the service is compromised
+      - C) Its logging
+      - D) Its availability
+      answer: B
+    - question: 'Validating segmentation with scanning is necessary because:'
+      options:
+      - A) Designs are always wrong
+      - B) Intended policy and implemented policy frequently diverge
+      - C) Scanners configure firewalls
+      - D) It replaces documentation
+      answer: B

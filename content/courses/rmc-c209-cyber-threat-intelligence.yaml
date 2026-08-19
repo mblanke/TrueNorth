@@ -1,0 +1,376 @@
+# RMC C209 - Cyber Threat Intelligence - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C209
+title: Cyber Threat Intelligence
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Intelligence Fundamentals and the Cycle
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain the intelligence cycle and its application to cyber.
+  - Distinguish data, information and intelligence.
+  - Define intelligence requirements that drive collection.
+  topics:
+  - The intelligence cycle.
+  - Data, information and intelligence.
+  - Priority intelligence requirements.
+  - Strategic, operational and tactical levels.
+  lab: 'Lab: Define five priority intelligence requirements for a described organisation, and for each
+    state what decision the resulting intelligence would inform.'
+  refs:
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Intelligence differs from information because it is:'
+      options:
+      - A) More voluminous
+      - B) Analysed and produced to inform a specific decision
+      - C) Classified
+      - D) Machine readable
+      answer: B
+    - question: 'A priority intelligence requirement should be tied to:'
+      options:
+      - A) Available data
+      - B) A decision that the intelligence will inform
+      - C) A threat actor
+      - D) A tool
+      answer: B
+    - question: 'The intelligence cycle begins with:'
+      options:
+      - A) Collection
+      - B) Direction and requirements
+      - C) Analysis
+      - D) Dissemination
+      answer: B
+    - question: 'Tactical intelligence primarily supports:'
+      options:
+      - A) Board investment decisions
+      - B) Immediate detection and response actions
+      - C) Long-term strategy
+      - D) Procurement
+      answer: B
+    - question: 'Collecting without defined requirements typically produces:'
+      options:
+      - A) Better coverage
+      - B) Volume that consumes analyst time without informing decisions
+      - C) Strategic insight
+      - D) Higher confidence
+      answer: B
+- ordinal: 2
+  title: Collection and Sources
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan collection against defined requirements.
+  - Evaluate source reliability and information credibility.
+  - Manage collection ethically and lawfully.
+  topics:
+  - Source types and collection planning.
+  - Source reliability and credibility grading.
+  - Open source collection practice.
+  - Legal and ethical collection limits.
+  lab: 'Lab: Build a collection plan mapping each of your intelligence requirements to specific sources,
+    and grade three sources for reliability with justification.'
+  refs:
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Source reliability and information credibility are graded separately because:'
+      options:
+      - A) Convention requires it
+      - B) A reliable source can report incorrect information and vice versa
+      - C) Sources vary in cost
+      - D) It simplifies analysis
+      answer: B
+    - question: 'Collection from a closed forum may raise:'
+      options:
+      - A) No concerns
+      - B) Legal and ethical questions requiring authorisation and policy
+      - C) Only cost concerns
+      - D) Technical issues only
+      answer: B
+    - question: 'A collection plan links:'
+      options:
+      - A) Analysts to reports
+      - B) Requirements to the sources capable of satisfying them
+      - C) Indicators to detections
+      - D) Budget to tools
+      answer: B
+    - question: 'Relying on a single source for a significant assessment is unwise because:'
+      options:
+      - A) It is slow
+      - B) Corroboration is needed to raise confidence and detect deception
+      - C) It costs more
+      - D) Sources expire
+      answer: B
+    - question: 'Commercial intelligence feeds should be evaluated on:'
+      options:
+      - A) Indicator volume
+      - B) Relevance, timeliness, accuracy and context provided
+      - C) Price
+      - D) Brand
+      answer: B
+- ordinal: 3
+  title: Analysis and Analytic Rigour
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply structured analytic techniques.
+  - Manage cognitive bias in assessment.
+  - Express confidence and uncertainty precisely.
+  topics:
+  - Structured analytic techniques.
+  - Analysis of competing hypotheses.
+  - Cognitive bias in intelligence.
+  - Confidence language and estimative probability.
+  lab: 'Lab: Apply analysis of competing hypotheses to an ambiguous intrusion scenario, and produce an
+    assessment with explicit confidence levels and the evidence driving each.'
+  refs:
+  - nist-sp-800-150
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Analysis of competing hypotheses guards against:'
+      options:
+      - A) Data shortage
+      - B) Anchoring on the first plausible explanation
+      - C) Source unreliability
+      - D) Slow analysis
+      answer: B
+    - question: 'Confirmation bias in intelligence analysis manifests as:'
+      options:
+      - A) Rejecting all evidence
+      - B) Weighting evidence that supports the favoured hypothesis more heavily
+      - C) Over-collection
+      - D) Excessive caution
+      answer: B
+    - question: 'Estimative language such as likely should be:'
+      options:
+      - A) Used interchangeably with possible
+      - B) Defined consistently so consumers interpret it the same way
+      - C) Avoided
+      - D) Quantified precisely always
+      answer: B
+    - question: 'Evidence that is absent should be treated as:'
+      options:
+      - A) Proof of absence
+      - B) Potentially reflecting a collection gap rather than reality
+      - C) Irrelevant
+      - D) Disconfirming
+      answer: B
+    - question: 'High confidence in an assessment requires:'
+      options:
+      - A) A senior analyst
+      - B) Corroborated, reliable evidence with few competing explanations
+      - C) Recent reporting
+      - D) Consensus
+      answer: B
+- ordinal: 4
+  title: Adversary Tracking and Attribution
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Track adversary activity over time.
+  - Apply attribution methodology rigorously.
+  - Communicate attribution confidence responsibly.
+  topics:
+  - Activity clustering and tracking.
+  - Attribution methodology and evidence types.
+  - Diamond model and kill chain analysis.
+  - Responsible attribution communication.
+  lab: 'Lab: Cluster a set of intrusion activity into candidate groups using multiple evidence types,
+    and state what additional evidence would be required to raise attribution confidence.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Attribution based on a single evidence type is:'
+      options:
+      - A) Sufficient if technical
+      - B) Weak, as any single type can be spoofed or coincidental
+      - C) Standard
+      - D) Definitive
+      answer: B
+    - question: 'Activity clustering groups intrusions by:'
+      options:
+      - A) Victim only
+      - B) Shared characteristics across infrastructure, tooling and behaviour
+      - C) Date
+      - D) Severity
+      answer: B
+    - question: 'Publicly attributing an intrusion carries risk because:'
+      options:
+      - A) It is difficult
+      - B) Error causes reputational, legal and potentially diplomatic harm
+      - C) It aids the adversary
+      - D) It requires classification
+      answer: B
+    - question: 'Deliberate false flags are designed to:'
+      options:
+      - A) Improve stealth
+      - B) Mislead attribution toward another actor
+      - C) Evade detection
+      - D) Reduce footprint
+      answer: B
+    - question: 'For most defenders, the operational value of attribution lies in:'
+      options:
+      - A) Naming the actor
+      - B) Anticipating likely behaviour and prioritising defences accordingly
+      - C) Legal action
+      - D) Public reporting
+      answer: B
+- ordinal: 5
+  title: Production and Dissemination
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Produce intelligence products suited to their consumers.
+  - Disseminate intelligence in usable form and time.
+  - Handle intelligence according to sharing restrictions.
+  topics:
+  - Product types and audiences.
+  - Timeliness versus completeness.
+  - Machine-readable dissemination.
+  - Handling caveats and sharing restrictions.
+  lab: 'Lab: Produce three products from one body of analysis - a tactical indicator package, an operational
+    report and a strategic summary - and package the indicators in a structured format.'
+  refs:
+  - oasis-cti
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'STIX and TAXII exist to support:'
+      options:
+      - A) Log storage
+      - B) Structured, machine-readable exchange of threat intelligence
+      - C) Malware analysis
+      - D) Incident tracking
+      answer: B
+    - question: 'Intelligence delivered after the decision point is:'
+      options:
+      - A) Still valuable
+      - B) Of little operational use regardless of quality
+      - C) Archived
+      - D) Strategic
+      answer: B
+    - question: 'A strategic intelligence product should focus on:'
+      options:
+      - A) Indicators
+      - B) Trends, risk and implications informing investment and posture
+      - C) Technique details
+      - D) Malware analysis
+      answer: B
+    - question: 'Traffic light protocol style handling caveats specify:'
+      options:
+      - A) Product urgency
+      - B) With whom the information may be shared
+      - C) Confidence level
+      - D) Source reliability
+      answer: B
+    - question: 'Breaching a sharing restriction damages:'
+      options:
+      - A) Nothing if unintentional
+      - B) The trust relationships on which future sharing depends
+      - C) Only the source
+      - D) Product quality
+      answer: B
+- ordinal: 6
+  title: Building an Intelligence Capability
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design an intelligence function fit for the organisation.
+  - Integrate intelligence with defensive operations.
+  - Measure intelligence value credibly.
+  topics:
+  - Capability design and sizing.
+  - Integration with detection, hunting and response.
+  - Stakeholder relationships.
+  - Measuring intelligence effectiveness.
+  lab: 'Lab: Design a threat intelligence function for a described organisation, specifying its requirements
+    process, consumers, integration points and the measures of effectiveness you would report.'
+  refs:
+  - nist-sp-800-150
+  - nist-cswp-29
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'An intelligence function without defined consumers will:'
+      options:
+      - A) Set its own direction well
+      - B) Produce output that nobody acts on
+      - C) Be more objective
+      - D) Cost less
+      answer: B
+    - question: 'Intelligence effectiveness is best measured by:'
+      options:
+      - A) Reports produced
+      - B) Decisions and defensive changes it demonstrably informed
+      - C) Indicators ingested
+      - D) Feeds subscribed
+      answer: B
+    - question: 'Integration with hunting means intelligence should:'
+      options:
+      - A) Replace hunting
+      - B) Supply prioritised hypotheses for hunters to test
+      - C) Validate hunts
+      - D) Consume hunt output only
+      answer: B
+    - question: 'Counting ingested indicators as a value metric is misleading because it measures:'
+      options:
+      - A) Quality
+      - B) Activity rather than outcome
+      - C) Coverage
+      - D) Timeliness
+      answer: B
+    - question: 'The requirements process should be revisited because:'
+      options:
+      - A) Analysts rotate
+      - B) Organisational decisions and threats change over time
+      - C) Feeds expire
+      - D) Tools update
+      answer: B

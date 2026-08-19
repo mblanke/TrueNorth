@@ -1,0 +1,377 @@
+# C207 - Incident Response Foundations - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C207
+title: Incident Response Foundations
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Response Frameworks and Governance
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply a recognised incident response framework end to end.
+  - Define roles, authority and decision rights.
+  - Integrate incident response with wider risk management.
+  topics:
+  - Lifecycle frameworks and CSF alignment.
+  - Incident commander and role definition.
+  - Decision rights and delegated authority.
+  - Integration with risk and continuity.
+  lab: 'Lab: Define an incident response RACI for six roles across the full lifecycle, and identify every
+    decision that requires authority above the incident commander.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'An incident commander''s primary function is to:'
+      options:
+      - A) Perform forensic analysis
+      - B) Coordinate the response and hold decision authority
+      - C) Communicate with media
+      - D) Rebuild systems
+      answer: B
+    - question: 'NIST SP 800-61 Rev. 3 frames incident response as:'
+      options:
+      - A) A standalone technical process
+      - B) Part of cybersecurity risk management aligned to the CSF
+      - C) A compliance exercise
+      - D) A vendor service
+      answer: B
+    - question: 'Decision rights should be defined in advance because:'
+      options:
+      - A) It reduces documentation
+      - B) Ambiguity during an incident causes delay and inconsistent action
+      - C) It satisfies audit
+      - D) It lowers cost
+      answer: B
+    - question: 'A RACI matrix clarifies:'
+      options:
+      - A) Technical architecture
+      - B) Who is responsible, accountable, consulted and informed
+      - C) Severity levels
+      - D) Escalation timing
+      answer: B
+    - question: 'Incident response should integrate with business continuity because:'
+      options:
+      - A) They share tooling
+      - B) A severe incident may require continuity activation
+      - C) Both are audited
+      - D) They have the same owner
+      answer: B
+- ordinal: 2
+  title: Evidence Handling and Chain of Custody
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Collect evidence in a defensible manner.
+  - Maintain chain of custody documentation.
+  - Apply order of volatility to collection.
+  topics:
+  - Order of volatility.
+  - Forensic imaging and hashing.
+  - Chain of custody records.
+  - Legal admissibility considerations.
+  lab: 'Lab: Acquire a forensic image of a test volume, record hashes before and after, complete a chain
+    of custody form, and verify the image integrity independently.'
+  refs:
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Order of volatility dictates collecting first:'
+      options:
+      - A) Disk images
+      - B) The most volatile data such as memory and network state
+      - C) Backups
+      - D) Log archives
+      answer: B
+    - question: 'Hashing an image before and after transfer demonstrates:'
+      options:
+      - A) Confidentiality
+      - B) That the image was not altered
+      - C) Authorship
+      - D) Completeness of collection
+      answer: B
+    - question: 'Chain of custody records:'
+      options:
+      - A) The analysis findings
+      - B) Who handled the evidence, when and for what purpose
+      - C) The system owner
+      - D) The incident severity
+      answer: B
+    - question: 'Working on the original evidence rather than a verified copy risks:'
+      options:
+      - A) Slower analysis
+      - B) Altering the evidence and undermining its admissibility
+      - C) Hash mismatch only
+      - D) Nothing if careful
+      answer: B
+    - question: 'Capturing memory before powering off is important because memory contains:'
+      options:
+      - A) Persistent artefacts
+      - B) Volatile data such as running processes, keys and network connections
+      - C) The filesystem
+      - D) Boot configuration
+      answer: B
+- ordinal: 3
+  title: Host-Based Investigation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Investigate a compromised host systematically.
+  - Identify persistence mechanisms.
+  - Build a host timeline from multiple artefact sources.
+  topics:
+  - Process, service and autostart analysis.
+  - Persistence techniques and locations.
+  - Filesystem and registry artefacts.
+  - Timeline construction.
+  lab: 'Lab: Investigate a compromised host image, identify the persistence mechanism, build a timeline
+    of attacker activity, and state the earliest confirmed evidence of compromise.'
+  refs:
+  - nist-sp-800-86
+  - mitre-attack
+  - volatility3
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Establishing the earliest evidence of compromise is important because it:'
+      options:
+      - A) Assigns blame
+      - B) Bounds the period requiring investigation and scoping
+      - C) Sets severity
+      - D) Determines the tool
+      answer: B
+    - question: 'A scheduled task created by an unexpected account most likely indicates:'
+      options:
+      - A) Normal maintenance
+      - B) A persistence mechanism
+      - C) A backup job
+      - D) A patch
+      answer: B
+    - question: 'Timeline analysis combines artefacts to:'
+      options:
+      - A) Reduce data volume
+      - B) Establish the sequence and relationships of attacker actions
+      - C) Prove attribution
+      - D) Replace imaging
+      answer: B
+    - question: 'Timestamp manipulation by an attacker means analysts should:'
+      options:
+      - A) Trust filesystem times fully
+      - B) Corroborate across independent artefact sources
+      - C) Ignore timestamps
+      - D) Use only registry data
+      answer: B
+    - question: 'Memory analysis is particularly valuable for detecting:'
+      options:
+      - A) Deleted files
+      - B) Injected code and fileless techniques
+      - C) Firmware changes
+      - D) Network topology
+      answer: B
+- ordinal: 4
+  title: Network Investigation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Reconstruct attacker activity from network telemetry.
+  - Identify command-and-control and exfiltration.
+  - Correlate network and host evidence.
+  topics:
+  - Flow and packet analysis in response.
+  - Command-and-control patterns.
+  - Exfiltration detection.
+  - Host and network correlation.
+  lab: 'Lab: Given network telemetry from a compromise, identify the command-and-control channel and any
+    exfiltration, and correlate both to the responsible host process.'
+  refs:
+  - nist-sp-800-94
+  - mitre-attack
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Data exfiltration over DNS is often detected by:'
+      options:
+      - A) Low query volume
+      - B) Unusually long, high-entropy subdomains and high query volume to one domain
+      - C) Use of TCP 53
+      - D) NXDOMAIN responses
+      answer: B
+    - question: 'Correlating a network connection to a host process requires:'
+      options:
+      - A) The firewall log alone
+      - B) Host telemetry linking the socket to a process and user
+      - C) DNS logs
+      - D) The MAC address
+      answer: B
+    - question: 'Command-and-control over HTTPS is difficult to detect by payload because:'
+      options:
+      - A) It uses UDP
+      - B) The content is encrypted, leaving mainly metadata and behaviour
+      - C) It is low volume
+      - D) It uses port 80
+      answer: B
+    - question: 'Flow data is valuable in investigation because it:'
+      options:
+      - A) Contains full payloads
+      - B) Is typically retained far longer than full packet capture
+      - C) Decrypts TLS
+      - D) Identifies users
+      answer: B
+    - question: 'Beaconing is characterised by:'
+      options:
+      - A) Random large transfers
+      - B) Regular, periodic outbound connections often with jitter
+      - C) Inbound scanning
+      - D) Broadcast traffic
+      answer: B
+- ordinal: 5
+  title: Malware Triage in Response
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Safely handle suspected malicious files.
+  - Perform initial triage to characterise a sample.
+  - Extract indicators to support scoping.
+  topics:
+  - Safe handling and isolation.
+  - Static triage and hashing.
+  - Dynamic triage in a sandbox.
+  - Indicator extraction and pivoting.
+  lab: 'Lab: Triage a suspected sample in an isolated environment, extract host and network indicators,
+    and use them to search for other affected systems.'
+  refs:
+  - nist-sp-800-83r1
+  - yara
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Suspected malware should be analysed:'
+      options:
+      - A) On the responder's workstation
+      - B) In an isolated environment with no production connectivity
+      - C) On the affected host
+      - D) In the SIEM
+      answer: B
+    - question: 'Extracting indicators from a sample primarily supports:'
+      options:
+      - A) Attribution
+      - B) Scoping, by finding other affected systems
+      - C) Eradication only
+      - D) Reporting
+      answer: B
+    - question: 'A file hash is a fragile indicator because:'
+      options:
+      - A) It is long
+      - B) Trivial changes to the file produce a completely different hash
+      - C) It cannot be searched
+      - D) It is not unique
+      answer: B
+    - question: 'YARA rules are used to:'
+      options:
+      - A) Capture network traffic
+      - B) Identify files matching described patterns and characteristics
+      - C) Image disks
+      - D) Parse logs
+      answer: B
+    - question: 'Behavioural indicators are generally more durable than hashes because they:'
+      options:
+      - A) Are easier to write
+      - B) Describe what the malware does rather than a specific build
+      - C) Are vendor supplied
+      - D) Match more files
+      answer: B
+- ordinal: 6
+  title: Exercising and Improving the Capability
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design and run a tabletop exercise.
+  - Measure response capability objectively.
+  - Drive improvement from exercise findings.
+  topics:
+  - Tabletop and functional exercise design.
+  - Injects and realistic scenarios.
+  - Observation, evaluation and metrics.
+  - Improvement planning.
+  lab: 'Lab: Design a tabletop exercise with five injects for a ransomware scenario, define the observable
+    behaviours you would evaluate, and produce an improvement plan template.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A tabletop exercise primarily tests:'
+      options:
+      - A) Technical tooling
+      - B) Decision-making, coordination and process understanding
+      - C) Network throughput
+      - D) Backup integrity
+      answer: B
+    - question: 'Exercise injects are used to:'
+      options:
+      - A) Fill time
+      - B) Introduce new information that forces decisions and reveals gaps
+      - C) Test hardware
+      - D) Score participants
+      answer: B
+    - question: 'An exercise that every participant passes easily is likely:'
+      options:
+      - A) Well designed
+      - B) Insufficiently challenging to reveal real weaknesses
+      - C) Too long
+      - D) Correctly scoped
+      answer: B
+    - question: 'The most valuable exercise output is:'
+      options:
+      - A) A pass rate
+      - B) A prioritised, owned improvement plan
+      - C) Attendance records
+      - D) A scenario document
+      answer: B
+    - question: 'Functional exercises differ from tabletops because they:'
+      options:
+      - A) Involve fewer people
+      - B) Actually execute technical response actions in a controlled environment
+      - C) Take less time
+      - D) Require no planning
+      answer: B

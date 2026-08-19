@@ -1,0 +1,373 @@
+# C103 - Intro to Networking - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C103
+title: Intro to Networking
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Network Models and Addressing
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map protocols to layers of the OSI and TCP/IP models.
+  - Perform IPv4 subnetting and explain IPv6 address structure.
+  - Explain encapsulation as data traverses the stack.
+  topics:
+  - OSI seven layers and the TCP/IP model.
+  - IPv4 addressing, CIDR and subnet masks.
+  - IPv6 addressing and link-local scope.
+  - Encapsulation, headers and MTU.
+  lab: 'Lab: Given a /24 network and four host-count requirements, produce a subnet plan with network,
+    broadcast and usable ranges, then verify it by configuring interfaces in a lab topology.'
+  refs:
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: At which OSI layer does a router primarily operate?
+      options:
+      - A) Layer 2
+      - B) Layer 3
+      - C) Layer 4
+      - D) Layer 7
+      answer: B
+    - question: How many usable host addresses are in a /26 IPv4 subnet?
+      options:
+      - A) 30
+      - B) 62
+      - C) 126
+      - D) 254
+      answer: B
+    - question: 'Encapsulation refers to:'
+      options:
+      - A) Encrypting a payload
+      - B) Wrapping data with headers as it moves down the stack
+      - C) Compressing frames
+      - D) Fragmenting a datagram
+      answer: B
+    - question: 'An IPv6 link-local address begins with:'
+      options:
+      - A) 2001::/16
+      - B) fe80::/10
+      - C) ::1/128
+      - D) fc00::/7
+      answer: B
+    - question: 'The MTU of a link determines:'
+      options:
+      - A) The maximum frame payload size
+      - B) The link speed
+      - C) The number of hops permitted
+      - D) The routing metric
+      answer: A
+- ordinal: 2
+  title: Switching and the Link Layer
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain MAC learning and frame forwarding in a switch.
+  - Describe VLAN segmentation and trunking.
+  - Identify common link-layer attacks and their mitigations.
+  topics:
+  - MAC address tables and broadcast domains.
+  - VLANs, tagging and trunk ports.
+  - ARP operation and ARP spoofing.
+  - Spanning tree and loop prevention.
+  lab: 'Lab: Build a two-VLAN switched topology, prove that hosts in different VLANs cannot reach each
+    other without a router, then demonstrate and mitigate an ARP spoofing attack.'
+  refs:
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A switch builds its MAC address table by learning from:'
+      options:
+      - A) Destination addresses of received frames
+      - B) Source addresses of received frames
+      - C) Routing advertisements
+      - D) DHCP leases
+      answer: B
+    - question: 'VLANs primarily provide:'
+      options:
+      - A) Encryption of frames
+      - B) Segmentation into separate broadcast domains
+      - C) Increased link speed
+      - D) Redundant power
+      answer: B
+    - question: 'ARP spoofing succeeds because ARP:'
+      options:
+      - A) Is encrypted but weakly
+      - B) Has no authentication of replies
+      - C) Requires a trusted server
+      - D) Operates at layer 4
+      answer: B
+    - question: 'Spanning Tree Protocol exists to prevent:'
+      options:
+      - A) IP address conflicts
+      - B) Layer 2 forwarding loops
+      - C) Routing loops
+      - D) DNS poisoning
+      answer: B
+    - question: 'Traffic between two VLANs requires:'
+      options:
+      - A) A layer 3 device to route between them
+      - B) A crossover cable
+      - C) A shared broadcast domain
+      - D) Identical subnet masks
+      answer: A
+- ordinal: 3
+  title: Routing and the Network Layer
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain how routing decisions are made from a routing table.
+  - Distinguish static routing from dynamic routing protocols.
+  - Describe network address translation and its operational effects.
+  topics:
+  - Longest-prefix match and route selection.
+  - Interior and exterior gateway protocols.
+  - NAT, PAT and address conservation.
+  - ICMP and path troubleshooting.
+  lab: 'Lab: Configure static routes between three subnets in a lab topology, verify connectivity with
+    traceroute, then deliberately break one route and diagnose the failure from the routing table.'
+  refs:
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'When multiple routes match a destination, a router selects the one with the:'
+      options:
+      - A) Lowest metric regardless of prefix
+      - B) Longest matching prefix
+      - C) Oldest entry
+      - D) Shortest interface name
+      answer: B
+    - question: 'BGP is best described as:'
+      options:
+      - A) An interior gateway protocol
+      - B) The exterior gateway protocol of the internet
+      - C) A link-layer protocol
+      - D) A tunnelling protocol
+      answer: B
+    - question: 'Port Address Translation allows many internal hosts to share one public address by:'
+      options:
+      - A) Assigning each a unique VLAN
+      - B) Multiplexing on source port numbers
+      - C) Compressing headers
+      - D) Using IPv6 only
+      answer: B
+    - question: A traceroute works by manipulating which IP header field?
+      options:
+      - A) TOS
+      - B) Time to live
+      - C) Identification
+      - D) Flags
+      answer: B
+    - question: 'A default route is expressed as:'
+      options:
+      - A) 127.0.0.1/8
+      - B) 0.0.0.0/0
+      - C) 255.255.255.255/32
+      - D) 169.254.0.0/16
+      answer: B
+- ordinal: 4
+  title: Transport Layer and Core Services
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare TCP and UDP and select appropriately for a use case.
+  - Explain the TCP handshake, state machine and teardown.
+  - Describe how DNS and DHCP support normal network operation.
+  topics:
+  - TCP three-way handshake and sequence numbers.
+  - UDP characteristics and use cases.
+  - DNS resolution flow and record types.
+  - DHCP lease process.
+  lab: 'Lab: Capture a TCP session and a DNS lookup in Wireshark, annotate each handshake packet and each
+    DNS message, and identify the resolver used.'
+  refs:
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'The TCP three-way handshake consists of:'
+      options:
+      - A) SYN, ACK, FIN
+      - B) SYN, SYN-ACK, ACK
+      - C) ACK, SYN, RST
+      - D) SYN, PSH, ACK
+      answer: B
+    - question: 'UDP is preferred over TCP when the application needs:'
+      options:
+      - A) Guaranteed delivery
+      - B) Low overhead and tolerance of loss
+      - C) Ordered byte streams
+      - D) Congestion control
+      answer: B
+    - question: 'A DNS A record maps:'
+      options:
+      - A) A name to an IPv6 address
+      - B) A name to an IPv4 address
+      - C) A name to a mail server
+      - D) An address to a name
+      answer: B
+    - question: The DHCP lease process follows which sequence?
+      options:
+      - A) Discover, Offer, Request, Acknowledge
+      - B) Request, Offer, Discover, Acknowledge
+      - C) Offer, Discover, Acknowledge, Request
+      - D) Discover, Request, Offer, Acknowledge
+      answer: A
+    - question: 'A TCP RST packet indicates:'
+      options:
+      - A) Graceful connection close
+      - B) Abrupt connection reset
+      - C) Window size update
+      - D) Successful handshake
+      answer: B
+- ordinal: 5
+  title: Network Security Controls
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain stateless versus stateful packet filtering.
+  - Design a firewall ruleset following default-deny.
+  - Describe where intrusion detection fits in a network architecture.
+  topics:
+  - Packet filters, stateful inspection and proxies.
+  - Default-deny rule design and rule ordering.
+  - Network segmentation and DMZ placement.
+  - IDS and IPS deployment models.
+  lab: 'Lab: Write a default-deny firewall ruleset permitting only required services for a small network,
+    test it with a port scan, and document any rule that had to be widened and why.'
+  refs:
+  - nist-sp-800-41r1
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A stateful firewall differs from a stateless packet filter because it:'
+      options:
+      - A) Inspects application payloads
+      - B) Tracks connection state to permit return traffic
+      - C) Operates only at layer 2
+      - D) Requires no rules
+      answer: B
+    - question: 'A default-deny policy means:'
+      options:
+      - A) All traffic is permitted unless explicitly blocked
+      - B) All traffic is blocked unless explicitly permitted
+      - C) Only ICMP is blocked
+      - D) Rules are evaluated in reverse
+      answer: B
+    - question: 'An IPS differs from an IDS because an IPS:'
+      options:
+      - A) Only logs events
+      - B) Sits inline and can block traffic
+      - C) Runs only on endpoints
+      - D) Requires no signatures
+      answer: B
+    - question: 'A DMZ is used to host:'
+      options:
+      - A) Internal domain controllers
+      - B) Services reachable from untrusted networks, isolated from the internal network
+      - C) Backup tapes
+      - D) Administrative workstations
+      answer: B
+    - question: 'Firewall rule order matters because most engines:'
+      options:
+      - A) Evaluate all rules and take the most specific
+      - B) Apply the first matching rule
+      - C) Apply the last matching rule
+      - D) Randomise evaluation
+      answer: B
+- ordinal: 6
+  title: Network Traffic Analysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Capture traffic appropriately for a given investigative question.
+  - Apply display and capture filters to isolate relevant flows.
+  - Recognise indicators of suspicious network behaviour.
+  topics:
+  - Capture points, SPAN ports and taps.
+  - Capture versus display filters.
+  - Flow records versus full packet capture.
+  - Beaconing, exfiltration and scanning patterns.
+  lab: 'Lab: Analyse a provided packet capture to identify a periodic beaconing pattern, determine the
+    interval and destination, and write a short finding with the supporting evidence.'
+  refs:
+  - nist-sp-800-94
+  - sigma
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A network tap is generally preferred over a SPAN port for forensic capture because it:'
+      options:
+      - A) Is cheaper
+      - B) Does not drop frames under load
+      - C) Decrypts TLS
+      - D) Requires no cabling
+      answer: B
+    - question: 'Regular, fixed-interval outbound connections to one host most likely indicate:'
+      options:
+      - A) Normal DNS resolution
+      - B) Command-and-control beaconing
+      - C) ARP flooding
+      - D) A routing loop
+      answer: B
+    - question: 'Flow records such as NetFlow differ from full packet capture because they:'
+      options:
+      - A) Include full payloads
+      - B) Record metadata about conversations, not contents
+      - C) Cannot be exported
+      - D) Only work on IPv6
+      answer: B
+    - question: 'A horizontal port scan is characterised by:'
+      options:
+      - A) Many ports on one host
+      - B) One port across many hosts
+      - C) Repeated DNS queries
+      - D) Large file transfers
+      answer: B
+    - question: 'The main analytic limitation introduced by widespread TLS is that:'
+      options:
+      - A) Metadata is unavailable
+      - B) Payload inspection is no longer possible without interception
+      - C) Flows cannot be counted
+      - D) IP addresses are hidden
+      answer: B

@@ -1,0 +1,375 @@
+# RMC C208 - Incident Response - End-to-End - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C208
+title: Incident Response - End-to-End
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Enterprise Incident Command
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Command a major incident across an enterprise.
+  - Structure and sustain a large response effort.
+  - Make decisions with incomplete information.
+  topics:
+  - Incident command structure at scale.
+  - Sustaining prolonged response.
+  - Decision-making under uncertainty.
+  - Escalation and executive interface.
+  lab: 'Lab: Command a simulated enterprise-wide incident, maintaining workstream coordination and producing
+    decision records for three decisions made on incomplete information.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Decisions during an incident must often be made:'
+      options:
+      - A) Only with complete information
+      - B) On incomplete information, with the reasoning and assumptions recorded
+      - C) By consensus
+      - D) By the most senior person
+      answer: B
+    - question: 'A decision record during an incident captures:'
+      options:
+      - A) The outcome
+      - B) What was decided, on what information and what assumptions
+      - C) The decider only
+      - D) The alternatives rejected only
+      answer: B
+    - question: 'Sustaining a prolonged response requires:'
+      options:
+      - A) Longer shifts
+      - B) Rotation, handover discipline and attention to responder welfare
+      - C) More tooling
+      - D) Fewer workstreams
+      answer: B
+    - question: 'The executive interface during a major incident should be:'
+      options:
+      - A) Ad hoc
+      - B) A defined role and cadence so responders are not repeatedly interrupted
+      - C) Continuous
+      - D) Delegated to the analyst
+      answer: B
+    - question: 'Revising an earlier conclusion as evidence emerges is:'
+      options:
+      - A) A failure of leadership
+      - B) Expected and should be communicated clearly
+      - C) To be avoided
+      - D) A last resort
+      answer: B
+- ordinal: 2
+  title: Scoping a Complex Compromise
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Establish the true scope of an extensive compromise.
+  - Iterate scoping as new evidence emerges.
+  - Avoid premature scope closure.
+  topics:
+  - Scoping methodology.
+  - Indicator-driven and behaviour-driven scoping.
+  - Iterative scope expansion.
+  - Confidence in scope completeness.
+  lab: 'Lab: Scope a compromise across a simulated enterprise, documenting your scoping methodology and
+    stating explicitly what confidence you have that the scope is complete.'
+  refs:
+  - nist-sp-800-61r3
+  - mitre-attack
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Premature scope closure leads to:'
+      options:
+      - A) Faster recovery
+      - B) Eradication that misses attacker footholds, causing recurrence
+      - C) Better metrics
+      - D) Reduced cost
+      answer: B
+    - question: 'Scoping should be driven by:'
+      options:
+      - A) Indicators alone
+      - B) Both indicators and the behaviours the adversary must have performed
+      - C) Asset criticality only
+      - D) Alert volume
+      answer: B
+    - question: 'Stating confidence in scope completeness is important because:'
+      options:
+      - A) It hedges responsibility
+      - B) Eradication and recovery decisions depend on how complete the picture is
+      - C) Auditors require it
+      - D) It delays action
+      answer: B
+    - question: 'New evidence contradicting the current scope should trigger:'
+      options:
+      - A) Continuation of the plan
+      - B) Scope reassessment before proceeding with eradication
+      - C) Escalation only
+      - D) Documentation only
+      answer: B
+    - question: 'Scoping by indicators alone is insufficient because attackers:'
+      options:
+      - A) Use no indicators
+      - B) Change infrastructure and tooling while retaining behaviour
+      - C) Avoid logging
+      - D) Work slowly
+      answer: B
+- ordinal: 3
+  title: Coordinated Eradication
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan eradication across many systems simultaneously.
+  - Time eradication to deny the adversary reaction.
+  - Verify eradication effectiveness.
+  topics:
+  - Eradication planning at scale.
+  - Timing and simultaneity.
+  - Credential and trust reset.
+  - Eradication verification.
+  lab: 'Lab: Plan a coordinated eradication for a compromise spanning identity, endpoints and cloud, sequencing
+    actions so the adversary cannot re-establish access between steps.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Eradication across many systems is often executed simultaneously because:'
+      options:
+      - A) It is more efficient
+      - B) Staged removal lets the adversary observe and re-establish access
+      - C) Tools require it
+      - D) It reduces downtime
+      answer: B
+    - question: 'Credential reset during eradication must include:'
+      options:
+      - A) User passwords only
+      - B) Service accounts, trusts, tokens and key material
+      - C) Administrators only
+      - D) Nothing if hosts are rebuilt
+      answer: B
+    - question: 'Verification of eradication is established by:'
+      options:
+      - A) Absence of alerts
+      - B) Active hunting for the adversary's known behaviours after the action
+      - C) System uptime
+      - D) Ticket closure
+      answer: B
+    - question: 'Eradicating endpoints while leaving identity compromised results in:'
+      options:
+      - A) Successful eradication
+      - B) Rapid re-compromise using the retained credentials
+      - C) Partial improvement only
+      - D) No change
+      answer: B
+    - question: 'The eradication plan should be prepared:'
+      options:
+      - A) During execution
+      - B) Before execution, with scope confidence established first
+      - C) After recovery
+      - D) By each system owner independently
+      answer: B
+- ordinal: 4
+  title: Recovery and Trust Restoration
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Restore services safely after major compromise.
+  - Re-establish trust in identity and infrastructure.
+  - Manage business expectations during extended recovery.
+  topics:
+  - Recovery sequencing at scale.
+  - Trust restoration in identity systems.
+  - Rebuild strategy and prioritisation.
+  - Business expectation management.
+  lab: 'Lab: Produce a recovery plan for a compromised identity infrastructure, sequencing restoration
+    so that trust is re-established before dependent services return.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Restoring dependent services before identity trust is re-established:'
+      options:
+      - A) Accelerates recovery
+      - B) Reintroduces compromised trust into the recovered environment
+      - C) Is standard sequencing
+      - D) Has no effect
+      answer: B
+    - question: 'Business expectation management during recovery matters because:'
+      options:
+      - A) It reduces cost
+      - B) Pressure to restore quickly can drive unsafe shortcuts
+      - C) Executives require updates
+      - D) It improves morale
+      answer: B
+    - question: 'Rebuild prioritisation should follow:'
+      options:
+      - A) Alphabetical order
+      - B) Business criticality and dependency order
+      - C) Ease of rebuild
+      - D) System age
+      answer: B
+    - question: 'Trust in a rebuilt environment is established by:'
+      options:
+      - A) Declaring it clean
+      - B) Rebuilding from verified sources with new credentials and validated configuration
+      - C) Scanning once
+      - D) Monitoring only
+      answer: B
+    - question: 'Heightened monitoring after recovery is necessary because:'
+      options:
+      - A) Tools need tuning
+      - B) Residual or repeat access attempts are common after eradication
+      - C) Baselines change
+      - D) Auditors require it
+      answer: B
+- ordinal: 5
+  title: Crisis Communication and Stakeholders
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Manage communication during a crisis.
+  - Coordinate legal, regulatory and public messaging.
+  - Maintain internal confidence and external credibility.
+  topics:
+  - Crisis communication planning.
+  - Legal and regulatory coordination.
+  - Public and customer communication.
+  - Internal communication.
+  lab: 'Lab: Produce a communication plan for a major breach covering internal staff, customers, regulators
+    and media, with holding statements for the first 24 hours.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A holding statement is used to:'
+      options:
+      - A) Provide full detail early
+      - B) Acknowledge the situation credibly while facts are still being established
+      - C) Deny the incident
+      - D) Assign attribution
+      answer: B
+    - question: 'Communicating certainty before facts are established risks:'
+      options:
+      - A) Reassuring stakeholders usefully
+      - B) Having to publicly retract, damaging credibility
+      - C) Regulatory breach only
+      - D) Nothing
+      answer: B
+    - question: 'Internal communication during a breach is important because:'
+      options:
+      - A) Staff need reassurance only
+      - B) Staff are stakeholders and uninformed staff speculate or misinform externally
+      - C) It satisfies HR
+      - D) It reduces calls
+      answer: B
+    - question: 'Regulatory communication should be coordinated with:'
+      options:
+      - A) Media messaging only
+      - B) Legal counsel, with obligations and timelines tracked deliberately
+      - C) The technical team
+      - D) Customers first
+      answer: B
+    - question: 'Speculating publicly about attribution during a breach is unwise because:'
+      options:
+      - A) It is uninteresting
+      - B) Early attribution is frequently wrong and carries legal and diplomatic risk
+      - C) It aids the attacker
+      - D) Regulators forbid it
+      answer: B
+- ordinal: 6
+  title: Programme-Level Learning
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Extract systemic learning from major incidents.
+  - Drive organisational change from incident findings.
+  - Measure whether the organisation is improving.
+  topics:
+  - Systemic analysis of incidents.
+  - Organisational change from findings.
+  - Trend analysis across incidents.
+  - Measuring capability improvement.
+  lab: 'Lab: Analyse three incident reports for common systemic causes, propose organisational changes
+    addressing the shared root cause, and define how you would measure whether they worked.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Analysing incidents in aggregate reveals:'
+      options:
+      - A) Individual errors
+      - B) Systemic patterns invisible in any single incident
+      - C) Attribution
+      - D) Tool gaps only
+      answer: B
+    - question: 'Organisational change from incident findings requires:'
+      options:
+      - A) A technical fix
+      - B) Sponsorship at a level able to change process, resourcing or structure
+      - C) A new tool
+      - D) More analysts
+      answer: B
+    - question: 'Recurring incidents with the same root cause indicate:'
+      options:
+      - A) Bad luck
+      - B) That previous remediation addressed symptoms rather than the cause
+      - C) Increased targeting
+      - D) Better detection
+      answer: B
+    - question: 'Improvement is best measured by:'
+      options:
+      - A) Fewer incidents
+      - B) Reduced detection and containment times and fewer repeat causes
+      - C) More alerts
+      - D) Larger team
+      answer: B
+    - question: 'A reduction in reported incidents may indicate:'
+      options:
+      - A) Improved security only
+      - B) Either improved security or degraded detection and reporting
+      - C) Better tooling
+      - D) Lower risk
+      answer: B

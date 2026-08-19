@@ -1,0 +1,377 @@
+# C202 - Secure Communications (TLS/VPN) - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C202
+title: Secure Communications (TLS/VPN)
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Transport Layer Security in Depth
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the TLS 1.3 handshake and its improvements over 1.2.
+  - Interpret a cipher suite and its component algorithms.
+  - Configure a server according to recognised TLS guidance.
+  topics:
+  - TLS 1.2 versus 1.3 handshake flow.
+  - Cipher suites and negotiation.
+  - Session resumption and 0-RTT trade-offs.
+  - Server configuration guidance.
+  lab: 'Lab: Configure a web server for TLS 1.3 only, verify the negotiated parameters from a client handshake
+    capture, and document why each disabled legacy option was removed.'
+  refs:
+  - rfc-8446
+  - nist-sp-800-52r2
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'TLS 1.3 reduced handshake latency principally by:'
+      options:
+      - A) Removing certificates
+      - B) Completing key exchange in fewer round trips
+      - C) Using UDP
+      - D) Disabling encryption for headers
+      answer: B
+    - question: 0-RTT resumption carries which specific risk?
+      options:
+      - A) Key compromise
+      - B) Replay of the early data
+      - C) Certificate expiry
+      - D) Downgrade to TLS 1.0
+      answer: B
+    - question: 'TLS 1.3 removed support for:'
+      options:
+      - A) AEAD ciphers
+      - B) Static RSA key transport and legacy weak algorithms
+      - C) Certificates
+      - D) Extensions
+      answer: B
+    - question: 'An AEAD cipher provides:'
+      options:
+      - A) Confidentiality only
+      - B) Confidentiality and integrity in one construction
+      - C) Key exchange
+      - D) Compression
+      answer: B
+    - question: 'A downgrade attack attempts to force a client and server to:'
+      options:
+      - A) Use a longer key
+      - B) Negotiate a weaker protocol version or cipher
+      - C) Skip the handshake
+      - D) Reuse a session ticket
+      answer: B
+- ordinal: 2
+  title: Certificate Management at Scale
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Operate a certificate lifecycle including issuance and renewal.
+  - Design trust store management for an organisation.
+  - Detect and respond to certificate-related failures.
+  topics:
+  - Certificate lifecycle and automation.
+  - Internal certificate authorities.
+  - Trust stores and pinning.
+  - Expiry monitoring and incident avoidance.
+  lab: 'Lab: Stand up an internal CA in a lab, issue a server certificate, distribute the root to a client
+    trust store, and demonstrate successful validation then revocation.'
+  refs:
+  - nist-sp-800-52r2
+  - nist-sp-800-57pt1r5
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Certificate expiry outages are best prevented by:'
+      options:
+      - A) Longer validity periods only
+      - B) Automated renewal with proactive expiry monitoring
+      - C) Self-signed certificates
+      - D) Disabling validation
+      answer: B
+    - question: 'Certificate pinning increases security but introduces:'
+      options:
+      - A) No trade-off
+      - B) Operational fragility when certificates legitimately change
+      - C) Slower handshakes
+      - D) Weaker ciphers
+      answer: B
+    - question: 'An internal CA''s root certificate must be:'
+      options:
+      - A) Published publicly
+      - B) Distributed to and trusted by relying clients, and its private key strongly protected
+      - C) Renewed daily
+      - D) Shared with the vendor
+      answer: B
+    - question: 'Certificate transparency logs help detect:'
+      options:
+      - A) Expired certificates
+      - B) Certificates issued for a domain without the owner's knowledge
+      - C) Weak ciphers
+      - D) Revoked roots
+      answer: B
+    - question: 'Revoking a compromised certificate is only effective if clients:'
+      options:
+      - A) Restart
+      - B) Actually perform revocation checking
+      - C) Update their clocks
+      - D) Reinstall the root
+      answer: B
+- ordinal: 3
+  title: Virtual Private Networks
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare IPsec and TLS-based VPN architectures.
+  - Explain IPsec tunnel and transport modes.
+  - Select VPN topology appropriate to a requirement.
+  topics:
+  - 'IPsec: AH, ESP, IKE.'
+  - Tunnel versus transport mode.
+  - TLS VPNs and remote access.
+  - Site-to-site versus remote-access topologies.
+  lab: 'Lab: Establish a site-to-site IPsec tunnel between two lab networks, verify encryption with a
+    capture showing ESP, and confirm that plaintext is not observable.'
+  refs:
+  - nist-sp-800-77r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'IPsec ESP provides confidentiality whereas AH provides:'
+      options:
+      - A) Encryption only
+      - B) Integrity and authentication without confidentiality
+      - C) Key exchange
+      - D) Compression
+      answer: B
+    - question: 'IPsec tunnel mode encrypts:'
+      options:
+      - A) The payload only
+      - B) The entire original IP packet, adding a new header
+      - C) Nothing
+      - D) Only the header
+      answer: B
+    - question: 'IKE is responsible for:'
+      options:
+      - A) Encrypting data packets
+      - B) Negotiating security associations and keys
+      - C) Routing
+      - D) NAT traversal only
+      answer: B
+    - question: 'Split tunnelling means client traffic:'
+      options:
+      - A) All goes through the VPN
+      - B) Is divided, with only some routed through the VPN
+      - C) Is duplicated
+      - D) Is blocked
+      answer: B
+    - question: 'The main security concern with split tunnelling is that:'
+      options:
+      - A) It is slower
+      - B) The client bridges a trusted and an untrusted network simultaneously
+      - C) It breaks DNS
+      - D) It requires more keys
+      answer: B
+- ordinal: 4
+  title: Secure Messaging and Data in Transit
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply end-to-end encryption concepts to messaging.
+  - Distinguish transport encryption from end-to-end encryption.
+  - Evaluate metadata exposure in encrypted communications.
+  topics:
+  - Transport versus end-to-end encryption.
+  - Key agreement and identity verification.
+  - Forward secrecy in messaging.
+  - Metadata and traffic analysis exposure.
+  lab: 'Lab: Compare two messaging designs - one with transport encryption only and one end-to-end - and
+    document precisely what the server operator can observe in each.'
+  refs:
+  - nist-sp-800-57pt1r5
+  - rfc-8446
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'End-to-end encryption differs from transport encryption because the intermediary:'
+      options:
+      - A) Sees more data
+      - B) Cannot read the plaintext content
+      - C) Holds the private keys
+      - D) Performs the encryption
+      answer: B
+    - question: 'Even with strong end-to-end encryption, an operator may still observe:'
+      options:
+      - A) Message content
+      - B) Metadata such as who communicated, when and how much
+      - C) The encryption keys
+      - D) Nothing at all
+      answer: B
+    - question: 'Verifying a contact''s key fingerprint out of band defends against:'
+      options:
+      - A) Replay
+      - B) A machine-in-the-middle substituting keys
+      - C) Traffic analysis
+      - D) Denial of service
+      answer: B
+    - question: 'Forward secrecy in messaging ensures that compromise of a long-term key does not expose:'
+      options:
+      - A) Future messages
+      - B) Previously captured messages
+      - C) The contact list
+      - D) The device
+      answer: B
+    - question: 'Traffic analysis can reveal relationships because:'
+      options:
+      - A) Encryption is weak
+      - B) Timing, volume and endpoints remain visible
+      - C) Keys leak
+      - D) Certificates are public
+      answer: B
+- ordinal: 5
+  title: Cryptographic Protocol Failures
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Recognise historic protocol failures and their root causes.
+  - Identify misconfiguration that undermines strong cryptography.
+  - Assess a deployment against current guidance.
+  topics:
+  - Downgrade and negotiation attacks.
+  - Implementation flaws versus design flaws.
+  - Deprecated protocols and cipher suites.
+  - Assessment tooling and interpretation.
+  lab: 'Lab: Scan a deliberately misconfigured TLS service, enumerate every weakness found, classify each
+    as design or configuration, and produce a remediation order by risk.'
+  refs:
+  - nist-sp-800-52r2
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Most real-world TLS failures result from:'
+      options:
+      - A) Broken cryptographic primitives
+      - B) Misconfiguration, weak validation and legacy support
+      - C) Key length
+      - D) Certificate format
+      answer: B
+    - question: 'Accepting an invalid certificate in a client application effectively:'
+      options:
+      - A) Improves compatibility safely
+      - B) Removes protection against interception
+      - C) Speeds the handshake
+      - D) Enables pinning
+      answer: B
+    - question: 'Supporting an obsolete protocol version alongside a modern one risks:'
+      options:
+      - A) Nothing if clients prefer the modern one
+      - B) Downgrade attacks forcing use of the weaker version
+      - C) Certificate errors
+      - D) Higher latency only
+      answer: B
+    - question: 'A padding oracle attack exploits:'
+      options:
+      - A) Weak key generation
+      - B) Distinguishable error behaviour revealing padding validity
+      - C) Certificate expiry
+      - D) Compression
+      answer: B
+    - question: 'The correct response to a deprecated cipher suite still in use is to:'
+      options:
+      - A) Ignore it if no attack is known
+      - B) Plan removal and migrate dependent clients
+      - C) Increase its priority
+      - D) Document and retain indefinitely
+      answer: B
+- ordinal: 6
+  title: Designing a Secure Communications Architecture
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select appropriate protections for data in transit across a system.
+  - Balance security, performance and operability.
+  - Document cryptographic decisions for review.
+  topics:
+  - Requirement-driven protocol selection.
+  - Performance and operational cost.
+  - Key management integration.
+  - Documentation and cryptographic review.
+  lab: 'Lab: Design the data-in-transit protections for a three-tier application including internal service-to-service
+    traffic, and produce a decision record justifying each choice.'
+  refs:
+  - nist-sp-800-52r2
+  - nist-sp-800-57pt1r5
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Encrypting internal service-to-service traffic is justified because:'
+      options:
+      - A) Regulations always require it
+      - B) Internal networks should not be treated as inherently trusted
+      - C) It improves throughput
+      - D) It simplifies routing
+      answer: B
+    - question: 'Mutual TLS between services provides:'
+      options:
+      - A) Only server authentication
+      - B) Authentication of both parties
+      - C) Authorisation decisions
+      - D) Key rotation
+      answer: B
+    - question: 'A cryptographic decision record should capture:'
+      options:
+      - A) The chosen algorithm only
+      - B) The requirement, options considered, choice and rationale
+      - C) The vendor quote
+      - D) The implementation date only
+      answer: B
+    - question: 'Terminating TLS at a load balancer means traffic beyond it is:'
+      options:
+      - A) Always encrypted
+      - B) Plaintext unless re-encrypted to the backend
+      - C) Compressed
+      - D) Authenticated
+      answer: B
+    - question: 'Selecting cryptography should begin from:'
+      options:
+      - A) The fastest available algorithm
+      - B) The protection requirement and threat model
+      - C) Vendor defaults
+      - D) The largest key size
+      answer: B

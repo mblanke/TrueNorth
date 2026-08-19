@@ -1,0 +1,374 @@
+# C205 - Lab: Hardened Lab Network - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C205
+title: 'Lab: Hardened Lab Network'
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Requirements and Design
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Translate a security requirement into a network design.
+  - Document design decisions with justification.
+  - Define success criteria that can be objectively verified.
+  topics:
+  - Requirement elicitation and constraints.
+  - Design documentation standards.
+  - Trust zones and data flows.
+  - Verifiable acceptance criteria.
+  lab: 'Lab: Produce a design document for a hardened lab network including a zone diagram, an allowed-flow
+    matrix and ten testable acceptance criteria.'
+  refs:
+  - nist-sp-800-41r1
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'An acceptance criterion is useful only if it is:'
+      options:
+      - A) Ambitious
+      - B) Objectively verifiable
+      - C) Approved by the vendor
+      - D) Written last
+      answer: B
+    - question: 'An allowed-flow matrix should be produced:'
+      options:
+      - A) After implementation
+      - B) During design, to drive the ruleset
+      - C) Only for audits
+      - D) By the firewall vendor
+      answer: B
+    - question: 'Documenting a rejected design option is valuable because it:'
+      options:
+      - A) Adds length
+      - B) Records why the chosen approach was preferred, aiding future review
+      - C) Satisfies compliance
+      - D) Delays the project
+      answer: B
+    - question: 'A constraint differs from a requirement because a constraint:'
+      options:
+      - A) Is optional
+      - B) Limits the solution space rather than stating a needed capability
+      - C) Is set by security
+      - D) Applies only to cost
+      answer: B
+    - question: 'Design decisions should be traceable to:'
+      options:
+      - A) Vendor documentation
+      - B) A stated requirement or risk
+      - C) Team preference
+      - D) Industry trend
+      answer: B
+- ordinal: 2
+  title: Build and Baseline
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Deploy infrastructure to a documented baseline.
+  - Apply hardening consistently and repeatably.
+  - Record the as-built state for later comparison.
+  topics:
+  - Infrastructure build process.
+  - Baseline application and automation.
+  - Configuration capture and version control.
+  - Build documentation.
+  lab: 'Lab: Build the designed network in a virtual lab, apply a hardening baseline to every host, and
+    capture the as-built configuration into version control.'
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Capturing as-built configuration enables:'
+      options:
+      - A) Faster builds
+      - B) Detection of later drift from the intended state
+      - C) Reduced cost
+      - D) Better performance
+      answer: B
+    - question: 'Applying hardening manually to each host risks:'
+      options:
+      - A) Nothing if documented
+      - B) Inconsistency between hosts and undetected omissions
+      - C) Slower boot
+      - D) Licence breach
+      answer: B
+    - question: 'Version controlling infrastructure configuration provides:'
+      options:
+      - A) Encryption
+      - B) History, review and the ability to reproduce a known state
+      - C) Monitoring
+      - D) Backup
+      answer: B
+    - question: 'A baseline should be applied:'
+      options:
+      - A) Only to servers
+      - B) Consistently to all in-scope systems, with documented exceptions
+      - C) After go-live
+      - D) Only to internet-facing hosts
+      answer: B
+    - question: 'The most reliable way to prove a baseline was applied is:'
+      options:
+      - A) A build checklist signature
+      - B) An automated verification scan of the running system
+      - C) The engineer's confirmation
+      - D) The change ticket
+      answer: B
+- ordinal: 3
+  title: Segmentation Implementation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Implement the designed segmentation.
+  - Configure enforcement points to the flow matrix.
+  - Verify that unintended paths are blocked.
+  topics:
+  - VLAN and subnet implementation.
+  - Firewall and ACL enforcement.
+  - Default-deny verification.
+  - Management plane separation.
+  lab: 'Lab: Implement the segmentation design, then verify every cell of the allowed-flow matrix with
+    a positive and negative test, recording any discrepancy.'
+  refs:
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Separating the management plane from the data plane limits:'
+      options:
+      - A) Bandwidth
+      - B) An attacker's ability to reach management interfaces from a compromised workload
+      - C) Latency
+      - D) Logging
+      answer: B
+    - question: 'Verifying segmentation requires testing:'
+      options:
+      - A) Only permitted flows
+      - B) Both permitted flows succeed and denied flows fail
+      - C) Only denied flows
+      - D) Neither, if the config is correct
+      answer: B
+    - question: 'A discrepancy between the flow matrix and observed behaviour indicates:'
+      options:
+      - A) The test is wrong
+      - B) Either the implementation or the design record is inaccurate and must be reconciled
+      - C) Acceptable variance
+      - D) A hardware fault
+      answer: B
+    - question: 'Access control lists on a switch enforce policy at:'
+      options:
+      - A) The application layer
+      - B) The network or link layer, close to the source
+      - C) The perimeter only
+      - D) The endpoint
+      answer: B
+    - question: 'Segmentation is undermined most commonly by:'
+      options:
+      - A) Slow links
+      - B) Broad any-any exceptions added for troubleshooting and never removed
+      - C) VLAN limits
+      - D) Routing protocols
+      answer: B
+- ordinal: 4
+  title: Monitoring Integration
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Instrument the lab network for security visibility.
+  - Validate that telemetry reaches the collector.
+  - Confirm detections fire for representative activity.
+  topics:
+  - Sensor and agent deployment.
+  - Telemetry validation.
+  - Detection verification.
+  - Coverage assessment against the design.
+  lab: 'Lab: Deploy logging and network monitoring across the lab, generate three representative attack
+    behaviours, and confirm each produces the expected telemetry and alert.'
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-94
+  - mitre-attack
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Confirming that telemetry reaches the collector is necessary because:'
+      options:
+      - A) Agents are unreliable by design
+      - B) A deployed sensor that is not forwarding provides false assurance
+      - C) It improves performance
+      - D) Collectors require it
+      answer: B
+    - question: 'Generating representative attack behaviour to test detection is called:'
+      options:
+      - A) Penetration testing
+      - B) Detection validation or adversary emulation
+      - C) Fuzzing
+      - D) Auditing
+      answer: B
+    - question: 'A sensor deployed with no visibility of east-west traffic will miss:'
+      options:
+      - A) Internet downloads
+      - B) Lateral movement between internal hosts
+      - C) DNS queries
+      - D) Authentication events
+      answer: B
+    - question: 'If expected telemetry does not appear, the first check should be:'
+      options:
+      - A) Rewrite the detection
+      - B) Verify collection and parsing before questioning the rule
+      - C) Reinstall the SIEM
+      - D) Increase retention
+      answer: B
+    - question: 'Coverage assessment compares:'
+      options:
+      - A) Cost against budget
+      - B) Detections available against the techniques relevant to the environment
+      - C) Agents against hosts only
+      - D) Alerts against incidents
+      answer: B
+- ordinal: 5
+  title: Validation and Testing
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan and conduct a structured security test.
+  - Document findings with reproducible evidence.
+  - Distinguish a finding from an observation.
+  topics:
+  - Test planning, scope and rules of engagement.
+  - Scanning and manual verification.
+  - Evidence capture and reproducibility.
+  - Finding severity and reporting.
+  lab: 'Lab: Conduct a scan and manual verification against the lab, document every finding with reproduction
+    steps and evidence, and assign a justified severity to each.'
+  refs:
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Rules of engagement for a security test define:'
+      options:
+      - A) The tools only
+      - B) Scope, timing, permitted techniques and escalation contacts
+      - C) The report format
+      - D) The severity scale
+      answer: B
+    - question: 'A scanner result should be treated as:'
+      options:
+      - A) A confirmed finding
+      - B) A candidate requiring manual verification
+      - C) An incident
+      - D) A false positive
+      answer: B
+    - question: 'A finding is distinguished from an observation because a finding:'
+      options:
+      - A) Is more detailed
+      - B) Represents a demonstrable weakness with security impact
+      - C) Is from a tool
+      - D) Has higher severity
+      answer: B
+    - question: 'Reproduction steps matter because they:'
+      options:
+      - A) Lengthen the report
+      - B) Allow the owner to independently confirm and later verify the fix
+      - C) Prove tool licensing
+      - D) Set the severity
+      answer: B
+    - question: 'Testing without documented authorisation is:'
+      options:
+      - A) Acceptable internally
+      - B) Potentially unlawful and always professionally unacceptable
+      - C) Faster
+      - D) Standard practice
+      answer: B
+- ordinal: 6
+  title: Documentation and Handover
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Produce operational documentation for a built environment.
+  - Define ongoing maintenance responsibilities.
+  - Conduct a structured handover.
+  topics:
+  - As-built documentation.
+  - Operational runbooks.
+  - Maintenance and patch responsibility.
+  - Handover and acceptance.
+  lab: 'Lab: Produce a handover pack containing the as-built diagram, the flow matrix as implemented,
+    a runbook for two routine tasks, and a list of accepted residual risks.'
+  refs:
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A runbook should be written for:'
+      options:
+      - A) The designer
+      - B) The person who will perform the task, possibly under pressure
+      - C) The auditor
+      - D) The vendor
+      answer: B
+    - question: 'Residual risks at handover should be:'
+      options:
+      - A) Omitted to avoid concern
+      - B) Explicitly listed and formally accepted by an owner
+      - C) Resolved silently
+      - D) Left to operations to discover
+      answer: B
+    - question: 'As-built documentation differs from design documentation because it records:'
+      options:
+      - A) The intended state
+      - B) What was actually implemented, including deviations
+      - C) Future plans
+      - D) Cost
+      answer: B
+    - question: 'Handover is complete when:'
+      options:
+      - A) The build finishes
+      - B) The receiving team can operate the system and has accepted it
+      - C) The report is filed
+      - D) Testing passes
+      answer: B
+    - question: 'Undocumented deviations from design are dangerous because they:'
+      options:
+      - A) Look untidy
+      - B) Cause future decisions to be based on an inaccurate model of the system
+      - C) Breach licensing
+      - D) Slow performance
+      answer: B

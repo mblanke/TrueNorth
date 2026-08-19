@@ -1,0 +1,389 @@
+# IoT Security Foundations - DRAFT course content.
+# Unsourced draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C304
+title: IoT Security Foundations
+version: '1.0'
+difficulty: intermediate
+duration_hours: 10
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: fleet-authored draft recovered from session 746200b4 on 2026-08-19
+  citations_verified: '2026-08-19'
+  notes:
+  - Pedagogy (objectives, topics, labs, quizzes) retained from the recovered draft.
+  - References replaced with keys into content/catalogue/references.yaml; every entry there was resolved
+    against its publisher.
+  - The draft's NICE DCWF / NIST CSF mappings were DROPPED as invalid. Framework mapping belongs to crosswalk.csv,
+    which is auditable.
+  - The draft set is_published=true; this file is unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: IoT Security Landscape & Anatomy
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the core components of an IoT ecosystem (device, gateway, cloud platform, management console).
+  - Explain unique attack surfaces introduced by constrained devices and heterogeneous communications.
+  - Describe major IoT-related standards (IEEE 802.15.4, MQTT, CoAP, LwM2M) and their security extensions.
+  topics:
+  - IoT ecosystem diagram & data flow.
+  - Constraints (CPU, memory, power) → security impact.
+  - Common communication protocols and authentication mechanisms.
+  - Real-world incidents (Mirai, Reaper, VPNFilter, BrickerBot).
+  lab: '*Lab 1 - Build a tiny IoT sensor simulation* (Docker image `iot-sandbox:sensor`). Connect it to
+    an MQTT broker, capture traffic with Wireshark, and locate clear-text credentials. Outcome: a short
+    report describing the discovered weaknesses.'
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: Which of the following is not a typical IoT protocol?
+      options:
+      - A) MQTT
+      - B) CoAP
+      - C) SNMP
+      - D) LwM2M
+      answer: C
+    - question: The Mirai botnet primarily exploited which weakness?
+      options:
+      - A) Zero-day firmware bug
+      - B) Default credentials
+      - C) Weak encryption
+      - D) Physical tampering
+      answer: B
+    - question: IEEE 802.15.4 is the foundation for which wireless technology?
+      options:
+      - A) Wi-Fi
+      - B) Bluetooth Low Energy
+      - C) Zigbee
+      - D) LTE-M
+      answer: C
+    - question: Which layer of the IoT stack is most vulnerable to side-channel attacks?
+      options:
+      - A) Physical/Device
+      - B) Network
+      - C) Cloud
+      - D) Application
+      answer: A
+    - question: In an IoT deployment, a gateway typically provides which function?
+      options:
+      - A) End-user UI only
+      - B) Protocol translation & security enforcement
+      - C) Firmware compilation
+      - D) Power management
+      answer: B
+  refs:
+  - nist-sp-800-183
+  - owasp-iot
+- ordinal: 2
+  title: Threat Modeling for IoT
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply STRIDE (or PASTA) to an IoT use-case and produce a structured threat model.
+  - Identify privilege-escalation paths unique to constrained devices.
+  - Prioritize mitigations based on attack-surface analysis.
+  topics:
+  - STRIDE mapping for devices, gateways, cloud services.
+  - Data-in-transit, data-at-rest, data-in-use threats.
+  - Supply-chain risks (bootloader, default credentials, OTA update).
+  - Risk-scoring with CVSS for IoT-specific vectors.
+  lab: '*Lab 2 - Threat-model an off-the-shelf smart-plug.* Use the free `threatspec` CLI to create a
+    STRIDE chart, then produce a mitigation matrix (document).'
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: In STRIDE, T stands for?
+      options:
+      - A) Tampering
+      - B) Timing
+      - C) Trust
+      - D) Transfer
+      answer: A
+    - question: Which IoT-specific attack surface is best addressed by mutual TLS?
+      options:
+      - A) Physical tampering
+      - B) Credential exposure in firmware
+      - C) Man-in-the-middle on device-to-cloud traffic
+      - D) Supply-chain backdoors
+      answer: C
+    - question: 'The highest CVSS "Environmental" score for a device with no authentication on its management
+        interface is:'
+      options:
+      - A) 4.0
+      - B) 6.5
+      - C) 8.8
+      - D) 10.0
+      answer: D
+    - question: A trusted boot sequence primarily prevents which threat?
+      options:
+      - A) Eavesdropping
+      - B) Firmware rollback
+      - C) Unauthorized code execution at power-on
+      - D) DDoS attacks
+      answer: C
+    - question: Which of the following is a privilege-escalation path in many IoT devices?
+      options:
+      - A) Using HTTP GET for telemetry
+      - B) Exploiting hard-coded admin credentials
+      - C) Enabling IPv6 autoconfiguration
+      - D) Default NTP server
+      answer: B
+  refs:
+  - owasp-iot
+  - nist-ir-8259
+- ordinal: 3
+  title: Secure Device Lifecycle Management
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define each phase of the IoT device lifecycle (design, provisioning, operation, de-commission).
+  - Implement secure boot and hardware-root-of-trust concepts.
+  - Configure mutual authentication (TLS-PSK, DTLS) for device-to-cloud communication.
+  topics:
+  - Trusted Platform Module (TPM) basics & attestation.
+  - Secure provisioning (certificate enrollment, LwM2M bootstrap).
+  - OTA update signing (Ed25519, RSA-PSS) and rollback protection.
+  - Key-rotation policies and secure storage on constrained devices.
+  lab: '*Lab 3 - Implement a Signed OTA Update.* Use the `iot-sandbox:gateway` image, generate an RSA-2048
+    key pair, sign a dummy firmware blob, and verify on the simulated device. Document the verification
+    steps.'
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: Which cryptographic algorithm is recommended for small-footprint signature verification
+        on micro-controllers?
+      options:
+      - A) RSA-4096
+      - B) Ed25519
+      - C) DSA-1024
+      - D) SHA-1
+      answer: B
+    - question: Secure boot relies on which of the following?
+      options:
+      - A) BIOS password
+      - B) Code signing & hash verification
+      - C) Encrypted file system
+      - D) VLAN isolation
+      answer: B
+    - question: 'During OTA updates, rollback protection is achieved by:'
+      options:
+      - A) Keeping two firmware partitions and only booting the newest signed one
+      - B) Disabling network interfaces during update
+      - C) Using a static IP address
+      - D) Rebooting the device three times
+      answer: A
+    - question: 'The LwM2M bootstrap server role is to:'
+      options:
+      - A) Store sensor data
+      - B) Provide initial security credentials and configuration
+      - C) Perform firmware de-compression
+      - D) Host a web UI
+      answer: B
+    - question: Which of the following key-management practices is least suitable for resource-constrained
+        devices?
+      options:
+      - A) Storing keys in a TPM
+      - B) Deriving session keys from a pre-shared secret
+      - C) Hard-coding keys in firmware
+      - D) Using hardware-based secure element
+      answer: C
+  refs:
+  - nist-ir-8259
+  - nist-sp-800-213
+- ordinal: 4
+  title: Network Security for IoT Deployments
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design network segmentation for IoT (VLANs, SD-N, micro-segmentation).
+  - Configure firewall rules that enforce least-privilege for device traffic.
+  - Apply IDS/IPS signatures specific to IoT protocols (MQTT, CoAP).
+  topics:
+  - Edge-gateway as a security gateway (transparent vs. NAT).
+  - Zero-Trust networking for device-to-cloud (mutual TLS).
+  - Protocol-aware IDS (Zeek-IoT scripts, Suricata MQTT rules).
+  - Network hardening - disable unused ports, use IPv6 link-local addresses.
+  lab: '*Lab 4 - Deploy a segmented Docker-Compose network.* Create three Docker networks (iot-devices,
+    iot-gateway, iot-cloud). Enforce firewall rules with `iptables` on the gateway container; then attempt
+    a simulated lateral-movement attack and verify it is blocked.'
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Which network architecture best enforces least-privilege for IoT devices?
+      options:
+      - A) Flat LAN
+      - B) Single VLAN
+      - C) Segmented VLANs with ACLs
+      - D) Public Wi-Fi
+      answer: C
+    - question: 'A common MQTT-specific IDS rule looks for:'
+      options:
+      - A) Unencrypted credentials in the CONNECT packet
+      - B) Large HTTP payloads
+      - C) DNS tunneling
+      - D) SMB traffic
+      answer: A
+    - question: 'Zero-Trust for IoT primarily means:'
+      options:
+      - A) No passwords ever
+      - B) Every device authenticates and is authorized for each request
+      - C) Disabling all inbound traffic
+      - D) Using NAT
+      answer: B
+    - question: Which protocol cannot be easily inspected by traditional DPI because it is encrypted by
+        design?
+      options:
+      - A) HTTP
+      - B) CoAP
+      - C) DTLS
+      - D) MQTT (plain)
+      answer: C
+    - question: 'An effective way to prevent lateral movement from a compromised sensor is to:'
+      options:
+      - A) Disable DHCP on the device
+      - B) Place the sensor in an isolated VLAN with a firewall that only allows traffic to the gateway
+      - C) Use the same password on every device
+      - D) Open all outbound ports
+      answer: B
+  refs:
+  - nist-sp-800-213
+  - nist-sp-800-207
+- ordinal: 5
+  title: Firmware Analysis & Secure Updates
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Extract and reverse-engineer firmware images (binwalk, firmware-mod kit).
+  - Identify hard-coded secrets, libraries with known CVEs, and insecure bootloaders.
+  - Apply a signed-firmware verification workflow in CI/CD pipelines.
+  topics:
+  - Binary extraction tools (binwalk, Firmware Mod Kit, Ghidra).
+  - Common firmware vulnerabilities (hard-coded credentials, outdated OpenSSL, default root passwords).
+  - Signing and verification (PKCS#7, signtool, GitHub-Actions workflow).
+  - Supply-chain hardening - reproducible builds, SBOM generation.
+  lab: '*Lab 5 - Conduct a firmware static analysis.* Download a public IoT firmware (e.g., a TP-Link
+    smart-plug), run `binwalk` to extract the filesystem, locate a hard-coded credential, and produce
+    a short remediation report.'
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Which tool is *specifically* designed to extract filesystems from firmware images?
+      options:
+      - A) Ghidra
+      - B) binwalk
+      - C) nmap
+      - D) Wireshark
+      answer: B
+    - question: 'A hard-coded credential discovered in firmware should be remedied by:'
+      options:
+      - A) Changing the password at runtime
+      - B) Removing it from the source and regenerating the firmware image
+      - C) Adding a comment in the code
+      - D) Encrypting the whole firmware with AES
+      answer: B
+    - question: Which CVE-like vulnerability is most common in IoT firmware?
+      options:
+      - A) SQL injection
+      - B) Buffer overflow in network stack
+      - C) Cross-site scripting
+      - D) LDAP injection
+      answer: B
+    - question: 'To ensure reproducible builds of firmware, you should:'
+      options:
+      - A) Use a fixed compiler version and deterministic build flags
+      - B) Randomize the build timestamp
+      - C) Compile on any host machine
+      - D) Ship pre-compiled binaries only
+      answer: A
+    - question: 'An SBOM (Software Bill of Materials) for firmware primarily lists:'
+      options:
+      - A) Device serial numbers
+      - B) All third-party libraries and their versions
+      - C) Wi-Fi SSIDs
+      - D) Usernames/passwords
+      answer: B
+  refs:
+  - binwalk
+  - nist-sp-800-193
+- ordinal: 6
+  title: Incident Response & Forensics for IoT
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design an IoT-specific incident-response playbook (detect → contain → eradicate → recover).
+  - Collect volatile and non-volatile evidence from constrained devices (memory dump, flash image).
+  - Correlate device logs with cloud telemetry to reconstruct attack timelines.
+  topics:
+  - IoT-specific detection (abnormal beaconing, MQTT topic anomalies).
+  - Evidence acquisition methods (JTAG, SWD, firmware snapshot).
+  - Root-cause analysis using timeline reconstruction (ELK stack, Splunk).
+  - Legal considerations - chain-of-custody for embedded devices.
+  lab: '*Lab 6 - Simulated breach & forensic capture.* Use the `iot-sandbox:camera` container, trigger
+    a malicious MQTT command to compromise it, then perform a forensic capture (dump the container''s
+    filesystem + runtime logs). Build a timeline and answer a short "what-happened" worksheet.'
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'The first step in an IoT-specific IR playbook after detection is:'
+      options:
+      - A) Pull the device's power cord
+      - B) Isolate the device from the network (contain)
+      - C) Flash a new firmware immediately
+      - D) Delete all logs
+      answer: B
+    - question: Which of the following is not a recommended source of volatile evidence on a constrained
+        device?
+      options:
+      - A) RAM dump via JTAG
+      - B) Flash image via SWD
+      - C) Cloud API logs
+      - D) Power-on reset logs stored in volatile RAM
+      answer: C
+    - question: 'Correlating MQTT traffic with cloud logs helps to:'
+      options:
+      - A) Identify the device's MAC address
+      - B) Reconstruct the exact command sequence used by the attacker
+      - C) Upgrade the device's firmware automatically
+      - D) Disable TLS
+      answer: B
+    - question: 'In a forensic timeline, the "kill-chain" phase *"Command & Control"* is most likely observed
+        as:'
+      options:
+      - A) Device reboot
+      - B) Periodic beacon to a C2 server over MQTT
+      - C) Firmware checksum verification
+      - D) Firmware signing check
+      answer: B
+    - question: Which legal concept ensures that an IoT forensic image is admissible in court?
+      options:
+      - A) Chain-of-custody documentation
+      - B) Public-key encryption
+      - C) Firmware signing
+      - D) Device warranty
+      answer: A
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-61r3

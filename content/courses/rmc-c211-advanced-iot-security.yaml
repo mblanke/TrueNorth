@@ -1,0 +1,379 @@
+# RMC C211 - Advanced IoT Security - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: RMC C211
+title: Advanced IoT Security
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: IoT and OT Convergence
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish IoT from operational technology and industrial control systems.
+  - Explain why safety changes the security calculus.
+  - Assess risk where IT, IoT and OT converge.
+  topics:
+  - IoT, OT and ICS distinctions.
+  - Safety, availability and integrity priorities.
+  - Convergence and boundary risk.
+  - Consequence-driven risk assessment.
+  lab: 'Lab: Assess a converged environment where an IoT sensor network feeds an industrial process, identify
+    the boundary controls required and state the safety consequence of each failure mode.'
+  refs:
+  - nist-sp-800-213
+  - mitre-attack
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'In operational technology, the traditional priority ordering is usually:'
+      options:
+      - A) Confidentiality, integrity, availability
+      - B) Availability and integrity ahead of confidentiality, with safety paramount
+      - C) Confidentiality above all
+      - D) Identical to IT
+      answer: B
+    - question: 'Safety consequences change the security calculus because:'
+      options:
+      - A) Controls cost more
+      - B) A failure may cause physical harm rather than data loss
+      - C) Systems are older
+      - D) Networks are isolated
+      answer: B
+    - question: 'Patching in OT environments is constrained principally by:'
+      options:
+      - A) Licence cost
+      - B) Availability requirements and vendor certification of the running configuration
+      - C) Bandwidth
+      - D) Staff skills
+      answer: B
+    - question: 'IT/OT convergence increases risk because it:'
+      options:
+      - A) Adds bandwidth
+      - B) Creates paths from corporate networks into environments designed assuming isolation
+      - C) Reduces monitoring
+      - D) Requires new protocols
+      answer: B
+    - question: 'Consequence-driven assessment prioritises based on:'
+      options:
+      - A) Vulnerability count
+      - B) The physical or operational impact if a function is subverted
+      - C) Asset age
+      - D) Network exposure alone
+      answer: B
+- ordinal: 2
+  title: IoT at Scale
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Manage security for very large device fleets.
+  - Design provisioning and identity for scale.
+  - Handle update distribution to constrained devices.
+  topics:
+  - Fleet-scale identity and provisioning.
+  - Zero-touch onboarding.
+  - Update distribution at scale.
+  - Device lifecycle and decommissioning.
+  lab: 'Lab: Design a provisioning and update architecture for a fleet of 100,000 constrained devices,
+    addressing identity issuance, update integrity and the handling of devices that fail to update.'
+  refs:
+  - nist-ir-8259
+  - nist-sp-800-213
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'Per-device unique identity at scale is important because shared credentials:'
+      options:
+      - A) Are slower
+      - B) Mean compromise of one device compromises the entire fleet
+      - C) Cannot be rotated
+      - D) Use more storage
+      answer: B
+    - question: 'Devices that persistently fail to update should be:'
+      options:
+      - A) Ignored
+      - B) Identified, tracked and subject to compensating controls or retirement
+      - C) Force-rebooted
+      - D) Removed from inventory
+      answer: B
+    - question: 'Zero-touch provisioning must still ensure:'
+      options:
+      - A) Manual approval
+      - B) The device authenticates and the platform verifies its identity before trust is granted
+      - C) Physical access
+      - D) Operator presence
+      answer: B
+    - question: 'Update distribution to constrained devices is complicated by:'
+      options:
+      - A) Excess bandwidth
+      - B) Limited power, connectivity and storage for staging and rollback
+      - C) Strong cryptography
+      - D) Frequent updates
+      answer: B
+    - question: 'Decommissioning IoT devices should include:'
+      options:
+      - A) Powering them off
+      - B) Revoking credentials and securely erasing keys and data
+      - C) Physical disposal only
+      - D) Removing from the network
+      answer: B
+- ordinal: 3
+  title: Wireless and Radio Protocol Security
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assess security of common IoT radio protocols.
+  - Identify weaknesses in wireless implementations.
+  - Evaluate radio attack surface realistically.
+  topics:
+  - Common IoT radio protocols.
+  - Pairing, key exchange and provisioning over radio.
+  - Radio attack techniques and practicality.
+  - Range, proximity and threat realism.
+  lab: 'Lab: Assess a device''s wireless provisioning process, determine whether keys are exposed during
+    pairing, and evaluate the practical attacker positioning required to exploit any weakness.'
+  refs:
+  - nist-sp-800-213
+  - nist-sp-800-57pt1r5
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Assessing a radio attack must include:'
+      options:
+      - A) Only the protocol
+      - B) The practical proximity and equipment an attacker would require
+      - C) Only encryption
+      - D) Device cost
+      answer: B
+    - question: 'Key material exchanged in clear during initial pairing is a weakness because:'
+      options:
+      - A) Pairing is slow
+      - B) An attacker present during pairing can capture the key and decrypt subsequent traffic
+      - C) Keys are short
+      - D) Pairing repeats
+      answer: B
+    - question: IEEE 802.15.4 underpins which protocol family?
+      options:
+      - A) Wi-Fi
+      - B) Zigbee and Thread
+      - C) Bluetooth Classic
+      - D) LoRaWAN
+      answer: B
+    - question: 'A protocol that supports encryption but ships disabled by default results in:'
+      options:
+      - A) Better performance
+      - B) Widespread unencrypted deployments in practice
+      - C) Improved compatibility only
+      - D) No risk
+      answer: B
+    - question: 'Replay protection in a radio protocol prevents an attacker from:'
+      options:
+      - A) Reading messages
+      - B) Recording and retransmitting a valid message to repeat its effect
+      - C) Jamming
+      - D) Joining the network
+      answer: B
+- ordinal: 4
+  title: Hardware Attack Surface
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assess physical and hardware attack surface.
+  - Evaluate tamper resistance and secure element use.
+  - Consider side-channel exposure.
+  topics:
+  - Physical access and tamper evidence.
+  - Secure elements and key storage.
+  - Debug interface exposure.
+  - Side-channel and fault injection overview.
+  lab: 'Lab: Assess a device''s hardware attack surface, determine whether key material is protected by
+    a secure element, and document what an attacker with physical possession could achieve.'
+  refs:
+  - nist-sp-800-193
+  - nist-ir-8259
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A secure element protects keys by:'
+      options:
+      - A) Encrypting the filesystem
+      - B) Storing and using keys in dedicated hardware that does not expose them
+      - C) Obfuscating firmware
+      - D) Requiring a password
+      answer: B
+    - question: 'For most IoT deployments, physical attack is a realistic concern because devices are:'
+      options:
+      - A) Expensive
+      - B) Deployed in locations the operator does not physically control
+      - C) Networked
+      - D) Battery powered
+      answer: B
+    - question: 'Side-channel attacks recover secrets by observing:'
+      options:
+      - A) Network traffic
+      - B) Physical characteristics such as power consumption or timing during computation
+      - C) Log files
+      - D) Firmware images
+      answer: B
+    - question: 'Tamper evidence differs from tamper resistance because evidence:'
+      options:
+      - A) Prevents access
+      - B) Reveals that access occurred without preventing it
+      - C) Encrypts data
+      - D) Alerts remotely
+      answer: B
+    - question: 'Keys extracted from one device matter fleet-wide when:'
+      options:
+      - A) Devices have unique keys
+      - B) The key is shared across the product line
+      - C) A secure element is used
+      - D) Keys rotate
+      answer: B
+- ordinal: 5
+  title: IoT Detection and Response
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Monitor IoT estates effectively.
+  - Detect compromise in constrained devices.
+  - Respond where conventional tooling cannot be deployed.
+  topics:
+  - Monitoring constrained devices.
+  - Network-based detection for IoT.
+  - Behavioural baselining for devices.
+  - Response without endpoint agents.
+  lab: 'Lab: Design detection for an IoT fleet where no agent can be installed, establish a behavioural
+    baseline for one device type, and define the response procedure for a suspected compromise.'
+  refs:
+  - nist-sp-800-213
+  - nist-sp-800-94
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'IoT devices are well suited to behavioural baselining because they:'
+      options:
+      - A) Log extensively
+      - B) Exhibit narrow, predictable communication patterns
+      - C) Are powerful
+      - D) Run standard operating systems
+      answer: B
+    - question: 'Where no agent can be installed, detection must rely primarily on:'
+      options:
+      - A) Device logs
+      - B) Network behaviour and upstream platform telemetry
+      - C) Firmware analysis
+      - D) User reports
+      answer: B
+    - question: 'Responding to a compromised IoT device often means:'
+      options:
+      - A) Running removal tools
+      - B) Network isolation and firmware reflash or replacement
+      - C) Credential reset only
+      - D) Rebooting
+      answer: B
+    - question: 'A device suddenly contacting new external destinations indicates:'
+      options:
+      - A) A firmware update always
+      - B) A deviation from baseline warranting investigation
+      - C) Normal operation
+      - D) Network error
+      answer: B
+    - question: 'IoT compromise is often detected late because:'
+      options:
+      - A) Devices are encrypted
+      - B) They are rarely monitored and have no user to notice anomalies
+      - C) They are offline
+      - D) They lack network access
+      answer: B
+- ordinal: 6
+  title: IoT Security Programme and Procurement
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Set security requirements for IoT procurement.
+  - Assess vendor security capability.
+  - Manage IoT risk across the device lifecycle.
+  topics:
+  - Procurement security requirements.
+  - Vendor assessment for device makers.
+  - Lifecycle and end-of-support planning.
+  - Programme governance.
+  lab: 'Lab: Write procurement security requirements for an IoT device class, referencing recognised guidance,
+    and define the evidence a vendor must supply to demonstrate each.'
+  refs:
+  - nist-ir-8259
+  - nist-sp-800-213
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Procurement is a powerful security control point because it:'
+      options:
+      - A) Reduces cost
+      - B) Sets requirements before devices are deployed and become difficult to change
+      - C) Involves legal
+      - D) Is documented
+      answer: B
+    - question: 'A vendor unable to commit to a security support period should be:'
+      options:
+      - A) Preferred for flexibility
+      - B) Treated as a significant risk, since devices outlive support
+      - C) Accepted with a discount
+      - D) Assessed on price
+      answer: B
+    - question: 'NIST IR 8259 addresses:'
+      options:
+      - A) Federal procurement only
+      - B) Foundational cybersecurity activities for IoT device manufacturers
+      - C) Cloud security
+      - D) Incident response
+      answer: B
+    - question: 'Requiring evidence rather than assertions from vendors matters because:'
+      options:
+      - A) It is standard
+      - B) Self-declared compliance is frequently inaccurate
+      - C) It delays procurement
+      - D) Auditors require it
+      answer: B
+    - question: 'End-of-support planning should be established:'
+      options:
+      - A) When support ends
+      - B) At procurement, including replacement funding and timing
+      - C) Annually
+      - D) By the vendor
+      answer: B

@@ -1,0 +1,375 @@
+# C401 - Professional Ethics & Legal Frameworks - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C401
+title: Professional Ethics & Legal Frameworks
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Professional Ethics in Cyber Operations
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply an ethical framework to a cyber operations dilemma.
+  - Identify conflicts between capability, legality and ethics.
+  - Explain professional obligations of a cyber operator.
+  topics:
+  - Ethical frameworks and duty of care.
+  - Capability versus permission.
+  - Professional codes and obligations.
+  - Conflicts of interest and escalation.
+  lab: 'Lab: Analyse three dilemmas in which the technically possible, the legally permitted and the ethically
+    defensible diverge, and justify a course of action for each.'
+  refs:
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'The fact that an action is technically possible means:'
+      options:
+      - A) It is permitted
+      - B) Nothing about whether it is lawful or ethical
+      - C) It should be tested
+      - D) It is in scope
+      answer: B
+    - question: 'A professional who discovers they lack authorisation mid-task should:'
+      options:
+      - A) Complete the task quickly
+      - B) Stop and escalate before proceeding
+      - C) Document and continue
+      - D) Seek forgiveness afterwards
+      answer: B
+    - question: 'Duty of care in cyber operations extends to:'
+      options:
+      - A) The employer only
+      - B) Third parties and individuals affected by the operator's actions
+      - C) Colleagues only
+      - D) The vendor
+      answer: B
+    - question: 'Discovering a vulnerability outside authorised scope obliges the professional to:'
+      options:
+      - A) Exploit it to prove impact
+      - B) Report it through an appropriate channel without exploiting it
+      - C) Ignore it
+      - D) Publish it
+      answer: B
+    - question: 'A conflict of interest should be:'
+      options:
+      - A) Managed privately
+      - B) Declared to the appropriate authority so it can be managed
+      - C) Ignored if immaterial
+      - D) Resolved by resigning
+      answer: B
+- ordinal: 2
+  title: Legal Frameworks for Computer Misuse
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the general shape of computer misuse legislation.
+  - Explain why authorisation is the central legal concept.
+  - Identify the legal risk in common technical activities.
+  topics:
+  - Unauthorised access and modification offences.
+  - Authorisation as the pivotal concept.
+  - Tooling and dual-use considerations.
+  - Jurisdiction and cross-border issues.
+  lab: 'Lab: For five technical activities, identify what would make each lawful or unlawful, and state
+    precisely what evidence of authorisation would be required.'
+  refs:
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'The central concept in most computer misuse legislation is:'
+      options:
+      - A) Damage caused
+      - B) Whether access was authorised
+      - C) Tool sophistication
+      - D) Data value
+      answer: B
+    - question: 'Scanning a third-party system without permission is:'
+      options:
+      - A) Always lawful
+      - B) Potentially unlawful depending on jurisdiction and intent
+      - C) Always unlawful everywhere
+      - D) A civil matter only
+      answer: B
+    - question: 'Dual-use tooling refers to software that:'
+      options:
+      - A) Runs on two platforms
+      - B) Has both legitimate and malicious applications
+      - C) Requires two licences
+      - D) Is open source
+      answer: B
+    - question: 'Cross-border operations complicate legality because:'
+      options:
+      - A) Latency increases
+      - B) Multiple jurisdictions with differing law may apply
+      - C) Encryption differs
+      - D) Time zones differ
+      answer: B
+    - question: 'Verbal authorisation for offensive testing is inadequate because:'
+      options:
+      - A) It is slower
+      - B) It cannot be evidenced if the authorisation is later disputed
+      - C) It is unlawful
+      - D) It lacks detail
+      answer: B
+- ordinal: 3
+  title: Data Protection and Privacy
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain core data protection principles.
+  - Handle personal data lawfully during security work.
+  - Balance security monitoring against privacy expectations.
+  topics:
+  - Data protection principles.
+  - Lawful basis and purpose limitation.
+  - Monitoring, proportionality and transparency.
+  - Data minimisation in security operations.
+  lab: 'Lab: Design a monitoring capability that meets a stated security need while minimising personal
+    data collection, and document the justification for each data element retained.'
+  refs:
+  - nist-sp-800-92
+  - nist-cswp-29
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Data minimisation in security monitoring means collecting:'
+      options:
+      - A) Everything available
+      - B) Only what is necessary for the stated security purpose
+      - C) Only metadata
+      - D) Nothing personal
+      answer: B
+    - question: 'Purpose limitation means data collected for security should:'
+      options:
+      - A) Be reused freely
+      - B) Not be repurposed for unrelated uses such as performance management
+      - C) Be deleted immediately
+      - D) Be shared broadly
+      answer: B
+    - question: 'Employee monitoring is generally more defensible when it is:'
+      options:
+      - A) Covert
+      - B) Proportionate, necessary and transparently communicated
+      - C) Comprehensive
+      - D) Continuous
+      answer: B
+    - question: 'Excessive log retention creates risk because:'
+      options:
+      - A) Storage costs rise only
+      - B) Retained personal data remains a liability and breach exposure
+      - C) Queries slow
+      - D) Compliance improves
+      answer: B
+    - question: 'A lawful basis is required to:'
+      options:
+      - A) Encrypt data
+      - B) Process personal data at all
+      - C) Delete data
+      - D) Anonymise data
+      answer: B
+- ordinal: 4
+  title: Disclosure and Handling of Vulnerabilities
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain coordinated vulnerability disclosure.
+  - Balance public interest, vendor process and user risk.
+  - Handle a disclosure professionally.
+  topics:
+  - Coordinated disclosure models.
+  - Disclosure timelines and negotiation.
+  - Researcher and vendor obligations.
+  - Handling an unresponsive vendor.
+  lab: 'Lab: Draft a disclosure plan for a discovered vulnerability including initial contact, timeline,
+    escalation path and the conditions under which you would publish.'
+  refs:
+  - nist-sp-800-218
+  - cwe-top-25
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Coordinated vulnerability disclosure aims to:'
+      options:
+      - A) Maximise publicity
+      - B) Allow a fix to reach users before details become public
+      - C) Protect the vendor only
+      - D) Delay disclosure indefinitely
+      answer: B
+    - question: 'Full immediate public disclosure risks:'
+      options:
+      - A) Nothing
+      - B) Users being exposed before any fix is available
+      - C) Vendor embarrassment only
+      - D) Slower patching
+      answer: B
+    - question: 'If a vendor is unresponsive, a researcher should:'
+      options:
+      - A) Publish immediately
+      - B) Escalate through a coordinating body before considering publication
+      - C) Sell the finding
+      - D) Abandon it
+      answer: B
+    - question: 'Testing a vulnerability against systems you do not own to confirm impact is:'
+      options:
+      - A) Necessary diligence
+      - B) Likely unlawful regardless of research intent
+      - C) Standard practice
+      - D) Permitted if reported
+      answer: B
+    - question: 'A disclosure timeline is negotiated to balance:'
+      options:
+      - A) Cost and effort
+      - B) Time needed for a quality fix against ongoing user exposure
+      - C) Publicity and credit
+      - D) Legal risk only
+      answer: B
+- ordinal: 5
+  title: Governance, Accountability and Oversight
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain oversight mechanisms for cyber capabilities.
+  - Describe accountability for authorised operations.
+  - Identify the role of independent review.
+  topics:
+  - Oversight and authorisation structures.
+  - Accountability and record-keeping.
+  - Independent review and audit.
+  - Proportionality and necessity tests.
+  lab: 'Lab: Design an authorisation and oversight process for a sensitive cyber capability, specifying
+    who authorises, who reviews, what is recorded and how proportionality is assessed.'
+  refs:
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'Accountability for an authorised operation rests with:'
+      options:
+      - A) The operator alone
+      - B) The authorising decision-maker, with the operator accountable for execution within scope
+      - C) The tool vendor
+      - D) The auditor
+      answer: B
+    - question: 'Record-keeping for sensitive operations exists primarily to:'
+      options:
+      - A) Assist attackers
+      - B) Enable oversight, review and demonstration of lawful conduct
+      - C) Satisfy storage policy
+      - D) Support billing
+      answer: B
+    - question: 'A proportionality test asks whether the action is:'
+      options:
+      - A) Technically optimal
+      - B) No more intrusive than necessary to achieve a legitimate aim
+      - C) Cost-effective
+      - D) Popular
+      answer: B
+    - question: 'Independent review is valuable because it:'
+      options:
+      - A) Slows operations usefully
+      - B) Provides assurance not dependent on the operating team's own judgement
+      - C) Reduces cost
+      - D) Replaces authorisation
+      answer: B
+    - question: 'Operating outside authorised scope, even with good intent, is:'
+      options:
+      - A) Acceptable if successful
+      - B) A serious breach undermining the legitimacy of the whole capability
+      - C) A minor process issue
+      - D) Expected
+      answer: B
+- ordinal: 6
+  title: Applying Ethics Under Pressure
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Recognise pressures that erode ethical decision-making.
+  - Apply a decision process under time constraint.
+  - Raise concerns effectively within an organisation.
+  topics:
+  - Pressure, urgency and normalisation of deviance.
+  - Structured ethical decision processes.
+  - Speaking up and escalation routes.
+  - Personal and professional consequences.
+  lab: 'Lab: Work through a time-pressured scenario in which the fastest containment action exceeds your
+    authorisation, decide and justify a course of action, and draft the escalation you would send.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'Normalisation of deviance describes:'
+      options:
+      - A) Improving standards
+      - B) Gradual acceptance of unsafe practice because nothing has gone wrong yet
+      - C) Policy updates
+      - D) Risk acceptance
+      answer: B
+    - question: 'Urgency during an incident:'
+      options:
+      - A) Suspends authorisation requirements
+      - B) Increases the risk of poor decisions and makes pre-agreed authority important
+      - C) Justifies any action
+      - D) Removes accountability
+      answer: B
+    - question: 'An effective escalation states:'
+      options:
+      - A) The concern only
+      - B) The concern, the evidence, the risk and the decision being requested
+      - C) A recommendation only
+      - D) The consequences of inaction
+      answer: B
+    - question: 'If an instruction appears unlawful, a professional should:'
+      options:
+      - A) Comply and document
+      - B) Decline, escalate and record the reasons
+      - C) Comply under protest
+      - D) Resign immediately
+      answer: B
+    - question: 'Pre-authorised emergency actions are valuable because they:'
+      options:
+      - A) Remove oversight
+      - B) Allow fast, lawful action without improvising authority under pressure
+      - C) Reduce documentation
+      - D) Transfer accountability
+      answer: B

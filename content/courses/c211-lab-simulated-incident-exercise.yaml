@@ -1,0 +1,373 @@
+# C211 - Lab: Simulated Incident Exercise - DRAFT course content.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C211
+title: 'Lab: Simulated Incident Exercise'
+version: '1.0'
+difficulty: intermediate
+duration_hours: 100
+provenance: unsourced
+status: draft
+is_published: false
+qsp_code: null
+source:
+  origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
+  citations_verified: '2026-08-19'
+  notes:
+  - Generated draft courseware. Not sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml; every entry there was resolved against its
+    publisher.'
+  - No NICE/DCWF/CSF mappings are asserted here. Framework mapping belongs to crosswalk.csv.
+  - Unpublished and unbound to any qualification pending Standards review.
+modules:
+- ordinal: 1
+  title: Exercise Design
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design an incident exercise with defined objectives.
+  - Construct a realistic scenario and injects.
+  - Define measurable evaluation criteria.
+  topics:
+  - Objective setting and scope.
+  - Scenario construction and realism.
+  - Inject design and timing.
+  - Evaluation criteria and observation.
+  lab: 'Lab: Design a full exercise for a ransomware scenario including objectives, five timed injects
+    and the observable behaviours that will be evaluated.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'Exercise objectives should be defined:'
+      options:
+      - A) After the exercise
+      - B) Before design, so the scenario tests what matters
+      - C) By participants
+      - D) By the tool
+      answer: B
+    - question: 'An inject should be designed to:'
+      options:
+      - A) Confuse participants
+      - B) Introduce information that forces a decision
+      - C) Fill time
+      - D) Test typing speed
+      answer: B
+    - question: 'Excessive scenario realism can be counterproductive when it:'
+      options:
+      - A) Engages participants
+      - B) Consumes preparation effort without testing the objectives
+      - C) Improves evaluation
+      - D) Shortens the exercise
+      answer: B
+    - question: 'Evaluation criteria must be:'
+      options:
+      - A) Subjective
+      - B) Observable during the exercise
+      - C) Secret from evaluators
+      - D) Financial
+      answer: B
+    - question: 'An exercise without defined objectives typically produces:'
+      options:
+      - A) Better learning
+      - B) An entertaining session with no actionable improvement
+      - C) Faster response
+      - D) Clear metrics
+      answer: B
+- ordinal: 2
+  title: Conducting the Exercise
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Facilitate an exercise while maintaining pace and focus.
+  - Manage participant dynamics and psychological safety.
+  - Capture observations without disrupting play.
+  topics:
+  - Facilitation technique.
+  - Pace, escalation and time management.
+  - Psychological safety and blame avoidance.
+  - Observation capture.
+  lab: 'Lab: Facilitate the designed exercise with a small group, deliver injects on schedule, and capture
+    structured observations against your evaluation criteria.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A facilitator''s primary role during an exercise is to:'
+      options:
+      - A) Solve the scenario
+      - B) Maintain pace and surface decisions without leading participants
+      - C) Score individuals
+      - D) Record attendance
+      answer: B
+    - question: 'Psychological safety in an exercise matters because participants must:'
+      options:
+      - A) Enjoy themselves
+      - B) Feel able to make and admit mistakes honestly
+      - C) Compete
+      - D) Be evaluated individually
+      answer: B
+    - question: 'If participants stall, the facilitator should:'
+      options:
+      - A) Provide the answer
+      - B) Introduce an inject or question that unblocks without solving it
+      - C) End the exercise
+      - D) Reduce the scope
+      answer: B
+    - question: 'Observations should be recorded:'
+      options:
+      - A) From memory afterwards
+      - B) Contemporaneously against defined criteria
+      - C) By participants
+      - D) Only if notable
+      answer: B
+    - question: 'Evaluating individuals rather than the process tends to:'
+      options:
+      - A) Improve honesty
+      - B) Suppress candid disclosure of failures
+      - C) Speed the exercise
+      - D) Improve metrics
+      answer: B
+- ordinal: 3
+  title: Technical Response Execution
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute technical containment in a controlled environment.
+  - Collect evidence while responding under time pressure.
+  - Balance speed against evidence preservation.
+  topics:
+  - Containment execution.
+  - Evidence collection under pressure.
+  - Tooling readiness.
+  - Decision trade-offs in real time.
+  lab: 'Lab: In the lab environment, execute containment against a simulated compromise while preserving
+    volatile evidence, and record the order of your actions with justification.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Under time pressure, the order of actions should be guided by:'
+      options:
+      - A) Convenience
+      - B) Volatility of evidence and severity of ongoing harm
+      - C) Tool availability
+      - D) Team preference
+      answer: B
+    - question: 'Isolating a host at the network level rather than powering it off preserves:'
+      options:
+      - A) Disk evidence only
+      - B) Volatile memory and running state
+      - C) Nothing additional
+      - D) Log files
+      answer: B
+    - question: 'Tooling that is not tested before an incident typically:'
+      options:
+      - A) Works better under pressure
+      - B) Fails or delays response when first used in anger
+      - C) Requires no access
+      - D) Improves evidence
+      answer: B
+    - question: 'Documenting actions during response is essential because:'
+      options:
+      - A) It satisfies audit
+      - B) Responders' own actions must be distinguishable from the attacker's
+      - C) It slows response
+      - D) It replaces logging
+      answer: B
+    - question: 'Choosing speed over evidence preservation is defensible when:'
+      options:
+      - A) Always
+      - B) Ongoing harm outweighs the investigative value, and the decision is recorded
+      - C) Never
+      - D) The tool is slow
+      answer: B
+- ordinal: 4
+  title: Communication Under Pressure
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Provide clear status updates during a live incident.
+  - Coordinate across teams and external parties.
+  - Manage information flow and confidentiality.
+  topics:
+  - Status update structure and cadence.
+  - Cross-team coordination.
+  - External and regulatory communication.
+  - Information handling during response.
+  lab: 'Lab: During the exercise, produce three timed status updates at defined intervals and a briefing
+    note for an executive stakeholder, then review them for clarity and accuracy.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A status update during an incident should include:'
+      options:
+      - A) Only good news
+      - B) Current understanding, actions taken, next steps and open decisions
+      - C) Technical logs
+      - D) Attribution
+      answer: B
+    - question: 'Regular update cadence is valuable because it:'
+      options:
+      - A) Fills time
+      - B) Prevents stakeholders interrupting responders for information
+      - C) Improves detection
+      - D) Reduces documentation
+      answer: B
+    - question: 'Incident information should be shared:'
+      options:
+      - A) Broadly to maximise help
+      - B) On a need-to-know basis appropriate to the sensitivity
+      - C) Publicly
+      - D) Only after closure
+      answer: B
+    - question: 'Conflicting information between teams should be:'
+      options:
+      - A) Resolved silently
+      - B) Surfaced explicitly and reconciled before decisions rely on it
+      - C) Averaged
+      - D) Ignored
+      answer: B
+    - question: 'Overstating certainty in an update risks:'
+      options:
+      - A) Faster decisions
+      - B) Decisions being made on an incorrect basis
+      - C) Better morale
+      - D) Less documentation
+      answer: B
+- ordinal: 5
+  title: Evaluation and Debrief
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Conduct a structured hot wash immediately after the exercise.
+  - Evaluate performance against the defined criteria.
+  - Separate exercise artefacts from real findings.
+  topics:
+  - Hot wash structure and timing.
+  - Evaluation against criteria.
+  - Participant feedback capture.
+  - Distinguishing exercise from reality.
+  lab: 'Lab: Run a hot wash immediately after the exercise, capture what went well and what did not against
+    your criteria, and produce a draft findings list.'
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A hot wash should be held:'
+      options:
+      - A) A week later
+      - B) Immediately after the exercise while recollection is fresh
+      - C) Before the exercise
+      - D) Only if problems occurred
+      answer: B
+    - question: 'Evaluation should be made against:'
+      options:
+      - A) General impressions
+      - B) The criteria defined during design
+      - C) Participant seniority
+      - D) Time taken alone
+      answer: B
+    - question: 'Exercise findings must be clearly marked as such because:'
+      options:
+      - A) They are less important
+      - B) Simulated artefacts must never be mistaken for real incidents later
+      - C) They are confidential
+      - D) They expire
+      answer: B
+    - question: 'Capturing what went well is important because it:'
+      options:
+      - A) Improves morale only
+      - B) Identifies practices worth preserving and spreading
+      - C) Balances the report
+      - D) Satisfies participants
+      answer: B
+    - question: 'A hot wash should focus on:'
+      options:
+      - A) Individual performance
+      - B) Process, information flow and decision quality
+      - C) Tool selection
+      - D) Scenario realism
+      answer: B
+- ordinal: 6
+  title: Improvement Planning
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert exercise findings into owned improvement actions.
+  - Prioritise improvements by risk reduction.
+  - Verify that improvements were effective.
+  topics:
+  - Finding to action conversion.
+  - Prioritisation and sequencing.
+  - Ownership and tracking.
+  - Verification through re-exercise.
+  lab: 'Lab: Convert your exercise findings into a prioritised improvement plan with named owners, target
+    dates and the verification method for each action.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'An improvement action should always specify:'
+      options:
+      - A) The finding only
+      - B) Owner, target date and how completion will be verified
+      - C) The cost
+      - D) The exercise date
+      answer: B
+    - question: 'Prioritisation of improvements should be based on:'
+      options:
+      - A) Ease of implementation
+      - B) Expected risk reduction relative to effort
+      - C) Order discovered
+      - D) Participant preference
+      answer: B
+    - question: 'The most reliable verification that a process improvement worked is:'
+      options:
+      - A) Documentation update
+      - B) Re-exercising and observing the improved behaviour
+      - C) Owner confirmation
+      - D) Ticket closure
+      answer: B
+    - question: 'Improvement plans commonly fail because:'
+      options:
+      - A) They are too detailed
+      - B) Actions lack ownership and are not tracked to completion
+      - C) Exercises are unrealistic
+      - D) Findings are too few
+      answer: B
+    - question: 'A finding that recurs across multiple exercises indicates:'
+      options:
+      - A) Good consistency
+      - B) A systemic issue that previous actions did not address
+      - C) Poor scenario design
+      - D) Evaluator error
+      answer: B
