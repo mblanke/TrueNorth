@@ -113,6 +113,14 @@ export const routes: Routes = [
         title: 'Courses - TrueNorth Range',
       },
       {
+        // A course of its own, so the developmental path can link to one rather than
+        // to the list it sits in.
+        path: 'courses/:id',
+        loadComponent: () =>
+          import('./features/training/course-detail.component').then(m => m.CourseDetailComponent),
+        title: 'Course - TrueNorth Range',
+      },
+      {
         path: 'progress',
         loadComponent: () =>
           import('./features/my-progress/my-progress.component').then(m => m.MyProgressComponent),

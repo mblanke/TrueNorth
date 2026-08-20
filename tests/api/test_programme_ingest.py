@@ -189,12 +189,62 @@ def test_import_records_provenance_in_course_meta(db_session):
         assert meta["term_code"]
 
 
-def test_import_introduces_no_dp_tag_namespace(db_session):
-    """dp_order on the Qualification carries DP1/DP2 — tags must not duplicate it."""
+def test_dp_tag_matches_the_catalogue_dp_order(db_session):
+    """The DP tag is projected from `course_meta.dp_order`, never authored.
+
+    DP1 is the Algonquin College programme and DP2 the Royal Military College one —
+    that is the catalogue's own institution split, and the tag has to keep saying so
+    or the developmental path and the catalogue will disagree about where a course is
+    taught.
+    """
+    import json
+
     import_programme(db_session, _csv_text())
     for course in db_session.query(Course).all():
-        assert "dp1" not in course.tags.lower()
-        assert "dp2" not in course.tags.lower()
+        meta = json.loads(course.course_meta)
+        tags = json.loads(course.tags)
+        assert f"DP{meta['dp_order']}" in tags
+        # Exactly one developmental period per course.
+        assert len([t for t in tags if t.startswith("DP")]) == 1
+
+
+def test_dp_tag_is_the_bare_literal_not_a_namespace(db_session):
+    """`DP1`, not `dp:1`.
+
+    The domain writes it bare everywhere else — term codes (`DP1-Y1-F`), term labels,
+    the generated `Programme — cyber-operator DP1` path — and it is the facet the
+    catalogue is most often sorted by, so it reads as a label rather than a key/value.
+    """
+    import json
+
+    import_programme(db_session, _csv_text())
+    for course in db_session.query(Course).all():
+        tags = json.loads(course.tags)
+        assert not [t for t in tags if t.startswith("dp:")]
+
+
+def test_catalogue_tags_are_derived_and_idempotent(db_session):
+    """Re-importing must not grow, reorder or drift the tag set."""
+    import json
+
+    import_programme(db_session, _csv_text())
+    first = {c.name: json.loads(c.tags) for c in db_session.query(Course).all()}
+    import_programme(db_session, _csv_text())
+    second = {c.name: json.loads(c.tags) for c in db_session.query(Course).all()}
+    assert first == second
+
+
+def test_untaught_courses_are_tagged_delivers_none(db_session):
+    """"Teaches but claims nothing" has to be a filterable state.
+
+    Most of the catalogue delivers no performance objective. Without an explicit tag
+    that is an absence you have to notice rather than a facet you can select.
+    """
+    import json
+
+    import_programme(db_session, _csv_text())
+    for course in db_session.query(Course).all():
+        assert "delivers:none" in json.loads(course.tags)
 
 
 def test_import_is_idempotent(db_session):

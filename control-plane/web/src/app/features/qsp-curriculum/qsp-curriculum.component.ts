@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } 
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { ApiService } from '@core/services/api.service';
@@ -30,6 +31,7 @@ interface LearningPath {
     MatButtonModule,
     MatExpansionModule,
     MatIconModule,
+    MatTooltipModule,
     CareerMapComponent,
     QualificationDetailComponent,
   ],
@@ -37,7 +39,22 @@ interface LearningPath {
   template: `
     <div class="qc">
       <header class="qc-head">
-        <h2><mat-icon>school</mat-icon> Developmental Path</h2>
+        <div class="head-row">
+          <h2><mat-icon>school</mat-icon> Developmental Path</h2>
+          <!-- The map is cached for the lifetime of the page (a root-scoped
+               shareReplay), so an import lands invisibly until something drops it.
+               Without a control here the only way to refetch was a browser reload. -->
+          <button
+            mat-stroked-button
+            type="button"
+            class="refresh"
+            (click)="reload()"
+            [disabled]="loading()"
+            matTooltip="Refetch after a crosswalk import, a content import or path generation"
+          >
+            <mat-icon>refresh</mat-icon> Refresh
+          </button>
+        </div>
         <p class="muted">
           The QSP rank ladder and its specialty streams, decomposed into performance
           objectives, enabling objectives and lessons — cross-mapped to NICE work roles
@@ -114,6 +131,14 @@ interface LearningPath {
   `,
   styles: [
     `
+      .head-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .head-row h2 { margin: 0; }
+      .refresh { flex: 0 0 auto; }
       .qc { padding: 4px 2px 24px; }
       .qc-head h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
       .qc-head p { margin: 0 0 16px; max-width: 76ch; font-size: 0.86rem; }

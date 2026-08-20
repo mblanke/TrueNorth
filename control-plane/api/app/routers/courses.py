@@ -15,11 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
-from .. import course_content_ingest, programme_ingest
+from .. import course_content_ingest, programme_ingest, qsp_paths
 from ..auth import CurrentUser, get_current_user
 from ..tenancy import get_owned, tenant_uuid
 from ..db import get_db
 from ..models import (
+    ContentKind,
     Course,
     CourseModule,
     Enrollment,
@@ -27,8 +28,13 @@ from ..models import (
     Exercise,
     ExternalActivity,
     LearningPath,
+    Lesson,
+    ModuleContent,
     ModuleContentType,
     ModuleProgress,
+    PerformanceObjective,
+    Qualification,
+    Quiz,
 )
 from ..schemas import (
     CourseIn,
@@ -106,18 +112,49 @@ def list_courses(
     offset: int = Query(default=0, ge=0),
     published_only: bool = Query(default=False),
     difficulty: str | None = Query(default=None),
+    tags: list[str] | None = Query(default=None),
+    include_retired: bool = Query(default=False),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """List courses with optional filters."""
+    """List courses with optional filters.
+
+    `tags` is repeatable and ANDs — `?tags=DP1&tags=delivers:none` is "DP1 courses that
+    deliver no objective". Tags are derived at import from `course_meta`
+    (`programme_ingest.catalogue_tags`), never hand-authored.
+
+    Retired courses are hidden by default: they are spine-generated stubs that authored
+    content has superseded, kept only so their scenario/range wiring survives.
+    """
     q = db.query(Course)
     if published_only:
         q = q.filter(Course.is_published)
     if difficulty:
         q = q.filter(Course.difficulty == difficulty)
-    total = q.count()
-    items = q.order_by(Course.created_at.desc()).offset(offset).limit(limit).all()
-    return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
+
+    # `tags` and `retired` both live inside JSON text columns, which SQLite and Postgres
+    # do not filter alike, so both are applied in Python. The catalogue is a few dozen
+    # rows; when it stops being, these become real columns.
+    rows = q.order_by(Course.created_at.desc()).all()
+    if not include_retired:
+        rows = [c for c in rows if not qsp_paths.course_meta_of(c).get("retired")]
+    if tags:
+        wanted = {t for t in tags if t}
+        rows = [c for c in rows if wanted <= set(_course_tags(c))]
+
+    total = len(rows)
+    return PaginatedResponse(
+        items=rows[offset : offset + limit], total=total, limit=limit, offset=offset
+    )
+
+
+def _course_tags(course: Course) -> list[str]:
+    """`course.tags` as a list, tolerating the unparseable."""
+    try:
+        parsed = json.loads(course.tags or "[]")
+    except (TypeError, ValueError):
+        return []
+    return [str(t) for t in parsed] if isinstance(parsed, list) else []
 
 
 @router.get("/{course_id}", response_model=CourseOut)
@@ -136,6 +173,138 @@ def get_course(
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
     return course
+
+
+@router.get("/{course_id}/outline")
+def course_outline(
+    course_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """A course with everything needed to actually read it.
+
+    `CourseOut` returns modules but not their content, so the course page could only
+    ever list module titles. This walks the teach -> check -> assess rows so the page
+    can show what each module teaches, the quiz that checks it, the lab that assesses
+    it, and the performance objective it satisfies.
+    """
+    course = (
+        db.query(Course)
+        .filter(Course.id == course_id, Course.tenant_id == tenant_uuid(user))
+        .one_or_none()
+    )
+    if course is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
+
+    modules = (
+        db.query(CourseModule)
+        .filter(CourseModule.course_id == course.id)
+        .order_by(CourseModule.ordinal)
+        .all()
+    )
+    module_ids = [m.id for m in modules]
+
+    contents: dict[str, list[ModuleContent]] = {}
+    lessons: dict[str, Lesson] = {}
+    quizzes: dict[str, Quiz] = {}
+    if module_ids:
+        rows = (
+            db.query(ModuleContent)
+            .filter(ModuleContent.module_id.in_(module_ids))
+            .order_by(ModuleContent.ordinal)
+            .all()
+        )
+        for row in rows:
+            contents.setdefault(str(row.module_id), []).append(row)
+        lesson_ids = [r.lesson_id for r in rows if r.lesson_id]
+        if lesson_ids:
+            # tenant-safe: reached only through this course's own modules.
+            lessons = {
+                str(x.id): x for x in db.query(Lesson).filter(Lesson.id.in_(lesson_ids)).all()
+            }
+        quiz_ids = [r.quiz_id for r in rows if r.quiz_id]
+        if quiz_ids:
+            # tenant-safe: reached only through this course's own modules.
+            quizzes = {
+                str(x.id): x for x in db.query(Quiz).filter(Quiz.id.in_(quiz_ids)).all()
+            }
+
+    # Which performance objective each module satisfies, if any.
+    po_by_module: dict[str, dict] = {}
+    bound = [m for m in modules if m.po_id]
+    if bound:
+        for po, qual in (
+            db.query(PerformanceObjective, Qualification)
+            .join(Qualification, Qualification.id == PerformanceObjective.qualification_id)
+            .filter(PerformanceObjective.id.in_([m.po_id for m in bound]))
+            .all()
+        ):
+            for m in bound:
+                if str(m.po_id) == str(po.id):
+                    po_by_module[str(m.id)] = {
+                        "qsp_code": qual.qsp_code,
+                        "qualification": qual.title or qual.nqual,
+                        "po_code": po.po_code,
+                        "title": po.title,
+                    }
+
+    meta = qsp_paths.course_meta_of(course)
+    out_modules = []
+    for m in modules:
+        rows = contents.get(str(m.id), [])
+        teach = next((r for r in rows if r.content_kind == ContentKind.teach), None)
+        check = next((r for r in rows if r.content_kind == ContentKind.check), None)
+        assess = next((r for r in rows if r.content_kind == ContentKind.assess), None)
+        lesson = lessons.get(str(teach.lesson_id)) if teach and teach.lesson_id else None
+        quiz = quizzes.get(str(check.quiz_id)) if check and check.quiz_id else None
+
+        lab = ""
+        if assess is not None and assess.external_ref:
+            try:
+                lab = (json.loads(assess.external_ref) or {}).get("lab", "")
+            except (TypeError, ValueError):
+                lab = ""
+
+        out_modules.append({
+            "id": str(m.id),
+            "ordinal": m.ordinal,
+            "title": m.title,
+            "content_type": m.content_type.value if m.content_type else "",
+            "duration_minutes": m.duration_minutes,
+            "is_required": m.is_required,
+            "pass_threshold": m.pass_threshold,
+            "body_markdown": lesson.body_markdown if lesson else "",
+            "quiz": (
+                {
+                    "id": str(quiz.id),
+                    "title": quiz.title,
+                    "pass_pct": quiz.pass_pct,
+                    "question_count": len(quiz.questions),
+                }
+                if quiz
+                else None
+            ),
+            "lab": lab,
+            "scenario_id": str(assess.scenario_id) if assess and assess.scenario_id else None,
+            "delivers": po_by_module.get(str(m.id)),
+        })
+
+    return {
+        "id": str(course.id),
+        "course_code": meta.get("course_code") or "",
+        "name": course.name,
+        "description": course.description,
+        "difficulty": course.difficulty,
+        "duration_hours": course.duration_hours,
+        "is_published": course.is_published,
+        "institution": meta.get("institution") or "",
+        "dp_order": meta.get("dp_order") or 0,
+        "term_label": meta.get("term_label") or "",
+        "provenance": meta.get("content_provenance") or meta.get("provenance") or "",
+        "status": meta.get("content_status") or meta.get("status") or "",
+        "tags": _course_tags(course),
+        "modules": out_modules,
+    }
 
 
 @router.patch("/{course_id}", response_model=CourseOut)

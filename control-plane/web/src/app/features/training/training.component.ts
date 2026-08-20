@@ -1,4 +1,5 @@
-﻿import { Component, OnInit, signal } from '@angular/core';
+﻿import { Component, OnInit, inject, signal } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -211,7 +212,11 @@ interface Transcript {
                   </td>
                 </ng-container>
                 <tr mat-header-row *matHeaderRowDef="courseColumns"></tr>
-                <tr mat-row *matRowDef="let row; columns: courseColumns"></tr>
+                <tr
+                  mat-row
+                  *matRowDef="let row; columns: courseColumns"
+                  [class.tn-linked]="row.id === highlightedCourseId()"
+                ></tr>
               </table>
               @if (courses().length === 0) {
                 <div class="empty-state">
@@ -500,6 +505,11 @@ interface Transcript {
     .sub-text { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
 
     .filter-card { background: var(--bg-secondary) !important; }
+    /* The row a deep link landed on. */
+    tr.tn-linked td {
+      background: var(--accent-soft, rgba(0, 120, 90, 0.14));
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
     .filter-row { display: flex; align-items: center; gap: 16px; padding: 4px 0; }
     .user-picker { min-width: 380px; }
 
@@ -524,8 +534,17 @@ interface Transcript {
   `],
 })
 export class TrainingComponent implements OnInit {
+  private readonly route = inject(ActivatedRoute);
+
   // Tab state
   activeTab = signal(0);
+
+  /**
+   * A course deep-linked from elsewhere — the developmental path links its course
+   * chips here. Without this the link lands on the Courses tab and leaves the reader
+   * to find the row themselves, which for a 44-row catalogue is not a link at all.
+   */
+  highlightedCourseId = signal<string | null>(null);
 
   // Courses
   courses = signal<Course[]>([]);
@@ -576,6 +595,11 @@ export class TrainingComponent implements OnInit {
   }
 
   ngOnInit() {
+    this.route.queryParamMap.subscribe(params => {
+      const id = params.get('course');
+      this.highlightedCourseId.set(id);
+      if (id) this.activeTab.set(0); // the Courses tab
+    });
     this.loadCourses();
     this.loadLearningPaths();
     this.loadEnrollments();

@@ -25,6 +25,9 @@ function node(
     state,
     progress: { completed: 0, in_progress: 0, total: 2, pct: 0 },
     objectives: [],
+    courses: [],
+    course_count: 0,
+    course_hours: 0,
     ...overrides,
   };
 }

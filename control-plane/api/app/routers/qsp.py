@@ -21,6 +21,7 @@ from ..db import get_db
 from ..models import (
     Competency,
     ContentKind,
+    Course,
     CourseModule,
     EnablingObjective,
     Exercise,
@@ -65,6 +66,23 @@ class CompTag(BaseModel):
     relation: str
 
 
+class DeliveredBy(BaseModel):
+    """The course and module delivering an objective, with where it is taught."""
+
+    course_id: str
+    course_code: str
+    course_name: str
+    module_id: str
+    module_title: str
+    dp_order: int = 0
+    institution: str = ""
+    term_code: str = ""
+    # True when the "deliverer" is a spine-generated stub rather than real courseware.
+    # A stub stands in for content that does not exist, so an objective it holds is
+    # undelivered — presenting it as delivered would overstate coverage.
+    is_placeholder: bool = False
+
+
 class POOut(BaseModel):
     id: str
     po_code: str
@@ -92,6 +110,11 @@ class POOut(BaseModel):
     scenario_id: str | None = None
     range_id: str | None = None
     course_code: str | None = None
+    # The course and module that actually deliver this objective, resolved through
+    # `CourseModule.po_id`. `course_code` above is synthesised from the work role and
+    # PO number and names no `Course` row, so before this field the career map could
+    # not show authored content however much of it was imported.
+    delivered_by: DeliveredBy | None = None
     duration_long: bool = False
     # Learner state for the calling user; only populated by the career map, which
     # is the one view that resolves enrolments. Elsewhere it stays "not_started".
@@ -160,6 +183,44 @@ def _modules_for_pos(db: Session, po_ids: list) -> dict[str, CourseModule]:
     out: dict[str, CourseModule] = {}
     for module in rows:
         out.setdefault(str(module.po_id), module)
+    return out
+
+
+def _delivered_by_for_pos(
+    db: Session, modules_by_po: dict[str, CourseModule]
+) -> dict[str, DeliveredBy]:
+    """Map po_id -> the course/module delivering it. One query.
+
+    Takes the already-resolved `modules_by_po` so this adds a single `Course` lookup
+    rather than one per objective.
+    """
+    if not modules_by_po:
+        return {}
+    # tenant-safe: the ids come from modules already reached through this caller's
+    # performance objectives, so nothing here widens what the caller could already see.
+    courses = {
+        str(c.id): c
+        for c in db.query(Course)
+        .filter(Course.id.in_({m.course_id for m in modules_by_po.values()}))
+        .all()
+    }
+    out: dict[str, DeliveredBy] = {}
+    for po_id, module in modules_by_po.items():
+        course = courses.get(str(module.course_id))
+        if course is None:
+            continue
+        meta = qsp_paths.course_meta_of(course)
+        out[po_id] = DeliveredBy(
+            course_id=str(course.id),
+            course_code=meta.get("course_code") or "",
+            course_name=course.name,
+            module_id=str(module.id),
+            module_title=module.title or "",
+            dp_order=meta.get("dp_order") or 0,
+            institution=meta.get("institution") or "",
+            term_code=meta.get("term_code") or "",
+            is_placeholder=not meta.get("provenance"),
+        )
     return out
 
 
@@ -372,6 +433,7 @@ class _POContext:
         self.comps_by_po = _competencies_for_pos(db, po_ids)
         self.modules_by_po = _modules_for_pos(db, po_ids)
         self.refs_by_po = _exercise_refs_for_pos(db, po_ids, self.modules_by_po)
+        self.delivered_by = _delivered_by_for_pos(db, self.modules_by_po)
 
     def serialise(self, pos: list[PerformanceObjective], qual: Qualification) -> list[POOut]:
         result = []
@@ -384,6 +446,7 @@ class _POContext:
                 key, (None, None, None)
             )
             out.course_code = qsp_paths.course_code(po, qual)
+            out.delivered_by = self.delivered_by.get(key)
             out.duration_long = (po.duration_min or 0) >= 480  # 8h+ -> flag for verification
             result.append(out)
         return result
@@ -689,6 +752,10 @@ def curriculum_map(
     # One lookup pass over every objective on the map, shared by all qualifications.
     ctx = _POContext(db, [po.id for po in pos])
     progress_by_po = qsp_progress.po_progress(db, user.id, [po.id for po in pos], ctx.modules_by_po)
+    # Catalogue courses keyed by the node that teaches them — DP1 is the Algonquin
+    # programme, DP2 the RMC one. Placement is the catalogue's `dp_order`, not the
+    # course's qualification; see `qsp_paths.programme_courses`.
+    courses_by_node = qsp_paths.programme_courses(db, tenant_id=user.tenant_id or None)
 
     nodes = []
     node_tuples: list[qsp_progress.Node] = []
@@ -705,23 +772,35 @@ def curriculum_map(
             po_states.append((po.po_code, state))
 
         node_tuples.append((qual.qsp_code, qual.dp_order, qual.track, po_states))
+        track_key = "progression" if qual.track != "specialty" else (qual.nqual or qual.qsp_code)
+        node_courses = courses_by_node.get((qual.dp_order, track_key), [])
         nodes.append({
             "qsp_code": qual.qsp_code,
             "nqual": qual.nqual,
             "title": qual.title or qual.nqual,
             "dp_order": qual.dp_order,
             "track": qual.track,
-            "track_key": "progression" if qual.track != "specialty" else (qual.nqual or qual.qsp_code),
+            "track_key": track_key,
             "rank_level": qual.rank_level,
             "po_count": len(qual_pos),
             "gate_count": sum(1 for po in qual_pos if po.tier == POTier.gate),
+            # Assessment time from the QSP objectives — how long being *tested* takes.
+            # Not the length of the programme, which is `course_hours` below; a node
+            # showing only this read as though three years of study took 36 hours.
             "total_minutes": sum(po.duration_min or 0 for po in qual_pos),
+            # Taught hours across the programme delivered in this period.
+            "course_hours": sum(c["duration_hours"] for c in node_courses),
             # How many objectives actually carry a duration. Much of the spine is
             # still unscoped, so a bare total reads as complete when it is not —
             # the UI needs to know the sum is a floor, not a figure.
             "timed_po_count": sum(1 for po in qual_pos if (po.duration_min or 0) > 0),
             "progress": qsp_progress.aggregate(po_states).as_dict(),
             "objectives": [o.model_dump() for o in objectives],
+            # The programme taught in this period, in term order. Separate from
+            # `objectives`: most courses teach without delivering an objective, and a
+            # few deliver into a different period than the one teaching them.
+            "course_count": len(node_courses),
+            "courses": node_courses,
         })
 
     states = qsp_progress.node_states(node_tuples, [(e["from"], e["to"]) for e in edges])

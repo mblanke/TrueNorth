@@ -22,6 +22,7 @@ from .models import (
     Course,
     CourseModule,
     EnablingObjective,
+    Enrollment,
     Exercise,
     ExerciseState,
     Lesson,
@@ -93,6 +94,20 @@ def course_code(po, qual) -> str:
             abbrev = "".join(w[0] for w in role.split() if w)[:4].upper() or "GEN"
     num = po.po_code.replace("PO_", "")
     return f"{abbrev}-{num}"
+
+
+def course_meta_of(course: Course) -> dict:
+    """`course.course_meta` as a dict, tolerating the unparseable.
+
+    `provenance` marks authored/catalogue content and `retired` marks a stub that
+    authored content has superseded; both decide whether a course may be adopted,
+    renamed or put on a path, so every caller has to read them the same way.
+    """
+    try:
+        meta = json.loads(course.course_meta or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
 
 
 def _get_or_create_competency(
@@ -240,40 +255,64 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
         "duration_min": po.duration_min,
     })
 
-    # Only adopt a module belonging to a spine-generated placeholder course. Authored
-    # courses (content/courses/*.yaml) also bind modules to POs, and adopting one would
-    # rename that course and overwrite its provenance on the next run.
-    existing_mod = None
-    for candidate in db.query(CourseModule).filter_by(po_id=po.id).all():
+    # Whatever already delivers this objective wins. Authored content
+    # (content/courses/*.yaml) binds modules to POs too, and it is the real delivery
+    # vehicle — returning it untouched is what puts it on the generated paths, and it
+    # avoids both hazards of building a stub alongside it: renaming the authored course
+    # and overwriting its provenance, and creating a second `ordinal=0` claimant that
+    # every resolver would prefer, silently shadowing the authored module.
+    authored: Course | None = None
+    stub_mod: CourseModule | None = None
+    for candidate in (
+        db.query(CourseModule).filter_by(po_id=po.id).order_by(CourseModule.ordinal).all()
+    ):
         cand_course = db.query(Course).filter_by(id=candidate.course_id).one_or_none()
         if cand_course is None:
             continue
-        try:
-            cand_meta = json.loads(cand_course.course_meta or "{}")
-        except (TypeError, ValueError):
-            cand_meta = {}
-        if cand_meta.get("provenance"):  # authored content — leave it alone
-            continue
-        existing_mod = candidate
-        break
-    if existing_mod is not None:
-        course = db.query(Course).filter_by(id=existing_mod.course_id).one()
+        cand_meta = course_meta_of(cand_course)
+        if cand_meta.get("provenance"):  # authored content — it delivers this PO
+            authored = cand_course
+            break
+        if stub_mod is None and not cand_meta.get("retired"):
+            stub_mod = candidate
+    if authored is not None:
+        return authored
+    if stub_mod is not None:
+        course = db.query(Course).filter_by(id=stub_mod.course_id).one()
         course.name = display_name  # refresh title on re-run
         course.course_meta = meta
         course.duration_hours = max(1, round((po.duration_min or 0) / 60))
         db.flush()
         return course
 
-    course = Course(
-        name=display_name,
-        description=po.conditions or "",
-        tenant_id=tenant_id,
-        difficulty="advanced" if po.tier.value == "core" else "intermediate",
-        duration_hours=max(1, round((po.duration_min or 0) / 60)),
-        qualification_id=qual.id,
-        course_meta=meta,
-    )
-    db.add(course)
+    # Nothing delivers the objective. Revive a retired stub by name rather than adding a
+    # second course with the same one — retirement is reversible precisely so that
+    # unbinding authored content puts the spine back the way it was.
+    course = db.query(Course).filter_by(tenant_id=tenant_id, name=display_name).one_or_none()
+    if course is not None:
+        course.course_meta = meta  # drops `retired`/`superseded_by`
+        course.duration_hours = max(1, round((po.duration_min or 0) / 60))
+        existing_mod = (
+            db.query(CourseModule)
+            .filter_by(course_id=course.id)
+            .order_by(CourseModule.ordinal)
+            .first()
+        )
+        if existing_mod is not None:
+            existing_mod.po_id = po.id
+            db.flush()
+            return course
+    else:
+        course = Course(
+            name=display_name,
+            description=po.conditions or "",
+            tenant_id=tenant_id,
+            difficulty="advanced" if po.tier.value == "core" else "intermediate",
+            duration_hours=max(1, round((po.duration_min or 0) / 60)),
+            qualification_id=qual.id,
+            course_meta=meta,
+        )
+        db.add(course)
     db.flush()
 
     module = CourseModule(
@@ -328,6 +367,88 @@ def _linear_prereq(course_ids: list[str]) -> dict:
     return {course_ids[i]: [course_ids[i - 1]] for i in range(1, len(course_ids))}
 
 
+def _ordered_unique(course_ids: list[str]) -> list[str]:
+    """Drop repeats, keep first-seen order.
+
+    One authored course can deliver several objectives — C302 delivers three TEMP64
+    POs — and a path that listed it three times would also build a prerequisite chain
+    from the course to itself.
+    """
+    seen: set[str] = set()
+    return [c for c in course_ids if not (c in seen or seen.add(c))]
+
+
+def drop_course_from_paths(db: Session, course_id: str) -> None:
+    """Remove a course from every learning path that lists it, prerequisites included.
+
+    `LearningPath.course_ids` is a JSON array with no foreign key, so deleting a course
+    would otherwise leave an id behind that resolves to nothing. The prerequisite graph
+    is rewired around the gap rather than merely pruned: dropping a course from the
+    middle of a linear chain would leave everything after it unreachable.
+    """
+    for lp in db.query(LearningPath).all():
+        try:
+            ids = json.loads(lp.course_ids or "[]")
+            prereq = json.loads(lp.prerequisite_graph or "{}")
+        except (TypeError, ValueError):
+            continue
+        if course_id not in ids:
+            continue
+
+        inherited = prereq.get(course_id, [])
+        ids = [c for c in ids if c != course_id]
+        rewired = {}
+        for node, deps in prereq.items():
+            if node == course_id:
+                continue
+            new_deps = []
+            for d in deps:
+                new_deps.extend(inherited if d == course_id else [d])
+            rewired[node] = [d for d in dict.fromkeys(new_deps) if d != node]
+        lp.course_ids = json.dumps(ids)
+        lp.prerequisite_graph = json.dumps(rewired)
+    db.flush()
+
+
+def purge_orphaned_stubs(db: Session, tenant_id: str | None = None) -> int:
+    """Delete spine-generated stubs that no longer deliver anything.
+
+    A stub exists only while no real content delivers its objective. Once a course does,
+    the stub is a second catalogue entry for one thing. Superseding at import time
+    handles the stub that is *holding* the objective; this catches the ones already
+    released by an earlier run, which are otherwise invisible dead rows.
+
+    Never touches authored content, the stub still holding an objective (PO_TODO has no
+    real deliverer), or anything with enrolments — learner history is not ours to discard
+    to tidy a catalogue. Scenarios, exercises and ranges survive: they are provisioned
+    infrastructure referenced by id.
+    """
+    course_q = db.query(Course)
+    if tenant_id is not None:
+        course_q = course_q.filter(Course.tenant_id == tenant_id)
+
+    removed = 0
+    for course in course_q.all():
+        meta = course_meta_of(course)
+        if meta.get("provenance"):
+            continue  # authored or catalogue content
+        modules = db.query(CourseModule).filter_by(course_id=course.id).all()
+        if any(m.po_id for m in modules):
+            continue  # still the deliverer of an objective
+        if db.query(Enrollment).filter_by(course_id=course.id).count():
+            continue  # someone's record depends on it
+
+        drop_course_from_paths(db, str(course.id))
+        for mod in modules:
+            db.query(ModuleContent).filter_by(module_id=mod.id).delete()
+            db.delete(mod)
+        db.flush()
+        db.delete(course)
+        removed += 1
+    db.flush()
+    return removed
+
+
 def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
     """Build per-PO courses + qualification paths + role paths + a developmental progression."""
     stats = {"po_courses": 0, "qualification_paths": 0, "role_paths": 0, "progression_paths": 0}
@@ -349,7 +470,7 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
             db.query(PerformanceObjective).filter_by(qualification_id=qual.id).all(),
             key=tier_rank,
         )
-        course_ids = [po_course[str(po.id)] for po in pos]
+        course_ids = _ordered_unique([po_course[str(po.id)] for po in pos])
         title = qual.title or f"{qual.nqual} qualification"
         _get_or_create_path(
             db, name=f"{qual.qsp_code} — {title}",
@@ -366,7 +487,7 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
             roles.setdefault(role, []).append(po)
     for role, pos in sorted(roles.items()):
         ordered = sorted(pos, key=tier_rank)
-        course_ids = [po_course[str(po.id)] for po in ordered]
+        course_ids = _ordered_unique([po_course[str(po.id)] for po in ordered])
         _get_or_create_path(
             db, name=f"Role: {role}",
             description=f"Career-progression path toward the {role} role across qualifications.",
@@ -383,6 +504,7 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
             key=tier_rank,
         )
         prog_course_ids.extend(po_course[str(po.id)] for po in pos)
+    prog_course_ids = _ordered_unique(prog_course_ids)
     if prog_course_ids:
         _get_or_create_path(
             db, name="Developmental Progression — Cyber Operator",
@@ -395,13 +517,16 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
             db.query(PerformanceObjective).filter_by(qualification_id=qual.id).all(),
             key=tier_rank,
         )
-        course_ids = [po_course[str(po.id)] for po in pos]
+        course_ids = _ordered_unique([po_course[str(po.id)] for po in pos])
         _get_or_create_path(
             db, name=f"Specialty Stream — {qual.title or qual.nqual}",
             description=f"Specialty developmental stream ({qual.qsp_code}).",
             course_ids=course_ids, prereq=_linear_prereq(course_ids), tenant_id=tenant_id,
         )
         stats["progression_paths"] += 1
+
+    # Stubs released by an earlier import are dead rows until something removes them.
+    stats["stubs_purged"] = purge_orphaned_stubs(db, tenant_id)
 
     db.commit()
     return stats
@@ -578,13 +703,29 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
         else:
             scenario.yaml = _scenario_yaml(po, crit)  # refresh with enriched timeline
 
-        # wire the course's assess ModuleContent to this scenario
+        # wire the delivering module's assess ModuleContent to this scenario
         assess = (
             db.query(ModuleContent)
             .filter_by(module_id=module.id, content_kind="assess")
             .first()
         )
-        if assess is not None and assess.scenario_id != scenario.id:
+        if assess is None:
+            # Authored modules arrive with no ModuleContent at all, so there is nothing
+            # to rewire. Without this the exercise/scenario/range deep links vanish from
+            # the career map the moment authored content supersedes a stub: the stub kept
+            # the assess row, but the stub no longer claims the objective.
+            next_ordinal = (
+                db.query(ModuleContent).filter_by(module_id=module.id).count()
+            )
+            assess = ModuleContent(
+                module_id=module.id, ordinal=next_ordinal, content_kind="assess",
+                scenario_id=scenario.id,
+                external_ref=json.dumps({"po_code": po.po_code}),
+            )
+            db.add(assess)
+            db.flush()
+            stats["wired_modules"] += 1
+        elif assess.scenario_id != scenario.id:
             assess.scenario_id = scenario.id
             stats["wired_modules"] += 1
 
@@ -656,7 +797,9 @@ def po_coverage(db: Session, tenant_id: str | None = None) -> dict:
         .filter(PerformanceObjective.qualification_id.in_([q.id for q in quals]))
         .all()
     )
-    courses = course_q.all()
+    # Retired stubs no longer deliver anything — they released their `po_id` when
+    # authored content superseded them — so counting them would overstate coverage.
+    courses = [c for c in course_q.all() if not course_meta_of(c).get("retired")]
     course_names = {str(c.id): c.name for c in courses}
     course_ids = [c.id for c in courses]
 
@@ -698,3 +841,99 @@ def po_coverage(db: Session, tenant_id: str | None = None) -> dict:
         "unbound_modules": unbound_modules,
         "objectives": objectives,
     }
+
+
+# ── Programme courses on the developmental path ───────────────────────────
+
+
+def programme_courses(db: Session, tenant_id: str | None = None) -> dict[tuple, list[dict]]:
+    """Catalogue courses grouped by the node they belong to on the career map.
+
+    Placement and delivery are two independent axes, and conflating them in
+    `Course.qualification_id` is what made the imported catalogue invisible:
+
+    * **Placement** — which DP column and term a course is *taught* in — comes from the
+      programme catalogue (`course_meta.dp_order` / `institution` / `term_code`), which
+      `programme_ingest` already stores. DP1 is the Algonquin College programme, DP2 the
+      Royal Military College one.
+    * **Delivery** — which objective a module *satisfies* — stays `CourseModule.po_id`,
+      the single link `qsp_progress` walks.
+
+    A course therefore belongs to the DP column its catalogue row names, and within it to
+    the lane its qualification names. When the two disagree — three Algonquin Year-3
+    courses (C302, C305, C306) deliver DP2 specialty objectives — the course stays in its
+    catalogue column's `progression` lane and carries the delivery as a cross-DP note,
+    rather than being pulled forward into a period it is not taught in.
+
+    Keyed by `(dp_order, track_key)` to match the map's node grid. Three queries total.
+    """
+    course_q = db.query(Course)
+    if tenant_id is not None:
+        course_q = course_q.filter(Course.tenant_id == tenant_id)
+
+    courses = []
+    for course in course_q.all():
+        meta = course_meta_of(course)
+        # Stubs carry no `programme`; retired ones are superseded. Neither is catalogue
+        # content, and neither belongs on a developmental path.
+        if meta.get("retired") or not meta.get("programme"):
+            continue
+        courses.append((course, meta))
+    if not courses:
+        return {}
+
+    quals = {str(q.id): q for q in db.query(Qualification).all()}
+
+    # po_id -> (qualification, po), for the delivery notes.
+    delivers: dict[str, list[dict]] = {}
+    rows = (
+        db.query(CourseModule, PerformanceObjective)
+        .join(PerformanceObjective, CourseModule.po_id == PerformanceObjective.id)
+        .filter(CourseModule.course_id.in_([c.id for c, _ in courses]))
+        .all()
+    )
+    for module, po in rows:
+        qual = quals.get(str(po.qualification_id))
+        delivers.setdefault(str(module.course_id), []).append({
+            "qsp_code": qual.qsp_code if qual else "",
+            "dp_order": qual.dp_order if qual else 0,
+            "po_code": po.po_code,
+            "po_title": po.title,
+            "module_id": str(module.id),
+            "module_title": module.title,
+        })
+
+    grouped: dict[tuple, list[dict]] = {}
+    for course, meta in courses:
+        dp_order = meta.get("dp_order") or 0
+        qual = quals.get(str(course.qualification_id)) if course.qualification_id else None
+        # The lane is the course's own qualification, but only when that qualification
+        # sits in the same DP column. Otherwise the course stays on the core progression
+        # of the period that actually teaches it.
+        if qual is not None and qual.dp_order == dp_order and qual.track == "specialty":
+            track_key = qual.nqual or qual.qsp_code
+        else:
+            track_key = "progression"
+
+        entries = sorted(
+            delivers.get(str(course.id), []), key=lambda d: (d["dp_order"], d["po_code"])
+        )
+        grouped.setdefault((dp_order, track_key), []).append({
+            "course_id": str(course.id),
+            "course_code": meta.get("course_code") or "",
+            "name": course.name,
+            "institution": meta.get("institution") or "",
+            "term_code": meta.get("term_code") or "",
+            "term_label": meta.get("term_label") or "",
+            "term_start": meta.get("term_start") or "",
+            "duration_hours": course.duration_hours or 0,
+            "difficulty": course.difficulty or "",
+            "is_published": bool(course.is_published),
+            "delivers": entries,
+            # True when the course is taught in one DP but delivers into another.
+            "delivers_cross_dp": any(d["dp_order"] != dp_order for d in entries),
+        })
+
+    for key in grouped:
+        grouped[key].sort(key=lambda c: (c["term_start"], c["term_code"], c["course_code"]))
+    return grouped

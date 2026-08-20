@@ -18,7 +18,9 @@ This module deliberately does NOT invent curriculum structure:
 
 DP1/DP2 in the catalogue mean the same thing they mean in ``qsp_paths.DP_LADDER``
 (DP1 = Pte/ALJQ, DP2 = Cpl/TEMP67|TEMP64|ALRA); the ``dp_order`` column carries
-that linkage, so no parallel ``dp1``/``dp2`` tag namespace is introduced.
+that linkage. ``catalogue_tags`` projects it — and the rest of the placement facets
+— onto ``Course.tags`` so the catalogue is sortable, but every tag is *derived* from
+``course_meta`` rather than authored, so the two can never disagree.
 
 Re-import is idempotent (upsert on the natural key ``(tenant_id, name)``).
 """
@@ -31,10 +33,18 @@ import json
 
 from sqlalchemy.orm import Session
 
-from .models import Course, Qualification
+from .models import Course, CourseModule, PerformanceObjective, Qualification
 
 # `qsp_code` values that carry no real qualification linkage.
 _QSP_SENTINELS = {"", "-", "qsp-todo", "todo", "n/a", "none", "tbd"}
+
+# Short tag forms for the institutions in the catalogue. A name with no entry falls
+# back to its full slug rather than a guessed abbreviation — an invented short code
+# for an unknown institution would read as authoritative without being sourced.
+_INSTITUTION_TAG = {
+    "algonquin college": "algonquin",
+    "royal military college": "rmc",
+}
 
 # Provenance values that are safe to publish. Nothing currently qualifies; the
 # set exists so that adding a sourced row is a data change, not a code change.
@@ -115,6 +125,71 @@ def parse_programme(csv_text: str) -> list[dict]:
     return rows
 
 
+def _tag_slug(value) -> str:
+    """Lowercase, hyphen-joined form of a tag value. Empty for anything blank."""
+    text = str(value or "").strip().lower()
+    return "-".join("".join(c if c.isalnum() else " " for c in text).split())
+
+
+def delivered_qsp_codes(db: Session, course_id) -> list[str]:
+    """The qualifications this course actually delivers an objective toward.
+
+    Read from ``CourseModule.po_id`` — the crosswalk binding — never from the course's
+    own ``qsp_code``, which is the looser "belongs to this area" association. Asserting
+    delivery is a CFITES claim, so it has to come from the spine or not at all.
+    """
+    rows = (
+        db.query(Qualification.qsp_code)
+        .join(PerformanceObjective, PerformanceObjective.qualification_id == Qualification.id)
+        .join(CourseModule, CourseModule.po_id == PerformanceObjective.id)
+        .filter(CourseModule.course_id == course_id)
+        .distinct()
+        .all()
+    )
+    return sorted({r[0] for r in rows if r[0]})
+
+
+def catalogue_tags(meta: dict, delivers=()) -> list[str]:
+    """Derived facet tags for a catalogue course. Pure, deterministic, idempotent.
+
+    Placement facets come from the catalogue row already stored in ``course_meta``;
+    the delivery facet comes from ``delivered_qsp_codes``. Nothing is hand-authored,
+    so the tag set cannot drift from the data it describes, and recomputing the whole
+    list on every import keeps re-ingest stable.
+
+    The developmental period is the bare literal ``DP1``/``DP2`` rather than a
+    namespaced ``dp:1``: that is how the domain writes it everywhere else (term codes
+    ``DP1-Y1-F``, term labels, the generated ``Programme — cyber-operator DP1`` path),
+    and it is the facet the catalogue is most often sorted by.
+    """
+    tags: list[str] = []
+    dp = meta.get("dp_order")
+    if isinstance(dp, int) and dp > 0:
+        tags.append(f"DP{dp}")
+
+    programme = _tag_slug(meta.get("programme"))
+    if programme:
+        tags.append(f"programme:{programme}")
+
+    institution = str(meta.get("institution") or "").strip().lower()
+    if institution:
+        tags.append(f"institution:{_INSTITUTION_TAG.get(institution) or _tag_slug(institution)}")
+
+    for key, prefix in (("term_code", "term"), ("provenance", "provenance"), ("status", "status")):
+        value = _tag_slug(meta.get(key))
+        if value:
+            tags.append(f"{prefix}:{value}")
+
+    codes = sorted({_tag_slug(c) for c in delivers if _tag_slug(c)})
+    # An explicit `delivers:none` is what makes "teaches but claims nothing" a
+    # filterable state rather than an absence you have to notice.
+    if codes:
+        tags.extend(f"delivers:{c}" for c in codes)
+    else:
+        tags.append("delivers:none")
+    return tags
+
+
 def import_programme(db: Session, csv_text: str, tenant_id: str | None = None) -> dict:
     """Upsert catalogue courses from programme CSV. Idempotent.
 
@@ -152,22 +227,27 @@ def import_programme(db: Session, csv_text: str, tenant_id: str | None = None) -
         course.description = f"{row['course_title']} — {row['term_label']}, {row['institution']}."
         course.duration_hours = row["duration_hours"]
         course.qualification_id = qual_id
-        course.tags = json.dumps([row["programme"], row["status"]])
-        course.course_meta = json.dumps(
-            {
-                "course_code": row["course_code"],
-                "programme": row["programme"],
-                "institution": row["institution"],
-                "dp_order": row["dp_order"],
-                "qsp_code": qsp_code,
-                "term_code": row["term_code"],
-                "term_label": row["term_label"],
-                "term_start": row["term_start"],
-                "term_end": row["term_end"],
-                "weeks": row["weeks"],
-                "provenance": row["provenance"],
-                "status": row["status"],
-            }
+        meta = {
+            "course_code": row["course_code"],
+            "programme": row["programme"],
+            "institution": row["institution"],
+            "dp_order": row["dp_order"],
+            "qsp_code": qsp_code,
+            "term_code": row["term_code"],
+            "term_label": row["term_label"],
+            "term_start": row["term_start"],
+            "term_end": row["term_end"],
+            "weeks": row["weeks"],
+            "provenance": row["provenance"],
+            "status": row["status"],
+        }
+        course.course_meta = json.dumps(meta)
+        # Read the delivery facet back out of the spine rather than assuming this
+        # import runs before any content import. Re-running the catalogue on its own
+        # must not reset every course to `delivers:none`.
+        db.flush()
+        course.tags = json.dumps(
+            catalogue_tags(meta, delivered_qsp_codes(db, course.id) if not created else ())
         )
         # Unsourced content is never published. This is the guardrail, not a default.
         course.is_published = row["provenance"] in _SOURCED_PROVENANCE

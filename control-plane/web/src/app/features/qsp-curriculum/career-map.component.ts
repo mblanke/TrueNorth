@@ -16,15 +16,19 @@ import {
   signal,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   CurriculumMap,
   DPStage,
   DPTrack,
+  NodeCourse,
   NodeState,
   PathEdge,
   QualNode,
+  TermGroup,
+  groupByTerm,
 } from '@core/services/curriculum-map.service';
 
 /** A node placed into its lane/column cell, or a ghost placeholder for a future DP. */
@@ -76,7 +80,7 @@ const STATE_LABEL: Record<NodeState, string> = {
 @Component({
   selector: 'tn-career-map',
   standalone: true,
-  imports: [CommonModule, MatIconModule, MatTooltipModule],
+  imports: [CommonModule, RouterLink, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="map-scroll">
@@ -118,17 +122,25 @@ const STATE_LABEL: Record<NodeState, string> = {
           @for (cell of lane.cells; track cell.key) {
             <div class="cell" role="gridcell" [class.is-empty]="!cell.filled">
               @if (cell.node; as node) {
-                <button
-                  type="button"
+                <!-- The bubble is a container, not a control: the courses inside it are
+                     links, and an anchor inside a button is invalid and unreachable by
+                     keyboard. The selectable card is the button within. The data-node
+                     hook sits here so edges anchor to the whole bubble, courses
+                     included. -->
+                <div
                   class="node"
                   [class]="'state-' + node.state"
                   [class.selected]="node.qsp_code === selected"
                   [class.here]="node.qsp_code === currentQsp()"
+                  [attr.data-node]="node.qsp_code"
+                >
+                <button
+                  type="button"
+                  class="node-main"
                   [attr.tabindex]="cell.index === focusIndex() ? 0 : -1"
                   [attr.aria-current]="node.qsp_code === currentQsp() ? 'step' : null"
                   [attr.aria-pressed]="node.qsp_code === selected"
                   [attr.aria-label]="ariaLabel(node)"
-                  [attr.data-node]="node.qsp_code"
                   (click)="pick(node, cell.index)"
                   (focus)="focusIndex.set(cell.index)"
                   #cellButton
@@ -155,8 +167,12 @@ const STATE_LABEL: Record<NodeState, string> = {
                     </svg>
 
                     <span class="node-text">
-                      <span class="node-code">{{ node.qsp_code }}</span>
-                      <!-- Titles clamp to two lines, so the full text needs a tooltip. -->
+                      <!-- The QSP code is not shown: ALJQ is internal shorthand and
+                           TEMP67/TEMP64 are placeholder identifiers for qualifications
+                           whose real codes are not yet issued. Showing a placeholder as
+                           if it were a designation invites it being read as one. The
+                           code stays in the accessible label, where it identifies the
+                           node without asserting anything on screen. -->
                       <span class="node-title" [matTooltip]="node.title">{{ node.title }}</span>
                     </span>
                   </span>
@@ -165,6 +181,15 @@ const STATE_LABEL: Record<NodeState, string> = {
                     <span class="meta-item">
                       {{ node.progress.completed }}/{{ node.po_count }} objectives
                     </span>
+                    @if (node.course_count) {
+                      <span
+                        class="meta-item"
+                        [matTooltip]="programmeTooltip(node)"
+                      >
+                        <mat-icon>menu_book</mat-icon>{{ node.course_count }} courses
+                        @if (node.course_hours) { · {{ fmtCourseHours(node) }} }
+                      </span>
+                    }
                     @if (node.gate_count) {
                       <span class="meta-item gate" matTooltip="Contains a gating assessment">
                         <mat-icon>flag</mat-icon>{{ node.gate_count }}
@@ -177,6 +202,7 @@ const STATE_LABEL: Record<NodeState, string> = {
                         [matTooltip]="durationTooltip(node)"
                       >
                         {{ fmtHours(node.total_minutes) }}{{ isPartiallyTimed(node) ? '+' : '' }}
+                        assessed
                       </span>
                     } @else if (node.po_count) {
                       <span class="meta-item partial" matTooltip="No objective has a duration yet">
@@ -194,6 +220,34 @@ const STATE_LABEL: Record<NodeState, string> = {
                     <span class="here-tag">You are here</span>
                   }
                 </button>
+
+                <!-- The programme taught in this period, as a track inside the bubble:
+                     DP1 is three years of Algonquin terms, DP2 the RMC year. The card
+                     used to report a course count and show none of it. -->
+                @if (node.courses.length) {
+                  <ol class="term-track" [attr.aria-label]="'Programme for ' + node.title">
+                    @for (term of termsOf(node); track term.code) {
+                      <li class="term">
+                        <span class="term-head">
+                          <span class="term-name">{{ term.short }}</span>
+                          <span class="term-count">{{ term.courses.length }}</span>
+                        </span>
+                        <span class="term-courses">
+                          @for (c of term.courses; track c.course_id) {
+                            <a
+                              class="c-chip"
+                              [class.delivers]="c.delivers.length"
+                              [class.cross-dp]="c.delivers_cross_dp"
+                              [matTooltip]="courseTooltip(c)"
+                              [routerLink]="['/learning/courses', c.course_id]"
+                            >{{ c.course_code }}</a>
+                          }
+                        </span>
+                      </li>
+                    }
+                  </ol>
+                }
+                </div>
               } @else if (cell.stage.planned && lane.track.kind === 'progression') {
                 <div
                   class="node ghost"
@@ -210,6 +264,22 @@ const STATE_LABEL: Record<NodeState, string> = {
       </div>
     </div>
 
+    <!-- Colour was carrying meaning with nothing to decode it. Three states, named. -->
+    <p class="legend">
+      <span class="legend-item">
+        <span class="c-chip legend-chip">C101</span>
+        teaches only
+      </span>
+      <span class="legend-item">
+        <span class="c-chip legend-chip delivers">C204</span>
+        satisfies an objective of this qualification
+      </span>
+      <span class="legend-item">
+        <span class="c-chip legend-chip delivers cross-dp">C302</span>
+        taught here, satisfies a later period's objective
+      </span>
+    </p>
+
     <p class="hint">
       <mat-icon>keyboard</mat-icon>
       Arrow keys move between qualifications, Enter opens one.
@@ -220,6 +290,81 @@ const STATE_LABEL: Record<NodeState, string> = {
       :host { display: block; }
 
       .map-scroll { overflow-x: auto; padding-bottom: 6px; }
+
+      /* The programme track under each node — the years/terms of the period. */
+      .term-track {
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 8px 0 0 10px;
+        border-left: 2px solid var(--border-light);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .term-track .term { position: relative; }
+      /* A node on the track, so a term reads as a stop along the path. */
+      .term-track .term::before {
+        content: '';
+        position: absolute;
+        left: -15px;
+        top: 5px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--border-strong, var(--text-muted));
+      }
+      .term-head {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-bottom: 2px;
+      }
+      .term-name {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+      }
+      .term-count {
+        font-size: 0.62rem;
+        color: var(--text-muted);
+        opacity: 0.8;
+      }
+      .term-courses { display: flex; flex-wrap: wrap; gap: 3px; }
+      .c-chip {
+        text-decoration: none;
+        cursor: pointer;
+        font-family: var(--font-mono, monospace);
+        font-size: 0.62rem;
+        line-height: 1.5;
+        padding: 1px 5px;
+        border-radius: 4px;
+        border: 1px solid var(--border-light);
+        color: var(--text-secondary, inherit);
+        white-space: nowrap;
+      }
+      /* A course that carries a CFITES claim is the exception, so it is what stands out. */
+      .c-chip.delivers {
+        font-weight: 700;
+        border-color: transparent;
+        background: var(--accent-soft, rgba(0, 120, 90, 0.16));
+        color: var(--text-primary, inherit);
+      }
+      .c-chip.cross-dp { background: var(--warn-soft, rgba(180, 110, 0, 0.18)); }
+      .c-chip:hover { border-color: var(--accent); color: var(--accent); }
+      .c-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+        margin: 10px 0 0;
+        font-size: 0.72rem;
+        color: var(--text-muted);
+      }
+      .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+      .legend-chip { cursor: default; }
 
       .map {
         position: relative;
@@ -294,6 +439,7 @@ const STATE_LABEL: Record<NodeState, string> = {
       .edge.planned { stroke-dasharray: 5 5; opacity: 0.45; }
 
       /* ── Nodes ─────────────────────────────────────────────── */
+      /* The bubble: the card face plus the programme taught in the period. */
       .node {
         position: relative;
         z-index: 1;
@@ -309,13 +455,27 @@ const STATE_LABEL: Record<NodeState, string> = {
         border: 1px solid var(--border);
         border-radius: var(--radius-md);
         box-shadow: var(--shadow-1);
-        cursor: pointer;
         transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
       }
-      button.node:hover { border-color: var(--accent); transform: translateY(-2px); }
-      button.node:focus-visible {
+      /* The card face is the control; the bubble around it is not. */
+      .node-main {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 0;
+        margin: 0;
+        text-align: left;
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: 0;
+        cursor: pointer;
+      }
+      .node:has(.node-main:hover) { border-color: var(--accent); transform: translateY(-2px); }
+      .node-main:focus-visible {
         outline: 2px solid var(--accent);
-        outline-offset: 2px;
+        outline-offset: 3px;
+        border-radius: var(--radius-sm, 4px);
       }
       .node.selected {
         border-color: var(--accent);
@@ -343,10 +503,10 @@ const STATE_LABEL: Record<NodeState, string> = {
       }
       .node-body { display: flex; align-items: center; gap: 10px; }
       .node-text { display: flex; flex-direction: column; min-width: 0; }
-      .node-code { font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; }
       .node-title {
-        font-size: 0.78rem;
-        color: var(--text-secondary);
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text-primary);
         overflow: hidden;
         text-overflow: ellipsis;
         display: -webkit-box;
@@ -679,6 +839,36 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
   protected fmtHours(minutes: number): string {
     const h = Math.round((minutes / 60) * 10) / 10;
     return h >= 1 ? `${h} h` : `${minutes} min`;
+  }
+
+  /** The programme for a node, grouped into the terms that teach it. */
+  termsOf(node: QualNode): TermGroup[] {
+    return groupByTerm(node.courses);
+  }
+
+  /** What a course chip says on hover: its name, then any objective it delivers. */
+  courseTooltip(c: NodeCourse): string {
+    const lines = [c.name];
+    for (const d of c.delivers) {
+      lines.push(`delivers ${d.qsp_code} ${d.po_code} — ${d.po_title}`);
+    }
+    if (!c.delivers.length) lines.push('delivers no performance objective');
+    return lines.join('\n');
+  }
+
+  /** Taught hours for the period, thousands-separated. */
+  protected fmtCourseHours(node: QualNode): string {
+    return `${node.course_hours.toLocaleString()} h`;
+  }
+
+  protected programmeTooltip(node: QualNode): string {
+    const inst = node.courses[0]?.institution;
+    const where = inst ? `${inst}: ` : '';
+    return (
+      `${where}${node.course_count} courses totalling ${node.course_hours.toLocaleString()} ` +
+      'taught hours in this period. Separate from assessment time, which is how long ' +
+      'being tested against the objectives takes.'
+    );
   }
 
   /** True when some objectives carry no duration, so the total is only a floor. */
