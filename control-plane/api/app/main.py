@@ -17,7 +17,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -170,15 +170,15 @@ from .routers import (
     ai_config_router,
     auth_zones_router,
     certifications_router,
+    collective_exercises_router,
     competency_router,
     courses_router,
     curriculum_router,
     detection_rules_router,
     directory_router,
-    golden_images_router,
     exercise_forge_router,
     exercises_router,
-    collective_exercises_router,
+    golden_images_router,
     hypervisors_router,
     integrations_router,
     kit_router,

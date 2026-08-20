@@ -13,7 +13,7 @@ import os
 import re
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -66,10 +66,20 @@ def _obj_out(o: ExerciseObjective) -> ObjectiveOut:
 
 def _mesl_out(m: MeslEvent) -> MeslEventOut:
     return MeslEventOut(
-        id=str(m.id), serial=m.serial, phase=m.phase, scenario_time=m.scenario_time, title=m.title,
-        description=m.description, objective_ref=m.objective_ref, attack_technique=m.attack_technique,
-        delivery_method=m.delivery_method, from_cell=m.from_cell, to_participant=m.to_participant,
-        expected_action=m.expected_action, moe=m.moe, status=m.status,
+        id=str(m.id),
+        serial=m.serial,
+        phase=m.phase,
+        scenario_time=m.scenario_time,
+        title=m.title,
+        description=m.description,
+        objective_ref=m.objective_ref,
+        attack_technique=m.attack_technique,
+        delivery_method=m.delivery_method,
+        from_cell=m.from_cell,
+        to_participant=m.to_participant,
+        expected_action=m.expected_action,
+        moe=m.moe,
+        status=m.status,
     )
 
 
@@ -88,10 +98,16 @@ def _add_objectives(db: Session, ex: Exercise, rows: list[dict]) -> int:
         ref = str(r.get("ref") or f"O{base + i + 1}")
         if ref in existing:
             continue
-        db.add(ExerciseObjective(
-            exercise_id=ex.id, ref=ref, text=r.get("text", ""), moe=r.get("moe", ""),
-            competency_code=r.get("competency_code", ""), ordinal=base + i,
-        ))
+        db.add(
+            ExerciseObjective(
+                exercise_id=ex.id,
+                ref=ref,
+                text=r.get("text", ""),
+                moe=r.get("moe", ""),
+                competency_code=r.get("competency_code", ""),
+                ordinal=base + i,
+            )
+        )
         existing.add(ref)
         added += 1
     return added
@@ -107,8 +123,14 @@ def create_exercise(
     rng = db.query(Range).filter_by(id=body.range_id).one_or_none()
     if rng is None:
         raise HTTPException(status_code=422, detail="range not found")
-    ex = Exercise(name=body.name, kind="collective", range_id=rng.id, scenario_id=None,
-                  state=ExerciseState.pending, tenant_id=user.tenant_id or None)
+    ex = Exercise(
+        name=body.name,
+        kind="collective",
+        range_id=rng.id,
+        scenario_id=None,
+        state=ExerciseState.pending,
+        tenant_id=user.tenant_id or None,
+    )
     db.add(ex)
     db.flush()
     added = _add_objectives(db, ex, body.objectives)
@@ -123,11 +145,16 @@ def list_exercises(
 ) -> list[dict]:
     out = []
     for ex in db.query(Exercise).filter_by(kind="collective").filter(Exercise.deleted_at.is_(None)).all():
-        out.append({
-            "id": str(ex.id), "name": ex.name, "state": ex.state.value, "range_id": str(ex.range_id),
-            "objectives": db.query(ExerciseObjective).filter_by(exercise_id=ex.id).count(),
-            "mesl_events": db.query(MeslEvent).filter_by(exercise_id=ex.id).count(),
-        })
+        out.append(
+            {
+                "id": str(ex.id),
+                "name": ex.name,
+                "state": ex.state.value,
+                "range_id": str(ex.range_id),
+                "objectives": db.query(ExerciseObjective).filter_by(exercise_id=ex.id).count(),
+                "mesl_events": db.query(MeslEvent).filter_by(exercise_id=ex.id).count(),
+            }
+        )
     return out
 
 
@@ -141,7 +168,10 @@ def get_exercise(
     objs = db.query(ExerciseObjective).filter_by(exercise_id=ex.id).order_by(ExerciseObjective.ordinal).all()
     mesl = db.query(MeslEvent).filter_by(exercise_id=ex.id).order_by(MeslEvent.serial).all()
     return {
-        "id": str(ex.id), "name": ex.name, "kind": ex.kind, "state": ex.state.value,
+        "id": str(ex.id),
+        "name": ex.name,
+        "kind": ex.kind,
+        "state": ex.state.value,
         "range_id": str(ex.range_id),
         "objectives": [_obj_out(o).model_dump() for o in objs],
         "mesl": [_mesl_out(m).model_dump() for m in mesl],
@@ -220,15 +250,25 @@ def generate_mesl(
     model_used = resp.json().get("model_used", "")
     db.query(MeslEvent).filter_by(exercise_id=ex.id).delete()
     for i, e in enumerate(events, start=1):
-        db.add(MeslEvent(
-            exercise_id=ex.id, serial=int(e.get("serial", i)),
-            phase=str(e.get("phase", "")), scenario_time=str(e.get("scenario_time", "")),
-            title=str(e.get("title", ""))[:255], description=str(e.get("description", "")),
-            objective_ref=str(e.get("objective_ref", "")), attack_technique=str(e.get("attack_technique", "")),
-            delivery_method=str(e.get("delivery_method", "cyber")), from_cell=str(e.get("from_cell", "")),
-            to_participant=str(e.get("to_participant", "")), expected_action=str(e.get("expected_action", "")),
-            moe=str(e.get("moe", "")), status="planned", generated_by_model=model_used,
-        ))
+        db.add(
+            MeslEvent(
+                exercise_id=ex.id,
+                serial=int(e.get("serial", i)),
+                phase=str(e.get("phase", "")),
+                scenario_time=str(e.get("scenario_time", "")),
+                title=str(e.get("title", ""))[:255],
+                description=str(e.get("description", "")),
+                objective_ref=str(e.get("objective_ref", "")),
+                attack_technique=str(e.get("attack_technique", "")),
+                delivery_method=str(e.get("delivery_method", "cyber")),
+                from_cell=str(e.get("from_cell", "")),
+                to_participant=str(e.get("to_participant", "")),
+                expected_action=str(e.get("expected_action", "")),
+                moe=str(e.get("moe", "")),
+                status="planned",
+                generated_by_model=model_used,
+            )
+        )
     db.commit()
     return {"generated": True, "serials": len(events), "model_used": model_used}
 

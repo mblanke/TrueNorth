@@ -21,8 +21,8 @@ from .models import (
     PerformanceObjective,
     POStatus,
     POTier,
-    Qualification,
     QSPEnvironment,
+    Qualification,
 )
 
 # crosswalk `environment` string -> QSPEnvironment member
@@ -127,8 +127,13 @@ def import_crosswalk(db: Session, csv_text: str, tenant_id: str | None = None) -
     Returns counts of qualifications/POs/EOs created and updated.
     """
     rows = parse_crosswalk(csv_text)
-    stats = {"qualifications": 0, "performance_objectives": 0, "enabling_objectives": 0,
-             "updated_pos": 0, "rows": len(rows)}
+    stats = {
+        "qualifications": 0,
+        "performance_objectives": 0,
+        "enabling_objectives": 0,
+        "updated_pos": 0,
+        "rows": len(rows),
+    }
 
     qual_cache: dict[str, Qualification] = {}
     for row in rows:
@@ -152,11 +157,7 @@ def import_crosswalk(db: Session, csv_text: str, tenant_id: str | None = None) -
             qual_cache[qsp_code] = qual
 
         p = row["po"]
-        po = (
-            db.query(PerformanceObjective)
-            .filter_by(qualification_id=qual.id, po_code=p["po_code"])
-            .one_or_none()
-        )
+        po = db.query(PerformanceObjective).filter_by(qualification_id=qual.id, po_code=p["po_code"]).one_or_none()
         created = po is None
         if created:
             po = PerformanceObjective(qualification_id=qual.id, po_code=p["po_code"])
@@ -182,11 +183,7 @@ def import_crosswalk(db: Session, csv_text: str, tenant_id: str | None = None) -
             stats["updated_pos"] += 1
 
         for eo in row["eos"]:
-            existing = (
-                db.query(EnablingObjective)
-                .filter_by(po_id=po.id, eo_code=eo["eo_code"])
-                .one_or_none()
-            )
+            existing = db.query(EnablingObjective).filter_by(po_id=po.id, eo_code=eo["eo_code"]).one_or_none()
             if existing is None:
                 db.add(EnablingObjective(po_id=po.id, eo_code=eo["eo_code"], title=eo["title"]))
                 stats["enabling_objectives"] += 1

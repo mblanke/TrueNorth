@@ -25,11 +25,11 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..tenancy import get_owned
 from ..db import get_db
 from ..models import AuditLog, Template, UserRole
 from ..rbac import Permission, require_permission
 from ..schemas import TemplateIn, TemplateListOut, TemplateOut, TemplateUpdate
+from ..tenancy import get_owned
 
 logger = logging.getLogger("truenorth.api.templates")
 

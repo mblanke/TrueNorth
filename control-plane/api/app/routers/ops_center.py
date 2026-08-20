@@ -17,7 +17,6 @@ from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
-from ..tenancy import get_owned
 from ..db import get_db
 from ..models import (
     AnalystAnnotation,
@@ -34,6 +33,7 @@ from ..schemas import (
     SharedCommandIn,
     SharedCommandOut,
 )
+from ..tenancy import get_owned
 
 logger = logging.getLogger("truenorth.api.ops_center")
 

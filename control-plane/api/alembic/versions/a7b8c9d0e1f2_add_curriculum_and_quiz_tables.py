@@ -5,12 +5,13 @@ Revises: f6a1b2c3d4e5
 Create Date: 2026-06-11 16:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from app.models import GUID
 
 from alembic import op
-from app.models import GUID
 
 # revision identifiers, used by Alembic.
 revision: str = "a7b8c9d0e1f2"
@@ -130,9 +131,7 @@ def upgrade() -> None:
     # Phase 5: auto-assessments can originate from quiz attempts, not just exercises
     with op.batch_alter_table("competency_auto_assessments") as batch:
         batch.alter_column("exercise_id", existing_type=GUID(), nullable=True)
-        batch.add_column(
-            sa.Column("quiz_attempt_id", GUID(), sa.ForeignKey("quiz_attempts.id"), nullable=True)
-        )
+        batch.add_column(sa.Column("quiz_attempt_id", GUID(), sa.ForeignKey("quiz_attempts.id"), nullable=True))
 
     # Phase 6: LTI 1.3 tool keys + launch records + platform OIDC auth URL
     op.create_table(
@@ -160,9 +159,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index(
-        "ix_lti_launch_user_resource", "lti_launches", ["user_id", "resource_kind", "resource_id"]
-    )
+    op.create_index("ix_lti_launch_user_resource", "lti_launches", ["user_id", "resource_kind", "resource_id"])
     op.add_column("external_platforms", sa.Column("lti_auth_login_url", sa.Text(), nullable=True))
 
 

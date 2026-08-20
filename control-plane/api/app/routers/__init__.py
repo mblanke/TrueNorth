@@ -13,10 +13,10 @@ from .courses import transcript_router
 from .curriculum import router as curriculum_router
 from .detection_rules import router as detection_rules_router
 from .directory import router as directory_router
-from .golden_images import router as golden_images_router
 from .exercise_forge import router as exercise_forge_router
 from .exercises import router as exercises_router
 from .exercises_collective import router as collective_exercises_router
+from .golden_images import router as golden_images_router
 from .hypervisors import router as hypervisors_router
 from .integrations import lti_router
 from .integrations import router as integrations_router

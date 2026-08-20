@@ -17,10 +17,10 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ..db import get_db
 from ..auth import CurrentUser, get_current_user
-from ..rbac import Permission, require_permission
+from ..db import get_db
 from ..models import EventState, ScheduledEvent, Tenant
+from ..rbac import Permission, require_permission
 from ..tenancy import get_owned
 
 logger = logging.getLogger("truenorth.api.scheduling")
@@ -291,7 +291,9 @@ def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = 
 
 @router.put("/events/{event_id}", summary="Update a scheduled event")
 # write op: stronger than the router-level read gate
-def update_event(event_id: str, body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def update_event(
+    event_id: str, body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+):
     evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
 
     if body.end_time <= body.start_time:

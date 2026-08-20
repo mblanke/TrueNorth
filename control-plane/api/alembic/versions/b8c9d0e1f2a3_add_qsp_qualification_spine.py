@@ -5,12 +5,13 @@ Revises: a7b8c9d0e1f2
 Create Date: 2026-07-17 19:20:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from app.models import GUID
 
 from alembic import op
-from app.models import GUID
 
 # revision identifiers, used by Alembic.
 revision: str = "b8c9d0e1f2a3"
@@ -20,9 +21,7 @@ depends_on: str | Sequence[str] | None = None
 
 # Enum DB labels match SQLAlchemy's default (Python enum *member names*).
 _PO_TIER = sa.Enum("core", "gate", name="potier")
-_PO_STATUS = sa.Enum(
-    "todo", "example", "needs_spec", "offensive_author", "cots_gate", "done", name="postatus"
-)
+_PO_STATUS = sa.Enum("todo", "example", "needs_spec", "offensive_author", "cots_gate", "done", name="postatus")
 _QSP_ENV = sa.Enum("cste", "cste_sterile", "cote", "mobile", name="qspenvironment")
 _CONTENT_KIND = sa.Enum("teach", "check", "assess", name="contentkind")
 
@@ -140,13 +139,9 @@ def upgrade() -> None:
 
     # Anchor existing LMS tables to the QSP spine (batch mode → SQLite-safe FK add)
     with op.batch_alter_table("courses") as batch:
-        batch.add_column(
-            sa.Column("qualification_id", GUID(), sa.ForeignKey("qualifications.id"), nullable=True)
-        )
+        batch.add_column(sa.Column("qualification_id", GUID(), sa.ForeignKey("qualifications.id"), nullable=True))
     with op.batch_alter_table("course_modules") as batch:
-        batch.add_column(
-            sa.Column("po_id", GUID(), sa.ForeignKey("performance_objectives.id"), nullable=True)
-        )
+        batch.add_column(sa.Column("po_id", GUID(), sa.ForeignKey("performance_objectives.id"), nullable=True))
 
 
 def downgrade() -> None:

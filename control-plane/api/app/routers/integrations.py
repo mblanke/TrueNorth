@@ -15,7 +15,6 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
-from ..tenancy import get_owned
 from ..db import get_db
 from ..models import (
     ExternalActivity,
@@ -29,6 +28,7 @@ from ..schemas import (
     ExternalPlatformUpdate,
     PaginatedResponse,
 )
+from ..tenancy import get_owned
 
 logger = logging.getLogger("truenorth.integrations")
 
@@ -225,7 +225,6 @@ def record_external_activity(
 # LTI 1.3 Endpoints (Tool Provider — lets Moodle/OffSec launch TrueNorth)
 # ══════════════════════════════════════════════════════════════════════════
 
-import json as _json
 import time as _time
 from html import escape as _html_escape
 
@@ -283,11 +282,7 @@ def _jit_user(db: Session, platform, claims: dict) -> User:
     name = str(claims.get("name") or claims.get("given_name") or email.split("@")[0])
     lti_kc_id = f"lti:{platform.id}:{sub}"
 
-    user = (
-        db.query(User)
-        .filter((User.keycloak_id == lti_kc_id) | (User.email == email))
-        .first()
-    )
+    user = db.query(User).filter((User.keycloak_id == lti_kc_id) | (User.email == email)).first()
     if user:
         return user
     user = User(

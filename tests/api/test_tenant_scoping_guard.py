@@ -15,8 +15,6 @@ import re
 import sys
 from pathlib import Path
 
-import pytest
-
 API = Path(__file__).resolve().parents[2] / "control-plane/api"
 ROUTERS = API / "app/routers"
 sys.path.insert(0, str(API))
@@ -25,17 +23,11 @@ sys.path.insert(0, str(API))
 def _tenanted_models() -> set[str]:
     from app.models import Base
 
-    return {
-        m.class_.__name__
-        for m in Base.registry.mappers
-        if "tenant_id" in m.class_.__table__.columns
-    }
+    return {m.class_.__name__ for m in Base.registry.mappers if "tenant_id" in m.class_.__table__.columns}
 
 
 # db.query(Model) ... .first()/.all()
-QUERY = re.compile(
-    r"db\.query\((\w+)\)([\s\S]{0,400}?)\.(?:first|all)\(\)"
-)
+QUERY = re.compile(r"db\.query\((\w+)\)([\s\S]{0,400}?)\.(?:first|all)\(\)")
 
 
 def _findings():
@@ -48,11 +40,11 @@ def _findings():
             if model not in tenanted:
                 continue
             if not re.search(r"\.id\s*(==|\.in_)", body):
-                continue          # not a by-id lookup
+                continue  # not a by-id lookup
             if "tenant_id" in body:
-                continue          # explicitly scoped
+                continue  # explicitly scoped
             if re.search(r"user\.id|user_id", body):
-                continue          # self-scoped (own row)
+                continue  # self-scoped (own row)
             line = src[: m.start()].count("\n") + 1
             # allow an explicit, justified waiver in the preceding 4 lines
             before = "\n".join(src.splitlines()[max(0, line - 5) : line])
@@ -69,7 +61,7 @@ def test_no_unscoped_by_id_lookups_on_tenant_models():
         "tenant's row with a 200 and a well-formed body:\n  "
         + "\n  ".join(findings)
         + "\n\nUse app.tenancy.get_owned(), add a tenant_id filter, or justify with a "
-          "'# tenant-safe:' comment."
+        "'# tenant-safe:' comment."
     )
 
 

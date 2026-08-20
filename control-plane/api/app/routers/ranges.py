@@ -33,7 +33,6 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..tenancy import get_owned, owned_or_404, tenant_uuid
 from ..db import get_db
 from ..models import Exercise, ExerciseState, Range, RangeSnapshot, RangeState, Template
 from ..rbac import Permission, require_permission
@@ -48,6 +47,7 @@ from ..schemas import (
     SnapshotIn,
     SnapshotOut,
 )
+from ..tenancy import get_owned, owned_or_404
 
 logger = logging.getLogger("truenorth.api.ranges")
 
@@ -86,11 +86,7 @@ def _tenant_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
     404 rather than 403 on a foreign id: "this exists but is not yours" is itself
     disclosure, and it lets a caller enumerate ids across tenants.
     """
-    rng = (
-        db.query(Range)
-        .filter(Range.id == range_id, Range.tenant_id == uuid.UUID(user.tenant_id))
-        .first()
-    )
+    rng = db.query(Range).filter(Range.id == range_id, Range.tenant_id == uuid.UUID(user.tenant_id)).first()
     if not rng:
         raise HTTPException(404, "Range not found")
     return rng

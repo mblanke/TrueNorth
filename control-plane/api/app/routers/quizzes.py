@@ -116,8 +116,8 @@ class QuizGenerateIn(BaseModel):
     question_count: int = Field(default=10, ge=3, le=30)
     difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
     competency_codes: list[str] = Field(default_factory=list, max_length=20)
-    quiz_id: uuid.UUID | None = None     # fill an existing placeholder quiz
-    module_id: uuid.UUID | None = None   # or bind a new quiz to a module
+    quiz_id: uuid.UUID | None = None  # fill an existing placeholder quiz
+    module_id: uuid.UUID | None = None  # or bind a new quiz to a module
 
 
 class AttemptStartOut(BaseModel):
@@ -398,9 +398,7 @@ def submit_attempt(
     user: CurrentUser = Depends(get_current_user),
 ):
     attempt = (
-        db.query(QuizAttempt)
-        .filter(QuizAttempt.id == attempt_id, QuizAttempt.user_id == uuid.UUID(user.id))
-        .first()
+        db.query(QuizAttempt).filter(QuizAttempt.id == attempt_id, QuizAttempt.user_id == uuid.UUID(user.id)).first()
     )
     if not attempt:
         raise HTTPException(404, "Attempt not found")
@@ -604,7 +602,7 @@ def _to_moodle_xml(quiz: Quiz) -> str:
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         "<quiz>",
-        "  <question type=\"category\">",
+        '  <question type="category">',
         "    <category><text>$course$/top/" + xml_escape(quiz.title) + "</text></category>",
         "  </question>",
     ]
@@ -762,9 +760,7 @@ def _update_module_progress(db: Session, quiz: Quiz, user_id: uuid.UUID, pct: in
     if not module:
         return
     enrollment = (
-        db.query(Enrollment)
-        .filter(Enrollment.user_id == user_id, Enrollment.course_id == module.course_id)
-        .first()
+        db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id == module.course_id).first()
     )
     if not enrollment:
         return

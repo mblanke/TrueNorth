@@ -33,13 +33,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 import yaml
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..tenancy import get_owned
 from ..db import get_db
 from ..models import (
     AfterActionReport,
@@ -52,7 +50,6 @@ from ..models import (
     Scenario,
 )
 from ..rbac import Permission, require_permission
-from ..xapi import emit_lifecycle
 from ..schemas import (
     AAROut,
     ExerciseIn,
@@ -62,6 +59,8 @@ from ..schemas import (
     ObjectiveAck,
     ObjectiveOut,
 )
+from ..tenancy import get_owned
+from ..xapi import emit_lifecycle
 
 logger = logging.getLogger("truenorth.api.exercises")
 
@@ -95,14 +94,10 @@ def _scenario_definition(db: Session, ex: Exercise, user: CurrentUser) -> dict:
         except yaml.YAMLError:
             pass
     objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
-    definition["objectives"] = [
-        {"ref_id": o.ref_id, "validator": o.validator, "points": o.points} for o in objectives
-    ]
+    definition["objectives"] = [{"ref_id": o.ref_id, "validator": o.validator, "points": o.points} for o in objectives]
     # Fallback: if the YAML carried no timeline, synthesize one step per objective so the run walks.
     if not definition["timeline"]:
-        definition["timeline"] = [
-            {"t": f"{i}:00", "action": f"inject.{o.ref_id}"} for i, o in enumerate(objectives)
-        ]
+        definition["timeline"] = [{"t": f"{i}:00", "action": f"inject.{o.ref_id}"} for i, o in enumerate(objectives)]
     return definition
 
 
@@ -385,9 +380,7 @@ async def complete_exercise(
     return ex
 
 
-async def _push_exercise_lti_grade(
-    user_id: uuid.UUID, exercise_id: uuid.UUID, score: int, max_score: int
-) -> None:
+async def _push_exercise_lti_grade(user_id: uuid.UUID, exercise_id: uuid.UUID, score: int, max_score: int) -> None:
     from .. import lti13
     from ..db import SessionLocal
 

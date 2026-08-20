@@ -6,8 +6,6 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-import httpx  # retained for emit_statement_sync fallback
-
 from app.lms import get_lms_backend
 
 LRS_URL = os.getenv("LRS_URL", "http://lrs:8000")  # kept for backward compat

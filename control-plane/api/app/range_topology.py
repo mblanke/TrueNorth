@@ -13,9 +13,17 @@ import json
 # JointJS stencil nodeType -> colour (mirrors range-designer nodeColors) so the
 # generated cells match what the 2D designer's own createNodeShape() produces.
 _NODE_COLORS: dict[str, str] = {
-    "workstation": "#42A5F5", "server": "#66BB6A", "dc": "#AB47BC", "kali": "#EF5350",
-    "switch": "#FFA726", "router": "#26C6DA", "cloud": "#78909C",
-    "firewall": "#FF7043", "seconion": "#5C6BC0", "subnet": "#29B6F6", "dmz": "#FFCA28",
+    "workstation": "#42A5F5",
+    "server": "#66BB6A",
+    "dc": "#AB47BC",
+    "kali": "#EF5350",
+    "switch": "#FFA726",
+    "router": "#26C6DA",
+    "cloud": "#78909C",
+    "firewall": "#FF7043",
+    "seconion": "#5C6BC0",
+    "subnet": "#29B6F6",
+    "dmz": "#FFCA28",
 }
 _ZONE_W, _ZONE_H = 640, 150
 _NODE_W, _NODE_H = 120, 80
@@ -33,13 +41,23 @@ def _cell_zone(cid: str, label: str, cidr: str, x: int, y: int, dmz: bool = Fals
         "nodeData": {"label": label, "cidr": cidr},
         "attrs": {
             "body": {
-                "fill": color + "15", "stroke": color, "strokeWidth": 2,
-                "strokeDasharray": "8 4", "rx": 12, "ry": 12,
+                "fill": color + "15",
+                "stroke": color,
+                "strokeWidth": 2,
+                "strokeDasharray": "8 4",
+                "rx": 12,
+                "ry": 12,
             },
             "label": {
-                "text": f"{label}  ({cidr})", "fill": color, "fontSize": 14,
-                "fontFamily": "Calibri, Segoe UI, sans-serif", "fontWeight": "bold",
-                "textAnchor": "start", "textVerticalAnchor": "top", "refX": 12, "refY": 8,
+                "text": f"{label}  ({cidr})",
+                "fill": color,
+                "fontSize": 14,
+                "fontFamily": "Calibri, Segoe UI, sans-serif",
+                "fontWeight": "bold",
+                "textAnchor": "start",
+                "textVerticalAnchor": "top",
+                "refX": 12,
+                "refY": 8,
             },
         },
     }
@@ -57,23 +75,40 @@ def _cell_node(cid: str, label: str, node_type: str, os_template: str, ip: str, 
         "nodeData": {"label": label, "ip": ip, "os_template": os_template},
         "attrs": {
             "body": {
-                "fill": "var(--bg-card)", "stroke": color, "strokeWidth": 2,
-                "rx": 8, "ry": 8, "filter": "none",
+                "fill": "var(--bg-card)",
+                "stroke": color,
+                "strokeWidth": 2,
+                "rx": 8,
+                "ry": 8,
+                "filter": "none",
             },
             "label": {
-                "text": f"{label}\n{ip}", "fill": "var(--text-primary)", "fontSize": 12,
-                "fontFamily": "Calibri, Segoe UI, sans-serif", "textAnchor": "middle",
-                "textVerticalAnchor": "top", "refX": "50%", "refY": "62%",
+                "text": f"{label}\n{ip}",
+                "fill": "var(--text-primary)",
+                "fontSize": 12,
+                "fontFamily": "Calibri, Segoe UI, sans-serif",
+                "textAnchor": "middle",
+                "textVerticalAnchor": "top",
+                "refX": "50%",
+                "refY": "62%",
             },
         },
         "ports": {
             "groups": {
-                "in": {"position": "left", "attrs": {"circle": {
-                    "fill": color, "stroke": "var(--border)", "strokeWidth": 1, "r": 5, "magnet": True}},
-                    "label": {"position": "outside"}},
-                "out": {"position": "right", "attrs": {"circle": {
-                    "fill": color, "stroke": "var(--border)", "strokeWidth": 1, "r": 5, "magnet": True}},
-                    "label": {"position": "outside"}},
+                "in": {
+                    "position": "left",
+                    "attrs": {
+                        "circle": {"fill": color, "stroke": "var(--border)", "strokeWidth": 1, "r": 5, "magnet": True}
+                    },
+                    "label": {"position": "outside"},
+                },
+                "out": {
+                    "position": "right",
+                    "attrs": {
+                        "circle": {"fill": color, "stroke": "var(--border)", "strokeWidth": 1, "r": 5, "magnet": True}
+                    },
+                    "label": {"position": "outside"},
+                },
             },
             "items": [{"group": "in", "id": "in1"}, {"group": "out", "id": "out1"}],
         },
@@ -89,7 +124,8 @@ def _cell_link(cid: str, src: str, dst: str) -> dict:
         "z": 2,
         "attrs": {
             "line": {
-                "stroke": "#8892a6", "strokeWidth": 2,
+                "stroke": "#8892a6",
+                "strokeWidth": 2,
                 "targetMarker": {"type": "path", "d": "M 10 -5 0 0 10 5 z", "fill": "#8892a6"},
             }
         },
@@ -107,71 +143,134 @@ def _plan(po) -> tuple[str, list[dict]]:
     digits = "".join(c for c in po.po_code if c.isdigit()) or "60"
     base = 50 + (int(digits[:2]) % 40)  # 10.<base>.*
 
-    malware = any(k in title for k in ("malware", "static analysis", "dynamic analysis",
-                                       "memory forensics", "low level code")) or "reverse engineer" in role
-    red = ("adversary" in role) or any(k in title for k in ("reconnaissance", "exploitation",
-                                                            "post-exploitation", "threat emulation"))
-    ir = any(k in title for k in ("respond", "defend a network", "incident")) or "capstone" in (po.assessment_type or "").lower()
+    malware = (
+        any(
+            k in title for k in ("malware", "static analysis", "dynamic analysis", "memory forensics", "low level code")
+        )
+        or "reverse engineer" in role
+    )
+    red = ("adversary" in role) or any(
+        k in title for k in ("reconnaissance", "exploitation", "post-exploitation", "threat emulation")
+    )
+    ir = (
+        any(k in title for k in ("respond", "defend a network", "incident"))
+        or "capstone" in (po.assessment_type or "").lower()
+    )
 
     if malware:
         return str(base), [
-            {"name": "Sterile Analysis", "cidr": f"10.{base}.30.0/24", "dmz": False, "nodes": [
-                ("remnux", "server", "remnux", 10),
-                ("sift-fx", "workstation", "sift", 11),
-                ("detonation", "workstation", "detonation-host", 12),
-            ]},
-            {"name": "Management", "cidr": f"10.{base}.40.0/24", "dmz": False, "nodes": [
-                ("analyst-ws", "workstation", "win10-22h2", 5),
-            ]},
+            {
+                "name": "Sterile Analysis",
+                "cidr": f"10.{base}.30.0/24",
+                "dmz": False,
+                "nodes": [
+                    ("remnux", "server", "remnux", 10),
+                    ("sift-fx", "workstation", "sift", 11),
+                    ("detonation", "workstation", "detonation-host", 12),
+                ],
+            },
+            {
+                "name": "Management",
+                "cidr": f"10.{base}.40.0/24",
+                "dmz": False,
+                "nodes": [
+                    ("analyst-ws", "workstation", "win10-22h2", 5),
+                ],
+            },
         ]
     if red:
         return str(base), [
-            {"name": "Attacker Infra", "cidr": f"10.{base}.30.0/24", "dmz": False, "nodes": [
-                ("kali-op", "kali", "kali", 10),
-                ("c2-server", "server", "c2-server", 11),
-                ("redir", "server", "ubuntu-lts", 12),
-            ]},
-            {"name": "Target DMZ", "cidr": f"10.{base}.10.0/24", "dmz": True, "nodes": [
-                ("web01", "server", "ubuntu-lts", 20),
-                ("mail01", "server", "ubuntu-lts", 21),
-            ]},
-            {"name": "Target Corp", "cidr": f"10.{base}.11.0/24", "dmz": False, "nodes": [
-                ("dc01", "dc", "srv2019", 10),
-                ("ws01", "workstation", "win10-22h2", 30),
-                ("ws02", "workstation", "win11-24h2", 31),
-            ]},
+            {
+                "name": "Attacker Infra",
+                "cidr": f"10.{base}.30.0/24",
+                "dmz": False,
+                "nodes": [
+                    ("kali-op", "kali", "kali", 10),
+                    ("c2-server", "server", "c2-server", 11),
+                    ("redir", "server", "ubuntu-lts", 12),
+                ],
+            },
+            {
+                "name": "Target DMZ",
+                "cidr": f"10.{base}.10.0/24",
+                "dmz": True,
+                "nodes": [
+                    ("web01", "server", "ubuntu-lts", 20),
+                    ("mail01", "server", "ubuntu-lts", 21),
+                ],
+            },
+            {
+                "name": "Target Corp",
+                "cidr": f"10.{base}.11.0/24",
+                "dmz": False,
+                "nodes": [
+                    ("dc01", "dc", "srv2019", 10),
+                    ("ws01", "workstation", "win10-22h2", 30),
+                    ("ws02", "workstation", "win11-24h2", 31),
+                ],
+            },
         ]
     if ir:
         return str(base), [
-            {"name": "Attacker Infra", "cidr": f"10.{base}.30.0/24", "dmz": False, "nodes": [
-                ("kali-op", "kali", "kali", 10),
-            ]},
-            {"name": "Victim Network", "cidr": f"10.{base}.11.0/24", "dmz": False, "nodes": [
-                ("dc01", "dc", "srv2019", 10),
-                ("fs01", "server", "srv2019", 11),
-                ("ws01", "workstation", "win10-22h2", 30),
-                ("ws02", "workstation", "win11-24h2", 31),
-            ]},
-            {"name": "SOC / Monitoring", "cidr": f"10.{base}.20.0/24", "dmz": False, "nodes": [
-                ("securityonion", "seconion", "securityonion", 10),
-                ("siem", "server", "ubuntu-lts", 11),
-                ("dfir-ws", "workstation", "sift", 12),
-            ]},
+            {
+                "name": "Attacker Infra",
+                "cidr": f"10.{base}.30.0/24",
+                "dmz": False,
+                "nodes": [
+                    ("kali-op", "kali", "kali", 10),
+                ],
+            },
+            {
+                "name": "Victim Network",
+                "cidr": f"10.{base}.11.0/24",
+                "dmz": False,
+                "nodes": [
+                    ("dc01", "dc", "srv2019", 10),
+                    ("fs01", "server", "srv2019", 11),
+                    ("ws01", "workstation", "win10-22h2", 30),
+                    ("ws02", "workstation", "win11-24h2", 31),
+                ],
+            },
+            {
+                "name": "SOC / Monitoring",
+                "cidr": f"10.{base}.20.0/24",
+                "dmz": False,
+                "nodes": [
+                    ("securityonion", "seconion", "securityonion", 10),
+                    ("siem", "server", "ubuntu-lts", 11),
+                    ("dfir-ws", "workstation", "sift", 12),
+                ],
+            },
         ]
     # default: network / log analysis (defensive)
     return str(base), [
-        {"name": "Attacker Infra", "cidr": f"10.{base}.30.0/24", "dmz": False, "nodes": [
-            ("kali-op", "kali", "kali", 10),
-        ]},
-        {"name": "Victim Network", "cidr": f"10.{base}.11.0/24", "dmz": False, "nodes": [
-            ("dc01", "dc", "srv2019", 10),
-            ("precomp", "workstation", "precomp-host", 20),
-            ("ws01", "workstation", "win10-22h2", 30),
-        ]},
-        {"name": "Monitoring", "cidr": f"10.{base}.20.0/24", "dmz": False, "nodes": [
-            ("securityonion", "seconion", "securityonion", 10),
-            ("usersim", "server", "usersim", 40),
-        ]},
+        {
+            "name": "Attacker Infra",
+            "cidr": f"10.{base}.30.0/24",
+            "dmz": False,
+            "nodes": [
+                ("kali-op", "kali", "kali", 10),
+            ],
+        },
+        {
+            "name": "Victim Network",
+            "cidr": f"10.{base}.11.0/24",
+            "dmz": False,
+            "nodes": [
+                ("dc01", "dc", "srv2019", 10),
+                ("precomp", "workstation", "precomp-host", 20),
+                ("ws01", "workstation", "win10-22h2", 30),
+            ],
+        },
+        {
+            "name": "Monitoring",
+            "cidr": f"10.{base}.20.0/24",
+            "dmz": False,
+            "nodes": [
+                ("securityonion", "seconion", "securityonion", 10),
+                ("usersim", "server", "usersim", 40),
+            ],
+        },
     ]
 
 

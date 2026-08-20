@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-import os
-
 import httpx
 import pytest
-from fastapi import HTTPException
-
 from app.auth_backends import (
     DisabledAuthBackend,
     GenericOIDCBackend,
     KeycloakOIDCBackend,
+    _reset_backend,  # noqa: PLC2701 — test-only helper
     get_auth_backend,
 )
-from app.auth_backends import _reset_backend  # noqa: PLC2701 — test-only helper
-
+from fastapi import HTTPException
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -124,17 +120,17 @@ class TestKeycloakOIDCBackend:
     @pytest.mark.asyncio
     async def test_health_check_success(self, respx_mock):
         b = self._make_backend()
-        respx_mock.get(
-            "http://mock-keycloak:8080/realms/test-realm/.well-known/openid-configuration"
-        ).mock(return_value=httpx.Response(200, json={"issuer": "http://mock-keycloak:8080"}))
+        respx_mock.get("http://mock-keycloak:8080/realms/test-realm/.well-known/openid-configuration").mock(
+            return_value=httpx.Response(200, json={"issuer": "http://mock-keycloak:8080"})
+        )
         assert await b.health_check() is True
 
     @pytest.mark.asyncio
     async def test_health_check_unreachable_returns_false(self, respx_mock):
         b = self._make_backend()
-        respx_mock.get(
-            "http://mock-keycloak:8080/realms/test-realm/.well-known/openid-configuration"
-        ).mock(side_effect=httpx.ConnectError("refused"))
+        respx_mock.get("http://mock-keycloak:8080/realms/test-realm/.well-known/openid-configuration").mock(
+            side_effect=httpx.ConnectError("refused")
+        )
         assert await b.health_check() is False
 
     def test_reads_env_vars_when_no_explicit_args(self, monkeypatch):
@@ -147,9 +143,7 @@ class TestKeycloakOIDCBackend:
     @pytest.mark.asyncio
     async def test_jwks_cached_on_second_call(self, respx_mock, mocker):
         b = self._make_backend()
-        route = respx_mock.get(b._jwks_url).mock(
-            return_value=httpx.Response(200, json=_MOCK_JWKS)
-        )
+        route = respx_mock.get(b._jwks_url).mock(return_value=httpx.Response(200, json=_MOCK_JWKS))
         mocker.patch("app.auth_backends.keycloak_oidc.jwt.decode", return_value=_MOCK_PAYLOAD)
         await b.validate_token("tok1")
         await b.validate_token("tok2")

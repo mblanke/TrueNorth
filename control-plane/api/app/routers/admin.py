@@ -37,7 +37,6 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
-from ..tenancy import get_owned
 from ..db import get_db
 from ..models import AuditLog, Team, TeamMembership, Tenant, User, UserRole
 from ..rbac import Permission, require_permission
@@ -52,6 +51,7 @@ from ..schemas import (
     UserFullOut,
     UserUpdateIn,
 )
+from ..tenancy import get_owned
 
 logger = logging.getLogger("truenorth.api.admin")
 

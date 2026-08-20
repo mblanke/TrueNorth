@@ -5,12 +5,13 @@ Revises: b8c9d0e1f2a3
 Create Date: 2026-07-18 12:00:00.000000
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+from app.models import GUID
 
 from alembic import op
-from app.models import GUID
 
 # revision identifiers, used by Alembic.
 revision: str = "c9d0e1f2a3b4"
