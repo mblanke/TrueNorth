@@ -317,7 +317,7 @@ services:
       OPENAI_TIMEOUT_S: "${OPENAI_TIMEOUT_S:-600}"
       AI_HEAVY_MODEL: "${AI_HEAVY_MODEL:-agent}"
       AI_GENERAL_MODEL: "${AI_GENERAL_MODEL:-agent}"
-      AI_CODE_MODEL: "${AI_CODE_MODEL:-agent}"
+      AI_CODE_MODEL: "${AI_CODE_MODEL:-coder-fast}"
       AI_EMBED_BACKEND: "${AI_EMBED_BACKEND:-openai}"
       AI_EMBED_MODEL: "${AI_EMBED_MODEL:-embed}"
       MAX_LLM_CONCURRENCY: "${MAX_LLM_CONCURRENCY:-4}"

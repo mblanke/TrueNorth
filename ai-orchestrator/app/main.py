@@ -110,11 +110,18 @@ AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() in ("1", "true", "ye
 PRIMARY_BACKEND = BackendType(os.getenv("AI_MODEL_BACKEND", "ollama"))
 
 # Local OpenAI-compatible engine (LiteLLM) — per-capability model aliases.
-# Default to the Mistral 24B "agent" alias that serves today; set AI_HEAVY_MODEL=forge
-# (etc.) once the Qwen 112B model is deployed on the vLLM fleet. No code change needed.
+# "agent" is gpt-oss-120b (NOT the Mistral 24B the previous comment claimed; that has
+# not been true since the fleet was rebuilt). It is the strongest *general* engine, so
+# it stays the default for prose generation.
+#
+# Code-shaped work goes to "coder-fast" (Qwen3-Coder-30B-A3B), the only genuine code
+# model in the fleet. It used to default to "agent" here, which meant the code model
+# sat idle while a general model wrote the code — measured at roughly 36:1 against it
+# in the 24h before 2026-08-19. Aliases resolve in LiteLLM, so swapping engines still
+# needs no code change.
 AI_HEAVY_MODEL = os.getenv("AI_HEAVY_MODEL", "agent")
 AI_GENERAL_MODEL = os.getenv("AI_GENERAL_MODEL", "agent")
-AI_CODE_MODEL = os.getenv("AI_CODE_MODEL", "agent")
+AI_CODE_MODEL = os.getenv("AI_CODE_MODEL", "coder-fast")
 
 # Embeddings: "openai" routes through the LiteLLM embed endpoint; "ollama" uses the
 # legacy local Ollama embedding API.

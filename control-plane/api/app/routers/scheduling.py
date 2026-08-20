@@ -21,6 +21,7 @@ from ..db import get_db
 from ..auth import CurrentUser, get_current_user
 from ..rbac import Permission, require_permission
 from ..models import EventState, ScheduledEvent, Tenant
+from ..tenancy import get_owned
 
 logger = logging.getLogger("truenorth.api.scheduling")
 
