@@ -1,6 +1,19 @@
-"""Integration test: scenario execution flow.
+"""Integration test: scenario execution.
 
-Load ransomware-lite scenario -> execute on range -> verify timeline events -> evaluate objectives.
+create range -> provision -> load scenario -> execute -> verify timeline + objectives.
+
+**Half of this file tests an API that does not exist.** `/scenarios` is CRUD only —
+create, read, update, delete. There is no `POST /scenarios/execute`, no
+`GET /scenarios/executions/{id}/results` and no `GET /scenarios/executions/{id}/timeline`,
+and there never has been: the file was written against a planned contract and then hidden
+behind an env-gated skip, so nothing ever reported the gap.
+
+Rather than delete those tests or leave them silently skipped, they are marked `xfail`
+with the missing endpoint named. That keeps the gap visible in every run and makes the
+tests turn green by themselves — as `XPASS`, which is a failure under `strict=True` — the
+day the endpoints land. Note that execution *is* reachable today through the exercise
+API (`POST /exercises/{id}/start`, see `test_exercise_lifecycle.py`); what is absent is a
+scenario-level execution surface independent of an exercise.
 """
 
 from __future__ import annotations
@@ -11,109 +24,104 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-POLL_INTERVAL = 3
-POLL_TIMEOUT = 180
+POLL_INTERVAL = 2
+POLL_TIMEOUT = 120
+
+NO_EXECUTION_API = pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "no scenario-level execution API: POST /scenarios/execute, "
+        "GET /scenarios/executions/{id}/results and /timeline do not exist. "
+        "Scenarios run through POST /exercises/{id}/start instead."
+    ),
+)
 
 
-def _poll_execution_state(client, execution_id: str, target: str) -> dict:
+def _poll_range_state(client, range_id: str, target: str) -> dict:
     deadline = time.time() + POLL_TIMEOUT
+    last = None
     while time.time() < deadline:
-        resp = client.get(f"/scenarios/executions/{execution_id}")
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("state") == target:
-                return data
+        resp = client.get(f"/ranges/{range_id}")
+        assert resp.status_code == 200
+        last = resp.json()
+        if last["state"] == target:
+            return last
         time.sleep(POLL_INTERVAL)
-    raise TimeoutError(f"Execution {execution_id} did not reach '{target}' within {POLL_TIMEOUT}s")
+    raise TimeoutError(
+        f"Range {range_id} did not reach '{target}' within {POLL_TIMEOUT}s "
+        f"(last state: {last['state'] if last else 'unknown'})"
+    )
+
+
+@pytest.fixture(scope="class")
+def execution_env(request, api_client, range_template):
+    r = api_client.post(
+        "/ranges", json={"name": "integ-scenario-range", "template_id": range_template}
+    )
+    assert r.status_code in (200, 201), f"POST /ranges => {r.status_code} {r.text}"
+    range_id = r.json()["id"]
+    yield {"range_id": range_id}
+    api_client.delete(f"/ranges/{range_id}")
 
 
 class TestScenarioExecution:
-    """End-to-end scenario execution against live services."""
+    """Scenario setup works end to end; execution has no API to drive it."""
 
-    _range_id: str = ""
-    _scenario_id: str = ""
-    _execution_id: str = ""
-
-    def test_create_range(self, api_client):
-        resp = api_client.post(
-            "/ranges",
-            json={
-                "name": "integ-scenario-range",
-                "description": "Range for scenario execution test",
-            },
-        )
-        assert resp.status_code in (200, 201)
-        self.__class__._range_id = resp.json()["id"]
-
-    def test_provision_range(self, api_client):
-        range_id = self.__class__._range_id
-        api_client.post(f"/ranges/{range_id}/provision")
-        deadline = time.time() + POLL_TIMEOUT
-        while time.time() < deadline:
-            r = api_client.get(f"/ranges/{range_id}")
-            if r.json()["state"] == "provisioned":
-                return
-            time.sleep(POLL_INTERVAL)
-        pytest.fail("Range did not provision in time")
+    def test_provision_range(self, api_client, execution_env):
+        range_id = execution_env["range_id"]
+        resp = api_client.post(f"/ranges/{range_id}/provision")
+        assert resp.status_code in (200, 202), resp.text
+        _poll_range_state(api_client, range_id, "ready")
 
     def test_load_scenario(self, api_client):
-        """Load the ransomware-lite scenario (or find it if pre-loaded)."""
-        # Try to find existing ransomware-lite
-        resp = api_client.get("/scenarios", params={"name": "ransomware-lite"})
-        if resp.status_code == 200:
-            items = resp.json()
-            if isinstance(items, list) and items:
-                self.__class__._scenario_id = items[0]["id"]
-                return
-            if isinstance(items, dict) and items.get("items"):
-                self.__class__._scenario_id = items["items"][0]["id"]
-                return
-
-        # Create a minimal scenario
         resp = api_client.post(
             "/scenarios",
             json={
-                "name": "ransomware-lite",
-                "description": "Lightweight ransomware simulation for testing",
-                "objectives": [
-                    {"id": "detect", "name": "Detect Ransomware", "points": 50},
-                    {"id": "contain", "name": "Contain Spread", "points": 30},
-                    {"id": "recover", "name": "Recover Systems", "points": 20},
-                ],
+                "name": "integ-scenario-execution",
+                "yaml": "name: integ-scenario-execution\nobjectives: []\n",
+                "is_public": False,
             },
         )
-        assert resp.status_code in (200, 201)
+        assert resp.status_code in (200, 201), resp.text
         self.__class__._scenario_id = resp.json()["id"]
 
-    def test_execute_scenario(self, api_client):
+    def test_scenario_is_readable(self, api_client):
+        resp = api_client.get(f"/scenarios/{self.__class__._scenario_id}")
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "integ-scenario-execution"
+
+    @NO_EXECUTION_API
+    def test_execute_scenario(self, api_client, execution_env):
         resp = api_client.post(
             "/scenarios/execute",
             json={
                 "scenario_id": self.__class__._scenario_id,
-                "range_id": self.__class__._range_id,
+                "range_id": execution_env["range_id"],
             },
         )
         assert resp.status_code in (200, 201, 202)
         self.__class__._execution_id = resp.json()["id"]
 
+    @NO_EXECUTION_API
     def test_wait_for_completion(self, api_client):
-        _poll_execution_state(api_client, self.__class__._execution_id, "completed")
+        eid = self.__class__._execution_id
+        resp = api_client.get(f"/scenarios/executions/{eid}/results")
+        assert resp.status_code == 200
 
+    @NO_EXECUTION_API
     def test_verify_timeline_events(self, api_client):
-        resp = api_client.get(f"/scenarios/executions/{self.__class__._execution_id}/timeline")
+        eid = self.__class__._execution_id
+        resp = api_client.get(f"/scenarios/executions/{eid}/timeline")
         assert resp.status_code == 200
-        timeline = resp.json()
-        events = timeline if isinstance(timeline, list) else timeline.get("events", [])
-        assert len(events) > 0, "Expected at least one timeline event"
+        assert isinstance(resp.json(), list)
 
+    @NO_EXECUTION_API
     def test_evaluate_objectives(self, api_client):
-        resp = api_client.get(f"/scenarios/executions/{self.__class__._execution_id}/results")
+        eid = self.__class__._execution_id
+        resp = api_client.get(f"/scenarios/executions/{eid}/results")
         assert resp.status_code == 200
-        results = resp.json()
-        # Should have objective evaluations
-        objectives = results if isinstance(results, list) else results.get("objectives", [])
-        assert len(objectives) > 0, "Expected objective evaluations"
+        assert "objectives" in resp.json()
 
-    def test_cleanup_range(self, api_client):
-        range_id = self.__class__._range_id
-        api_client.delete(f"/ranges/{range_id}")
+    def test_cleanup_scenario(self, api_client):
+        resp = api_client.delete(f"/scenarios/{self.__class__._scenario_id}")
+        assert resp.status_code in (200, 202, 204)

@@ -20,13 +20,32 @@ nvidia-smi -L
 ## First command after a reboot
 
 ```bash
-/opt/llm-stack/taz-status.sh      # what is actually running
-/opt/llm-stack/to-fleet.sh        # bring the 4-model fleet up (default mode)
+/opt/llm-stack/taz-status.sh              # what is actually running
+/opt/llm-stack/to-fleet.sh                # bring the 4-model fleet up (default mode)
+docker start taz-dashboard-prometheus-1   # the dashboard's data source
 ```
 
-Nothing auto-starts the models by design: `glm52.service` is installed but **disabled**
-so GLM never fights the fleet for GPUs. Fleet vLLM engines are `restart: unless-stopped`
-and usually return on their own; `to-fleet.sh` is idempotent, so run it either way.
+**Assume nothing comes back on its own.** `restart: unless-stopped` does *not* restart a
+container that was cleanly stopped before the reboot, so anything stopped on the way down
+stays down. Verified the hard way on 2026-08-19: the four vLLM engines *and*
+`taz-dashboard-prometheus-1` all stayed `Exited (0)` after the boot. A post-reboot restore
+is always explicit. `to-fleet.sh` is idempotent, so run it either way.
+
+`glm52.service` is installed but **disabled** by design, so GLM never fights the fleet
+for GPUs.
+
+**A dark dashboard usually means Prometheus, not a dead platform.** Every status tile is a
+Prometheus query, so when Prometheus is down the whole board reads "offline" while the
+services behind it are perfectly healthy. Check the platform directly before believing it:
+
+```bash
+curl -s localhost:4200/api/health          # {"status":"ok","db":true,"redis":true}
+docker ps --filter health=unhealthy        # empty is good
+curl -s localhost:9090/api/v1/targets | head -c 200
+```
+
+Note the API is **not** published on the LAN (it maps `8080/tcp -> 127.0.0.1:8081` and is
+reached via nginx at `:4200/api/`). A probe of `:8000` fails by design, not by fault.
 
 ## The two modes
 
@@ -72,7 +91,25 @@ Scripts in `/opt/llm-stack/`: `to-fleet.sh`, `to-glm.sh`, `taz-status.sh`,
 - QSP crosswalk: NICE mappings reconciled, and a false `component_version: v2.1.0` claim
   corrected to `SP800-181r1` (the ids in use are SP 800-181 rev 1).
 
-**Test baseline: 461 passed, 27 skipped.** The 27 skips need external services.
+**Test baseline: 603 passed, 5 xfailed, 0 skipped.**
+
+The old "27 skipped — needs external services" line was wrong, and the wrongness was the
+point: the services were up the whole time. The integration suite was gated on an
+`INTEGRATION_TEST=1` flag nobody set, and behind that gate it had drifted completely off
+the API contract — posting to `/telemetry/events` (the route is
+`/telemetry/{range_id}/events`), creating ranges with a null `template_id` the schema
+requires, and polling for a range state `provisioned` that is not in `RangeState`. It is
+now gated on whether the API actually answers, so drift surfaces the day it appears.
+
+The 5 xfails are real gaps, named in the tests, not hidden:
+
+- 4 × no scenario-level execution API (`POST /scenarios/execute` and the execution
+  results/timeline endpoints do not exist; scenarios run via `POST /exercises/{id}/start`).
+- 1 × **snapshot restore cannot work on any backend.** `worker/tasks.py:912` calls
+  `provisioner.restore()`, and no provisioner implements it — mock, vsphere, hyperv,
+  proxmox and terraform all define `snapshot()` and none define `restore()`. The
+  retrying task also stamps `failed` over whatever terminal state the range had already
+  reached, so a failed restore can clobber a successful destroy.
 
 ## Still open
 
@@ -96,6 +133,16 @@ Scripts in `/opt/llm-stack/`: `to-fleet.sh`, `to-glm.sh`, `taz-status.sh`,
   line. Use `safe_kill()` from `_helpers.sh`.
 - **Reasoning models return empty `content` at low `max_tokens`** (`agent`, `glm-5.2`) —
   the reasoning channel eats the budget. Use >=200 when smoke-testing.
-- **`--profile fleet up -d` also starts a container dcgm-exporter** that collides with
-  the host exporter on `:9400` and aborts the whole run. `to-fleet.sh` starts the four
-  engines by name instead.
+- **`--profile fleet up -d` also starts a container dcgm-exporter**, which historically
+  aborted the whole run with a `:9400` bind collision. `to-fleet.sh` starts the four
+  engines by name instead. Correction (2026-08-19): the earlier note blamed a *host-side*
+  exporter for holding `:9400`. There is no host dcgm-exporter on this box — no binary,
+  no systemd unit, no `*dcgm*` file outside Docker images. The collision was this same
+  container being started twice, so the by-name workaround is now belt-and-braces rather
+  than load-bearing.
+- **`docker start` can silently resurrect a container without its port mapping.** The
+  dcgm-exporter came back `Up` and logged `HTTP server started`, but `docker port` was
+  empty and Prometheus's `dcgm` target sat at `connection refused`. A container created
+  during a failed networking attempt keeps that broken config; only
+  `docker compose up -d --force-recreate dcgm-exporter` restored `9400:9400`. If a target
+  is refused while the process looks healthy, check `docker port` before the process.
