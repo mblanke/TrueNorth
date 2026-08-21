@@ -34,7 +34,10 @@ def _findings():
     tenanted = _tenanted_models()
     out = []
     for f in sorted(ROUTERS.glob("*.py")):
-        src = f.read_text()
+        # Explicit encoding: Path.read_text() defaults to the platform codec, so on
+        # Windows this guard died with UnicodeDecodeError on the first non-ASCII byte
+        # in a router rather than reporting findings. Sources are UTF-8 everywhere.
+        src = f.read_text(encoding="utf-8")
         for m in QUERY.finditer(src):
             model, body = m.group(1), m.group(2)
             if model not in tenanted:
