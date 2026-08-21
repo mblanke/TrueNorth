@@ -63,6 +63,14 @@ body.theme-great-white-north {
   --accent-soft:     rgba(31, 182, 166, 0.16);
   --warn-soft:       rgba(232, 168, 56, 0.18);
   --border-strong:   #3E6288;
+  /* One severity scale for the whole app — chips, badges, annotations. Replaces
+     the three ad-hoc palettes that used to live in ops-center, detection-editor
+     and the Material-500 hexes scattered through the infra pages. */
+  --severity-critical: #FF4D57;
+  --severity-high:     #FF8A5C;
+  --severity-medium:   #E8A838;
+  --severity-low:      #4FC3F7;
+  --severity-info:     #8FA8BF;
 
   /* Command-center / aurora design tokens */
   --glass-bg:        rgba(14, 39, 70, 0.62);
@@ -106,6 +114,11 @@ body.theme-maple-steel {
   --accent-soft:     rgba(63, 185, 80, 0.16);
   --warn-soft:       rgba(210, 153, 34, 0.18);
   --border-strong:   #4A5666;
+  --severity-critical: #FF4D4D;
+  --severity-high:     #FF8A5C;
+  --severity-medium:   #D29922;
+  --severity-low:      #58A6FF;
+  --severity-info:     #8B949E;
 
   --glass-bg:        rgba(21, 27, 35, 0.62);
   --glass-toolbar:   rgba(7, 9, 13, 0.72);
@@ -139,6 +152,11 @@ body.theme-aurora-soc {
   --accent-soft:     rgba(45, 226, 197, 0.14);
   --warn-soft:       rgba(245, 166, 35, 0.16);
   --border-strong:   #2E4A73;
+  --severity-critical: #FF5C7A;
+  --severity-high:     #FF9A62;
+  --severity-medium:   #F5A623;
+  --severity-low:      #7AA2FF;
+  --severity-info:     #9EAFC2;
 
   --glass-bg:        rgba(12, 21, 40, 0.55);
   --glass-toolbar:   rgba(3, 5, 11, 0.66);
@@ -175,6 +193,12 @@ body.theme-great-white-north {
   --accent-soft:     rgba(30, 127, 79, 0.12);
   --warn-soft:       rgba(178, 106, 0, 0.14);
   --border-strong:   #A8B2BD;
+  /* Darkened for >= 4.5:1 on white cards. */
+  --severity-critical: #C62828;
+  --severity-high:     #D84315;
+  --severity-medium:   #B26A00;
+  --severity-low:      #1565C0;
+  --severity-info:     #5F6B78;
 
   --glass-bg:        rgba(255, 255, 255, 0.78);
   --glass-toolbar:   rgba(255, 255, 255, 0.85);
@@ -784,7 +808,26 @@ button[mat-icon-button]:hover .mat-icon,
   50%      { opacity: 0.35; }
 }
 .status-chip.stopped     { background: rgba(143, 168, 191, 0.14); border-color: rgba(143, 168, 191, 0.3); color: var(--text-muted); }
-.status-chip.failed      { background: rgba(210, 38,  48,  0.14); border-color: rgba(210, 38,  48,  0.4); color: var(--alert); }
+.status-chip.failed,
+.status-chip.error       { background: rgba(210, 38,  48,  0.14); border-color: rgba(210, 38,  48,  0.4); color: var(--alert); }
+
+/* Additional lifecycle states, aliased onto the shapes above so every page's
+   vocabulary lands on one of the same few looks. */
+.status-chip.pending,
+.status-chip.queued,
+.status-chip.disabled,
+.status-chip.deprecated  { background: color-mix(in srgb, var(--text-muted) 14%, transparent); border-color: color-mix(in srgb, var(--text-muted) 30%, transparent); color: var(--text-muted); }
+.status-chip.completed,
+.status-chip.done,
+.status-chip.stable      { background: color-mix(in srgb, var(--success) 14%, transparent); border-color: color-mix(in srgb, var(--success) 35%, transparent); color: var(--success); }
+.status-chip.testing     { background: color-mix(in srgb, var(--severity-low) 14%, transparent); border-color: color-mix(in srgb, var(--severity-low) 35%, transparent); color: var(--severity-low); }
+
+/* Severity chips — the one scale for alert/finding/incident levels. */
+.status-chip.sev-critical { background: color-mix(in srgb, var(--severity-critical) 14%, transparent); border-color: color-mix(in srgb, var(--severity-critical) 40%, transparent); color: var(--severity-critical); }
+.status-chip.sev-high     { background: color-mix(in srgb, var(--severity-high) 14%, transparent); border-color: color-mix(in srgb, var(--severity-high) 40%, transparent); color: var(--severity-high); }
+.status-chip.sev-medium   { background: color-mix(in srgb, var(--severity-medium) 14%, transparent); border-color: color-mix(in srgb, var(--severity-medium) 40%, transparent); color: var(--severity-medium); }
+.status-chip.sev-low      { background: color-mix(in srgb, var(--severity-low) 14%, transparent); border-color: color-mix(in srgb, var(--severity-low) 40%, transparent); color: var(--severity-low); }
+.status-chip.sev-info     { background: color-mix(in srgb, var(--severity-info) 14%, transparent); border-color: color-mix(in srgb, var(--severity-info) 40%, transparent); color: var(--severity-info); }
 
 /* ─────────────────────────────────────────────────────────────
    SCROLLBAR
@@ -802,6 +845,45 @@ button[mat-icon-button]:hover .mat-icon,
 .mt-3 { margin-top:   24px; }
 .mb-2 { margin-bottom: 16px; }
 .ml-2 { margin-left:  16px; }
+
+/* Page-header supporting line. Was redefined locally in eight components. */
+.subtitle {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Inline code / command / YAML surface. */
+.tn-code-block {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+/* Loading skeletons. Mark the wrapper aria-busy so the shimmer reads as
+   loading, not content. */
+.tn-skeleton {
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-surface) 37%, var(--bg-card) 63%);
+  background-size: 400% 100%;
+  animation: tn-sk-shimmer 1.4s ease infinite;
+}
+.tn-skeleton-text  { height: 14px; border-radius: var(--radius-sm); }
+.tn-skeleton-row   { height: 44px; }
+.tn-skeleton-card  { height: 120px; }
+.tn-skeleton-group { display: flex; flex-direction: column; gap: 12px; }
+@keyframes tn-sk-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tn-skeleton { animation: none; }
+}
 
 /* ─────────────────────────────────────────────────────────────
    MOTION & DISPLAY UTILITIES (command-center overhaul)
