@@ -11,6 +11,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatChipsModule } from '@angular/material/chips';
 import { ApiService } from '@core/services/api.service';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { EnterStaggerDirective } from '../../shared/motion';
 
 interface ExternalPlatform {
   id: string;
@@ -29,7 +31,7 @@ interface ExternalPlatform {
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatChipsModule,
+    MatSelectModule, MatChipsModule, EmptyStateComponent, EnterStaggerDirective,
   ],
   template: `
     <div class="page-container">
@@ -102,9 +104,9 @@ interface ExternalPlatform {
               </mat-card>
             }
 
-            <div class="card-grid mt-2">
+            <div class="card-grid mt-2" tnEnterStagger>
               @for (p of platforms(); track p.id) {
-                <mat-card class="platform-card">
+                <mat-card class="platform-card tn-stagger-item">
                   <mat-card-header>
                     <mat-icon mat-card-avatar [color]="p.is_active ? 'primary' : 'warn'">
                       {{ platformIcon(p.platform_type) }}
@@ -136,18 +138,22 @@ interface ExternalPlatform {
                     </button>
                   </mat-card-actions>
                 </mat-card>
-              } @empty {
-                <mat-card>
-                  <mat-card-content>
-                    <div style="text-align: center; padding: 32px;">
-                      <mat-icon style="font-size: 48px; width: 48px; height: 48px; color: var(--text-secondary)">hub</mat-icon>
-                      <h3>No Platforms Connected</h3>
-                      <p>Connect Moodle, Immersive Labs, OffSec, or any LTI 1.3 tool provider.</p>
-                    </div>
-                  </mat-card-content>
-                </mat-card>
               }
             </div>
+
+            @if (loading()) {
+              <div class="tn-skeleton-group mt-2" aria-busy="true">
+                <div class="tn-skeleton tn-skeleton-card"></div>
+                <div class="tn-skeleton tn-skeleton-card"></div>
+                <div class="tn-skeleton tn-skeleton-card"></div>
+              </div>
+            } @else if (platforms().length === 0) {
+              <tn-empty-state
+                icon="hub"
+                title="No Platforms Connected"
+                message="Connect Moodle, Immersive Labs, OffSec, or any LTI 1.3 tool provider."
+              />
+            }
           </div>
         </mat-tab>
 
@@ -188,13 +194,14 @@ interface ExternalPlatform {
     .page-header { display: flex; justify-content: flex-end; }
     .mt-2 { margin-top: 16px; }
     .config-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    .config-table td { padding: 8px 12px; border-bottom: 1px solid var(--border, #333); }
-    .config-table td:first-child { font-weight: 600; width: 200px; }
+    .config-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    .config-table td:first-child { font-weight: 600; width: 200px; color: var(--text-secondary); }
     code { background: var(--bg-surface); border: 1px solid var(--border); padding: 2px 6px; border-radius: var(--radius-sm); font-family: var(--font-mono); }
   `],
 })
 export class IntegrationsComponent implements OnInit {
   platforms = signal<ExternalPlatform[]>([]);
+  loading = signal(true);
   showAdd = false;
   editingPlatformId: string | null = null;
   platformSaving = false;
@@ -216,8 +223,8 @@ export class IntegrationsComponent implements OnInit {
 
   loadPlatforms() {
     this.api.get<ExternalPlatform[]>('/integrations/platforms').subscribe({
-      next: p => this.platforms.set(p || []),
-      error: () => this.platforms.set([]),
+      next: p => { this.platforms.set(p || []); this.loading.set(false); },
+      error: () => { this.platforms.set([]); this.loading.set(false); },
     });
   }
 

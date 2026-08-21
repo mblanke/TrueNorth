@@ -152,10 +152,10 @@ const NODE_ICON: Record<string, string> = {
                   <text [attr.x]="z.x + 14" [attr.y]="z.y + 43" [attr.fill]="z.color" font-size="12" opacity="0.8">{{ z.cidr }}</text>
                 }
                 @for (n of svgNodes; track n.label) {
-                  <rect [attr.x]="n.x" [attr.y]="n.y" width="150" height="54" rx="9" fill="#0d1a2b" [attr.stroke]="n.color" stroke-width="1.5" />
+                  <rect class="node-box" [attr.x]="n.x" [attr.y]="n.y" width="150" height="54" rx="9" [attr.stroke]="n.color" stroke-width="1.5" />
                   <rect [attr.x]="n.x" [attr.y]="n.y" width="6" height="54" rx="3" [attr.fill]="n.color" />
-                  <text [attr.x]="n.x + 16" [attr.y]="n.y + 22" fill="#e7eef7" font-size="13" font-weight="600">{{ iconFor(n.type) }} {{ n.label }}</text>
-                  <text [attr.x]="n.x + 16" [attr.y]="n.y + 40" fill="#93a0b4" font-size="11">{{ n.ip }} · {{ n.type }}</text>
+                  <text class="node-title" [attr.x]="n.x + 16" [attr.y]="n.y + 22" font-size="13" font-weight="600">{{ iconFor(n.type) }} {{ n.label }}</text>
+                  <text class="node-sub" [attr.x]="n.x + 16" [attr.y]="n.y + 40" font-size="11">{{ n.ip }} · {{ n.type }}</text>
                 }
               </svg>
             </div>
@@ -172,23 +172,35 @@ const NODE_ICON: Record<string, string> = {
         </mat-card>
       </div>
     </div>
-    @if (!detail && !error) { <mat-progress-bar mode="indeterminate" /> }
-    @if (error) { <p class="muted" style="padding:16px">{{ error }}</p> }
+    @if (!detail && !error) {
+      <div class="tn-skeleton-group loading" aria-busy="true">
+        <div class="tn-skeleton tn-skeleton-text" style="width: 220px"></div>
+        <div class="tn-skeleton tn-skeleton-card"></div>
+        <div class="tn-skeleton tn-skeleton-card"></div>
+      </div>
+    }
+    @if (error) {
+      <div class="error-panel">
+        <mat-icon>cloud_off</mat-icon>
+        <p>{{ error }}</p>
+        <button mat-stroked-button (click)="retry()"><mat-icon>refresh</mat-icon> Retry</button>
+      </div>
+    }
   `,
   styles: [
     `
       .xd { padding: 4px 2px 24px; }
       .xd-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-      .back { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--text-muted,#8a94a6); text-decoration: none; }
-      .kicker { font-size: 0.72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent,#5b9bd5); font-weight: 700; margin-top: 6px; }
+      .back { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--text-muted); text-decoration: none; }
+      .kicker { font-size: 0.72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-top: 6px; }
       .xd-head h2 { margin: 2px 0 4px; }
       .meta { display: flex; align-items: center; gap: 10px; }
-      .muted { color: var(--text-muted,#8a94a6); }
+      .muted { color: var(--text-muted); }
       .small { font-size: 0.8rem; }
-      .chip { text-transform: uppercase; font-size: 0.7rem; letter-spacing: .04em; padding: 2px 10px; border-radius: 10px; background: rgba(120,140,170,.2); }
-      .chip.run { background: rgba(214,158,46,.25); }
-      .chip.done { background: rgba(72,187,120,.25); }
-      .chip.warn { background: rgba(214,158,46,.25); color: #d69e2e; font-weight: 700; }
+      .chip { text-transform: uppercase; font-size: 0.7rem; letter-spacing: .04em; padding: 2px 10px; border-radius: 10px; background: color-mix(in srgb, var(--text-muted) 18%, transparent); }
+      .chip.run { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+      .chip.done { background: color-mix(in srgb, var(--success) 22%, transparent); }
+      .chip.warn { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--warning); font-weight: 700; }
       .run-box { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       .score { margin: 16px 0; }
       .score-line { display: flex; justify-content: space-between; margin-bottom: 4px; }
@@ -197,21 +209,30 @@ const NODE_ICON: Record<string, string> = {
       .range-panel { grid-column: 1 / -1; }
       .panel { padding: 14px 16px; }
       .panel h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 1rem; }
-      .obj { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(120,140,170,.12); }
-      .obj mat-icon { color: var(--text-muted,#8a94a6); }
-      .obj.ok mat-icon { color: #48bb78; }
+      .obj { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid color-mix(in srgb, var(--text-muted) 12%, transparent); }
+      .obj mat-icon { color: var(--text-muted); }
+      .obj.ok mat-icon { color: var(--success); }
       .obj-ref { font-weight: 600; }
-      .obj-type { font-size: 0.78rem; color: var(--text-muted,#8a94a6); }
+      .obj-type { font-size: 0.78rem; color: var(--text-muted); }
       .spacer { flex: 1 1 auto; }
       .pts { font-variant-numeric: tabular-nums; }
-      .tl-step { display: flex; gap: 10px; padding: 6px 0; border-left: 2px solid rgba(129,140,248,.4); padding-left: 10px; margin-left: 4px; }
-      .tl-t { font-variant-numeric: tabular-nums; color: var(--text-muted,#8a94a6); min-width: 34px; }
-      .tl-tech { font-weight: 600; color: #818cf8; min-width: 52px; }
+      .tl-step { display: flex; gap: 10px; padding: 6px 0; border-left: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); padding-left: 10px; margin-left: 4px; }
+      .tl-t { font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 34px; }
+      .tl-tech { font-weight: 600; color: var(--accent); min-width: 52px; }
       .tl-ce { font-weight: 500; }
-      .nf { margin-top: 12px; padding-top: 8px; border-top: 1px dashed rgba(120,140,170,.25); }
+      .nf { margin-top: 12px; padding-top: 8px; border-top: 1px dashed color-mix(in srgb, var(--text-muted) 25%, transparent); }
       .nf-h { font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; }
-      .topo { width: 100%; overflow: auto; border-radius: 10px; background: #071322; border: 1px solid rgba(120,140,170,.15); margin: 10px 0; }
+      /* Theme-driven canvas: this used to be a hardcoded dark slab that sat as a
+         black rectangle in the middle of the light theme. Node accent strips keep
+         their categorical colours; the surfaces follow the theme. */
+      .topo { width: 100%; overflow: auto; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border); margin: 10px 0; }
       .topo-svg { width: 100%; height: auto; min-height: 240px; max-height: 460px; display: block; }
+      .topo-svg .node-box { fill: var(--bg-surface); }
+      .topo-svg .node-title { fill: var(--text-primary); }
+      .topo-svg .node-sub { fill: var(--text-muted); }
+      .loading { padding: 16px; }
+      .error-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; color: var(--text-secondary); }
+      .error-panel mat-icon { font-size: 42px; width: 42px; height: 42px; color: var(--text-muted); }
       .range-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
       @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } .grid .panel:first-child { grid-row: auto; } }
     `,
@@ -282,6 +303,11 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.id = this.route.snapshot.paramMap.get('id') ?? '';
+    this.load();
+  }
+
+  protected retry(): void {
+    this.error = '';
     this.load();
   }
   ngOnDestroy(): void {

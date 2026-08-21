@@ -14,6 +14,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Range, Template } from '@core/models';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
 @Component({
   selector: 'tn-ranges',
@@ -22,6 +23,7 @@ import { Range, Template } from '@core/models';
     CommonModule, MatCardModule, MatTableModule, MatButtonModule,
     MatIconModule, MatChipsModule, MatDialogModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, FormsModule,
+    EmptyStateComponent,
   ],
   template: `
     <div class="page-container">
@@ -128,6 +130,24 @@ import { Range, Template } from '@core/models';
         <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
         <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
       </table>
+
+      @if (loading()) {
+        <div class="tn-skeleton-group mt-2" aria-busy="true">
+          <div class="tn-skeleton tn-skeleton-row"></div>
+          <div class="tn-skeleton tn-skeleton-row"></div>
+          <div class="tn-skeleton tn-skeleton-row"></div>
+        </div>
+      } @else if (ranges().length === 0) {
+        <tn-empty-state
+          icon="dns"
+          title="No ranges yet"
+          message="Create one from a template, then provision it to bring the environment up."
+        >
+          <button mat-stroked-button (click)="showCreate = true">
+            <mat-icon>add</mat-icon> New Range
+          </button>
+        </tn-empty-state>
+      }
     </div>
   `,
   styles: [`
@@ -140,6 +160,7 @@ import { Range, Template } from '@core/models';
 export class RangesComponent implements OnInit {
   ranges = signal<Range[]>([]);
   templates = signal<Template[]>([]);
+  loading = signal(true);
   showCreate = false;
   newName = '';
   selectedTemplateId = '';
@@ -156,7 +177,10 @@ export class RangesComponent implements OnInit {
   }
 
   loadRanges(): void {
-    this.api.listRanges().subscribe(r => this.ranges.set(r));
+    this.api.listRanges().subscribe({
+      next: r => { this.ranges.set(r); this.loading.set(false); },
+      error: () => this.loading.set(false),
+    });
   }
 
   createRange(): void {

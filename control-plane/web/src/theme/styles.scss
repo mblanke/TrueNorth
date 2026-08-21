@@ -953,6 +953,20 @@ button[mat-icon-button]:hover .mat-icon,
 .tn-ring.warn  { background: conic-gradient(var(--warning) calc(var(--ring-pct) * 1%), var(--border) 0); }
 .tn-ring.alert { background: conic-gradient(var(--alert)   calc(var(--ring-pct) * 1%), var(--border) 0); }
 
+/* Horizontal capacity gauge — width %-driven fill on a track. */
+.tn-gauge-bg {
+  height: 10px; border-radius: 5px; background: var(--bg-primary);
+  overflow: hidden; border: 1px solid var(--border);
+}
+.tn-gauge-fill {
+  height: 100%; border-radius: 5px;
+  background: var(--gradient-accent);
+  box-shadow: 0 0 8px var(--accent-muted);
+  transition: width 0.6s ease;
+}
+.tn-gauge-fill.warn { background: var(--warning); }
+.tn-gauge-fill.crit { background: var(--alert); }
+
 /* Glowing icon squircle for stat cards */
 .tn-icon-squircle {
   width: 44px;

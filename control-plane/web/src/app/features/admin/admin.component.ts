@@ -1,7 +1,8 @@
-﻿import { Component, OnInit, signal } from '@angular/core';
+﻿import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -13,6 +14,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Tenant, HealthResponse } from '@core/models';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
 interface AuditEntry {
   id: string;
@@ -28,9 +32,10 @@ interface AuditEntry {
   selector: 'tn-admin',
   standalone: true,
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule,
+    CommonModule, FormsModule, MatCardModule, MatDialogModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatTableModule,
     MatTabsModule, MatChipsModule, MatTooltipModule,
+    EmptyStateComponent, EnterStaggerDirective, HoverLiftDirective,
   ],
   template: `
     <div class="page-container">
@@ -150,26 +155,6 @@ interface AuditEntry {
                   [class.selected-row]="row.id === editingTenantId"></tr>
             </table>
 
-            <!-- DELETE CONFIRMATION -->
-            @if (tenantDeleteTarget) {
-              <div class="confirm-overlay" (click)="tenantDeleteTarget = null" (keyup.escape)="tenantDeleteTarget = null" tabindex="0" role="dialog">
-                <mat-card class="confirm-dialog" (click)="$event.stopPropagation()">
-                  <mat-card-header>
-                    <mat-card-title>Delete Tenant</mat-card-title>
-                  </mat-card-header>
-                  <mat-card-content>
-                    <p>Are you sure you want to delete <strong>{{ tenantDeleteTarget.name }}</strong>?</p>
-                    <p class="warn-text">This action cannot be undone.</p>
-                  </mat-card-content>
-                  <mat-card-actions align="end">
-                    <button mat-button (click)="tenantDeleteTarget = null">Cancel</button>
-                    <button mat-raised-button color="warn" (click)="doDeleteTenant()" [disabled]="tenantSaving">
-                      <mat-icon>delete</mat-icon> Delete
-                    </button>
-                  </mat-card-actions>
-                </mat-card>
-              </div>
-            }
           </div>
         </mat-tab>
 
@@ -211,27 +196,30 @@ interface AuditEntry {
               <tr mat-header-row *matHeaderRowDef="auditColumns"></tr>
               <tr mat-row *matRowDef="let row; columns: auditColumns"></tr>
             </table>
-            <p *ngIf="auditLog().length === 0" class="empty-state">No audit entries yet.</p>
+            @if (auditLog().length === 0) {
+              <tn-empty-state icon="history" title="No audit entries yet"
+                message="Actions on tenants, users and content will appear here." />
+            }
           </div>
         </mat-tab>
 
         <mat-tab label="Services">
           <div class="tab-content">
             <h2 class="mt-2">External Services</h2>
-            <div class="card-grid">
-              <mat-card>
+            <div class="card-grid" tnEnterStagger>
+              <mat-card class="tn-stagger-item" tnHoverLift>
                 <mat-card-header><mat-card-title>Keycloak</mat-card-title></mat-card-header>
                 <mat-card-actions><a mat-button href="http://localhost:8180" target="_blank">Open <mat-icon>open_in_new</mat-icon></a></mat-card-actions>
               </mat-card>
-              <mat-card>
+              <mat-card class="tn-stagger-item" tnHoverLift>
                 <mat-card-header><mat-card-title>MinIO Console</mat-card-title></mat-card-header>
                 <mat-card-actions><a mat-button href="http://localhost:9001" target="_blank">Open <mat-icon>open_in_new</mat-icon></a></mat-card-actions>
               </mat-card>
-              <mat-card>
+              <mat-card class="tn-stagger-item" tnHoverLift>
                 <mat-card-header><mat-card-title>OpenSearch Dashboards</mat-card-title></mat-card-header>
                 <mat-card-actions><a mat-button href="http://localhost:5602" target="_blank">Open <mat-icon>open_in_new</mat-icon></a></mat-card-actions>
               </mat-card>
-              <mat-card>
+              <mat-card class="tn-stagger-item" tnHoverLift>
                 <mat-card-header><mat-card-title>AI Orchestrator</mat-card-title></mat-card-header>
                 <mat-card-actions><a mat-button href="http://localhost:6000/docs" target="_blank">Open <mat-icon>open_in_new</mat-icon></a></mat-card-actions>
               </mat-card>
@@ -251,21 +239,14 @@ interface AuditEntry {
     mat-card-content mat-form-field { flex: 1; min-width: 200px; }
     .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
     .action-chip { padding: 2px 10px; border-radius: 12px; font-size: 12px; background: var(--bg-surface); }
-    .action-create { background: #22c55e33; color: #4ade80; }
-    .action-update { background: #3b82f633; color: #60a5fa; }
-    .action-delete { background: #ef444433; color: #f87171; }
-    .mono { font-family: monospace; font-size: 12px; color: var(--text-secondary); }
-    .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .action-create { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+    .action-update { background: color-mix(in srgb, var(--severity-low) 20%, transparent); color: var(--severity-low); }
+    .action-delete { background: color-mix(in srgb, var(--alert) 20%, transparent); color: var(--alert); }
+    .mono { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
     table th, table td { color: var(--text-primary) !important; }
     table { background: transparent !important; }
     .form-actions { display: flex; gap: 8px; }
-    .selected-row { background: rgba(0, 188, 212, 0.08); }
-    .confirm-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-      display: flex; align-items: center; justify-content: center; z-index: 1000;
-    }
-    .confirm-dialog { max-width: 420px; width: 100%; }
-    .warn-text { color: #ef5350; font-size: 0.85em; }`],
+    .selected-row { background: var(--accent-muted); }`],
 })
 export class AdminComponent implements OnInit {
   health = signal<HealthResponse | null>(null);
@@ -279,8 +260,9 @@ export class AdminComponent implements OnInit {
   // ── Tenant edit / delete state ─────────────────────────
   editingTenantId: string | null = null;
   tenantEditForm = { name: '', slug: '' };
-  tenantDeleteTarget: Tenant | null = null;
   tenantSaving = false;
+
+  private readonly dialog = inject(MatDialog);
 
   constructor(private api: ApiService, private notify: NotificationService) {}
 
@@ -340,19 +322,25 @@ export class AdminComponent implements OnInit {
 
   // ── Tenant Delete ──────────────────────────────────────
   confirmDeleteTenant(t: Tenant): void {
-    this.tenantDeleteTarget = t;
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Delete Tenant',
+          message: `Delete "${t.name}"? This action cannot be undone.`,
+          confirmText: 'Delete',
+        },
+      })
+      .afterClosed()
+      .subscribe(ok => { if (ok) this.doDeleteTenant(t); });
   }
 
-  doDeleteTenant(): void {
-    if (!this.tenantDeleteTarget) return;
-    const deletedId = this.tenantDeleteTarget.id;
+  private doDeleteTenant(t: Tenant): void {
     this.tenantSaving = true;
-    this.api.deleteTenant(deletedId).subscribe({
+    this.api.deleteTenant(t.id).subscribe({
       next: () => {
         this.notify.success('Tenant deleted');
-        this.tenantDeleteTarget = null;
         this.tenantSaving = false;
-        if (this.editingTenantId === deletedId) this.cancelTenantEdit();
+        if (this.editingTenantId === t.id) this.cancelTenantEdit();
         this.loadTenants();
       },
       error: () => { this.notify.error('Delete failed'); this.tenantSaving = false; },

@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTabsModule } from '@angular/material/tabs';
+import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
 interface ContentItem {
   name: string;
@@ -17,7 +18,10 @@ interface ContentItem {
 @Component({
   selector: 'tn-content-catalog',
   standalone: true,
-  imports: [CommonModule, MatCardModule, MatButtonModule, MatIconModule, MatChipsModule, MatTabsModule],
+  imports: [
+    CommonModule, MatCardModule, MatButtonModule, MatIconModule, MatChipsModule,
+    MatTabsModule, EnterStaggerDirective, HoverLiftDirective,
+  ],
   template: `
     <div class="page-container">
       <div class="page-header">
@@ -32,9 +36,9 @@ interface ContentItem {
 
       <mat-tab-group>
         <mat-tab label="Range Templates">
-          <div class="card-grid mt-2">
+          <div class="card-grid mt-2" tnEnterStagger>
             @for (item of rangeTemplates; track item.name) {
-              <mat-card>
+              <mat-card class="tn-stagger-item" tnHoverLift>
                 <mat-card-header>
                   <mat-icon mat-card-avatar>description</mat-icon>
                   <mat-card-title>{{ item.name }}</mat-card-title>
@@ -48,9 +52,9 @@ interface ContentItem {
         </mat-tab>
 
         <mat-tab label="Inject Packs">
-          <div class="card-grid mt-2">
+          <div class="card-grid mt-2" tnEnterStagger>
             @for (item of injectPacks; track item.name) {
-              <mat-card>
+              <mat-card class="tn-stagger-item" tnHoverLift>
                 <mat-card-header>
                   <mat-icon mat-card-avatar>bug_report</mat-icon>
                   <mat-card-title>{{ item.name }}</mat-card-title>
@@ -69,9 +73,9 @@ interface ContentItem {
         </mat-tab>
 
         <mat-tab label="Detection Rules">
-          <div class="card-grid mt-2">
+          <div class="card-grid mt-2" tnEnterStagger>
             @for (item of detectionRules; track item.name) {
-              <mat-card>
+              <mat-card class="tn-stagger-item" tnHoverLift>
                 <mat-card-header>
                   <mat-icon mat-card-avatar>shield</mat-icon>
                   <mat-card-title>{{ item.name }}</mat-card-title>
@@ -91,7 +95,13 @@ interface ContentItem {
       </mat-tab-group>
     </div>
   `,
-  styles: [],
+  styles: [`
+    .card-grid mat-card {
+      border: 1px solid var(--border);
+      transition: border-color 0.2s ease;
+    }
+    .card-grid mat-card:hover { border-color: var(--accent); }
+  `],
 })
 export class ContentCatalogComponent {
   rangeTemplates: ContentItem[] = [

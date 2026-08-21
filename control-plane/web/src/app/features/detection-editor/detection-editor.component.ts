@@ -13,6 +13,8 @@ import { MatTableModule } from '@angular/material/table';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { EnterStaggerDirective } from '../../shared/motion';
 
 interface DetectionRule {
   id: string;
@@ -61,6 +63,7 @@ falsepositives:
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatChipsModule,
     MatTableModule, MatSnackBarModule, MatDialogModule, MatTooltipModule,
+    EmptyStateComponent, EnterStaggerDirective,
   ],
   template: `
     <div class="page-container">
@@ -162,15 +165,15 @@ falsepositives:
         </div>
       } @else {
         <!-- LIST VIEW -->
-        <div class="rules-list">
+        <div class="rules-list" tnEnterStagger>
           @for (rule of rules(); track rule.id) {
-            <mat-card class="rule-card" [class.disabled]="!rule.is_enabled">
+            <mat-card class="rule-card tn-stagger-item" [class.disabled]="!rule.is_enabled">
               <mat-card-header>
                 <mat-icon mat-card-avatar>shield</mat-icon>
                 <mat-card-title>{{ rule.title }}</mat-card-title>
                 <mat-card-subtitle>
-                  <span class="badge level-{{ rule.level }}">{{ rule.level | uppercase }}</span>
-                  <span class="badge status-{{ rule.status }}">{{ rule.status }}</span>
+                  <span class="status-chip {{ levelClass(rule.level) }}">{{ rule.level | uppercase }}</span>
+                  <span class="status-chip {{ rule.status }}">{{ rule.status }}</span>
                 </mat-card-subtitle>
               </mat-card-header>
               <mat-card-content>
@@ -191,13 +194,22 @@ falsepositives:
                 </button>
               </mat-card-actions>
             </mat-card>
-          } @empty {
-            <div class="empty-state">
-              <mat-icon>shield</mat-icon>
-              <p>No detection rules yet. Create one to get started.</p>
-            </div>
           }
         </div>
+
+        @if (loading()) {
+          <div class="tn-skeleton-group mt-2" aria-busy="true">
+            <div class="tn-skeleton tn-skeleton-card"></div>
+            <div class="tn-skeleton tn-skeleton-card"></div>
+            <div class="tn-skeleton tn-skeleton-card"></div>
+          </div>
+        } @else if (rules().length === 0) {
+          <tn-empty-state
+            icon="shield"
+            title="No detection rules yet"
+            message="Create one to get started."
+          />
+        }
       }
     </div>
   `,
@@ -206,9 +218,8 @@ falsepositives:
     .page-container { max-width: 1200px; margin: 0 auto; }
     .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     .header-left { display: flex; align-items: center; gap: 16px; }
-    .page-icon { font-size: 32px; width: 32px; height: 32px; color: var(--primary); }
+    .page-icon { font-size: 32px; width: 32px; height: 32px; color: var(--accent); }
     h1 { margin: 0; font-size: 24px; }
-    .subtitle { margin: 4px 0 0; color: var(--text-secondary); }
 
     .editor-layout { display: grid; gap: 16px; }
     .editor-meta .meta-row { display: flex; gap: 16px; }
@@ -217,18 +228,18 @@ falsepositives:
 
     .yaml-editor {
       width: 100%; min-height: 300px; padding: 12px;
-      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-family: var(--font-mono);
       font-size: 13px; line-height: 1.5;
-      background: var(--bg-secondary, #1e1e1e); color: var(--text-primary, #d4d4d4);
-      border: 1px solid var(--border, #333); border-radius: 4px;
+      background: var(--bg-input); color: var(--text-primary);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
       resize: vertical; tab-size: 2;
     }
 
-    .validation-result { margin-top: 8px; padding: 8px 12px; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-    .validation-result.valid { background: #1b3a1b; color: #4caf50; }
-    .validation-result.invalid { background: #3a1b1b; color: #f44336; }
+    .validation-result { margin-top: 8px; padding: 8px 12px; border-radius: var(--radius-sm); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .validation-result.valid { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
+    .validation-result.invalid { background: color-mix(in srgb, var(--alert) 14%, transparent); color: var(--alert); }
     .validation-error, .validation-warning { width: 100%; font-size: 13px; padding-left: 28px; }
-    .validation-warning { color: #ff9800; }
+    .validation-warning { color: var(--warning); }
 
     .editor-actions { display: flex; gap: 8px; justify-content: flex-end; }
     .spacer { flex: 1; }
@@ -241,23 +252,17 @@ falsepositives:
     .rule-meta span { display: flex; align-items: center; gap: 4px; }
     .rule-meta mat-icon { font-size: 16px; width: 16px; height: 16px; }
 
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; margin-right: 6px; }
-    .level-critical { background: #b71c1c; color: #fff; }
-    .level-high { background: #e65100; color: #fff; }
-    .level-medium { background: #f57f17; color: #000; }
-    .level-low { background: #1b5e20; color: #fff; }
-    .level-informational { background: #0d47a1; color: #fff; }
-    .status-draft { background: #424242; color: #fff; }
-    .status-testing { background: #1565c0; color: #fff; }
-    .status-stable { background: #2e7d32; color: #fff; }
-    .status-deprecated { background: #616161; color: #fff; }
-
-    .empty-state { text-align: center; padding: 48px; color: var(--text-secondary); }
-    .empty-state mat-icon { font-size: 48px; width: 48px; height: 48px; opacity: 0.5; }
+    mat-card-subtitle .status-chip { margin-right: 6px; }
   `],
 })
 export class DetectionEditorComponent implements OnInit {
+  /** Sigma levels map onto the shared severity chips; only one name differs. */
+  levelClass(level: string): string {
+    return level === 'informational' ? 'sev-info' : `sev-${level}`;
+  }
+
   rules = signal<DetectionRule[]>([]);
+  loading = signal(true);
   editing = signal(false);
   saving = signal(false);
   validation = signal<ValidationResult | null>(null);
@@ -280,8 +285,11 @@ export class DetectionEditorComponent implements OnInit {
 
   loadRules() {
     this.http.get<DetectionRule[]>('/api/detection-rules').subscribe({
-      next: rules => this.rules.set(rules),
-      error: () => this.snackBar.open('Failed to load rules', 'Close', { duration: 3000 }),
+      next: rules => { this.rules.set(rules); this.loading.set(false); },
+      error: () => {
+        this.loading.set(false);
+        this.snackBar.open('Failed to load rules', 'Close', { duration: 3000 });
+      },
     });
   }
 

@@ -14,7 +14,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatBadgeModule } from '@angular/material/badge';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { EnterStaggerDirective } from '../../shared/motion';
+import { CountUpDirective, EnterStaggerDirective } from '../../shared/motion';
 
 interface Annotation {
   id: string;
@@ -51,7 +51,7 @@ interface OpsStats {
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatInputModule, MatFormFieldModule, MatSelectModule,
-    MatChipsModule, MatListModule, MatBadgeModule, EnterStaggerDirective,
+    MatChipsModule, MatListModule, MatBadgeModule, EnterStaggerDirective, CountUpDirective,
   ],
   template: `
     <div class="page-container">
@@ -75,28 +75,30 @@ interface OpsStats {
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">group</mat-icon>
-            <div class="stat-value">{{ stats()?.active_analysts || 0 }}</div>
+            <div class="stat-value" [tnCountUp]="stats()?.active_analysts || 0"></div>
             <div class="stat-label">Active Analysts</div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">note_add</mat-icon>
-            <div class="stat-value">{{ stats()?.annotations_count || 0 }}</div>
+            <div class="stat-value" [tnCountUp]="stats()?.annotations_count || 0"></div>
             <div class="stat-label">Annotations</div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">terminal</mat-icon>
-            <div class="stat-value">{{ stats()?.shared_commands_count || 0 }}</div>
+            <div class="stat-value" [tnCountUp]="stats()?.shared_commands_count || 0"></div>
             <div class="stat-label">Shared Commands</div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">flag</mat-icon>
-            <div class="stat-value">{{ stats()?.objectives_completed || 0 }}/{{ stats()?.objectives_total || 0 }}</div>
+            <div class="tn-ring objectives-ring" [style.--ring-pct]="objectivesPct()">
+              <span class="ring-text">{{ stats()?.objectives_completed || 0 }}/{{ stats()?.objectives_total || 0 }}</span>
+            </div>
             <div class="stat-label">Objectives</div>
           </mat-card-content>
         </mat-card>
@@ -250,6 +252,8 @@ interface OpsStats {
     .subtitle { margin-bottom: 16px; }
     .stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
     .stats-row mat-card { flex: 1; min-width: 120px; text-align: center; }
+    .objectives-ring { --ring-size: 72px; --ring-width: 8px; margin: 4px auto; }
+    .objectives-ring .ring-text { font-size: 14px; font-weight: 600; color: var(--text-primary); }
     .tab-content { padding: 16px 0; }
     .mt-2 { margin-top: 16px; }
     .input-card { margin-bottom: 16px; }
@@ -372,6 +376,12 @@ export class OpsCenterComponent implements OnInit, OnDestroy {
       },
       error: () => this.notify.error('Failed to send inject'),
     });
+  }
+
+  objectivesPct(): number {
+    const s = this.stats();
+    if (!s || !s.objectives_total) return 0;
+    return (s.objectives_completed / s.objectives_total) * 100;
   }
 
   formatElapsed(seconds: number): string {

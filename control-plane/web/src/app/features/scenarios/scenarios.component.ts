@@ -1,6 +1,7 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -12,14 +13,16 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Scenario } from '@core/models';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
 @Component({
   selector: 'tn-scenarios',
   standalone: true,
   imports: [
-    CommonModule, MatCardModule, MatTableModule, MatButtonModule,
+    CommonModule, MatCardModule, MatDialogModule, MatTableModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatSlideToggleModule,
-    MatTooltipModule, FormsModule,
+    MatTooltipModule, FormsModule, EmptyStateComponent,
   ],
   template: `
     <div class="page-container">
@@ -55,8 +58,7 @@ import { Scenario } from '@core/models';
             </div>
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>YAML Definition</mat-label>
-              <textarea matInput [(ngModel)]="form.yaml" rows="14"
-                        style="font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px; line-height: 1.5;"></textarea>
+              <textarea matInput class="yaml-input" [(ngModel)]="form.yaml" rows="14"></textarea>
             </mat-form-field>
             <mat-slide-toggle [(ngModel)]="form.is_public">Public</mat-slide-toggle>
             <div class="form-actions mt-1">
@@ -111,32 +113,22 @@ import { Scenario } from '@core/models';
             [class.selected-row]="row.id === editingId"></tr>
       </table>
 
-      @if (scenarios().length === 0) {
-        <div class="empty-state mt-2">
-          <mat-icon>theaters</mat-icon>
-          <p>No scenarios yet. Click <strong>New Scenario</strong> to create one.</p>
+      @if (loading()) {
+        <div class="tn-skeleton-group mt-2" aria-busy="true">
+          <div class="tn-skeleton tn-skeleton-row"></div>
+          <div class="tn-skeleton tn-skeleton-row"></div>
+          <div class="tn-skeleton tn-skeleton-row"></div>
         </div>
-      }
-
-      <!-- DELETE CONFIRMATION -->
-      @if (deleteTarget) {
-        <div class="confirm-overlay" (click)="deleteTarget = null" (keyup.escape)="deleteTarget = null" tabindex="0" role="dialog">
-          <mat-card class="confirm-dialog" (click)="$event.stopPropagation()">
-            <mat-card-header>
-              <mat-card-title>Delete Scenario</mat-card-title>
-            </mat-card-header>
-            <mat-card-content>
-              <p>Are you sure you want to delete <strong>{{ deleteTarget.name }}</strong>?</p>
-              <p class="warn-text">This action cannot be undone.</p>
-            </mat-card-content>
-            <mat-card-actions align="end">
-              <button mat-button (click)="deleteTarget = null">Cancel</button>
-              <button mat-raised-button color="warn" (click)="doDelete()" [disabled]="saving">
-                <mat-icon>delete</mat-icon> Delete
-              </button>
-            </mat-card-actions>
-          </mat-card>
-        </div>
+      } @else if (scenarios().length === 0) {
+        <tn-empty-state
+          icon="theaters"
+          title="No scenarios yet"
+          message="Click New Scenario to create one."
+        >
+          <button mat-stroked-button (click)="startCreate()">
+            <mat-icon>add</mat-icon> New Scenario
+          </button>
+        </tn-empty-state>
       }
     </div>
   `,
@@ -147,34 +139,31 @@ import { Scenario } from '@core/models';
     .flex-grow { flex: 1; }
     .version-field { width: 160px; min-width: 160px; }
     .form-actions { display: flex; gap: 8px; }
-    .text-green { color: #4caf50; }
-    .selected-row { background: rgba(0, 188, 212, 0.08); }
-    .empty-state {
-      display: flex; flex-direction: column; align-items: center;
-      padding: 48px 16px; opacity: 0.6;
-      mat-icon { font-size: 48px; width: 48px; height: 48px; }
-    }
-    .confirm-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-      display: flex; align-items: center; justify-content: center; z-index: 1000;
-    }
-    .confirm-dialog { max-width: 420px; width: 100%; }
-    .warn-text { color: #ef5350; font-size: 0.85em; }
+    .text-green { color: var(--success); }
+    .selected-row { background: var(--accent-muted); }
+    .yaml-input { font-family: var(--font-mono); font-size: 13px; line-height: 1.5; }
   `],
 })
 export class ScenariosComponent implements OnInit {
   scenarios = signal<Scenario[]>([]);
+  loading = signal(true);
   showForm = false;
   editingId: string | null = null;
-  deleteTarget: Scenario | null = null;
   saving = false;
   form = { name: '', version: '1.0', yaml: '', is_public: false };
   columns = ['name', 'version', 'public', 'created', 'actions'];
 
+  private readonly dialog = inject(MatDialog);
+
   constructor(private api: ApiService, private notify: NotificationService) {}
   ngOnInit(): void { this.load(); }
 
-  load(): void { this.api.listScenarios().subscribe(s => this.scenarios.set(s)); }
+  load(): void {
+    this.api.listScenarios().subscribe({
+      next: s => { this.scenarios.set(s); this.loading.set(false); },
+      error: () => this.loading.set(false),
+    });
+  }
 
   // ── Create ────────────────────────────────────────────────
   startCreate(): void {
@@ -217,19 +206,25 @@ export class ScenariosComponent implements OnInit {
 
   // ── Delete ────────────────────────────────────────────────
   confirmDelete(s: Scenario): void {
-    this.deleteTarget = s;
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        data: {
+          title: 'Delete Scenario',
+          message: `Delete "${s.name}"? This action cannot be undone.`,
+          confirmText: 'Delete',
+        },
+      })
+      .afterClosed()
+      .subscribe(ok => { if (ok) this.doDelete(s); });
   }
 
-  doDelete(): void {
-    if (!this.deleteTarget) return;
-    const deletedId = this.deleteTarget.id;
+  private doDelete(s: Scenario): void {
     this.saving = true;
-    this.api.deleteScenario(deletedId).subscribe({
+    this.api.deleteScenario(s.id).subscribe({
       next: () => {
         this.notify.success('Scenario deleted');
-        this.deleteTarget = null;
         this.saving = false;
-        if (this.editingId === deletedId) this.cancelForm();
+        if (this.editingId === s.id) this.cancelForm();
         this.load();
       },
       error: () => { this.notify.error('Delete failed'); this.saving = false; },

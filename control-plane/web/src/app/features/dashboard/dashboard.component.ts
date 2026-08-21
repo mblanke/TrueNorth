@@ -144,8 +144,8 @@ interface DeploymentProfile {
               <div class="gauge-row">
                 <div class="gauge">
                   <div class="gauge-label">CPU</div>
-                  <div class="gauge-bar-bg">
-                    <div class="gauge-bar-fill" [style.width.%]="node.cpu_pct"
+                  <div class="tn-gauge-bg">
+                    <div class="tn-gauge-fill" [style.width.%]="node.cpu_pct"
                          [class.warn]="node.cpu_pct > 70" [class.crit]="node.cpu_pct > 90">
                     </div>
                   </div>
@@ -153,8 +153,8 @@ interface DeploymentProfile {
                 </div>
                 <div class="gauge">
                   <div class="gauge-label">RAM</div>
-                  <div class="gauge-bar-bg">
-                    <div class="gauge-bar-fill"
+                  <div class="tn-gauge-bg">
+                    <div class="tn-gauge-fill"
                          [style.width.%]="node.mem_total_gb ? (node.mem_used_gb / node.mem_total_gb * 100) : 0"
                          [class.warn]="node.mem_used_gb / node.mem_total_gb > 0.7"
                          [class.crit]="node.mem_used_gb / node.mem_total_gb > 0.9">
@@ -503,21 +503,9 @@ interface DeploymentProfile {
       display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
     }
     .node-name { font-weight: 700; font-size: 16px; color: var(--text-primary); }
-    .node-ip { color: var(--text-muted); font-size: 12px; font-family: 'Consolas', monospace; }
+    .node-ip { color: var(--text-muted); font-size: 12px; font-family: var(--font-mono); }
     .gauge-row { display: flex; flex-direction: column; gap: 8px; }
     .gauge-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
-    .gauge-bar-bg {
-      height: 10px; border-radius: 5px; background: var(--bg-primary);
-      overflow: hidden; border: 1px solid var(--border);
-    }
-    .gauge-bar-fill {
-      height: 100%; border-radius: 5px;
-      background: var(--gradient-accent);
-      box-shadow: 0 0 8px var(--accent-muted);
-      transition: width 0.6s ease;
-    }
-    .gauge-bar-fill.warn { background: #FFA726; }
-    .gauge-bar-fill.crit { background: var(--alert); }
     .gauge-val { font-size: 12px; color: var(--text-secondary); }
     .node-footer {
       display: flex; gap: 12px; margin-top: 12px; padding-top: 10px;
@@ -775,7 +763,7 @@ export class DashboardComponent implements OnInit {
   private animateGauges(): void {
     if (this.motion.reducedMotion()) return;
     requestAnimationFrame(() => {
-      const fills = this.host.nativeElement.querySelectorAll<HTMLElement>('.gauge-bar-fill');
+      const fills = this.host.nativeElement.querySelectorAll<HTMLElement>('.tn-gauge-fill');
       this.motion.runOutside(() => {
         gsap.from(fills, { width: 0, duration: 0.8, ease: 'power2.out', stagger: 0.05 });
       });

@@ -164,7 +164,6 @@ interface TimelineEvent {
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     .header-left { display: flex; align-items: center; gap: 16px; }
     h1 { margin: 0; font-size: 24px; color: var(--text-primary); }
-    .subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
 
     /* â”€â”€ Stepper content â”€â”€â”€ */
     .step-content { padding: 24px 0; }
@@ -208,7 +207,7 @@ interface TimelineEvent {
     .yaml-preview {
       background: var(--bg-secondary); color: var(--text-primary);
       padding: 16px; border-radius: 8px;
-      font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 13px;
+      font-family: var(--font-mono); font-size: 13px;
       overflow-x: auto; max-height: 400px; overflow-y: auto;
       border: 1px solid var(--border); margin: 0;
       line-height: 1.6;

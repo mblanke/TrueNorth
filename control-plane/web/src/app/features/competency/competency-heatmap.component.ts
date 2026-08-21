@@ -1,10 +1,14 @@
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input } from '@angular/core';
+import {
+  Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, effect, inject,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { FormsModule } from '@angular/forms';
+import { ThemeService } from '@core/services/theme.service';
+import { tnChartColors } from '../../shared/charts/echarts-theme';
 
 /**
  * NICE Framework competency categories (SP 800-181r1)
@@ -62,8 +66,17 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
 
   viewMode = 'team';
   private chartInstance: any = null;
+  private lastData: HeatmapData | null = null;
+  private readonly theme = inject(ThemeService);
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) {
+    // ECharts snapshots CSS variables at option-build time, so a theme switch
+    // must rebuild the option or the old palette sticks.
+    effect(() => {
+      this.theme.activeTheme();
+      if (this.chartInstance && this.lastData) this.updateChart(this.lastData);
+    });
+  }
 
   async ngAfterViewInit() {
     // Dynamic import to avoid loading ECharts in the initial bundle
@@ -93,9 +106,14 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
   }
 
   private updateChart(data: HeatmapData) {
+    this.lastData = data;
+    const c = tnChartColors();
     const option = {
       tooltip: {
         position: 'top',
+        backgroundColor: c.card,
+        borderColor: c.border,
+        textStyle: { color: c.text },
         formatter: (params: any) => {
           const cat = data.categories[params.value[1]];
           const role = data.work_roles[params.value[0]];
@@ -111,12 +129,15 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
         type: 'category',
         data: data.work_roles,
         splitArea: { show: true },
-        axisLabel: { rotate: 45, fontSize: 11 },
+        axisLabel: { rotate: 45, fontSize: 11, color: c.textMuted },
+        axisLine: { lineStyle: { color: c.border } },
       },
       yAxis: {
         type: 'category',
         data: data.categories,
         splitArea: { show: true },
+        axisLabel: { color: c.textMuted },
+        axisLine: { lineStyle: { color: c.border } },
       },
       visualMap: {
         min: 0,
@@ -125,10 +146,13 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
         orient: 'horizontal',
         left: 'center',
         bottom: 0,
+        // Low-to-high ramp built from the live theme, so it reads on all four
+        // (the old hardcoded purple/pink ramp matched none of them).
         inRange: {
-          color: ['#1a1a2e', '#16213e', '#0f3460', '#e94560', '#ff6b6b'],
+          color: [c.card, c.border, c.textMuted, c.warning, c.accent],
         },
         text: ['Expert', 'Novice'],
+        textStyle: { color: c.textMuted },
       },
       series: [{
         type: 'heatmap',
@@ -137,10 +161,10 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
           show: true,
           formatter: (p: any) => `${p.value[2]}`,
           fontSize: 10,
-          color: '#fff',
+          color: c.text,
         },
         emphasis: {
-          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' },
+          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.35)' },
         },
       }],
     };

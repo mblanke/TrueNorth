@@ -69,7 +69,7 @@ function createNodeShape(
         text: label,
         fill: 'var(--text-primary)',
         fontSize: 12,
-        fontFamily: 'Calibri, Segoe UI, sans-serif',
+        fontFamily: 'Inter, Segoe UI, sans-serif',
         textAnchor: 'middle',
         textVerticalAnchor: 'top',
         refX: '50%',
@@ -123,7 +123,7 @@ function createSubnetZone(
         text: label,
         fill: color,
         fontSize: 14,
-        fontFamily: 'Calibri, Segoe UI, sans-serif',
+        fontFamily: 'Inter, Segoe UI, sans-serif',
         fontWeight: 'bold',
         textAnchor: 'start',
         textVerticalAnchor: 'top',
@@ -566,13 +566,13 @@ function createSubnetZone(
     :host ::ng-deep .properties select[matNativeControl] {
       color: var(--text-primary) !important;
       font-size: 13px !important;
-      font-family: 'Calibri', 'Segoe UI', sans-serif !important;
+      font-family: var(--font-body) !important;
       background: transparent !important;
       cursor: pointer;
     }
     :host ::ng-deep .properties select[matNativeControl] option {
-      background: #163764;
-      color: #F0F4F8;
+      background: var(--bg-surface);
+      color: var(--text-primary);
       font-size: 14px;
       padding: 8px;
     }

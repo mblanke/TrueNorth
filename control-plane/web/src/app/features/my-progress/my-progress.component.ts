@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, effect, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -10,6 +10,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { ThemeService } from '@core/services/theme.service';
 import { NgxEchartsDirective, provideEcharts } from 'ngx-echarts';
 import type { EChartsOption } from 'echarts';
 import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
@@ -178,7 +179,14 @@ interface AutoAssessment {
                   <mat-card-content>
                     <p>Issued: {{ cert.issued_at | date:'mediumDate' }}</p>
                     @if (cert.expires_at) {
-                      <p>Expires: {{ cert.expires_at | date:'mediumDate' }}</p>
+                      <p class="expires-line">
+                        Expires: {{ cert.expires_at | date:'mediumDate' }}
+                        @if (certExpiry(cert) === 'expired') {
+                          <span class="status-chip failed">expired</span>
+                        } @else if (certExpiry(cert) === 'expiring') {
+                          <span class="status-chip sev-medium">expires soon</span>
+                        }
+                      </p>
                     }
                     <p>Status: <strong>{{ cert.status }}</strong></p>
                   </mat-card-content>
@@ -227,6 +235,14 @@ interface AutoAssessment {
                   </mat-card>
                 }
               </div>
+
+              @if (trendOption(); as trend) {
+                <mat-card class="trend-card">
+                  <h3 class="trend-title"><mat-icon>swap_vert</mat-icon> Competency Trend</h3>
+                  <p class="trend-sub">Average proficiency delta by category — gains toward the right, losses toward the left (n = assessments counted)</p>
+                  <div echarts [options]="trend" class="trend-chart"></div>
+                </mat-card>
+              }
             }
 
             @for (rec of recommendations(); track rec.id) {
@@ -318,6 +334,15 @@ interface AutoAssessment {
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     .section-header h3 { margin: 0; }
     .insights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .trend-card { padding: 18px 18px 6px; margin-bottom: 16px; }
+    .trend-title {
+      display: flex; align-items: center; gap: 8px; margin: 0;
+      font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--text-primary);
+    }
+    .trend-title mat-icon { color: var(--accent); }
+    .trend-sub { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; }
+    .trend-chart { height: 260px; width: 100%; }
+    .expires-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .rec-card, .assessment-card { margin-bottom: 12px; }
     .rec-card ul { padding-left: 20px; }
     .mt-1 { margin-top: 8px; }
@@ -337,8 +362,32 @@ export class MyProgressComponent implements OnInit {
   private userId = '00000000-0000-0000-0000-000000000001'; // TODO: get from auth
 
   radarOption = signal<EChartsOption | null>(null);
+  trendOption = signal<EChartsOption | null>(null);
 
-  constructor(private api: ApiService, private notify: NotificationService) {}
+  private lastAssertions: any[] | null = null;
+  private readonly theme = inject(ThemeService);
+
+  constructor(private api: ApiService, private notify: NotificationService) {
+    // Chart options snapshot CSS variables when built, so a theme switch must
+    // rebuild them. Reading progressSummary() here also builds the trend chart
+    // the first time the data lands.
+    effect(() => {
+      this.theme.activeTheme();
+      const ps = this.progressSummary();
+      if (ps?.competency_trend?.length) this.buildTrend(ps.competency_trend);
+      if (this.lastAssertions) this.buildRadar(this.lastAssertions);
+    });
+  }
+
+  certExpiry(cert: Certification): 'expired' | 'expiring' | null {
+    if (!cert.expires_at) return null;
+    const expires = new Date(cert.expires_at).getTime();
+    if (Number.isNaN(expires)) return null;
+    const now = Date.now();
+    if (expires < now) return 'expired';
+    if (expires - now <= 60 * 24 * 60 * 60 * 1000) return 'expiring';
+    return null;
+  }
 
   ngOnInit() {
     this.loadTranscript();
@@ -378,9 +427,66 @@ export class MyProgressComponent implements OnInit {
 
   loadCapabilityRadar() {
     this.api.getCompetencyProfile(this.userId).subscribe({
-      next: profile => this.buildRadar(profile?.assertions || []),
+      next: profile => {
+        const assertions = profile?.assertions || [];
+        this.lastAssertions = assertions;
+        this.buildRadar(assertions);
+      },
       error: () => {},
     });
+  }
+
+  private buildTrend(trend: { category: string; avg_delta: number; count: number }[]) {
+    const rows = [...trend].sort((a, b) => a.avg_delta - b.avg_delta);
+    const c = tnChartColors();
+    this.trendOption.set({
+      textStyle: { color: c.textMuted, fontFamily: 'Inter, sans-serif' },
+      grid: { left: 8, right: 48, top: 10, bottom: 8, containLabel: true },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: c.card,
+        borderColor: c.border,
+        textStyle: { color: c.text },
+        formatter: (params: any) => {
+          const p = Array.isArray(params) ? params[0] : params;
+          const row = rows[p.dataIndex];
+          const sign = row.avg_delta > 0 ? '+' : '';
+          return `<b>${row.category}</b><br/>Avg delta: ${sign}${row.avg_delta}<br/>Assessments: ${row.count}`;
+        },
+      },
+      xAxis: {
+        type: 'value',
+        axisLabel: { color: c.textMuted },
+        splitLine: { lineStyle: { color: c.border } },
+      },
+      yAxis: {
+        type: 'category',
+        data: rows.map(r => r.category),
+        axisLabel: { color: c.textMuted },
+        axisLine: { lineStyle: { color: c.border } },
+      },
+      series: [{
+        type: 'bar',
+        barMaxWidth: 22,
+        data: rows.map(r => ({
+          value: r.avg_delta,
+          itemStyle: {
+            color: r.avg_delta >= 0 ? c.success : c.alert,
+            borderRadius: r.avg_delta >= 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
+          },
+          label: { position: r.avg_delta >= 0 ? 'right' : 'left' },
+        })),
+        label: {
+          show: true,
+          color: c.text,
+          formatter: (p: any) => {
+            const row = rows[p.dataIndex];
+            const sign = row.avg_delta > 0 ? '+' : '';
+            return `${sign}${row.avg_delta} (n=${row.count})`;
+          },
+        },
+      }],
+    } as EChartsOption);
   }
 
   private buildRadar(assertions: any[]) {

@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, inject, signal } from '@angular/core';
+﻿import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatTableModule } from '@angular/material/table';
+import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -79,13 +80,56 @@ interface Transcript {
   total_hours: number;
 }
 
+/** Difficulty is a scale, so it sorts by rank. Unknown values sort last. */
+const DIFFICULTY_RANK: Record<string, number> = {
+  beginner: 0,
+  intermediate: 1,
+  advanced: 2,
+  expert: 3,
+};
+
+/** Date string -> epoch ms, or null when absent/unparseable, so blanks sink. */
+function toTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function compareValues(a: unknown, b: unknown): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  if (typeof a === 'boolean' && typeof b === 'boolean') return Number(a) - Number(b);
+  // numeric:true so "C10" follows "C9" instead of preceding it — course codes are
+  // the main thing being sorted here and plain lexical order gets them wrong.
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+/**
+ * Sort a copy of `rows` by the active column, leaving the input untouched.
+ *
+ * Blank values sink to the bottom in BOTH directions. Flipping them to the top on
+ * descending would bury the rows someone is actually looking for behind a block of
+ * empties — a missing score is not a high score.
+ */
+function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unknown): T[] {
+  if (!sort.active || !sort.direction) return rows;
+  const dir = sort.direction === 'asc' ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const av = key(a, sort.active);
+    const bv = key(b, sort.active);
+    const aEmpty = av === null || av === undefined || av === '';
+    const bEmpty = bv === null || bv === undefined || bv === '';
+    if (aEmpty || bEmpty) return aEmpty && bEmpty ? 0 : aEmpty ? 1 : -1;
+    return dir * compareValues(av, bv);
+  });
+}
+
 @Component({
   selector: 'tn-training',
   standalone: true,
   imports: [
     CommonModule, FormsModule, ReactiveFormsModule,
     MatCardModule, MatButtonModule, MatIconModule, MatTabsModule,
-    MatTableModule, MatFormFieldModule, MatInputModule, MatSelectModule,
+    MatTableModule, MatSortModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSlideToggleModule, MatDividerModule, MatProgressBarModule,
     MatChipsModule, MatTooltipModule, MatExpansionModule, LottieIconComponent,
   ],
@@ -172,26 +216,27 @@ interface Transcript {
 
             <!-- Courses table -->
             <div class="table-wrap">
-              <table mat-table [dataSource]="courses()" class="full-width">
+              <table mat-table [dataSource]="sortedCourses()" class="full-width"
+                     matSort (matSortChange)="courseSort.set($event)">
                 <ng-container matColumnDef="name">
-                  <th mat-header-cell *matHeaderCellDef>Name</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>
                   <td mat-cell *matCellDef="let c">
                     <strong>{{ c.name }}</strong>
                     <div class="sub-text">{{ c.description | slice:0:80 }}{{ c.description.length > 80 ? '...' : '' }}</div>
                   </td>
                 </ng-container>
                 <ng-container matColumnDef="difficulty">
-                  <th mat-header-cell *matHeaderCellDef>Difficulty</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Difficulty</th>
                   <td mat-cell *matCellDef="let c">
                     <span class="diff-badge" [attr.data-diff]="c.difficulty">{{ c.difficulty }}</span>
                   </td>
                 </ng-container>
                 <ng-container matColumnDef="duration">
-                  <th mat-header-cell *matHeaderCellDef>Hours</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Hours</th>
                   <td mat-cell *matCellDef="let c">{{ c.duration_hours }}h</td>
                 </ng-container>
                 <ng-container matColumnDef="published">
-                  <th mat-header-cell *matHeaderCellDef>Published</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Published</th>
                   <td mat-cell *matCellDef="let c">
                     <mat-icon [style.color]="c.is_published ? 'var(--success)' : 'var(--text-muted)'">
                       {{ c.is_published ? 'check_circle' : 'unpublished' }}
@@ -199,7 +244,7 @@ interface Transcript {
                   </td>
                 </ng-container>
                 <ng-container matColumnDef="tags">
-                  <th mat-header-cell *matHeaderCellDef>Tags</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Tags</th>
                   <td mat-cell *matCellDef="let c">
                     <span class="tag-count">{{ tagCount(c) }}</span>
                   </td>
@@ -269,17 +314,18 @@ interface Transcript {
             }
 
             <div class="table-wrap">
-              <table mat-table [dataSource]="learningPaths()" class="full-width">
+              <table mat-table [dataSource]="sortedPaths()" class="full-width"
+                     matSort (matSortChange)="pathSort.set($event)">
                 <ng-container matColumnDef="name">
-                  <th mat-header-cell *matHeaderCellDef>Name</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>
                   <td mat-cell *matCellDef="let p"><strong>{{ p.name }}</strong></td>
                 </ng-container>
                 <ng-container matColumnDef="description">
-                  <th mat-header-cell *matHeaderCellDef>Description</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Description</th>
                   <td mat-cell *matCellDef="let p">{{ p.description | slice:0:100 }}{{ p.description?.length > 100 ? '...' : '' }}</td>
                 </ng-container>
                 <ng-container matColumnDef="courses">
-                  <th mat-header-cell *matHeaderCellDef>Courses</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Courses</th>
                   <td mat-cell *matCellDef="let p">{{ p.course_ids?.length || 0 }} course{{ (p.course_ids?.length || 0) === 1 ? '' : 's' }}</td>
                 </ng-container>
                 <ng-container matColumnDef="actions">
@@ -306,21 +352,22 @@ interface Transcript {
         <mat-tab label="Enrollments">
           <div class="tab-content">
             <div class="table-wrap">
-              <table mat-table [dataSource]="enrollments()" class="full-width">
+              <table mat-table [dataSource]="sortedEnrollments()" class="full-width"
+                     matSort (matSortChange)="enrollmentSort.set($event)">
                 <ng-container matColumnDef="user">
-                  <th mat-header-cell *matHeaderCellDef>User</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>User</th>
                   <td mat-cell *matCellDef="let e">{{ e.user_name || e.user_id }}</td>
                 </ng-container>
                 <ng-container matColumnDef="course">
-                  <th mat-header-cell *matHeaderCellDef>Course</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Course</th>
                   <td mat-cell *matCellDef="let e">{{ e.course_name || e.course_id }}</td>
                 </ng-container>
                 <ng-container matColumnDef="enrolled_at">
-                  <th mat-header-cell *matHeaderCellDef>Enrolled</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Enrolled</th>
                   <td mat-cell *matCellDef="let e">{{ e.enrolled_at | date:'mediumDate' }}</td>
                 </ng-container>
                 <ng-container matColumnDef="progress">
-                  <th mat-header-cell *matHeaderCellDef>Progress</th>
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Progress</th>
                   <td mat-cell *matCellDef="let e">
                     <div class="progress-cell">
                       <mat-progress-bar mode="determinate" [value]="e.progress_pct || 0" color="primary"></mat-progress-bar>
@@ -393,27 +440,28 @@ interface Transcript {
                 </mat-card-header>
                 <mat-card-content>
                   @if (transcript()!.entries.length > 0) {
-                    <table mat-table [dataSource]="transcript()!.entries" class="full-width">
+                    <table mat-table [dataSource]="sortedTranscript()" class="full-width"
+                           matSort (matSortChange)="transcriptSort.set($event)">
                       <ng-container matColumnDef="source">
-                        <th mat-header-cell *matHeaderCellDef>Source</th>
+                        <th mat-header-cell *matHeaderCellDef mat-sort-header>Source</th>
                         <td mat-cell *matCellDef="let e">
                           <span class="source-badge" [attr.data-source]="e.source">{{ e.source }}</span>
                         </td>
                       </ng-container>
                       <ng-container matColumnDef="title">
-                        <th mat-header-cell *matHeaderCellDef>Activity</th>
+                        <th mat-header-cell *matHeaderCellDef mat-sort-header>Activity</th>
                         <td mat-cell *matCellDef="let e">{{ e.title }}</td>
                       </ng-container>
                       <ng-container matColumnDef="type">
-                        <th mat-header-cell *matHeaderCellDef>Type</th>
+                        <th mat-header-cell *matHeaderCellDef mat-sort-header>Type</th>
                         <td mat-cell *matCellDef="let e">{{ e.activity_type }}</td>
                       </ng-container>
                       <ng-container matColumnDef="score">
-                        <th mat-header-cell *matHeaderCellDef>Score</th>
+                        <th mat-header-cell *matHeaderCellDef mat-sort-header>Score</th>
                         <td mat-cell *matCellDef="let e">{{ e.grade || (e.score !== null ? e.score + '%' : '—') }}</td>
                       </ng-container>
                       <ng-container matColumnDef="completed">
-                        <th mat-header-cell *matHeaderCellDef>Completed</th>
+                        <th mat-header-cell *matHeaderCellDef mat-sort-header>Completed</th>
                         <td mat-cell *matCellDef="let e">{{ e.completed_at ? (e.completed_at | date:'mediumDate') : '—' }}</td>
                       </ng-container>
                       <tr mat-header-row *matHeaderRowDef="transcriptColumns"></tr>
@@ -572,6 +620,69 @@ export class TrainingComponent implements OnInit {
   transcript = signal<Transcript | null>(null);
   transcriptColumns = ['source', 'title', 'type', 'score', 'completed'];
 
+  // ── Sorting ──────────────────────────────────────────────────────────────
+  // Each table keeps its own sort state and derives a sorted view. We sort in a
+  // computed rather than through MatTableDataSource because the rows are signals:
+  // a DataSource would need a ViewChild plus a manual re-sync on every reload, and
+  // would silently drop back to unsorted whenever the signal reassigns.
+  // No default sort — tables open in the order the API returned.
+  courseSort = signal<Sort>({ active: '', direction: '' });
+  pathSort = signal<Sort>({ active: '', direction: '' });
+  enrollmentSort = signal<Sort>({ active: '', direction: '' });
+  transcriptSort = signal<Sort>({ active: '', direction: '' });
+
+  sortedCourses = computed(() =>
+    sortRows(this.courses(), this.courseSort(), (c, col) => {
+      switch (col) {
+        case 'name': return c.name;
+        // Ranked, not alphabetical — "advanced" must not sort above "beginner".
+        case 'difficulty': return DIFFICULTY_RANK[(c.difficulty || '').toLowerCase()] ?? 99;
+        case 'duration': return c.duration_hours;
+        case 'published': return c.is_published;
+        case 'tags': return this.tagCountValue(c);
+        default: return null;
+      }
+    }),
+  );
+
+  sortedPaths = computed(() =>
+    sortRows(this.learningPaths(), this.pathSort(), (p, col) => {
+      switch (col) {
+        case 'name': return p.name;
+        case 'description': return p.description;
+        case 'courses': return p.course_ids?.length ?? 0;
+        default: return null;
+      }
+    }),
+  );
+
+  sortedEnrollments = computed(() =>
+    sortRows(this.enrollments(), this.enrollmentSort(), (e, col) => {
+      switch (col) {
+        // Sort on what the cell actually shows, so the order matches the screen.
+        case 'user': return e.user_name || e.user_id;
+        case 'course': return e.course_name || e.course_id;
+        case 'enrolled_at': return toTime(e.enrolled_at);
+        case 'progress': return e.progress_pct ?? 0;
+        default: return null;
+      }
+    }),
+  );
+
+  sortedTranscript = computed(() =>
+    sortRows(this.transcript()?.entries ?? [], this.transcriptSort(), (e, col) => {
+      switch (col) {
+        case 'source': return e.source;
+        case 'title': return e.title;
+        case 'type': return e.activity_type;
+        // Numeric score, not the rendered "85%"/grade string — otherwise 100 < 85.
+        case 'score': return e.score;
+        case 'completed': return toTime(e.completed_at);
+        default: return null;
+      }
+    }),
+  );
+
   constructor(
     private api: ApiService,
     private notify: NotificationService,
@@ -607,12 +718,22 @@ export class TrainingComponent implements OnInit {
   }
 
   // ── Tag helper ──
-  tagCount(course: Course): string {
-    if (!course.tags) return '0 tags';
-    const tags = Array.isArray(course.tags)
+  /** Tags arrive either as an array or as a JSON string; normalise before counting. */
+  private tagList(course: Course): unknown[] {
+    if (!course.tags) return [];
+    return Array.isArray(course.tags)
       ? course.tags
       : (() => { try { return JSON.parse(course.tags as string); } catch { return []; } })();
-    const n = tags.length;
+  }
+
+  /** Sort key for the Tags column — the count itself, not the rendered label. */
+  tagCountValue(course: Course): number {
+    return this.tagList(course).length;
+  }
+
+  tagCount(course: Course): string {
+    if (!course.tags) return '0 tags';
+    const n = this.tagList(course).length;
     return n === 0 ? 'no tags' : `${n} tag${n === 1 ? '' : 's'}`;
   }
 
