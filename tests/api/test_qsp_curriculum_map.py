@@ -5,6 +5,7 @@ overlay resolved through the LMS enrolment chain, and — importantly — the qu
 count, which is what the endpoint exists to fix.
 """
 
+import json
 import uuid
 
 import pytest
@@ -202,6 +203,69 @@ class TestNodes:
         assert aljq["total_minutes"] == 660
 
 
+class TestCourseEdges:
+    """Course-to-course prerequisites — the follow-up arrows between the map's chips."""
+
+    @staticmethod
+    def _catalogue_course(db, code, dp_order=1):
+        """A programme catalogue course, placed on the map by its `course_meta`."""
+        from app.models import Course
+
+        # The endpoint scopes courses and paths to the caller's tenant, so the seeds
+        # must carry the dev user's tenant or the map never sees them.
+        course = Course(
+            id=uuid.uuid4(), name=f"Course {code}", duration_hours=45,
+            tenant_id=uuid.UUID(DEV_USER_ID),
+            course_meta=json.dumps({
+                "programme": "algonquin-cyber", "provenance": "catalogue",
+                "dp_order": dp_order, "course_code": code,
+                "institution": "Algonquin College",
+                "term_code": f"DP{dp_order}-Y1-F",
+                "term_label": f"DP {dp_order} Year 1 Fall",
+                "term_start": "2025-09-01",
+            }),
+        )
+        db.add(course)
+        db.flush()
+        return str(course.id)
+
+    @staticmethod
+    def _path(db, name, prereq):
+        from app.models import LearningPath
+
+        lp = LearningPath(id=uuid.uuid4(), name=name, tenant_id=uuid.UUID(DEV_USER_ID))
+        lp.prerequisite_graph = prereq if isinstance(prereq, str) else json.dumps(prereq)
+        db.add(lp)
+        db.flush()
+        return lp
+
+    def test_empty_spine_has_no_course_edges(self, client):
+        assert client.get("/qsp/curriculum-map").json()["course_edges"] == []
+
+    def test_edges_are_deduped_map_filtered_and_tolerant_of_bad_json(
+        self, client, db_session, spine
+    ):
+        from app.models import Course
+
+        c1 = self._catalogue_course(db_session, "C101", dp_order=1)
+        c2 = self._catalogue_course(db_session, "C201", dp_order=2)
+        # No `programme` meta — a spine stub, which programme_courses keeps off the map.
+        stub = Course(id=uuid.uuid4(), name="Stub course")
+        db_session.add(stub)
+        db_session.flush()
+
+        self._path(db_session, "dp path", {c2: [c1]})
+        # The same edge again (dedupe), an off-map endpoint (filtered), and a
+        # self-reference (filtered) — none of which may leak into the payload.
+        self._path(db_session, "role path", {c2: [c1, c2], str(stub.id): [c1]})
+        self._path(db_session, "corrupt path", "not json")
+        db_session.commit()
+
+        assert client.get("/qsp/curriculum-map").json()["course_edges"] == [
+            {"from": c1, "to": c2},
+        ]
+
+
 # ── Learner overlay ───────────────────────────────────────────────────────
 
 
@@ -392,7 +456,9 @@ class TestQueryCount:
         db_session.commit()
 
         count = self._count_queries(engine, client, "/qsp/curriculum-map")
-        assert count <= 10, f"{count} queries — expected a fixed handful"
+        # 11, not 10: course_edges added one fixed LearningPath scan (qsp_paths.
+        # course_prereq_edges) — flat regardless of spine or catalogue size.
+        assert count <= 11, f"{count} queries — expected a fixed handful"
 
     def test_per_qualification_endpoint_is_batched_too(self, engine, client, spine):
         """The older per-qualification route shares the same batched lookups."""

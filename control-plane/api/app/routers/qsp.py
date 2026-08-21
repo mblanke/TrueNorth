@@ -807,10 +807,16 @@ def curriculum_map(
     for node in nodes:
         node["state"] = states.get(node["qsp_code"], qsp_progress.AVAILABLE)
 
+    # Course-to-course prerequisites, for the follow-up arrows between the chips on
+    # the map. Only edges between courses that are actually placed on a node.
+    on_map_ids = {c["course_id"] for node in nodes for c in node["courses"]}
+
     return {
         "stages": stages,
         "tracks": tracks,
         "nodes": nodes,
         "edges": edges,
+        "course_edges": qsp_paths.course_prereq_edges(db, on_map_ids,
+                                                     tenant_id=user.tenant_id or None),
         "learner": qsp_progress.current_position(node_tuples, states).as_dict(),
     }

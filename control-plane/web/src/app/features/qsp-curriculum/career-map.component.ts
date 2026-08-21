@@ -56,6 +56,9 @@ interface DrawnEdge {
   path: string;
   kind: PathEdge['kind'];
   state: NodeState | 'planned';
+  /** Logical endpoints, kept so the chain highlight can test membership. */
+  from: string;
+  to: string;
 }
 
 const RING_R = 15;
@@ -84,7 +87,12 @@ const STATE_LABEL: Record<NodeState, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="map-scroll">
-      <div class="map" #grid [style.--stage-count]="stages().length">
+      <div
+        class="map"
+        #grid
+        [style.--stage-count]="stages().length"
+        [class.chain-active]="!!chainSource()"
+      >
         <!-- Column headers -->
         <div class="corner" aria-hidden="true"></div>
         @for (stage of stages(); track stage.dp_order) {
@@ -99,13 +107,34 @@ const STATE_LABEL: Record<NodeState, string> = {
 
         <!-- Edges sit under the cards but above the grid background -->
         <svg class="edges" [attr.viewBox]="viewBox()" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <!-- One arrowhead per state: Chrome has no context-stroke in markers, so a
+                 single marker cannot inherit the edge's stroke. Marker ids are
+                 document-global, which is safe while exactly one map renders per page. -->
+            @for (s of edgeStates; track s) {
+              <marker
+                [attr.id]="'edge-arrow-' + s"
+                viewBox="0 0 8 8"
+                refX="7"
+                refY="4"
+                markerWidth="8"
+                markerHeight="8"
+                markerUnits="userSpaceOnUse"
+                orient="auto"
+              >
+                <path d="M 0 0 L 8 4 L 0 8 z" class="edge-arrow" [attr.data-state]="s" />
+              </marker>
+            }
+          </defs>
           @for (edge of drawnEdges(); track $index) {
             <path
               [attr.d]="edge.path"
               class="edge"
               [class.branch]="edge.kind === 'branch'"
               [class.planned]="edge.kind === 'planned'"
+              [class.on-chain]="chainNodes().has(edge.from) && chainNodes().has(edge.to)"
               [attr.data-state]="edge.state"
+              [attr.marker-end]="'url(#edge-arrow-' + edge.state + ')'"
             />
           }
         </svg>
@@ -132,7 +161,10 @@ const STATE_LABEL: Record<NodeState, string> = {
                   [class]="'state-' + node.state"
                   [class.selected]="node.qsp_code === selected"
                   [class.here]="node.qsp_code === currentQsp()"
+                  [class.on-chain]="chainNodes().has(node.qsp_code)"
                   [attr.data-node]="node.qsp_code"
+                  (pointerenter)="chainSource.set(node.qsp_code)"
+                  (pointerleave)="chainSource.set(null)"
                 >
                 <button
                   type="button"
@@ -142,7 +174,8 @@ const STATE_LABEL: Record<NodeState, string> = {
                   [attr.aria-pressed]="node.qsp_code === selected"
                   [attr.aria-label]="ariaLabel(node)"
                   (click)="pick(node, cell.index)"
-                  (focus)="focusIndex.set(cell.index)"
+                  (focus)="focusIndex.set(cell.index); chainSource.set(node.qsp_code)"
+                  (blur)="chainSource.set(null)"
                   #cellButton
                 >
                   <span class="node-eyebrow">
@@ -238,6 +271,8 @@ const STATE_LABEL: Record<NodeState, string> = {
                               class="c-chip"
                               [class.delivers]="c.delivers.length"
                               [class.cross-dp]="c.delivers_cross_dp"
+                              [class.follow-target]="followTargets().has(c.course_id)"
+                              [attr.data-course]="c.course_id"
                               [matTooltip]="courseTooltip(c)"
                               [routerLink]="['/learning/courses', c.course_id]"
                             >{{ c.course_code }}</a>
@@ -261,6 +296,35 @@ const STATE_LABEL: Record<NodeState, string> = {
             </div>
           }
         }
+
+        <!-- Transient course → follow-up arrows, drawn while a chip is hovered or
+             focused. A second overlay, not part of .edges: qualification edges
+             deliberately paint UNDER the cards, but these end at chips inside the
+             cards, so they must paint over them. -->
+        <svg
+          class="course-edges"
+          [attr.viewBox]="viewBox()"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <defs>
+            <marker
+              id="course-arrow"
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="7"
+              markerHeight="7"
+              markerUnits="userSpaceOnUse"
+              orient="auto"
+            >
+              <path d="M 0 0 L 8 4 L 0 8 z" class="course-arrow-head" />
+            </marker>
+          </defs>
+          @for (d of courseArrows(); track $index) {
+            <path [attr.d]="d" class="course-edge" marker-end="url(#course-arrow)" />
+          }
+        </svg>
       </div>
     </div>
 
@@ -427,16 +491,59 @@ const STATE_LABEL: Record<NodeState, string> = {
         pointer-events: none;
         overflow: visible;
       }
+      /* Motion on measured elements stays opacity-only: a transform animation (e.g.
+         tnEnterStagger) during the first frame would corrupt the rects measure()
+         anchors the edges to, and nothing re-measures once it settles. */
       .edge {
         fill: none;
         stroke: var(--border-light);
         stroke-width: 2;
+        transition: opacity 0.18s ease;
+        animation: edge-in 0.35s ease-out;
       }
       .edge[data-state='complete'] { stroke: var(--success); }
       .edge[data-state='in_progress'] { stroke: var(--accent); }
       .edge[data-state='locked'] { stroke: var(--border); }
       .edge.branch { stroke-dasharray: 1 0; opacity: 0.75; }
       .edge.planned { stroke-dasharray: 5 5; opacity: 0.45; }
+      /* Only a from-frame: a to-frame with fill-mode would pin opacity at 1 and
+         override the resting opacity of .branch and .planned above. */
+      @keyframes edge-in { from { opacity: 0; } }
+
+      .edge-arrow { fill: var(--border-light); }
+      .edge-arrow[data-state='complete'] { fill: var(--success); }
+      .edge-arrow[data-state='in_progress'] { fill: var(--accent); }
+      .edge-arrow[data-state='locked'] { fill: var(--border); }
+      .edge-arrow[data-state='planned'] { opacity: 0.45; }
+
+      /* Tracing a bubble's prerequisite chain dims everything off it. Desktop only:
+         below 900px the edges are hidden and touch has no hover to clear the dim. */
+      @media (min-width: 901px) {
+        .map.chain-active .node:not(.on-chain):not(.ghost),
+        .map.chain-active .edge:not(.on-chain) { opacity: 0.3; }
+        .map.chain-active .edge.on-chain { stroke-width: 2.5; }
+      }
+
+      /* Above the cards (themselves z-index 1): these arrows end at chips inside
+         the cards, unlike the qualification edges painting underneath. */
+      .course-edges {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        overflow: visible;
+        z-index: 2;
+      }
+      .course-edge {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 1.5;
+        opacity: 0.9;
+        animation: edge-in 0.12s ease-out;
+      }
+      .course-arrow-head { fill: var(--accent); }
+      .c-chip.follow-target { border-color: var(--accent); color: var(--accent); }
 
       /* ── Nodes ─────────────────────────────────────────────── */
       /* The bubble: the card face plus the programme taught in the period. */
@@ -455,7 +562,8 @@ const STATE_LABEL: Record<NodeState, string> = {
         border: 1px solid var(--border);
         border-radius: var(--radius-md);
         box-shadow: var(--shadow-1);
-        transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease,
+          opacity 0.18s ease;
       }
       /* The card face is the control; the bubble around it is not. */
       .node-main {
@@ -592,8 +700,10 @@ const STATE_LABEL: Record<NodeState, string> = {
       }
       @media (prefers-reduced-motion: reduce) {
         .node.here::after { animation: none; }
-        button.node:hover { transform: none; }
+        .node:has(.node-main:hover) { transform: none; }
         .ring-fill { transition: none; }
+        .edge, .course-edge { animation: none; }
+        .node, .edge { transition: none; }
       }
 
       .hint {
@@ -618,6 +728,7 @@ const STATE_LABEL: Record<NodeState, string> = {
         }
         .lane-head.specialty { padding-left: 0; border-left: none; }
         .edges { display: none; }
+        .course-edges { display: none; }
         .cell { min-height: 0; }
         /* Stacked, an empty cell is just a gap — the grid no longer needs it to
            hold a column open. */
@@ -632,6 +743,11 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
 
   readonly ringR = RING_R;
   readonly ringCircumference = RING_CIRCUMFERENCE;
+
+  /** Every state an edge can carry — one arrowhead marker is stamped per state. */
+  protected readonly edgeStates: ReadonlyArray<NodeState | 'planned'> = [
+    'locked', 'available', 'in_progress', 'complete', 'planned',
+  ];
 
   @Input({ required: true }) set map(value: CurriculumMap | null) {
     this.data.set(value);
@@ -654,6 +770,46 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
 
   protected readonly stages = computed(() => this.data()?.stages ?? []);
   protected readonly currentQsp = computed(() => this.data()?.learner?.current_qsp_code ?? null);
+
+  /** The bubble whose incoming prerequisite chain is being traced, if any. */
+  protected readonly chainSource = signal<string | null>(null);
+
+  /** The traced chain: the source bubble plus every transitive prerequisite of it. */
+  protected readonly chainNodes = computed<Set<string>>(() => {
+    const src = this.chainSource();
+    const map = this.data();
+    if (!src || !map) return new Set<string>();
+    const parents = new Map<string, string[]>();
+    for (const e of map.edges) {
+      const list = parents.get(e.to);
+      if (list) list.push(e.from);
+      else parents.set(e.to, [e.from]);
+    }
+    // BFS with a visited set, so a malformed cyclic edge list cannot hang the UI.
+    const seen = new Set<string>([src]);
+    const queue = [src];
+    while (queue.length) {
+      for (const p of parents.get(queue.pop()!) ?? []) {
+        if (!seen.has(p)) {
+          seen.add(p);
+          queue.push(p);
+        }
+      }
+    }
+    return seen;
+  });
+
+  /** Course chip under the pointer (or keyboard focus), if any. */
+  protected readonly hoveredCourse = signal<string | null>(null);
+  /** Transient arrow paths from the hovered chip to its follow-up chips. */
+  protected readonly courseArrows = signal<string[]>([]);
+  /** The chips the hovered course leads into, for highlighting the target end. */
+  protected readonly followTargets = computed<Set<string>>(() => {
+    const src = this.hoveredCourse();
+    if (!src) return new Set<string>();
+    const edges = this.data()?.course_edges ?? [];
+    return new Set(edges.filter(e => e.from === src).map(e => e.to));
+  });
 
   /** Nodes bucketed into (lane, DP column) cells, with a flat index for keyboard nav. */
   protected readonly lanes = computed<Lane[]>(() => {
@@ -696,6 +852,17 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
     this.zone.runOutsideAngular(() => {
       this.resizeObserver = new ResizeObserver(() => this.measure());
       if (this.gridRef) this.resizeObserver.observe(this.gridRef.nativeElement);
+      // Chip hover is delegated to the grid rather than bound per chip: DP1 alone is
+      // three years of courses, and per-chip bindings would run change detection on
+      // every chip the pointer crosses. The zone is only entered when the hovered
+      // course actually changes.
+      const grid = this.gridRef?.nativeElement;
+      if (grid) {
+        grid.addEventListener('mouseover', this.onChipEnter);
+        grid.addEventListener('focusin', this.onChipEnter);
+        grid.addEventListener('mouseout', this.onChipLeave);
+        grid.addEventListener('focusout', this.onChipLeave);
+      }
     });
     this.host.nativeElement.addEventListener('keydown', this.onKeydown);
   }
@@ -704,6 +871,13 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
     this.resizeObserver?.disconnect();
     cancelAnimationFrame(this.pendingFrame);
     this.host.nativeElement.removeEventListener('keydown', this.onKeydown);
+    const grid = this.gridRef?.nativeElement;
+    if (grid) {
+      grid.removeEventListener('mouseover', this.onChipEnter);
+      grid.removeEventListener('focusin', this.onChipEnter);
+      grid.removeEventListener('mouseout', this.onChipLeave);
+      grid.removeEventListener('focusout', this.onChipLeave);
+    }
   }
 
   /** Measure on the next frame, once the browser has laid the new grid out. */
@@ -761,6 +935,8 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
         drawn.push({
           kind: edge.kind,
           state: stateOf(edge.to),
+          from: edge.from,
+          to: edge.to,
           path: `M ${x1} ${y1} C ${x1} ${y1 + drop}, ${x2 - 40} ${y2}, ${x2} ${y2}`,
         });
         continue;
@@ -773,10 +949,94 @@ export class CareerMapComponent implements AfterViewInit, OnDestroy {
       drawn.push({
         kind: edge.kind,
         state: stateOf(edge.to),
+        from: edge.from,
+        to: edge.to,
         path: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`,
       });
     }
-    this.zone.run(() => this.drawnEdges.set(drawn));
+    this.zone.run(() => {
+      this.drawnEdges.set(drawn);
+      // Chip rects move with the layout, so any transient arrow is now stale.
+      if (this.courseArrows().length) {
+        this.courseArrows.set([]);
+        this.hoveredCourse.set(null);
+      }
+    });
+  }
+
+  // ── Course follow-up arrows ─────────────────────────────────
+
+  /** Delegated hover/focus onto a course chip: draw its follow-up arrows. */
+  private readonly onChipEnter = (event: Event): void => {
+    const chip = (event.target as HTMLElement | null)?.closest?.(
+      '.c-chip[data-course]',
+    ) as HTMLElement | null;
+    const id = chip?.dataset['course'] ?? null;
+    if (!id || id === this.hoveredCourse()) return;
+    const arrows = this.measureCourseArrows(id);
+    this.zone.run(() => {
+      this.hoveredCourse.set(id);
+      this.courseArrows.set(arrows);
+    });
+  };
+
+  /** Clear the arrows, unless the pointer/focus only moved within the same chip. */
+  private readonly onChipLeave = (event: Event): void => {
+    const current = this.hoveredCourse();
+    if (!current) return;
+    const rel = (event as MouseEvent | FocusEvent).relatedTarget as HTMLElement | null;
+    if (rel?.closest?.(`.c-chip[data-course="${current}"]`)) return;
+    this.zone.run(() => {
+      this.hoveredCourse.set(null);
+      this.courseArrows.set([]);
+    });
+  };
+
+  /**
+   * Arrows from a chip to each of its follow-up chips, measured at hover time.
+   * Chips flex-wrap, so their rects are only valid for the current layout — nothing
+   * is cached, and `measure()` clears the arrows whenever the grid moves.
+   */
+  private measureCourseArrows(courseId: string): string[] {
+    const grid = this.gridRef?.nativeElement;
+    const map = this.data();
+    if (!grid || !map) return [];
+    const source = grid.querySelector<HTMLElement>(`.c-chip[data-course="${courseId}"]`);
+    if (!source) return [];
+
+    const origin = grid.getBoundingClientRect();
+    const s = source.getBoundingClientRect();
+    const arrows: string[] = [];
+    for (const edge of map.course_edges ?? []) {
+      if (edge.from !== courseId) continue;
+      const target = grid.querySelector<HTMLElement>(`.c-chip[data-course="${edge.to}"]`);
+      if (!target) continue; // the backend only ships on-map ids, but stay defensive
+      arrows.push(this.chipPath(s, target.getBoundingClientRect(), origin));
+    }
+    return arrows;
+  }
+
+  /** The same curve families as the qualification edges, chip-sized. */
+  private chipPath(s: DOMRect, t: DOMRect, origin: DOMRect): string {
+    const dx = t.left + t.width / 2 - (s.left + s.width / 2);
+    const dy = t.top + t.height / 2 - (s.top + s.height / 2);
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      // Horizontal-dominant: leave one side, enter the facing side of the target.
+      const x1 = (dx >= 0 ? s.right : s.left) - origin.left;
+      const y1 = s.top + s.height / 2 - origin.top;
+      const x2 = (dx >= 0 ? t.left : t.right) - origin.left;
+      const y2 = t.top + t.height / 2 - origin.top;
+      const bend = Math.max(20, Math.abs(x2 - x1) / 2) * (dx >= 0 ? 1 : -1);
+      return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+    }
+    // Vertical-dominant: bottom-centre to top-centre (mirrored going up), so the
+    // terminal tangent stays vertical and the arrowhead points into the chip.
+    const x1 = s.left + s.width / 2 - origin.left;
+    const y1 = (dy >= 0 ? s.bottom : s.top) - origin.top;
+    const x2 = t.left + t.width / 2 - origin.left;
+    const y2 = (dy >= 0 ? t.top : t.bottom) - origin.top;
+    const drop = Math.max(16, Math.abs(y2 - y1) * 0.45) * (dy >= 0 ? 1 : -1);
+    return `M ${x1} ${y1} C ${x1} ${y1 + drop}, ${x2} ${y2 - drop}, ${x2} ${y2}`;
   }
 
   // ── Interaction ─────────────────────────────────────────────

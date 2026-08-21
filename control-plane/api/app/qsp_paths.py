@@ -410,6 +410,34 @@ def drop_course_from_paths(db: Session, course_id: str) -> None:
     db.flush()
 
 
+def course_prereq_edges(db: Session, course_ids: set[str],
+                        tenant_id: str | None = None) -> list[dict]:
+    """Course-to-course prerequisite edges, restricted to courses on the career map.
+
+    Every learning path carries a `prerequisite_graph`, but most entries reference
+    spine-generated per-PO stubs, which `programme_courses` keeps off the map. An edge
+    is only drawable when both ends are placed, so everything else is dropped here
+    rather than shipped for the client to discard. Deduped across paths, sorted for a
+    deterministic payload. One query.
+    """
+    q = db.query(LearningPath)
+    if tenant_id is not None:
+        q = q.filter(LearningPath.tenant_id == tenant_id)
+    seen: set[tuple[str, str]] = set()
+    for lp in q.all():
+        try:
+            graph = json.loads(lp.prerequisite_graph or "{}")
+        except (TypeError, ValueError):
+            continue
+        for course, prereqs in graph.items():
+            if course not in course_ids or not isinstance(prereqs, list):
+                continue
+            for pre in prereqs:
+                if pre in course_ids and pre != course:
+                    seen.add((pre, course))
+    return [{"from": a, "to": b} for a, b in sorted(seen)]
+
+
 def purge_orphaned_stubs(db: Session, tenant_id: str | None = None) -> int:
     """Delete spine-generated stubs that no longer deliver anything.
 

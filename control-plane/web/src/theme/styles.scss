@@ -57,6 +57,12 @@ body.theme-great-white-north {
   --sidenav-bg:      #051020;
   --success:         #1FB6A6;
   --warning:         #E8A838;
+  /* Soft chip washes: accent-soft marks a positive claim (a course delivering an
+     objective), warn-soft a cross-period one. On themes whose accent is red the
+     "accent" wash stays green — a red wash would read as a warning. */
+  --accent-soft:     rgba(31, 182, 166, 0.16);
+  --warn-soft:       rgba(232, 168, 56, 0.18);
+  --border-strong:   #3E6288;
 
   /* Command-center / aurora design tokens */
   --glass-bg:        rgba(14, 39, 70, 0.62);
@@ -71,6 +77,8 @@ body.theme-great-white-north {
   --radius-lg:       16px;
   --font-body:       'Inter', 'Segoe UI', Calibri, sans-serif;
   --font-display:    'Space Grotesk', 'Inter', 'Segoe UI', sans-serif;
+  /* System stack — no mono webfont is shipped, and course codes don't need one. */
+  --font-mono:       'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -95,6 +103,9 @@ body.theme-maple-steel {
   --sidenav-bg:      #05070A;
   --success:         #3FB950;
   --warning:         #D29922;
+  --accent-soft:     rgba(63, 185, 80, 0.16);
+  --warn-soft:       rgba(210, 153, 34, 0.18);
+  --border-strong:   #4A5666;
 
   --glass-bg:        rgba(21, 27, 35, 0.62);
   --glass-toolbar:   rgba(7, 9, 13, 0.72);
@@ -125,6 +136,9 @@ body.theme-aurora-soc {
   --sidenav-bg:      #020409;
   --success:         #2DE2C5;
   --warning:         #F5A623;
+  --accent-soft:     rgba(45, 226, 197, 0.14);
+  --warn-soft:       rgba(245, 166, 35, 0.16);
+  --border-strong:   #2E4A73;
 
   --glass-bg:        rgba(12, 21, 40, 0.55);
   --glass-toolbar:   rgba(3, 5, 11, 0.66);
@@ -158,6 +172,9 @@ body.theme-great-white-north {
   --sidenav-bg:      #FBFCFD;
   --success:         #1E7F4F;
   --warning:         #B26A00;
+  --accent-soft:     rgba(30, 127, 79, 0.12);
+  --warn-soft:       rgba(178, 106, 0, 0.14);
+  --border-strong:   #A8B2BD;
 
   --glass-bg:        rgba(255, 255, 255, 0.78);
   --glass-toolbar:   rgba(255, 255, 255, 0.85);

@@ -1,7 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { CareerMapComponent } from './career-map.component';
-import { CurriculumMap, NodeState, QualNode } from '@core/services/curriculum-map.service';
+import {
+  CurriculumMap,
+  NodeCourse,
+  NodeState,
+  QualNode,
+} from '@core/services/curriculum-map.service';
 
 function node(
   qsp_code: string,
@@ -32,6 +38,23 @@ function node(
   };
 }
 
+function course(course_id: string, course_code: string, dp: number): NodeCourse {
+  return {
+    course_id,
+    course_code,
+    name: `${course_code} course`,
+    institution: 'Algonquin College',
+    term_code: `DP${dp}-Y1-F`,
+    term_label: `DP ${dp} Year 1 Fall`,
+    term_start: '2025-09-01',
+    duration_hours: 45,
+    difficulty: 'intermediate',
+    is_published: true,
+    delivers: [],
+    delivers_cross_dp: false,
+  };
+}
+
 const MAP: CurriculumMap = {
   stages: [
     { dp_order: 1, rank_level: 'Pte', label: 'Basic occupation', planned: false },
@@ -45,10 +68,16 @@ const MAP: CurriculumMap = {
   nodes: [
     node('ALJQ', 1, 'progression', 'complete', {
       progress: { completed: 2, in_progress: 0, total: 2, pct: 100 },
+      courses: [course('c1', 'C101', 1)],
+      course_count: 1,
+      course_hours: 45,
     }),
     node('TEMP67', 2, 'progression', 'in_progress', {
       gate_count: 1,
       progress: { completed: 1, in_progress: 1, total: 2, pct: 50 },
+      courses: [course('c2', 'C201', 2)],
+      course_count: 1,
+      course_hours: 45,
     }),
     // Only one of four objectives is scoped — much of the real spine looks like this.
     node('TEMP64', 2, 'ALRA-RED', 'locked', {
@@ -62,6 +91,8 @@ const MAP: CurriculumMap = {
     { from: 'ALJQ', to: 'TEMP64', kind: 'branch' },
     { from: 'TEMP67', to: 'planned:3', kind: 'planned' },
   ],
+  // A cross-bubble follow-up: C101 (in ALJQ's programme) leads into C201 (TEMP67's).
+  course_edges: [{ from: 'c1', to: 'c2' }],
   learner: { current_qsp_code: 'TEMP67', current_po_code: 'PO_008' },
 };
 
@@ -70,10 +101,15 @@ describe('CareerMapComponent', () => {
   let fixture: ComponentFixture<CareerMapComponent>;
 
   const nodeButtons = (): HTMLButtonElement[] =>
-    Array.from(fixture.nativeElement.querySelectorAll('button.node'));
+    Array.from(fixture.nativeElement.querySelectorAll('button.node-main'));
+
+  // The bubble div carries data-node and the state/here/selected classes; the
+  // button inside it carries the aria attributes and the roving tabindex.
+  const bubbleFor = (code: string): HTMLElement =>
+    fixture.nativeElement.querySelector(`div.node[data-node="${code}"]`);
 
   const buttonFor = (code: string): HTMLButtonElement =>
-    fixture.nativeElement.querySelector(`button.node[data-node="${code}"]`);
+    fixture.nativeElement.querySelector(`div.node[data-node="${code}"] button.node-main`);
 
   const press = (key: string) => {
     fixture.nativeElement.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
@@ -83,6 +119,8 @@ describe('CareerMapComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [CareerMapComponent, NoopAnimationsModule],
+      // The course chips are routerLinks, so the fixture needs a real (empty) router.
+      providers: [provideRouter([])],
     }).compileComponents();
 
     fixture = TestBed.createComponent(CareerMapComponent);
@@ -136,14 +174,14 @@ describe('CareerMapComponent', () => {
 
   describe('node presentation', () => {
     it('reflects state as a class so locked and complete read differently', () => {
-      expect(buttonFor('ALJQ').classList).toContain('state-complete');
-      expect(buttonFor('TEMP67').classList).toContain('state-in_progress');
-      expect(buttonFor('TEMP64').classList).toContain('state-locked');
+      expect(bubbleFor('ALJQ').classList).toContain('state-complete');
+      expect(bubbleFor('TEMP67').classList).toContain('state-in_progress');
+      expect(bubbleFor('TEMP64').classList).toContain('state-locked');
     });
 
     it('marks the learner position on exactly one node', () => {
       expect(fixture.nativeElement.querySelectorAll('.node.here').length).toBe(1);
-      expect(buttonFor('TEMP67').classList).toContain('here');
+      expect(bubbleFor('TEMP67').classList).toContain('here');
       expect(buttonFor('TEMP67').getAttribute('aria-current')).toBe('step');
       expect(buttonFor('ALJQ').getAttribute('aria-current')).toBeNull();
     });
@@ -180,7 +218,7 @@ describe('CareerMapComponent', () => {
       fixture.componentRef.setInput('selected', 'ALJQ');
       fixture.detectChanges();
 
-      expect(buttonFor('ALJQ').classList).toContain('selected');
+      expect(bubbleFor('ALJQ').classList).toContain('selected');
       expect(buttonFor('ALJQ').getAttribute('aria-pressed')).toBe('true');
       expect(buttonFor('TEMP67').getAttribute('aria-pressed')).toBe('false');
     });
@@ -244,10 +282,110 @@ describe('CareerMapComponent', () => {
     });
   });
 
+  describe('prerequisite arrows', () => {
+    it('stamps one arrowhead marker per edge state', () => {
+      for (const s of ['locked', 'available', 'in_progress', 'complete', 'planned']) {
+        expect(fixture.nativeElement.querySelector(`svg.edges marker#edge-arrow-${s}`))
+          .withContext(s)
+          .toBeTruthy();
+      }
+    });
+
+    it('points each edge at the arrowhead of its state', () => {
+      // measure() normally runs on a rAF outside the zone; call it directly.
+      component['measure']();
+      fixture.detectChanges();
+
+      const edges: SVGPathElement[] = Array.from(
+        fixture.nativeElement.querySelectorAll('svg.edges path.edge'),
+      );
+      expect(edges.length).toBe(MAP.edges.length);
+      for (const edge of edges) {
+        const state = edge.getAttribute('data-state');
+        expect(edge.getAttribute('marker-end')).toBe(`url(#edge-arrow-${state})`);
+      }
+    });
+  });
+
+  describe('chain highlight', () => {
+    const mapEl = (): HTMLElement => fixture.nativeElement.querySelector('.map');
+
+    it('traces the incoming chain on hover, source included', () => {
+      bubbleFor('TEMP64').dispatchEvent(new PointerEvent('pointerenter'));
+      fixture.detectChanges();
+
+      expect(mapEl().classList).toContain('chain-active');
+      expect(bubbleFor('TEMP64').classList).toContain('on-chain'); // never dims itself
+      expect(bubbleFor('ALJQ').classList).toContain('on-chain'); // its prerequisite
+      expect(bubbleFor('TEMP67').classList).not.toContain('on-chain');
+
+      bubbleFor('TEMP64').dispatchEvent(new PointerEvent('pointerleave'));
+      fixture.detectChanges();
+      expect(mapEl().classList).not.toContain('chain-active');
+    });
+
+    it('traces the chain from keyboard focus too', () => {
+      buttonFor('TEMP67').dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+      expect(mapEl().classList).toContain('chain-active');
+      expect(bubbleFor('ALJQ').classList).toContain('on-chain');
+
+      buttonFor('TEMP67').dispatchEvent(new Event('blur'));
+      fixture.detectChanges();
+      expect(mapEl().classList).not.toContain('chain-active');
+    });
+  });
+
+  describe('course follow-up arrows', () => {
+    const chip = (id: string): HTMLElement =>
+      fixture.nativeElement.querySelector(`a.c-chip[data-course="${id}"]`);
+    const arrows = (): NodeListOf<SVGPathElement> =>
+      fixture.nativeElement.querySelectorAll('svg.course-edges path.course-edge');
+
+    it('gives each course chip its identity and link', () => {
+      expect(chip('c1')).toBeTruthy();
+      expect(chip('c1').getAttribute('href')).toContain('/learning/courses/c1');
+    });
+
+    it('draws an arrow to the follow-up chip while a chip is hovered', () => {
+      chip('c1').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      fixture.detectChanges();
+
+      expect(arrows().length).toBe(1);
+      expect(arrows()[0].getAttribute('marker-end')).toBe('url(#course-arrow)');
+      expect(chip('c2').classList).toContain('follow-target');
+
+      chip('c1').dispatchEvent(
+        new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }),
+      );
+      fixture.detectChanges();
+      expect(arrows().length).toBe(0);
+      expect(chip('c2').classList).not.toContain('follow-target');
+    });
+
+    it('draws the same arrows from keyboard focus', () => {
+      chip('c1').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      fixture.detectChanges();
+      expect(arrows().length).toBe(1);
+
+      chip('c1').dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: document.body }),
+      );
+      fixture.detectChanges();
+      expect(arrows().length).toBe(0);
+    });
+
+    it('draws nothing for a course with no follow-up', () => {
+      chip('c2').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      fixture.detectChanges();
+      expect(arrows().length).toBe(0);
+    });
+  });
+
   describe('empty map', () => {
     it('renders nothing rather than throwing', () => {
       fixture.componentRef.setInput('map', {
-        stages: [], tracks: [], nodes: [], edges: [],
+        stages: [], tracks: [], nodes: [], edges: [], course_edges: [],
         learner: { current_qsp_code: null, current_po_code: null },
       });
       fixture.detectChanges();

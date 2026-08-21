@@ -157,11 +157,19 @@ export interface PathEdge {
   kind: 'progression' | 'branch' | 'planned';
 }
 
+/** A course-to-course prerequisite: `to` is taken after `from`. */
+export interface CourseEdge {
+  from: string;
+  to: string;
+}
+
 export interface CurriculumMap {
   stages: DPStage[];
   tracks: DPTrack[];
   nodes: QualNode[];
   edges: PathEdge[];
+  /** Only edges whose both ends appear in `nodes[].courses` — always drawable. */
+  course_edges: CourseEdge[];
   learner: { current_qsp_code: string | null; current_po_code: string | null };
 }
 
