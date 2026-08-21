@@ -180,7 +180,7 @@ interface ExternalPlatform {
     .form-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
     .form-row mat-form-field { flex: 1; min-width: 200px; }
     .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-    .tn-chip { background: var(--surface-light, #1e293b); padding: 2px 10px; border-radius: 12px; font-size: 12px; }
+    .tn-chip { background: var(--bg-surface); padding: 2px 10px; border-radius: 12px; font-size: 12px; }
     .tn-chip.active { background: var(--success, #22c55e); color: white; }
     .tn-chip.inactive { background: var(--alert, #ef4444); color: white; }
     .sync-info { font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
@@ -190,7 +190,7 @@ interface ExternalPlatform {
     .config-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     .config-table td { padding: 8px 12px; border-bottom: 1px solid var(--border, #333); }
     .config-table td:first-child { font-weight: 600; width: 200px; }
-    code { background: var(--surface-light, #1e293b); padding: 2px 6px; border-radius: 4px; }
+    code { background: var(--bg-surface); border: 1px solid var(--border); padding: 2px 6px; border-radius: var(--radius-sm); font-family: var(--font-mono); }
   `],
 })
 export class IntegrationsComponent implements OnInit {

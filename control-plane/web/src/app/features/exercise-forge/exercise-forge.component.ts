@@ -410,30 +410,33 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; }
     .header-left { display: flex; align-items: center; gap: 16px; }
-    .page-icon { font-size: 36px; width: 36px; height: 36px; color: var(--mat-sys-primary); }
-    .subtitle { margin: 0; color: var(--mat-sys-on-surface-variant); }
+    /* Token note: this file used to reference Material 3 --mat-sys-* variables,
+       which the M2 theme never emits — the wizard rendered on transparent
+       backgrounds. Everything below is on the app's own token vocabulary. */
+    .page-icon { font-size: 36px; width: 36px; height: 36px; color: var(--accent); }
     h1 { margin: 0; }
     .full-width { width: 100%; }
     .mt-1 { margin-top: 8px; }
     .mt-2 { margin-top: 16px; }
     .my-2 { margin: 16px 0; }
     .flex-grow { flex: 1; }
-    .hint { color: var(--mat-sys-on-surface-variant); margin-bottom: 16px; }
+    .hint { color: var(--text-secondary); margin-bottom: 16px; }
 
     .step-bar { display: flex; align-items: center; margin: 24px 0; gap: 0; }
     .step-item { display: flex; align-items: center; gap: 8px; cursor: default; }
     .step-item.clickable { cursor: pointer; }
     .step-circle {
       width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
-      justify-content: center; background: var(--mat-sys-surface-variant);
-      color: var(--mat-sys-on-surface-variant); font-weight: 500; font-size: 14px;
+      justify-content: center; background: var(--bg-surface);
+      color: var(--text-secondary); font-weight: 500; font-size: 14px;
+      border: 1px solid var(--border);
     }
-    .step-item.active .step-circle { background: var(--mat-sys-primary); color: var(--mat-sys-on-primary); }
-    .step-item.completed .step-circle { background: var(--mat-sys-tertiary); color: var(--mat-sys-on-tertiary); }
+    .step-item.active .step-circle { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); }
+    .step-item.completed .step-circle { background: var(--success); color: var(--text-on-accent); border-color: var(--success); }
     .step-item.completed .step-circle mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .step-label { font-size: 13px; white-space: nowrap; }
-    .step-connector { flex: 1; height: 2px; background: var(--mat-sys-outline-variant); margin: 0 8px; min-width: 24px; }
-    .step-connector.active { background: var(--mat-sys-tertiary); }
+    .step-connector { flex: 1; height: 2px; background: var(--border); margin: 0 8px; min-width: 24px; }
+    .step-connector.active { background: var(--success); }
 
     .source-toggle { display: flex; gap: 12px; }
     .indicator-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 4px; }
@@ -441,12 +444,12 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
 
     .presets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
     .preset-card {
-      display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 12px;
-      border: 1px solid var(--mat-sys-outline-variant); cursor: pointer; transition: all 0.2s;
+      display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--radius-md);
+      border: 1px solid var(--border); cursor: pointer; transition: all 0.2s;
     }
-    .preset-card:hover { border-color: var(--mat-sys-primary); }
-    .preset-card.selected { border-color: var(--mat-sys-primary); background: var(--mat-sys-primary-container); }
-    .preset-meta { font-size: 12px; color: var(--mat-sys-on-surface-variant); }
+    .preset-card:hover { border-color: var(--accent); }
+    .preset-card.selected { border-color: var(--accent); background: var(--accent-muted); }
+    .preset-meta { font-size: 12px; color: var(--text-secondary); }
     .preset-desc { font-size: 13px; }
 
     .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
@@ -455,17 +458,18 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
     .preview-meta { margin-bottom: 16px; }
 
     .yaml-preview {
-      background: var(--mat-sys-surface-container); color: var(--mat-sys-on-surface);
-      padding: 16px; border-radius: 8px; overflow-x: auto; font-family: 'JetBrains Mono', monospace;
+      background: var(--bg-surface); color: var(--text-primary);
+      border: 1px solid var(--border);
+      padding: 16px; border-radius: var(--radius-sm); overflow-x: auto; font-family: var(--font-mono);
       font-size: 13px; line-height: 1.5; max-height: 500px; overflow-y: auto;
       white-space: pre-wrap; word-break: break-word;
     }
 
     .result-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-    .result-icon { font-size: 40px; width: 40px; height: 40px; color: var(--mat-sys-tertiary); }
+    .result-icon { font-size: 40px; width: 40px; height: 40px; color: var(--success); }
     .result-details { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
     .detail-row { display: flex; gap: 12px; }
-    .detail-row .label { font-weight: 500; min-width: 140px; color: var(--mat-sys-on-surface-variant); }
+    .detail-row .label { font-weight: 500; min-width: 140px; color: var(--text-secondary); }
   `],
 })
 export class ExerciseForgeComponent implements OnInit {

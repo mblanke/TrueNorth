@@ -250,7 +250,7 @@ interface AuditEntry {
     mat-card-content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
     mat-card-content mat-form-field { flex: 1; min-width: 200px; }
     .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-    .action-chip { padding: 2px 10px; border-radius: 12px; font-size: 12px; background: var(--surface-light, #1e293b); }
+    .action-chip { padding: 2px 10px; border-radius: 12px; font-size: 12px; background: var(--bg-surface); }
     .action-create { background: #22c55e33; color: #4ade80; }
     .action-update { background: #3b82f633; color: #60a5fa; }
     .action-delete { background: #ef444433; color: #f87171; }

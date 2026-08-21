@@ -155,7 +155,7 @@ interface OpsStats {
                   <div matListItemTitle>
                     <strong>{{ a.user_display_name }}</strong>
                     <span class="type-badge" [attr.data-type]="a.annotation_type">{{ a.annotation_type }}</span>
-                    <span class="severity-badge" [attr.data-severity]="a.severity">{{ a.severity }}</span>
+                    <span class="status-chip" [class]="'sev-' + a.severity">{{ a.severity }}</span>
                   </div>
                   <div matListItemLine>{{ a.content }}</div>
                   <div matListItemMeta>{{ a.created_at | date:'shortTime' }}</div>
@@ -199,7 +199,7 @@ interface OpsStats {
                   </mat-card-subtitle>
                 </mat-card-header>
                 <mat-card-content>
-                  <pre class="command-text">{{ cmd.command }}</pre>
+                  <pre class="tn-code-block command-text">{{ cmd.command }}</pre>
                   @if (cmd.description) {
                     <p class="command-desc">{{ cmd.description }}</p>
                   }
@@ -247,7 +247,7 @@ interface OpsStats {
     </div>
   `,
   styles: [`
-    .subtitle { color: var(--text-secondary); margin-bottom: 16px; }
+    .subtitle { margin-bottom: 16px; }
     .stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
     .stats-row mat-card { flex: 1; min-width: 120px; text-align: center; }
     .tab-content { padding: 16px 0; }
@@ -257,15 +257,10 @@ interface OpsStats {
     .flex-grow { flex: 1; }
     .full-width { width: 100%; }
     .command-card { margin-bottom: 8px; }
-    .command-text { background: var(--mat-sys-surface-container); padding: 8px 12px; border-radius: 4px; overflow-x: auto; font-family: monospace; font-size: 13px; }
+    .command-text { margin: 0; }
     .command-desc { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
-    .type-badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 8px; background: var(--mat-sys-primary-container); }
-    .severity-badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
-    .severity-badge[data-severity="critical"] { background: #dc2626; color: white; }
-    .severity-badge[data-severity="high"] { background: #ea580c; color: white; }
-    .severity-badge[data-severity="medium"] { background: #d97706; color: white; }
-    .severity-badge[data-severity="low"] { background: #2563eb; color: white; }
-    .severity-badge[data-severity="info"] { background: #6b7280; color: white; }
+    .type-badge { font-size: 11px; padding: 1px 6px; border-radius: var(--radius-sm); margin-left: 8px; background: var(--accent-muted); color: var(--accent); }
+    .annotation-item .status-chip { margin-left: 4px; }
     .inject-form { display: flex; flex-direction: column; gap: 12px; }
     .annotation-item { margin-bottom: 4px; }
   `],

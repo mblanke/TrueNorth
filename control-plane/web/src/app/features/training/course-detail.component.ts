@@ -199,7 +199,7 @@ interface Section {
       .pill.draft { background: var(--warn-soft, rgba(180, 110, 0, 0.15)); }
 
       .desc { margin: 10px 0 16px; font-size: 0.86rem; }
-      .err { border-left: 3px solid var(--warn, #b26a00); }
+      .err { border-left: 3px solid var(--warning); }
 
       .mod { margin-bottom: 12px; padding: 12px 14px; }
       .mod-top {

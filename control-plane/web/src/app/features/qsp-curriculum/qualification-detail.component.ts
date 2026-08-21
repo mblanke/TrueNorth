@@ -299,7 +299,7 @@ const PROGRESS_LABEL: Record<POProgressState, string> = {
       }
       .delivered-by .db-course { font-weight: 700; font-family: var(--font-mono, monospace); }
       .delivered-by .db-module { color: var(--text-secondary, inherit); }
-      .delivered-by.none .db-label { color: var(--warn, #b26a00); }
+      .delivered-by.none .db-label { color: var(--warning); }
 
       .section-heading {
         margin: 22px 0 8px;
@@ -311,7 +311,7 @@ const PROGRESS_LABEL: Record<POProgressState, string> = {
       .course-objective { list-style: none; margin: 4px 0 10px 62px; }
       .course-objective .po-card { margin: 0; }
       .elsewhere, .gap { margin-top: 18px; }
-      .section-heading.warn { color: var(--warn, #b26a00); }
+      .section-heading.warn { color: var(--warning); }
       .from-where {
         display: flex;
         align-items: baseline;
