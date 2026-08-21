@@ -1558,6 +1558,9 @@ class ForgeRequest(BaseModel):
     range_template: str = Field(default="small-enterprise")
     focus_areas: list[str] = Field(default_factory=list)
     name_override: str | None = Field(None, max_length=255)
+    range_id: uuid.UUID | None = Field(
+        None, description="Attach the forged exercise to this range (else the tenant's first)"
+    )
 
 
 class ForgePreviewOut(BaseModel):

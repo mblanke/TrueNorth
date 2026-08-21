@@ -3,6 +3,7 @@
 from .ad_sync import router as ad_sync_router
 from .adaptive_learning import router as adaptive_learning_router
 from .admin import router as admin_router
+from .ai_authoring import router as ai_authoring_router
 from .ai_config import router as ai_config_router
 from .auth_zones import router as auth_zones_router
 from .competency import certs_router as certifications_router
@@ -18,6 +19,7 @@ from .exercises import router as exercises_router
 from .exercises_collective import router as collective_exercises_router
 from .golden_images import router as golden_images_router
 from .hypervisors import router as hypervisors_router
+from .injectors import router as injectors_router
 from .integrations import lti_router
 from .integrations import router as integrations_router
 from .kit import router as kit_router
@@ -40,6 +42,8 @@ __all__ = [
     "exercise_forge_router",
     "templates_router",
     "scenarios_router",
+    "injectors_router",
+    "ai_authoring_router",
     "admin_router",
     "proxmox_router",
     "scheduling_router",

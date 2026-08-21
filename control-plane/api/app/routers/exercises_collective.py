@@ -212,6 +212,64 @@ async def import_mesl(
     return {"imported": True, "serials": len(serials)}
 
 
+_DELIVERY_METHODS = {"cyber", "white_cell", "email", "radio", "physical", "opfor"}
+_MESL_STATUSES = {"planned", "staged", "delivered", "responded", "skipped"}
+
+_MESL_EDITABLE = {
+    "title", "description", "phase", "scenario_time", "objective_ref",
+    "attack_technique", "delivery_method", "from_cell", "to_participant",
+    "expected_action", "moe", "status",
+}
+
+
+class MeslEventPatch(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    phase: str | None = None
+    scenario_time: str | None = None
+    objective_ref: str | None = None
+    attack_technique: str | None = None
+    delivery_method: str | None = None
+    from_cell: str | None = None
+    to_participant: str | None = None
+    expected_action: str | None = None
+    moe: str | None = None
+    status: str | None = None
+
+
+@router.patch("/{exercise_id}/mesl/{event_id}")
+def patch_mesl_event(
+    exercise_id: str,
+    event_id: str,
+    body: MeslEventPatch,
+    db: Session = Depends(get_db),
+    _user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """Edit a single MESL serial (title/timing/delivery/status/...).
+
+    The MESL board needs per-event refinement and a delivery workflow; before
+    this the only way to change a serial was to re-import or regenerate the
+    whole list. Vocabularies are enforced so the board's chips stay meaningful.
+    """
+    _get_collective(db, exercise_id)  # 404s if the exercise is not collective
+    event = db.query(MeslEvent).filter_by(id=event_id, exercise_id=exercise_id).one_or_none()
+    if event is None:
+        raise HTTPException(status_code=404, detail="MESL event not found on this exercise")
+
+    updates = body.model_dump(exclude_unset=True)
+    if "delivery_method" in updates and updates["delivery_method"] not in _DELIVERY_METHODS:
+        raise HTTPException(status_code=422, detail=f"delivery_method must be one of {sorted(_DELIVERY_METHODS)}")
+    if "status" in updates and updates["status"] not in _MESL_STATUSES:
+        raise HTTPException(status_code=422, detail=f"status must be one of {sorted(_MESL_STATUSES)}")
+
+    for key, value in updates.items():
+        if key in _MESL_EDITABLE:
+            setattr(event, key, value[:255] if key == "title" else value)
+    db.commit()
+    db.refresh(event)
+    return _mesl_out(event).model_dump()
+
+
 class MeslGenerateReq(BaseModel):
     event_count: int = Field(default=12, ge=3, le=60)
     adversary: str = Field(default="", description="named actor / adversary package context")

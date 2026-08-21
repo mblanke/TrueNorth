@@ -7,6 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 class EmailPhishInjector(BaseInjector):
+    name: str = "email_phish"
+    description: str = "Delivers a simulated phishing email (sender, recipient, subject)."
+    required_params: list[str] = []
+
     def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         return {
             "injector": "email_phish",

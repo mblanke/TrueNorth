@@ -167,6 +167,7 @@ from .routers import (
     ad_sync_router,
     adaptive_learning_router,
     admin_router,
+    ai_authoring_router,
     ai_config_router,
     auth_zones_router,
     certifications_router,
@@ -180,6 +181,7 @@ from .routers import (
     exercises_router,
     golden_images_router,
     hypervisors_router,
+    injectors_router,
     integrations_router,
     kit_router,
     learning_paths_router,
@@ -204,6 +206,8 @@ app.include_router(exercises_router)
 app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)
+app.include_router(injectors_router)
+app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)
 app.include_router(scheduling_router)

@@ -305,3 +305,68 @@ def diagram_summary(po) -> str:
     _, zones = _plan(po)
     n = sum(len(z["nodes"]) for z in zones)
     return json.dumps({"zones": [z["name"] for z in zones], "hosts": n})
+
+
+# ── Template-driven starter topology ─────────────────────────────────────
+
+# Template asset roles → the designer's node stencil types + a default image.
+_ROLE_STENCIL: dict[str, tuple[str, str]] = {
+    "dc": ("dc", "windows-server-2022"),
+    "domain_controller": ("dc", "windows-server-2022"),
+    "server": ("server", "ubuntu-22.04"),
+    "workstation": ("workstation", "windows-11"),
+    "client": ("workstation", "windows-11"),
+    "kali": ("kali", "kali-2024"),
+    "attacker": ("kali", "kali-2024"),
+    "firewall": ("firewall", "pfsense"),
+    "gateway": ("firewall", "pfsense"),
+    "router": ("router", "vyos"),
+    "sensor": ("seconion", "security-onion"),
+    "ids": ("seconion", "security-onion"),
+}
+
+
+def build_template_diagram(template_yaml: str) -> dict:
+    """Render a range template's declared assets into a starter JointJS diagram.
+
+    Templates declare ``assets: [{role, type, count}]`` and/or ``nodes: [...]``
+    (template.schema.json); this lays one host cell per declared instance into a
+    single zone so the Range Designer can open a template as an editable
+    starting point instead of a blank canvas. Cells reuse the same helpers the
+    PO generator uses, so the designer renders them identically.
+
+    Raises ValueError on unparseable / non-mapping YAML so the caller can 422.
+    """
+    import yaml as pyyaml
+
+    try:
+        doc = pyyaml.safe_load(template_yaml)
+    except pyyaml.YAMLError as exc:
+        raise ValueError(f"template YAML did not parse: {exc}") from exc
+    if not isinstance(doc, dict):
+        raise ValueError("template must be a YAML mapping")
+
+    name = str(doc.get("name", "template"))
+    cidr = str(((doc.get("network") or {}) if isinstance(doc.get("network"), dict) else {}).get("cidr", "10.0.0.0/24"))
+
+    # Flatten declared hosts from assets[] (role+count) and nodes[] (explicit).
+    hosts: list[tuple[str, str]] = []  # (label, role)
+    for asset in doc.get("assets", []) or []:
+        if not isinstance(asset, dict):
+            continue
+        role = str(asset.get("role") or asset.get("type") or "server")
+        count = int(asset.get("count", 1) or 1)
+        for i in range(max(1, count)):
+            hosts.append((f"{role}{i + 1}" if count > 1 else role, role))
+    for node in doc.get("nodes", []) or []:
+        if isinstance(node, dict):
+            hosts.append((str(node.get("label") or node.get("name") or "node"), str(node.get("role") or node.get("type") or "server")))
+        elif isinstance(node, str):
+            hosts.append((node, "server"))
+
+    cells: list[dict] = [_cell_node("fw01", "Gateway", "firewall", "pfsense", "10.0.0.1", 280, 20)]
+    cells.append(_cell_zone("zone-0", name, cidr, 40, 130, dmz=False))
+    for i, (label, role) in enumerate(hosts[:24]):  # cap so a huge template stays legible
+        node_type, os_t = _ROLE_STENCIL.get(role.lower(), ("server", "ubuntu-22.04"))
+        cells.append(_cell_node(f"n-{i}", label, node_type, os_t, f"10.0.0.{10 + i}", 70 + (i % 4) * 150, 175 + (i // 4) * 95))
+    return {"cells": cells}

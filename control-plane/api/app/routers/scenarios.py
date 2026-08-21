@@ -23,8 +23,10 @@ import uuid
 import yaml as pyyaml
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from .. import engine_bridge
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Scenario, UserRole
@@ -37,8 +39,28 @@ logger = logging.getLogger("truenorth.api.scenarios")
 router = APIRouter(prefix="/scenarios", tags=["scenarios"])
 
 
+class YamlValidateIn(BaseModel):
+    yaml: str
+
+
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
     db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid))
+
+
+@router.post("/validate")
+def validate_scenario(
+    body: YamlValidateIn,
+    user: CurrentUser = Depends(require_permission(Permission.SCENARIO_READ)),
+) -> dict:
+    """Validate scenario YAML against the engine's canonical schema.
+
+    Returns ``{valid, errors: [{path, message}], normalized}`` — ``normalized``
+    is the parsed document whenever the YAML parses, even when schema-invalid,
+    so the Scenario Studio can load a document and show its problems at once.
+    Create/update stay permissive on purpose (forge output and older seeds are
+    not schema-clean); this endpoint is the contract for authored content.
+    """
+    return engine_bridge.validate_yaml("scenario", body.yaml)
 
 
 @router.post("", response_model=ScenarioOut, status_code=201)

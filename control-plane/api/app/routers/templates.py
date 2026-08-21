@@ -22,8 +22,10 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from .. import engine_bridge, range_topology
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Template, UserRole
@@ -36,8 +38,40 @@ logger = logging.getLogger("truenorth.api.templates")
 router = APIRouter(prefix="/templates", tags=["templates"])
 
 
+class YamlValidateIn(BaseModel):
+    yaml: str
+
+
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
     db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid))
+
+
+@router.post("/validate")
+def validate_template(
+    body: YamlValidateIn,
+    user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
+) -> dict:
+    """Validate range-template YAML against the engine's canonical schema."""
+    return engine_bridge.validate_yaml("template", body.yaml)
+
+
+@router.post("/{template_id}/diagram-preview")
+def template_diagram_preview(
+    template_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
+) -> dict:
+    """Render a template's declared assets into a starter JointJS diagram.
+
+    Lets the Range Designer open a template as an editable starting topology
+    rather than a blank canvas. 422 if the template YAML is unusable.
+    """
+    tmpl = get_owned(db, Template, template_id, user, not_found="Template not found")
+    try:
+        diagram = range_topology.build_template_diagram(tmpl.yaml or "")
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"template_id": str(tmpl.id), "diagram_json": diagram}
 
 
 @router.post("", response_model=TemplateOut, status_code=201)

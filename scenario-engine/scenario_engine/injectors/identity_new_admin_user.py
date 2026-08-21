@@ -7,6 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 class IdentityNewAdminUserInjector(BaseInjector):
+    name = "identity_new_admin_user"
+    description = "Creates a rogue privileged account on a target host."
+    required_params: list[str] = []
+
     def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         return {
             "injector": "identity_new_admin_user",

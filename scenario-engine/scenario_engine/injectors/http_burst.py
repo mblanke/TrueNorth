@@ -7,6 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 class HttpBurstInjector(BaseInjector):
+    name: str = "http_burst"
+    description: str = "Fires a burst of HTTP requests at a URL."
+    required_params: list[str] = ["url"]
+
     def validate_params(self) -> None:
         assert "url" in self.params or "target_url" in self.params
 
