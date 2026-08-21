@@ -25,10 +25,22 @@ from fastapi import HTTPException
 
 
 def engine_dir() -> Path:
+    """Where the scenario-engine lives, by env var or by searching upward.
+
+    The upward walk is bounded by however many parents actually exist: in the
+    container the app sits at /app/app, which has three ancestors, so indexing a
+    fixed depth raised IndexError instead of the clean 503 this module promises.
+    """
     env = os.getenv("SCENARIO_ENGINE_DIR")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parents[3] / "scenario-engine"
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        candidate = parent / "scenario-engine"
+        if candidate.is_dir():
+            return candidate
+    # Nothing found — return the in-repo location so the error names a real path.
+    return here.parents[min(3, len(here.parents) - 1)] / "scenario-engine"
 
 
 def _unavailable(what: str) -> HTTPException:

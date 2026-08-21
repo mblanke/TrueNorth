@@ -214,6 +214,13 @@ services:
       DB_STATEMENT_TIMEOUT_MS: "30000"
       # Uvicorn runs 4 workers (--workers 4 in Dockerfile)
       UVICORN_WORKERS: "4"
+      # The scenario engine owns the canonical scenario/template schemas and the
+      # inject registry. It is a sibling directory, not a pip dependency, and the
+      # API image is built from control-plane/api alone — so it is mounted rather
+      # than copied. Without it /injectors and the validate endpoints 503.
+      SCENARIO_ENGINE_DIR: /opt/scenario-engine
+    volumes:
+      - ../../../scenario-engine:/opt/scenario-engine:ro
     depends_on:
       postgres:
         condition: service_healthy
