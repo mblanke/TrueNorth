@@ -459,8 +459,8 @@ interface DeploymentProfile {
       <!-- Quick Actions -->
       <h2 class="section-heading"><mat-icon>bolt</mat-icon> Quick Actions</h2>
       <div class="quick-actions">
-        <button mat-stroked-button routerLink="/range-designer"><mat-icon>architecture</mat-icon> Design Range</button>
-        <button mat-stroked-button routerLink="/scenario-builder"><mat-icon>build</mat-icon> Build Scenario</button>
+        <button mat-stroked-button routerLink="/authoring/ranges/designer"><mat-icon>architecture</mat-icon> Design Range</button>
+        <button mat-stroked-button routerLink="/authoring/scenarios"><mat-icon>build</mat-icon> Build Scenario</button>
         <button mat-stroked-button routerLink="/learning/courses"><mat-icon>school</mat-icon> Browse Courses</button>
         <button mat-stroked-button routerLink="/infrastructure"><mat-icon>dns</mat-icon> Manage Infra</button>
         <button mat-stroked-button routerLink="/ai-orchestrator"><mat-icon>psychology</mat-icon> AI Config</button>

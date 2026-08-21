@@ -7,6 +7,76 @@ import {
   Scenario, Team, Template, Tenant, TelemetryEvent, User,
 } from '../models';
 
+/** Result of POST /scenarios/validate and /templates/validate. */
+export interface YamlValidation {
+  valid: boolean;
+  errors: { path: string; message: string }[];
+  normalized: Record<string, any> | null;
+}
+
+/** One entry of GET /injectors. */
+export interface InjectorInfo {
+  name: string;
+  description: string;
+  required_params: string[];
+  mitre_techniques: string[];
+}
+
+/** GET /ranges/stats. */
+export interface RangeStats {
+  total_ranges: number;
+  by_state: Record<string, number>;
+  total_vms: number;
+  active_exercises: number;
+}
+
+/** One row of GET /exercise-forge/history. */
+export interface ForgeHistoryItem {
+  id: string;
+  created_at: string | null;
+  exercise_id: string;
+  scenario_id: string;
+  exercise_name: string;
+  source: string;
+  difficulty: string;
+  model_used: string;
+  mitre_techniques: string[];
+}
+
+/** A collective exercise summary (list) and its detail (get). */
+export interface CollectiveExercise {
+  id: string;
+  name: string;
+  state: string;
+  range_id: string;
+  objectives: number;
+  mesl_events: number;
+}
+export interface MeslEvent {
+  id: string;
+  serial: number;
+  phase: string;
+  scenario_time: string;
+  title: string;
+  description: string;
+  objective_ref: string;
+  attack_technique: string;
+  delivery_method: string;
+  from_cell: string;
+  to_participant: string;
+  expected_action: string;
+  moe: string;
+  status: string;
+}
+export interface CollectiveExerciseDetail {
+  id: string;
+  name: string;
+  state: string;
+  range_id: string;
+  objectives: { id: string; ref: string; text: string; moe: string; competency_code: string }[];
+  mesl: MeslEvent[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private base = environment.apiUrl;
@@ -113,6 +183,87 @@ export class ApiService {
   }
   saveRangeDiagram(id: string, diagram: any): Observable<{ range_id: string; diagram_json: any }> {
     return this.http.put<{ range_id: string; diagram_json: any }>(`${this.base}/ranges/${id}/diagram`, diagram);
+  }
+  getRangeStats(): Observable<RangeStats> {
+    return this.http.get<RangeStats>(`${this.base}/ranges/stats`);
+  }
+
+  // ── Authoring: validation, catalogues, AI drafts ─────────
+  /** Validate scenario YAML against the engine schema (see POST /scenarios/validate). */
+  validateScenario(yaml: string): Observable<YamlValidation> {
+    return this.http.post<YamlValidation>(`${this.base}/scenarios/validate`, { yaml });
+  }
+  validateTemplate(yaml: string): Observable<YamlValidation> {
+    return this.http.post<YamlValidation>(`${this.base}/templates/validate`, { yaml });
+  }
+  /** Starter topology rendered from a template's declared assets. */
+  templateDiagramPreview(id: string): Observable<{ template_id: string; diagram_json: any }> {
+    return this.http.post<{ template_id: string; diagram_json: any }>(
+      `${this.base}/templates/${id}/diagram-preview`, {},
+    );
+  }
+  /** The real injector registry — replaces hard-coded action lists. */
+  listInjectors(): Observable<InjectorInfo[]> {
+    return this.http.get<InjectorInfo[]>(`${this.base}/injectors`);
+  }
+  /** Hypervisor-verified OS aliases for the designer's image picker. */
+  getGoldenImageAliasMap(hypervisor?: string): Observable<Record<string, string>> {
+    let params = new HttpParams();
+    if (hypervisor) params = params.set('hypervisor', hypervisor);
+    return this.http.get<Record<string, string>>(`${this.base}/golden-images/alias-map`, { params });
+  }
+  aiScenarioDraft(body: { objectives: string[]; difficulty?: string; duration_minutes?: number }):
+    Observable<{ output: string; model_used: string }> {
+    return this.http.post<{ output: string; model_used: string }>(`${this.base}/ai/scenario-draft`, body);
+  }
+  aiDetectionDraft(body: { technique: string; data_source?: string; format?: string }):
+    Observable<{ output: string; model_used: string }> {
+    return this.http.post<{ output: string; model_used: string }>(`${this.base}/ai/detection-draft`, body);
+  }
+  getForgeHistory(limit = 50, offset = 0): Observable<{ items: ForgeHistoryItem[]; total: number }> {
+    const params = new HttpParams().set('limit', limit).set('offset', offset);
+    return this.http.get<{ items: ForgeHistoryItem[]; total: number }>(
+      `${this.base}/exercise-forge/history`, { params },
+    );
+  }
+
+  // ── Collective exercises / MESL ──────────────────────────
+  listCollectiveExercises(): Observable<CollectiveExercise[]> {
+    return this.http.get<CollectiveExercise[]>(`${this.base}/collective-exercises`);
+  }
+  getCollectiveExercise(id: string): Observable<CollectiveExerciseDetail> {
+    return this.http.get<CollectiveExerciseDetail>(`${this.base}/collective-exercises/${id}`);
+  }
+  createCollectiveExercise(body: { name: string; range_id: string; objectives?: any[] }):
+    Observable<{ id: string; name: string; objectives_added: number }> {
+    return this.http.post<{ id: string; name: string; objectives_added: number }>(
+      `${this.base}/collective-exercises`, body,
+    );
+  }
+  importCollectiveObjectivesCsv(id: string, file: File): Observable<{ objectives_added: number }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ objectives_added: number }>(
+      `${this.base}/collective-exercises/${id}/objectives/import`, form,
+    );
+  }
+  /** Replaces the whole MESL — confirm with the author before calling. */
+  importMeslCsv(id: string, file: File): Observable<{ serials: number }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ serials: number }>(`${this.base}/collective-exercises/${id}/mesl/import`, form);
+  }
+  /** Also replaces the whole MESL. */
+  generateMesl(id: string, body: { event_count?: number; adversary?: string; duration_days?: number }):
+    Observable<{ serials: number; model_used: string }> {
+    return this.http.post<{ serials: number; model_used: string }>(
+      `${this.base}/collective-exercises/${id}/mesl/generate`, body,
+    );
+  }
+  patchMeslEvent(exerciseId: string, eventId: string, patch: Partial<MeslEvent>): Observable<MeslEvent> {
+    return this.http.patch<MeslEvent>(
+      `${this.base}/collective-exercises/${exerciseId}/mesl/${eventId}`, patch,
+    );
   }
 
   // ── Exercises ────────────────────────────────────────────

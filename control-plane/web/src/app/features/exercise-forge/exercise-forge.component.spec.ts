@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ExerciseForgeComponent } from './exercise-forge.component';
@@ -41,8 +41,31 @@ describe('ExerciseForgeComponent', () => {
     mitre_techniques: ['T1566.001', 'T1059.001', 'T1071.001'],
   };
 
+  const mockRanges = [
+    { id: 'r-1', name: 'Alpha Range', state: 'ready' },
+    { id: 'r-2', name: 'Bravo Range', state: 'stopped' },
+  ];
+
+  const mockHistory = {
+    items: [
+      {
+        id: 'h-1',
+        created_at: '2026-08-01T12:00:00Z',
+        exercise_id: 'e-123',
+        scenario_id: 's-456',
+        exercise_name: 'Forged: APT29 Campaign',
+        source: 'feed',
+        difficulty: 'advanced',
+        model_used: 'gpt-4o',
+        mitre_techniques: ['T1566.001'],
+      },
+    ],
+    total: 1,
+  };
+
   beforeEach(async () => {
-    mockApi = jasmine.createSpyObj('ApiService', ['get', 'post', 'listCurricula']);
+    mockApi = jasmine.createSpyObj('ApiService',
+      ['get', 'post', 'listCurricula', 'listRanges', 'getForgeHistory']);
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error']);
 
     mockApi.get.and.callFake((path: string): any => {
@@ -51,10 +74,13 @@ describe('ExerciseForgeComponent', () => {
       return of([]);
     });
     mockApi.listCurricula.and.returnValue(of([]));
+    mockApi.listRanges.and.returnValue(of(mockRanges as any));
+    mockApi.getForgeHistory.and.returnValue(of(mockHistory));
 
     await TestBed.configureTestingModule({
       imports: [ExerciseForgeComponent, NoopAnimationsModule],
       providers: [
+        provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
         {
@@ -184,6 +210,79 @@ describe('ExerciseForgeComponent', () => {
 
     expect(mockNotify.error).toHaveBeenCalledWith('Range not found');
     expect(component.generating()).toBeFalse();
+  });
+
+  it('should load ranges on init', () => {
+    fixture.detectChanges();
+    expect(mockApi.listRanges).toHaveBeenCalled();
+    expect(component.ranges().length).toBe(2);
+  });
+
+  it('omits range_id from the payload when no range is picked', () => {
+    fixture.detectChanges();
+    mockApi.post.and.returnValue(of(mockResult));
+    component.sourceMode = 'feed';
+    component.feedId = 'f1';
+    component.config.range_id = null;
+
+    component.doGenerate();
+
+    const body = mockApi.post.calls.mostRecent().args[1] as Record<string, unknown>;
+    expect('range_id' in body).toBeFalse();
+  });
+
+  it('includes range_id in the payload when a range is picked', () => {
+    fixture.detectChanges();
+    mockApi.post.and.returnValue(of(mockResult));
+    component.sourceMode = 'feed';
+    component.feedId = 'f1';
+    component.config.range_id = 'r-2';
+
+    component.doGenerate();
+
+    expect(mockApi.post).toHaveBeenCalledWith('/exercise-forge/generate', jasmine.objectContaining({
+      range_id: 'r-2',
+    }));
+  });
+
+  it('result panel links to the new exercise and its scenario', () => {
+    fixture.detectChanges();
+    mockApi.post.and.returnValue(of(mockResult));
+    component.sourceMode = 'feed';
+    component.feedId = 'f1';
+    component.doGenerate();
+    fixture.detectChanges();
+
+    const hrefs = Array.from(
+      fixture.nativeElement.querySelectorAll('[href]') as NodeListOf<HTMLAnchorElement>,
+    ).map(a => a.getAttribute('href'));
+    expect(hrefs).toContain('/exercises/e-123');
+    expect(hrefs.some(h => h?.startsWith('/authoring/scenarios?scenario=s-456'))).toBeTrue();
+  });
+
+  it('loadHistory fetches once and populates rows', () => {
+    fixture.detectChanges();
+    component.loadHistory();
+    component.loadHistory();
+
+    expect(mockApi.getForgeHistory).toHaveBeenCalledTimes(1);
+    expect(component.history().length).toBe(1);
+    expect(component.historyTotal()).toBe(1);
+    expect(component.historyLoading()).toBeFalse();
+  });
+
+  it('loadHistory surfaces an error and stays retryable', () => {
+    fixture.detectChanges();
+    mockApi.getForgeHistory.and.returnValue(throwError(() => new Error('boom')));
+
+    component.loadHistory();
+
+    expect(mockNotify.error).toHaveBeenCalledWith('Failed to load forge history');
+    expect(component.historyLoading()).toBeFalse();
+
+    mockApi.getForgeHistory.and.returnValue(of(mockHistory));
+    component.loadHistory();
+    expect(component.history().length).toBe(1);
   });
 
   it('reset should return to source step and clear state', () => {

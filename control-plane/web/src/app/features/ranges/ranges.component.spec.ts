@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { RangesComponent } from './ranges.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
@@ -32,6 +33,7 @@ describe('RangesComponent', () => {
       'provisionRange',
       'stopRange',
       'destroyRange',
+      'getRangeStats',
     ]);
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
@@ -41,10 +43,14 @@ describe('RangesComponent', () => {
     mockApi.provisionRange.and.returnValue(of({ id: 'r2', state: 'provisioning' } as Range));
     mockApi.stopRange.and.returnValue(of({ id: 'r1', state: 'stopped' } as Range));
     mockApi.destroyRange.and.returnValue(of({ id: 'r1', state: 'destroying' } as Range));
+    mockApi.getRangeStats.and.returnValue(of({
+      total_ranges: 4, by_state: { ready: 1, created: 1 }, total_vms: 12, active_exercises: 2,
+    }));
 
     await TestBed.configureTestingModule({
       imports: [RangesComponent, NoopAnimationsModule],
       providers: [
+        provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
       ],

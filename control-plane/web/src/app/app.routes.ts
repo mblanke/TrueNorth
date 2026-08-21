@@ -12,24 +12,10 @@ export const routes: Routes = [
       import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent),
     title: 'Dashboard - TrueNorth Range',
   },
-  {
-    path: 'ranges',
-    loadComponent: () =>
-      import('./features/ranges/ranges.component').then(m => m.RangesComponent),
-    title: 'Ranges - TrueNorth Range',
-  },
-  {
-    path: 'templates',
-    loadComponent: () =>
-      import('./features/templates/templates.component').then(m => m.TemplatesComponent),
-    title: 'Templates - TrueNorth Range',
-  },
-  {
-    path: 'scenarios',
-    loadComponent: () =>
-      import('./features/scenarios/scenarios.component').then(m => m.ScenariosComponent),
-    title: 'Scenarios - TrueNorth Range',
-  },
+  // Stray top-level list pages folded into the Authoring Studio hub.
+  { path: 'ranges', redirectTo: 'authoring/ranges', pathMatch: 'full' },
+  { path: 'templates', redirectTo: 'authoring/content', pathMatch: 'full' },
+  { path: 'scenarios', redirectTo: 'authoring/scenarios', pathMatch: 'full' },
   // -- Authoring Studio hub (consolidates the design/authoring screens) --
   {
     path: 'authoring',
@@ -40,6 +26,7 @@ export const routes: Routes = [
         { label: 'Ranges', path: 'ranges' },
         { label: 'Scenarios', path: 'scenarios' },
         { label: 'Detections', path: 'detections' },
+        { label: 'MESL', path: 'mesl' },
         { label: 'Forge', path: 'forge' },
         { label: 'Content', path: 'content' },
       ],
@@ -47,15 +34,22 @@ export const routes: Routes = [
     children: [
       { path: '', redirectTo: 'ranges', pathMatch: 'full' },
       {
+        // Ranges tab is now the range list; the designer opens per range.
         path: 'ranges',
         loadComponent: () =>
-          import('./features/range-designer/range-designer.component').then(m => m.RangeDesignerComponent),
+          import('./features/ranges/ranges.component').then(m => m.RangesComponent),
         title: 'Authoring · Ranges - TrueNorth Range',
+      },
+      {
+        path: 'ranges/designer',
+        loadComponent: () =>
+          import('./features/range-designer/range-designer.component').then(m => m.RangeDesignerComponent),
+        title: 'Authoring · Range Designer - TrueNorth Range',
       },
       {
         path: 'scenarios',
         loadComponent: () =>
-          import('./features/scenario-builder/scenario-builder.component').then(m => m.ScenarioBuilderComponent),
+          import('./features/scenario-studio/scenario-studio.component').then(m => m.ScenarioStudioComponent),
         title: 'Authoring · Scenarios - TrueNorth Range',
       },
       {
@@ -63,6 +57,18 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
         title: 'Authoring · Detections - TrueNorth Range',
+      },
+      {
+        path: 'mesl',
+        loadComponent: () =>
+          import('./features/mesl/mesl-home.component').then(m => m.MeslHomeComponent),
+        title: 'Authoring · MESL - TrueNorth Range',
+      },
+      {
+        path: 'mesl/:id',
+        loadComponent: () =>
+          import('./features/mesl/mesl-board.component').then(m => m.MeslBoardComponent),
+        title: 'Authoring · MESL Board - TrueNorth Range',
       },
       {
         path: 'forge',
@@ -135,7 +141,7 @@ export const routes: Routes = [
     ],
   },
   // -- Legacy paths kept as redirects into the hubs (no broken links) --
-  { path: 'range-designer', redirectTo: 'authoring/ranges', pathMatch: 'full' },
+  { path: 'range-designer', redirectTo: 'authoring/ranges/designer', pathMatch: 'full' },
   { path: 'scenario-builder', redirectTo: 'authoring/scenarios', pathMatch: 'full' },
   { path: 'detection-editor', redirectTo: 'authoring/detections', pathMatch: 'full' },
   { path: 'exercise-forge', redirectTo: 'authoring/forge', pathMatch: 'full' },

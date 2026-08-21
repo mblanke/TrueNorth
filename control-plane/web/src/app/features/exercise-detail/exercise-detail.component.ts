@@ -165,7 +165,7 @@ const NODE_ICON: Record<string, string> = {
             <a mat-stroked-button [routerLink]="['/topology-3d']" [queryParams]="{ range: d.range_id }">
               <mat-icon>3d_rotation</mat-icon> Open 3D
             </a>
-            <a mat-stroked-button [routerLink]="['/authoring/ranges']" [queryParams]="{ range: d.range_id }">
+            <a mat-stroked-button [routerLink]="['/authoring/ranges/designer']" [queryParams]="{ range: d.range_id }">
               <mat-icon>edit</mat-icon> Open in designer
             </a>
           </div>
