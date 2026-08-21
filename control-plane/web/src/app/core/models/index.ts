@@ -67,8 +67,19 @@ export interface Range {
   provisioner_backend: string | null;
   provisioner_output: string | null;
   error_message: string | null;
+  /** Operator-facing markdown: what this range is for, how it is used, ROE. */
+  description: string;
   created_at: string;
   updated_at: string;
+}
+
+/** A supporting file attached to a range. */
+export interface RangeDocument {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
 }
 
 // Matches backend ExerciseState enum exactly

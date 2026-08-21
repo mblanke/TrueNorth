@@ -296,8 +296,14 @@ class Range(SoftDeleteMixin, TimestampMixin, Base):
     provisioner_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     diagram_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Operator-facing prose: what this range is, how it is meant to be used, ROE.
+    # Markdown, either typed in the designer or imported from a text file.
+    description: Mapped[str] = mapped_column(Text, default="")
     template: Mapped[Template] = relationship()
     snapshots: Mapped[list[RangeSnapshot]] = relationship(back_populates="range_", cascade="all, delete-orphan")
+    documents: Mapped[list[RangeDocument]] = relationship(
+        back_populates="range_", cascade="all, delete-orphan"
+    )
 
 
 class RangeSnapshot(TimestampMixin, Base):
@@ -321,6 +327,31 @@ class RangeSnapshot(TimestampMixin, Base):
     range_state_at_snapshot: Mapped[str] = mapped_column(String(20), nullable=False)
     tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
     range_: Mapped[Range] = relationship(back_populates="snapshots")
+
+
+class RangeDocument(TimestampMixin, Base):
+    """A supporting file attached to a range (ROE, briefing pack, diagrams).
+
+    Distinct from `Range.description`, which is the editable prose shown in the
+    UI: these keep their original bytes so they can be handed back out intact.
+    Stored in MinIO like curriculum courseware; the row holds the metadata.
+    """
+
+    __tablename__ = "range_documents"
+    __table_args__ = (
+        Index("ix_range_docs_range", "range_id"),
+        Index("ix_range_docs_tenant", "tenant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    range_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("ranges.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), default="")
+    minio_key: Mapped[str] = mapped_column(String(600), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+    range_: Mapped[Range] = relationship(back_populates="documents")
 
 
 # -- Exercises ------------------------------------------------------------

@@ -140,6 +140,7 @@ class RangeIn(BaseModel):
 
 class RangeUpdate(BaseModel):
     name: str | None = None
+    description: str | None = None
 
 
 class RangeOut(BaseModel):
@@ -152,8 +153,18 @@ class RangeOut(BaseModel):
     provisioner_backend: str | None = None
     provisioner_output: str | None = None
     error_message: str | None = None
+    description: str = ""
     created_at: datetime
     updated_at: datetime
+
+
+class RangeDocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    filename: str
+    mime_type: str
+    size_bytes: int
+    created_at: datetime
 
 
 class RangeListOut(BaseModel):
@@ -162,6 +173,7 @@ class RangeListOut(BaseModel):
     name: str
     state: str
     error_message: str | None = None
+    description: str = ""
     created_at: datetime
     updated_at: datetime
 

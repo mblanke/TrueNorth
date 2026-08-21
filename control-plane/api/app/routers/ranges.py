@@ -23,22 +23,25 @@ POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from .. import object_store
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models import Exercise, ExerciseState, Range, RangeSnapshot, RangeState, Template
+from ..models import Exercise, ExerciseState, Range, RangeDocument, RangeSnapshot, RangeState, Template
 from ..rbac import Permission, require_permission
 from ..schemas import (
     BatchProvisionIn,
     BatchProvisionOut,
+    RangeDocumentOut,
     RangeIn,
     RangeListOut,
     RangeOut,
@@ -414,4 +417,170 @@ def delete_snapshot(
     _dispatch_task("delete_snapshot", str(range_id), str(snapshot_id))
     snap.snapshot_state = "deleted"
     _audit(db, user, "snapshot_delete", "range_snapshot", str(snapshot_id))
+    db.commit()
+
+
+# ── Description & documents ──────────────────────────────────────────────
+#
+# A range needed somewhere to say what it actually is — its purpose, the ROE, how
+# it is meant to be used. `Range.description` holds that as markdown, editable in
+# the designer or imported from a text file; `RangeDocument` keeps supporting
+# files (briefing packs, PDFs) with their original bytes intact.
+
+RANGE_BUCKET = "ranges"
+DESCRIPTION_SUFFIXES = (".md", ".markdown", ".txt", ".text", ".rst")
+MAX_DOC_BYTES = 25 * 1024 * 1024
+MAX_DESCRIPTION_CHARS = 200_000
+
+
+@router.post("/{range_id}/description/import", response_model=RangeOut)
+async def import_description(
+    file: UploadFile,
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
+) -> Range:
+    """Replace the range description with the contents of a text file.
+
+    Text in, text on the range — the file is not retained, so the description
+    stays editable and searchable afterwards. Use the documents endpoints when
+    the original file itself needs to be kept.
+    """
+    rng = _tenant_range(db, range_id, user)
+    filename = file.filename or "upload"
+    if not filename.lower().endswith(DESCRIPTION_SUFFIXES):
+        raise HTTPException(415, f"Expected a text or markdown file, got: {filename}")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(422, f"{filename} is empty")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(422, f"{filename} is not valid UTF-8 text") from exc
+    if len(text) > MAX_DESCRIPTION_CHARS:
+        raise HTTPException(413, "Description exceeds 200,000 characters")
+
+    rng.description = text
+    db.commit()
+    db.refresh(rng)
+    _audit(db, user, "description_import", "range", str(rng.id))
+    db.commit()
+    return rng
+
+
+def _tenant_document(
+    db: Session, range_id: uuid.UUID, document_id: uuid.UUID, user: CurrentUser
+) -> RangeDocument:
+    """Fetch an attachment scoped to both its range and the caller's tenant, or 404.
+
+    The range check alone would be enough (callers reach here through
+    `_tenant_range`), but the tenant predicate is stated outright so the scoping
+    is visible at the query rather than inferred from a caller two frames up.
+    """
+    doc = (
+        db.query(RangeDocument)
+        .filter(
+            RangeDocument.id == document_id,
+            RangeDocument.range_id == range_id,
+            RangeDocument.tenant_id == uuid.UUID(user.tenant_id),
+        )
+        .first()
+    )
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    return doc
+
+
+@router.get("/{range_id}/documents", response_model=list[RangeDocumentOut])
+def list_range_documents(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> list[RangeDocument]:
+    """Supporting documents attached to a range."""
+    _tenant_range(db, range_id, user)
+    return (
+        db.query(RangeDocument)
+        .filter(RangeDocument.range_id == range_id)
+        .order_by(RangeDocument.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/{range_id}/documents", response_model=list[RangeDocumentOut], status_code=201)
+async def upload_range_documents(
+    files: list[UploadFile],
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
+) -> list[RangeDocument]:
+    """Attach one or more supporting files to a range."""
+    rng = _tenant_range(db, range_id, user)
+    created: list[RangeDocument] = []
+    for file in files:
+        filename = file.filename or "upload"
+        data = await file.read()
+        if not data:
+            raise HTTPException(422, f"{filename} is empty")
+        if len(data) > MAX_DOC_BYTES:
+            raise HTTPException(413, f"{filename} exceeds the 25 MB limit")
+
+        doc = RangeDocument(
+            range_id=rng.id,
+            filename=filename,
+            mime_type=file.content_type or "application/octet-stream",
+            size_bytes=len(data),
+            tenant_id=uuid.UUID(user.tenant_id),
+        )
+        db.add(doc)
+        db.flush()
+        doc.minio_key = f"{rng.id}/{doc.id}/{filename}"
+        object_store.put_object(doc.minio_key, data, doc.mime_type, bucket=RANGE_BUCKET)
+        created.append(doc)
+
+    db.commit()
+    for doc in created:
+        db.refresh(doc)
+    _audit(db, user, "document_upload", "range", str(rng.id))
+    db.commit()
+    return created
+
+
+@router.get("/{range_id}/documents/{document_id}")
+def download_range_document(
+    range_id: uuid.UUID = Path(...),
+    document_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> Response:
+    """Download an attached document in its original form."""
+    _tenant_range(db, range_id, user)
+    doc = _tenant_document(db, range_id, document_id, user)
+    try:
+        data = object_store.get_object(doc.minio_key, bucket=RANGE_BUCKET)
+    except Exception as exc:  # noqa: BLE001 — object store faults are a 502, not a crash
+        logger.error("Could not read %s from object storage: %s", doc.minio_key, exc)
+        raise HTTPException(502, "Document storage is unavailable") from exc
+    return Response(
+        content=data,
+        media_type=doc.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
+    )
+
+
+@router.delete("/{range_id}/documents/{document_id}", status_code=204, response_class=Response)
+def delete_range_document(
+    range_id: uuid.UUID = Path(...),
+    document_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
+):
+    """Detach a document and remove its stored bytes."""
+    _tenant_range(db, range_id, user)
+    doc = _tenant_document(db, range_id, document_id, user)
+    with contextlib.suppress(Exception):
+        # A missing object must not block detaching the row it points at.
+        object_store.delete_object(doc.minio_key, bucket=RANGE_BUCKET)
+    db.delete(doc)
+    _audit(db, user, "document_delete", "range", str(range_id))
     db.commit()

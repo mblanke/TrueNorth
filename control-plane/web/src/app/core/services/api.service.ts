@@ -3,7 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
-  AAR, Exercise, HealthResponse, Objective, Range,
+  AAR, Exercise, HealthResponse, Objective, Range, RangeDocument,
   Scenario, Team, Template, Tenant, TelemetryEvent, User,
 } from '../models';
 
@@ -186,6 +186,27 @@ export class ApiService {
   }
   getRangeStats(): Observable<RangeStats> {
     return this.http.get<RangeStats>(`${this.base}/ranges/stats`);
+  }
+  /** Replace a range's description with the contents of a text/markdown file. */
+  importRangeDescription(id: string, file: File): Observable<Range> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<Range>(`${this.base}/ranges/${id}/description/import`, form);
+  }
+  listRangeDocuments(id: string): Observable<RangeDocument[]> {
+    return this.http.get<RangeDocument[]>(`${this.base}/ranges/${id}/documents`);
+  }
+  uploadRangeDocuments(id: string, files: File[]): Observable<RangeDocument[]> {
+    const form = new FormData();
+    for (const f of files) form.append('files', f);
+    return this.http.post<RangeDocument[]>(`${this.base}/ranges/${id}/documents`, form);
+  }
+  deleteRangeDocument(id: string, documentId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/ranges/${id}/documents/${documentId}`);
+  }
+  /** Direct link for downloading an attachment in its original form. */
+  rangeDocumentUrl(id: string, documentId: string): string {
+    return `${this.base}/ranges/${id}/documents/${documentId}`;
   }
 
   // ── Authoring: validation, catalogues, AI drafts ─────────

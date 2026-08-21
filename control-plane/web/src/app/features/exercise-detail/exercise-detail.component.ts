@@ -8,6 +8,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService } from '@core/services/api.service';
+import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 
 interface TimelineStep {
   t: string;
@@ -59,7 +60,7 @@ const NODE_ICON: Record<string, string> = {
   standalone: true,
   imports: [
     CommonModule, RouterLink, MatCardModule, MatChipsModule, MatIconModule,
-    MatButtonModule, MatProgressBarModule, MatSnackBarModule,
+    MatButtonModule, MatProgressBarModule, MatSnackBarModule, RangeNotesComponent,
   ],
   template: `
     <div class="xd" *ngIf="detail as d">
@@ -161,6 +162,12 @@ const NODE_ICON: Record<string, string> = {
             </div>
           }
 
+          @if (d.range_id) {
+            <div class="range-notes">
+              <tn-range-notes [rangeId]="d.range_id" [description]="rangeDescription" [readOnly]="true" />
+            </div>
+          }
+
           <div class="range-btns">
             <a mat-stroked-button [routerLink]="['/topology-3d']" [queryParams]="{ range: d.range_id }">
               <mat-icon>3d_rotation</mat-icon> Open 3D
@@ -234,6 +241,7 @@ const NODE_ICON: Record<string, string> = {
       .error-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 40px 16px; color: var(--text-secondary); }
       .error-panel mat-icon { font-size: 42px; width: 42px; height: 42px; color: var(--text-muted); }
       .range-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      .range-notes { margin: 12px 0; padding-top: 12px; border-top: 1px solid var(--border); }
       @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } .grid .panel:first-child { grid-row: auto; } }
     `,
   ],
@@ -247,6 +255,7 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   detail: ScenarioDetail | null = null;
   rangeName = '';
   rangeState = '';
+  rangeDescription = '';
   running = false;
   error = '';
   svgZones: SvgZone[] = [];
@@ -320,7 +329,11 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
         this.detail = d;
         if (d.range_id) {
           this.api.getRange(d.range_id).subscribe({
-            next: r => { this.rangeName = r.name; this.rangeState = r.state; },
+            next: r => {
+              this.rangeName = r.name;
+              this.rangeState = r.state;
+              this.rangeDescription = r.description || '';
+            },
             error: () => {},
           });
           if (!this.svgNodes.length) {

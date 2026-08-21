@@ -16,6 +16,7 @@ import { ApiService, RangeStats } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Range, Template } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { CountUpDirective } from '../../shared/motion';
 
 @Component({
@@ -25,7 +26,7 @@ import { CountUpDirective } from '../../shared/motion';
     CommonModule, MatCardModule, MatTableModule, MatButtonModule,
     MatIconModule, MatChipsModule, MatDialogModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, FormsModule, RouterLink,
-    EmptyStateComponent, CountUpDirective,
+    EmptyStateComponent, CountUpDirective, RangeNotesComponent,
   ],
   template: `
     <div class="page-container">
@@ -154,6 +155,11 @@ import { CountUpDirective } from '../../shared/motion';
                 <mat-icon>delete</mat-icon>
               </button>
             }
+            <button mat-icon-button (click)="toggleNotes(r)"
+                    [color]="notesFor()?.id === r.id ? 'primary' : undefined"
+                    [matTooltip]="r.description ? 'Description and documents' : 'Add a description'">
+              <mat-icon>{{ r.description ? 'description' : 'note_add' }}</mat-icon>
+            </button>
             @if (r.error_message) {
               <button mat-icon-button matTooltip="{{ r.error_message }}">
                 <mat-icon color="warn">error</mat-icon>
@@ -164,6 +170,24 @@ import { CountUpDirective } from '../../shared/motion';
         <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
         <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
       </table>
+
+      @if (notesFor(); as sel) {
+        <mat-card class="notes-card mt-2">
+          <mat-card-content>
+            <div class="notes-title">
+              <span class="notes-range">{{ sel.name }}</span>
+              <button mat-icon-button (click)="notesFor.set(null)" matTooltip="Close">
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+            <tn-range-notes
+              [rangeId]="sel.id"
+              [description]="sel.description || ''"
+              (descriptionChange)="onDescriptionChanged(sel.id, $event)"
+            />
+          </mat-card-content>
+        </mat-card>
+      }
 
       @if (loading()) {
         <div class="tn-skeleton-group mt-2" aria-busy="true">
@@ -190,6 +214,9 @@ import { CountUpDirective } from '../../shared/motion';
     .full-width { width: 100%; }
     .create-form mat-card-content, .edit-form mat-card-content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
     .create-form mat-form-field, .edit-form mat-form-field { flex: 1; min-width: 200px; }
+    .notes-card { border: 1px solid var(--accent); }
+    .notes-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .notes-range { font-weight: 600; color: var(--text-primary); }
     .stats-strip {
       display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: center;
       margin: 12px 0 4px; padding: 12px 16px;
@@ -212,6 +239,8 @@ export class RangesComponent implements OnInit {
   editForm = { name: '' };
   saving = false;
   displayedColumns = ['name', 'state', 'created', 'actions'];
+  /** The range whose description panel is open, if any. */
+  notesFor = signal<Range | null>(null);
 
   constructor(private api: ApiService, private notify: NotificationService) {}
 
@@ -233,6 +262,17 @@ export class RangesComponent implements OnInit {
       next: r => { this.ranges.set(r); this.loading.set(false); },
       error: () => this.loading.set(false),
     });
+  }
+
+  toggleNotes(r: Range): void {
+    this.notesFor.set(this.notesFor()?.id === r.id ? null : r);
+  }
+
+  /** Keep the row in step with an edit made in the panel, without a refetch. */
+  onDescriptionChanged(id: string, description: string): void {
+    this.ranges.set(this.ranges().map(r => (r.id === id ? { ...r, description } : r)));
+    const open = this.notesFor();
+    if (open?.id === id) this.notesFor.set({ ...open, description });
   }
 
   createRange(): void {

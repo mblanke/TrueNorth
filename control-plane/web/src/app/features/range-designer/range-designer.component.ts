@@ -35,6 +35,7 @@ import * as joint from 'jointjs';
 import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
 import { ApiService } from '@core/services/api.service';
+import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { Range, Template } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
@@ -237,6 +238,7 @@ export class TextPromptDialogComponent {
     CommonModule, FormsModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatTooltipModule,
     MatSliderModule, MatDividerModule, MatSnackBarModule, MatDialogModule, FilterCategoryPipe,
+    RangeNotesComponent,
     EmptyStateComponent,
   ],
   template: `
@@ -501,6 +503,16 @@ export class TextPromptDialogComponent {
             <p class="hint">Drag components from the palette to add them.</p>
           </div>
         }
+
+        @if (rangeId(); as rid) {
+          <div class="props-notes">
+            <tn-range-notes
+              [rangeId]="rid"
+              [description]="rangeDescription()"
+              (descriptionChange)="rangeDescription.set($event)"
+            />
+          </div>
+        }
       </aside>
     </div>
 
@@ -509,6 +521,12 @@ export class TextPromptDialogComponent {
   `,
   styles: [`
     :host { display: block; height: calc(100vh - 64px); overflow: hidden; }
+
+    .props-notes {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
 
     .designer-layout {
       display: grid;
@@ -844,6 +862,8 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
   selectedNode = signal<joint.dia.Element | null>(null);
   selectedNodeType = signal('');
   rangeId = signal<string | null>(null);
+  /** The open range's description, shown and edited in the properties rail. */
+  rangeDescription = signal('');
   canUndo = signal(false);
   canRedo = signal(false);
   /** True whenever the canvas holds edits that are not on the server yet. */
@@ -1558,6 +1578,12 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
   }
 
   loadDiagram(id: string): void {
+    // The description travels with the range, not the diagram, so it needs its
+    // own read. A failure here must not stop the topology from loading.
+    this.api.getRange(id).subscribe({
+      next: r => this.rangeDescription.set(r.description || ''),
+      error: () => this.rangeDescription.set(''),
+    });
     this.api.getRangeDiagram(id).subscribe({
       next: (res) => {
         const diagram = res?.diagram_json;
