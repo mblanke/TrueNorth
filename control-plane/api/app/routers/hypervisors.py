@@ -19,6 +19,7 @@ from ..models import (
     HypervisorNode,
     HypervisorPool,
 )
+from ..rbac import Permission, require_permission
 from ..schemas import (
     HypervisorConnectionIn,
     HypervisorConnectionOut,
@@ -29,7 +30,11 @@ from ..schemas import (
     HypervisorTestResult,
 )
 
-router = APIRouter(prefix="/hypervisors", tags=["Infrastructure"])
+# Router-level authentication. Hypervisor connection CRUD and discovery. POST /connections stores
+# credentials, so this is write-level for the whole router.
+#
+# Every route here was previously reachable with no credentials at all.
+router = APIRouter(prefix="/hypervisors", tags=["Infrastructure"], dependencies=[Depends(require_permission(Permission.INFRA_WRITE))])
 
 
 # -- Connections CRUD ----------------------------------------------------

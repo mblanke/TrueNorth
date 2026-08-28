@@ -55,8 +55,8 @@
         "composite": false
       },
       {
-        "name": "trainee",
-        "description": "Can participate in exercises and view own results",
+        "name": "student",
+        "description": "Trainee: can participate in exercises and view own results",
         "composite": false
       },
       {
@@ -92,7 +92,7 @@
     }
   },
   "defaultRoles": [
-    "trainee"
+    "student"
   ],
   "defaultDefaultClientScopes": [
     "web-origins",
@@ -380,7 +380,7 @@
         }
       ],
       "realmRoles": [
-        "trainee"
+        "student"
       ],
       "clientRoles": {
         "truenorth-api": [
