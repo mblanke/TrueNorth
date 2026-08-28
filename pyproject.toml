@@ -118,6 +118,13 @@ ignore = [
     "N999",   # invalid-module-name — hyphenated pkg dirs (telemetry-pipeline)
 ]
 
+[tool.ruff.lint.isort]
+# Pin `alembic` as third-party. Ruff otherwise infers first-vs-third-party from
+# the directory layout, so the presence or absence of a local `alembic/` folder
+# silently flipped the expected import order in every migration file — deleting
+# an unused directory should not reformat 14 unrelated files.
+known-third-party = ["alembic"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true

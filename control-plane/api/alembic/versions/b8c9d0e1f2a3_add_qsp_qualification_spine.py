@@ -9,9 +9,8 @@ Create Date: 2026-07-17 19:20:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from app.models import GUID
-
 from alembic import op
+from app.models import GUID
 
 # revision identifiers, used by Alembic.
 revision: str = "b8c9d0e1f2a3"
@@ -24,6 +23,16 @@ _PO_TIER = sa.Enum("core", "gate", name="potier")
 _PO_STATUS = sa.Enum("todo", "example", "needs_spec", "offensive_author", "cots_gate", "done", name="postatus")
 _QSP_ENV = sa.Enum("cste", "cste_sterile", "cote", "mobile", name="qspenvironment")
 _CONTENT_KIND = sa.Enum("teach", "check", "assess", name="contentkind")
+
+
+def _has_table(name: str) -> bool:
+    return name in sa.inspect(op.get_bind()).get_table_names()
+
+
+def _has_column(table: str, column: str) -> bool:
+    if not _has_table(table):
+        return False
+    return column in {c["name"] for c in sa.inspect(op.get_bind()).get_columns(table)}
 
 
 def upgrade() -> None:
@@ -138,17 +147,29 @@ def upgrade() -> None:
     op.create_index("ix_rom_po", "range_objective_map", ["po_id"])
 
     # Anchor existing LMS tables to the QSP spine (batch mode → SQLite-safe FK add)
-    with op.batch_alter_table("courses") as batch:
-        batch.add_column(sa.Column("qualification_id", GUID(), sa.ForeignKey("qualifications.id"), nullable=True))
-    with op.batch_alter_table("course_modules") as batch:
-        batch.add_column(sa.Column("po_id", GUID(), sa.ForeignKey("performance_objectives.id"), nullable=True))
+    # courses and course_modules are ORM-only tables (see b0c1d2e3f4a5), so on a
+    # fresh database they already carry these columns. Skipping the ALTER also
+    # avoids SQLite batch mode having to reflect and rebuild a table whose
+    # ORM-created constraints are unnamed — which fails outright.
+    if not _has_column("courses", "qualification_id"):
+        with op.batch_alter_table("courses") as batch:
+            batch.add_column(
+                sa.Column("qualification_id", GUID(), sa.ForeignKey("qualifications.id"), nullable=True)
+            )
+    if not _has_column("course_modules", "po_id"):
+        with op.batch_alter_table("course_modules") as batch:
+            batch.add_column(
+                sa.Column("po_id", GUID(), sa.ForeignKey("performance_objectives.id"), nullable=True)
+            )
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("course_modules") as batch:
-        batch.drop_column("po_id")
-    with op.batch_alter_table("courses") as batch:
-        batch.drop_column("qualification_id")
+    if _has_column("course_modules", "po_id"):
+        with op.batch_alter_table("course_modules") as batch:
+            batch.drop_column("po_id")
+    if _has_column("courses", "qualification_id"):
+        with op.batch_alter_table("courses") as batch:
+            batch.drop_column("qualification_id")
 
     op.drop_index("ix_rom_po", table_name="range_objective_map")
     op.drop_index("ix_rom_template", table_name="range_objective_map")

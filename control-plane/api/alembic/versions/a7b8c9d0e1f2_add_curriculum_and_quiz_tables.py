@@ -9,15 +9,24 @@ Create Date: 2026-06-11 16:00:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from app.models import GUID
-
 from alembic import op
+from app.models import GUID
 
 # revision identifiers, used by Alembic.
 revision: str = "a7b8c9d0e1f2"
 down_revision: str | None = "f6a1b2c3d4e5"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+
+def _has_table(name: str) -> bool:
+    return name in sa.inspect(op.get_bind()).get_table_names()
+
+
+def _has_column(table: str, column: str) -> bool:
+    if not _has_table(table):
+        return False
+    return column in {c["name"] for c in sa.inspect(op.get_bind()).get_columns(table)}
 
 
 def upgrade() -> None:
@@ -129,9 +138,18 @@ def upgrade() -> None:
     op.add_column("objectives", sa.Column("competency_code", sa.String(50), nullable=True))
 
     # Phase 5: auto-assessments can originate from quiz attempts, not just exercises
-    with op.batch_alter_table("competency_auto_assessments") as batch:
-        batch.alter_column("exercise_id", existing_type=GUID(), nullable=True)
-        batch.add_column(sa.Column("quiz_attempt_id", GUID(), sa.ForeignKey("quiz_attempts.id"), nullable=True))
+    #
+    # Guarded because no migration ever created competency_auto_assessments —
+    # it only existed in dev because the API's create_all() had made it, so this
+    # ALTER aborted every `upgrade head` from an empty database. When the table
+    # is absent it is created later, from the ORM, by the reconcile migration at
+    # the head of the chain — already carrying quiz_attempt_id.
+    if not _has_column("competency_auto_assessments", "quiz_attempt_id"):
+        with op.batch_alter_table("competency_auto_assessments") as batch:
+            batch.alter_column("exercise_id", existing_type=GUID(), nullable=True)
+            batch.add_column(
+                sa.Column("quiz_attempt_id", GUID(), sa.ForeignKey("quiz_attempts.id"), nullable=True)
+            )
 
     # Phase 6: LTI 1.3 tool keys + launch records + platform OIDC auth URL
     op.create_table(
@@ -160,11 +178,16 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.create_index("ix_lti_launch_user_resource", "lti_launches", ["user_id", "resource_kind", "resource_id"])
-    op.add_column("external_platforms", sa.Column("lti_auth_login_url", sa.Text(), nullable=True))
+    # Guarded for the same reason: external_platforms is one of the ORM-only
+    # tables, so on a fresh database it arrives from b0c1d2e3f4a5 already
+    # carrying this column.
+    if not _has_column("external_platforms", "lti_auth_login_url"):
+        op.add_column("external_platforms", sa.Column("lti_auth_login_url", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("external_platforms", "lti_auth_login_url")
+    if _has_column("external_platforms", "lti_auth_login_url"):
+        op.drop_column("external_platforms", "lti_auth_login_url")
     op.drop_index("ix_lti_launch_user_resource", table_name="lti_launches")
     op.drop_table("lti_launches")
     op.drop_table("lti_tool_keys")
