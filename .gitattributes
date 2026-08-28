@@ -1,0 +1,31 @@
+# Line-ending policy.
+#
+# This repository is worked on from Windows/WSL and from Linux, and the round
+# trip had silently rewritten committed LF files to CRLF in the working tree.
+# For shell scripts that is not cosmetic: a `#!/usr/bin/env bash\r` shebang, or
+# `set -euo pipefail\r`, does not run. scripts/dod.sh — the Definition of Done
+# gate — could not execute at all in that state, on any platform.
+#
+# Deliberately narrow rather than a blanket `* text=auto`: a repo-wide
+# normalisation would rewrite hundreds of files at once and bury real changes.
+
+# Anything executed by a shell or copied into a Linux container must be LF.
+*.sh        text eol=lf
+*.bash      text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# PowerShell is run from Windows; CRLF is correct there.
+*.ps1       text eol=crlf
+
+# Python tolerates either, but the tree is LF and mixed endings make diffs
+# unreadable — a two-line change shows as a whole-file rewrite.
+*.py        text eol=lf
+
+*.png       binary
+*.jpg       binary
+*.pdf       binary
+*.docx      binary
+*.xlsx      binary
+*.iso       binary
