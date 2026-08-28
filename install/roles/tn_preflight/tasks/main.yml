@@ -1,0 +1,231 @@
+---
+# Preflight. Read-only by construction: every task is a check, nothing is
+# changed. Runs clean under --check.
+#
+# House rule from the deployment repo, and it applies here: stop and report,
+# do not improvise around a failed preflight. Each assert names the fix.
+
+- name: Preflight — collect facts
+  ansible.builtin.setup:
+    gather_subset:
+      - "!all"
+      - "min"
+      - "hardware"
+      - "network"
+
+- name: Preflight — OS is Ubuntu 24.04 or newer
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version is version('24.04', '>=')
+    fail_msg: >-
+      Expected Ubuntu 24.04+, found {{ ansible_distribution }}
+      {{ ansible_distribution_version }}. The platform host is TN-MGMT01.
+    success_msg: "OS {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+# ── Container runtime ─────────────────────────────────────────────────
+- name: Preflight — docker present
+  ansible.builtin.command: docker version --format '{{ "{{" }}.Server.Version{{ "}}" }}'
+  register: tn_docker_version
+  changed_when: false
+  failed_when: tn_docker_version.rc != 0
+
+- name: Preflight — docker compose v2 present
+  ansible.builtin.command: docker compose version --short
+  register: tn_compose_version
+  changed_when: false
+  failed_when: tn_compose_version.rc != 0
+
+# Version strings are extracted with a regex rather than compared raw: the
+# deployment repo records "Docker 29.7.2" and "Compose v5.5.0", which match no
+# released version, and a raw comparison would blow up rather than report.
+- name: Preflight — docker/compose meet the version floor
+  vars:
+    _docker: "{{ tn_docker_version.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+') }}"
+    _compose: "{{ tn_compose_version.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+') }}"
+  ansible.builtin.assert:
+    that:
+      - _docker is not none
+      - _compose is not none
+      - _docker is version(tn_min_docker_version, '>=')
+      - _compose is version(tn_min_compose_version, '>=')
+    fail_msg: >-
+      Docker {{ _docker | default('?') }} / Compose {{ _compose | default('?') }}
+      is below the floor ({{ tn_min_docker_version }} / {{ tn_min_compose_version }}).
+      Re-run scripts/install-docker-tnmgmt01.sh from the deployment repo.
+    success_msg: "Docker {{ _docker }}, Compose {{ _compose }}"
+
+- name: Preflight — current user can reach the docker socket
+  ansible.builtin.command: docker info --format '{{ "{{" }}.ServerVersion{{ "}}" }}'
+  register: tn_docker_info
+  changed_when: false
+  failed_when: tn_docker_info.rc != 0
+
+# ── Disk ──────────────────────────────────────────────────────────────
+- name: Preflight — locate the mount backing {{ tn_data_root }}
+  vars:
+    _candidates: >-
+      {{ ansible_mounts
+         | selectattr('mount', 'in', [tn_data_root, '/srv', '/'])
+         | sort(attribute='mount') | list }}
+  ansible.builtin.set_fact:
+    tn_data_mount: "{{ (_candidates | last) if _candidates else none }}"
+
+- name: Preflight — enough free space for the platform
+  ansible.builtin.assert:
+    that:
+      - tn_data_mount is not none
+      - (tn_data_mount.size_available / 1073741824) >= (tn_min_free_gb | int)
+    fail_msg: >-
+      {{ tn_data_root }} has
+      {{ ((tn_data_mount.size_available | default(0)) / 1073741824) | round(1) }} GB free;
+      {{ tn_min_free_gb }} GB is required for Postgres, OpenSearch, MinIO and artifacts.
+    success_msg: >-
+      {{ ((tn_data_mount.size_available) / 1073741824) | round(1) }} GB free on
+      {{ tn_data_mount.mount }}
+
+# ── Kernel tuning OpenSearch depends on ───────────────────────────────
+# compose.prod.yml runs OpenSearch with bootstrap.memory_lock=true. On a stock
+# Ubuntu box vm.max_map_count is 65530 and the container dies on startup with a
+# message that does not obviously point here.
+- name: Preflight — read vm.max_map_count
+  ansible.builtin.command: sysctl -n vm.max_map_count
+  register: tn_max_map_count
+  changed_when: false
+
+- name: Preflight — report vm.max_map_count (tn_base raises it)
+  ansible.builtin.debug:
+    msg: >-
+      vm.max_map_count is {{ tn_max_map_count.stdout }}.
+      {{ 'OK.' if (tn_max_map_count.stdout | int) >= 262144
+         else 'Below 262144 — tn_base will raise it, or OpenSearch will not start.' }}
+
+# ── Time ──────────────────────────────────────────────────────────────
+- name: Preflight — NTP synchronised
+  ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+  register: tn_ntp
+  changed_when: false
+  failed_when: false
+
+- name: Preflight — assert clock discipline
+  ansible.builtin.assert:
+    that: tn_ntp.stdout | trim == "yes"
+    fail_msg: >-
+      Clock is not NTP-synchronised. OIDC token validation and Kerberos both
+      fail on skew, in ways that look like credential errors rather than time errors.
+    success_msg: "Clock synchronised"
+
+# ── Name resolution, forward AND reverse ──────────────────────────────
+- name: Preflight — forward DNS
+  ansible.builtin.command: "getent hosts {{ item }}"
+  register: tn_fwd
+  changed_when: false
+  failed_when: tn_fwd.rc != 0
+  loop:
+    - "{{ tn_domain_fqdn }}"
+    - "{{ tn_dc_host }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Preflight — reverse DNS for the platform host
+  ansible.builtin.command: "getent hosts {{ ansible_host }}"
+  register: tn_rev
+  changed_when: false
+  failed_when: false
+
+- name: Preflight — report reverse DNS
+  ansible.builtin.debug:
+    msg: >-
+      Reverse lookup of {{ ansible_host }}:
+      {{ tn_rev.stdout | default('(none)') | trim }}
+      {{ '' if tn_rev.rc == 0 else '— missing. The 30.30.10.in-addr.arpa zone on TN-DC01 should cover this.' }}
+
+# ── Reachability of everything we depend on ───────────────────────────
+- name: Preflight — vCenter API reachable
+  ansible.builtin.wait_for:
+    host: "{{ tn_vcenter_host }}"
+    port: 443
+    timeout: 10
+
+- name: Preflight — LDAPS port open on the domain controller
+  ansible.builtin.wait_for:
+    host: "{{ tn_dc_host }}"
+    port: "{{ tn_ldap_port }}"
+    timeout: 10
+
+# A port probe proves a socket, not a working directory. This proves the TLS
+# handshake AND that the bind account still works — the two things that actually
+# break Keycloak federation later.
+- name: Preflight — real LDAPS bind as the Keycloak service account
+  ansible.builtin.command:
+    argv:
+      - ldapsearch
+      - -x
+      - -LLL
+      - -H
+      - "ldaps://{{ tn_dc_host }}:{{ tn_ldap_port }}"
+      - -D
+      - "{{ tn_ldap_bind_dn }}"
+      - -w
+      - "{{ vault_ldap_bind_password }}"
+      - -b
+      - "{{ tn_ldap_base_dn }}"
+      - -s
+      - base
+      - "(objectClass=*)"
+      - dn
+  register: tn_ldap_bind
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Preflight — assert the LDAPS bind succeeded
+  ansible.builtin.assert:
+    that: tn_ldap_bind.rc == 0
+    fail_msg: >-
+      LDAPS bind to {{ tn_dc_host }} failed (rc={{ tn_ldap_bind.rc }}).
+      Check vault_ldap_bind_password, that svc-keycloak-bind is not locked out,
+      and that the AD CS certificate on the DC is still valid.
+      Failing here is deliberate — the alternative is discovering it at step 60,
+      after the whole stack is up.
+    success_msg: "LDAPS bind OK as {{ tn_ldap_bind_dn | regex_search('^CN=[^,]+') }}"
+
+- name: Preflight — AI inference endpoint reachable
+  ansible.builtin.uri:
+    url: "{{ tn_ai_base_url }}/models"
+    method: GET
+    status_code: [200, 401, 403]
+    timeout: 10
+    validate_certs: false
+  register: tn_ai_probe
+  failed_when: false
+
+- name: Preflight — report AI endpoint
+  ansible.builtin.debug:
+    msg: >-
+      AI endpoint {{ tn_ai_base_url }}:
+      {{ 'reachable (HTTP ' ~ tn_ai_probe.status ~ ')' if tn_ai_probe.status is defined
+         else 'UNREACHABLE — the AI orchestrator will start but every generation will fail.' }}
+
+# ── Ports we are about to bind ────────────────────────────────────────
+- name: Preflight — 80/443 are free
+  ansible.builtin.wait_for:
+    port: "{{ item }}"
+    state: stopped
+    timeout: 3
+  loop: [80, 443]
+  failed_when: false
+  register: tn_ports
+
+- name: Preflight — summary
+  ansible.builtin.debug:
+    msg:
+      - "host            : {{ inventory_hostname }} ({{ ansible_host }})"
+      - "os              : {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "docker          : {{ tn_docker_version.stdout }} / compose {{ tn_compose_version.stdout }}"
+      - "free space      : {{ ((tn_data_mount.size_available) / 1073741824) | round(1) }} GB"
+      - "vm.max_map_count: {{ tn_max_map_count.stdout }}"
+      - "ntp             : {{ tn_ntp.stdout | trim }}"
+      - "vcenter         : {{ tn_vcenter_host }}:443 reachable"
+      - "ldaps bind      : OK"
+      - "app source      : {{ tn_app_source_mode }} ({{ tn_app_git_repo if tn_app_source_mode == 'git' else (tn_app_local_path or tn_app_tarball) }})"

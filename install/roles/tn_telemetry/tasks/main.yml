@@ -1,0 +1,41 @@
+---
+# OpenSearch index templates, ISM policies and ingest pipelines.
+#
+# telemetry/ is not inside the api build context (control-plane/api), so the
+# module is not in the image. It is reached through a bind mount of the
+# checkout, on the tn-backend network — opensearch publishes no ports in
+# production, so this cannot be driven from the host directly.
+
+- name: Telemetry — bootstrap OpenSearch objects
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      run --rm --no-deps --entrypoint ""
+      -v {{ tn_app_dir }}:/opt/truenorth:ro
+      -w /opt/truenorth
+      api python -m telemetry.pipelines.bootstrap
+      --opensearch-url http://opensearch:9200
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_os_bootstrap
+  changed_when: true
+  # The module is idempotent by design, so re-running is safe; failure here is
+  # worth surfacing but should not tear down a working stack.
+  failed_when: tn_os_bootstrap.rc != 0
+
+- name: Telemetry — confirm index templates exist
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T opensearch curl -sf localhost:9200/_cat/templates?h=name
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_os_templates
+  changed_when: false
+  failed_when: false
+
+- name: Telemetry — report
+  ansible.builtin.debug:
+    msg: >-
+      OpenSearch templates: {{ (tn_os_templates.stdout_lines | default([]) | length) }} present.
+      {{ 'Telemetry ingest has somewhere to land.'
+         if (tn_os_templates.stdout_lines | default([]) | length) > 0
+         else 'NONE — telemetry-pipeline will index into dynamically-mapped indices.' }}

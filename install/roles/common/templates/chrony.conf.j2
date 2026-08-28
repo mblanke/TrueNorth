@@ -1,7 +1,0 @@
-# Managed by Ansible -- TrueNorth Range
-{% for ntp in ntp_servers %}
-server {{ ntp }} iburst
-{% endfor %}
-driftfile /var/lib/chrony/chrony.drift
-makestep 1.0 3
-rtcsync

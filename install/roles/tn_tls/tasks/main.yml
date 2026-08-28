@@ -1,0 +1,109 @@
+---
+# TLS material.
+#
+# Two things happen here and they are easy to conflate:
+#   1. The certificate nginx SERVES to browsers.
+#   2. The CA that Keycloak TRUSTS when it binds to AD over LDAPS.
+# The second is the one people forget, and its absence surfaces much later as
+# "PKIX path building failed" during user federation.
+
+- name: TLS — install the AD CS root CA in the host trust store
+  ansible.builtin.copy:
+    src: "{{ tn_root_ca_file }}"
+    dest: /usr/local/share/ca-certificates/corp-root-ca.crt
+    mode: "0644"
+  become: true
+  notify: Refresh host CA bundle
+
+# The bundle must be rebuilt before anything below tries to validate a
+# certificate signed by this CA, so flush rather than waiting for the play end.
+- name: TLS — flush handlers so the CA bundle is current
+  ansible.builtin.meta: flush_handlers
+
+# Keycloak 24 (Quarkus) reads a directory of PEM certificates. No keytool, no
+# JKS, no password to manage.
+- name: TLS — place the root CA in Keycloak's truststore directory
+  ansible.builtin.copy:
+    src: "{{ tn_root_ca_file }}"
+    dest: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
+    mode: "0644"
+  register: tn_truststore
+
+- name: TLS — check for an operator-supplied certificate pair
+  ansible.builtin.stat:
+    path: "{{ tn_files_dir }}/tls/{{ item }}"
+  delegate_to: localhost
+  become: false
+  register: tn_supplied
+  loop: [truenorth.crt, truenorth.key]
+  loop_control:
+    label: "{{ item }}"
+
+- name: TLS — require the pair in `provided` mode
+  ansible.builtin.assert:
+    that: tn_supplied.results | map(attribute='stat.exists') | select | list | length == 2
+    fail_msg: |
+      tn_tls_mode=provided but install/files/tls/ does not contain both
+      truenorth.crt and truenorth.key.
+
+      Issue the certificate from the AD CS CA (corp-TN-DC01-CA) for
+      {{ tn_domain_fqdn }} and drop the pair there.
+
+      The filenames are not arbitrary: nginx/conf.d/truenorth.conf reads
+      /etc/nginx/ssl/truenorth.crt and truenorth.key. (The comment in
+      .env.production.example once promised fullchain.pem/privkey.pem, which
+      nginx never reads.)
+
+      For a lab bring-up without a CA, use -e tn_tls_mode=selfsigned.
+  when: tn_tls_mode == 'provided'
+
+- name: TLS — install the supplied certificate pair
+  ansible.builtin.copy:
+    src: "{{ tn_files_dir }}/tls/{{ item.name }}"
+    dest: "{{ tn_tls_dir }}/{{ item.name }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: truenorth.crt, mode: "0644" }
+    - { name: truenorth.key, mode: "0600" }
+  loop_control:
+    label: "{{ item.name }}"
+  when: tn_tls_mode == 'provided'
+
+# ── Self-signed fallback ──────────────────────────────────────────────
+- name: TLS — self-signed private key
+  community.crypto.openssl_privatekey:
+    path: "{{ tn_tls_dir }}/truenorth.key"
+    size: 2048
+    mode: "0600"
+  when: tn_tls_mode == 'selfsigned'
+
+- name: TLS — self-signed CSR
+  community.crypto.openssl_csr:
+    path: "{{ tn_tls_dir }}/truenorth.csr"
+    privatekey_path: "{{ tn_tls_dir }}/truenorth.key"
+    common_name: "{{ tn_domain_fqdn }}"
+    subject_alt_name:
+      - "DNS:{{ tn_domain_fqdn }}"
+      - "DNS:{{ inventory_hostname }}"
+      - "IP:{{ ansible_host }}"
+    mode: "0644"
+  when: tn_tls_mode == 'selfsigned'
+
+- name: TLS — self-signed certificate
+  community.crypto.x509_certificate:
+    path: "{{ tn_tls_dir }}/truenorth.crt"
+    privatekey_path: "{{ tn_tls_dir }}/truenorth.key"
+    csr_path: "{{ tn_tls_dir }}/truenorth.csr"
+    provider: selfsigned
+    selfsigned_not_after: "+825d"
+    mode: "0644"
+  when: tn_tls_mode == 'selfsigned'
+
+- name: TLS — warn that a self-signed certificate is in use
+  ansible.builtin.debug:
+    msg: >-
+      Serving a SELF-SIGNED certificate. Browsers will warn, and any client that
+      validates the chain (including the Keycloak admin API calls this installer
+      makes) needs it trusted explicitly. Fine for bring-up; issue a real
+      certificate from corp-TN-DC01-CA before a cohort uses this.
+  when: tn_tls_mode == 'selfsigned'

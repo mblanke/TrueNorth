@@ -1,0 +1,10 @@
+---
+# Smoke test, including the AD claim-contract check.
+#
+# Re-runnable on its own:  ansible-playbook playbooks/95-smoke-test.yml
+- name: "Smoke test, including the AD claim-contract check."
+  hosts: platform
+  gather_facts: true
+  roles:
+    - role: tn_smoke
+      tags: [smoke]

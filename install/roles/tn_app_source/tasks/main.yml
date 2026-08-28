@@ -1,0 +1,95 @@
+---
+# Get the application onto the platform host.
+#
+# Three mutually exclusive modes. `git` is the normal path; `local` and
+# `tarball` exist because the range is designed to run air-gapped and the app
+# repo may not be reachable from 10.30.30.20.
+
+- name: App source — exactly one source mode is configured
+  ansible.builtin.assert:
+    that: tn_app_source_mode in ['git', 'local', 'tarball']
+    fail_msg: "tn_app_source_mode must be one of: git, local, tarball"
+
+- name: App source — git mode requires a repo and a pinned ref
+  ansible.builtin.assert:
+    that:
+      - tn_app_git_repo | length > 0
+      - tn_app_git_version | length > 0
+    fail_msg: |
+      tn_app_git_repo and tn_app_git_version are required in git mode.
+
+      This is the blocker recorded throughout the deployment repo:
+        docs/deployment/deployment-readiness.md -> "TrueNorth app Git URL - ACTION (human)"
+        state/platform-prep.json                -> open_blockers[0]
+
+      Set them in install/inventory/group_vars/all/main.yml, or use an
+      air-gapped source instead:
+        -e tn_app_source_mode=local   -e tn_app_local_path=/path/to/TrueNorth
+        -e tn_app_source_mode=tarball -e tn_app_tarball=/path/to/truenorth.tar.gz
+  when: tn_app_source_mode == 'git'
+
+- name: App source — clone or update the repository
+  ansible.builtin.git:
+    repo: "{{ tn_app_git_repo }}"
+    dest: "{{ tn_app_dir }}"
+    version: "{{ tn_app_git_version }}"
+    force: true
+    accept_hostkey: true
+  when: tn_app_source_mode == 'git'
+  register: tn_git
+
+- name: App source — copy a local checkout (air-gapped)
+  ansible.posix.synchronize:
+    src: "{{ tn_app_local_path | regex_replace('/?$', '/') }}"
+    dest: "{{ tn_app_dir }}/"
+    delete: false
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=node_modules"
+      - "--exclude=.venv"
+      - "--exclude=__pycache__"
+  when: tn_app_source_mode == 'local'
+
+- name: App source — unpack a release tarball (air-gapped)
+  ansible.builtin.unarchive:
+    src: "{{ tn_app_tarball }}"
+    dest: "{{ tn_app_dir }}"
+    extra_opts: ["--strip-components=1"]
+    creates: "{{ tn_app_dir }}/infra/platform/docker/compose.prod.yml"
+  when: tn_app_source_mode == 'tarball'
+
+- name: App source — the checkout looks like TrueNorth
+  ansible.builtin.stat:
+    path: "{{ tn_compose_file }}"
+  register: tn_compose_stat
+
+- name: App source — assert the expected layout
+  ansible.builtin.assert:
+    that: tn_compose_stat.stat.exists
+    fail_msg: >-
+      {{ tn_compose_file }} is missing. The source did not produce the expected
+      repository layout — check tn_app_git_version, or that the tarball was built
+      from the repository root.
+
+# noqa command-instead-of-module — the git module clones; it does not read
+# back the resolved SHA, which is what the install manifest records.
+- name: App source — resolve the deployed commit  # noqa command-instead-of-module
+  ansible.builtin.command: git -C {{ tn_app_dir }} rev-parse HEAD
+  register: tn_commit
+  changed_when: false
+  failed_when: false
+
+# Written so 99-validate can report exactly what is deployed, and so a re-run is
+# diffable rather than a mystery.
+- name: App source — record what was deployed
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/app.json"
+    mode: "0644"
+    content: |
+      {
+        "source_mode": "{{ tn_app_source_mode }}",
+        "repo": "{{ tn_app_git_repo if tn_app_source_mode == 'git' else '' }}",
+        "ref": "{{ tn_app_git_version if tn_app_source_mode == 'git' else '' }}",
+        "commit": "{{ tn_commit.stdout | default('unknown') }}",
+        "path": "{{ tn_app_dir }}"
+      }

@@ -1,0 +1,148 @@
+---
+# vSphere provider wiring, and the privilege check that matters.
+#
+# The deployment repo records that the custom 174-privilege TrueNorth-Provision
+# role was CREATED but deliberately NOT ASSIGNED, and that svc-truenorth is
+# still ReadOnly. That is a sensible guardrail — granting write access to a
+# cluster is a human decision — but it means the stack comes up perfectly
+# healthy and range provisioning fails at first use, days later, with a 403 that
+# points nowhere useful.
+#
+# So this role detects it and says so, loudly, at install time.
+
+- name: vSphere — authenticate to vCenter
+  ansible.builtin.uri:
+    url: "https://{{ tn_vcenter_host }}/api/session"
+    method: POST
+    url_username: "{{ tn_vcenter_user }}"
+    url_password: "{{ vault_vsphere_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
+    status_code: [200, 201]
+  register: tn_vc_session
+  no_log: true
+
+- name: vSphere — session headers
+  ansible.builtin.set_fact:
+    tn_vc_headers:
+      vmware-api-session-id: "{{ tn_vc_session.json }}"
+  no_log: true
+
+- name: vSphere — confirm the datacenter and cluster exist
+  ansible.builtin.uri:
+    url: "https://{{ tn_vcenter_host }}/api/vcenter/{{ item.kind }}?names={{ item.name | urlencode }}"
+    headers: "{{ tn_vc_headers }}"
+    validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
+    status_code: 200
+  register: tn_vc_objects
+  loop:
+    - { kind: datacenter, name: "{{ tn_vsphere_datacenter }}" }
+    - { kind: cluster, name: "{{ tn_vsphere_cluster }}" }
+    - { kind: datastore, name: "{{ tn_vsphere_datastore }}" }
+  loop_control:
+    label: "{{ item.kind }}={{ item.name }}"
+
+- name: vSphere — assert the inventory objects resolved
+  ansible.builtin.assert:
+    that: item.json | length > 0
+    fail_msg: >-
+      {{ item.item.kind }} '{{ item.item.name }}' was not found in vCenter.
+      Check tn_vsphere_{{ item.item.kind }} against the live inventory.
+  loop: "{{ tn_vc_objects.results }}"
+  loop_control:
+    label: "{{ item.item.kind }}={{ item.item.name }}"
+
+- name: vSphere — is the range port group present?
+  ansible.builtin.uri:
+    url: "https://{{ tn_vcenter_host }}/api/vcenter/network?names={{ tn_vsphere_network | urlencode }}"
+    headers: "{{ tn_vc_headers }}"
+    validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
+    status_code: 200
+  register: tn_vc_network
+  failed_when: false
+
+- name: vSphere — report the port group
+  ansible.builtin.debug:
+    msg: >-
+      Network '{{ tn_vsphere_network }}':
+      {{ 'present' if (tn_vc_network.json | default([]) | length) > 0
+         else 'NOT FOUND — range provisioning will fail until it exists.' }}
+
+# ── The privilege probe ───────────────────────────────────────────────
+# A ReadOnly account can list VMs perfectly well, so listing proves nothing.
+# Attempting a create with a deliberately invalid spec distinguishes the two:
+#   403 -> the role is not assigned (no permission to even try)
+#   400 -> permission granted, spec rejected, which is what we want
+- name: vSphere — probe for provisioning privilege
+  ansible.builtin.uri:
+    url: "https://{{ tn_vcenter_host }}/api/vcenter/vm"
+    method: POST
+    headers: "{{ tn_vc_headers }}"
+    body: { "spec": {} }
+    body_format: json
+    validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
+    status_code: [200, 201, 400, 401, 403, 500]
+  register: tn_vc_priv
+  failed_when: false
+
+- name: vSphere — interpret the probe
+  ansible.builtin.set_fact:
+    tn_can_provision: "{{ tn_vc_priv.status | default(403) | int != 403 }}"
+
+- name: vSphere — WARN that the provisioning role is unassigned
+  ansible.builtin.debug:
+    msg: |
+      ────────────────────────────────────────────────────────────────────
+      vCENTER PERMISSIONS: PROVISIONING WILL FAIL
+
+      {{ tn_vcenter_user }} cannot create virtual machines (HTTP 403).
+
+      The custom 'TrueNorth-Provision' role exists in vCenter but has not been
+      assigned. The platform will come up healthy and every range provision
+      will fail at first use.
+
+      Fix, from the deployment repo:
+        scripts/create-vcenter-provision-role.ps1     # creates the role
+        then assign it to {{ tn_vcenter_user }} at the inventory root
+
+      Then re-run:
+        ansible-playbook playbooks/90-vsphere.yml
+
+      Assigning it grants write access to the cluster, so it is left as a
+      human decision rather than done automatically here.
+      ────────────────────────────────────────────────────────────────────
+  when: not tn_can_provision
+
+- name: vSphere — fail when provisioning privileges are required
+  ansible.builtin.fail:
+    msg: "vCenter provisioning privilege missing and tn_fail_on_missing_vsphere_privs is true."
+  when:
+    - not tn_can_provision
+    - tn_fail_on_missing_vsphere_privs | bool
+
+- name: vSphere — record provider state for the validate report
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/providers.json"
+    mode: "0644"
+    content: |
+      {
+        "backend": "{{ tn_provisioner_backend }}",
+        "vcenter": "{{ tn_vcenter_host }}",
+        "account": "{{ tn_vcenter_user }}",
+        "datacenter": "{{ tn_vsphere_datacenter }}",
+        "cluster": "{{ tn_vsphere_cluster }}",
+        "datastore": "{{ tn_vsphere_datastore }}",
+        "network": "{{ tn_vsphere_network }}",
+        "network_present": {{ ((tn_vc_network.json | default([]) | length) > 0) | lower }},
+        "can_provision": {{ tn_can_provision | lower }},
+        "note": "{{ 'ready' if tn_can_provision else 'TrueNorth-Provision role is NOT assigned; provisioning will fail at first use' }}"
+      }
+
+- name: vSphere — close the session
+  ansible.builtin.uri:
+    url: "https://{{ tn_vcenter_host }}/api/session"
+    method: DELETE
+    headers: "{{ tn_vc_headers }}"
+    validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
+    status_code: [204, 200]
+  failed_when: false

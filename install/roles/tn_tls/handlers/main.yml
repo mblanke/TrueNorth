@@ -1,0 +1,5 @@
+---
+- name: Refresh host CA bundle
+  ansible.builtin.command: update-ca-certificates
+  become: true
+  changed_when: true

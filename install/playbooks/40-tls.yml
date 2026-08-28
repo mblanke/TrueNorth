@@ -1,0 +1,10 @@
+---
+# Certificates: what nginx serves, and the CA Keycloak trusts for LDAPS.
+#
+# Re-runnable on its own:  ansible-playbook playbooks/40-tls.yml
+- name: "Certificates: what nginx serves, and the CA Keycloak trusts for LDAPS."
+  hosts: platform
+  gather_facts: true
+  roles:
+    - role: tn_tls
+      tags: [tls]

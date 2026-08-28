@@ -1,0 +1,19 @@
+---
+# Secrets the installer will generate on the target when the vault leaves them
+# empty. `value` is what the vault supplied; empty means "generate and persist".
+#
+# Kept as data rather than inline in tasks so the list is reviewable in one
+# place — it is the complete set of credentials this platform holds.
+tn_generated_secrets:
+  - { name: postgres_password, value: "{{ vault_postgres_password | default('') }}" }
+  - { name: keycloak_db_password, value: "{{ vault_keycloak_db_password | default('') }}" }
+  - { name: lrs_db_password, value: "{{ vault_lrs_db_password | default('') }}" }
+  - { name: redis_password, value: "{{ vault_redis_password | default('') }}" }
+  - { name: minio_secret_key, value: "{{ vault_minio_secret_key | default('') }}" }
+  - { name: jwt_secret, value: "{{ vault_jwt_secret | default('') }}" }
+  - { name: csrf_secret, value: "{{ vault_csrf_secret | default('') }}" }
+  - { name: lrs_admin_password, value: "{{ vault_lrs_admin_password | default('') }}" }
+  - { name: lrs_api_key, value: "{{ vault_lrs_api_key | default('') }}" }
+  - { name: lrs_api_secret, value: "{{ vault_lrs_api_secret | default('') }}" }
+  - { name: grafana_admin_password, value: "{{ vault_grafana_admin_password | default('') }}" }
+  - { name: flower_password, value: "{{ vault_flower_password | default('') }}" }

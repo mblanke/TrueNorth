@@ -1,6 +1,0 @@
----
-# Playbook 02: Network infrastructure setup
-- name: Networking -- VLANs, bridges, MTU, firewall zones
-  hosts: hypervisors:network
-  roles:
-    - networking

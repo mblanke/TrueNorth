@@ -1,0 +1,58 @@
+---
+# Host preparation. Everything here is idempotent and safe to re-run.
+
+- name: Base — packages the installer and the stack rely on
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - jq
+      - ldap-utils # the preflight LDAPS bind
+      - python3-psycopg2 # community.postgresql
+      - acl # become_user on a non-root target
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+# OpenSearch sets bootstrap.memory_lock=true and mmaps its indices. The Ubuntu
+# default (65530) is far below what it needs, and the container exits during
+# startup with a message that does not point at the host.
+- name: Base — raise vm.max_map_count for OpenSearch
+  ansible.posix.sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    sysctl_file: /etc/sysctl.d/99-truenorth.conf
+    sysctl_set: true
+    reload: true
+    state: present
+  become: true
+
+- name: Base — data directory tree
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(ansible_user) }}"
+    group: "{{ item.group | default(ansible_user) }}"
+    mode: "{{ item.mode | default('0755') }}"
+  become: true
+  loop:
+    - { path: "{{ tn_data_root }}" }
+    - { path: "{{ tn_app_dir }}" }
+    - { path: "{{ tn_config_dir }}", mode: "0750" }
+    - { path: "{{ tn_config_dir }}/secrets", mode: "0700" }
+    - { path: "{{ tn_tls_dir }}", mode: "0750" }
+    - { path: "{{ tn_tls_dir }}/truststores", mode: "0755" }
+    - { path: "{{ tn_state_dir }}" }
+    # Bind targets for the compose volumes. compose.prod.yml maps its named
+    # volumes here via TN_DATA_ROOT; without these the data would land in
+    # /var/lib/docker and fill the OS disk while the data disk sits empty.
+    # The uids are the ones the images run as.
+    - { path: "{{ tn_data_root }}/postgres", owner: "999", group: "999", mode: "0700" }
+    - { path: "{{ tn_data_root }}/redis", owner: "999", group: "999" }
+    - { path: "{{ tn_data_root }}/minio", owner: "1000", group: "1000" }
+    - { path: "{{ tn_data_root }}/opensearch", owner: "1000", group: "1000" }
+    - { path: "{{ tn_data_root }}/logs" }
+    - { path: "{{ tn_data_root }}/reports" }
+    - { path: "{{ tn_data_root }}/artifacts" }
+    - { path: "{{ tn_data_root }}/backups" }

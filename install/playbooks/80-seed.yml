@@ -1,0 +1,10 @@
+---
+# Verify reference data, create the tenant and the bootstrap administrator.
+#
+# Re-runnable on its own:  ansible-playbook playbooks/80-seed.yml
+- name: "Verify reference data, create the tenant and the bootstrap administrator."
+  hosts: platform
+  gather_facts: true
+  roles:
+    - role: tn_seed
+      tags: [seed]

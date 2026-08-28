@@ -1,0 +1,169 @@
+---
+# Smoke test and final report.
+#
+# The important one is the claim-contract check near the bottom. Everything else
+# proves the stack is running; that one proves the AD federation, the token claim
+# mappers and the registration flow are wired to each other. It is the only test
+# here that would catch "everything is green and no trainee can ever register".
+
+- name: Smoke — container health
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps --format json \
+        | jq -rs 'flatten | map({name: .Service, state: .State, health: (.Health // "n/a")})'
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_ps
+  changed_when: false
+
+- name: Smoke — report container states
+  ansible.builtin.debug:
+    var: tn_ps.stdout | from_json
+
+- name: Smoke — no container is unhealthy or exited
+  vars:
+    _svcs: "{{ tn_ps.stdout | from_json }}"
+    _bad: >-
+      {{ _svcs | rejectattr('health', 'in', ['healthy', 'n/a'])
+               | list
+         + (_svcs | rejectattr('state', 'in', ['running']) | list) }}
+  ansible.builtin.assert:
+    that: _bad | length == 0
+    fail_msg: "Unhealthy or stopped services: {{ _bad }}"
+    success_msg: "{{ _svcs | length }} services running"
+
+- name: Smoke — API health through nginx
+  ansible.builtin.uri:
+    url: "https://{{ tn_domain_fqdn }}/api/health"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: 200
+    timeout: 20
+  register: tn_health
+  retries: 12
+  delay: 5
+  until: tn_health.status | default(0) == 200
+
+- name: Smoke — assert core dependencies are up
+  ansible.builtin.assert:
+    that:
+      - tn_health.json.db | default(false)
+      - tn_health.json.redis | default(false)
+    fail_msg: "API reports degraded dependencies: {{ tn_health.json }}"
+    success_msg: "API healthy: {{ tn_health.json }}"
+
+- name: Smoke — deep health
+  ansible.builtin.uri:
+    url: "https://{{ tn_domain_fqdn }}/api/health/deep"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: [200, 503]
+    timeout: 30
+  register: tn_deep
+  failed_when: false
+
+- name: Smoke — report deep health
+  ansible.builtin.debug:
+    var: tn_deep.json | default({})
+
+- name: Smoke — the SPA is served
+  ansible.builtin.uri:
+    url: "https://{{ tn_domain_fqdn }}/"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: 200
+    return_content: false
+    timeout: 20
+  register: tn_spa
+
+- name: Smoke — Keycloak discovery document
+  ansible.builtin.uri:
+    url: "https://{{ tn_domain_fqdn }}/auth/realms/{{ tn_keycloak_realm }}/.well-known/openid-configuration"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: 200
+    timeout: 20
+  register: tn_oidc
+
+# ══════════════════════════════════════════════════════════════════════
+# The claim contract — where the installer and the application meet
+# ══════════════════════════════════════════════════════════════════════
+- name: Smoke — obtain a token for the bootstrap admin's AD account
+  ansible.builtin.uri:
+    url: "https://{{ tn_domain_fqdn }}/auth/realms/{{ tn_keycloak_realm }}/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: "{{ tn_keycloak_api_client }}"
+      username: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn) }}"
+      password: "{{ tn_smoke_password | default('') }}"
+      scope: "openid profile email"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: [200, 400, 401]
+  register: tn_smoke_token
+  no_log: true
+  when: tn_smoke_password | default('') | length > 0
+
+- name: Smoke — decode the access token claims
+  ansible.builtin.set_fact:
+    tn_claims: >-
+      {{ (tn_smoke_token.json.access_token.split('.')[1] ~ '==') | b64decode | from_json }}
+  when:
+    - tn_smoke_token is defined
+    - tn_smoke_token.json is defined
+    - tn_smoke_token.json.access_token is defined
+  no_log: true
+
+- name: Smoke — assert the AD claim contract holds
+  ansible.builtin.assert:
+    that:
+      - tn_claims.groups is defined
+      - tn_claims.groups | length > 0
+      - tn_claims.email is defined
+    fail_msg: |
+      The access token is missing the claims registration depends on.
+
+      groups            : {{ tn_claims.groups | default('MISSING') }}
+      email             : {{ tn_claims.email | default('MISSING') }}
+      ad_object_guid    : {{ tn_claims.ad_object_guid | default('MISSING') }}
+
+      A missing `groups` claim means the oidc-group-membership-mapper on the
+      truenorth-identity client scope did not take effect. The API will not
+      error — it will simply see no groups, suggest no role on every approval
+      screen, and treat group-based registration eligibility as unrestricted.
+
+      Re-run: ansible-playbook playbooks/60-keycloak.yml
+    success_msg: >-
+      Claim contract OK — groups={{ tn_claims.groups | default([]) | join(',') }}
+  when: tn_claims is defined
+
+- name: Smoke — /auth/me answers for a real AD identity
+  ansible.builtin.uri:
+    url: "https://{{ tn_domain_fqdn }}/api/auth/me"
+    headers:
+      Authorization: "Bearer {{ tn_smoke_token.json.access_token }}"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+    status_code: 200
+    timeout: 20
+  register: tn_authme
+  when:
+    - tn_smoke_token is defined
+    - tn_smoke_token.json is defined
+    - tn_smoke_token.json.access_token is defined
+  no_log: true
+
+- name: Smoke — report the identity state
+  ansible.builtin.debug:
+    msg: >-
+      /auth/me for {{ tn_smoke_username | default(tn_bootstrap_admin_upn) }}:
+      status={{ tn_authme.json.status }}
+      {{ '(the bootstrap admin is registered, as expected)'
+         if tn_authme.json.status == 'registered'
+         else '(an unregistered AD identity is offered the registration form rather than a 403 — this is the fix working)' }}
+  when: tn_authme is defined and tn_authme.json is defined
+
+- name: Smoke — end-to-end identity check skipped
+  ansible.builtin.debug:
+    msg: >-
+      Claim-contract check SKIPPED: no tn_smoke_password supplied. Run with
+      -e tn_smoke_username=<upn> -e tn_smoke_password=<password> to prove the
+      AD federation, the token claims and the registration flow are joined.
+      Without it the install is verified only as far as "the services are up".
+  when: tn_smoke_password | default('') | length == 0

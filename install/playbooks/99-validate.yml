@@ -1,0 +1,109 @@
+---
+# Final report.
+#
+# The old 09-validate.yml asserted total_nodes > 0 and total_appliances > 0,
+# which cannot hold on a first install — nothing has been discovered yet, so a
+# correct installation failed its own validation. Those assertions are now gated
+# behind tn_expect_discovered, false by default: first run reports, later runs
+# gate.
+
+- name: "Validate — final state report"
+  hosts: platform
+  gather_facts: false
+  tags: [validate]
+
+  tasks:
+    - name: Validate — read recorded state
+      ansible.builtin.slurp:
+        src: "{{ tn_state_dir }}/{{ item }}"
+      register: tn_state_files
+      loop: [app.json, providers.json]
+      failed_when: false
+
+    - name: Validate — parse state
+      ansible.builtin.set_fact:
+        tn_app_state: >-
+          {{ (tn_state_files.results[0].content | b64decode | from_json)
+             if tn_state_files.results[0].content is defined else {} }}
+        tn_prov_state: >-
+          {{ (tn_state_files.results[1].content | b64decode | from_json)
+             if tn_state_files.results[1].content is defined else {} }}
+
+    - name: Validate — alembic head
+      ansible.builtin.command:
+        cmd: >-
+          docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+          exec -T postgres psql -U {{ vault_postgres_user | default('forge') }}
+          -d {{ vault_postgres_db | default('forge') }} -tAc
+          "SELECT version_num FROM alembic_version"
+        chdir: "{{ tn_app_dir }}/infra/platform/docker"
+      register: tn_head
+      changed_when: false
+      failed_when: false
+
+    - name: Validate — infrastructure summary
+      ansible.builtin.uri:
+        url: "https://{{ tn_domain_fqdn }}/api/{{ item }}"
+        validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+        status_code: [200, 401, 403]
+        timeout: 20
+      register: tn_summaries
+      loop: [hypervisors/summary, storage/summary]
+      failed_when: false
+
+    # Only a gate once something has been discovered. On a first install this is
+    # information, not a failure.
+    - name: Validate — assert discovery when expected
+      ansible.builtin.assert:
+        that:
+          - tn_summaries.results[0].json.total_nodes | default(0) > 0
+          - tn_summaries.results[1].json.total_appliances | default(0) > 0
+        fail_msg: >-
+          tn_expect_discovered is true but the platform reports no hypervisor
+          nodes or storage appliances. Register the vCenter connection and run
+          discovery.
+      when: tn_expect_discovered | bool
+
+    - name: Validate — REPORT
+      ansible.builtin.debug:
+        msg:
+          - "══════════════════════════════════════════════════════════════"
+          - " TrueNorth Range — install report"
+          - "══════════════════════════════════════════════════════════════"
+          - " host          : {{ inventory_hostname }} ({{ ansible_host }})"
+          - " url           : https://{{ tn_domain_fqdn }}/"
+          - " app source    : {{ tn_app_state.source_mode | default('?') }}"
+          - " app ref       : {{ tn_app_state.ref | default('?') }}"
+          - " app commit    : {{ (tn_app_state.commit | default('unknown'))[:12] }}"
+          - " alembic head  : {{ tn_head.stdout | default('unknown') | trim }}"
+          - " tls mode      : {{ tn_tls_mode }}"
+          - " realm         : {{ tn_keycloak_realm }} (AD: {{ tn_domain }})"
+          - " ldap component: {{ tn_keycloak_ldap_component_id | default('not set') }}"
+          - " provisioner   : {{ tn_prov_state.backend | default(tn_provisioner_backend) }}"
+          - " vcenter       : {{ tn_prov_state.vcenter | default(tn_vcenter_host) }}"
+          - " can provision : {{ tn_prov_state.can_provision | default('unknown') }}"
+          - " env file      : {{ tn_env_file }}"
+          - " data root     : {{ tn_data_root }}"
+          - "──────────────────────────────────────────────────────────────"
+          - " Accepted warnings / open items"
+          - "──────────────────────────────────────────────────────────────"
+          - >-
+            {{ ' * vCenter role TrueNorth-Provision is NOT assigned — range provisioning
+            will fail at first use.' if not (tn_prov_state.can_provision | default(true))
+            else ' * vCenter provisioning privileges: OK' }}
+          - >-
+            {{ ' * Range port group ' ~ tn_vsphere_network ~ ' does not exist yet.'
+            if not (tn_prov_state.network_present | default(true))
+            else ' * Range port group: present' }}
+          - >-
+            {{ ' * TLS is self-signed — issue a certificate from corp-TN-DC01-CA before
+            a cohort uses this.' if tn_tls_mode == 'selfsigned'
+            else ' * TLS: operator-supplied certificate' }}
+          - >-
+            {{ ' * Demo data was NOT seeded (correct for a real deployment).'
+            if not (tn_seed_demo_data | bool)
+            else ' * Demo data WAS seeded — do not use this for a real cohort.' }}
+          - "──────────────────────────────────────────────────────────────"
+          - " Next: sign in as {{ tn_bootstrap_admin_upn | default('the bootstrap admin') }},"
+          - " then Users -> Approvals to admit the first cohort."
+          - "══════════════════════════════════════════════════════════════"

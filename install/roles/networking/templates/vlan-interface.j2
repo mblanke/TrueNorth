@@ -1,7 +1,0 @@
-# {{ item.value.description }} -- VLAN {{ item.value.id }}
-auto {{ proxmox_bridge | default('vmbr0') }}.{{ item.value.id }}
-iface {{ proxmox_bridge | default('vmbr0') }}.{{ item.value.id }} inet static
-    address {{ item.value.gateway }}
-    netmask 255.255.255.0
-    vlan-raw-device {{ proxmox_bridge | default('vmbr0') }}
-    mtu {{ mtu }}

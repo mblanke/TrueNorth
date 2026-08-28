@@ -1,6 +1,0 @@
----
-# Playbook 06: Security hardening
-- name: Security -- firewall rules, SSH keys, certificates
-  hosts: all
-  roles:
-    - security

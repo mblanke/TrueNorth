@@ -4,6 +4,40 @@
 
 ---
 
+## Start here: the automated installer
+
+**For a vSphere deployment, do not follow this guide by hand — use
+[`install/`](../install/README.md).** It is an Ansible package that takes the
+platform host from "Docker installed, `/srv/truenorth` empty" to a running,
+AD-federated TrueNorth, and it handles several things that are easy to get
+wrong manually:
+
+- **Migration ordering.** `app/main.py`'s lifespan calls
+  `Base.metadata.create_all()` on every API start, in every uvicorn worker. Bring
+  the API up before Alembic on a fresh database and the migration dies on
+  `DuplicateTable`. The installer brings up Postgres alone, migrates in a
+  one-shot container, then starts everything else — and sets `DB_AUTO_CREATE=false`.
+- **The Keycloak claim contract.** Trainee registration reads AD group
+  membership out of the access token. Miss the group-membership mapper and
+  nothing errors; the platform simply loses half its input forever. See
+  [identity.md](identity.md#the-claim-contract).
+- **Secrets that must not be regenerated.** A second run that produced a new
+  `POSTGRES_PASSWORD` would lock you out of your own database.
+- **The env file location.** `infra/platform/docker/.env.production` is a
+  *tracked* path; secrets rendered there get committed. The installer writes to
+  `/srv/truenorth/config/` instead.
+
+This guide remains the reference for what each component is, for Kubernetes, and
+for operating the stack after it is up.
+
+> **Note on `PROVISIONER_BACKEND`:** the valid values are the registry keys in
+> `worker/provisioners/__init__.py` — `mock`, `proxmox_api`, `vsphere_api`,
+> `hyperv`, `terraform`, `terraform_proxmox`, `terraform_vsphere`,
+> `terraform_hyperv`. Bare `vsphere` and `proxmox` are **not** keys and raise
+> `ValueError` at the first provision attempt.
+
+---
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
