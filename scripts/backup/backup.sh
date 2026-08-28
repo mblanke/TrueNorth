@@ -8,8 +8,11 @@ IFS=$'\n\t'
 # ── Defaults ─────────────────────────────────────────────────────────────────
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
-ENV_FILE="${ENV_FILE:-.env}"
+# There is no docker-compose.yml at the repo root — the stacks live under
+# infra/platform/docker/. The old default silently pointed at a file that has
+# never existed, so every `docker compose` call here failed.
+COMPOSE_FILE="${COMPOSE_FILE:-infra/platform/docker/compose.prod.yml}"
+ENV_FILE="${ENV_FILE:-infra/platform/docker/.env.production}"
 
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 BACKUP_NAME="truenorth-backup-${TIMESTAMP}"
@@ -89,7 +92,7 @@ log "INFO" "Backing up configuration files..."
 CFG_DIR="${BACKUP_PATH}/configs"
 mkdir -p "${CFG_DIR}"
 
-for f in "${COMPOSE_FILE}" "docker-compose.dev.yml" "${ENV_FILE}" ".env.example"; do
+for f in "${COMPOSE_FILE}" "infra/platform/docker/compose.dev.yml" "${ENV_FILE}" ".env.example"; do
     [[ -f "$f" ]] && cp "$f" "${CFG_DIR}/"
 done
 

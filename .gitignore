@@ -36,6 +36,18 @@ pytest-out*.txt
 infra/platform/docker/ssl/*.crt
 infra/platform/docker/ssl/*.key
 
+# Real environment files. Only the *.example templates are tracked.
+# `.env` above matches only that exact name, so these need their own entries —
+# infra/platform/docker/.env.production was tracked for exactly that reason.
+.env.production
+.env.local
+infra/platform/docker/.env
+infra/platform/docker/.env.production
+install/inventory/group_vars/all/vault.yml
+install/files/tls/*.crt
+install/files/tls/*.key
+install/files/tls/*.pem
+
 # DevTools verification artifacts
 control-plane/web/devtools-shots/
 .ai-refresh/

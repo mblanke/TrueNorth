@@ -15,8 +15,18 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_INITDB_ARGS: "--data-checksums"
+      # Consumed by postgres-init/10-create-databases.sh to give Keycloak and the
+      # LRS their own databases instead of sharing the application's.
+      KEYCLOAK_DB: ${KEYCLOAK_DB:-keycloak}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      LRS_DB: ${LRS_DB:-lrs}
+      LRS_DB_USER: ${LRS_DB_USER:-lrs}
+      LRS_DB_PASSWORD: ${LRS_DB_PASSWORD}
     volumes:
       - pg-data:/var/lib/postgresql/data
+      # Runs only on first initialisation of the data directory.
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     command: >
       postgres
         -c max_connections=1000
@@ -252,12 +262,18 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     restart: always
-    command: start --optimized
+    # NOTE: `start --optimized` requires a prior `kc.sh build`, because KC_DB is a
+    # build-time option. The stock image has never been built, so --optimized makes
+    # Keycloak refuse to boot. Plain `start` performs the build on first run.
+    command: start
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      KC_DB_USERNAME: ${POSTGRES_USER}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # Keycloak gets its OWN database. Sharing ${POSTGRES_DB} puts ~90 Keycloak
+      # tables beside TrueNorth's 68, and `alembic revision --autogenerate` then
+      # proposes dropping every one of them.
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_HOSTNAME: ${DOMAIN}
@@ -266,6 +282,11 @@ services:
       KC_PROXY_HEADERS: xforwarded
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
+      # Trusts the AD CS root CA (corp-TN-DC01-CA) so LDAPS federation to
+      # corp.tnrange.lab validates. Without it the bind fails: PKIX path building failed.
+      KC_TRUSTSTORE_PATHS: /opt/keycloak/conf/truststores
+    volumes:
+      - ${TRUSTSTORE_PATH:-./truststores}:/opt/keycloak/conf/truststores:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -310,7 +331,35 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-truenorth}
       AUTH_DISABLED: "false"
-      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-proxmox}
+      # Valid values come from worker/provisioners/__init__.py: mock, proxmox_api,
+      # vsphere_api, hyperv, terraform, terraform_{proxmox,vsphere,hyperv}.
+      # "proxmox" is NOT a registry key — it raised ValueError at first provision.
+      # vSphere is "vsphere_api", not "vsphere".
+      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-mock}
+      # The API image is built from control-plane/api alone; the scenario engine
+      # is read from this bind mount. Missing here, every engine call failed.
+      SCENARIO_ENGINE_DIR: /opt/scenario-engine
+      # Learning record store — see the `lrs` service.
+      LMS_BACKEND: ${LMS_BACKEND:-xapi_lrs}
+      LRS_URL: ${LRS_URL:-http://lrs:8080}
+      LRS_AUTH: ${LRS_AUTH}
+      SEARCH_BACKEND: ${SEARCH_BACKEND:-opensearch}
+      AI_ORCHESTRATOR_URL: http://ai-orchestrator:6000
+      # Schema ownership belongs to Alembic. The installer sets these false so the
+      # lifespan's create_all()/dev-seed cannot race migrations or mint a
+      # hardcoded admin@truenorth.local in production.
+      DB_AUTO_CREATE: ${DB_AUTO_CREATE:-false}
+      SEED_DEV_DATA: ${SEED_DEV_DATA:-false}
+      # AD-federated identity: consumed by registration prefill and role suggestion.
+      LDAP_SERVER: ${LDAP_SERVER}
+      LDAP_PORT: ${LDAP_PORT:-636}
+      LDAP_BASE_DN: ${LDAP_BASE_DN}
+      KEYCLOAK_LDAP_COMPONENT_ID: ${KEYCLOAK_LDAP_COMPONENT_ID}
+      REGISTRATION_GROUP_ROLE_MAP: ${REGISTRATION_GROUP_ROLE_MAP}
+      REGISTRATION_ALLOWED_GROUPS: ${REGISTRATION_ALLOWED_GROUPS}
+      REGISTRATION_DEFAULT_TENANT_SLUG: ${REGISTRATION_DEFAULT_TENANT_SLUG:-default}
+      REGISTRATION_DEFAULT_PROGRESSION: ${REGISTRATION_DEFAULT_PROGRESSION}
+      CSRF_SECRET: ${CSRF_SECRET}
       CORS_ORIGINS: https://${DOMAIN}
       DB_POOL_SIZE: "50"
       DB_MAX_OVERFLOW: "100"
@@ -319,6 +368,10 @@ services:
       UVICORN_WORKERS: "4"
       JWT_SECRET: ${JWT_SECRET}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
+      # build context, so without this mount it is simply absent at runtime.
+      - ../../../scenario-engine:/opt/scenario-engine:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -371,10 +424,22 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       OPENSEARCH_URL: http://opensearch:9200
-      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-proxmox}
+      # See the api service: "proxmox" is not a registry key. vSphere is "vsphere_api".
+      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-mock}
       CELERY_WORKER: "true"
       PROXMOX_API_URL: ${PROXMOX_API_URL:-}
       PROXMOX_TOKEN: ${PROXMOX_TOKEN:-}
+      # vsphere_api.py reads these at MODULE IMPORT, so they must be present in the
+      # worker environment at start. A hypervisor_connections row written later
+      # cannot override the module-level constants.
+      VSPHERE_URL: ${VSPHERE_URL:-}
+      VSPHERE_USERNAME: ${VSPHERE_USERNAME:-}
+      VSPHERE_PASSWORD: ${VSPHERE_PASSWORD:-}
+      VSPHERE_DATACENTER: ${VSPHERE_DATACENTER:-}
+      VSPHERE_CLUSTER: ${VSPHERE_CLUSTER:-}
+      VSPHERE_DATASTORE: ${VSPHERE_DATASTORE:-}
+      VSPHERE_NETWORK: ${VSPHERE_NETWORK:-}
+      VSPHERE_VERIFY_SSL: ${VSPHERE_VERIFY_SSL:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       postgres:
@@ -573,6 +638,115 @@ services:
       - "host.docker.internal:host-gateway"
 
   # ================================================================
+  #  WEB FRONTEND (Angular SPA behind nginx)
+  # ================================================================
+  # Required: nginx/conf.d/upstream.conf declares `upstream web_frontend
+  # { server web:80; }`. Without this service nginx aborts at config load with
+  # "host not found in upstream" and the entire stack fails to start.
+  web:
+    build:
+      context: ../../../control-plane/web
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - tn-frontend
+
+  # ================================================================
+  #  TELEMETRY INGEST PIPELINE
+  # ================================================================
+  # Required: drains the Redis stream `telemetry:ingest` into OpenSearch.
+  # Without it NO telemetry is ever indexed, and scoring, detections and AAR
+  # all silently produce nothing. Nothing errors — the data simply never lands.
+  telemetry-pipeline:
+    build:
+      context: ../../../telemetry-pipeline
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX_PREFIX: ${OPENSEARCH_INDEX_PREFIX:-truenorth-telemetry}
+      BATCH_SIZE: "500"
+      FLUSH_INTERVAL_MS: "2000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - tn-backend
+
+  # ================================================================
+  #  LEARNING RECORD STORE (xAPI)
+  # ================================================================
+  # Required: lms/__init__.py defaults LMS_BACKEND to "xapi_lrs", so without
+  # this service every xAPI statement fails against an unset LRS_URL. Learner
+  # progress tracking depends on it.
+  lrs:
+    image: yetanalytics/lrsql:latest
+    restart: always
+    command: /lrsql/bin/run_postgres.sh
+    environment:
+      LRSQL_DB_TYPE: postgresql
+      LRSQL_DB_HOST: postgres
+      LRSQL_DB_PORT: "5432"
+      LRSQL_DB_NAME: ${LRS_DB:-lrs}
+      LRSQL_DB_USER: ${LRS_DB_USER:-lrs}
+      LRSQL_DB_PASSWORD: ${LRS_DB_PASSWORD}
+      LRSQL_ADMIN_USER_DEFAULT: ${LRS_ADMIN_USER}
+      LRSQL_ADMIN_PASS_DEFAULT: ${LRS_ADMIN_PASSWORD}
+      LRSQL_API_KEY_DEFAULT: ${LRS_API_KEY}
+      LRSQL_API_SECRET_DEFAULT: ${LRS_API_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - tn-backend
+
+  # ================================================================
   #  NGINX REVERSE PROXY
   # ================================================================
   nginx:
@@ -590,6 +764,10 @@ services:
       api:
         condition: service_healthy
       keycloak:
+        condition: service_healthy
+      # upstream.conf resolves `web:80` at config load; without this nginx
+      # can start before the name exists and abort on "host not found".
+      web:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
@@ -816,15 +994,36 @@ services:
 # ================================================================
 #  VOLUMES
 # ================================================================
+# Data volumes bind to ${TN_DATA_ROOT} (default /srv/truenorth) rather than
+# living in /var/lib/docker/volumes. A plain `driver: local` volume ignores the
+# provisioned data disk entirely and fills the root filesystem instead — on this
+# lab that is a 500 GB disk sitting unused while / fills up. The directories must
+# exist and be owned correctly before `up`; the installer's tn_config role does that.
 volumes:
   pg-data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${TN_DATA_ROOT:-/srv/truenorth}/postgres
   redis-data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${TN_DATA_ROOT:-/srv/truenorth}/redis
   minio-data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${TN_DATA_ROOT:-/srv/truenorth}/minio
   os-data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${TN_DATA_ROOT:-/srv/truenorth}/opensearch
   prometheus-data:
     driver: local
   grafana-data:
@@ -833,6 +1032,10 @@ volumes:
     driver: local
   nginx-logs:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${TN_DATA_ROOT:-/srv/truenorth}/logs
 
 # ================================================================
 #  NETWORKS
