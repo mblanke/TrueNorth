@@ -21,6 +21,7 @@ import gsap from 'gsap';
 
 import { ThemeService, ThemeOption } from './core/services/theme.service';
 import { MotionService } from './shared/motion';
+import { TourOverlayComponent } from './shared/tour/tour-overlay.component';
 
 interface NavItem {
   label: string;
@@ -40,6 +41,7 @@ interface NavSection {
     CommonModule,
     RouterModule,
     RouterOutlet,
+    TourOverlayComponent,
     MatSidenavModule,
     MatToolbarModule,
     MatListModule,
@@ -76,6 +78,7 @@ interface NavSection {
                     @for (item of section.items; track item.route) {
                       <a mat-list-item
                          [routerLink]="item.route"
+                         [attr.data-tour]="item.route"
                          routerLinkActive="active-link"
                          [matTooltip]="item.label"
                          matTooltipPosition="right"
@@ -128,6 +131,9 @@ interface NavSection {
           </main>
         </mat-sidenav-content>
       </mat-sidenav-container>
+
+      <!-- Rendered here so a tour can highlight the nav as well as the page. -->
+      <tn-tour-overlay />
     }
   `,
   styles: [`

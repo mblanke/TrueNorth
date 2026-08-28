@@ -1,0 +1,14 @@
+<!--
+  Silent SSO check target for keycloak-js.
+
+  Keycloak redirects a hidden iframe here after checking the session. The only
+  job is to hand the resulting URL fragment back to the parent window, which
+  keycloak-js parses. Nothing else may live in this file.
+-->
+<html>
+  <body>
+    <script>
+      parent.postMessage(location.href, location.origin);
+    </script>
+  </body>
+</html>

@@ -1,4 +1,12 @@
 import { Routes } from '@angular/router';
+import {
+  adminGuard,
+  authGuard,
+  instructorGuard,
+  onboardingGuard,
+  pendingGuard,
+  registrationGuard,
+} from './core/guards/auth.guard';
 
 export const routes: Routes = [
   {
@@ -6,8 +14,36 @@ export const routes: Routes = [
     redirectTo: 'dashboard',
     pathMatch: 'full',
   },
+  // -- Identity intake. Reachable while authenticated but account-less, so
+  //    these carry their own guards rather than authGuard. --
+  {
+    path: 'register',
+    canActivate: [registrationGuard],
+    loadComponent: () =>
+      import('./features/register/register.component').then(m => m.RegisterComponent),
+    title: 'Request access - TrueNorth Range',
+  },
+  {
+    path: 'registration-pending',
+    canActivate: [pendingGuard],
+    loadComponent: () =>
+      import('./features/register/registration-pending.component').then(
+        m => m.RegistrationPendingComponent,
+      ),
+    title: 'Awaiting approval - TrueNorth Range',
+  },
+  {
+    // authGuard only: the whole point is that onboarding is not yet complete,
+    // so onboardingGuard must not apply here or it would redirect to itself.
+    path: 'onboarding',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/onboarding/onboarding.component').then(m => m.OnboardingComponent),
+    title: 'Getting started - TrueNorth Range',
+  },
   {
     path: 'dashboard',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent),
     title: 'Dashboard - TrueNorth Range',
@@ -19,6 +55,7 @@ export const routes: Routes = [
   // -- Authoring Studio hub (consolidates the design/authoring screens) --
   {
     path: 'authoring',
+    canActivate: [authGuard, instructorGuard],
     loadComponent: () => import('./shared/hub-shell.component').then(m => m.HubShellComponent),
     data: {
       title: 'Authoring Studio',
@@ -87,6 +124,7 @@ export const routes: Routes = [
   // -- Learning hub (consolidates curriculum, courses, progress, competency) --
   {
     path: 'learning',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () => import('./shared/hub-shell.component').then(m => m.HubShellComponent),
     data: {
       title: 'Learning',
@@ -152,42 +190,49 @@ export const routes: Routes = [
   { path: 'competency', redirectTo: 'learning/competency', pathMatch: 'full' },
   {
     path: 'exercises',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/exercises/exercises.component').then(m => m.ExercisesComponent),
     title: 'Exercises - TrueNorth Range',
   },
   {
     path: 'scoring',
+    canActivate: [authGuard, onboardingGuard, instructorGuard],
     loadComponent: () =>
       import('./features/scoring/scoring.component').then(m => m.ScoringComponent),
     title: 'Scoring & AAR - TrueNorth Range',
   },
   {
     path: 'telemetry',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/telemetry/telemetry.component').then(m => m.TelemetryComponent),
     title: 'Telemetry - TrueNorth Range',
   },
   {
     path: 'users',
+    canActivate: [authGuard, adminGuard],
     loadComponent: () =>
       import('./features/users/users.component').then(m => m.UsersComponent),
     title: 'Users & Teams - TrueNorth Range',
   },
   {
     path: 'admin',
+    canActivate: [authGuard, adminGuard],
     loadComponent: () =>
       import('./features/admin/admin.component').then(m => m.AdminComponent),
     title: 'Admin - TrueNorth Range',
   },
   {
     path: 'quiz-player',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/quiz-player/quiz-player.component').then(m => m.QuizPlayerComponent),
     title: 'Quiz - TrueNorth Range',
   },
   {
     path: 'integrations',
+    canActivate: [authGuard, onboardingGuard, adminGuard],
     loadComponent: () =>
       import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent),
     title: 'Integrations - TrueNorth Range',
@@ -195,12 +240,14 @@ export const routes: Routes = [
   // -- Infrastructure & AI --
   {
     path: 'infrastructure',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/infrastructure/infrastructure.component').then(m => m.InfrastructureComponent),
     title: 'Infrastructure - TrueNorth Range',
   },
   {
     path: 'ai-orchestrator',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/ai-orchestrator/ai-orchestrator.component').then(m => m.AiOrchestratorComponent),
     title: 'AI Orchestrator - TrueNorth Range',
@@ -213,18 +260,21 @@ export const routes: Routes = [
   },
   {
     path: 'topology-3d',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/ops-center/topology-3d.component').then(m => m.Topology3dComponent),
     title: '3D Topology - TrueNorth Range',
   },
   {
     path: 'exercises/:id',
+    canActivate: [authGuard, onboardingGuard, instructorGuard],
     loadComponent: () =>
       import('./features/exercise-detail/exercise-detail.component').then(m => m.ExerciseDetailComponent),
     title: 'Exercise - TrueNorth Range',
   },
   {
     path: 'ops-center/:exerciseId',
+    canActivate: [authGuard, onboardingGuard, instructorGuard],
     loadComponent: () =>
       import('./features/ops-center/ops-center.component').then(m => m.OpsCenterComponent),
     title: 'Ops Center - TrueNorth Range',

@@ -10,6 +10,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
 import { ThemeService } from '@core/services/theme.service';
 import { NgxEchartsDirective, provideEcharts } from 'ngx-echarts';
 import type { EChartsOption } from 'echarts';
@@ -359,7 +360,12 @@ export class MyProgressComponent implements OnInit {
   assessments = signal<AutoAssessment[]>([]);
   generatingRec = signal(false);
   transcriptColumns = ['source', 'title', 'type', 'score', 'completed'];
-  private userId = '00000000-0000-0000-0000-000000000001'; // TODO: get from auth
+  private readonly auth = inject(AuthService);
+  // Was hardcoded to the dev-admin UUID, so every learner saw the same
+  // transcript regardless of who was signed in.
+  private get userId(): string {
+    return this.auth.userId() ?? '';
+  }
 
   radarOption = signal<EChartsOption | null>(null);
   trendOption = signal<EChartsOption | null>(null);

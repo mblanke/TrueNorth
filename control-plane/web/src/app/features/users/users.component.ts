@@ -17,6 +17,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDividerModule } from '@angular/material/divider';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { ApprovalsPanelComponent } from './approvals-panel.component';
 
 interface Nation {
   id: string; name: string; iso_alpha2: string; iso_alpha3: string;
@@ -63,6 +64,7 @@ interface AuthZone {
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, MatExpansionModule,
     MatBadgeModule, MatSnackBarModule, MatDividerModule, EmptyStateComponent,
+    ApprovalsPanelComponent,
   ],
   template: `
     <div class="page-container">
@@ -196,6 +198,20 @@ interface AuthZone {
                   <mat-chip-set><mat-chip [class]="'role-' + u.role">{{ u.role }}</mat-chip></mat-chip-set>
                 </td>
               </ng-container>
+              <!-- Whether this person has finished first-run. A trainee stuck at
+                   'not started' has an account but has never actually arrived. -->
+              <ng-container matColumnDef="onboarding">
+                <th mat-header-cell *matHeaderCellDef>Onboarding</th>
+                <td mat-cell *matCellDef="let u">
+                  <mat-chip-set>
+                    <mat-chip
+                      [class]="'onb-' + (u.onboarding_state || 'not_started')"
+                      [matTooltip]="onboardingHint(u)">
+                      {{ onboardingLabel(u) }}
+                    </mat-chip>
+                  </mat-chip-set>
+                </td>
+              </ng-container>
               <ng-container matColumnDef="clearance">
                 <th mat-header-cell *matHeaderCellDef>Clearance</th>
                 <td mat-cell *matCellDef="let u">
@@ -224,6 +240,15 @@ interface AuthZone {
               <tn-empty-state icon="person_search" title="No users found"
                               message="Adjust the search or sync from the directory." />
             }
+          </div>
+        </mat-tab>
+
+        <!-- ===== Approvals Tab ===== -->
+        <!-- Where registration requests are turned into accounts. Approving is
+             the only path that creates a trainee. -->
+        <mat-tab label="Approvals">
+          <div class="tab-content">
+            <tn-approvals-panel />
           </div>
         </mat-tab>
 
@@ -644,7 +669,30 @@ export class UsersComponent implements OnInit {
   adSyncStatus: ADSyncStatus | null = null;
   authZones: AuthZone[] = [];
   userSearch = '';
-  userColumns = ['name', 'email', 'role', 'clearance', 'source', 'actions'];
+  userColumns = ['name', 'email', 'role', 'onboarding', 'clearance', 'source', 'actions'];
+
+  onboardingLabel(u: { onboarding_state?: string }): string {
+    switch (u.onboarding_state) {
+      case 'complete':
+        return 'Done';
+      case 'not_started':
+      case undefined:
+      case '':
+        return 'Not started';
+      default:
+        return 'In progress';
+    }
+  }
+
+  onboardingHint(u: { onboarding_state?: string; onboarded_at?: string }): string {
+    if (u.onboarding_state === 'complete') {
+      return u.onboarded_at ? `Completed ${new Date(u.onboarded_at).toLocaleDateString()}` : 'Completed';
+    }
+    if (!u.onboarding_state || u.onboarding_state === 'not_started') {
+      return 'Approved, but has not signed in and completed first-run yet.';
+    }
+    return `Stopped at the '${u.onboarding_state}' step.`;
+  }
 
   // Form visibility toggles
   showUserForm = false;

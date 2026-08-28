@@ -13,6 +13,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '@core/services/api.service';
 import { ThemeService } from '@core/services/theme.service';
+import { AuthService } from '@core/services/auth.service';
 import { tnChartColors, tnCartesianBase } from '../../shared/charts/echarts-theme';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { CompetencyHeatmapComponent } from './competency-heatmap.component';
@@ -226,7 +227,11 @@ export class CompetencyComponent implements OnInit, OnDestroy {
   skillGaps = signal<SkillGap[]>([]);
   frameworkColumns = ['code', 'name', 'framework', 'category'];
   selectedRole = '';
-  private userId = '00000000-0000-0000-0000-000000000001'; // TODO: auth
+  private readonly auth = inject(AuthService);
+  // Was hardcoded to the dev-admin UUID — see my-progress.component.ts.
+  private get userId(): string {
+    return this.auth.userId() ?? '';
+  }
 
   private fwInstance: any = null;
   private profInstance: any = null;
