@@ -24,11 +24,13 @@ from .integrations import lti_router
 from .integrations import router as integrations_router
 from .kit import router as kit_router
 from .network_devices import router as network_devices_router
+from .onboarding import router as onboarding_router
 from .ops_center import router as ops_center_router
 from .proxmox import router as proxmox_router
 from .qsp import router as qsp_router
 from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
+from .registration import router as registration_router
 from .scenarios import router as scenarios_router
 from .scheduling import router as scheduling_router
 from .storage import router as storage_router
@@ -36,6 +38,8 @@ from .templates import router as templates_router
 from .threat_intel import router as threat_intel_router
 
 __all__ = [
+    "registration_router",
+    "onboarding_router",
     "ranges_router",
     "exercises_router",
     "collective_exercises_router",

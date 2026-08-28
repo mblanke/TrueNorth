@@ -28,11 +28,13 @@ GET    /audit-log                          AUDIT_READ
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -353,3 +355,143 @@ def list_audit_log(
 ) -> list[AuditLog]:
     """Query the audit log.  **Permission: audit:read**"""
     return db.query(AuditLog).order_by(AuditLog.timestamp.desc()).offset(offset).limit(limit).all()
+
+
+# ── Roster import ───────────────────────────────────────────────────────
+# Upload ceiling, mirroring courses.MAX_CSV_BYTES.
+MAX_ROSTER_BYTES = 4 * 1024 * 1024
+
+ROSTER_REQUIRED = ("email",)
+ROSTER_FIELDS = (
+    "email",
+    "display_name",
+    "first_name",
+    "last_name",
+    "rank",
+    "service_branch",
+    "unit",
+    "callsign",
+    "role",
+)
+
+
+@router.post("/users/import-csv")
+async def import_roster_csv(
+    file: UploadFile,
+    dry_run: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.USER_CREATE)),
+) -> dict:
+    """Pre-provision a cohort from a CSV roster.  **Permission: user:create**
+
+    For a course that must exist in TrueNorth before anyone signs in. Rows are
+    created with ``source='csv_import'`` and a placeholder ``keycloak_id``; when
+    that person later signs in and their registration is approved, the approval
+    path **adopts** the existing row rather than creating a duplicate (see
+    ``routers/registration._approve_one``).
+
+    Idempotent on email: re-uploading the same roster updates rather than
+    duplicating, and never touches a row whose identity is already linked to a
+    real directory account.
+
+    Required column: ``email``. Optional: display_name, first_name, last_name,
+    rank, service_branch, unit, callsign, role.
+    """
+    raw = await file.read()
+    if len(raw) > MAX_ROSTER_BYTES:
+        raise HTTPException(413, "roster too large")
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(422, f"roster must be UTF-8 CSV: {exc}") from exc
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise HTTPException(422, "roster CSV has no header row")
+    missing = [c for c in ROSTER_REQUIRED if c not in reader.fieldnames]
+    if missing:
+        raise HTTPException(422, f"roster is missing required column(s): {', '.join(missing)}")
+
+    tenant_id = uuid.UUID(user.tenant_id)
+    created = updated = skipped = 0
+    errors: list[dict] = []
+
+    for line_no, row in enumerate(reader, start=2):
+        email = (row.get("email") or "").strip().lower()
+        if not email:
+            errors.append({"line": line_no, "error": "blank email"})
+            continue
+
+        role_raw = (row.get("role") or "student").strip() or "student"
+        try:
+            role = UserRole(role_raw)
+        except ValueError:
+            errors.append({"line": line_no, "email": email, "error": f"unknown role '{role_raw}'"})
+            continue
+
+        existing = db.query(User).filter(User.email == email).first()
+
+        # Never overwrite an account already linked to a directory identity —
+        # a roster upload must not be able to re-point or downgrade a live user.
+        if existing is not None and existing.source not in ("local", "csv_import"):
+            skipped += 1
+            errors.append(
+                {
+                    "line": line_no,
+                    "email": email,
+                    "error": f"already linked to identity source '{existing.source}' — not modified",
+                }
+            )
+            continue
+
+        fields = {
+            "display_name": (row.get("display_name") or "").strip() or email.split("@")[0],
+            "first_name": (row.get("first_name") or "").strip() or None,
+            "last_name": (row.get("last_name") or "").strip() or None,
+            "rank": (row.get("rank") or "").strip() or None,
+            "service_branch": (row.get("service_branch") or "").strip() or None,
+            "unit": (row.get("unit") or "").strip() or None,
+            "callsign": (row.get("callsign") or "").strip() or None,
+        }
+
+        if existing is None:
+            target = User(
+                email=email,
+                # A placeholder until the real subject arrives at approval. It
+                # must be unique, because keycloak_id carries a unique index.
+                keycloak_id=f"csv-import:{uuid.uuid4()}",
+                tenant_id=tenant_id,
+                source="csv_import",
+                display_name=fields["display_name"],
+            )
+            db.add(target)
+            created += 1
+        else:
+            target = existing
+            updated += 1
+
+        for key, value in fields.items():
+            if value is not None or key == "display_name":
+                setattr(target, key, value)
+        target.role = role
+        target.tenant_id = tenant_id
+
+    if dry_run:
+        db.rollback()
+    else:
+        db.flush()
+        _audit(db, user, "import", "user_roster", f"{created}+{updated}")
+        db.commit()
+
+    return {
+        "dry_run": dry_run,
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "note": (
+            "Imported rows are placeholders. Each person still signs in with their "
+            "directory credentials and is admitted through the approval queue, which "
+            "links their real identity to the row created here."
+        ),
+    }

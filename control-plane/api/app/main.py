@@ -187,11 +187,13 @@ from .routers import (
     learning_paths_router,
     lti_router,
     network_devices_router,
+    onboarding_router,
     ops_center_router,
     proxmox_router,
     qsp_router,
     quizzes_router,
     ranges_router,
+    registration_router,
     scenarios_router,
     scheduling_router,
     storage_router,
@@ -199,6 +201,12 @@ from .routers import (
     threat_intel_router,
     transcript_router,
 )
+
+# Identity intake. Registration is mounted first because /auth/me is the one
+# endpoint reachable without a users row — it is how the SPA learns whether the
+# caller needs to register, is awaiting approval, or is a full user.
+app.include_router(registration_router)
+app.include_router(onboarding_router)
 
 # Core routers
 app.include_router(ranges_router)

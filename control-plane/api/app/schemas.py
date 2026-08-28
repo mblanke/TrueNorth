@@ -943,8 +943,160 @@ class UserFullOut(BaseModel):
     ad_object_guid: str | None = None
     auth_method_preference: str | None = None
     timezone: str
+    onboarding_state: str = "not_started"
+    onboarded_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+# ── Trainee registration ────────────────────────────────────────────────
+class RegistrationPrefill(BaseModel):
+    """What Active Directory already knows. Read-only in the form."""
+
+    email: str = ""
+    display_name: str = ""
+    first_name: str | None = None
+    last_name: str | None = None
+    ad_object_guid: str | None = None
+    ad_distinguished_name: str | None = None
+
+
+class RegistrationSuggestions(BaseModel):
+    """Derived from AD group membership. Advisory — grants nothing."""
+
+    role: str | None = None
+    tenant_id: uuid.UUID | None = None
+    tenant_name: str | None = None
+    matched_groups: list[str] = []
+    may_register: bool = True
+
+
+class RegistrationRequestIn(BaseModel):
+    """What AD cannot answer, supplied by the person registering."""
+
+    rank: str | None = None
+    service_branch: str | None = None
+    unit: str | None = None
+    callsign: str | None = None
+    nation_id: uuid.UUID | None = None
+    timezone: str = "UTC"
+    requested_qualification_id: uuid.UUID | None = None
+    requested_learning_path_id: uuid.UUID | None = None
+    requested_cohort: str | None = None
+    justification: str | None = None
+
+
+class RegistrationRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    keycloak_id: str
+    email: str
+    display_name: str
+    first_name: str | None = None
+    last_name: str | None = None
+    ad_object_guid: str | None = None
+    ad_distinguished_name: str | None = None
+    ad_groups: str = "[]"
+    rank: str | None = None
+    service_branch: str | None = None
+    unit: str | None = None
+    callsign: str | None = None
+    nation_id: uuid.UUID | None = None
+    timezone: str = "UTC"
+    requested_qualification_id: uuid.UUID | None = None
+    requested_learning_path_id: uuid.UUID | None = None
+    requested_cohort: str | None = None
+    justification: str | None = None
+    suggested_role: str | None = None
+    suggested_tenant_id: uuid.UUID | None = None
+    status: str
+    submitted_at: datetime | None = None
+    decided_by_user_id: uuid.UUID | None = None
+    decided_at: datetime | None = None
+    decision_reason: str | None = None
+    created_user_id: uuid.UUID | None = None
+
+
+class RegistrationApproveIn(BaseModel):
+    """The approval decision. Role and tenant are assigned HERE, not inferred."""
+
+    role: str = Field(pattern="^(admin|instructor|student|observer|range_ops)$")
+    tenant_id: uuid.UUID | None = None
+    qualification_id: uuid.UUID | None = None
+    learning_path_id: uuid.UUID | None = None
+    note: str | None = None
+
+
+class RegistrationRejectIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class RegistrationBulkApproveIn(BaseModel):
+    """Cohort intake: same role, tenant and path applied to many requests."""
+
+    request_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    role: str = Field(pattern="^(admin|instructor|student|observer|range_ops)$")
+    tenant_id: uuid.UUID | None = None
+    learning_path_id: uuid.UUID | None = None
+    note: str | None = None
+
+
+class RegistrationBulkResultItem(BaseModel):
+    request_id: uuid.UUID
+    ok: bool
+    user_id: uuid.UUID | None = None
+    error: str | None = None
+
+
+class RegistrationBulkApproveOut(BaseModel):
+    approved: int
+    failed: int
+    results: list[RegistrationBulkResultItem]
+
+
+class AuthMeOut(BaseModel):
+    """Identity state for the SPA — always 200 on a valid token.
+
+    A discriminated union on ``status`` so the client never has to interpret an
+    error response to decide where to send someone.
+    """
+
+    status: str  # registered | pending | rejected | unregistered
+    user: UserFullOut | None = None
+    request: RegistrationRequestOut | None = None
+    prefill: RegistrationPrefill | None = None
+    suggestions: RegistrationSuggestions | None = None
+
+
+# ── Onboarding ──────────────────────────────────────────────────────────
+class OnboardingStateOut(BaseModel):
+    state: str
+    steps_done: list[str] = []
+    missing_profile_fields: list[str] = []
+    qualification_id: uuid.UUID | None = None
+    learning_path_id: uuid.UUID | None = None
+    enrolled_course_count: int = 0
+    onboarded_at: datetime | None = None
+
+
+class OnboardingProfileIn(BaseModel):
+    """Self-service profile completion.
+
+    Deliberately excludes role, tenant_id, clearance_level and is_active — a
+    trainee may describe themselves, never promote themselves.
+    """
+
+    rank: str | None = None
+    service_branch: str | None = None
+    unit: str | None = None
+    callsign: str | None = None
+    nation_id: uuid.UUID | None = None
+    timezone: str | None = None
+
+
+class OnboardingPathIn(BaseModel):
+    qualification_id: uuid.UUID | None = None
+    learning_path_id: uuid.UUID | None = None
 
 
 class UserUpdateIn(BaseModel):
@@ -1719,3 +1871,9 @@ class OpsStatsOut(BaseModel):
     objectives_completed: int
     objectives_total: int
     elapsed_seconds: int
+
+
+class LearningPathGroupAssignIn(BaseModel):
+    """Enrol a whole security group (mirroring an AD group) on a learning path."""
+
+    group_id: uuid.UUID

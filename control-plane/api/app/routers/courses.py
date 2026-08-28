@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import course_content_ingest, programme_ingest, qsp_paths
 from ..auth import CurrentUser, get_current_user
-from ..tenancy import get_owned, tenant_uuid
 from ..db import get_db
+from ..enrollment import ensure_enrollment, ensure_path_enrollment
 from ..models import (
     ContentKind,
     Course,
@@ -35,7 +35,11 @@ from ..models import (
     PerformanceObjective,
     Qualification,
     Quiz,
+    SecurityGroup,
+    SecurityGroupMembership,
+    User,
 )
+from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
     CourseIn,
     CourseListOut,
@@ -43,6 +47,7 @@ from ..schemas import (
     CourseUpdate,
     EnrollmentIn,
     EnrollmentOut,
+    LearningPathGroupAssignIn,
     LearningPathIn,
     LearningPathOut,
     LearningPathUpdate,
@@ -51,6 +56,7 @@ from ..schemas import (
     TranscriptEntry,
     TranscriptOut,
 )
+from ..tenancy import get_owned, tenant_uuid
 
 logger = logging.getLogger("truenorth.courses")
 
@@ -436,34 +442,31 @@ def enroll_user(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Enroll a user in a course."""
+    """Enroll a user in a course.
+
+    Enrolling someone *other* than yourself is an administrative act. This
+    endpoint previously trusted ``body.user_id`` outright, so any authenticated
+    user could enroll anyone else in any course in their tenant.
+    """
+    if str(body.user_id) != str(user.id) and not user_has_permission(user, Permission.USER_UPDATE):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Enrolling another user requires the user:update permission",
+        )
+
     course = get_owned(db, Course, course_id, user)
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
-    # Check for existing enrollment
+
     existing = (
         db.query(Enrollment).filter(Enrollment.user_id == body.user_id, Enrollment.course_id == course_id).first()
     )
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "User already enrolled in this course")
-    enrollment = Enrollment(
-        user_id=body.user_id,
-        course_id=course_id,
-        tenant_id=user.tenant_id,
-        status=EnrollmentStatus.enrolled,
+
+    enrollment = ensure_enrollment(
+        db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id
     )
-    db.add(enrollment)
-    db.flush()
-
-    # Create ModuleProgress entries for each module
-    modules = db.query(CourseModule).filter(CourseModule.course_id == course_id).order_by(CourseModule.ordinal).all()
-    for mod in modules:
-        mp = ModuleProgress(
-            enrollment_id=enrollment.id,
-            module_id=mod.id,
-        )
-        db.add(mp)
-
     db.commit()
     db.refresh(enrollment)
     logger.info("User %s enrolled in course %s", body.user_id, course_id)
@@ -733,3 +736,73 @@ def get_transcript(
         total_entries=len(entries),
         certifications=cert_outs,
     )
+
+
+@lp_router.post("/{path_id}/assign-group")
+def assign_learning_path_to_group(
+    path_id: uuid.UUID,
+    body: LearningPathGroupAssignIn,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
+) -> dict:
+    """Enrol every member of a security group on a learning path.
+
+    **Permission: user:update**
+
+    Security groups mirror the AD groups Keycloak federates, so this is how a
+    whole cohort gets its programme in one action rather than one enrolment at a
+    time. Idempotent: members already enrolled are left alone.
+    """
+    path = get_owned(db, LearningPath, path_id, user, not_found="Learning path not found")
+    group = get_owned(db, SecurityGroup, body.group_id, user, not_found="Security group not found")
+
+    # tenant-safe: reached only through a security group already scoped above.
+    member_ids = [
+        row.user_id
+        for row in db.query(SecurityGroupMembership).filter(
+            SecurityGroupMembership.group_id == group.id
+        )
+    ]
+    if not member_ids:
+        return {
+            "learning_path_id": str(path.id),
+            "group_id": str(group.id),
+            "members": 0,
+            "enrolled": 0,
+            "note": "The group has no members. Run an AD sync if it should.",
+        }
+
+    # Members must be in the caller's tenant — a group could in principle name a
+    # user from elsewhere, and enrolment writes a tenant-scoped row.
+    members = (
+        db.query(User)
+        .filter(User.id.in_(member_ids), User.tenant_id == tenant_uuid(user))
+        .all()
+    )
+
+    enrolled = 0
+    for member in members:
+        enrolled += len(
+            ensure_path_enrollment(
+                db,
+                user_id=member.id,
+                learning_path_id=path.id,
+                tenant_id=tenant_uuid(user),
+            )
+        )
+    db.commit()
+
+    logger.info(
+        "Assigned learning path %s to group %s (%d members, %d enrolments)",
+        path.id,
+        group.id,
+        len(members),
+        enrolled,
+    )
+    return {
+        "learning_path_id": str(path.id),
+        "group_id": str(group.id),
+        "members": len(members),
+        "skipped_out_of_tenant": len(member_ids) - len(members),
+        "enrolled": enrolled,
+    }

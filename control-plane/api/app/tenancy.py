@@ -55,6 +55,39 @@ def get_owned(
     return obj
 
 
+def get_owned_or_global(
+    db: Session,
+    model: type[T],
+    obj_id: uuid.UUID | str,
+    user: CurrentUser,
+    *,
+    not_found: str | None = None,
+) -> T:
+    """Like :func:`get_owned`, but also allows rows with a NULL ``tenant_id``.
+
+    Catalogue models — qualifications, learning paths, courses — carry a
+    *nullable* ``tenant_id``: NULL means shared content available to every
+    tenant, rather than content belonging to no one. ``get_owned`` would 404 on
+    exactly that shared content, so a trainee could not enrol on the standard
+    programme.
+
+    Use this ONLY for read-only catalogue lookups. Anything a caller can mutate
+    must go through :func:`get_owned`, because "global" and "writable by
+    anyone" are not the same thing.
+    """
+    oid = obj_id if isinstance(obj_id, uuid.UUID) else uuid.UUID(str(obj_id))
+    q = db.query(model).filter(
+        model.id == oid,
+        (model.tenant_id == tenant_uuid(user)) | (model.tenant_id.is_(None)),
+    )
+    if hasattr(model, "deleted_at"):
+        q = q.filter(model.deleted_at.is_(None))
+    obj = q.first()
+    if not obj:
+        raise HTTPException(404, not_found or f"{model.__name__} not found")
+    return obj
+
+
 def owned_or_404(
     db: Session,
     model: type[T],

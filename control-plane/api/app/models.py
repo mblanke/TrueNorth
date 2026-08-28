@@ -23,6 +23,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -190,6 +191,13 @@ class User(SoftDeleteMixin, TimestampMixin, Base):
     # -- Auth preferences --------------------------------------------------
     auth_method_preference: Mapped[str | None] = mapped_column(String(30), nullable=True)
     timezone: Mapped[str] = mapped_column(String(50), default="UTC")
+    # -- First-run onboarding ----------------------------------------------
+    # Three columns rather than a table: the state machine is linear and strictly
+    # one row per user, and /auth/me is on every page load and must not join.
+    # Per-step audit already has a home in audit_events.
+    onboarding_state: Mapped[str] = mapped_column(String(20), default="not_started")
+    onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    onboarding_data: Mapped[str] = mapped_column(Text, default="{}")
     tenant: Mapped[Tenant] = relationship(back_populates="users")
 
 
@@ -1339,6 +1347,99 @@ class AuthZonePolicy(TimestampMixin, Base):
     clearance_required: Mapped[str] = mapped_column(String(50), default="unclassified")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+
+class RegistrationStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    withdrawn = "withdrawn"
+
+
+class RegistrationRequest(TimestampMixin, Base):
+    """A request from an AD-authenticated person for a TrueNorth account.
+
+    Identity comes from Active Directory via Keycloak; this table holds what AD
+    does not know (rank, unit, callsign, which qualification they are joining)
+    plus the approval decision.
+
+    Deliberately NOT a half-formed ``users`` row: ``users.tenant_id`` is NOT NULL
+    and ``users.email``/``keycloak_id`` are unique, so a pending person could only
+    live there behind a placeholder tenant that every tenant-scoped query would
+    then have to exclude. Keeping them out of ``users`` also means enforcement is
+    structural — ``get_current_user`` already refuses anyone without a row, so a
+    newly written router cannot forget a check that does not exist.
+
+    Note the column is ``suggested_tenant_id``, not ``tenant_id``: the request is
+    not *owned* by that tenant, it merely proposes one. Naming it ``tenant_id``
+    would make the tenant-scoping guard expect ``get_owned()`` semantics that do
+    not apply here.
+    """
+
+    __tablename__ = "registration_requests"
+    __table_args__ = (
+        Index("ix_regreq_status", "status"),
+        Index("ix_regreq_suggested_tenant_status", "suggested_tenant_id", "status"),
+        Index("ix_regreq_keycloak_id", "keycloak_id"),
+        Index("ix_regreq_email", "email"),
+        # At most one OPEN request per identity, enforced by the database rather
+        # than by a check-then-insert that two concurrent submissions could race.
+        # Rejected/withdrawn rows stay for the audit trail and allow resubmission.
+        Index(
+            "uq_regreq_open_per_identity",
+            "keycloak_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+
+    # -- Identity, from the validated token ---------------------------------
+    keycloak_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ad_object_guid: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    ad_distinguished_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # JSON array of AD group names, snapshotted at submission time.
+    ad_groups: Mapped[str] = mapped_column(Text, default="[]")
+
+    # -- What AD does not hold; mirrors the User columns ---------------------
+    rank: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    service_branch: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    callsign: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    nation_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("nations.id"), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(50), default="UTC")
+
+    # -- What they are joining ----------------------------------------------
+    requested_qualification_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("qualifications.id"), nullable=True
+    )
+    requested_learning_path_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("learning_paths.id"), nullable=True
+    )
+    requested_cohort: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # -- Advisory only: derived from AD groups, never grants anything --------
+    suggested_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    suggested_tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("tenants.id"), nullable=True
+    )
+
+    # -- Decision ------------------------------------------------------------
+    status: Mapped[RegistrationStatus] = mapped_column(
+        Enum(RegistrationStatus), default=RegistrationStatus.pending, nullable=False
+    )
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_user_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════

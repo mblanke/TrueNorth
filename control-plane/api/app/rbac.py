@@ -60,6 +60,24 @@ class Permission(str, Enum):
     USER_UPDATE = "user:update"
     USER_DELETE = "user:delete"
 
+    # Trainee registration intake. REGISTRATION_APPROVE is what actually creates
+    # a user account, so it is deliberately narrower than USER_CREATE.
+    REGISTRATION_READ = "registration:read"
+    REGISTRATION_APPROVE = "registration:approve"
+
+    # Infrastructure: hypervisor connections, nodes, storage, network devices,
+    # and direct VM control. Distinct from the RANGE_* family, which is about
+    # ranges as a product concept — every role holds RANGE_READ, and none of
+    # them should imply "can see the hypervisor inventory" or "can power off a
+    # virtual machine".
+    INFRA_READ = "infra:read"
+    INFRA_WRITE = "infra:write"
+    INFRA_CONTROL = "infra:control"
+
+    # AI backend configuration (endpoints, model routing, fleet nodes).
+    AI_CONFIG_READ = "ai_config:read"
+    AI_CONFIG_WRITE = "ai_config:write"
+
     # Tenant management
     TENANT_CREATE = "tenant:create"
     TENANT_READ = "tenant:read"
@@ -101,6 +119,13 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_PAUSE,
         # Users
         Permission.USER_READ,
+        # Trainee intake: instructors drain the approval queue for their cohort.
+        Permission.REGISTRATION_READ,
+        Permission.REGISTRATION_APPROVE,
+        # Read-only: an instructor should be able to see whether the platform is
+        # healthy without being able to reconfigure or power-cycle it.
+        Permission.INFRA_READ,
+        Permission.AI_CONFIG_READ,
         # Analytics
         Permission.STATS_READ,
         Permission.AAR_GENERATE,
@@ -109,6 +134,11 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
     },
     # Range-ops: infrastructure-focused, no exercises/scenarios write
     UserRole.range_ops: {
+        # Infrastructure is this role's whole purpose.
+        Permission.INFRA_READ,
+        Permission.INFRA_WRITE,
+        Permission.INFRA_CONTROL,
+        Permission.AI_CONFIG_READ,
         Permission.RANGE_CREATE,
         Permission.RANGE_READ,
         Permission.RANGE_UPDATE,
