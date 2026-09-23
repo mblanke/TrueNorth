@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
+import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
@@ -68,10 +69,10 @@ interface Section {
 @Component({
   selector: 'tn-course-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink, MatCardModule, MatIconModule, MatTooltipModule],
+  imports: [CommonModule, RouterLink, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="cd">
+    <div class="cd tn-quiet">
       <a class="back" routerLink="/learning/courses">
         <mat-icon>arrow_back</mat-icon> All courses
       </a>
@@ -105,23 +106,29 @@ interface Section {
 
         @if (c.description) { <p class="desc">{{ c.description }}</p> }
 
+        <!-- One row per module; the first required one opens so the page starts on
+             content, everything else folds. -->
+        <mat-accordion multi displayMode="flat" class="modules">
         @for (m of c.modules; track m.id) {
-          <mat-card class="mod">
-            <div class="mod-top">
-              <span class="ord">{{ m.ordinal }}</span>
-              <span class="mod-title">{{ m.title }}</span>
-              <span class="badge">{{ m.content_type }}</span>
-              @if (m.duration_minutes) {
-                <span class="badge">{{ m.duration_minutes }} min</span>
-              }
-              @if (!m.is_required) { <span class="badge">optional</span> }
-              @if (m.delivers; as d) {
-                <span
-                  class="badge delivers"
-                  [matTooltip]="d.qualification + ' — ' + d.title"
-                >satisfies {{ d.po_code.replace('PO_', 'PO ') }}</span>
-              }
-            </div>
+          <mat-expansion-panel class="mod" [expanded]="m.id === firstRequiredId(c)" [attr.data-module]="m.ordinal">
+            <mat-expansion-panel-header>
+              <mat-panel-title>
+                <span class="ord">{{ m.ordinal }}</span>
+                <span class="mod-title">{{ m.title }}</span>
+              </mat-panel-title>
+              <mat-panel-description class="tn-small">
+                @if (m.delivers; as d) {
+                  <span
+                    class="delivers"
+                    [matTooltip]="d.qualification + ' — ' + d.title"
+                  >satisfies {{ d.po_code.replace('PO_', 'PO ') }}</span>
+                }
+                @if (!m.is_required) { <span>optional</span> }
+                @if (m.duration_minutes) { <span>{{ m.duration_minutes }} min</span> }
+              </mat-panel-description>
+            </mat-expansion-panel-header>
+
+            <p class="mod-kind tn-muted tn-small">{{ m.content_type }}</p>
 
             @for (s of sections(m); track s.heading) {
               <div class="sec">
@@ -152,10 +159,11 @@ interface Section {
                 <span class="muted">a range scenario is wired to this module</span>
               </div>
             }
-          </mat-card>
+          </mat-expansion-panel>
         } @empty {
           <p class="muted">This course has no modules yet.</p>
         }
+        </mat-accordion>
         }
       }
     </div>
@@ -196,19 +204,19 @@ interface Section {
         font-weight: 700;
         border: 1px solid var(--border-light);
       }
-      .pill.draft { background: var(--warn-soft, rgba(180, 110, 0, 0.15)); }
+      .pill.draft {
+        color: var(--warning);
+        border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+        background: var(--warn-soft, rgba(180, 110, 0, 0.15));
+      }
 
-      .desc { margin: 10px 0 16px; font-size: 0.86rem; }
+      .desc { margin: 10px 0 18px; font-size: 0.9rem; max-width: 72ch; color: var(--text-secondary); }
       .err { border-left: 3px solid var(--warning); }
 
-      .mod { margin-bottom: 12px; padding: 12px 14px; }
-      .mod-top {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 8px;
-        margin-bottom: 6px;
-      }
+      .cd { max-width: 980px; }
+      .modules { display: block; }
+      .mod-kind { margin: 0 0 6px; text-transform: capitalize; }
+      .delivers { color: var(--text-secondary); cursor: help; }
       .ord {
         flex: 0 0 auto;
         width: 22px;
@@ -222,21 +230,7 @@ interface Section {
         background: var(--bg-secondary);
         border: 1px solid var(--border-light);
       }
-      .mod-title { font-weight: 700; font-size: 0.92rem; }
-
-      .badge {
-        padding: 1px 7px;
-        border-radius: 999px;
-        font-size: 0.68rem;
-        border: 1px solid var(--border-light);
-        color: var(--text-muted);
-      }
-      .badge.delivers {
-        font-weight: 700;
-        border-color: transparent;
-        background: var(--accent-soft, rgba(0, 120, 90, 0.16));
-        color: var(--text-primary);
-      }
+      .mod-title { font-weight: 600; }
 
       .sec { margin: 8px 0; }
       .sec h4 {
@@ -294,6 +288,11 @@ export class CourseDetailComponent implements OnInit {
   protected title(c: CourseOutline): string {
     const sep = c.name.indexOf(' — ');
     return sep === -1 ? c.name : c.name.slice(sep + 3);
+  }
+
+  /** The module that opens on load: the first required one, else the first. */
+  protected firstRequiredId(c: CourseOutline): string | null {
+    return (c.modules.find(m => m.is_required) ?? c.modules[0])?.id ?? null;
   }
 
   /**

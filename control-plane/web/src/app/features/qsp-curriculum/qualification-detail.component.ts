@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { MatCardModule } from '@angular/material/card';
+import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -23,164 +23,195 @@ const PROGRESS_LABEL: Record<POProgressState, string> = {
   failed: 'Not met',
 };
 
+/** The shared status-chip look for each objective state. */
+const PROGRESS_CHIP: Record<POProgressState, string> = {
+  not_started: 'pending',
+  in_progress: 'active',
+  completed: 'completed',
+  failed: 'failed',
+};
+
 /**
- * The selected qualification, broken down into performance objectives, their
- * enabling objectives, and the lessons behind them.
+ * Objectives nothing real satisfies. A stub deliverer counts as nothing.
  *
- * Only the open qualification renders — the career map is the index, so there is
- * no reason to hold every objective on the page at once.
+ * Exported because the career path shows this count on a stage's collapsed row: a gap
+ * must stay visible without having to open anything.
+ */
+export function undeliveredObjectives(q: QualNode): PO[] {
+  return q.objectives.filter((po) => !po.delivered_by || po.delivered_by.is_placeholder);
+}
+
+/**
+ * A qualification's programme and objectives, shown inside its (expanded) row on the
+ * career path. Everything folds: terms, objectives, and enabling objectives, so the
+ * open stage reads as a short list rather than a wall of cards.
+ *
+ * Only an open stage renders this, so there is no reason to hold every objective on
+ * the page at once.
  */
 @Component({
   selector: 'tn-qualification-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink, MatCardModule, MatIconModule, MatTooltipModule],
+  imports: [CommonModule, RouterLink, MatExpansionModule, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (qualification; as q) {
       <section class="detail">
-        <header class="detail-head">
-          <div>
-            <!-- The qualification and the programme that delivers it are the same
-                 thing: ALJQ *is* the Algonquin curriculum, ACPZ *is* the RMC year.
-                 Naming both read as two separate entities. The identifiers stay on the
-                 title as a tooltip so nothing is lost. -->
-            <h3 [matTooltip]="identifiers(q)">{{ q.title }}</h3>
-            <p class="muted">
-              @if (institution(q)) { {{ institution(q) }} · }
-              {{ q.po_count }} performance objectives
-              @if (q.course_count) {
-                · {{ q.course_count }} courses
-                @if (q.course_hours) { · {{ q.course_hours.toLocaleString() }} taught hours }
-              }
-              <!-- Assessment time is not the length of the programme. Labelled, or 36 h
-                   reads as the duration of three years of study. -->
-              @if (q.total_minutes) {
-                · {{ fmtDuration(q.total_minutes) }} assessed
-              }
-            </p>
-          </div>
-          <span class="node-state" [class]="'state-' + q.state">{{ stateLabel(q) }}</span>
-        </header>
+        <!-- The title and state are on the row this sits inside, so only the facts
+             that don't fit there. The qualification and the programme that delivers it
+             are the same thing (ALJQ *is* the Algonquin curriculum), so they are not
+             named twice; the identifiers stay available as a tooltip. -->
+        <p class="tn-muted tn-small qd-meta" [matTooltip]="identifiers(q)">
+          @if (institution(q)) { {{ institution(q) }} · }
+          {{ q.po_count }} performance objectives
+          @if (q.course_count) {
+            · {{ q.course_count }} courses
+            @if (q.course_hours) { · {{ q.course_hours.toLocaleString() }} taught hours }
+          }
+          <!-- Assessment time is not the length of the programme. Labelled, or 36 h
+               reads as the duration of three years of study. -->
+          @if (q.total_minutes) {
+            · {{ fmtDuration(q.total_minutes) }} assessed
+          }
+        </p>
 
         @if (q.courses.length) {
-          <section class="programme">
-            <p class="muted programme-note">
-              Every course taught in this period, by term. Most teach without satisfying
-              a performance objective; the ones that do name it.
-            </p>
-
+          <h4 class="tn-section-label">Programme</h4>
+          <mat-accordion multi displayMode="flat" class="terms">
             @for (term of termsOf(q); track term.code) {
-              <div class="term">
-                <div class="term-head">{{ term.label || term.code }}</div>
-                <ul class="course-list">
-                  @for (c of term.courses; track c.course_id) {
-                    <li class="course">
-                      <a
-                        class="c-code"
-                        [routerLink]="['/learning/courses', c.course_id]"
-                        [matTooltip]="'Open ' + c.course_code + ' in the course catalogue'"
-                      >{{ c.course_code }}</a>
-                      <span class="c-name">{{ courseTitle(c) }}</span>
-                      <span class="badge diff" [class]="'d-' + c.difficulty">{{ c.difficulty }}</span>
-                      @if (c.duration_hours) {
-                        <span class="badge dur">{{ c.duration_hours }}h</span>
-                      }
-                      @if (c.delivers.length) {
-                        <span
-                          class="badge delivers"
-                          [class.cross-dp]="c.delivers_cross_dp"
-                        >{{ deliversLabel(c) }}</span>
-                      }
-                    </li>
-
-                    <!-- The objective lives with the module that satisfies it, rather
-                         than in a parallel list repeating the same 15 relationships. -->
-                    @for (po of objectivesFor(q, c); track po.po_code) {
-                      <li class="course-objective">
-                        <ng-container
-                          [ngTemplateOutlet]="objectiveCard"
-                          [ngTemplateOutletContext]="{ $implicit: po }"
-                        />
+              <mat-expansion-panel class="term">
+                <mat-expansion-panel-header>
+                  <mat-panel-title>{{ term.label || term.code }}</mat-panel-title>
+                  <mat-panel-description class="tn-small">
+                    {{ term.courses.length }} {{ term.courses.length === 1 ? 'course' : 'courses' }}
+                    @if (termHours(term)) { · {{ termHours(term).toLocaleString() }} h }
+                  </mat-panel-description>
+                </mat-expansion-panel-header>
+                <ng-template matExpansionPanelContent>
+                  <ul class="course-list">
+                    @for (c of term.courses; track c.course_id) {
+                      <li class="course">
+                        <a
+                          class="tn-code c-code"
+                          [routerLink]="['/learning/courses', c.course_id]"
+                          [matTooltip]="'Open ' + c.course_code"
+                        >{{ c.course_code }}</a>
+                        <span class="c-name">{{ courseTitle(c) }}</span>
+                        <span class="c-meta tn-muted tn-small">
+                          <span class="cap">{{ c.difficulty }}</span>@if (c.duration_hours) { · {{ c.duration_hours }} h }
+                        </span>
+                        @if (!c.is_published) {
+                          <span class="draft-pill" matTooltip="Not published yet">Draft</span>
+                        }
+                        @if (c.delivers.length) {
+                          <span
+                            class="delivers tn-small"
+                            [class.cross-dp]="c.delivers_cross_dp"
+                            [matTooltip]="deliversTooltip(c)"
+                          >satisfies {{ deliversLabel(c) }}</span>
+                        }
                       </li>
+
+                      <!-- The objective lives with the module that satisfies it, rather
+                           than in a parallel list repeating the same 15 relationships. -->
+                      @if (objectivesFor(q, c).length) {
+                        <li class="course-objectives">
+                          <mat-accordion multi displayMode="flat">
+                            @for (po of objectivesFor(q, c); track po.po_code) {
+                              <ng-container
+                                [ngTemplateOutlet]="objectivePanel"
+                                [ngTemplateOutletContext]="{ $implicit: po }"
+                              />
+                            }
+                          </mat-accordion>
+                        </li>
+                      }
                     }
-                  }
-                </ul>
-              </div>
+                  </ul>
+                </ng-template>
+              </mat-expansion-panel>
             }
-          </section>
+          </mat-accordion>
         }
 
         <!-- Objectives this qualification owns but another period teaches. Without
              this they would vanish: the specialty streams are entirely delivered by
              Algonquin Year-3 courses, which are placed on DP1. -->
         @if (deliveredElsewhere(q).length) {
-          <section class="elsewhere">
-            <h4 class="section-heading">Taught in another period</h4>
-            <p class="muted programme-note">
-              These objectives belong to this qualification but are delivered by courses
-              taught earlier in the path.
-            </p>
+          <h4 class="tn-section-label">Taught in another period</h4>
+          <p class="tn-muted tn-small note">
+            These belong to this qualification but are delivered by courses taught earlier
+            in the path.
+          </p>
+          <mat-accordion multi displayMode="flat">
             @for (po of deliveredElsewhere(q); track po.po_code) {
-              <div class="from-where">
-                <span class="muted">via</span>
-                <a
-                  class="c-code"
-                  [routerLink]="['/learning/courses', po.delivered_by!.course_id]"
-                >{{ po.delivered_by!.course_code }}</a>
-                <span class="muted">
-                  {{ po.delivered_by!.module_title }} · DP{{ po.delivered_by!.dp_order }}
-                </span>
-              </div>
               <ng-container
-                [ngTemplateOutlet]="objectiveCard"
-                [ngTemplateOutletContext]="{ $implicit: po }"
+                [ngTemplateOutlet]="objectivePanel"
+                [ngTemplateOutletContext]="{ $implicit: po, via: po.delivered_by }"
               />
             }
-          </section>
+          </mat-accordion>
         }
 
         <!-- A gap has to be visible as a gap. An objective with nothing real behind it
              can never show progress, however much courseware exists elsewhere. -->
         @if (undelivered(q).length) {
-          <section class="gap">
-            <h4 class="section-heading warn">
-              Not yet delivered ({{ undelivered(q).length }})
-            </h4>
-            <p class="muted programme-note">
-              No course module satisfies these yet, so no learner can make progress
-              against them.
-            </p>
+          <h4 class="tn-section-label tn-gap-count">
+            Not yet delivered ({{ undelivered(q).length }})
+          </h4>
+          <p class="tn-muted tn-small note">
+            No course module satisfies these yet, so no learner can make progress against
+            them.
+          </p>
+          <mat-accordion multi displayMode="flat">
             @for (po of undelivered(q); track po.po_code) {
               <ng-container
-                [ngTemplateOutlet]="objectiveCard"
+                [ngTemplateOutlet]="objectivePanel"
                 [ngTemplateOutletContext]="{ $implicit: po }"
               />
             }
-          </section>
+          </mat-accordion>
         }
       </section>
     }
 
-    <!-- One objective card, rendered wherever the objective belongs: under the course
-         that delivers it, under a pointer to another period, or in the gap list. -->
-    <ng-template #objectiveCard let-po>
-          <mat-card class="po-card" [class.is-current]="po.po_code === currentPoCode">
-            <div class="po-top">
-              <span class="po-code" [title]="po.po_code">{{ po.course_code || po.po_code }}</span>
-              <span class="po-title">{{ po.title }}</span>
+    <!-- One objective, collapsed to a single row wherever it belongs: under the course
+         that delivers it, among those taught in another period, or in the gap list.
+         Opening it shows the assessment brief; the enabling objectives fold again. -->
+    <ng-template #objectivePanel let-po let-via="via">
+      <mat-expansion-panel class="objective" [class.is-current]="po.po_code === currentPoCode">
+        <mat-expansion-panel-header>
+          <mat-panel-title>
+            <span class="po-title">{{ po.title }}</span>
+            @if (po.po_code === currentPoCode) {
+              <span class="tn-small here">you are here</span>
+            }
+          </mat-panel-title>
+          <mat-panel-description class="tn-small">
+            <span class="status-chip" [ngClass]="progressChip(po)">{{ progressLabel(po) }}</span>
+            <!-- Labelled "assessed": this is test time, not course length. -->
+            @if (po.duration_min) {
+              <span>{{ fmtDuration(po.duration_min) }} assessed</span>
+            } @else {
+              <span
+                class="unscoped"
+                matTooltip="No duration in the QSP crosswalk — this objective is not scoped yet"
+              >no duration</span>
+            }
+          </mat-panel-description>
+        </mat-expansion-panel-header>
 
-              <span class="badge progress" [class]="'p-' + po.progress_state">
-                {{ progressLabel(po) }}
-              </span>
+        <ng-template matExpansionPanelContent>
+            @if (via) {
+              <p class="from-where tn-small">
+                <span class="tn-muted">Taught via</span>
+                <a class="tn-code" [routerLink]="['/learning/courses', via.course_id]">{{ via.course_code }}</a>
+                <span class="tn-muted">{{ via.module_title }} · DP{{ via.dp_order }}</span>
+              </p>
+            }
+            <div class="po-top tn-small">
+              <span class="tn-code" [title]="po.po_code">{{ po.course_code || po.po_code }}</span>
               <span class="badge" [class.gate]="po.tier === 'gate'">{{ po.tier }}</span>
-              @if (po.duration_min) {
-                <span class="badge dur">{{ fmtDuration(po.duration_min) }}</span>
-              } @else {
-                <span
-                  class="badge unscoped"
-                  matTooltip="No duration in the QSP crosswalk — this objective is not scoped yet"
-                >no duration</span>
-              }
               @if (po.duration_long) {
                 <span
                   class="badge warn"
@@ -260,144 +291,89 @@ const PROGRESS_LABEL: Record<POProgressState, string> = {
             }
 
             @if (po.enabling_objectives.length) {
-              <ul class="eos">
-                @for (eo of po.enabling_objectives; track eo.eo_code) {
-                  <li>
-                    <span class="eo-code">EO {{ eo.eo_code }}</span> {{ eo.title }}
-                    @if (eo.lessons.length) {
-                      <span class="lesson-pill">
-                        <mat-icon>menu_book</mat-icon>{{ eo.lessons.length }} lesson(s)
-                        @if (!anyPublished(eo)) { <em>· draft</em> }
-                      </span>
-                    }
-                  </li>
-                }
-              </ul>
+              <mat-accordion displayMode="flat" class="eo-fold">
+                <mat-expansion-panel>
+                  <mat-expansion-panel-header>
+                    <mat-panel-title class="tn-small">
+                      {{ po.enabling_objectives.length }}
+                      enabling {{ po.enabling_objectives.length === 1 ? 'objective' : 'objectives' }}
+                    </mat-panel-title>
+                  </mat-expansion-panel-header>
+                  <ng-template matExpansionPanelContent>
+                    <ul class="eos">
+                      @for (eo of po.enabling_objectives; track eo.eo_code) {
+                        <li>
+                          <span class="eo-code">EO {{ eo.eo_code }}</span> {{ eo.title }}
+                          @if (eo.lessons.length) {
+                            <span class="lesson-pill">
+                              <mat-icon>menu_book</mat-icon>{{ eo.lessons.length }} lesson(s)
+                              @if (!anyPublished(eo)) { <em class="draft-note">· draft</em> }
+                            </span>
+                          }
+                        </li>
+                      }
+                    </ul>
+                  </ng-template>
+                </mat-expansion-panel>
+              </mat-accordion>
             }
-          </mat-card>
+        </ng-template>
+      </mat-expansion-panel>
     </ng-template>
   `,
   styles: [
     `
       :host { display: block; }
-      .muted { color: var(--text-muted); }
 
-      .delivered-by {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 8px;
-        margin: 8px 0 4px;
-        font-size: 0.82rem;
-      }
-      .delivered-by .db-label {
-        color: var(--text-muted);
-        text-transform: uppercase;
-        font-size: 0.68rem;
-        letter-spacing: 0.05em;
-        font-weight: 700;
-      }
-      .delivered-by .db-course { font-weight: 700; font-family: var(--font-mono, monospace); }
-      .delivered-by .db-module { color: var(--text-secondary, inherit); }
-      .delivered-by.none .db-label { color: var(--warning); }
+      .qd-meta { margin: 0 0 4px; }
+      .note { margin: -2px 0 8px; }
 
-      .section-heading {
-        margin: 22px 0 8px;
-        font-size: 0.92rem;
-        border-top: 1px solid var(--border-light);
-        padding-top: 14px;
-      }
-      .programme { margin-top: 4px; }
-      .course-objective { list-style: none; margin: 4px 0 10px 62px; }
-      .course-objective .po-card { margin: 0; }
-      .elsewhere, .gap { margin-top: 18px; }
-      .section-heading.warn { color: var(--warning); }
-      .from-where {
-        display: flex;
-        align-items: baseline;
-        gap: 6px;
-        margin: 10px 0 2px;
-        font-size: 0.78rem;
-      }
-      .from-where .c-code {
-        font-family: var(--font-mono, monospace);
-        font-weight: 700;
-        color: inherit;
-        text-decoration: none;
-      }
-      .from-where .c-code:hover { color: var(--accent); text-decoration: underline; }
-      .programme h4 { margin: 0 0 2px; font-size: 0.92rem; }
-      .programme-note { margin: 0 0 12px; font-size: 0.78rem; }
-
-      .term { margin-bottom: 12px; }
-      .term-head {
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-muted);
-        margin-bottom: 4px;
-      }
       .course-list { list-style: none; margin: 0; padding: 0; }
       .course {
         display: flex;
         flex-wrap: wrap;
         align-items: baseline;
-        gap: 8px;
-        padding: 4px 0;
-        border-bottom: 1px solid var(--border-subtle, transparent);
-        font-size: 0.82rem;
+        gap: 4px 12px;
+        padding: 7px 0;
+        border-bottom: 1px solid var(--border);
       }
-      .course .c-code {
-        flex: 0 0 auto;
-        min-width: 62px;
-        font-family: var(--font-mono, monospace);
-        font-weight: 700;
-        color: inherit;
-        text-decoration: none;
-      }
+      .course:last-child { border-bottom: 0; }
+      .course .c-code { min-width: 64px; text-decoration: none; }
       .course .c-code:hover { color: var(--accent); text-decoration: underline; }
-      .course .c-name { flex: 1 1 auto; }
-      .badge.delivers { background: var(--accent-soft, rgba(0, 120, 90, 0.12)); font-weight: 700; }
-      .badge.delivers.cross-dp,
-      .badge.cross-dp { background: var(--warn-soft, rgba(180, 110, 0, 0.15)); }
-
-      .detail-head {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 12px;
-      }
-      .detail-head h3 { margin: 0 0 2px; font-size: 1.05rem; }
-      .detail-head p { margin: 0; font-size: 0.82rem; }
-
-      .node-state {
-        flex: 0 0 auto;
-        padding: 3px 10px;
+      .course .c-name { flex: 1 1 14rem; }
+      /* CSS, not the titlecase pipe: the pipe pulls ~8 kB into the initial bundle. */
+      .cap { text-transform: capitalize; }
+      .delivers { color: var(--text-secondary); cursor: help; }
+      .delivers.cross-dp { color: var(--warning); }
+      .draft-pill {
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 1px 8px;
         border-radius: 999px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        border: 1px solid var(--border-light);
-        color: var(--text-secondary);
+        color: var(--warning);
+        border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
       }
-      .node-state.state-complete { color: var(--success); border-color: var(--success); }
-      .node-state.state-in_progress { color: var(--accent); border-color: var(--accent); }
-      .node-state.state-locked { color: var(--text-muted); }
+      /* Objectives a course satisfies sit just under it, indented to its name. */
+      .course-objectives { list-style: none; margin: 0 0 6px 76px; }
 
-      .po-card {
-        padding: 12px 14px;
-        margin: 10px 0;
-        background: var(--bg-card);
-        border: 1px solid var(--border);
+      .objective .po-title { font-weight: 500; }
+      .objective.is-current .po-title { color: var(--accent); }
+      .here { color: var(--accent); font-weight: 600; }
+      .unscoped { color: var(--warning); cursor: help; }
+
+      .from-where {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 6px;
+        margin: 0 0 8px;
       }
-      .po-card.is-current { border-color: var(--accent); box-shadow: var(--glow-accent); }
+      .from-where a { text-decoration: none; }
+      .from-where a:hover { color: var(--accent); text-decoration: underline; }
 
       .po-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-      .po-code { font-family: var(--font-display); font-weight: 700; }
-      .po-title { flex: 1 1 auto; }
+      .eo-fold { display: block; margin-top: 10px; }
+      .draft-note { color: var(--warning); }
 
       .badge {
         font-size: 0.72rem;
@@ -408,21 +384,8 @@ const PROGRESS_LABEL: Record<POProgressState, string> = {
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
-      .badge.gate { background: var(--accent-muted); color: var(--warning); }
-      .badge.env { background: var(--accent-muted); color: var(--accent); }
-      .badge.dur { background: transparent; color: var(--text-muted); }
-      .badge.unscoped {
-        background: transparent;
-        color: var(--warning);
-        border: 1px dashed currentColor;
-        cursor: help;
-      }
-      .badge.warn { background: var(--accent-muted); color: var(--warning); font-weight: 700; }
-      .badge.progress { border: 1px solid var(--border-light); background: transparent; }
-      .badge.progress.p-completed { color: var(--success); border-color: var(--success); }
-      .badge.progress.p-in_progress { color: var(--accent); border-color: var(--accent); }
-      .badge.progress.p-failed { color: var(--alert); border-color: var(--alert); }
-      .badge.progress.p-not_started { color: var(--text-muted); }
+      .badge.gate { color: var(--warning); }
+      .badge.warn { color: var(--warning); font-weight: 700; }
 
       .ex-link {
         display: inline-flex;
@@ -550,13 +513,22 @@ export class QualificationDetailComponent {
 
   /** Objectives nothing real satisfies. A stub deliverer counts as nothing. */
   undelivered(q: QualNode): PO[] {
-    return q.objectives.filter((po) => !po.delivered_by || po.delivered_by.is_placeholder);
+    return undeliveredObjectives(q);
   }
 
   /** The programme for this qualification, grouped into terms. Shared with the
-   * career map so the two views divide a period identically. */
+   * course catalogue so the two views divide a period identically. */
   termsOf(q: QualNode): TermGroup[] {
     return groupByTerm(q.courses);
+  }
+
+  /** Taught hours in a term, for its collapsed row. */
+  termHours(term: TermGroup): number {
+    return term.courses.reduce((sum, c) => sum + (c.duration_hours || 0), 0);
+  }
+
+  progressChip(po: PO): string {
+    return PROGRESS_CHIP[po.progress_state] ?? PROGRESS_CHIP.not_started;
   }
 
   /** The course name without its leading code, which is shown separately. */

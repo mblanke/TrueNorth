@@ -7,8 +7,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { ApiService } from '@core/services/api.service';
 import { CurriculumMap, CurriculumMapService } from '@core/services/curriculum-map.service';
-import { CareerMapComponent } from './career-map.component';
-import { QualificationDetailComponent } from './qualification-detail.component';
+import { CareerPathListComponent } from './career-path-list.component';
 
 interface LearningPath {
   id: string;
@@ -19,9 +18,9 @@ interface LearningPath {
 }
 
 /**
- * QSP-derived curriculum: the developmental career map (rank ladder + specialty
- * streams), the selected qualification's objectives, and the generated learning
- * paths. Everything the map needs arrives in one request.
+ * QSP-derived curriculum: the developmental path (rank ladder + specialty streams) as
+ * a collapsible list, each stage opening onto its programme and objectives, plus the
+ * generated learning paths. Everything the path needs arrives in one request.
  */
 @Component({
   selector: 'tn-qsp-curriculum',
@@ -32,46 +31,37 @@ interface LearningPath {
     MatExpansionModule,
     MatIconModule,
     MatTooltipModule,
-    CareerMapComponent,
-    QualificationDetailComponent,
+    CareerPathListComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="qc">
+    <div class="qc tn-quiet">
+      <!-- The hub already titles the page; one quiet line says what this tab is. -->
       <header class="qc-head">
-        <div class="head-row">
-          <h2><mat-icon>school</mat-icon> Developmental Path</h2>
-          <!-- The map is cached for the lifetime of the page (a root-scoped
-               shareReplay), so an import lands invisibly until something drops it.
-               Without a control here the only way to refetch was a browser reload. -->
-          <button
-            mat-stroked-button
-            type="button"
-            class="refresh"
-            (click)="reload()"
-            [disabled]="loading()"
-            matTooltip="Refetch after a crosswalk import, a content import or path generation"
-          >
-            <mat-icon>refresh</mat-icon> Refresh
-          </button>
-        </div>
-        <p class="muted">
-          The QSP rank ladder and its specialty streams, decomposed into performance
-          objectives, enabling objectives and lessons — cross-mapped to NICE work roles
-          and NIST CSF 2.0.
+        <p class="tn-muted">
+          Your developmental path: each stage of the rank ladder and its specialty streams,
+          with the courses that teach it and the objectives you are assessed on.
         </p>
+        <!-- The map is cached for the lifetime of the page (a root-scoped
+             shareReplay), so an import lands invisibly until something drops it.
+             Without a control here the only way to refetch was a browser reload. -->
+        <button
+          mat-button
+          type="button"
+          class="refresh"
+          (click)="reload()"
+          [disabled]="loading()"
+          matTooltip="Refetch after a crosswalk import, a content import or path generation"
+        >
+          <mat-icon>refresh</mat-icon> Refresh
+        </button>
       </header>
 
       @if (loading()) {
         <div class="skeleton" aria-live="polite" aria-busy="true">
           <span class="sr-only">Loading the developmental path…</span>
-          @for (row of [0, 1, 2]; track row) {
-            <div class="sk-lane">
-              <div class="sk-label"></div>
-              @for (col of [0, 1, 2, 3]; track col) {
-                <div class="sk-node"></div>
-              }
-            </div>
+          @for (row of [0, 1, 2, 3, 4]; track row) {
+            <div class="sk-row"></div>
           }
         </div>
       } @else if (error()) {
@@ -94,20 +84,16 @@ interface LearningPath {
           </div>
         </div>
       } @else {
-        <tn-career-map
+        <tn-career-path-list
           [map]="map()"
           [selected]="selectedCode()"
-          (selectedChange)="select($event)"
-        />
-
-        <tn-qualification-detail
-          [qualification]="selectedNode()"
           [currentPoCode]="map()?.learner?.current_po_code ?? null"
+          (selectedChange)="select($event)"
         />
       }
 
       @if (paths().length) {
-        <mat-accordion class="paths-block">
+        <mat-accordion class="paths-block" displayMode="flat">
           <mat-expansion-panel>
             <mat-expansion-panel-header>
               <mat-panel-title>Generated learning paths</mat-panel-title>
@@ -131,17 +117,18 @@ interface LearningPath {
   `,
   styles: [
     `
-      .head-row {
+      .qc { padding: 4px 2px 24px; max-width: 980px; }
+      .qc-head {
         display: flex;
+        flex-wrap: wrap;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
+        gap: 4px 12px;
+        margin: 0 0 16px;
       }
-      .head-row h2 { margin: 0; }
-      .refresh { flex: 0 0 auto; }
-      .qc { padding: 4px 2px 24px; }
-      .qc-head h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
-      .qc-head p { margin: 0 0 16px; max-width: 76ch; font-size: 0.86rem; }
+      .qc-head p { flex: 1 1 18rem; }
+      .qc-head p { margin: 4px 0 0; max-width: 72ch; font-size: 0.9rem; }
+      .refresh { flex: 0 0 auto; color: var(--text-muted); }
       .muted { color: var(--text-muted); }
       .small { font-size: 0.8rem; }
 
@@ -154,13 +141,10 @@ interface LearningPath {
         white-space: nowrap;
       }
 
-      /* Skeleton mirrors the real grid so the layout does not jump on load. */
-      .skeleton { display: flex; flex-direction: column; gap: 12px; }
-      .sk-lane { display: grid; grid-template-columns: 140px repeat(4, 1fr); gap: 12px; }
-      .sk-label,
-      .sk-node {
-        height: 96px;
-        border-radius: var(--radius-md);
+      /* Skeleton mirrors the real list so the layout does not jump on load. */
+      .skeleton { display: flex; flex-direction: column; gap: 1px; }
+      .sk-row {
+        height: 52px;
         background: linear-gradient(
           90deg,
           var(--bg-card) 25%,
@@ -170,14 +154,14 @@ interface LearningPath {
         background-size: 400% 100%;
         animation: sk-shimmer 1.4s ease infinite;
       }
-      .sk-label { height: 96px; opacity: 0.5; }
+      .sk-row:first-child { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+      .sk-row:last-child { border-radius: 0 0 var(--radius-md) var(--radius-md); }
       @keyframes sk-shimmer {
         0% { background-position: 100% 50%; }
         100% { background-position: 0 50%; }
       }
       @media (prefers-reduced-motion: reduce) {
-        .sk-label,
-        .sk-node { animation: none; }
+        .sk-row { animation: none; }
       }
 
       .state-panel {
@@ -195,8 +179,6 @@ interface LearningPath {
       .state-panel button { margin-left: auto; }
       .state-title { margin: 0 0 2px; font-weight: 600; }
       .state-panel p { margin: 0; }
-
-      tn-qualification-detail { display: block; margin-top: 22px; }
 
       .paths-block { display: block; margin-top: 22px; }
       .paths {

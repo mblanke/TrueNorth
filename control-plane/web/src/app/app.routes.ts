@@ -128,21 +128,25 @@ export const routes: Routes = [
     loadComponent: () => import('./shared/hub-shell.component').then(m => m.HubShellComponent),
     data: {
       title: 'Learning',
+      // Learner-facing tabs first; the authoring and administration screens last.
       tabs: [
-        { label: 'Qualifications', path: 'qualifications' },
-        { label: 'Curriculum', path: 'curriculum' },
+        { label: 'Career path', path: 'career-path' },
         { label: 'Courses', path: 'courses' },
-        { label: 'My Progress', path: 'progress' },
+        { label: 'My progress', path: 'progress' },
         { label: 'Competency', path: 'competency' },
+        { label: 'Curriculum', path: 'curriculum' },
+        { label: 'Admin', path: 'admin', instructorOnly: true },
       ],
     },
     children: [
-      { path: '', redirectTo: 'qualifications', pathMatch: 'full' },
+      { path: '', redirectTo: 'career-path', pathMatch: 'full' },
+      // Old name for the career path; redirects keep ?qual= deep links working.
+      { path: 'qualifications', redirectTo: 'career-path', pathMatch: 'full' },
       {
-        path: 'qualifications',
+        path: 'career-path',
         loadComponent: () =>
           import('./features/qsp-curriculum/qsp-curriculum.component').then(m => m.QspCurriculumComponent),
-        title: 'QSP Curriculum - TrueNorth Range',
+        title: 'Career path - TrueNorth Range',
       },
       {
         path: 'curriculum',
@@ -151,10 +155,18 @@ export const routes: Routes = [
         title: 'Curriculum - TrueNorth Range',
       },
       {
+        // What a learner browses. Administration moved to the Admin tab.
         path: 'courses',
         loadComponent: () =>
-          import('./features/training/training.component').then(m => m.TrainingComponent),
+          import('./features/training/course-catalogue.component').then(m => m.CourseCatalogueComponent),
         title: 'Courses - TrueNorth Range',
+      },
+      {
+        path: 'admin',
+        canActivate: [instructorGuard],
+        loadComponent: () =>
+          import('./features/training/training.component').then(m => m.TrainingComponent),
+        title: 'Course administration - TrueNorth Range',
       },
       {
         // A course of its own, so the developmental path can link to one rather than

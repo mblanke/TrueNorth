@@ -66,7 +66,7 @@ const NODE_ICON: Record<string, string> = {
     <div class="xd" *ngIf="detail as d">
       <header class="xd-head">
         <div>
-          <a routerLink="/learning/qualifications" class="back"><mat-icon>arrow_back</mat-icon> Qualifications</a>
+          <a routerLink="/learning/career-path" class="back"><mat-icon>arrow_back</mat-icon> Career path</a>
           <div class="kicker">Individual Assessment</div>
           <h2>{{ d.exercise_name }}</h2>
           <div class="meta">

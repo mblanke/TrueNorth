@@ -20,7 +20,6 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { HttpClient } from '@angular/common/http';
-import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
 
 interface Course {
   id: string;
@@ -131,27 +130,28 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
     MatCardModule, MatButtonModule, MatIconModule, MatTabsModule,
     MatTableModule, MatSortModule, MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSlideToggleModule, MatDividerModule, MatProgressBarModule,
-    MatChipsModule, MatTooltipModule, MatExpansionModule, LottieIconComponent,
+    MatChipsModule, MatTooltipModule, MatExpansionModule,
   ],
   template: `
-    <div class="page-container">
+    <div class="page-container tn-quiet">
+      <!-- Inside the Learning hub, which already titles the page: one quiet line, no
+           animation. -->
       <div class="page-header">
         <div class="header-left">
-          <tn-lottie name="shield-pulse" [size]="64" />
           <div>
-            <h1>LMS Administration</h1>
-            <p class="subtitle">Manage courses, learning paths, enrollments, and individual training records.</p>
+            <h2 class="admin-title">Course administration</h2>
+            <p class="subtitle">Courses, learning paths, enrolments and individual training records.</p>
           </div>
         </div>
         <div class="header-actions">
           @if (activeTab() === 0) {
-            <button mat-raised-button color="primary" (click)="openCourseForm()">
-              <mat-icon>add</mat-icon> New Course
+            <button mat-stroked-button (click)="openCourseForm()">
+              <mat-icon>add</mat-icon> New course
             </button>
           }
           @if (activeTab() === 1) {
-            <button mat-raised-button color="primary" (click)="openPathForm()">
-              <mat-icon>add</mat-icon> New Learning Path
+            <button mat-stroked-button (click)="openPathForm()">
+              <mat-icon>add</mat-icon> New learning path
             </button>
           }
         </div>
@@ -266,7 +266,7 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
               @if (courses().length === 0) {
                 <div class="empty-state">
                   <mat-icon>school</mat-icon>
-                  <p>No courses yet. Click <strong>New Course</strong> to create one.</p>
+                  <p>No courses yet. Click <strong>New course</strong> to create one.</p>
                 </div>
               }
             </div>
@@ -515,7 +515,8 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
     </div>
   `,
   styles: [`
-    .subtitle { color: var(--text-secondary); margin-bottom: 0; }
+    .subtitle { color: var(--text-muted); margin: 2px 0 0; font-size: 0.9rem; }
+    .admin-title { margin: 0; font-size: 1.05rem; font-weight: 600; }
     .page-icon { font-size: 32px; width: 32px; height: 32px; color: var(--accent); margin-right: 12px; }
     .header-left { display: flex; align-items: center; }
     .header-actions { display: flex; gap: 8px; }
