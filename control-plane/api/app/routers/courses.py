@@ -25,8 +25,8 @@ from ..models import (
     CourseModule,
     Enrollment,
     EnrollmentStatus,
-    Exercise,
     ExternalActivity,
+    ExternalPlatform,
     LearningPath,
     Lesson,
     ModuleContent,
@@ -39,7 +39,7 @@ from ..models import (
     SecurityGroupMembership,
     User,
 )
-from ..rbac import Permission, require_permission, user_has_permission
+from ..rbac import Permission, require_permission
 from ..schemas import (
     CourseIn,
     CourseListOut,
@@ -56,7 +56,7 @@ from ..schemas import (
     TranscriptEntry,
     TranscriptOut,
 )
-from ..tenancy import get_owned, tenant_uuid
+from ..tenancy import authorize_record_access, get_owned, get_owned_or_global, tenant_uuid
 
 logger = logging.getLogger("truenorth.courses")
 
@@ -448,11 +448,8 @@ def enroll_user(
     endpoint previously trusted ``body.user_id`` outright, so any authenticated
     user could enroll anyone else in any course in their tenant.
     """
-    if str(body.user_id) != str(user.id) and not user_has_permission(user, Permission.USER_UPDATE):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Enrolling another user requires the user:update permission",
-        )
+    # Self, or user:update over someone in your own tenant — never across tenants.
+    authorize_record_access(db, user, body.user_id, permission=Permission.USER_UPDATE)
 
     course = get_owned(db, Course, course_id, user)
     if not course:
@@ -477,10 +474,24 @@ def enroll_user(
 def list_enrollments(
     course_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.LEARNING_RECORD_READ)),
 ):
-    """List all enrollments for a course."""
-    return db.query(Enrollment).filter(Enrollment.course_id == course_id).order_by(Enrollment.enrolled_at.desc()).all()
+    """List a course's enrollments within the caller's tenant.
+
+    **Permission: learning_record:read**
+
+    Catalogue courses can be global (NULL tenant) and enrolled on by every tenant, so
+    the course being visible does not make its roster visible: the list is filtered to
+    learners in the caller's own tenant.
+    """
+    get_owned_or_global(db, Course, course_id, user, not_found="Course not found")
+    return (
+        db.query(Enrollment)
+        .join(User, Enrollment.user_id == User.id)
+        .filter(Enrollment.course_id == course_id, User.tenant_id == tenant_uuid(user))
+        .order_by(Enrollment.enrolled_at.desc())
+        .all()
+    )
 
 
 @router.get("/{course_id}/progress/{user_id}", response_model=list[ModuleProgressOut])
@@ -490,7 +501,11 @@ def get_user_progress(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Get per-module progress for a user in a course."""
+    """Get per-module progress for a user in a course.
+
+    Your own, or — with ``learning_record:read`` — someone in your tenant.
+    """
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_READ)
     enrollment = db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id).first()
     if not enrollment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
@@ -504,7 +519,12 @@ def complete_course(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Mark a course enrollment as completed and calculate final grade."""
+    """Mark a course enrollment as completed and calculate final grade.
+
+    Your own, or — with ``learning_record:write`` — someone in your tenant. The grade
+    is computed from recorded module progress, never supplied by the caller.
+    """
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_WRITE)
     enrollment = db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id).first()
     if not enrollment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
@@ -675,27 +695,26 @@ def get_transcript(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Generate a unified learning transcript from all sources."""
+    """Generate a unified learning transcript from all sources.
+
+    Your own, or — with ``learning_record:read`` — someone in your tenant.
+
+    Exercises are deliberately absent. ``Exercise`` has no learner column, so nothing
+    records who sat one; listing the tenant's exercises here put every trainee's scores
+    on every other trainee's transcript. They return when exercises are attributable.
+    """
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_READ)
     entries: list[TranscriptEntry] = []
 
-    # 1. TrueNorth exercises
-    exercises = db.query(Exercise).filter(Exercise.tenant_id == user.tenant_id).all()
-    for ex in exercises:
-        entries.append(
-            TranscriptEntry(
-                source="truenorth",
-                activity_type="exercise",
-                title=ex.name,
-                score=ex.total_score,
-                max_score=ex.max_score,
-                completed_at=ex.completed_at,
-            )
-        )
-
-    # 2. Course enrollments
+    # 1. Course enrollments. Catalogue courses may be global (NULL tenant), so use the
+    #    catalogue lookup — `get_owned` 404'd on the standard programme and took the
+    #    whole transcript down with it.
     enrollments = db.query(Enrollment).filter(Enrollment.user_id == user_id).all()
     for enr in enrollments:
-        course = get_owned(db, Course, enr.course_id, user)
+        try:
+            course = get_owned_or_global(db, Course, enr.course_id, user)
+        except HTTPException:
+            continue
         if course:
             entries.append(
                 TranscriptEntry(
@@ -709,8 +728,13 @@ def get_transcript(
                 )
             )
 
-    # 3. External activities
-    ext_activities = db.query(ExternalActivity).filter(ExternalActivity.user_id == user_id).all()
+    # 2. External activities, through platforms in the caller's tenant.
+    ext_activities = (
+        db.query(ExternalActivity)
+        .join(ExternalPlatform, ExternalActivity.platform_id == ExternalPlatform.id)
+        .filter(ExternalActivity.user_id == user_id, ExternalPlatform.tenant_id == tenant_uuid(user))
+        .all()
+    )
     for ea in ext_activities:
         entries.append(
             TranscriptEntry(
@@ -723,7 +747,7 @@ def get_transcript(
             )
         )
 
-    # 4. Certifications
+    # 3. Certifications
     from ..models import Certification
     from ..schemas import CertificationOut
 

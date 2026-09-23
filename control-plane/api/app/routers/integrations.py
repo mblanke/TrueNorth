@@ -20,7 +20,9 @@ from ..models import (
     ExternalActivity,
     ExternalPlatform,
     IntegrationAuthType,
+    User,
 )
+from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
     ExternalActivityOut,
     ExternalPlatformIn,
@@ -28,7 +30,7 @@ from ..schemas import (
     ExternalPlatformUpdate,
     PaginatedResponse,
 )
-from ..tenancy import get_owned
+from ..tenancy import get_owned, tenant_uuid
 
 logger = logging.getLogger("truenorth.integrations")
 
@@ -40,25 +42,33 @@ router = APIRouter(prefix="/integrations", tags=["integrations"])
 # ══════════════════════════════════════════════════════════════════════════
 
 
+# Platform records decide which issuer may sign users in over LTI (its JWKS URL is the
+# trust anchor), so registering or editing one is an admin act, not a user one.
+
+
 @router.post("/platforms", response_model=ExternalPlatformOut, status_code=status.HTTP_201_CREATED)
 def register_platform(
     body: ExternalPlatformIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
 ):
-    """Register an external learning platform (Moodle, Immersive Labs, OffSec)."""
+    """Register an external learning platform (Moodle, Immersive Labs, OffSec).
+
+    **Permission: integration:write**
+    """
     platform = ExternalPlatform(
         name=body.name,
         slug=body.slug,
         platform_type=body.platform_type,
         base_url=body.base_url,
         auth_type=IntegrationAuthType(body.auth_type),
-        tenant_id=user.tenant_id,
+        tenant_id=tenant_uuid(user),
         lti_client_id=body.lti_client_id,
         lti_deployment_id=body.lti_deployment_id,
         lti_issuer=body.lti_issuer,
         lti_jwks_url=body.lti_jwks_url,
         lti_token_url=body.lti_token_url,
+        lti_auth_login_url=body.lti_auth_login_url,
     )
     db.add(platform)
     db.commit()
@@ -70,7 +80,7 @@ def register_platform(
 @router.get("/platforms", response_model=list[ExternalPlatformOut])
 def list_platforms(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_READ)),
 ):
     """List all registered external platforms for the tenant."""
     return (
@@ -85,7 +95,7 @@ def list_platforms(
 def get_platform(
     platform_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_READ)),
 ):
     """Get details of a registered platform."""
     p = get_owned(db, ExternalPlatform, platform_id, user)
@@ -99,7 +109,7 @@ def update_platform(
     platform_id: uuid.UUID,
     body: ExternalPlatformUpdate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
 ):
     """Update a registered platform."""
     p = get_owned(db, ExternalPlatform, platform_id, user)
@@ -116,7 +126,7 @@ def update_platform(
 def deregister_platform(
     platform_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
 ):
     """Remove a registered platform."""
     p = get_owned(db, ExternalPlatform, platform_id, user)
@@ -130,7 +140,7 @@ def deregister_platform(
 async def test_connectivity(
     platform_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
 ):
     """Test connectivity to an external platform."""
     import httpx
@@ -174,8 +184,19 @@ def list_external_activities(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """List external learning activities with optional filters."""
-    q = db.query(ExternalActivity)
+    """List external learning activities with optional filters.
+
+    Without ``learning_record:read`` a caller sees only their own activities. With it,
+    they see their tenant's — never another tenant's. ExternalActivity carries no
+    tenant_id of its own, so the scope comes through the platform that recorded it.
+    """
+    q = db.query(ExternalActivity).join(
+        ExternalPlatform, ExternalActivity.platform_id == ExternalPlatform.id
+    ).filter(ExternalPlatform.tenant_id == tenant_uuid(user))
+    if not user_has_permission(user, Permission.LEARNING_RECORD_READ):
+        if user_id and str(user_id) != str(user.id):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Missing permission: learning_record:read")
+        user_id = uuid.UUID(str(user.id))
     if user_id:
         q = q.filter(ExternalActivity.user_id == user_id)
     if platform_id:
@@ -199,9 +220,16 @@ def record_external_activity(
     completed_at: datetime | None = None,
     duration_seconds: int | None = None,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.LEARNING_RECORD_WRITE)),
 ):
-    """Record a learning activity from an external platform."""
+    """Record a learning activity from an external platform.
+
+    **Permission: learning_record:write** — this writes to someone's transcript, so a
+    learner cannot credit themselves. Both the platform and the learner must belong to
+    the caller's tenant.
+    """
+    get_owned(db, ExternalPlatform, platform_id, user, not_found="Platform not found")
+    get_owned(db, User, user_id, user, not_found="User not found")
     ea = ExternalActivity(
         platform_id=platform_id,
         user_id=user_id,
@@ -234,7 +262,7 @@ from jose import jwt as _jwt
 from pydantic import BaseModel as _BaseModel
 
 from .. import lti13
-from ..models import Course, Quiz, User, UserRole
+from ..models import Course, Quiz, UserRole
 
 WEB_BASE_URL = __import__("os").getenv("LTI_WEB_BASE_URL", "http://localhost:4200")
 
@@ -282,8 +310,19 @@ def _jit_user(db: Session, platform, claims: dict) -> User:
     name = str(claims.get("name") or claims.get("given_name") or email.split("@")[0])
     lti_kc_id = f"lti:{platform.id}:{sub}"
 
+    # The email claim is asserted by the platform, not verified by us. Matching it
+    # across tenants would let any registered platform sign in as any user anywhere —
+    # including an admin — by naming their address. So: match only inside the
+    # platform's own tenant, and refuse (rather than impersonate or duplicate; email
+    # is globally unique) when the address belongs to someone in a different tenant.
     user = db.query(User).filter((User.keycloak_id == lti_kc_id) | (User.email == email)).first()
     if user:
+        if str(user.tenant_id) != str(platform.tenant_id):
+            logger.warning(
+                "LTI launch from %s asserted an identity that belongs to another tenant; refused",
+                platform.name,
+            )
+            raise HTTPException(403, "This account belongs to a different organisation.")
         return user
     user = User(
         keycloak_id=lti_kc_id,
@@ -446,13 +485,18 @@ class GradePushIn(_BaseModel):
 async def lti_grade_passback(
     body: GradePushIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.LEARNING_RECORD_WRITE)),
 ):
     """Manually push a score to the launching platform's gradebook (AGS).
+
+    **Permission: learning_record:write**, and the learner must be in the caller's
+    tenant. The score lands in an external gradebook, so this is never self-service:
+    a learner could otherwise post any score for themselves.
 
     Automatic pushes happen on quiz submission / exercise completion; this
     endpoint lets operators retry or backfill.
     """
+    get_owned(db, User, body.user_id, user, not_found="User not found")
     pushed = await lti13.push_score_for_resource(
         db, body.user_id, body.resource_kind, body.resource_id, body.score, body.max_score
     )

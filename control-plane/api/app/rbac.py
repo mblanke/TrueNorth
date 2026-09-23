@@ -78,6 +78,18 @@ class Permission(str, Enum):
     AI_CONFIG_READ = "ai_config:read"
     AI_CONFIG_WRITE = "ai_config:write"
 
+    # External learning platforms (Moodle etc.). A registered platform's JWKS URL is
+    # what LTI launches are verified against, so INTEGRATION_WRITE amounts to "may
+    # decide which issuer can sign users in" — admin only.
+    INTEGRATION_READ = "integration:read"
+    INTEGRATION_WRITE = "integration:write"
+
+    # Other people's learning records: enrolments, module progress, transcripts,
+    # external activities, gradebook pushes. Everyone may read their OWN record
+    # without these; they govern acting on someone else's.
+    LEARNING_RECORD_READ = "learning_record:read"
+    LEARNING_RECORD_WRITE = "learning_record:write"
+
     # Tenant management
     TENANT_CREATE = "tenant:create"
     TENANT_READ = "tenant:read"
@@ -126,6 +138,10 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # healthy without being able to reconfigure or power-cycle it.
         Permission.INFRA_READ,
         Permission.AI_CONFIG_READ,
+        Permission.INTEGRATION_READ,
+        # Their cohort's records: progress, transcripts, grade passback retries.
+        Permission.LEARNING_RECORD_READ,
+        Permission.LEARNING_RECORD_WRITE,
         # Analytics
         Permission.STATS_READ,
         Permission.AAR_GENERATE,

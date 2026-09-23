@@ -552,18 +552,22 @@ class ExternalPlatformIn(BaseModel):
     lti_issuer: str | None = None
     lti_jwks_url: str | None = None
     lti_token_url: str | None = None
+    # The platform's OIDC authorization endpoint (Moodle: /mod/lti/auth.php). Without
+    # it `lti13.build_login_redirect` cannot start a launch at all.
+    lti_auth_login_url: str | None = None
 
 
 class ExternalPlatformUpdate(BaseModel):
     name: str | None = None
     base_url: str | None = None
-    auth_type: str | None = None
+    auth_type: str | None = Field(default=None, pattern=r"^(lti13|oauth2|api_key|saml)$")
     is_active: bool | None = None
     lti_client_id: str | None = None
     lti_deployment_id: str | None = None
     lti_issuer: str | None = None
     lti_jwks_url: str | None = None
     lti_token_url: str | None = None
+    lti_auth_login_url: str | None = None
 
 
 class ExternalPlatformOut(BaseModel):
@@ -580,6 +584,7 @@ class ExternalPlatformOut(BaseModel):
     lti_issuer: str | None = None
     lti_jwks_url: str | None = None
     lti_token_url: str | None = None
+    lti_auth_login_url: str | None = None
     tenant_id: uuid.UUID
     last_sync_at: datetime | None = None
     created_at: datetime

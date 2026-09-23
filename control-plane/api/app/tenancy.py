@@ -109,3 +109,34 @@ def owned_or_404(
     if len(found) != len(set(ids)):
         raise HTTPException(404, f"{model.__name__} not found")
     return found
+
+
+def authorize_record_access(
+    db: Session,
+    caller: CurrentUser,
+    subject_id: uuid.UUID | str,
+    *,
+    permission,
+) -> None:
+    """Raise unless the caller may act on ``subject_id``'s learning record.
+
+    Enrolments, progress, transcripts and external activities are personal records.
+    The rule is the same everywhere:
+
+    - your own record: always;
+    - anyone else's: the caller needs ``permission`` (a ``rbac.Permission``), AND the
+      subject must be in the caller's tenant.
+
+    A caller without the permission gets 403 (they know their own role; nothing is
+    disclosed). A subject outside the tenant is 404, never 403, so user ids cannot be
+    probed across tenants.
+    """
+    from .models import User
+    from .rbac import user_has_permission
+
+    sid = subject_id if isinstance(subject_id, uuid.UUID) else uuid.UUID(str(subject_id))
+    if str(sid) == str(caller.id):
+        return
+    if not user_has_permission(caller, permission):
+        raise HTTPException(403, f"Missing permission: {permission.value}")
+    get_owned(db, User, sid, caller, not_found="User not found")
