@@ -49,8 +49,11 @@ describe('AppComponent', () => {
     expect(routes).toContain('/dashboard');
     expect(routes).toContain('/ranges');
     expect(routes).toContain('/exercises');
-    expect(routes).toContain('/scenarios');
-    expect(routes).toContain('/telemetry');
+    // Scenarios live in the Authoring Studio hub (/scenarios redirects there), and
+    // live telemetry sits in the Ops Center — neither has its own nav entry now.
+    expect(routes).toContain('/authoring');
+    expect(routes).toContain('/ops-center/select');
+    expect(routes).toContain('/learning');
     expect(routes).toContain('/admin');
   });
 
