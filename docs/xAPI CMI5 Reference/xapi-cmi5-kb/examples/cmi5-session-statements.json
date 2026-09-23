@@ -1,0 +1,357 @@
+[
+  {
+    "id": "0a1b2c3d-0001-4000-8000-000000000001",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "http://adlnet.gov/expapi/verbs/launched",
+      "display": {
+        "en-US": "launched"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/au/5f1e2d3c"
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/au/module-1"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "b7c1e2f3-4d5a-4b6c-9d8e-7f6a5b4c3d2e",
+        "https://w3id.org/xapi/cmi5/context/extensions/launchmode": "Normal",
+        "https://w3id.org/xapi/cmi5/context/extensions/launchurl": "https://content.example.org/cmi5/cyber-hygiene-101/module-1/index.html",
+        "https://w3id.org/xapi/cmi5/context/extensions/moveon": "CompletedAndPassed",
+        "https://w3id.org/xapi/cmi5/context/extensions/masteryscore": 0.8,
+        "https://w3id.org/xapi/cmi5/context/extensions/launchparameters": "{\"scenario\":\"phishing-a\",\"lang\":\"en-CA\"}"
+      }
+    },
+    "timestamp": "2026-09-23T13:00:01.000Z"
+  },
+  {
+    "id": "0a1b2c3d-0002-4000-8000-000000000002",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "http://adlnet.gov/expapi/verbs/initialized",
+      "display": {
+        "en-US": "initialized"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/au/5f1e2d3c"
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/au/module-1"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "b7c1e2f3-4d5a-4b6c-9d8e-7f6a5b4c3d2e"
+      }
+    },
+    "timestamp": "2026-09-23T13:00:05.000Z"
+  },
+  {
+    "id": "0a1b2c3d-0003-4000-8000-000000000003",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "http://adlnet.gov/expapi/verbs/progressed",
+      "display": {
+        "en-US": "progressed"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/au/5f1e2d3c"
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/au/module-1"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "b7c1e2f3-4d5a-4b6c-9d8e-7f6a5b4c3d2e"
+      }
+    },
+    "timestamp": "2026-09-23T13:05:40.000Z",
+    "result": {
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/result/extensions/progress": 50
+      }
+    }
+  },
+  {
+    "id": "0a1b2c3d-0004-4000-8000-000000000004",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "http://adlnet.gov/expapi/verbs/completed",
+      "display": {
+        "en-US": "completed"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/au/5f1e2d3c"
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/au/module-1"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          },
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/moveon"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "b7c1e2f3-4d5a-4b6c-9d8e-7f6a5b4c3d2e"
+      }
+    },
+    "timestamp": "2026-09-23T13:11:25.000Z",
+    "result": {
+      "completion": true,
+      "duration": "PT11M20S"
+    }
+  },
+  {
+    "id": "0a1b2c3d-0005-4000-8000-000000000005",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "http://adlnet.gov/expapi/verbs/passed",
+      "display": {
+        "en-US": "passed"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/au/5f1e2d3c"
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/au/module-1"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          },
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/moveon"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "b7c1e2f3-4d5a-4b6c-9d8e-7f6a5b4c3d2e",
+        "https://w3id.org/xapi/cmi5/context/extensions/masteryscore": 0.8
+      }
+    },
+    "timestamp": "2026-09-23T13:12:10.000Z",
+    "result": {
+      "success": true,
+      "score": {
+        "scaled": 0.9,
+        "raw": 18,
+        "min": 0,
+        "max": 20
+      },
+      "duration": "PT12M5S"
+    }
+  },
+  {
+    "id": "0a1b2c3d-0006-4000-8000-000000000006",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "http://adlnet.gov/expapi/verbs/terminated",
+      "display": {
+        "en-US": "terminated"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/au/5f1e2d3c"
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/au/module-1"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "b7c1e2f3-4d5a-4b6c-9d8e-7f6a5b4c3d2e"
+      }
+    },
+    "timestamp": "2026-09-23T13:13:07.000Z",
+    "result": {
+      "duration": "PT13M2S"
+    }
+  },
+  {
+    "id": "0a1b2c3d-0008-4000-8000-000000000008",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "https://w3id.org/xapi/adl/verbs/satisfied",
+      "display": {
+        "en-US": "satisfied"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/block/3e4f5a6b",
+      "definition": {
+        "type": "https://w3id.org/xapi/cmi5/activitytype/block"
+      }
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/block/core"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "b7c1e2f3-4d5a-4b6c-9d8e-7f6a5b4c3d2e"
+      }
+    },
+    "timestamp": "2026-09-23T13:13:08.000Z"
+  },
+  {
+    "id": "0a1b2c3d-0007-4000-8000-000000000007",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "https://w3id.org/xapi/adl/verbs/satisfied",
+      "display": {
+        "en-US": "satisfied"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/course/9a8b7c6d",
+      "definition": {
+        "type": "https://w3id.org/xapi/cmi5/activitytype/course"
+      }
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "b7c1e2f3-4d5a-4b6c-9d8e-7f6a5b4c3d2e"
+      }
+    },
+    "timestamp": "2026-09-23T13:13:08.500Z"
+  }
+]

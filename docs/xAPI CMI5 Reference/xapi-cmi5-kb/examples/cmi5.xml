@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Example cmi5 course structure (Quartz). Validates against CourseStructure.xsd.
+     Publisher IDs here are NOT the runtime activity IDs; the LMS generates those. -->
+<courseStructure xmlns="https://w3id.org/xapi/profiles/cmi5/v1/CourseStructure.xsd">
+  <course id="https://content.example.org/cmi5/cyber-hygiene-101">
+    <title>
+      <langstring lang="en-CA">Cyber Hygiene 101</langstring>
+      <langstring lang="fr-CA">Cyberhygiène 101</langstring>
+    </title>
+    <description>
+      <langstring lang="en-CA">Baseline cyber hygiene for all staff: phishing, credentials, removable media.</langstring>
+      <langstring lang="fr-CA">Cyberhygiène de base pour tout le personnel : hameçonnage, justificatifs, supports amovibles.</langstring>
+    </description>
+  </course>
+  <objectives>
+    <objective id="https://content.example.org/cmi5/cyber-hygiene-101/obj/phishing">
+      <title><langstring lang="en-CA">Recognize phishing</langstring></title>
+      <description><langstring lang="en-CA">Identify and report phishing messages.</langstring></description>
+    </objective>
+  </objectives>
+  <block id="https://content.example.org/cmi5/cyber-hygiene-101/block/core">
+    <title><langstring lang="en-CA">Core modules</langstring></title>
+    <description><langstring lang="en-CA">Required modules.</langstring></description>
+    <au id="https://content.example.org/cmi5/cyber-hygiene-101/au/module-1"
+        moveOn="CompletedAndPassed" masteryScore="0.8" launchMethod="AnyWindow">
+      <title><langstring lang="en-CA">Module 1: Phishing</langstring></title>
+      <description><langstring lang="en-CA">Scenario-based phishing module with a scored check.</langstring></description>
+      <objectives>
+        <objective idref="https://content.example.org/cmi5/cyber-hygiene-101/obj/phishing"/>
+      </objectives>
+      <url>module-1/index.html</url>
+      <launchParameters>{"scenario":"phishing-a","lang":"en-CA"}</launchParameters>
+      <entitlementKey>CH101-2026</entitlementKey>
+    </au>
+    <au id="https://content.example.org/cmi5/cyber-hygiene-101/au/module-2" moveOn="Completed" launchMethod="OwnWindow">
+      <title><langstring lang="en-CA">Module 2: Credentials and removable media</langstring></title>
+      <description><langstring lang="en-CA">Reading and short practical exercise.</langstring></description>
+      <url>module-2/index.html</url>
+    </au>
+  </block>
+</courseStructure>

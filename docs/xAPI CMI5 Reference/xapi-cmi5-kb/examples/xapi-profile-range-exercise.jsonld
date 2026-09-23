@@ -1,0 +1,186 @@
+{
+  "@context": "https://w3id.org/xapi/profiles/context",
+  "id": "https://vocab.example.org/xapi/profiles/range-exercise",
+  "type": "Profile",
+  "conformsTo": "https://w3id.org/xapi/profiles#1.0",
+  "prefLabel": {
+    "en": "Range Exercise Profile (example)"
+  },
+  "definition": {
+    "en": "Example profile for recording team cyber-range exercise events: exercise start, inject detections and exercise completion."
+  },
+  "seeAlso": "https://vocab.example.org/docs/range-exercise-profile",
+  "versions": [
+    {
+      "id": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "generatedAtTime": "2026-09-23T00:00:00Z"
+    }
+  ],
+  "author": {
+    "type": "Organization",
+    "name": "Example Training Data Governance Board"
+  },
+  "concepts": [
+    {
+      "id": "https://vocab.example.org/xapi/verbs/detected",
+      "type": "Verb",
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "prefLabel": {
+        "en": "detected",
+        "fr": "a détecté"
+      },
+      "definition": {
+        "en": "The actor identified the malicious activity represented by the object inject, with enough evidence to raise it to the exercise assessor."
+      }
+    },
+    {
+      "id": "https://vocab.example.org/xapi/activity-types/exercise",
+      "type": "ActivityType",
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "prefLabel": {
+        "en": "exercise"
+      },
+      "definition": {
+        "en": "A scheduled, scenario-driven training exercise run on a cyber range."
+      }
+    },
+    {
+      "id": "https://vocab.example.org/xapi/activity-types/inject",
+      "type": "ActivityType",
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "prefLabel": {
+        "en": "inject"
+      },
+      "definition": {
+        "en": "A scripted event introduced into an exercise that trainees are expected to detect or respond to."
+      }
+    },
+    {
+      "id": "https://vocab.example.org/xapi/extensions/time-to-detect-s",
+      "type": "ResultExtension",
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "prefLabel": {
+        "en": "time to detect (seconds)"
+      },
+      "definition": {
+        "en": "Elapsed time in seconds between inject release and the detection statement."
+      },
+      "recommendedVerbs": [
+        "https://vocab.example.org/xapi/verbs/detected"
+      ],
+      "inlineSchema": "{\"type\": \"number\", \"minimum\": 0}"
+    }
+  ],
+  "templates": [
+    {
+      "id": "https://vocab.example.org/xapi/profiles/range-exercise/v1/templates/exercise-started",
+      "type": "StatementTemplate",
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "prefLabel": {
+        "en": "Exercise started"
+      },
+      "definition": {
+        "en": "Trainee begins participation in an exercise run."
+      },
+      "verb": "http://adlnet.gov/expapi/verbs/initialized",
+      "objectActivityType": "https://vocab.example.org/xapi/activity-types/exercise",
+      "rules": [
+        {
+          "location": "$.context.registration",
+          "presence": "included"
+        },
+        {
+          "location": "$.timestamp",
+          "presence": "included"
+        }
+      ]
+    },
+    {
+      "id": "https://vocab.example.org/xapi/profiles/range-exercise/v1/templates/inject-detected",
+      "type": "StatementTemplate",
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "prefLabel": {
+        "en": "Inject detected"
+      },
+      "definition": {
+        "en": "Trainee detected an inject. Time to detect is mandatory."
+      },
+      "verb": "https://vocab.example.org/xapi/verbs/detected",
+      "objectActivityType": "https://vocab.example.org/xapi/activity-types/inject",
+      "contextGroupingActivityType": [
+        "https://vocab.example.org/xapi/activity-types/exercise"
+      ],
+      "rules": [
+        {
+          "location": "$.context.registration",
+          "presence": "included"
+        },
+        {
+          "location": "$.result.extensions['https://vocab.example.org/xapi/extensions/time-to-detect-s']",
+          "presence": "included"
+        },
+        {
+          "location": "$.actor.mbox",
+          "presence": "excluded",
+          "scopeNote": {
+            "en": "Actors must use account IFIs."
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://vocab.example.org/xapi/profiles/range-exercise/v1/templates/exercise-completed",
+      "type": "StatementTemplate",
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "prefLabel": {
+        "en": "Exercise completed"
+      },
+      "definition": {
+        "en": "Trainee finished the exercise run; success reflects the assessor's judgement."
+      },
+      "verb": "http://adlnet.gov/expapi/verbs/completed",
+      "objectActivityType": "https://vocab.example.org/xapi/activity-types/exercise",
+      "rules": [
+        {
+          "location": "$.result.completion",
+          "all": [
+            true
+          ]
+        },
+        {
+          "location": "$.result.success",
+          "presence": "included"
+        },
+        {
+          "location": "$.result.duration",
+          "presence": "included"
+        }
+      ]
+    }
+  ],
+  "patterns": [
+    {
+      "id": "https://vocab.example.org/xapi/profiles/range-exercise/v1/patterns/detections",
+      "type": "Pattern",
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "zeroOrMore": "https://vocab.example.org/xapi/profiles/range-exercise/v1/templates/inject-detected"
+    },
+    {
+      "id": "https://vocab.example.org/xapi/profiles/range-exercise/v1/patterns/exercise-run",
+      "type": "Pattern",
+      "primary": true,
+      "inScheme": "https://vocab.example.org/xapi/profiles/range-exercise/v1",
+      "prefLabel": {
+        "en": "Exercise run"
+      },
+      "definition": {
+        "en": "One trainee's run of one exercise: started, any number of detections, completed. One registration per run."
+      },
+      "sequence": [
+        "https://vocab.example.org/xapi/profiles/range-exercise/v1/templates/exercise-started",
+        "https://vocab.example.org/xapi/profiles/range-exercise/v1/patterns/detections",
+        "https://vocab.example.org/xapi/profiles/range-exercise/v1/templates/exercise-completed"
+      ]
+    }
+  ]
+}

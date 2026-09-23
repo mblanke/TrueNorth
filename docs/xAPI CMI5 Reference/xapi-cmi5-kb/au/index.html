@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cmi5 AU (minimal)</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 40rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+  button { font: inherit; padding: .5rem 1rem; margin: .25rem .25rem .25rem 0; }
+  #log { font-family: ui-monospace, monospace; font-size: .85rem; white-space: pre-wrap; border: 1px solid #8884; padding: .5rem; min-height: 6rem; }
+</style>
+</head>
+<body>
+  <h1>Minimal cmi5 Assignable Unit</h1>
+  <p id="status">Starting...</p>
+  <p>
+    <button id="progress" disabled>Report 50% progress</button>
+    <button id="complete" disabled>Mark complete</button>
+  </p>
+  <p>
+    <label>Scaled score (0-1): <input id="scaled" type="number" min="0" max="1" step="0.01" value="0.9"></label>
+    <button id="score" disabled>Submit score</button>
+  </p>
+  <p><button id="exit" disabled>Exit</button></p>
+  <div id="log" aria-live="polite"></div>
+<script src="cmi5-au.js"></script>
+<script>
+(async () => {
+  const $ = id => document.getElementById(id);
+  const log = m => { $('log').textContent += m + '\n'; };
+  let au;
+  try {
+    au = await new Cmi5AU(location.search).start();
+    $('status').textContent = `Launch mode: ${au.mode}. Mastery score: ${au.masteryScore ?? 'none'}. ` +
+      `Languages: ${au.languages.join(', ') || 'not set'}. Audio: ${au.prefs.audioPreference || 'default'}.`;
+    log('initialized');
+    for (const b of ['progress', 'complete', 'score', 'exit']) $(b).disabled = false;
+    if (!au.judged) { $('complete').disabled = true; $('score').disabled = true; }
+  } catch (e) { $('status').textContent = 'Launch failed: ' + e.message; return; }
+  const run = async (fn, label) => { try { const s = await fn(); log(s ? `${label}: sent ${s.verb.display['en-US']}` : `${label}: not sent (rules)`); } catch (e) { log(`${label}: ${e.message}`); } };
+  $('progress').onclick = () => run(() => au.progress(50), 'progress');
+  $('complete').onclick = () => run(() => au.complete(), 'complete');
+  $('score').onclick = () => run(() => au.score(parseFloat($('scaled').value)), 'score');
+  $('exit').onclick = () => run(() => au.terminate(), 'exit');
+  // Best effort if the window closes without Exit. sendBeacon cannot send the Authorization header.
+  addEventListener('pagehide', () => { if (!au.terminated) au.terminate({ keepalive: true, redirect: false }).catch(() => {}); });
+})();
+</script>
+</body>
+</html>

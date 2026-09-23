@@ -1,0 +1,95 @@
+{
+  "waived": {
+    "id": "0a1b2c3d-0010-4000-8000-000000000010",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "https://w3id.org/xapi/adl/verbs/waived",
+      "display": {
+        "en-US": "waived"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/au/7c2d9e1f"
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/au/module-2"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          },
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/moveon"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "e3f4a5b6-c7d8-4e9f-8a0b-1c2d3e4f5a6b"
+      }
+    },
+    "timestamp": "2026-09-22T09:00:00.000Z",
+    "result": {
+      "success": true,
+      "completion": true,
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/result/extensions/reason": "Tested Out"
+      }
+    }
+  },
+  "abandoned": {
+    "id": "0a1b2c3d-0011-4000-8000-000000000011",
+    "actor": {
+      "objectType": "Agent",
+      "account": {
+        "homePage": "https://lms.example.org",
+        "name": "lrn-7f3c2e9a"
+      }
+    },
+    "verb": {
+      "id": "https://w3id.org/xapi/adl/verbs/abandoned",
+      "display": {
+        "en-US": "abandoned"
+      }
+    },
+    "object": {
+      "objectType": "Activity",
+      "id": "https://lms.example.org/xapi/activities/au/5f1e2d3c"
+    },
+    "context": {
+      "registration": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "contextActivities": {
+        "grouping": [
+          {
+            "objectType": "Activity",
+            "id": "https://content.example.org/cmi5/cyber-hygiene-101/au/module-1"
+          }
+        ],
+        "category": [
+          {
+            "id": "https://w3id.org/xapi/cmi5/context/categories/cmi5"
+          }
+        ]
+      },
+      "extensions": {
+        "https://w3id.org/xapi/cmi5/context/extensions/sessionid": "c9d8e7f6-a5b4-4c3d-8e2f-1a0b9c8d7e6f"
+      }
+    },
+    "timestamp": "2026-09-24T10:30:00.000Z",
+    "result": {
+      "duration": "PT4M12S"
+    }
+  }
+}
