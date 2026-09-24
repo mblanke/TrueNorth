@@ -86,7 +86,11 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:latest
+    # minio/minio was removed from Docker Hub (404) when MinIO stopped publishing
+    # community images, so every fresh `make dev` failed at the pull. pgsty/minio
+    # ("Silo") is a community rebuild of the same server from source: same command,
+    # same MINIO_ROOT_* variables, amd64 + arm64. Pinned rather than :latest.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -145,6 +149,9 @@ services:
   # -- Learning Record Store (xAPI/cmi5) ----------------------------------
   lrs:
     image: yetanalytics/lrsql:latest
+    # Published for amd64 only. Naming the platform lets Apple Silicon hosts run it
+    # under emulation instead of failing the pull with "no matching manifest".
+    platform: linux/amd64
     restart: unless-stopped
     command: /lrsql/bin/run_postgres.sh
     environment:
