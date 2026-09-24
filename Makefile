@@ -37,28 +37,15 @@ dev-down: ## Stop dev stack
 dev-logs: ## Tail logs for all services
 	$(COMPOSE) logs -f --tail=100
 
-# A fresh dev database has no curriculum: `make dev` loads no content, and
-# scripts/seed_data.py only adds demo tenants, users and ranges. This loads the
-# library through the same idempotent importers production uses (re-running is
-# safe). The spine goes first: course files link modules to its objectives, and an
-# unknown objective is a 422. Dev runs with AUTH_DISABLED, so no token is sent.
+# A fresh dev database is empty: `make dev` loads no content. This loads everything
+# under content/ through the API (curriculum, VM image catalogue, range templates,
+# scenarios, detection rules, plus demo people, ranges and exercises) and is safe to
+# re-run. Stdlib-only Python, so a stock macOS python3 is enough. For a deployment
+# with auth on: python3 scripts/load_content.py --api URL --token TOKEN
 DEV_API ?= http://127.0.0.1:8081
-CURL_IMPORT := curl -sS --fail-with-body -o /dev/null -w "%{http_code}  "
 
-import-content: ## Load the QSP spine, programme and all course content into the dev stack
-	@$(CURL_IMPORT) -F "file=@truenorth-content-pack/truenorth-content/crosswalk.csv" \
-		$(DEV_API)/qsp/import-crosswalk && echo "QSP spine"
-	@$(CURL_IMPORT) -F "taxonomy=@content/catalogue/nist_csf_2_0_taxonomy.csv" \
-		-F "crosswalk=@content/catalogue/qsp_competency_crosswalk.csv" \
-		$(DEV_API)/qsp/import-competency-crosswalk && echo "NICE / NIST CSF crosswalk"
-	@$(CURL_IMPORT) -F "file=@content/catalogue/cyber_operator_programme.csv" \
-		$(DEV_API)/courses/import-programme && echo "Programme catalogue"
-	@for f in content/courses/*.yaml; do \
-		$(CURL_IMPORT) -F "file=@$$f" $(DEV_API)/courses/import-course-content && echo "$$f" || exit 1; \
-	done
-	@$(CURL_IMPORT) -X POST $(DEV_API)/qsp/generate-learning-paths && echo "CFITES learning paths"
-	@$(CURL_IMPORT) -X POST $(DEV_API)/courses/generate-programme-paths && echo "Programme delivery paths"
-	@echo "✓ Content loaded. Open http://localhost:4200 → Learning (press Refresh on Career path)."
+import-content: ## Load all content (curriculum, templates, scenarios, detections, demo data)
+	python3 scripts/load_content.py --api $(DEV_API)
 
 # ── Production ──────────────────────────────────────────────
 # Normally driven by install/ (Ansible) on the platform host; these targets are

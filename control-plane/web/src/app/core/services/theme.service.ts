@@ -10,6 +10,8 @@ export interface ThemeOption {
 }
 
 const STORAGE_KEY = 'tn-theme';
+/** Red on white. Also set on <body> in index.html so the first paint matches. */
+const DEFAULT_THEME = 'great-white-north';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
@@ -20,11 +22,12 @@ export class ThemeService {
     { id: 'great-white-north', label: 'Great White North', className: 'theme-great-white-north', colorLeft: '#F7F8FA', colorRight: '#D52B1E', scheme: 'light' },
   ];
 
-  private readonly activeThemeSignal = signal<string>('northern-ops');
+  private readonly activeThemeSignal = signal<string>(DEFAULT_THEME);
   readonly activeTheme: Signal<string> = this.activeThemeSignal.asReadonly();
 
   constructor() {
-    const saved = localStorage.getItem(STORAGE_KEY) || 'northern-ops';
+    // A theme someone picked (saved in this browser) still wins over the default.
+    const saved = localStorage.getItem(STORAGE_KEY) || DEFAULT_THEME;
     this.applyTheme(saved);
   }
 
@@ -45,7 +48,8 @@ export class ThemeService {
   private applyTheme(id: string): void {
     const body = document.body;
     this.themes.forEach((t) => body.classList.remove(t.className));
-    const found = this.themes.find((t) => t.id === id) ?? this.themes[0];
+    const found =
+      this.themes.find((t) => t.id === id) ?? this.themes.find((t) => t.id === DEFAULT_THEME)!;
     body.classList.add(found.className);
     // Keep UA-rendered widgets (scrollbars, form controls) in step.
     document.documentElement.style.colorScheme = found.scheme;
