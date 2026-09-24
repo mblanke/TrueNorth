@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { ApiService } from '@core/services/api.service';
 import { CurriculumMap, CurriculumMapService } from '@core/services/curriculum-map.service';
 import { CareerPathListComponent } from './career-path-list.component';
+import { CareerMapComponent } from './career-map.component';
 
 interface LearningPath {
   id: string;
@@ -32,6 +33,7 @@ interface LearningPath {
     MatIconModule,
     MatTooltipModule,
     CareerPathListComponent,
+    CareerMapComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -84,6 +86,15 @@ interface LearningPath {
           </div>
         </div>
       } @else {
+        <!-- The visual career-map tile: rank-ladder stages with each period's
+             term track, clickable course chips and prerequisite arrows. -->
+        <tn-career-map
+          [map]="map()"
+          [selected]="selectedCode()"
+          (selectedChange)="select($event)"
+        />
+
+        <!-- The selected stage's objectives + programme, folded, below the map. -->
         <tn-career-path-list
           [map]="map()"
           [selected]="selectedCode()"
