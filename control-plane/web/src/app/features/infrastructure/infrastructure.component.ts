@@ -28,6 +28,10 @@ interface HypervisorConnection {
   is_primary: boolean; is_active: boolean; datacenter: string | null;
   notes: string | null; created_at: string;
 }
+/** vCenter HTTPS, the Proxmox API, WinRM over HTTP. */
+const DEFAULT_PORT: Record<HypervisorConnection['hypervisor_type'], number> = {
+  vsphere: 443, proxmox: 8006, hyperv: 5985,
+};
 interface HypervisorNode {
   id: string; node_name: string; ip_address: string | null; status: string;
   cpu_total: number | null; cpu_used: number | null;
@@ -183,13 +187,13 @@ interface NetworkSummary {
               <div class="form-row">
                 <mat-form-field appearance="outline">
                   <mat-label>Name</mat-label>
-                  <input matInput [(ngModel)]="newConn.name" placeholder="Production Proxmox">
+                  <input matInput [(ngModel)]="newConn.name" placeholder="Range vCenter">
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Type</mat-label>
-                  <mat-select [(ngModel)]="newConn.hypervisor_type" panelClass="tn-select-panel">
+                  <mat-select [(ngModel)]="newConn.hypervisor_type" (selectionChange)="onTypeChange()" panelClass="tn-select-panel">
+                    <mat-option value="vsphere">VMware vSphere (vCenter)</mat-option>
                     <mat-option value="proxmox">Proxmox VE</mat-option>
-                    <mat-option value="vsphere">VMware vSphere</mat-option>
                     <mat-option value="hyperv">Microsoft Hyper-V</mat-option>
                   </mat-select>
                 </mat-form-field>
@@ -197,7 +201,7 @@ interface NetworkSummary {
               <div class="form-row">
                 <mat-form-field appearance="outline">
                   <mat-label>Host</mat-label>
-                  <input matInput [(ngModel)]="newConn.host" placeholder="192.168.1.85">
+                  <input matInput [(ngModel)]="newConn.host" [placeholder]="newConn.hypervisor_type === 'vsphere' ? 'vcsa.example.local' : '192.168.1.85'">
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Port</mat-label>
@@ -207,7 +211,7 @@ interface NetworkSummary {
               <div class="form-row">
                 <mat-form-field appearance="outline">
                   <mat-label>Username</mat-label>
-                  <input matInput [(ngModel)]="newConn.username" placeholder="root@pam">
+                  <input matInput [(ngModel)]="newConn.username" [placeholder]="usernameHint()">
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Password / Token</mat-label>
@@ -272,7 +276,7 @@ interface NetworkSummary {
               </div>
               <tn-empty-state *ngIf="connections.length === 0" icon="cloud"
                 title="No hypervisor connections"
-                message="Add a Proxmox, vSphere or Hyper-V connection to start discovering compute nodes." />
+                message="Add your vCenter to start discovering ESXi hosts." />
             </mat-card-content>
           </mat-card>
 
@@ -301,7 +305,8 @@ interface NetworkSummary {
                   <ng-container matColumnDef="cpu">
                     <th mat-header-cell *matHeaderCellDef>CPU</th>
                     <td mat-cell *matCellDef="let n">
-                      <span class="cap-cell">
+                      <span *ngIf="n.cpu_total === null" class="not-reported">Not reported</span>
+                      <span *ngIf="n.cpu_total !== null" class="cap-cell">
                         <span>{{ n.cpu_total }} cores {{ n.cpu_used !== null ? '(' + (n.cpu_used | number:'1.0-0') + '%)' : '' }}</span>
                         <span *ngIf="n.cpu_used !== null" class="tn-gauge-bg cap-gauge" aria-hidden="true">
                           <span class="tn-gauge-fill"
@@ -315,7 +320,8 @@ interface NetworkSummary {
                   <ng-container matColumnDef="memory">
                     <th mat-header-cell *matHeaderCellDef>Memory</th>
                     <td mat-cell *matCellDef="let n">
-                      <span class="cap-cell">
+                      <span *ngIf="n.memory_total_gb === null" class="not-reported">Not reported</span>
+                      <span *ngIf="n.memory_total_gb !== null" class="cap-cell">
                         <span>{{ n.memory_used_gb | number:'1.1-1' }} / {{ n.memory_total_gb | number:'1.1-1' }} GB</span>
                         <span *ngIf="n.memory_total_gb" class="tn-gauge-bg cap-gauge" aria-hidden="true">
                           <span class="tn-gauge-fill"
@@ -329,7 +335,8 @@ interface NetworkSummary {
                   <ng-container matColumnDef="storage">
                     <th mat-header-cell *matHeaderCellDef>Storage</th>
                     <td mat-cell *matCellDef="let n">
-                      <span class="cap-cell">
+                      <span *ngIf="n.storage_total_gb === null" class="not-reported">Not reported</span>
+                      <span *ngIf="n.storage_total_gb !== null" class="cap-cell">
                         <span>{{ n.storage_used_gb | number:'1.0-0' }} / {{ n.storage_total_gb | number:'1.0-0' }} GB</span>
                         <span *ngIf="n.storage_total_gb" class="tn-gauge-bg cap-gauge" aria-hidden="true">
                           <span class="tn-gauge-fill"
@@ -666,6 +673,7 @@ interface NetworkSummary {
     .status-offline { color: var(--alert); }
     .primary-badge { color: var(--warning); font-size: 16px; width: 16px; height: 16px; vertical-align: middle; margin-left: 4px; }
     .cap-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .not-reported { color: var(--text-muted); font-style: italic; white-space: nowrap; }
     .cap-gauge { display: inline-block; width: 72px; height: 6px; flex-shrink: 0; }
     .cap-gauge .tn-gauge-fill { display: block; }
     .notice-card { margin: 16px 0; border: 1px solid var(--warning); background: color-mix(in srgb, var(--warning) 12%, var(--bg-card)); }
@@ -691,10 +699,30 @@ export class InfrastructureComponent implements OnInit {
   newConn: {
     name: string; hypervisor_type: HypervisorConnection['hypervisor_type']; host: string;
     port: number; username: string; password: string; verify_ssl: boolean; is_primary: boolean;
-  } = {
-    name: '', hypervisor_type: 'proxmox', host: '', port: 8006,
-    username: '', password: '', verify_ssl: false, is_primary: false,
-  };
+  } = this.blankConnection();
+
+  /** vSphere is the range platform; Proxmox and Hyper-V remain for older sites. */
+  private blankConnection(): InfrastructureComponent['newConn'] {
+    return {
+      name: '', hypervisor_type: 'vsphere', host: '', port: DEFAULT_PORT.vsphere,
+      username: '', password: '', verify_ssl: false, is_primary: false,
+    };
+  }
+
+  /** Move the port with the type, unless someone already typed a non-default one. */
+  onTypeChange(): void {
+    if (Object.values(DEFAULT_PORT).includes(this.newConn.port)) {
+      this.newConn.port = DEFAULT_PORT[this.newConn.hypervisor_type];
+    }
+  }
+
+  usernameHint(): string {
+    switch (this.newConn.hypervisor_type) {
+      case 'vsphere': return 'svc-truenorth@vsphere.local';
+      case 'proxmox': return 'root@pam';
+      default: return 'DOMAIN\\svc-truenorth';
+    }
+  }
 
   /* ── Storage state ─────────────────────────────────────────── */
   appliances: StorageAppliance[] = [];
@@ -879,10 +907,7 @@ export class InfrastructureComponent implements OnInit {
   cancelConnectionEdit(): void {
     this.editingConnectionId = null;
     this.connectionSaving = false;
-    this.newConn = {
-      name: '', hypervisor_type: 'proxmox', host: '', port: 8006,
-      username: '', password: '', verify_ssl: false, is_primary: false,
-    };
+    this.newConn = this.blankConnection();
   }
 
   /* ── Storage helpers ───────────────────────────────────────── */

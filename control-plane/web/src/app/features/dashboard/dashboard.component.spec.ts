@@ -4,9 +4,16 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { DashboardComponent } from './dashboard.component';
+import { DashboardComponent, usagePct } from './dashboard.component';
 import { ApiService } from '@core/services/api.service';
-import { Range, Exercise, HealthResponse } from '@core/models';
+import { Range, Exercise, HealthResponse, HypervisorNode } from '@core/models';
+
+/** An ESXi host as vSphere discovery stores it: VM count, but no CPU/memory figures. */
+const esxiHost: HypervisorNode = {
+  id: 'n1', connection_id: 'c1', node_name: 'esxi01.range.test', ip_address: null,
+  status: 'online', cpu_total: null, cpu_used: null, memory_total_gb: null, memory_used_gb: null,
+  storage_total_gb: null, storage_used_gb: null, vm_count: 12, last_seen_at: '2026-09-24T12:00:00Z',
+};
 
 describe('DashboardComponent', () => {
   let component: DashboardComponent;
@@ -37,7 +44,7 @@ describe('DashboardComponent', () => {
       'health',
       'listRanges',
       'listExercises',
-      'proxmoxDiscover',
+      'hypervisorNodes',
       'getCapacity',
       'listScheduledEvents',
       'checkCapacity',
@@ -47,7 +54,7 @@ describe('DashboardComponent', () => {
     mockApi.health.and.returnValue(of(mockHealth));
     mockApi.listRanges.and.returnValue(of(mockRanges as Range[]));
     mockApi.listExercises.and.returnValue(of(mockExercises as Exercise[]));
-    mockApi.proxmoxDiscover.and.returnValue(of({ cluster: [] }));
+    mockApi.hypervisorNodes.and.returnValue(of([]));
     mockApi.getCapacity.and.returnValue(of({}));
     mockApi.listScheduledEvents.and.returnValue(of([]));
     mockApi.checkCapacity.and.returnValue(of({}));
@@ -151,5 +158,38 @@ describe('DashboardComponent', () => {
     const el: HTMLElement = fixture.nativeElement;
     const statValues = el.querySelectorAll('.stat-value');
     expect(statValues.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // ── Cluster panel: vSphere host inventory ──────────────────────
+  it('reads the stored host inventory, not a live Proxmox cluster', () => {
+    mockApi.hypervisorNodes.and.returnValue(of([esxiHost]));
+    fixture.detectChanges();
+    expect(mockApi.hypervisorNodes).toHaveBeenCalled();
+    expect(component.clusterNodes().length).toBe(1);
+  });
+
+  it('shows an ESXi host with its VM count, and CPU/RAM as not reported rather than 0%', () => {
+    mockApi.hypervisorNodes.and.returnValue(of([esxiHost]));
+    fixture.detectChanges();
+    const card: HTMLElement = fixture.nativeElement.querySelector('.node-card');
+    expect(card.textContent).toContain('esxi01.range.test');
+    expect(card.textContent).toContain('12 VMs');
+    expect(card.querySelectorAll('.not-reported').length).toBe(2);
+    expect(card.querySelector('.tn-gauge-fill')).toBeNull();
+    expect(card.textContent).not.toContain('0%');
+  });
+
+  it('points to Infrastructure when no hosts have been discovered', () => {
+    fixture.detectChanges();
+    const empty: HTMLElement = fixture.nativeElement.querySelector('.empty-card');
+    expect(empty.textContent).toContain('vCenter');
+    expect(empty.querySelector('a[href="/infrastructure"]')).not.toBeNull();
+  });
+
+  it('usagePct() is null when a figure is not reported', () => {
+    expect(usagePct(null, 256)).toBeNull();
+    expect(usagePct(64, null)).toBeNull();
+    expect(usagePct(64, 0)).toBeNull();
+    expect(usagePct(64, 256)).toBe(25);
   });
 });

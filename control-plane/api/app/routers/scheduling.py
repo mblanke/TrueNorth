@@ -36,7 +36,7 @@ router = APIRouter(
     dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
 )
 
-# -- Cluster capacity (configurable via env or pulled from Proxmox) ------
+# -- Cluster capacity (set via env; the vCenter REST API has no host capacity) --
 CLUSTER_VCPU = int(os.getenv("CLUSTER_TOTAL_VCPU", "128"))  # total vCPU across all nodes
 CLUSTER_RAM_MB = int(os.getenv("CLUSTER_TOTAL_RAM_MB", "524288"))  # 512 GB
 CLUSTER_DISK_GB = int(os.getenv("CLUSTER_TOTAL_DISK_GB", "10240"))  # 10 TB

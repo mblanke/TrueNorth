@@ -183,20 +183,24 @@ export interface HypervisorConnection {
   created_at: string;
 }
 
+/** GET /hypervisors/nodes and /hypervisors/connections/:id/nodes (HypervisorNodeOut).
+ *  null means the hypervisor does not report that figure (vCenter's REST API gives no
+ *  host CPU or memory) — show it as unknown, never as 0. */
 export interface HypervisorNode {
   id: string;
   connection_id: string;
   node_name: string;
+  ip_address: string | null;
   status: string;
-  cpu_cores: number;
-  cpu_usage_pct: number;
-  memory_total_gb: number;
-  memory_used_gb: number;
-  storage_total_gb: number;
-  storage_used_gb: number;
+  cpu_total: number | null;
+  /** Percent busy (Proxmox). */
+  cpu_used: number | null;
+  memory_total_gb: number | null;
+  memory_used_gb: number | null;
+  storage_total_gb: number | null;
+  storage_used_gb: number | null;
   vm_count: number;
-  uptime_seconds: number;
-  last_polled_at: string | null;
+  last_seen_at: string | null;
 }
 
 export interface HypervisorPool {
