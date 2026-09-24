@@ -8,7 +8,8 @@ import {
   NodeState,
   QualNode,
 } from '@core/services/curriculum-map.service';
-import { QualificationDetailComponent, undeliveredObjectives } from './qualification-detail.component';
+import { undeliveredObjectives } from './qualification-detail.component';
+import { QualSummaryComponent } from './qual-summary.component';
 
 const STATE_LABEL: Record<NodeState, string> = {
   locked: 'Locked',
@@ -42,7 +43,7 @@ export type PathRow =
 @Component({
   selector: 'tn-career-path-list',
   standalone: true,
-  imports: [CommonModule, MatExpansionModule, MatTooltipModule, QualificationDetailComponent],
+  imports: [CommonModule, MatExpansionModule, MatTooltipModule, QualSummaryComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (overall(); as o) {
@@ -102,7 +103,7 @@ export type PathRow =
             </mat-expansion-panel-header>
 
             <ng-template matExpansionPanelContent>
-              <tn-qualification-detail [qualification]="row.node" [currentPoCode]="currentPoCode" />
+              <tn-qual-summary [qualification]="row.node" [currentPoCode]="currentPoCode" />
             </ng-template>
           </mat-expansion-panel>
         } @else {
