@@ -225,12 +225,15 @@ export class CareerPathListComponent {
         .filter(n => n.dp_order === stage.dp_order)
         .sort((a, b) => (trackOrder.get(a.track_key) ?? 99) - (trackOrder.get(b.track_key) ?? 99));
       for (const node of nodes) {
+        // Real specialty streams are often named exactly like their qualification;
+        // the label then just repeats the title, so show it only when it adds something.
+        const label = trackLabel.get(node.track_key) ?? null;
         rows.push({
           kind: 'qual',
           key: node.qsp_code,
           stage,
           node,
-          trackLabel: trackLabel.get(node.track_key) ?? null,
+          trackLabel: label && !node.title.toLowerCase().includes(label.toLowerCase()) ? label : null,
         });
       }
       if (!nodes.length && stage.planned) {

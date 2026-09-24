@@ -132,6 +132,16 @@ describe('CareerPathListComponent', () => {
     expect(el.querySelector('[data-qual="TEMP67"] .track')).toBeNull();
   });
 
+  it('drops the track label when the title already says it', () => {
+    fixture = TestBed.createComponent(CareerPathListComponent);
+    component = fixture.componentInstance;
+    const spec = node('ALRA', 1, 'red', 'locked', []);
+    spec.title = 'Red analyst — Reverse engineer';
+    component.map = { ...MAP, nodes: [spec] };
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-qual="ALRA"] .track')).toBeNull();
+  });
+
   it('emits the opened stage, and null when it is closed again', () => {
     render();
     const emitted: (string | null)[] = [];

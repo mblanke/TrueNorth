@@ -494,16 +494,20 @@ accreditation. Each is idempotent (upsert on a natural key):
 
 | Content | Endpoint | Source file |
 |---|---|---|
-| QSP/CFITES spine (Qualification → PO → EO) | `POST /api/v1/qsp/import-crosswalk` | `truenorth-content-pack/truenorth-content/crosswalk.csv` |
-| NICE/CSF competency crosswalk | `POST /api/v1/qsp/import-competency-crosswalk` | `content/catalogue/qsp_competency_crosswalk.csv` + `nist_csf_2_0_taxonomy.csv` |
-| Golden-image catalogue | `POST /api/v1/golden-images/import-catalogue` | `content/catalogue/vm_iso_catalogue.csv` |
-| Academic programme catalogue | `POST /api/v1/courses/import-programme` | `content/catalogue/cyber_operator_programme.csv` |
-| Authored course content (modules, labs, quizzes) | `POST /api/v1/courses/import-course-content` | `content/courses/*.yaml` |
+| QSP/CFITES spine (Qualification → PO → EO) | `POST /qsp/import-crosswalk` | `truenorth-content-pack/truenorth-content/crosswalk.csv` |
+| NICE/CSF competency crosswalk | `POST /qsp/import-competency-crosswalk` | `content/catalogue/qsp_competency_crosswalk.csv` + `nist_csf_2_0_taxonomy.csv` |
+| Golden-image catalogue | `POST /golden-images/import-catalogue` | `content/catalogue/vm_iso_catalogue.csv` |
+| Academic programme catalogue | `POST /courses/import-programme` | `content/catalogue/cyber_operator_programme.csv` |
+| Authored course content (modules, labs, quizzes) | `POST /courses/import-course-content` | `content/courses/*.yaml` |
+
+Routers are mounted at the root (`app/main.py`), not under `/api/v1`. The dev API
+listens on `127.0.0.1:8081`, and dev runs with `AUTH_DISABLED`, so the token headers
+below are only needed against a real deployment (through nginx, prefix `/api/`).
 
 ```bash
 curl -F 'file=@content/catalogue/cyber_operator_programme.csv' \
      -H "Authorization: Bearer $TOKEN" \
-     http://localhost:8080/api/v1/courses/import-programme
+     http://127.0.0.1:8081/courses/import-programme
 ```
 
 Each importer follows the same shape: a **pure** `parse_*(csv_text) -> list[dict]`
@@ -534,16 +538,17 @@ Watch for withdrawn publications. NIST SP 800-61 Rev. 2 was withdrawn on 2025-04
 superseded by Rev. 3; SP 800-63-3 is superseded by 800-63-4. A test asserts neither is
 cited.
 
-Loading the whole library into a dev database:
+Loading the whole library into a dev database — `make import-content` does all of it,
+spine first, and stops at the first failure. By hand:
 
 ```bash
 curl -F "file=@content/catalogue/cyber_operator_programme.csv" \
      -H "Authorization: Bearer $TOKEN" \
-     http://localhost:8080/api/v1/courses/import-programme
+     http://127.0.0.1:8081/courses/import-programme
 
 for f in content/courses/*.yaml; do
   curl -F "file=@$f" -H "Authorization: Bearer $TOKEN" \
-       http://localhost:8080/api/v1/courses/import-course-content
+       http://127.0.0.1:8081/courses/import-course-content
 done
 ```
 
@@ -602,7 +607,7 @@ count toward progress. A test enforces one-to-one.
 To see what still needs mapping:
 
 ```bash
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/qsp/po-coverage
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8081/qsp/po-coverage
 ```
 
 which reports, per objective, whether any module delivers it, plus how many modules are
@@ -613,7 +618,7 @@ catalogue and carrying no qualification meaning:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $TOKEN" \
-     http://localhost:8080/api/v1/courses/generate-programme-paths
+     http://127.0.0.1:8081/courses/generate-programme-paths
 ```
 
 This creates one unpublished `LearningPath` per term plus one per programme/DP. These
