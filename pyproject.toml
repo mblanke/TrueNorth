@@ -125,6 +125,14 @@ ignore = [
 # an unused directory should not reformat 14 unrelated files.
 known-third-party = ["alembic"]
 
+[tool.ruff.lint.per-file-ignores]
+# The pin above was not enough: on a fresh checkout ruff still classifies `app` and
+# `alembic` differently from the machine that recorded `.dod-ruff-baseline`, and the
+# 11 migration files flip between 0 and 11 I001 findings with no code change (2026-09-25:
+# 39 vs the recorded 29). Migrations are generated boilerplate; their import order is
+# not a signal, so stop letting it move the ratchet.
+"control-plane/api/alembic/**" = ["I001"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
