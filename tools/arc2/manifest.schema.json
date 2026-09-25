@@ -1,0 +1,533 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ARC2 run manifest",
+  "description": "One run of /arc2. Orchestrator keys are always required; each stage's keys appear once that stage has merged its fragment. Every list that a check walks has minItems so nothing passes vacuously.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "slug", "provenance", "stages", "gates", "files", "human_actions"],
+  "definitions": {
+    "nonempty": {"type": "string", "minLength": 1},
+    "path": {"type": "string", "pattern": "^[A-Za-z0-9_][^\\n]*$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\+00:00|Z)$"},
+    "stage_name": {
+      "enum": ["content-architect", "code-generator", "range-engineer", "artifact-creator", "sensor-gateway", "qa-tester", "package-builder"]
+    },
+    "owner": {
+      "enum": ["orchestrator", "content-architect", "code-generator", "range-engineer", "artifact-creator", "sensor-gateway", "qa-tester", "package-builder"]
+    },
+    "objective_id": {"type": "string", "pattern": "^M[0-9]{2}-O[0-9]{2}$"},
+    "module_id": {"type": "string", "pattern": "^mod_[0-9]{3}$"},
+    "ce_id": {"type": "string", "pattern": "^CE-[0-9]{2}$"},
+    "objective_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/objective_id"}},
+    "po_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["qsp_code", "po_code"],
+      "properties": {
+        "qsp_code": {"type": "string", "pattern": "^[A-Z0-9]{2,8}$"},
+        "po_code": {"type": "string", "pattern": "^PO_[0-9]{3}(-[0-9]{3})?$"}
+      }
+    },
+    "po_or_null": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/po_ref"}]},
+    "stage_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "attempts", "started_at", "finished_at", "stop_reason"],
+      "properties": {
+        "state": {"enum": ["pending", "running", "done", "failed"]},
+        "attempts": {"type": "integer", "minimum": 0},
+        "started_at": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/timestamp"}]},
+        "finished_at": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/timestamp"}]},
+        "stop_reason": {"type": ["string", "null"]}
+      }
+    },
+    "feedback_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "ts", "round"],
+      "properties": {
+        "text": {"$ref": "#/definitions/nonempty"},
+        "ts": {"$ref": "#/definitions/timestamp"},
+        "round": {"type": "integer", "minimum": 1},
+        "routed_to": {"$ref": "#/definitions/stage_name"}
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "ts", "accepted_sha256", "feedback"],
+      "properties": {
+        "state": {"enum": ["n/a", "pending", "accepted", "feedback"]},
+        "ts": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/timestamp"}]},
+        "accepted_sha256": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/sha256"}]},
+        "rework_count": {"type": "integer", "minimum": 0},
+        "feedback": {"type": "array", "items": {"$ref": "#/definitions/feedback_entry"}}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check", "severity", "owner_stage", "message", "path"],
+      "properties": {
+        "check": {"$ref": "#/definitions/nonempty"},
+        "severity": {"enum": ["fail", "human"]},
+        "owner_stage": {"$ref": "#/definitions/owner"},
+        "message": {"$ref": "#/definitions/nonempty"},
+        "path": {"type": ["string", "null"]}
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "arc2/manifest/0.1"},
+    "run_id": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+    "slug": {"type": "string", "pattern": "^arc2-[a-z0-9]+(-[a-z0-9]+)*$"},
+
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git_head", "git_dirty", "enclave", "created_at", "tool_version", "inputs"],
+      "properties": {
+        "git_head": {"$ref": "#/definitions/nonempty"},
+        "git_dirty": {"type": "boolean"},
+        "enclave": {"type": "boolean"},
+        "created_at": {"$ref": "#/definitions/timestamp"},
+        "tool_version": {"$ref": "#/definitions/nonempty"},
+        "inputs": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/definitions/sha256"}}
+      }
+    },
+
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content-architect", "code-generator", "range-engineer", "artifact-creator", "sensor-gateway", "qa-tester", "package-builder"],
+      "properties": {
+        "content-architect": {"$ref": "#/definitions/stage_state"},
+        "code-generator": {"$ref": "#/definitions/stage_state"},
+        "range-engineer": {"$ref": "#/definitions/stage_state"},
+        "artifact-creator": {"$ref": "#/definitions/stage_state"},
+        "sensor-gateway": {"$ref": "#/definitions/stage_state"},
+        "qa-tester": {"$ref": "#/definitions/stage_state"},
+        "package-builder": {"$ref": "#/definitions/stage_state"}
+      }
+    },
+
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outline", "preview"],
+      "properties": {
+        "outline": {"$ref": "#/definitions/gate"},
+        "preview": {"allOf": [{"$ref": "#/definitions/gate"}, {"required": ["rework_count"]}]}
+      }
+    },
+
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "audience", "duration_hours", "difficulty", "delivery", "topic", "constraints"],
+      "properties": {
+        "text": {"$ref": "#/definitions/nonempty"},
+        "audience": {"$ref": "#/definitions/nonempty"},
+        "duration_hours": {"type": "number", "exclusiveMinimum": 0},
+        "difficulty": {"enum": ["foundation", "intermediate", "advanced"]},
+        "delivery": {"enum": ["instructor-led", "self-paced", "blended"]},
+        "topic": {"$ref": "#/definitions/nonempty"},
+        "constraints": {"type": "array", "items": {"$ref": "#/definitions/nonempty"}}
+      }
+    },
+
+    "course": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "title", "summary", "programme", "qsp_code", "po", "po_candidates", "dp_order", "provenance", "status", "duration_hours"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^ARC2-[A-Z0-9]{2,8}$"},
+        "title": {"$ref": "#/definitions/nonempty"},
+        "summary": {"$ref": "#/definitions/nonempty"},
+        "programme": {"const": "cyber-operator"},
+        "qsp_code": {"type": "string", "pattern": "^(QSP-TODO|[A-Z0-9]{2,8})$"},
+        "po": {"$ref": "#/definitions/po_or_null"},
+        "po_candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["qsp_code", "po_code", "status", "reason"],
+            "properties": {
+              "qsp_code": {"type": "string", "pattern": "^[A-Z0-9]{2,8}$"},
+              "po_code": {"type": "string", "pattern": "^PO_[0-9]{3}(-[0-9]{3})?$"},
+              "status": {"$ref": "#/definitions/nonempty"},
+              "reason": {"$ref": "#/definitions/nonempty"}
+            }
+          }
+        },
+        "dp_order": {"type": "integer", "minimum": 1},
+        "provenance": {"const": "unsourced"},
+        "status": {"const": "proposed"},
+        "duration_hours": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+
+    "objectives": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "module_id", "text", "source", "po"],
+        "properties": {
+          "id": {"$ref": "#/definitions/objective_id"},
+          "module_id": {"$ref": "#/definitions/module_id"},
+          "text": {"type": "string", "minLength": 10},
+          "source": {"enum": ["objective", "crosswalk"]},
+          "po": {"$ref": "#/definitions/po_or_null"}
+        }
+      }
+    },
+
+    "critical_events": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "source", "objective_ids", "crosswalk_ref"],
+        "properties": {
+          "id": {"$ref": "#/definitions/ce_id"},
+          "text": {"$ref": "#/definitions/nonempty"},
+          "source": {"enum": ["crosswalk", "objective"]},
+          "objective_ids": {"$ref": "#/definitions/objective_ids"},
+          "crosswalk_ref": {"$ref": "#/definitions/po_or_null"}
+        },
+        "if": {"properties": {"source": {"const": "crosswalk"}}},
+        "then": {"properties": {"crosswalk_ref": {"$ref": "#/definitions/po_ref"}}}
+      }
+    },
+
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["course_yaml", "modules"],
+      "properties": {
+        "course_yaml": {"$ref": "#/definitions/path"},
+        "modules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "ordinal", "title", "objective_ids", "is_required", "pass_threshold", "quiz", "config", "pages"],
+            "properties": {
+              "id": {"$ref": "#/definitions/module_id"},
+              "ordinal": {"type": "integer", "minimum": 1},
+              "title": {"$ref": "#/definitions/nonempty"},
+              "objective_ids": {"$ref": "#/definitions/objective_ids"},
+              "is_required": {"type": "boolean"},
+              "pass_threshold": {"type": "integer", "minimum": 0, "maximum": 100},
+              "quiz": {
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["pass_threshold", "question_count"],
+                    "properties": {
+                      "pass_threshold": {"type": "integer", "minimum": 0, "maximum": 100},
+                      "question_count": {"type": "integer", "minimum": 1}
+                    }
+                  }
+                ]
+              },
+              "config": {"type": "string", "pattern": "^02-content/mod_[0-9]{3}/course-config\\.json$"},
+              "pages": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/path"}}
+            }
+          }
+        }
+      }
+    },
+
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "name", "path", "templates", "port_group", "terraform_validate"],
+      "properties": {
+        "mode": {"enum": ["reuse", "new"]},
+        "name": {"$ref": "#/definitions/nonempty"},
+        "path": {"$ref": "#/definitions/path"},
+        "templates": {"type": "array", "items": {"$ref": "#/definitions/nonempty"}},
+        "port_group": {"type": ["string", "null"]},
+        "terraform_validate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "output"],
+          "properties": {
+            "status": {"enum": ["passed", "failed", "not_installed", "not_run"]},
+            "output": {"type": "string"}
+          }
+        }
+      }
+    },
+
+    "injects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timeline", "items", "noise_floor"],
+      "properties": {
+        "timeline": {"$ref": "#/definitions/path"},
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "t", "objective_id", "technique", "critical", "critical_event_id", "description", "author_required"],
+            "properties": {
+              "id": {"$ref": "#/definitions/nonempty"},
+              "t": {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$"},
+              "objective_id": {"$ref": "#/definitions/objective_id"},
+              "technique": {"type": "string", "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$"},
+              "critical": {"type": "boolean"},
+              "critical_event_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/ce_id"}]},
+              "description": {"$ref": "#/definitions/nonempty"},
+              "author_required": {"type": "boolean"}
+            },
+            "if": {"properties": {"critical": {"const": true}}},
+            "then": {"properties": {"critical_event_id": {"$ref": "#/definitions/ce_id"}}}
+          }
+        },
+        "noise_floor": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "description", "why_plausible"],
+            "properties": {
+              "id": {"$ref": "#/definitions/nonempty"},
+              "description": {"$ref": "#/definitions/nonempty"},
+              "why_plausible": {"$ref": "#/definitions/nonempty"}
+            }
+          }
+        }
+      }
+    },
+
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rubric", "deliverable_template", "variant_b", "xapi_json", "instructor_dir", "media"],
+      "properties": {
+        "rubric": {"$ref": "#/definitions/path"},
+        "deliverable_template": {"$ref": "#/definitions/path"},
+        "variant_b": {"$ref": "#/definitions/path"},
+        "xapi_json": {"$ref": "#/definitions/path"},
+        "instructor_dir": {"$ref": "#/definitions/path"},
+        "media": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "kind", "placeholder"],
+            "properties": {
+              "path": {"$ref": "#/definitions/path"},
+              "kind": {"enum": ["image", "video"]},
+              "placeholder": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    },
+
+    "validators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "path", "objective_ids", "critical_event_id", "opensearch_query", "zero_hits_fails", "penalises_noise", "must_pass", "summative"],
+        "properties": {
+          "id": {"$ref": "#/definitions/nonempty"},
+          "kind": {"enum": ["crit", "deliverable", "manual_ack"]},
+          "path": {"$ref": "#/definitions/path"},
+          "objective_ids": {"$ref": "#/definitions/objective_ids"},
+          "critical_event_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/ce_id"}]},
+          "opensearch_query": {"type": "boolean"},
+          "zero_hits_fails": {"type": "boolean"},
+          "penalises_noise": {"type": "boolean"},
+          "must_pass": {"type": "boolean"},
+          "summative": {"type": "boolean"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"kind": {"const": "crit"}}},
+            "then": {
+              "properties": {
+                "critical_event_id": {"$ref": "#/definitions/ce_id"},
+                "opensearch_query": {"const": true},
+                "zero_hits_fails": {"const": true},
+                "must_pass": {"const": true}
+              }
+            }
+          },
+          {
+            "if": {"properties": {"summative": {"const": true}}},
+            "then": {"properties": {"kind": {"const": "manual_ack"}}}
+          }
+        ]
+      }
+    },
+
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "engine_validate"],
+      "properties": {
+        "path": {"$ref": "#/definitions/path"},
+        "engine_validate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "errors"],
+          "properties": {
+            "status": {"enum": ["passed", "failed", "unavailable", "not_run"]},
+            "errors": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+
+    "telemetry_xapi": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["validator_id", "verb_on_pass", "verb_on_fail", "auto_scored", "context_template"],
+        "properties": {
+          "validator_id": {"$ref": "#/definitions/nonempty"},
+          "verb_on_pass": {"enum": ["passed", "completed"]},
+          "verb_on_fail": {"const": "failed"},
+          "auto_scored": {"type": "boolean"},
+          "context_template": {"$ref": "#/definitions/nonempty"}
+        }
+      }
+    },
+
+    "qa": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result", "cycle", "rework_stage", "findings", "checked_at"],
+      "properties": {
+        "result": {"enum": ["not_run", "pass", "fail", "human_takeover"]},
+        "cycle": {"type": "integer", "minimum": 0, "maximum": 3},
+        "rework_stage": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/stage_name"}]},
+        "findings": {"type": "array", "items": {"$ref": "#/definitions/finding"}},
+        "checked_at": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/timestamp"}]}
+      }
+    },
+
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["promote_md", "destinations"],
+      "properties": {
+        "promote_md": {"$ref": "#/definitions/path"},
+        "destinations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "destination", "kind"],
+            "properties": {
+              "source": {"$ref": "#/definitions/path"},
+              "destination": {"$ref": "#/definitions/nonempty"},
+              "kind": {"enum": ["course", "catalogue", "scenario", "detection", "validator", "manifest", "cmi5"]}
+            }
+          }
+        }
+      }
+    },
+
+    "cmi5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["course_id", "id_scheme", "package_root", "base_url", "lang", "objective_iris", "aus", "xsd"],
+      "properties": {
+        "course_id": {"type": "string", "pattern": "^https://ccoe\\.forces\\.gc\\.ca/xapi/(arc2|mite)/"},
+        "id_scheme": {"enum": ["arc2-provisional", "mite"]},
+        "package_root": {"const": "07-bundle/cmi5"},
+        "base_url": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^https://"}]},
+        "lang": {"const": "en-CA"},
+        "objective_iris": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "pattern": "^https://"}},
+        "aus": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "module_id", "block_id", "objective_ids", "moveOn", "launchMethod", "url", "config"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^https://"},
+              "module_id": {"$ref": "#/definitions/module_id"},
+              "block_id": {"type": "string", "pattern": "^https://"},
+              "objective_ids": {"$ref": "#/definitions/objective_ids"},
+              "moveOn": {"enum": ["Passed", "Completed", "CompletedAndPassed", "CompletedOrPassed", "NotApplicable"]},
+              "masteryScore": {"type": "number", "minimum": 0, "maximum": 1},
+              "launchMethod": {"enum": ["AnyWindow", "OwnWindow"]},
+              "url": {"type": "string", "pattern": "^mod_[0-9]{3}/index\\.html$"},
+              "launchParameters": {"type": "string"},
+              "config": {"type": "string", "pattern": "^mod_[0-9]{3}/course-config\\.json$"}
+            },
+            "if": {"properties": {"moveOn": {"enum": ["Passed", "CompletedAndPassed", "CompletedOrPassed"]}}},
+            "then": {"required": ["masteryScore"]}
+          }
+        },
+        "xsd": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "errors"],
+          "properties": {
+            "status": {"enum": ["validated", "invalid", "xsd_not_vendored", "validator_unavailable", "not_run"]},
+            "errors": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "stage", "kind", "objective_ids", "sha256"],
+        "properties": {
+          "path": {"$ref": "#/definitions/path"},
+          "stage": {"$ref": "#/definitions/stage_name"},
+          "kind": {"enum": ["content", "artifact", "validator", "range", "inject", "package", "runtime"]},
+          "objective_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/objective_id"}},
+          "sha256": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/sha256"}]}
+        },
+        "if": {"properties": {"kind": {"const": "runtime"}}},
+        "then": {},
+        "else": {"properties": {"objective_ids": {"minItems": 1}}}
+      }
+    },
+
+    "human_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "stage", "category", "text", "blocks_promotion", "status"],
+        "properties": {
+          "id": {"$ref": "#/definitions/nonempty"},
+          "stage": {"$ref": "#/definitions/owner"},
+          "category": {"enum": ["standards", "security", "infra", "content", "package", "qa"]},
+          "text": {"$ref": "#/definitions/nonempty"},
+          "blocks_promotion": {"type": "boolean"},
+          "status": {"enum": ["open", "done"]}
+        }
+      }
+    }
+  }
+}
