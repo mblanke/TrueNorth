@@ -17,33 +17,6 @@ from arc2 import check
 TS = "2026-09-24T21:00:00Z"
 SLUG = "arc2-adlm"
 
-CROSSWALK = """qsp_code,nqual,tier,po_id,po_title,eos,conditions,critical_events,assessment_type,duration_min,pass_standard,deliverable,environment,target_role,nice_dcwf_task,component_version,scenario_count,build_hours,status
-ALJQ,ALJQ,core,PO_007,Analyze Malicious Activity in Network Traffic,007.01,pcap,scanning;exfiltration;lateral_movement,PC practical,240,P/F,report,COTE,Cyber Defense Analyst,T0023,SP800-181r1,4,200,todo
-ALJQ,ALJQ,core,PO_009,Security Monitoring,009.01,siem,alert_triage;escalation,PC practical,180,P/F,report,COTE,Cyber Defense Analyst,T0023,SP800-181r1,2,80,todo
-ALJQ,ALJQ,core,PO_010,Example,010.01,siem,example_event,PC practical,60,P/F,report,COTE,Analyst,T0023,SP800-181r1,1,10,example
-TEMP64,TEMP64,core,PO_001-003,Gain Access,001,lab,initial_access,PC practical,240,P/F,report,COTE,Operator,T0028,SP800-181r1,3,100,offensive_author
-"""
-
-CLAIMING_COURSE = """course_code: C204
-title: Security Monitoring
-modules:
-- ordinal: 1
-  title: SIEM
-  po:
-    qsp_code: ALJQ
-    po_code: PO_009
-"""
-
-
-@pytest.fixture
-def repo(tmp_path: Path) -> Path:
-    root = tmp_path / "repo"
-    (root / check.CROSSWALK_REL).parent.mkdir(parents=True)
-    (root / check.CROSSWALK_REL).write_text(CROSSWALK)
-    (root / check.COURSES_REL).mkdir(parents=True)
-    (root / check.COURSES_REL / "c204.yaml").write_text(CLAIMING_COURSE)
-    return root
-
 
 def _done() -> dict:
     return {"state": "done", "attempts": 1, "started_at": TS, "finished_at": TS, "stop_reason": None}
@@ -225,16 +198,42 @@ def full_manifest() -> dict:
     }
 
 
+def declared_paths(manifest: dict) -> list[str]:
+    """Every run-relative file the manifest declares, so the fixture creates what it claims."""
+    paths = [f["path"] for f in manifest.get("files", [])]
+    content = manifest.get("content")
+    if content:
+        paths.append(content["course_yaml"])
+        for m in content["modules"]:
+            paths.append(m["config"])
+            paths.extend(m["pages"])
+    if manifest.get("injects"):
+        paths.append(manifest["injects"]["timeline"])
+    art = manifest.get("artifacts")
+    if art:
+        paths.extend(art[k] for k in ("rubric", "deliverable_template", "variant_b", "xapi_json"))
+    paths.extend(v["path"] for v in manifest.get("validators", []))
+    if manifest.get("scenario"):
+        paths.append(manifest["scenario"]["path"])
+    return paths
+
+
 def make_run(tmp_path: Path, manifest: dict | None = None) -> Path:
     run = tmp_path / "build" / "arc2" / SLUG
     for stage in check.STAGES:
         (run / stage.dir).mkdir(parents=True, exist_ok=True)
     outline = run / "01-blueprint" / "outline.yaml"
     outline.write_text("modules:\n- id: mod_001\n  title: Lateral movement\n")
-    (run / "02-content" / "arc2-adlm.yaml").write_text("course_code: ARC2-ADLM\n")
     manifest = manifest or full_manifest()
+    for rel in declared_paths(manifest):
+        p = run / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if not p.exists():
+            p.write_text(f"# placeholder for {rel}\n")
+    if manifest.get("artifacts"):
+        (run / manifest["artifacts"]["instructor_dir"]).mkdir(parents=True, exist_ok=True)
     if manifest["gates"]["outline"]["state"] == "accepted":
-        manifest["gates"]["outline"]["accepted_sha256"] = check.sha256_file(outline)
+        manifest["gates"]["outline"]["accepted_sha256"] = check.outline_digest(run, manifest)
     check.save_manifest(run, manifest)
     return run
 
@@ -514,7 +513,9 @@ class TestMerge:
         run = init_run(tmp_path, repo)
         m = full_manifest()
         m["stages"] = {k: _pending() for k in check.STAGE_ORDER}
-        m["gates"]["outline"]["state"] = "n/a"
+        m["stages"]["content-architect"] = _done()
+        (run / "01-blueprint" / "outline.yaml").write_text("modules: []\n")
+        m["gates"]["outline"]["accepted_sha256"] = check.outline_digest(run, m)
         check.save_manifest(run, m)
         frag = {
             "content": m["content"],
@@ -566,6 +567,14 @@ class TestRouting:
         assert check.load_manifest(run)["qa"]["result"] == "human_takeover"
 
     def test_orchestrator_only_failures_have_no_rework_stage(self, tmp_path, repo):
+        run = make_run(tmp_path)
+        (run / "01-blueprint" / "outline.yaml").write_text("modules: [edited after accept]\n")
+        manifest, findings = check.check_run(run, repo)
+        assert owners(findings, "gate.outline_unchanged") == {"orchestrator"}
+        assert {f.owner_stage for f in findings if f.severity == "fail"} == {"orchestrator"}
+        assert manifest["qa"]["result"] == "fail" and manifest["qa"]["rework_stage"] is None
+
+    def test_packaging_without_a_preview_accept_is_caught(self, tmp_path, repo):
         m = full_manifest()
         m["stages"]["package-builder"] = _done()
         m["bundle"] = {
@@ -578,31 +587,9 @@ class TestRouting:
                 }
             ],
         }
-        m["cmi5"] = {
-            "course_id": "https://ccoe.forces.gc.ca/xapi/arc2/arc2-adlm",
-            "id_scheme": "arc2-provisional",
-            "package_root": "07-bundle/cmi5",
-            "base_url": None,
-            "lang": "en-CA",
-            "objective_iris": {"M01-O01": "https://ccoe.forces.gc.ca/xapi/arc2/arc2-adlm/obj/M01-O01"},
-            "aus": [
-                {
-                    "id": "https://ccoe.forces.gc.ca/xapi/arc2/arc2-adlm/au/mod_001",
-                    "module_id": "mod_001",
-                    "block_id": "https://ccoe.forces.gc.ca/xapi/arc2/arc2-adlm/block/mod_001",
-                    "objective_ids": ["M01-O01"],
-                    "moveOn": "Passed",
-                    "masteryScore": 0.7,
-                    "launchMethod": "AnyWindow",
-                    "url": "mod_001/index.html",
-                    "config": "mod_001/course-config.json",
-                }
-            ],
-            "xsd": {"status": "not_run", "errors": []},
-        }
-        manifest, findings = check.check_run(make_run(tmp_path, m), repo)
+        _, findings = check.check_run(make_run(tmp_path, m), repo)
         assert owners(findings, "gate.preview_accepted") == {"orchestrator"}
-        assert manifest["qa"]["result"] == "fail" and manifest["qa"]["rework_stage"] is None
+        assert owners(findings, "stage.fragment_missing") == {"package-builder"}  # no cmi5 block either
 
 
 # ── gates ──────────────────────────────────────────────────────────────
@@ -617,7 +604,7 @@ class TestGates:
         check.merge_fragment(run, "content-architect")
         m = check.gate(run, "outline", "accept")
         assert m["gates"]["outline"]["state"] == "accepted"
-        assert m["gates"]["outline"]["accepted_sha256"] == check.sha256_file(outline)
+        assert m["gates"]["outline"]["accepted_sha256"] == check.outline_digest(run, m)
 
         outline.write_text("modules: [changed]\n")
         assert check.gate_verify(run) == ["outline"]
@@ -634,13 +621,16 @@ class TestGates:
             check.gate(run, "outline", "accept")
 
     def test_preview_accept_needs_qa_pass_and_feedback_routes(self, tmp_path, repo):
-        run = make_run(tmp_path)
-        with pytest.raises(check.ContractError, match="QA has not passed"):
-            check.gate(run, "preview", "accept")
-        check.check_run(run, repo)
-        m = check.gate(run, "preview", "accept")
+        broken = full_manifest()
+        broken["validators"][0]["zero_hits_fails"] = False
+        run = make_run(tmp_path, broken)
+        with pytest.raises(check.ContractError, match="QA is fail, not pass"):
+            check.gate(run, "preview", "accept", repo_root=repo)
+
+        run = make_run(tmp_path)  # same path, fresh consistent manifest
+        m = check.gate(run, "preview", "accept", repo_root=repo)
         assert m["gates"]["preview"]["state"] == "accepted"
-        assert m["gates"]["preview"]["accepted_sha256"] == check.sha256_tree(run, check.PREVIEW_DIRS)
+        assert m["gates"]["preview"]["accepted_sha256"] == check.preview_digest(run, m)
 
         with pytest.raises(check.ContractError, match="--route"):
             check.gate(run, "preview", "feedback", text="shorten module 2")
@@ -653,8 +643,7 @@ class TestGates:
 
     def test_changing_previewed_files_after_accept_is_caught(self, tmp_path, repo):
         run = make_run(tmp_path)
-        check.check_run(run, repo)
-        check.gate(run, "preview", "accept")
+        check.gate(run, "preview", "accept", repo_root=repo)
         (run / "02-content" / "arc2-adlm.yaml").write_text("course_code: ARC2-ADLM\ntitle: edited\n")
         _, findings = check.check_run(run, repo)
         assert owners(findings, "gate.preview_unchanged") == {"orchestrator"}
@@ -688,3 +677,174 @@ class TestCli:
         after = check.load_manifest(run)
         assert after["stages"]["range-engineer"]["state"] == "pending"
         assert after["provenance"] == before["provenance"]
+
+
+# ── holes the adversarial review found; each of these passed silently before ───────────
+
+
+def architect_run(tmp_path: Path, repo: Path) -> Path:
+    """A run with stage 1 merged and the outline accepted, ready for stage 2."""
+    run = init_run(tmp_path, repo)
+    (run / "01-blueprint" / "outline.yaml").write_text("modules: []\n")
+    (run / "01-blueprint" / "fragment.json").write_text(json.dumps(architect_fragment()))
+    check.merge_fragment(run, "content-architect")
+    check.gate(run, "outline", "accept")
+    return run
+
+
+class TestHardening:
+    def test_empty_files_is_not_a_pass(self, tmp_path, repo):
+        m = full_manifest()
+        m["files"] = []
+        manifest, findings = check.check_run(make_run(tmp_path, m), repo)
+        assert owners(findings, "trace.objective_has_content") == {"code-generator"}
+        assert manifest["qa"]["result"] == "fail"
+
+    def test_declared_files_must_exist(self, tmp_path, repo):
+        run = make_run(tmp_path)
+        (run / "05-sensor" / "validators" / "crit_lateral_movement.md").unlink()
+        (run / "02-content" / "mod_001" / "content" / "page-01.html").unlink()
+        _, findings = check.check_run(run, repo)
+        assert owners(findings, "trace.file_exists") == {"sensor-gateway", "code-generator"}
+
+    def test_declared_sha_must_match(self, tmp_path, repo):
+        m = full_manifest()
+        m["files"][0]["sha256"] = "0" * 64
+        _, findings = check.check_run(make_run(tmp_path, m), repo)
+        assert owners(findings, "trace.file_sha") == {"code-generator"}
+
+    def test_qa_is_not_agent_writable(self, tmp_path, repo):
+        run = make_run(tmp_path)
+        forged = {"qa": {"result": "pass", "cycle": 0, "rework_stage": None, "findings": [], "checked_at": None}}
+        (run / "06-qa" / "fragment.json").write_text(json.dumps(forged))
+        with pytest.raises(check.ContractError, match=r"qa \(owned by orchestrator\)"):
+            check.merge_fragment(run, "qa-tester")
+
+    def test_agents_cannot_close_the_actions_a_check_raised(self, tmp_path, repo):
+        m = full_manifest()
+        m["course"]["po"] = {"qsp_code": "ALJQ", "po_code": "PO_009"}
+        run = make_run(tmp_path, m)
+        manifest, _ = check.check_run(run, repo)
+        action = next(a for a in manifest["human_actions"] if a["id"].startswith("po.bound_claimed"))
+        assert action["stage"] == "orchestrator" and action["status"] == "open"
+
+        forged = {k: manifest[k] for k in ("request", "course", "objectives", "critical_events")}
+        forged["human_actions"] = [dict(action, status="done", blocks_promotion=False)]
+        (run / "01-blueprint" / "fragment.json").write_text(json.dumps(forged))
+        with pytest.raises(check.ContractError, match="stage='content-architect'"):
+            check.merge_fragment(run, "content-architect")
+
+        forged["human_actions"] = [dict(action, id="mine", stage="content-architect", status="done")]
+        (run / "01-blueprint" / "fragment.json").write_text(json.dumps(forged))
+        check.merge_fragment(run, "content-architect")
+        manifest, _ = check.check_run(run, repo)
+        still = next(a for a in manifest["human_actions"] if a["id"] == action["id"])
+        assert still["status"] == "open" and still["blocks_promotion"] is True
+
+        released = check.load_manifest(run)
+        released["course"]["po"] = None
+        check.save_manifest(run, released)
+        manifest, _ = check.check_run(run, repo)
+        assert next(a for a in manifest["human_actions"] if a["id"] == action["id"])["status"] == "done"
+
+    def test_outline_gate_tracks_the_blueprint_keys_not_just_the_file(self, tmp_path, repo):
+        run = architect_run(tmp_path, repo)
+        assert check.load_manifest(run)["gates"]["outline"]["state"] == "accepted"
+        changed = architect_fragment()
+        changed["objectives"][0]["text"] = "Reconstruct the attacker path from SMB session logs"
+        (run / "01-blueprint" / "fragment.json").write_text(json.dumps(changed))
+        m = check.merge_fragment(run, "content-architect")  # outline.yaml is byte-identical
+        assert m["gates"]["outline"]["state"] == "pending"
+
+    def test_merge_enforces_stage_order_and_the_outline_gate(self, tmp_path, repo):
+        run = init_run(tmp_path, repo)
+        (run / "02-content" / "fragment.json").write_text(json.dumps({"content": full_manifest()["content"]}))
+        with pytest.raises(check.ContractError, match="content-architect has not finished"):
+            check.merge_fragment(run, "code-generator")
+        (run / "01-blueprint" / "outline.yaml").write_text("modules: []\n")
+        (run / "01-blueprint" / "fragment.json").write_text(json.dumps(architect_fragment()))
+        check.merge_fragment(run, "content-architect")
+        with pytest.raises(check.ContractError, match="outline gate is not accepted"):
+            check.merge_fragment(run, "code-generator")
+        check.gate(run, "outline", "accept")
+        assert check.merge_fragment(run, "code-generator")["stages"]["code-generator"]["state"] == "done"
+        (run / "07-bundle" / "fragment.json").write_text(
+            json.dumps(
+                {
+                    "bundle": {
+                        "promote_md": "07-bundle/PROMOTE.md",
+                        "destinations": [{"source": "a", "destination": "b", "kind": "course"}],
+                    }
+                }
+            )
+        )
+        with pytest.raises(check.ContractError, match="range-engineer has not finished"):
+            check.merge_fragment(run, "package-builder")
+
+    def test_preview_accept_rechecks_the_run(self, tmp_path, repo):
+        run = make_run(tmp_path)
+        manifest, _ = check.check_run(run, repo)
+        assert manifest["qa"]["result"] == "pass"
+        (run / "02-content" / "mod_001" / "content" / "page-01.html").unlink()  # edited after the check
+        with pytest.raises(check.ContractError, match="QA is fail"):
+            check.gate(run, "preview", "accept", repo_root=repo)
+
+    def test_orchestrator_only_failures_do_not_burn_cycles(self, tmp_path, repo):
+        run = make_run(tmp_path)
+        (run / "01-blueprint" / "outline.yaml").write_text("modules: [edited after accept]\n")
+        results = [check.check_run(run, repo)[0]["qa"] for _ in range(3)]
+        assert [qa["result"] for qa in results] == ["fail", "fail", "fail"]
+        assert [qa["cycle"] for qa in results] == [0, 0, 0]
+
+    def test_a_pass_resets_the_cycle(self, tmp_path, repo):
+        m = full_manifest()
+        m["validators"][0]["zero_hits_fails"] = False
+        run = make_run(tmp_path, m)
+        assert check.check_run(run, repo)[0]["qa"]["cycle"] == 1
+        fixed = check.load_manifest(run)
+        fixed["validators"][0]["zero_hits_fails"] = True
+        for name in check.AGENT_STAGES:
+            fixed["stages"][name] = _done()
+        check.save_manifest(run, fixed)
+        qa = check.check_run(run, repo)[0]["qa"]
+        assert qa["result"] == "pass" and qa["cycle"] == 0
+
+    def test_runtime_files_only_from_the_package_builder(self, tmp_path, repo):
+        m = full_manifest()
+        m["files"].append(
+            {
+                "path": "02-content/mod_001/content/README.md",
+                "stage": "code-generator",
+                "kind": "runtime",
+                "objective_ids": [],
+                "sha256": None,
+            }
+        )
+        _, findings = check.check_run(make_run(tmp_path, m), repo)
+        assert owners(findings, "trace.runtime_allowlist") == {"code-generator"}
+
+    def test_todo_critical_event_fails(self, tmp_path, repo):
+        m = full_manifest()
+        m["critical_events"][0]["text"] = "TODO: pick one"
+        _, findings = check.check_run(make_run(tmp_path, m), repo)
+        assert owners(findings, "ce.text_todo") == {"content-architect"}
+
+    def test_unreadable_course_file_is_a_human_finding(self, tmp_path, repo):
+        (repo / check.COURSES_REL / "broken.yaml").write_text("modules: [unclosed\n")
+        _, findings = check.check_run(make_run(tmp_path), repo)
+        assert "po.courses_unreadable" in checks(findings, "human")
+
+    def test_check_survives_a_hand_broken_manifest(self, tmp_path, repo):
+        run = make_run(tmp_path)
+        broken = check.load_manifest(run)
+        del broken["objectives"][0]["text"]
+        check.save_manifest(run, broken)
+        manifest, findings = check.check_run(run, repo)
+        assert "schema.valid" in checks(findings, "fail")
+        assert manifest["qa"]["result"] == "fail"
+
+    def test_path_traversal_is_rejected_by_the_schema(self, tmp_path, repo):
+        m = full_manifest()
+        m["files"][0]["path"] = "02-content/../../.github/workflows/ci.yml"
+        _, findings = check.check_run(make_run(tmp_path, m), repo)
+        assert any(f.check == "schema.valid" and "files/0/path" in f.message for f in findings)

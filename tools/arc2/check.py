@@ -36,7 +36,7 @@ from typing import Any
 
 import jsonschema
 import yaml
-from arc2 import __version__
+from arc2 import __version__, cmi5
 
 SCHEMA_VERSION = "arc2/manifest/0.1"
 SCHEMA_PATH = Path(__file__).with_name("manifest.schema.json")
@@ -45,13 +45,18 @@ CROSSWALK_REL = Path("truenorth-content-pack/truenorth-content/crosswalk.csv")
 COURSES_REL = Path("content/courses")
 
 ORCHESTRATOR = "orchestrator"
-ORCHESTRATOR_KEYS = ("schema_version", "run_id", "slug", "provenance", "stages", "gates")
+# `qa` is written by `check`, never by a fragment: a stage that could write its own verdict
+# could also forge the cycle budget and the preview gate's precondition.
+ORCHESTRATOR_KEYS = ("schema_version", "run_id", "slug", "provenance", "stages", "gates", "qa")
 SHARED_KEYS = ("files", "human_actions")
-# The only files allowed to carry no objective ids: they are runtime, not course content.
+# The only files allowed to carry no objective ids: runtime shipped inside the package, never
+# course content, so only the package-builder may declare them and only under 07-bundle/.
 RUNTIME_BASENAMES = frozenset({"cmi5.js", "course.js", "README.md", "PROMOTE.md", ".gitkeep"})
+RUNTIME_PREFIX = "07-bundle/"
 PO_BINDABLE_STATUSES = frozenset({"todo", "example"})
-# Objectives must be observable. These verbs are how a course claims learning it cannot see.
-UNOBSERVABLE = re.compile(r"\b(understand|be aware|appreciate|know|familiar)\b", re.IGNORECASE)
+# Content-architect rule: objectives use observable verbs; "understand" and "be aware of" are
+# banned as the leading verb. Anchored to the start so a later clause cannot trip it.
+UNOBSERVABLE = re.compile(r"^\s*(understand|be aware|appreciate|know|be familiar)\b", re.IGNORECASE)
 PREVIEW_DIRS = ("02-content", "03-range", "04-artifacts", "05-sensor")
 MAX_QA_CYCLES = 3
 
@@ -69,11 +74,12 @@ STAGES: tuple[Stage, ...] = (
     Stage("range-engineer", "03-range", ("range", "injects")),
     Stage("artifact-creator", "04-artifacts", ("artifacts",)),
     Stage("sensor-gateway", "05-sensor", ("validators", "scenario", "telemetry_xapi")),
-    Stage("qa-tester", "06-qa", ("qa",)),
+    Stage("qa-tester", "06-qa", ()),  # writes 06-qa/report.md and files entries only
     Stage("package-builder", "07-bundle", ("bundle", "cmi5")),
 )
 STAGE_ORDER = [s.name for s in STAGES]
 AGENT_STAGES = STAGE_ORDER[:5]  # the stages preview feedback can be routed to
+PREVIEW_KEYS = tuple(k for s in STAGES[:5] for k in s.keys)  # what the preview gate accepts
 KEY_OWNER: dict[str, str] = {k: ORCHESTRATOR for k in ORCHESTRATOR_KEYS}
 for _stage in STAGES:
     for _key in _stage.keys:
@@ -119,6 +125,26 @@ def sha256_tree(root: Path, subdirs: tuple[str, ...]) -> str:
             if p.is_file():
                 lines.append(f"{p.relative_to(root).as_posix()} {sha256_file(p)}")
     return sha256_bytes("\n".join(lines).encode())
+
+
+def canonical(obj: Any) -> bytes:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
+
+
+def outline_digest(run: Path, manifest: dict[str, Any]) -> str | None:
+    """What the outline gate accepts: outline.yaml plus the architect's manifest keys, so a
+    re-merged blueprint with an unchanged outline.yaml still reopens the gate."""
+    outline = run / "01-blueprint" / "outline.yaml"
+    if not outline.is_file():
+        return None
+    keys = {k: manifest.get(k) for k in STAGES[0].keys}
+    return sha256_bytes(outline.read_bytes() + b"\n" + canonical(keys))
+
+
+def preview_digest(run: Path, manifest: dict[str, Any]) -> str:
+    """What the preview gate accepts: every file under 02..05 plus the keys stages 1-5 own."""
+    keys = {k: manifest.get(k) for k in PREVIEW_KEYS}
+    return sha256_bytes(sha256_tree(run, PREVIEW_DIRS).encode() + b"\n" + canonical(keys))
 
 
 def stage_by_name(name: str) -> Stage:
@@ -183,7 +209,9 @@ def empty_gate(preview: bool = False) -> dict[str, Any]:
 
 def init_run(run: Path, slug: str, request_text: str, repo_root: Path, enclave: bool) -> dict[str, Any]:
     if manifest_path(run).exists():
-        raise ContractError(f"{manifest_path(run)} already exists; use --resume or a new slug")
+        raise ContractError(
+            f"{manifest_path(run)} already exists; resume it with `/arc2 --resume {slug}` or pick a new slug"
+        )
     request_text = request_text.strip()
     if not request_text:
         raise ContractError("the course request is empty")
@@ -237,6 +265,15 @@ def merge_fragment(run: Path, stage_name: str) -> dict[str, Any]:
         raise ContractError(f"{stage.name}: fragment is not valid JSON: {exc}") from exc
     if not isinstance(fragment, dict):
         raise ContractError(f"{stage.name}: fragment must be a JSON object")
+    unowned = sorted(k for k in fragment if k not in stage.keys and k not in SHARED_KEYS and k != "stop")
+    if unowned:
+        owners = ", ".join(f"{k} (owned by {KEY_OWNER.get(k, 'nobody')})" for k in unowned)
+        raise ContractError(f"{stage.name} may not write: {owners}")
+    for key in SHARED_KEYS:
+        for item in fragment.get(key, []):
+            if not isinstance(item, dict) or item.get("stage") != stage.name:
+                raise ContractError(f"{stage.name}: every {key} entry must carry stage={stage.name!r}")
+    _require_upstream(manifest, stage)
 
     entry = manifest["stages"][stage.name]
     entry["attempts"] += 1
@@ -248,16 +285,6 @@ def merge_fragment(run: Path, stage_name: str) -> dict[str, Any]:
         entry["finished_at"] = now()
         save_manifest(run, manifest)
         raise ContractError(f"STOP from {stage.name}: {entry['stop_reason']}")
-
-    unowned = sorted(k for k in fragment if k not in stage.keys and k not in SHARED_KEYS)
-    if unowned:
-        owners = ", ".join(f"{k} (owned by {KEY_OWNER.get(k, 'nobody')})" for k in unowned)
-        raise ContractError(f"{stage.name} may not write: {owners}")
-
-    for key in SHARED_KEYS:
-        for item in fragment.get(key, []):
-            if not isinstance(item, dict) or item.get("stage") != stage.name:
-                raise ContractError(f"{stage.name}: every {key} entry must carry stage={stage.name!r}")
 
     candidate = json.loads(json.dumps(manifest))  # deep copy; only saved if valid
     for key in stage.keys:
@@ -273,16 +300,33 @@ def merge_fragment(run: Path, stage_name: str) -> dict[str, Any]:
         raise ContractError(f"{stage.name}: fragment makes the manifest invalid: {detail}")
 
     candidate["stages"][stage.name].update({"state": "done", "finished_at": now(), "stop_reason": None})
+    if candidate.get("qa"):
+        candidate["qa"]["result"] = "not_run"  # any new fragment invalidates the last verdict
     if stage.name == "content-architect":
         _reopen_outline_gate(run, candidate)
     save_manifest(run, candidate)
     return candidate
 
 
+def _require_upstream(manifest: dict[str, Any], stage: Stage) -> None:
+    """A stage may only merge after everything before it is done and the gates it sits behind
+    are accepted. Without this, a fragment could land ahead of the human decisions."""
+    index = STAGE_ORDER.index(stage.name)
+    for name in STAGE_ORDER[:index]:
+        if manifest["stages"][name]["state"] != "done":
+            raise ContractError(f"{stage.name} cannot merge: {name} has not finished")
+    if index >= 1 and manifest["gates"]["outline"]["state"] != "accepted":
+        raise ContractError(f"{stage.name} cannot merge: the outline gate is not accepted")
+    if stage.name == "package-builder":
+        if (manifest.get("qa") or {}).get("result") != "pass":
+            raise ContractError("package-builder cannot merge: QA has not passed")
+        if manifest["gates"]["preview"]["state"] != "accepted":
+            raise ContractError("package-builder cannot merge: the preview gate is not accepted")
+
+
 def _reopen_outline_gate(run: Path, manifest: dict[str, Any]) -> None:
     gate = manifest["gates"]["outline"]
-    outline = run / "01-blueprint" / "outline.yaml"
-    current = sha256_file(outline) if outline.is_file() else None
+    current = outline_digest(run, manifest)
     if gate["state"] == "accepted" and current and current == gate["accepted_sha256"]:
         return
     gate["state"] = "pending"
@@ -300,20 +344,23 @@ def load_crosswalk(repo_root: Path) -> dict[tuple[str, str], dict[str, str]]:
         return {(r["qsp_code"].strip(), r["po_id"].strip()): r for r in csv.DictReader(fh)}
 
 
-def claimed_pos(repo_root: Path) -> dict[tuple[str, str], str]:
-    """(qsp_code, po_code) → course file, for every module in content/courses that binds a PO."""
+def claimed_pos(repo_root: Path) -> tuple[dict[tuple[str, str], str], list[str]]:
+    """(qsp_code, po_code) → course file for every module in content/courses that binds a PO,
+    plus the course files that could not be read (their claims are unknown, not absent)."""
     claims: dict[tuple[str, str], str] = {}
+    unreadable: list[str] = []
     for path in sorted((repo_root / COURSES_REL).glob("*.yaml")):
         try:
             with path.open(encoding="utf-8-sig") as fh:
                 doc = yaml.safe_load(fh) or {}
         except (OSError, yaml.YAMLError):
+            unreadable.append(path.name)
             continue
-        for module in doc.get("modules") or []:
+        for module in doc.get("modules") or [] if isinstance(doc, dict) else []:
             po = (module or {}).get("po") or {}
             if po.get("qsp_code") and po.get("po_code"):
                 claims[(str(po["qsp_code"]).strip(), str(po["po_code"]).strip())] = path.name
-    return claims
+    return claims, unreadable
 
 
 def _owner_for_error(err: jsonschema.ValidationError, manifest: dict[str, Any]) -> str:
@@ -344,8 +391,6 @@ def _check_stages(manifest: dict[str, Any]) -> list[Finding]:
         if manifest["stages"][stage.name]["state"] != "done":
             continue
         for key in stage.keys:
-            if key == "qa":
-                continue  # written by this module, not by the qa-tester fragment
             if key not in manifest:
                 out.append(
                     Finding("stage.fragment_missing", "fail", stage.name, f"{stage.name} is done but {key} is absent")
@@ -394,13 +439,17 @@ def _check_trace(manifest: dict[str, Any]) -> list[Finding]:
     for f in files:
         base = Path(f["path"]).name
         if f["kind"] == "runtime":
-            if base not in RUNTIME_BASENAMES:
+            if (
+                base not in RUNTIME_BASENAMES
+                or f["stage"] != "package-builder"
+                or not f["path"].startswith(RUNTIME_PREFIX)
+            ):
                 out.append(
                     Finding(
                         "trace.runtime_allowlist",
                         "fail",
                         f["stage"],
-                        f"{f['path']} is kind=runtime but only {sorted(RUNTIME_BASENAMES)} may be",
+                        f"{f['path']} is kind=runtime; only {sorted(RUNTIME_BASENAMES)} under {RUNTIME_PREFIX} from package-builder may be",
                         f["path"],
                     )
                 )
@@ -414,7 +463,7 @@ def _check_trace(manifest: dict[str, Any]) -> list[Finding]:
     covered_by_file = {oid for f in files if f["kind"] in ("content", "artifact") for oid in f["objective_ids"]}
     covered_by_validator = {oid for v in validators for oid in v["objective_ids"]}
     for oid in objectives:
-        if files and oid not in covered_by_file:
+        if oid not in covered_by_file:  # unconditional: an empty files list is not a pass
             out.append(
                 Finding(
                     "trace.objective_has_content", "fail", "code-generator", f"{oid} has no content or artifact file"
@@ -485,6 +534,12 @@ def _check_trace(manifest: dict[str, Any]) -> list[Finding]:
                     )
                 )
 
+    for c in ces.values():
+        if not c["text"].strip() or c["text"].strip().upper().startswith("TODO"):
+            out.append(
+                Finding("ce.text_todo", "fail", "content-architect", f"{c['id']} has placeholder text {c['text']!r}")
+            )
+
     telemetry = manifest.get("telemetry_xapi")
     if telemetry is not None and validators:
         mapped = {t["validator_id"] for t in telemetry}
@@ -522,6 +577,60 @@ def _check_trace(manifest: dict[str, Any]) -> list[Finding]:
     return out
 
 
+def _check_files(run: Path, manifest: dict[str, Any], repo_root: Path) -> list[Finding]:
+    """Every path the manifest declares must exist. A stage that emits a fragment and no files
+    must not pass; a declared sha256 must match what is on disk."""
+    out: list[Finding] = []
+
+    def need(rel: str | None, owner: str, what: str, directory: bool = False, root: Path = run) -> None:
+        if not rel:
+            return
+        p = root / rel
+        ok = p.is_dir() if directory else p.is_file()
+        if not ok:
+            out.append(Finding("trace.file_exists", "fail", owner, f"{what} {rel} does not exist", rel))
+
+    for f in manifest.get("files", []):
+        need(f["path"], f["stage"], "declared file")
+        p = run / f["path"]
+        if f.get("sha256") and p.is_file() and sha256_file(p) != f["sha256"]:
+            out.append(
+                Finding(
+                    "trace.file_sha", "fail", f["stage"], f"{f['path']} does not match its declared sha256", f["path"]
+                )
+            )
+    content = manifest.get("content")
+    if content:
+        need(content["course_yaml"], "code-generator", "course YAML")
+        for m in content["modules"]:
+            need(m["config"], "code-generator", f"module {m['id']} config")
+            for page in m["pages"]:
+                need(page, "code-generator", f"module {m['id']} page")
+    rng = manifest.get("range")
+    if rng:
+        need(
+            rng["path"],
+            "range-engineer",
+            "range",
+            directory=rng["mode"] == "reuse",
+            root=repo_root if rng["mode"] == "reuse" else run,
+        )
+    injects = manifest.get("injects")
+    if injects:
+        need(injects["timeline"], "range-engineer", "timeline")
+    art = manifest.get("artifacts")
+    if art:
+        for key in ("rubric", "deliverable_template", "variant_b", "xapi_json"):
+            need(art[key], "artifact-creator", key)
+        need(art["instructor_dir"], "artifact-creator", "instructor dir", directory=True)
+    for v in manifest.get("validators", []):
+        need(v["path"], "sensor-gateway", f"validator {v['id']}")
+    scenario = manifest.get("scenario")
+    if scenario:
+        need(scenario["path"], "sensor-gateway", "engine scenario")
+    return out
+
+
 def _check_po(manifest: dict[str, Any], repo_root: Path) -> list[Finding]:
     out: list[Finding] = []
     course = manifest.get("course")
@@ -538,7 +647,16 @@ def _check_po(manifest: dict[str, Any], repo_root: Path) -> list[Finding]:
             )
         )
         return out
-    claims = claimed_pos(repo_root)
+    claims, unreadable = claimed_pos(repo_root)
+    if unreadable:
+        out.append(
+            Finding(
+                "po.courses_unreadable",
+                "human",
+                "content-architect",
+                f"could not read {', '.join(unreadable)} under {COURSES_REL}; their PO claims are unknown",
+            )
+        )
 
     def key(ref: dict[str, str]) -> tuple[str, str]:
         return (ref["qsp_code"], ref["po_code"])
@@ -634,34 +752,39 @@ def _check_gates(run: Path, manifest: dict[str, Any]) -> list[Finding]:
         out.append(
             Finding("gate.outline_accepted", "fail", ORCHESTRATOR, "stages ran past the outline gate without an accept")
         )
-    if gates["outline"]["state"] == "accepted":
-        outline = run / "01-blueprint" / "outline.yaml"
-        if not outline.is_file() or sha256_file(outline) != gates["outline"]["accepted_sha256"]:
-            out.append(
-                Finding(
-                    "gate.outline_unchanged",
-                    "fail",
-                    ORCHESTRATOR,
-                    "outline.yaml changed after it was accepted; re-open the outline gate",
-                )
+    if gates["outline"]["state"] == "accepted" and outline_digest(run, manifest) != gates["outline"]["accepted_sha256"]:
+        out.append(
+            Finding(
+                "gate.outline_unchanged",
+                "fail",
+                ORCHESTRATOR,
+                "the outline or the blueprint keys changed after the outline was accepted; re-open the outline gate",
             )
+        )
     if manifest["stages"]["package-builder"]["state"] == "done" and gates["preview"]["state"] != "accepted":
         out.append(
             Finding("gate.preview_accepted", "fail", ORCHESTRATOR, "package-builder ran without a preview accept")
         )
-    if (
-        gates["preview"]["state"] == "accepted"
-        and sha256_tree(run, PREVIEW_DIRS) != gates["preview"]["accepted_sha256"]
-    ):
+    if gates["preview"]["state"] == "accepted" and preview_digest(run, manifest) != gates["preview"]["accepted_sha256"]:
         out.append(
             Finding(
                 "gate.preview_unchanged",
                 "fail",
                 ORCHESTRATOR,
-                "preview files changed after they were accepted; re-open the preview gate",
+                "preview files or stage keys changed after they were accepted; re-open the preview gate",
             )
         )
     return out
+
+
+def _safe(fn: Any, *args: Any) -> list[Finding]:
+    """A hand-broken manifest must produce a finding, not a traceback and no qa."""
+    try:
+        return fn(*args)
+    except (KeyError, TypeError, AttributeError, ValueError, IndexError) as exc:
+        return [
+            Finding("check.crashed", "fail", ORCHESTRATOR, f"{fn.__name__} could not run on this manifest: {exc!r}")
+        ]
 
 
 def route(findings: list[Finding]) -> str | None:
@@ -676,26 +799,46 @@ def route(findings: list[Finding]) -> str | None:
 def check_run(run: Path, repo_root: Path = REPO_ROOT) -> tuple[dict[str, Any], list[Finding]]:
     manifest = load_manifest(run)
     findings = _check_schema(manifest)
-    findings += _check_stages(manifest)
-    findings += _check_trace(manifest)
-    findings += _check_po(manifest, repo_root)
-    findings += _check_gates(run, manifest)
+    findings += _safe(_check_stages, manifest)
+    findings += _safe(_check_trace, manifest)
+    findings += _safe(_check_files, run, manifest, repo_root)
+    findings += _safe(_check_po, manifest, repo_root)
+    findings += _safe(_check_gates, run, manifest)
+    try:
+        package_findings, xsd = cmi5.check_package(run, manifest)
+    except (KeyError, TypeError, AttributeError, ValueError, IndexError) as exc:
+        package_findings, xsd = [_finding_dict("check.crashed", f"cmi5 checks could not run: {exc!r}")], None
+    findings += [Finding(**f) for f in package_findings]
+    if xsd is not None and isinstance(manifest.get("cmi5"), dict):
+        manifest["cmi5"]["xsd"] = xsd  # the ladder's verdict is check's to record, not the agent's
 
+    # Human findings become orchestrator-owned actions. Agents cannot write entries stamped
+    # `orchestrator` (merge refuses them), and every run re-asserts the open ones, so no agent
+    # can close or delete the action a check raised against it. An action whose cause is gone
+    # is closed here, by the check that raised it.
+    raised: set[str] = set()
     for f in findings:
         if f.severity != "human":
             continue
         action_id = f"{f.check}:{f.path or f.message}"
-        if not any(a["id"] == action_id for a in manifest["human_actions"]):
-            manifest["human_actions"].append(
-                {
-                    "id": action_id,
-                    "stage": f.owner_stage,
-                    "category": "standards" if f.check.startswith("po.") else "qa",
-                    "text": f.message,
-                    "blocks_promotion": True,
-                    "status": "open",
-                }
-            )
+        raised.add(action_id)
+        category = "standards" if f.check.startswith("po.") else "package" if f.check.startswith("cmi5.") else "qa"
+        action = {
+            "id": action_id,
+            "stage": ORCHESTRATOR,
+            "category": category,
+            "text": f.message,
+            "blocks_promotion": True,
+            "status": "open",
+        }
+        existing = next((a for a in manifest["human_actions"] if a["id"] == action_id), None)
+        if existing is None:
+            manifest["human_actions"].append(action)
+        else:
+            existing.update(action)
+    for a in manifest["human_actions"]:
+        if a["stage"] == ORCHESTRATOR and a["id"] not in raised:
+            a["status"] = "done"
 
     qa = manifest.get("qa") or {
         "result": "not_run",
@@ -708,20 +851,21 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT) -> tuple[dict[str, Any], l
     qa["findings"] = [asdict(f) for f in findings]
     qa["checked_at"] = now()
     if fails:
-        # A cycle is one full pass through stages 1-5; a check on a half-built run is not one.
-        complete = all(manifest["stages"][s]["state"] == "done" for s in AGENT_STAGES)
-        if complete:
-            qa["cycle"] = min(qa["cycle"] + 1, MAX_QA_CYCLES)
         qa["rework_stage"] = route(findings)
+        # A cycle is a stage that ran and produced failing output. A stage that has not run,
+        # or a finding only the orchestrator can fix, is not one: nothing is being re-run.
+        counted = qa["rework_stage"] is not None and manifest["stages"][qa["rework_stage"]]["state"] == "done"
+        if counted:
+            qa["cycle"] = min(qa["cycle"] + 1, MAX_QA_CYCLES)
         qa["result"] = "human_takeover" if qa["cycle"] >= MAX_QA_CYCLES else "fail"
         if qa["rework_stage"]:
-            reset_from(manifest, qa["rework_stage"])
-        manifest["stages"]["qa-tester"]["state"] = "pending"
+            reset_from(manifest, qa["rework_stage"], through="package-builder")
     else:
         qa["result"] = "pass"
         qa["rework_stage"] = None
+        qa["cycle"] = 0  # a pass closes the loop; the budget is for consecutive failures
         preview = manifest["gates"]["preview"]
-        if preview["state"] != "accepted" or preview["accepted_sha256"] != sha256_tree(run, PREVIEW_DIRS):
+        if preview["state"] != "accepted" or preview["accepted_sha256"] != preview_digest(run, manifest):
             preview["state"] = "pending"
             preview["ts"] = now()
     manifest["qa"] = qa
@@ -729,7 +873,11 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT) -> tuple[dict[str, Any], l
     return manifest, findings
 
 
-def reset_from(manifest: dict[str, Any], stage_name: str, through: str = "qa-tester") -> None:
+def _finding_dict(check: str, message: str) -> dict[str, Any]:
+    return {"check": check, "severity": "fail", "owner_stage": ORCHESTRATOR, "message": message, "path": None}
+
+
+def reset_from(manifest: dict[str, Any], stage_name: str, through: str = "package-builder") -> None:
     """Set ``stage_name`` and every later stage up to ``through`` back to pending."""
     start, stop = STAGE_ORDER.index(stage_name), STAGE_ORDER.index(through)
     for name in STAGE_ORDER[start : stop + 1]:
@@ -740,32 +888,45 @@ def reset_from(manifest: dict[str, Any], stage_name: str, through: str = "qa-tes
 # ── gate ──────────────────────────────────────────────────────────────
 
 
-def gate(run: Path, which: str, action: str, text: str | None = None, routed_to: str | None = None) -> dict[str, Any]:
-    manifest = load_manifest(run)
+def gate(
+    run: Path,
+    which: str,
+    action: str,
+    text: str | None = None,
+    routed_to: str | None = None,
+    repo_root: Path = REPO_ROOT,
+) -> dict[str, Any]:
     if which not in ("outline", "preview"):
         raise ContractError("gate must be 'outline' or 'preview'")
     if action not in ("accept", "feedback"):
         raise ContractError("action must be 'accept' or 'feedback'")
+    if which == "preview" and action == "accept":
+        # What the human accepts is what the checks saw: re-run them now rather than trust
+        # a verdict recorded before the last edit.
+        manifest, _ = check_run(run, repo_root)
+        if manifest["qa"]["result"] != "pass":
+            raise ContractError(f"preview gate: QA is {manifest['qa']['result']}, not pass")
+    else:
+        manifest = load_manifest(run)
     g = manifest["gates"][which]
     stages = manifest["stages"]
 
     if which == "outline":
         if stages["content-architect"]["state"] != "done":
             raise ContractError("outline gate: content-architect has not finished")
-        outline = run / "01-blueprint" / "outline.yaml"
-        if not outline.is_file():
-            raise ContractError(f"outline gate: {outline} is missing")
+        digest = outline_digest(run, manifest)
+        if digest is None:
+            raise ContractError(f"outline gate: {run / '01-blueprint' / 'outline.yaml'} is missing")
         if action == "accept":
-            g.update({"state": "accepted", "ts": now(), "accepted_sha256": sha256_file(outline)})
+            g.update({"state": "accepted", "ts": now(), "accepted_sha256": digest})
         else:
             _add_feedback(g, text)
+            if manifest.get("qa"):
+                manifest["qa"].update({"result": "not_run", "rework_stage": None})
             reset_from(manifest, "content-architect")
     else:
-        qa = manifest.get("qa") or {}
         if action == "accept":
-            if qa.get("result") != "pass":
-                raise ContractError("preview gate: QA has not passed")
-            g.update({"state": "accepted", "ts": now(), "accepted_sha256": sha256_tree(run, PREVIEW_DIRS)})
+            g.update({"state": "accepted", "ts": now(), "accepted_sha256": preview_digest(run, manifest)})
         else:
             if routed_to not in AGENT_STAGES:
                 raise ContractError(f"preview feedback needs --route <stage>, one of {', '.join(AGENT_STAGES)}")
@@ -795,14 +956,11 @@ def gate_verify(run: Path) -> list[str]:
     manifest = load_manifest(run)
     flipped = []
     outline_gate = manifest["gates"]["outline"]
-    outline = run / "01-blueprint" / "outline.yaml"
-    if outline_gate["state"] == "accepted" and (
-        not outline.is_file() or sha256_file(outline) != outline_gate["accepted_sha256"]
-    ):
+    if outline_gate["state"] == "accepted" and outline_digest(run, manifest) != outline_gate["accepted_sha256"]:
         outline_gate.update({"state": "pending", "ts": now()})
         flipped.append("outline")
     preview_gate = manifest["gates"]["preview"]
-    if preview_gate["state"] == "accepted" and sha256_tree(run, PREVIEW_DIRS) != preview_gate["accepted_sha256"]:
+    if preview_gate["state"] == "accepted" and preview_digest(run, manifest) != preview_gate["accepted_sha256"]:
         preview_gate.update({"state": "pending", "ts": now()})
         flipped.append("preview")
     if flipped:
@@ -899,6 +1057,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--text")
     s.add_argument("--route", choices=AGENT_STAGES)
     s.add_argument("--verify", action="store_true")
+    s.add_argument("--repo-root", type=Path, default=REPO_ROOT)
 
     s = sub.add_parser("status", help="print the one-screen run status")
     s.add_argument("run", type=Path)
@@ -938,7 +1097,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 1 if flipped else 0
             if not args.which or not args.action:
                 raise ContractError("gate needs <outline|preview> <accept|feedback> or --verify")
-            m = gate(args.run, args.which, args.action, args.text, args.route)
+            m = gate(args.run, args.which, args.action, args.text, args.route, args.repo_root)
             print(f"gate {args.which}: {m['gates'][args.which]['state']}")
             return 0
         if args.cmd == "status":
