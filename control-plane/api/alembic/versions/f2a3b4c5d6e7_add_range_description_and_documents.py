@@ -13,9 +13,8 @@ supporting files with their original bytes in object storage.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from app.models import GUID
-
 from alembic import op
+from app.models import GUID
 
 # revision identifiers, used by Alembic.
 revision: str = "f2a3b4c5d6e7"
