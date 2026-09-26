@@ -646,10 +646,18 @@ class TestGates:
     def test_changing_previewed_files_after_accept_is_caught(self, tmp_path, repo):
         run = make_run(tmp_path)
         check.gate(run, "preview", "accept", repo_root=repo)
-        (run / "02-content" / "arc2-adlm.yaml").write_text("course_code: ARC2-ADLM\ntitle: edited\n")
+        (run / "04-artifacts" / "rubric.md").write_text("# rubric, edited after the accept\n")  # breaks no rule
         _, findings = check.check_run(run, repo)
         assert owners(findings, "gate.preview_unchanged") == {"orchestrator"}
         assert check.gate_verify(run) == ["preview"]
+
+    def test_upstream_rework_reopens_an_accepted_preview(self, tmp_path, repo):
+        run = make_run(tmp_path)
+        check.gate(run, "preview", "accept", repo_root=repo)
+        (run / "02-content" / "arc2-adlm.yaml").write_text("course_code: ARC2-ADLM\ntitle: edited\n")
+        manifest, _ = check.check_run(run, repo)
+        assert manifest["qa"]["rework_stage"] == "code-generator"
+        assert manifest["gates"]["preview"]["state"] == "n/a"  # re-offered after the next pass
 
     def test_running_past_the_outline_gate_is_a_finding(self, tmp_path, repo):
         m = full_manifest()

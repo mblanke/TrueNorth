@@ -67,6 +67,7 @@ DEFANG_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("reverse shell", re.compile(r"(?i)\b(nc|ncat|netcat)\s+(-e|-c)\b|bash -i\s*>&|/dev/tcp/")),
 )
 MAX_DEFANG_PER_FILE = 20
+SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 
 def _finding(check: str, severity: str, message: str, owner: str, path: str | None = None) -> dict[str, Any]:
@@ -566,7 +567,9 @@ def check_defang(run: Path) -> list[dict[str, Any]]:
                 if PLACEHOLDER in line:
                     continue
                 for label, pattern in DEFANG_PATTERNS:
-                    if pattern.search(line):
+                    # A sha256 digest (64 lowercase hex, e.g. files[].sha256 in a fragment) is a
+                    # base64-alphabet run but not a payload; it must not fail a stage.
+                    if any(not SHA256_HEX.fullmatch(m.group()) for m in pattern.finditer(line)):
                         hits += 1
                         if hits <= MAX_DEFANG_PER_FILE:
                             out.append(

@@ -12,37 +12,11 @@ from pathlib import Path
 
 import pytest
 from arc2 import check, cmi5
+from conftest import module_config
 from test_arc2_manifest import full_manifest, make_run, owners
 
 KB_AU = check.REPO_ROOT / "docs" / "xAPI CMI5 Reference" / "xapi-cmi5-kb" / "au" / "cmi5-au.js"
 KB_EXAMPLE = check.REPO_ROOT / "docs" / "xAPI CMI5 Reference" / "xapi-cmi5-kb" / "examples" / "cmi5.xml"
-QUESTIONS = [
-    {"id": f"q{i}", "stem": f"Question {i} stem?", "options": ["a", "b", "c", "d"], "answer": "B"} for i in range(1, 6)
-]
-
-
-def module_config(module: dict, code: str = "ARC2-ADLM") -> dict:
-    ids = cmi5.publisher_ids(code, module["id"], module["objective_ids"])
-    return {
-        "schema": cmi5.CONFIG_SCHEMA,
-        "module_id": module["id"],
-        "ordinal": module["ordinal"],
-        "title": module["title"],
-        "au_id": ids["au_id"],
-        "objective_ids": list(module["objective_ids"]),
-        "objectives": [
-            {"id": o, "text": "Detect lateral movement", "iri": ids["objective_iris"][o]}
-            for o in module["objective_ids"]
-        ],
-        "moveOn": "Passed" if module["quiz"] else "Completed",
-        "masteryScore": cmi5.mastery_score(module),
-        "lang": "en-CA",
-        "content": {"pages": [f"content/{Path(p).name}" for p in module["pages"]], "lab": None},
-        "quiz": {"title": "Quiz 1", "pass_threshold": module["quiz"]["pass_threshold"], "questions": QUESTIONS}
-        if module["quiz"]
-        else None,
-        "media": {"images": [], "videos": []},
-    }
 
 
 def write_module_files(run: Path, manifest: dict) -> None:
@@ -88,8 +62,11 @@ def humans(findings: list[check.Finding]) -> set[str]:
 
 
 def mutate_block(run: Path, fn) -> None:
+    """Edit the manifest as a re-run stage 7 would leave it: package-builder done again (a
+    previous failing check may have routed rework to it and reset it to pending)."""
     m = check.load_manifest(run)
     fn(m)
+    m["stages"]["package-builder"]["state"] = "done"
     check.save_manifest(run, m)
 
 

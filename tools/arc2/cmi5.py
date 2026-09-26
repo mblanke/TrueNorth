@@ -495,6 +495,64 @@ def _check_config(
     return out
 
 
+def check_prepackage(run: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """The package checks that can run on the code-generator's own files, before stage 7.
+
+    Config drift and framework tokens used to surface only after packaging, when the loop can
+    no longer rebuild the package. Run here at QA, they route to the code-generator while the
+    preview gate is still ahead.
+    """
+    if not all(k in manifest for k in ("course", "objectives", "content")):
+        return []
+    try:
+        block = build_block(manifest)
+    except (Cmi5Error, KeyError, TypeError) as exc:
+        return [
+            _finding("cmi5.config_matches_manifest", "fail", f"cannot derive the cmi5 block: {exc}", "code-generator")
+        ]
+    out: list[dict[str, Any]] = []
+    root = run / "02-content"
+    modules = {m["id"]: m for m in manifest["content"]["modules"]}
+    for au in block["aus"]:
+        module = modules[au["module_id"]]
+        path = run / module["config"]
+        if not path.is_file():
+            continue  # trace.file_exists reports it
+        try:
+            cfg = json.loads(path.read_text())
+        except ValueError as exc:
+            out.append(
+                _finding(
+                    "cmi5.config_matches_manifest",
+                    "fail",
+                    f"{module['config']} is not valid JSON: {exc}",
+                    "code-generator",
+                    module["config"],
+                )
+            )
+            continue
+        out += _check_config(cfg, au, module, run, root, block)
+    course_yaml = manifest["content"].get("course_yaml")
+    if root.is_dir():
+        for p in sorted(root.rglob("*")):
+            rel = p.relative_to(run).as_posix()
+            if not p.is_file() or p.suffix.lower() not in TEXT_SUFFIXES or rel == course_yaml:
+                continue  # the course YAML's tokens are qa.course.framework_tokens
+            blob = p.read_text(errors="replace").lower()
+            for token in FRAMEWORK_TOKENS:
+                if token in blob:
+                    out.append(
+                        _finding(
+                            "cmi5.no_framework_tokens",
+                            "fail",
+                            f"{rel} contains framework token {token!r}",
+                            "code-generator",
+                            rel,
+                        )
+                    )
+    return out
+
+
 def check_package(run: Path, manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """Every ``cmi5.*`` finding for the run, plus the XSD status to record in the manifest."""
     block = manifest.get("cmi5")

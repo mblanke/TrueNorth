@@ -3,6 +3,7 @@ course that already delivers PO_009, and the range the fixture manifest reuses."
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -160,11 +161,41 @@ CATALOGUE_ROW = (
 )
 
 
+def module_config(module: dict, code: str = "ARC2-ADLM") -> dict:
+    """A course-config.json that agrees with the derived cmi5 block for this module."""
+    from arc2 import cmi5
+
+    ids = cmi5.publisher_ids(code, module["id"], module["objective_ids"])
+    questions = [{"id": f"q{i}", "stem": q, "options": o, "answer": a} for i, (q, o, a) in enumerate(QUESTIONS, 1)]
+    return {
+        "schema": cmi5.CONFIG_SCHEMA,
+        "module_id": module["id"],
+        "ordinal": module["ordinal"],
+        "title": module["title"],
+        "au_id": ids["au_id"],
+        "objective_ids": list(module["objective_ids"]),
+        "objectives": [
+            {"id": o, "text": "Detect lateral movement", "iri": ids["objective_iris"][o]}
+            for o in module["objective_ids"]
+        ],
+        "moveOn": "Passed" if module["quiz"] else "Completed",
+        "masteryScore": cmi5.mastery_score(module),
+        "lang": "en-CA",
+        "content": {"pages": [f"content/{Path(p).name}" for p in module["pages"]], "lab": None},
+        "quiz": {"title": "Quiz 1", "pass_threshold": module["quiz"]["pass_threshold"], "questions": questions}
+        if module["quiz"]
+        else None,
+        "media": {"images": [], "videos": []},
+    }
+
+
 def write_run_content(run: Path, manifest: dict) -> None:
     """The files the QA depth checks parse, matching full_manifest() in test_arc2_manifest."""
     content = manifest.get("content")
     if content:
         (run / content["course_yaml"]).write_text(course_yaml())
+        for m in content["modules"]:
+            (run / m["config"]).write_text(json.dumps(module_config(m), indent=2))
     (run / "01-blueprint" / "catalogue_row.csv").write_text(CATALOGUE_ROW)
     if manifest.get("injects"):
         (run / manifest["injects"]["timeline"]).write_text(TIMELINE)

@@ -8,7 +8,7 @@ records the two human decisions (outline, preview) so a resumed run knows where 
 
     python -m arc2.check init   <run> --slug <slug> --request-file <txt> [--enclave]
     python -m arc2.check merge  <run> <stage>
-    python -m arc2.check check  <run> [--json] [--repo-root <dir>]
+    python -m arc2.check check  <run> [--json] [--dry-run] [--repo-root <dir>]
     python -m arc2.check gate   <run> outline|preview accept|feedback [--text ..] [--route <stage>]
     python -m arc2.check gate   <run> --verify
     python -m arc2.check status <run>
@@ -319,7 +319,10 @@ def _require_upstream(manifest: dict[str, Any], stage: Stage) -> None:
     if index >= 1 and manifest["gates"]["outline"]["state"] != "accepted":
         raise ContractError(f"{stage.name} cannot merge: the outline gate is not accepted")
     if stage.name == "package-builder":
-        if (manifest.get("qa") or {}).get("result") != "pass":
+        qa = manifest.get("qa") or {}
+        # A failure only package-builder owns (found by the post-package check) is reworked by
+        # re-running stage 7; the preview gate below still guards the accepted inputs.
+        if qa.get("result") != "pass" and qa.get("rework_stage") != "package-builder":
             raise ContractError("package-builder cannot merge: QA has not passed")
         if manifest["gates"]["preview"]["state"] != "accepted":
             raise ContractError("package-builder cannot merge: the preview gate is not accepted")
@@ -797,7 +800,11 @@ def route(findings: list[Finding]) -> str | None:
     return None
 
 
-def check_run(run: Path, repo_root: Path = REPO_ROOT) -> tuple[dict[str, Any], list[Finding]]:
+def check_run(run: Path, repo_root: Path = REPO_ROOT, write: bool = True) -> tuple[dict[str, Any], list[Finding]]:
+    """Run every check and record the verdict. ``write=False`` computes the same verdict
+    (the qa block as it would be written) but leaves ``manifest.json`` untouched: no qa,
+    no human actions, no stage resets. The qa-tester reports from that; only the
+    orchestrator's own ``check`` records and routes."""
     manifest = load_manifest(run)
     findings = _check_schema(manifest)
     findings += _safe(_check_stages, manifest)
@@ -806,7 +813,12 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT) -> tuple[dict[str, Any], l
     findings += _safe(_check_po, manifest, repo_root)
     findings += _safe(_check_gates, run, manifest)
     try:
-        package_findings, xsd = cmi5.check_package(run, manifest)
+        # The package is judged only once package-builder has run on the current inputs; a
+        # reset stage 7 leaves a stale 07-bundle/cmi5/ behind that must not fail the rework.
+        if manifest["stages"]["package-builder"]["state"] == "done":
+            package_findings, xsd = cmi5.check_package(run, manifest)
+        else:
+            package_findings, xsd = cmi5.check_prepackage(run, manifest), None
     except (KeyError, TypeError, AttributeError, ValueError, IndexError) as exc:
         package_findings, xsd = [_finding_dict("check.crashed", f"cmi5 checks could not run: {exc!r}")], None
     findings += [Finding(**f) for f in package_findings]
@@ -866,6 +878,10 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT) -> tuple[dict[str, Any], l
         qa["result"] = "human_takeover" if qa["cycle"] >= MAX_QA_CYCLES else "fail"
         if qa["rework_stage"]:
             reset_from(manifest, qa["rework_stage"], through="package-builder")
+            preview = manifest["gates"]["preview"]
+            if qa["rework_stage"] in AGENT_STAGES and preview["state"] == "accepted":
+                # Upstream content will change: the human re-accepts after the next QA pass.
+                preview.update({"state": "n/a", "ts": now(), "accepted_sha256": None})
     else:
         qa["result"] = "pass"
         qa["rework_stage"] = None
@@ -875,7 +891,8 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT) -> tuple[dict[str, Any], l
             preview["state"] = "pending"
             preview["ts"] = now()
     manifest["qa"] = qa
-    save_manifest(run, manifest)
+    if write:
+        save_manifest(run, manifest)
     return manifest, findings
 
 
@@ -1054,6 +1071,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("check", help="run the contract checks and write qa")
     s.add_argument("run", type=Path)
     s.add_argument("--json", action="store_true")
+    s.add_argument("--dry-run", action="store_true", help="compute and print the verdict; write nothing")
     s.add_argument("--repo-root", type=Path, default=REPO_ROOT)
 
     s = sub.add_parser("gate", help="record a human decision at the outline or preview gate")
@@ -1084,7 +1102,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.cmd == "check":
-            m, findings = check_run(args.run, args.repo_root)
+            m, findings = check_run(args.run, args.repo_root, write=not args.dry_run)
             qa = m["qa"]
             if args.json:
                 print(json.dumps(qa, indent=2))
