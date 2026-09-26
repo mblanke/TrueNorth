@@ -37,6 +37,7 @@ from typing import Any
 import jsonschema
 import yaml
 from arc2 import __version__, cmi5
+from arc2 import qa as content_qa
 
 SCHEMA_VERSION = "arc2/manifest/0.1"
 SCHEMA_PATH = Path(__file__).with_name("manifest.schema.json")
@@ -811,6 +812,11 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT) -> tuple[dict[str, Any], l
     findings += [Finding(**f) for f in package_findings]
     if xsd is not None and isinstance(manifest.get("cmi5"), dict):
         manifest["cmi5"]["xsd"] = xsd  # the ladder's verdict is check's to record, not the agent's
+    try:
+        depth = content_qa.check_run(run, manifest, repo_root)
+    except (KeyError, TypeError, AttributeError, ValueError, IndexError) as exc:
+        depth = [_finding_dict("check.crashed", f"content QA checks could not run: {exc!r}")]
+    findings += [Finding(**f) for f in depth]
 
     # Human findings become orchestrator-owned actions. Agents cannot write entries stamped
     # `orchestrator` (merge refuses them), and every run re-asserts the open ones, so no agent

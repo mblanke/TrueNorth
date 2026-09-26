@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from arc2 import check
+from conftest import write_run_content
 
 TS = "2026-09-24T21:00:00Z"
 SLUG = "arc2-adlm"
@@ -232,6 +233,7 @@ def make_run(tmp_path: Path, manifest: dict | None = None) -> Path:
             p.write_text(f"# placeholder for {rel}\n")
     if manifest.get("artifacts"):
         (run / manifest["artifacts"]["instructor_dir"]).mkdir(parents=True, exist_ok=True)
+    write_run_content(run, manifest)
     if manifest["gates"]["outline"]["state"] == "accepted":
         manifest["gates"]["outline"]["accepted_sha256"] = check.outline_digest(run, manifest)
     check.save_manifest(run, manifest)
