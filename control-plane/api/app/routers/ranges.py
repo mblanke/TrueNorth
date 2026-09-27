@@ -95,6 +95,26 @@ def _tenant_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
     return rng
 
 
+# Snapshot states in which a worker task still owns the row.
+_SNAPSHOT_BUSY = ("creating", "restoring")
+
+
+def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
+    """409 while any snapshot of the range is being restored.
+
+    A restore does not move the range out of `ready`, so without this a second
+    restore or a new snapshot could run over the VMs mid-revert.
+    """
+    # tenant-safe: callers pass a range_id they already resolved through _tenant_range().
+    busy = (
+        db.query(RangeSnapshot.id)
+        .filter(RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring")
+        .first()
+    )
+    if busy:
+        raise HTTPException(409, "A restore of this range is in progress")
+
+
 @router.post("", response_model=RangeOut, status_code=201)
 def create_range(
     body: RangeIn,
@@ -341,6 +361,7 @@ def create_snapshot(
     rng = _tenant_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.stopped):
         raise HTTPException(409, f"Cannot snapshot range in state '{rng.state.value}'")
+    _refuse_while_restoring(db, range_id)
 
     snap = RangeSnapshot(
         range_id=range_id,
@@ -372,6 +393,7 @@ def restore_snapshot(
     rng = _tenant_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
+    _refuse_while_restoring(db, range_id)
 
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
     # caller, so filtering snapshots by that same range_id is transitively scoped.
@@ -402,6 +424,10 @@ def delete_snapshot(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_DESTROY)),
 ):
+    # The comment below was here without the call it describes, so any tenant could
+    # delete any other tenant's snapshot given the two ids. That only flipped a row
+    # while the worker's delete was broken; now it removes the hypervisor copy.
+    _tenant_range(db, range_id, user)
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
     # caller, so filtering snapshots by that same range_id is transitively scoped.
     snap = (
@@ -414,6 +440,10 @@ def delete_snapshot(
     )
     if not snap:
         raise HTTPException(404, "Snapshot not found")
+    if snap.snapshot_state in _SNAPSHOT_BUSY:
+        # The worker is still writing this row; deleting now let it come back `ready`
+        # with nothing on the hypervisor, or left the hypervisor copy orphaned.
+        raise HTTPException(409, f"Snapshot is {snap.snapshot_state}; delete it once that finishes")
     _dispatch_task("delete_snapshot", str(range_id), str(snapshot_id))
     snap.snapshot_state = "deleted"
     _audit(db, user, "snapshot_delete", "range_snapshot", str(snapshot_id))
