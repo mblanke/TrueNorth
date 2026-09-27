@@ -43,9 +43,14 @@ anything in stage **P** has to come from an internal software depot, not from th
 | TN-BUILD01 **(proposed)** | Ubuntu 24.04 | 8 | 16 GB | 200 GB | Runs Packer and Ansible for the template builds. This is the **only** host with controlled internet egress. Can be folded into TN-MGMT01 if capacity is tight | `.github/workflows/packer-build.yml` |
 | TN-WSUS01 **(proposed, optional)** | Windows Server 2022 | 2 | 8 GB | 300 GB | Patch source for templates and role snapshots | — |
 
-Licensing decision needed: Windows and Office activation inside isolated range VLANs. The
-options are (a) a KMS host cloned into each range, (b) MAK keys baked into the templates,
-or (c) evaluation media (180-day). Platform AD-based activation cannot reach range domains.
+**Activation and licensing (decided, see §8):** all licences are held and are applied in
+**prod**, where Windows KMS is available. The **test** environment probably has no KMS, so
+build it from evaluation media (Windows Server and Windows Enterprise: 180 days; Exchange
+and SharePoint trial mode) and leave the templates unactivated. Keep product keys out of
+the templates in both environments. Prod activates at deploy time (the KMS client key, GVLK,
+is used by default, plus reachability to KMS) or through role-snapshot rebuilds. Isolated
+range VLANs still need a route to the prod KMS host (TCP 1688), or a KMS host cloned into
+the range. Platform AD-based activation cannot reach range domains.
 
 ---
 
@@ -65,7 +70,7 @@ range resizes the clone at deploy time (see §3). Build hours and golden size co
 | 6 | `srv2022` | Windows Server 2022 Std/DC | 2 / 4 GB / 35 GB | 14 | 35 | yes | Modern DC/member | Every range template uses this. **Build second** |
 | 7 | `precomp-host` | Win10 / Srv2019 derived | per parent | 12 | 35 | yes | Pre-compromised start state | Clone of 1 or 5 with staged artifacts |
 | 8 | `detonation-host` | Win10 derived | per parent | 12 | 35 | **no** | Sterile malware detonation | No sensor, no egress ever, snapshot-revert after each use |
-| 9 | `ubuntu-lts` | Ubuntu Server 24.04* | 2 / 4 GB / 15 GB | 8 | 15 | yes | Web/app/DB victim, and base for most Linux roles | *Range YAML says `ubuntu-2204`. Pick one (see §7) |
+| 9 | `ubuntu-lts` | Ubuntu Server 24.04 LTS | 2 / 4 GB / 15 GB | 8 | 15 | yes | Web/app/DB victim, and base for most Linux roles | **Decided: 24.04.** Range YAML still says `ubuntu-2204`; build 24.04 and treat `ubuntu-2204` as an alias until renamed (§7) |
 | 10 | `rocky` | Rocky Linux 9 | 2 / 4 GB / 15 GB | 8 | 15 | yes | Enterprise Linux victim | |
 | 11 | `kali` | Kali 2024.x installer | 2 / 4 GB / 30 GB | 10 | 30 | no | Attacker / analyst workstation | Ranges deploy it at 4 vCPU / 8 GB / 120 GB |
 | 12 | `remnux` | Ubuntu + REMnux installer | per ubuntu-lts | 10 | 25 | no | Malware analysis | Packer marked `todo(vsphere)` |
@@ -102,8 +107,8 @@ Deploy spec = the largest spec any range template asks for. Stage: **T**/**R**/*
 |---|---|---|---|:-:|---|
 | Domain controller | srv2022 (one on srv2019 in red-team) | 4 / 8 GB / 100 GB | all | R | AD DS, DNS, DHCP, GPMC, RSAT |
 | File server | srv2022 | 2 / 8 GB / 500 GB | all | R | File Server, DFS-N/R, VSS |
-| Exchange | srv2022 | 4 / 16 GB / 200 GB | large-ent, red-vs-blue | R | Exchange 2019 CU15 (or SE), OWA, SMTP/IMAP |
-| SharePoint | **srv2019** (see §7) | 4 / 16 GB / 200 GB | large-ent | R | SharePoint 2019 (or SE on srv2022), IIS |
+| Exchange | srv2022 | 4 / 16 GB / 200 GB | large-ent, red-vs-blue | R | **Two snapshots:** Exchange 2019 CU15 and Exchange SE (both on srv2022). OWA, SMTP/IMAP |
+| SharePoint | srv2019 (2019) / srv2022 (SE) | 4 / 16 GB / 200 GB | large-ent | R | **Two snapshots:** SharePoint 2019 on srv2019 and SharePoint SE on srv2022. IIS, SQL backend |
 | SQL | srv2022 | 8 / 32 GB / 500 GB | large-ent, red-team | R | SQL Server 2022, SSRS, SSMS |
 | PKI | srv2022 | 2 / 4 GB / 60 GB | large-ent, red-team, red-vs-blue | R | AD CS Enterprise CA, OCSP, Web Enrollment |
 | WSUS | srv2022 | 2 / 8 GB / 300 GB | large-ent | R | WSUS role |
@@ -276,9 +281,9 @@ the depot), `gh` (GitHub release), `docker` (image mirrored to the depot).
 |---|---|---|---|
 | AD DS / DNS / DHCP / GPMC | srv2022 | built in | Windows Server |
 | AD CS (Enterprise CA, OCSP, Web Enrollment) | srv2022 | built in | Windows Server |
-| Exchange Server 2019 CU15 (or Exchange SE) | srv2022 | .NET 4.8.1, VC++ 2012 + 2013, UCMA 4.0, IIS URL Rewrite 2.1, AD schema prep | Exchange key (or unlicensed trial mode) |
+| Exchange Server 2019 CU15 **and** Exchange SE | srv2022 | .NET 4.8.1, VC++ 2012 + 2013, UCMA 4.0, IIS URL Rewrite 2.1, AD schema prep | Exchange key (or unlicensed trial mode) |
 | SharePoint Server 2019 | **srv2019** | SharePoint prerequisite installer (offline files), SQL instance | SharePoint key |
-| SharePoint Server Subscription Edition (alternative) | srv2022 | as above | SE licence |
+| SharePoint Server Subscription Edition | srv2022 | as above | SE licence |
 | SQL Server 2022 + SSRS + SSMS | srv2022 | .NET 4.8 | Developer (non-production) or Standard. Confirm which applies to training |
 | WSUS | srv2022 | built in, WID or SQL | Windows Server |
 | MECM current branch | srv2022 | Windows ADK + WinPE add-on, SQL, IIS, BITS, RDC | MECM licence / eval |
@@ -389,7 +394,7 @@ These are repo issues the build team will hit. They are listed here and not fixe
    `10.10.400.0/24` (an octet cannot exceed 255). The same scheme appears in the IPs
    `10.10.300.x` and `10.10.400.x`.
 3. **Ubuntu version mismatch.** The catalogue says `ubuntu-lts` = 24.04; every range YAML and
-   `infra/proxmox|hyperv/packer` say `ubuntu-2204`.
+   `infra/proxmox|hyperv/packer` say `ubuntu-2204`. **Decided: 24.04**; the rename is pending (§8).
 4. **Templates referenced but not catalogued:** `win10-ltsc`, `vyos-1.4`; `c2-server` is used
    by three ranges but is `enabled=no`.
 5. **Security Onion template is undersized** (4 GB RAM / 60 GB). It will fail the SO 2.4
@@ -399,7 +404,7 @@ These are repo issues the build team will hit. They are listed here and not fixe
 7. **red-vs-blue `exch01` disk is 48 GB.** This is too small for Exchange (install + logs +
    a mailbox database). Use ≥150 GB.
 8. **Exchange 2019 and SharePoint 2019 reached end of support on 14 Oct 2025.** That is fine
-   for a deliberately vulnerable range, but it should be an explicit choice. The current
+   for a deliberately vulnerable range. **Decided: build both 2019 and SE** (§8). The current
    versions are Exchange SE and SharePoint SE. Also, **SharePoint 2019 is not supported on
    Windows Server 2022** (large-enterprise `sp01` is `windows-server-2022`). Use srv2019, or
    SharePoint SE.
@@ -407,11 +412,27 @@ These are repo issues the build team will hit. They are listed here and not fixe
 10. `small-enterprise/template.yaml` uses a different schema (`assets`/`count`) with no specs,
     so capacity cannot be computed for it.
 
-## 8. Decisions needed before the build starts
+## 8. Decisions
 
-- Windows/Office activation inside ranges: KMS clone, MAK, or evaluation media.
-- Ubuntu 22.04 or 24.04 as the single `ubuntu-lts`.
-- Exchange/SharePoint: 2019 (vulnerable, EOL) or SE (current), or one of each.
-- Licences to procure: Office LTSC VL, Exchange, SharePoint, SQL (if not Developer), MECM,
-  Npcap OEM, Burp Pro, KAPE, and Cobalt Strike (or drop it).
+### Decided (2026-09-27)
+
+| Topic | Decision | Build impact |
+|---|---|---|
+| Activation | KMS in **prod**; test probably has none | Test: evaluation media, no keys. Prod: default KMS client keys (GVLK), activate against KMS at deploy. No keys in any template |
+| Licences | All held (Office LTSC, Exchange, SharePoint, SQL, MECM, etc.). Applied in prod | Test builds run on trial/eval. Prod swaps in keys at role-snapshot build |
+| Exchange / SharePoint | **Both** versions: 2019 **and** Subscription Edition | Four role snapshots: `exch2019` (srv2022), `exchSE` (srv2022), `sp2019` (**srv2019**), `spSE` (srv2022). 2019 = vulnerable/legacy scenarios, SE = current-estate scenarios |
+| `ubuntu-lts` | **Ubuntu 24.04 LTS** | Standard support runs to 2029 (22.04 ends Apr 2027), and it matches `vm_catalogue.csv`. Rename `ubuntu-2204` → `ubuntu-2404` across the repo in a separate change (see below) |
+
+The `ubuntu-2204` identifier is wired into code, not just content:
+`control-plane/api/app/range_topology.py`, `control-plane/worker/worker/render.py`,
+`control-plane/worker/worker/provisioners/{vsphere_api,hyperv}.py`,
+`scenario-engine/template_engine/renderer.py`, the range designer UI,
+`infra/{vsphere,proxmox,hyperv}/packer/ubuntu-2204.pkr.hcl`, the Terraform variables,
+`.github/workflows/packer-build.yml` and all six range YAMLs. Until that rename lands, build
+the image as 24.04 and publish it under the name the code expects.
+
+### Still open
+
 - Whether to stand up TN-DEPOT01 and TN-BUILD01 as separate VMs or fold them into TN-MGMT01.
+- Whether ranges route to the prod KMS host or get a cloned KMS host per range.
+- Cobalt Strike (licensed) vs Sliver/Mythic for the C2 template.
