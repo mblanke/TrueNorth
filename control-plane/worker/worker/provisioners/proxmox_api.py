@@ -395,15 +395,17 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
         power_on: bool,
     ) -> RestoreResult:
         start = time.monotonic()
+        reverted: set[int] = set()
 
         async def rollback(client: httpx.AsyncClient, vmid: int, snapname: str) -> None:
-            await self._rollback_vm(client, vmid, snapname, power_on)
+            await self._rollback_vm(client, vmid, snapname, power_on, reverted)
 
         restored, errors = await self._per_vm(provision_output, rollback, name, "Restore")
         return RestoreResult(
             status=outcome(restored, errors),
             snapshot_name=name,
             vms_restored=restored,
+            vms_reverted=len(reverted),
             duration_seconds=time.monotonic() - start,
             errors=errors,
         )
@@ -447,9 +449,19 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
             )
             await self._wait_task(client, _upid(data), timeout=self._snapshot_timeout, check=True)
 
-    async def _rollback_vm(self, client: httpx.AsyncClient, vmid: int, name: str, power_on: bool) -> None:
+    async def _snapshot_names(self, client: httpx.AsyncClient, vmid: int) -> set[str]:
+        listed = await self._api_get(client, f"/nodes/{self._node}/qemu/{vmid}/snapshot")
+        return {s.get("name") for s in listed or [] if isinstance(s, dict)}
+
+    async def _rollback_vm(
+        self, client: httpx.AsyncClient, vmid: int, name: str, power_on: bool, reverted: set[int]
+    ) -> None:
         async with self._semaphore:
+            # Check first, so a missing snapshot fails before anything is touched.
+            if name not in await self._snapshot_names(client, vmid):
+                raise LookupError(f"no snapshot named {name!r}")
             data = await self._api_post(client, f"/nodes/{self._node}/qemu/{vmid}/snapshot/{name}/rollback")
+            reverted.add(vmid)  # the rollback is under way: from here the VM may have changed
             await self._wait_task(client, _upid(data), timeout=self._snapshot_timeout, check=True)
             if not power_on:
                 return
@@ -462,8 +474,7 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
 
     async def _delete_snapshot_vm(self, client: httpx.AsyncClient, vmid: int, name: str) -> None:
         async with self._semaphore:
-            listed = await self._api_get(client, f"/nodes/{self._node}/qemu/{vmid}/snapshot")
-            if name not in {s.get("name") for s in listed or [] if isinstance(s, dict)}:
+            if name not in await self._snapshot_names(client, vmid):
                 return  # already gone: a retry after a partial delete must not fail
             resp = await client.delete(f"/api2/json/nodes/{self._node}/qemu/{vmid}/snapshot/{name}")
             resp.raise_for_status()

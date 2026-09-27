@@ -260,6 +260,7 @@ class MockProvisioner(BaseProvisioner):
             status="ok",
             snapshot_name=name,
             vms_restored=len(vms),
+            vms_reverted=len(vms),
             duration_seconds=time.monotonic() - start,
         )
 

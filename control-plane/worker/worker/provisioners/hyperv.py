@@ -54,6 +54,11 @@ HYPERV_VM_PATH: str = os.environ.get("HYPERV_VM_PATH", "C:\\TrueNorth\\vms")
 HYPERV_CONCURRENCY: int = int(os.environ.get("HYPERV_CONCURRENCY", "4"))
 
 
+def _ps_quote(value: str) -> str:
+    """A PowerShell single-quoted string literal: inside one, only ' needs doubling."""
+    return "'" + value.replace("'", "''") + "'"
+
+
 class HypervProvisioner(BaseProvisioner):
     """Microsoft Hyper-V provisioner using WinRM + PowerShell.
 
@@ -191,29 +196,39 @@ foreach ($vhd in $vhds) {{
         if rc != 0:
             raise RuntimeError(f"Checkpoint failed for {vm_name!r}: {stderr[:300]}")
 
-    async def _restore_checkpoint(self, vm_name: str, name: str, power_on: bool) -> None:
+    async def _restore_checkpoint(self, vm_name: str, name: str, power_on: bool, reverted: set[str]) -> None:
         """Revert a VM to a checkpoint, then start it if the range should be running.
 
         A production checkpoint comes back powered off; a standard one comes back in
         its saved state. Start only what is not already running.
         """
-        start = "$true" if power_on else "$false"
+        vm, cp = _ps_quote(vm_name), _ps_quote(name)
+        # Exit 3 when the checkpoint is missing, so that case fails before anything
+        # is touched and can be told apart from a revert that failed part way.
         script = f"""
 $ErrorActionPreference = 'Stop'
-Restore-VMCheckpoint -VMName '{vm_name}' -Name '{name}' -Confirm:$false
-if ({start} -and (Get-VM -Name '{vm_name}').State -ne 'Running') {{
-    Start-VM -Name '{vm_name}'
-}}
+$cp = Get-VMCheckpoint -VMName {vm} -Name {cp} -ErrorAction SilentlyContinue
+if (-not $cp) {{ exit 3 }}
+$cp | Restore-VMCheckpoint -Confirm:$false
 """
         _, stderr, rc = await self._run_ps_async(script)
+        if rc == 3:
+            raise LookupError(f"no checkpoint named {name!r} on {vm_name!r}")
+        reverted.add(vm_name)
         if rc != 0:
             raise RuntimeError(f"Restore failed for {vm_name!r}: {stderr[:300]}")
+        if power_on:
+            _, stderr, rc = await self._run_ps_async(
+                f"if ((Get-VM -Name {vm}).State -ne 'Running') {{ Start-VM -Name {vm} }}"
+            )
+            if rc != 0:
+                raise RuntimeError(f"Start after restore failed for {vm_name!r}: {stderr[:300]}")
 
     async def _remove_checkpoint(self, vm_name: str, name: str) -> None:
         """Remove a checkpoint. A VM that no longer has it is not an error."""
         script = f"""
 $ErrorActionPreference = 'Stop'
-$cp = Get-VMCheckpoint -VMName '{vm_name}' -Name '{name}' -ErrorAction SilentlyContinue
+$cp = Get-VMCheckpoint -VMName {_ps_quote(vm_name)} -Name {_ps_quote(name)} -ErrorAction SilentlyContinue
 if ($cp) {{ $cp | Remove-VMCheckpoint -Confirm:$false }}
 """
         _, stderr, rc = await self._run_ps_async(script)
@@ -388,13 +403,15 @@ if ($addr) {{ $addr }} else {{ '' }}
         power_on: bool,
     ) -> RestoreResult:
         start_time = time.monotonic()
+        reverted: set[str] = set()
         restored, errors = await self._per_vm(
-            range_id, provision_output, lambda vm: self._restore_checkpoint(vm, name, power_on)
+            range_id, provision_output, lambda vm: self._restore_checkpoint(vm, name, power_on, reverted)
         )
         return RestoreResult(
             status=outcome(restored, errors),
             snapshot_name=name,
             vms_restored=restored,
+            vms_reverted=len(reverted),
             duration_seconds=time.monotonic() - start_time,
             errors=errors,
         )

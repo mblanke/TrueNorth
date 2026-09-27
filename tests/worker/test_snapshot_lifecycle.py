@@ -95,6 +95,15 @@ class FakeVM:
         self.runtime = SimpleNamespace(powerState=power)
         self.CreateSnapshot_Task = MagicMock(return_value=FakeTask(f"create:{vm_id}", fail_create))
         self.PowerOnVM_Task = MagicMock(return_value=FakeTask(f"poweron:{vm_id}"))
+        for root in roots:  # removing a root snapshot takes it out of the tree, as vCenter does
+            root.snapshot.RemoveSnapshot_Task.side_effect = self._remover(root)
+
+    def _remover(self, node):
+        def remove(removeChildren):  # noqa: N803 -- pyVmomi's keyword name
+            self.snapshot.rootSnapshotList.remove(node)
+            return FakeTask(f"remove:{node.name}:{node.createTime:%M}")
+
+        return remove
 
 
 @pytest.fixture
@@ -105,7 +114,8 @@ def vsphere(monkeypatch):
     vms: dict[str, FakeVM] = {}
     waited: list[str] = []
 
-    def wait(task, si=None):
+    def wait(task, si=None, maxWaitTime=None):  # noqa: N803 -- pyVim's keyword name
+        assert maxWaitTime, "an unbounded wait can outlive Celery's visibility timeout"
         waited.append(task.label)
         if task.fail:
             raise RuntimeError(task.fail)
@@ -154,7 +164,7 @@ class TestVsphereSnapshots:
 
         result = _run(vsphere.prov.restore("r1", _prov_output("vm-1"), "tnabc", power_on=False))
 
-        assert result.status == "ok" and result.vms_restored == 1
+        assert result.status == "ok" and result.vms_restored == 1 and result.vms_reverted == 1
         new.snapshot.RevertToSnapshot_Task.assert_called_once_with()
         old.snapshot.RevertToSnapshot_Task.assert_not_called()
         vsphere.vms["vm-1"].PowerOnVM_Task.assert_not_called()
@@ -177,8 +187,19 @@ class TestVsphereSnapshots:
         result = _run(vsphere.prov.restore("r1", _prov_output("vm-1"), "tnabc", power_on=True))
         assert result.status == "failed"
         assert "no snapshot named 'tnabc'" in result.errors[0]
+        assert result.vms_reverted == 0  # nothing touched, so the range keeps its state
 
-    def test_delete_removes_every_copy_and_tolerates_vms_without_it(self, vsphere):
+    def test_a_failed_revert_task_still_counts_as_touched(self, vsphere):
+        snap = FakeSnap("tnabc", 1)
+        snap.snapshot.RevertToSnapshot_Task.return_value = FakeTask("revert", fail="disk locked")
+        vsphere.vms.update({"vm-1": FakeVM("vm-1", roots=[snap]), "vm-2": FakeVM("vm-2", roots=[FakeSnap("x", 1)])})
+
+        result = _run(vsphere.prov.restore("r1", _prov_output("vm-1", "vm-2"), "tnabc", power_on=False))
+
+        assert result.status == "failed"
+        assert result.vms_reverted == 1  # vm-1's revert started, so it may have changed
+
+    def test_delete_removes_every_copy_one_at_a_time(self, vsphere):
         a, b = FakeSnap("tnabc", 1), FakeSnap("tnabc", 3)
         vsphere.vms.update({"vm-1": FakeVM("vm-1", roots=[a, b]), "vm-2": FakeVM("vm-2")})
 
@@ -187,12 +208,30 @@ class TestVsphereSnapshots:
         assert result.status == "ok" and result.vms_cleaned == 2
         a.snapshot.RemoveSnapshot_Task.assert_called_once_with(removeChildren=False)
         b.snapshot.RemoveSnapshot_Task.assert_called_once_with(removeChildren=False)
+        # two passes, one removal each: never two snapshot tasks on one VM at once
+        assert vsphere.waited == ["remove:tnabc:01", "remove:tnabc:03"]
+
+    def test_work_goes_to_vcenter_in_batches(self, vsphere):
+        order: list[str] = []
+        for v in ("vm-1", "vm-2", "vm-3"):
+            vm = FakeVM(v)
+            vm.CreateSnapshot_Task.side_effect = lambda v=v, **kw: order.append(f"start {v}") or FakeTask(v)
+            vsphere.vms[v] = vm
+        vsphere.prov._concurrency = 2
+        real_wait = vsphere.mod.WaitForTask
+        vsphere.mod.WaitForTask = lambda task, **kw: order.append(f"wait {task.label}") or real_wait(task, **kw)
+
+        _run(vsphere.prov.snapshot("r1", _prov_output("vm-1", "vm-2", "vm-3"), "tnabc"))
+
+        assert order == ["start vm-1", "start vm-2", "wait vm-1", "wait vm-2", "start vm-3", "wait vm-3"]
 
     def test_connection_failure_fails_every_vm(self, vsphere):
         vsphere.connect.side_effect = OSError("vcenter unreachable")
         result = _run(vsphere.prov.snapshot("r1", _prov_output("vm-1", "vm-2"), "tnabc"))
         assert result.status == "failed" and result.vms_snapped == 0
         assert all("vcenter unreachable" in e for e in result.errors)
+        restored = _run(vsphere.prov.restore("r1", _prov_output("vm-1"), "tnabc", power_on=True))
+        assert restored.vms_reverted == 0
 
     def test_missing_pyvmomi_is_reported(self, vsphere, monkeypatch):
         monkeypatch.setattr(vsphere.mod, "SmartConnect", None)
@@ -257,10 +296,17 @@ class TestProxmoxSnapshots:
         fake = FakeProxmox({101: {"tnabc"}, 102: {"tnabc"}}, {101: "running", 102: "stopped"})
         result = _run(proxmox(fake).restore("r1", {"vms": [{"vmid": 101}, {"vmid": 102}]}, "tnabc", power_on=True))
 
-        assert result.status == "ok" and result.vms_restored == 2
+        assert result.status == "ok" and result.vms_restored == 2 and result.vms_reverted == 2
         assert "POST /qemu/101/snapshot/tnabc/rollback" in fake.calls
         assert "POST /qemu/102/status/start" in fake.calls
         assert "POST /qemu/101/status/start" not in fake.calls  # already running: would error
+
+    def test_missing_snapshot_fails_before_touching_anything(self, proxmox):
+        fake = FakeProxmox({101: set()}, {101: "running"})
+        result = _run(proxmox(fake).restore("r1", {"vms": [{"vmid": 101}]}, "tnabc", power_on=True))
+
+        assert result.status == "failed" and result.vms_reverted == 0
+        assert not any("rollback" in c for c in fake.calls)
 
     def test_delete_skips_vms_that_no_longer_have_it(self, proxmox):
         fake = FakeProxmox({101: {"tnabc"}, 102: set()}, {})
@@ -304,20 +350,33 @@ def hyperv(monkeypatch):
 class TestHypervSnapshots:
     OUTPUT = {"vms": [{"name": "dc01"}]}
 
-    def test_restore_reverts_and_starts(self, hyperv):
+    def test_restore_reverts_then_starts(self, hyperv):
         prov, session = hyperv()
         result = _run(prov.restore("r1", self.OUTPUT, "tnabc", power_on=True))
 
-        assert result.status == "ok" and result.vms_restored == 1
-        script = session.run_ps.call_args[0][0]
-        assert "Restore-VMCheckpoint -VMName 'r1-dc01' -Name 'tnabc' -Confirm:$false" in script
-        assert "if ($true -and" in script
+        assert result.status == "ok" and result.vms_restored == 1 and result.vms_reverted == 1
+        revert, start = (c[0][0] for c in session.run_ps.call_args_list)
+        assert "Get-VMCheckpoint -VMName 'r1-dc01' -Name 'tnabc'" in revert
+        assert "if (-not $cp) { exit 3 }" in revert
+        assert "Restore-VMCheckpoint -Confirm:$false" in revert
+        assert "Start-VM -Name 'r1-dc01'" in start
 
-    def test_restore_error_is_reported(self, hyperv):
+    def test_missing_checkpoint_touches_nothing(self, hyperv):
+        prov, session = hyperv(status_code=3)
+        result = _run(prov.restore("r1", self.OUTPUT, "tnabc", power_on=True))
+        assert result.status == "failed" and result.vms_reverted == 0
+        assert session.run_ps.call_count == 1  # no Start-VM attempt
+
+    def test_a_failed_revert_counts_as_touched(self, hyperv):
         prov, _ = hyperv(status_code=1)
         result = _run(prov.restore("r1", self.OUTPUT, "tnabc", power_on=False))
-        assert result.status == "failed"
+        assert result.status == "failed" and result.vms_reverted == 1
         assert "Restore failed for 'r1-dc01'" in result.errors[0]
+
+    def test_names_are_quoted_for_powershell(self, hyperv):
+        prov, session = hyperv()
+        _run(prov.delete_snapshot("r1", {"vms": [{"name": "o'brien"}]}, "tnabc"))
+        assert "-VMName 'r1-o''brien'" in session.run_ps.call_args[0][0]
 
     def test_delete_tolerates_a_missing_checkpoint(self, hyperv):
         prov, session = hyperv()
@@ -352,7 +411,7 @@ def _db(*rows):
 def backend():
     prov = MagicMock()
     prov.snapshot = AsyncMock(return_value=SnapshotResult(status="ok", vms_snapped=2))
-    prov.restore = AsyncMock(return_value=RestoreResult(status="ok", vms_restored=2))
+    prov.restore = AsyncMock(return_value=RestoreResult(status="ok", vms_restored=2, vms_reverted=2))
     prov.delete_snapshot = AsyncMock(return_value=SnapshotDeleteResult(status="ok", vms_cleaned=2))
     return prov
 
@@ -360,12 +419,25 @@ def backend():
 @pytest.fixture
 def spies(backend):
     with (
-        patch.object(tasks, "_get_backend", return_value=backend),
+        patch.object(tasks, "_get_backend", return_value=backend) as get_backend,
         patch.object(tasks, "_update_range_state") as range_state,
-        patch.object(tasks, "_update_snapshot_state") as snapshot_state,
+        patch.object(tasks, "_update_snapshot_state", return_value=1) as snapshot_state,
         patch.object(tasks, "_notify_api"),
     ):
-        yield SimpleNamespace(range_state=range_state, snapshot_state=snapshot_state)
+        yield SimpleNamespace(get_backend=get_backend, range_state=range_state, snapshot_state=snapshot_state)
+
+
+def _rows(
+    snapshot_state="creating",
+    snapshot_data=None,
+    at_snapshot="ready",
+    range_state="ready",
+    output=PROV,
+    range_backend="proxmox",
+):
+    """_db_session() rows as _snapshot_context reads them: the snapshot, then its range."""
+    data = None if snapshot_data is None else json.dumps(snapshot_data)
+    return _db((snapshot_state, data, at_snapshot), (range_state, json.dumps(output), range_backend))
 
 
 class TestBackendSnapshotName:
@@ -381,37 +453,78 @@ class TestBackendSnapshotName:
         assert a != b
 
 
+NAME = tasks._backend_snapshot_name(SNAP_ID)
+
+
 class TestSnapshotRangeTask:
-    def test_records_the_backend_name(self, backend, spies):
-        with patch.object(tasks, "_db_session", _db((json.dumps(PROV),))):
+    def test_records_the_name_on_the_ranges_own_backend(self, backend, spies):
+        with patch.object(tasks, "_db_session", _rows()):
             assert tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)["status"] == "ready"
 
-        name = tasks._backend_snapshot_name(SNAP_ID)
-        backend.snapshot.assert_awaited_once_with("r1", PROV, name)
-        state, kwargs = spies.snapshot_state.call_args[0][1], spies.snapshot_state.call_args[1]
-        assert state == "ready"
-        assert json.loads(kwargs["data"])["snapshot_name"] == name
+        spies.get_backend.assert_called_once_with("proxmox")  # not PROVISIONER_BACKEND
+        backend.snapshot.assert_awaited_once_with("r1", PROV, NAME)
+        args, kwargs = spies.snapshot_state.call_args
+        assert args == (SNAP_ID, "ready") and kwargs["only_from"] == tasks._SNAPSHOT_PENDING
+        assert json.loads(kwargs["data"]) == {
+            "provider": "proxmox",
+            "range_id": "r1",
+            "snapshot_name": NAME,
+            "vm_count": 2,
+        }
+
+    def test_leftovers_of_an_earlier_attempt_are_cleared_first(self, backend, spies):
+        with patch.object(tasks, "_db_session", _rows(snapshot_state="failed")):
+            tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)
+        assert [c[0] for c in backend.mock_calls] == ["delete_snapshot", "snapshot"]
 
     def test_partial_snapshot_is_failed_and_discarded(self, backend, spies):
         backend.snapshot.return_value = SnapshotResult(status="partial", vms_snapped=1, errors=["VM b: disk full"])
-        with patch.object(tasks, "_db_session", _db((json.dumps(PROV),))), pytest.raises(RuntimeError, match="partial"):
+        with patch.object(tasks, "_db_session", _rows()), pytest.raises(RuntimeError, match="partial"):
             tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)
 
-        backend.delete_snapshot.assert_awaited_once_with("r1", PROV, tasks._backend_snapshot_name(SNAP_ID))
-        spies.snapshot_state.assert_called_with(SNAP_ID, "failed")
+        assert backend.delete_snapshot.await_count == 2  # before, and after the partial snapshot
+        spies.snapshot_state.assert_called_with(SNAP_ID, "failed", only_from=tasks._SNAPSHOT_PENDING)
+
+    def test_duplicate_delivery_after_success_does_nothing(self, backend, spies):
+        """Running again would discard the finished snapshot as a leftover."""
+        with patch.object(tasks, "_db_session", _rows(snapshot_state="ready")):
+            assert tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)["status"] == "ready"
+        backend.snapshot.assert_not_awaited()
+        backend.delete_snapshot.assert_not_awaited()
+
+    def test_a_deleted_row_is_not_taken(self, backend, spies):
+        with patch.object(tasks, "_db_session", _rows(snapshot_state="deleted")):
+            assert tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)["status"] == "skipped"
+        backend.snapshot.assert_not_awaited()
+
+    def test_deleted_while_being_taken_discards_the_copy(self, backend, spies):
+        spies.snapshot_state.return_value = 0  # the guarded write found the row `deleted`
+        with patch.object(tasks, "_db_session", _rows()):
+            assert tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)["status"] == "skipped"
+        assert backend.delete_snapshot.await_count == 2  # leftovers first, then the orphan
+
+    def test_a_range_with_no_vms_is_not_a_snapshot(self, backend, spies):
+        with (
+            patch.object(tasks, "_db_session", _rows(output={"vms": []})),
+            pytest.raises(RuntimeError, match="no VMs"),
+        ):
+            tasks.snapshot_range(range_id="r1", snapshot_id=SNAP_ID)
+        backend.snapshot.assert_not_awaited()
 
 
 class TestRestoreSnapshotTask:
-    def _rows(self, range_state: str, snapshot_data: dict | None = None, at_snapshot: str = "ready"):
-        data = json.dumps(snapshot_data if snapshot_data is not None else {"snapshot_name": "tnabc"})
-        return _db((data, at_snapshot), (range_state, json.dumps(PROV)))
+    def _rows(self, range_state: str = "ready", snapshot_data: dict | None = None, at_snapshot: str = "ready", **kw):
+        data = snapshot_data if snapshot_data is not None else {"snapshot_name": "tnabc"}
+        return _rows("restoring", data, at_snapshot, range_state, **kw)
 
     def test_restores_with_recorded_name_and_powers_on_a_ready_range(self, backend, spies):
-        with patch.object(tasks, "_db_session", self._rows("ready")):
+        with patch.object(tasks, "_db_session", self._rows()):
             assert tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)["status"] == "restored"
 
+        spies.get_backend.assert_called_once_with("proxmox")
         backend.restore.assert_awaited_once_with("r1", PROV, "tnabc", power_on=True)
-        spies.range_state.assert_called_once_with("r1", "ready", only_from=tasks._RESTORABLE_STATES)
+        spies.range_state.assert_called_once_with("r1", "ready", only_from=tasks._RESTORABLE_STATES, clear_error=True)
+        spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready", only_from=("restoring",))
 
     def test_a_stopped_snapshot_is_not_powered_on(self, backend, spies):
         with patch.object(tasks, "_db_session", self._rows("failed", at_snapshot="stopped")):
@@ -419,7 +532,7 @@ class TestRestoreSnapshotTask:
         backend.restore.assert_awaited_once_with("r1", PROV, "tnabc", power_on=False)
 
     def test_legacy_snapshot_falls_back_to_the_bare_id(self, backend, spies):
-        with patch.object(tasks, "_db_session", self._rows("ready", snapshot_data={"provider": "proxmox"})):
+        with patch.object(tasks, "_db_session", self._rows(snapshot_data={"provider": "proxmox"})):
             tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)
         backend.restore.assert_awaited_once_with("r1", PROV, SNAP_ID, power_on=True)
 
@@ -429,36 +542,70 @@ class TestRestoreSnapshotTask:
 
         backend.restore.assert_not_awaited()
         spies.range_state.assert_not_called()
-        spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready")
+        spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready", only_from=("restoring",))
 
-    def test_failure_is_recorded_only_on_a_restorable_range(self, backend, spies):
-        backend.restore.return_value = RestoreResult(status="failed", errors=["VM vm-1: no snapshot named 'tnabc'"])
-        with (
-            patch.object(tasks, "_db_session", self._rows("ready")),
-            pytest.raises(RuntimeError, match="restore failed"),
-        ):
+    def test_a_restore_that_changed_nothing_leaves_the_range_as_it_was(self, backend, spies):
+        """Missing snapshot, vCenter down, no backend support: the range is intact.
+
+        Marking it `failed` here locked out stop, start, health checks and expiry cleanup
+        for a range nothing had happened to.
+        """
+        backend.restore.return_value = RestoreResult(
+            status="failed", vms_reverted=0, errors=["VM vm-1: no snapshot named 'tnabc'"]
+        )
+        with patch.object(tasks, "_db_session", self._rows()), pytest.raises(RuntimeError, match="restore failed"):
+            tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)
+
+        spies.range_state.assert_not_called()
+        spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready", only_from=("restoring",))
+
+    def test_a_half_done_restore_marks_the_range_failed(self, backend, spies):
+        backend.restore.return_value = RestoreResult(
+            status="partial", vms_restored=1, vms_reverted=2, errors=["VM vm-2: power on failed"]
+        )
+        with patch.object(tasks, "_db_session", self._rows()), pytest.raises(RuntimeError, match="restore partial"):
             tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)
 
         args, kwargs = spies.range_state.call_args
         assert args == ("r1", "failed")
         assert kwargs["only_from"] == tasks._RESTORABLE_STATES
 
+    def test_the_snapshot_stays_restoring_while_a_retry_is_pending(self, backend, spies):
+        backend.restore.return_value = RestoreResult(status="failed", errors=["vcenter unreachable"])
+        with (
+            patch.object(tasks, "_db_session", self._rows()),
+            patch.object(tasks, "_last_attempt", return_value=False),
+            pytest.raises(RuntimeError),
+        ):
+            tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)
+        spies.snapshot_state.assert_not_called()
+
+    def test_a_range_with_no_vms_is_not_restored(self, backend, spies):
+        with (
+            patch.object(tasks, "_db_session", self._rows(output={"vms": []})),
+            pytest.raises(RuntimeError, match="no VMs"),
+        ):
+            tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)
+        backend.restore.assert_not_awaited()
+        spies.range_state.assert_not_called()
+
 
 class TestDeleteSnapshotTask:
-    def test_deletes_by_recorded_name(self, backend, spies):
-        with patch.object(tasks, "_db_session", _db((json.dumps({"snapshot_name": "tnabc"}),), (json.dumps(PROV),))):
+    def test_deletes_by_recorded_name_on_the_ranges_backend(self, backend, spies):
+        with patch.object(tasks, "_db_session", _rows("deleted", {"snapshot_name": "tnabc"})):
             assert tasks.delete_snapshot(range_id="r1", snapshot_id=SNAP_ID)["status"] == "deleted"
+        spies.get_backend.assert_called_once_with("proxmox")
         backend.delete_snapshot.assert_awaited_once_with("r1", PROV, "tnabc")
 
     def test_a_snapshot_that_never_completed_needs_no_backend_call(self, backend, spies):
-        with patch.object(tasks, "_db_session", _db((None,), (json.dumps(PROV),))):
+        with patch.object(tasks, "_db_session", _rows("deleted", None)):
             tasks.delete_snapshot(range_id="r1", snapshot_id=SNAP_ID)
         backend.delete_snapshot.assert_not_awaited()
         spies.snapshot_state.assert_called_once_with(SNAP_ID, "deleted")
 
     def test_backend_failure_raises_for_retry(self, backend, spies):
         backend.delete_snapshot.return_value = SnapshotDeleteResult(status="partial", errors=["VM vm-2: locked"])
-        rows = _db((json.dumps({"snapshot_name": "tnabc"}),), (json.dumps(PROV),))
+        rows = _rows("deleted", {"snapshot_name": "tnabc"})
         with patch.object(tasks, "_db_session", rows), pytest.raises(RuntimeError, match="delete partial"):
             tasks.delete_snapshot(range_id="r1", snapshot_id=SNAP_ID)
 
@@ -485,17 +632,42 @@ class TestGuardedRangeStateOnARealDatabase:
                 )
             )
             conn.execute(text("INSERT INTO ranges (id, state) VALUES ('live', 'ready'), ('gone', 'destroyed')"))
+            conn.execute(
+                text(
+                    "CREATE TABLE range_snapshots (id TEXT PRIMARY KEY, snapshot_state TEXT, updated_at TEXT,"
+                    " snapshot_data TEXT, size_bytes INTEGER)"
+                )
+            )
+            conn.execute(text("INSERT INTO range_snapshots (id, snapshot_state) VALUES ('taking', 'creating')"))
+            conn.execute(text("INSERT INTO range_snapshots (id, snapshot_state) VALUES ('binned', 'deleted')"))
         monkeypatch.setattr(tasks, "DATABASE_URL", url)
-        yield lambda rid: engine.connect().execute(text("SELECT state FROM ranges WHERE id = :r"), {"r": rid}).scalar()
+
+        def read(table: str, column: str, rid: str):
+            with engine.connect() as conn:
+                return conn.execute(text(f"SELECT {column} FROM {table} WHERE id = :r"), {"r": rid}).scalar()
+
+        yield read
         event.remove(engine.__class__, "connect", add_now)
         engine.dispose()
+
+    def test_a_deleted_snapshot_is_not_written_back_to_ready(self, ranges_db):
+        pending = tasks._SNAPSHOT_PENDING
+        assert tasks._update_snapshot_state("binned", "ready", data="{}", only_from=pending) == 0
+        assert tasks._update_snapshot_state("taking", "ready", data="{}", only_from=pending) == 1
+        assert ranges_db("range_snapshots", "snapshot_state", "binned") == "deleted"
+        assert ranges_db("range_snapshots", "snapshot_state", "taking") == "ready"
+
+    def test_success_clears_a_stale_error(self, ranges_db):
+        tasks._update_range_state("live", "failed", error="restore failed")
+        tasks._update_range_state("live", "ready", clear_error=True)
+        assert ranges_db("ranges", "error_message", "live") is None
 
     def test_failed_restore_does_not_overwrite_destroyed(self, ranges_db):
         for rid in ("live", "gone"):
             tasks._update_range_state(rid, "failed", error="restore failed", only_from=tasks._RESTORABLE_STATES)
-        assert ranges_db("live") == "failed"
-        assert ranges_db("gone") == "destroyed"
+        assert ranges_db("ranges", "state", "live") == "failed"
+        assert ranges_db("ranges", "state", "gone") == "destroyed"
 
     def test_unguarded_update_still_writes(self, ranges_db):
         tasks._update_range_state("gone", "failed")
-        assert ranges_db("gone") == "failed"
+        assert ranges_db("ranges", "state", "gone") == "failed"

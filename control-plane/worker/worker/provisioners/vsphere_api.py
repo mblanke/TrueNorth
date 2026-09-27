@@ -59,6 +59,8 @@ VSPHERE_CONTENT_LIBRARY: str = os.environ.get("VSPHERE_CONTENT_LIBRARY", "TrueNo
 VSPHERE_VERIFY_SSL: bool = os.environ.get("VSPHERE_VERIFY_SSL", "false").lower() == "true"
 VSPHERE_CONCURRENCY: int = int(os.environ.get("VSPHERE_CONCURRENCY", "4"))
 VSPHERE_TOOLS_TIMEOUT: int = int(os.environ.get("VSPHERE_TOOLS_TIMEOUT", "120"))
+# Per snapshot task. Keep it under Celery's visibility timeout (celery_app.py, 3600s).
+VSPHERE_SNAPSHOT_TIMEOUT: int = int(os.environ.get("VSPHERE_SNAPSHOT_TIMEOUT", "1800"))
 
 
 def _named_snapshots(vm, name: str) -> list:
@@ -95,6 +97,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._semaphore = asyncio.Semaphore(VSPHERE_CONCURRENCY)
         self._tools_timeout = VSPHERE_TOOLS_TIMEOUT
         self._session_token: str | None = None
+        self._concurrency = max(1, VSPHERE_CONCURRENCY)
+        self._snapshot_timeout = VSPHERE_SNAPSHOT_TIMEOUT
 
     # ------------------------------------------------------------------ #
     # HTTP helpers
@@ -314,29 +318,37 @@ class VsphereAPIProvisioner(BaseProvisioner):
         finally:
             Disconnect(si)
 
-    @staticmethod
-    def _fan_out(si, vm_ids: list[str], submit: Callable) -> dict[str, str]:
-        """Start ``submit(vm)``'s tasks on every VM, then wait for all of them.
+    def _fan_out(self, si, vm_ids: list[str], submit: Callable) -> tuple[dict[str, str], set[str]]:
+        """Start ``submit(vm)``'s tasks, a batch of VSPHERE_CONCURRENCY VMs at a time.
 
-        vCenter runs the tasks side by side, so starting them all before waiting keeps
-        a 20-VM range from taking twenty snapshots' worth of wall-clock. Returns the
-        VMs that failed, with the reason.
+        vCenter runs a batch side by side, so a 20-VM range does not take twenty
+        snapshots' worth of wall-clock, without handing vCenter all twenty at once.
+        Returns the VMs that failed with the reason, and the VMs whose tasks started.
         """
         failed: dict[str, str] = {}
-        started: list[tuple[str, object]] = []
-        for vm_id in vm_ids:
-            try:
-                started += [(vm_id, task) for task in submit(vim.VirtualMachine(vm_id, si._stub))]
-            except Exception as exc:
-                failed[vm_id] = getattr(exc, "msg", None) or str(exc)
-        for vm_id, task in started:
-            try:
-                WaitForTask(task, si=si)
-            except Exception as exc:
-                failed.setdefault(vm_id, getattr(exc, "msg", None) or str(exc))
-        return failed
+        submitted: set[str] = set()
+        for i in range(0, len(vm_ids), self._concurrency):
+            started: list[tuple[str, object]] = []
+            for vm_id in vm_ids[i : i + self._concurrency]:
+                try:
+                    tasks = submit(vim.VirtualMachine(vm_id, si._stub))
+                except Exception as exc:
+                    failed[vm_id] = getattr(exc, "msg", None) or str(exc)
+                    continue
+                started += [(vm_id, task) for task in tasks]
+                if tasks:
+                    submitted.add(vm_id)
+            for vm_id, task in started:
+                try:
+                    # Bounded, and well inside Celery's one-hour visibility timeout: a
+                    # task stuck in vCenter must not hold the worker until the broker
+                    # redelivers the job to a second worker.
+                    WaitForTask(task, si=si, maxWaitTime=self._snapshot_timeout)
+                except Exception as exc:
+                    failed.setdefault(vm_id, getattr(exc, "msg", None) or str(exc))
+        return failed, submitted
 
-    def _snapshot_sync(self, vm_ids: list[str], name: str) -> dict[str, str]:
+    def _snapshot_sync(self, vm_ids: list[str], name: str) -> tuple[dict[str, str], set[str]]:
         with self._vim() as si:
             return self._fan_out(
                 si,
@@ -348,10 +360,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 ],
             )
 
-    def _restore_sync(self, vm_ids: list[str], name: str, power_on: bool) -> dict[str, str]:
+    def _restore_sync(self, vm_ids: list[str], name: str, power_on: bool) -> tuple[dict[str, str], set[str]]:
+        """Revert, then power on. The second value is every VM a revert started on."""
+
         def revert(vm):
             found = _named_snapshots(vm, name)
-            if not found:
+            if not found:  # raised before any task starts, so the VM is untouched
                 raise LookupError(f"no snapshot named {name!r}")
             return [found[-1].snapshot.RevertToSnapshot_Task()]
 
@@ -359,35 +373,51 @@ class VsphereAPIProvisioner(BaseProvisioner):
             return [] if vm.runtime.powerState == "poweredOn" else [vm.PowerOnVM_Task()]
 
         with self._vim() as si:
-            failed = self._fan_out(si, vm_ids, revert)
+            failed, reverted = self._fan_out(si, vm_ids, revert)
             if power_on:
                 # The snapshots are taken without memory, so a revert leaves the VM off.
-                failed.update(self._fan_out(si, [v for v in vm_ids if v not in failed], power))
-            return failed
+                failed.update(self._fan_out(si, [v for v in vm_ids if v not in failed], power)[0])
+            return failed, reverted
 
-    def _delete_snapshot_sync(self, vm_ids: list[str], name: str) -> dict[str, str]:
+    def _delete_snapshot_sync(self, vm_ids: list[str], name: str) -> tuple[dict[str, str], set[str]]:
+        failed: dict[str, str] = {}
         with self._vim() as si:
-            # A VM without the snapshot submits nothing and so counts as cleaned.
-            return self._fan_out(
-                si,
-                vm_ids,
-                lambda vm: [n.snapshot.RemoveSnapshot_Task(removeChildren=False) for n in _named_snapshots(vm, name)],
-            )
+            # One copy per VM per pass: vCenter refuses a second snapshot task on a VM
+            # that is still running one. A VM without the snapshot counts as cleaned.
+            for _ in range(5):
+                pending = [
+                    v for v in vm_ids if v not in failed and _named_snapshots(vim.VirtualMachine(v, si._stub), name)
+                ]
+                if not pending:
+                    break
+                failed.update(
+                    self._fan_out(
+                        si,
+                        pending,
+                        lambda vm: [_named_snapshots(vm, name)[0].snapshot.RemoveSnapshot_Task(removeChildren=False)],
+                    )[0]
+                )
+        return failed, set()
 
-    async def _vim_op(self, provision_output: dict, fn: Callable, *args) -> tuple[int, list[str]]:
-        """Run a blocking pyVmomi operation over the range's VMs; count successes."""
+    async def _vim_op(self, provision_output: dict, fn: Callable, *args) -> tuple[int, list[str], set[str]]:
+        """Run a blocking pyVmomi operation over the range's VMs.
+
+        Returns how many VMs it succeeded on, the errors, and the VMs it started a
+        task on (for restore: the ones that may have changed).
+        """
         vms = provision_output.get("vms", [])
         vm_ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
         # A VM with no recorded id cannot be addressed, so the operation cannot cover
         # the whole range. That is a failure, not something to skip over quietly.
         errors = [f"VM {vm.get('name')}: no vm_id recorded" for vm in vms if not vm.get("vm_id")]
+        touched: set[str] = set()
         if vm_ids:
             try:
-                failed = await asyncio.to_thread(fn, vm_ids, *args)
+                failed, touched = await asyncio.to_thread(fn, vm_ids, *args)
             except Exception as exc:  # could not connect or log in: no VM was touched
                 failed = dict.fromkeys(vm_ids, str(exc))
             errors += [f"VM {vm_id}: {msg}" for vm_id, msg in failed.items()]
-        return len(vms) - len(errors), errors
+        return len(vms) - len(errors), errors, touched
 
     # ------------------------------------------------------------------ #
     # BaseProvisioner implementation
@@ -588,7 +618,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         name: str,
     ) -> SnapshotResult:
         start = time.monotonic()
-        snapped, errors = await self._vim_op(provision_output, self._snapshot_sync, name)
+        snapped, errors, _ = await self._vim_op(provision_output, self._snapshot_sync, name)
         return SnapshotResult(
             status=outcome(snapped, errors),
             snapshot_name=name,
@@ -605,11 +635,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
         power_on: bool,
     ) -> RestoreResult:
         start = time.monotonic()
-        restored, errors = await self._vim_op(provision_output, self._restore_sync, name, power_on)
+        restored, errors, reverted = await self._vim_op(provision_output, self._restore_sync, name, power_on)
         return RestoreResult(
             status=outcome(restored, errors),
             snapshot_name=name,
             vms_restored=restored,
+            vms_reverted=len(reverted),
             duration_seconds=time.monotonic() - start,
             errors=errors,
         )
@@ -621,7 +652,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         name: str,
     ) -> SnapshotDeleteResult:
         start = time.monotonic()
-        cleaned, errors = await self._vim_op(provision_output, self._delete_snapshot_sync, name)
+        cleaned, errors, _ = await self._vim_op(provision_output, self._delete_snapshot_sync, name)
         return SnapshotDeleteResult(
             status=outcome(cleaned, errors),
             snapshot_name=name,

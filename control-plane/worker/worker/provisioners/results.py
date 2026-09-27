@@ -74,7 +74,10 @@ class RestoreResult:
 
     status: str  # ok, partial, failed
     snapshot_name: str = ""
-    vms_restored: int = 0
+    vms_restored: int = 0  # reverted and, where asked, powered on
+    # Reverted at all, powered on or not. Zero means the range was not touched, so
+    # a failure leaves it as it was rather than half-reverted.
+    vms_reverted: int = 0
     duration_seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
 

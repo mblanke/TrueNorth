@@ -161,6 +161,10 @@ class TestRangeLifecycle:
 
         resp = api_client.post(f"/ranges/{range_id}/snapshots/{snapshot_id}/restore")
         assert resp.status_code in (200, 202), resp.text
+        # The API marks the snapshot `restoring`, and only the worker hands it back as
+        # `ready`. Waiting for that proves the task ran; a range that merely stays
+        # `ready` would pass even if no worker were listening.
+        _poll_snapshot_ready(api_client, range_id, snapshot_id)
         # Polling for READY alone proves nothing here — the range is already READY, so
         # the assertion passes whether or not the restore ran. Wait for the task to
         # settle and require that it did not fail.
