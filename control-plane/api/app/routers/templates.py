@@ -74,6 +74,32 @@ def template_diagram_preview(
     return {"template_id": str(tmpl.id), "diagram_json": diagram}
 
 
+class DiagramIn(BaseModel):
+    diagram_json: dict
+    name: str = "Range Design"
+
+
+@router.post("/from-diagram")
+def template_from_diagram(
+    body: DiagramIn,
+    user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
+) -> dict:
+    """Convert a Range Designer diagram into a provisionable template. Writes nothing.
+
+    Backs the designer's YAML/JSON export, so an exported file is exactly what
+    Save topology would provision. ``template`` is the dict; ``yaml`` is the same
+    document serialized.
+    """
+    import yaml as pyyaml
+
+    out = range_topology.diagram_to_template(body.diagram_json, body.name)
+    return {
+        "template": out["template"],
+        "yaml": pyyaml.safe_dump(out["template"], sort_keys=False),
+        "warnings": out["warnings"],
+    }
+
+
 @router.post("", response_model=TemplateOut, status_code=201)
 def create_template(
     body: TemplateIn,

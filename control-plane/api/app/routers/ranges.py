@@ -13,6 +13,7 @@ GET    /ranges                     RANGE_READ
 GET    /ranges/stats               STATS_READ
 GET    /ranges/{range_id}          RANGE_READ
 PUT    /ranges/{range_id}          RANGE_UPDATE
+POST   /ranges/{range_id}/topology RANGE_UPDATE + TEMPLATE_CREATE
 DELETE /ranges/{range_id}          RANGE_DELETE
 POST   /ranges/{range_id}/provision  RANGE_PROVISION
 POST   /ranges/{range_id}/destroy    RANGE_DESTROY
@@ -254,6 +255,84 @@ def save_range_diagram(
     _audit(db, user, "update", "range.diagram", str(rng.id))
     db.commit()
     return {"range_id": str(rng.id), "diagram_json": rng.diagram_json}
+
+
+# States in which the range has no VMs, so its topology may be replaced. Changing the
+# template under a built range would leave the record describing machines that are
+# not the ones running.
+_TOPOLOGY_EDITABLE = {RangeState.created, RangeState.failed, RangeState.destroyed}
+
+
+@router.post("/{range_id}/topology")
+def save_range_topology(
+    body: dict | None = None,
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE, Permission.TEMPLATE_CREATE)),
+) -> dict:
+    """Make the designer diagram the topology this range provisions.
+
+    **Permission: range:update + template:create**
+
+    Converts the diagram (``body.diagram_json``, else the saved one) into a template
+    and points the range at it. The first save creates a private template owned by
+    this range; later saves update that same template. A shared or content template
+    the range started from is never modified. 409 once the range has VMs.
+    """
+    import yaml as pyyaml
+
+    from .. import range_topology
+
+    rng = _tenant_range(db, range_id, user)
+    if rng.state not in _TOPOLOGY_EDITABLE:
+        raise HTTPException(409, f"Range is {rng.state.value}; destroy it before changing its topology")
+    diagram = (body or {}).get("diagram_json") if isinstance(body, dict) else None
+    if diagram is None:
+        diagram = rng.diagram_json
+    if not isinstance(diagram, dict):
+        raise HTTPException(422, "No diagram to save: draw or load one first")
+
+    out = range_topology.diagram_to_template(diagram, rng.name, range_id=str(rng.id))
+    template = out["template"]
+    if not template["nodes"]:
+        raise HTTPException(422, {"message": "Diagram has no VMs to provision", "warnings": out["warnings"]})
+    text = pyyaml.safe_dump(template, sort_keys=False)
+
+    current = (
+        db.query(Template)
+        .filter(Template.id == rng.template_id, Template.tenant_id == rng.tenant_id)
+        .first()
+    )
+    owned = False
+    if current is not None and not current.is_public:
+        try:
+            src = (pyyaml.safe_load(current.yaml or "") or {}).get("source") or {}
+        except pyyaml.YAMLError:
+            src = {}
+        owned = isinstance(src, dict) and src.get("range_id") == str(rng.id)
+
+    if owned:
+        current.yaml = text
+        tmpl = current
+    else:
+        tmpl = Template(name=f"{rng.name} (designer)", version="1.0", yaml=text,
+                        tenant_id=rng.tenant_id, is_public=False)
+        db.add(tmpl)
+        db.flush()
+        rng.template_id = tmpl.id
+    rng.diagram_json = diagram
+    _audit(db, user, "update", "range.topology", str(rng.id),
+           detail=f"template={tmpl.id} nodes={len(template['nodes'])} created={not owned}")
+    db.commit()
+    return {
+        "range_id": str(rng.id),
+        "template_id": str(tmpl.id),
+        "created": not owned,
+        "node_count": len(template["nodes"]),
+        "vlan_count": len(template["network"]["vlans"]),
+        "warnings": out["warnings"],
+        "template": template,
+    }
 
 
 # ── Lifecycle Actions ──────────────────────────────────────────────────
