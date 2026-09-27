@@ -8,6 +8,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+def outcome(succeeded: int, errors: list[str]) -> str:
+    """``ok`` when nothing failed, ``failed`` when nothing succeeded, else ``partial``."""
+    if not errors:
+        return "ok"
+    return "partial" if succeeded else "failed"
+
+
 @dataclass
 class ProvisionResult:
     """Result of a range provisioning operation."""
@@ -57,6 +64,28 @@ class SnapshotResult:
     status: str  # ok, partial, failed
     snapshot_name: str = ""
     vms_snapped: int = 0
+    duration_seconds: float = 0.0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RestoreResult:
+    """Result of reverting a range to a snapshot."""
+
+    status: str  # ok, partial, failed
+    snapshot_name: str = ""
+    vms_restored: int = 0
+    duration_seconds: float = 0.0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SnapshotDeleteResult:
+    """Result of deleting a snapshot from every VM in a range."""
+
+    status: str  # ok, partial, failed
+    snapshot_name: str = ""
+    vms_cleaned: int = 0
     duration_seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
 

@@ -18,6 +18,8 @@ from .results import (
     DestroyResult,
     HealthResult,
     ProvisionResult,
+    RestoreResult,
+    SnapshotDeleteResult,
     SnapshotResult,
     StartResult,
     StopResult,
@@ -209,14 +211,71 @@ class MockProvisioner(BaseProvisioner):
                 duration_seconds=time.monotonic() - start,
             )
 
-        state = self._state.get(range_id, {})
-        vms = state.get("vms", [])
+        vms = self._vms(range_id, provision_output)
 
         logger.info("MockProvisioner: snapshot '%s' for range %s (%d VMs)", name, range_id, len(vms))
         return SnapshotResult(
             status="ok",
             snapshot_name=name,
             vms_snapped=len(vms),
+            duration_seconds=time.monotonic() - start,
+        )
+
+    def _vms(self, range_id: str, provision_output: dict) -> list[dict]:
+        """VMs from this instance's memory, else from the stored provisioner output.
+
+        The worker builds a fresh provisioner per task, so the in-memory state is
+        empty whenever a snapshot, restore or delete arrives in a later task than the
+        provision did. Without the fallback those operations always saw zero VMs.
+        """
+        return self._state.get(range_id, {}).get("vms") or provision_output.get("vms", [])
+
+    # ------------------------------------------------------------------ #
+    # restore / delete_snapshot
+    # ------------------------------------------------------------------ #
+    async def restore(
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
+        power_on: bool,
+    ) -> RestoreResult:
+        start = time.monotonic()
+        await asyncio.sleep(MOCK_PROVISION_DELAY * 0.5)
+
+        if _should_fail():
+            return RestoreResult(
+                status="failed",
+                snapshot_name=name,
+                errors=["Simulated restore failure"],
+                duration_seconds=time.monotonic() - start,
+            )
+
+        vms = self._vms(range_id, provision_output)
+        for vm in vms:
+            vm["status"] = "running" if power_on else "stopped"
+
+        logger.info("MockProvisioner: restored range %s to snapshot '%s' (%d VMs)", range_id, name, len(vms))
+        return RestoreResult(
+            status="ok",
+            snapshot_name=name,
+            vms_restored=len(vms),
+            duration_seconds=time.monotonic() - start,
+        )
+
+    async def delete_snapshot(
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
+    ) -> SnapshotDeleteResult:
+        start = time.monotonic()
+        vms = self._vms(range_id, provision_output)
+        logger.info("MockProvisioner: deleted snapshot '%s' for range %s (%d VMs)", name, range_id, len(vms))
+        return SnapshotDeleteResult(
+            status="ok",
+            snapshot_name=name,
+            vms_cleaned=len(vms),
             duration_seconds=time.monotonic() - start,
         )
 

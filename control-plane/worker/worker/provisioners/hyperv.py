@@ -30,9 +30,12 @@ from .results import (
     DestroyResult,
     HealthResult,
     ProvisionResult,
+    RestoreResult,
+    SnapshotDeleteResult,
     SnapshotResult,
     StartResult,
     StopResult,
+    outcome,
 )
 
 logger = logging.getLogger(__name__)
@@ -188,6 +191,35 @@ foreach ($vhd in $vhds) {{
         if rc != 0:
             raise RuntimeError(f"Checkpoint failed for {vm_name!r}: {stderr[:300]}")
 
+    async def _restore_checkpoint(self, vm_name: str, name: str, power_on: bool) -> None:
+        """Revert a VM to a checkpoint, then start it if the range should be running.
+
+        A production checkpoint comes back powered off; a standard one comes back in
+        its saved state. Start only what is not already running.
+        """
+        start = "$true" if power_on else "$false"
+        script = f"""
+$ErrorActionPreference = 'Stop'
+Restore-VMCheckpoint -VMName '{vm_name}' -Name '{name}' -Confirm:$false
+if ({start} -and (Get-VM -Name '{vm_name}').State -ne 'Running') {{
+    Start-VM -Name '{vm_name}'
+}}
+"""
+        _, stderr, rc = await self._run_ps_async(script)
+        if rc != 0:
+            raise RuntimeError(f"Restore failed for {vm_name!r}: {stderr[:300]}")
+
+    async def _remove_checkpoint(self, vm_name: str, name: str) -> None:
+        """Remove a checkpoint. A VM that no longer has it is not an error."""
+        script = f"""
+$ErrorActionPreference = 'Stop'
+$cp = Get-VMCheckpoint -VMName '{vm_name}' -Name '{name}' -ErrorAction SilentlyContinue
+if ($cp) {{ $cp | Remove-VMCheckpoint -Confirm:$false }}
+"""
+        _, stderr, rc = await self._run_ps_async(script)
+        if rc != 0:
+            raise RuntimeError(f"Removing checkpoint failed for {vm_name!r}: {stderr[:300]}")
+
     async def _get_vm_ip(self, vm_name: str) -> str | None:
         """Return the first IPv4 address reported by the VM's network adapter."""
         script = f"""
@@ -339,22 +371,58 @@ if ($addr) {{ $addr }} else {{ '' }}
         name: str,
     ) -> SnapshotResult:
         start_time = time.monotonic()
-        errors: list[str] = []
-        vms = provision_output.get("vms", [])
-
-        tasks = [self._create_checkpoint(f"{range_id}-{vm['name']}", name) for vm in vms]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for vm, res in zip(vms, results):
-            if isinstance(res, Exception):
-                errors.append(f"VM {vm.get('name')}: {res}")
-
+        snapped, errors = await self._per_vm(range_id, provision_output, lambda vm: self._create_checkpoint(vm, name))
         return SnapshotResult(
-            status="ok" if not errors else "partial",
+            status=outcome(snapped, errors),
             snapshot_name=name,
-            vms_snapped=len(vms) - len(errors),
+            vms_snapped=snapped,
             duration_seconds=time.monotonic() - start_time,
             errors=errors,
         )
+
+    async def restore(
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
+        power_on: bool,
+    ) -> RestoreResult:
+        start_time = time.monotonic()
+        restored, errors = await self._per_vm(
+            range_id, provision_output, lambda vm: self._restore_checkpoint(vm, name, power_on)
+        )
+        return RestoreResult(
+            status=outcome(restored, errors),
+            snapshot_name=name,
+            vms_restored=restored,
+            duration_seconds=time.monotonic() - start_time,
+            errors=errors,
+        )
+
+    async def delete_snapshot(
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
+    ) -> SnapshotDeleteResult:
+        start_time = time.monotonic()
+        cleaned, errors = await self._per_vm(range_id, provision_output, lambda vm: self._remove_checkpoint(vm, name))
+        return SnapshotDeleteResult(
+            status=outcome(cleaned, errors),
+            snapshot_name=name,
+            vms_cleaned=cleaned,
+            duration_seconds=time.monotonic() - start_time,
+            errors=errors,
+        )
+
+    async def _per_vm(self, range_id: str, provision_output: dict, op) -> tuple[int, list[str]]:
+        """Run ``op(hyper-v VM name)`` for every VM in the range concurrently."""
+        vms = provision_output.get("vms", [])
+        results = await asyncio.gather(*(op(f"{range_id}-{vm['name']}") for vm in vms), return_exceptions=True)
+        errors = [
+            f"VM {vm.get('name')}: {res}" for vm, res in zip(vms, results, strict=True) if isinstance(res, Exception)
+        ]
+        return len(vms) - len(errors), errors
 
     async def health_check(
         self,

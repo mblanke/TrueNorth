@@ -1,8 +1,11 @@
 """TrueNorth Range - VMware vSphere REST API provisioner.
 
 Provisions VMs by cloning from a vSphere Content Library using the
-vSphere Automation REST API (available since vSphere 6.7).  No
-third-party SDK required — only httpx.
+vSphere Automation REST API (available since vSphere 6.7), over httpx.
+
+Snapshots are the exception. The Automation REST API has no VM snapshot
+operations, so snapshot, restore and delete go through the vSphere Web
+Services API with pyVmomi, VMware's own SDK.
 """
 
 from __future__ import annotations
@@ -11,20 +14,33 @@ import asyncio
 import logging
 import os
 import time
+from collections.abc import Callable
+from contextlib import contextmanager
+from urllib.parse import urlparse
 
 try:
     import httpx
 except ImportError:
     httpx = None  # type: ignore[assignment]
 
+try:
+    from pyVim.connect import Disconnect, SmartConnect
+    from pyVim.task import WaitForTask
+    from pyVmomi import vim
+except ImportError:  # only the snapshot operations need it
+    Disconnect = SmartConnect = WaitForTask = vim = None  # type: ignore[assignment]
+
 from .base import BaseProvisioner
 from .results import (
     DestroyResult,
     HealthResult,
     ProvisionResult,
+    RestoreResult,
+    SnapshotDeleteResult,
     SnapshotResult,
     StartResult,
     StopResult,
+    outcome,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +59,18 @@ VSPHERE_CONTENT_LIBRARY: str = os.environ.get("VSPHERE_CONTENT_LIBRARY", "TrueNo
 VSPHERE_VERIFY_SSL: bool = os.environ.get("VSPHERE_VERIFY_SSL", "false").lower() == "true"
 VSPHERE_CONCURRENCY: int = int(os.environ.get("VSPHERE_CONCURRENCY", "4"))
 VSPHERE_TOOLS_TIMEOUT: int = int(os.environ.get("VSPHERE_TOOLS_TIMEOUT", "120"))
+
+
+def _named_snapshots(vm, name: str) -> list:
+    """Every snapshot of ``vm`` called ``name``, oldest first, from the whole tree."""
+    found = []
+    stack = list(vm.snapshot.rootSnapshotList) if vm.snapshot else []
+    while stack:
+        node = stack.pop()
+        if node.name == name:
+            found.append(node)
+        stack.extend(node.childSnapshotList or [])
+    return sorted(found, key=lambda node: node.createTime)
 
 
 class VsphereAPIProvisioner(BaseProvisioner):
@@ -258,13 +286,108 @@ class VsphereAPIProvisioner(BaseProvisioner):
             pass
         return None
 
-    async def _create_snapshot(self, client: httpx.AsyncClient, vm_id: str, name: str) -> None:
-        """Create a named snapshot of a VM."""
-        await self._api_post(
-            client,
-            f"/vcenter/vm/{vm_id}/snapshot",
-            json={"name": name, "memory": False, "quiesce": False},
+    # ------------------------------------------------------------------ #
+    # Snapshots: vSphere Web Services API through pyVmomi
+    # ------------------------------------------------------------------ #
+    # This used to POST /vcenter/vm/{vm}/snapshot, a path the Automation REST API does
+    # not have. Checked against VMware's generated vmware-vcenter 8.0.3.0 bindings:
+    # nothing under /vcenter/vm/{vm} touches snapshots. Every call failed, and the
+    # worker then stored the result as a good snapshot anyway.
+    #
+    # REST VM ids ("vm-42") are managed-object ids, so the vm_id that provision()
+    # recorded addresses the same VM here.
+
+    @contextmanager
+    def _vim(self):
+        if SmartConnect is None:
+            raise RuntimeError("pyvmomi is required for vSphere snapshots (pip install pyvmomi)")
+        url = urlparse(self._base_url)
+        si = SmartConnect(
+            host=url.hostname,
+            port=url.port or 443,
+            user=self._username,
+            pwd=self._password,
+            disableSslCertValidation=not self._verify_ssl,
         )
+        try:
+            yield si
+        finally:
+            Disconnect(si)
+
+    @staticmethod
+    def _fan_out(si, vm_ids: list[str], submit: Callable) -> dict[str, str]:
+        """Start ``submit(vm)``'s tasks on every VM, then wait for all of them.
+
+        vCenter runs the tasks side by side, so starting them all before waiting keeps
+        a 20-VM range from taking twenty snapshots' worth of wall-clock. Returns the
+        VMs that failed, with the reason.
+        """
+        failed: dict[str, str] = {}
+        started: list[tuple[str, object]] = []
+        for vm_id in vm_ids:
+            try:
+                started += [(vm_id, task) for task in submit(vim.VirtualMachine(vm_id, si._stub))]
+            except Exception as exc:
+                failed[vm_id] = getattr(exc, "msg", None) or str(exc)
+        for vm_id, task in started:
+            try:
+                WaitForTask(task, si=si)
+            except Exception as exc:
+                failed.setdefault(vm_id, getattr(exc, "msg", None) or str(exc))
+        return failed
+
+    def _snapshot_sync(self, vm_ids: list[str], name: str) -> dict[str, str]:
+        with self._vim() as si:
+            return self._fan_out(
+                si,
+                vm_ids,
+                lambda vm: [
+                    vm.CreateSnapshot_Task(
+                        name=name, description="TrueNorth range snapshot", memory=False, quiesce=False
+                    )
+                ],
+            )
+
+    def _restore_sync(self, vm_ids: list[str], name: str, power_on: bool) -> dict[str, str]:
+        def revert(vm):
+            found = _named_snapshots(vm, name)
+            if not found:
+                raise LookupError(f"no snapshot named {name!r}")
+            return [found[-1].snapshot.RevertToSnapshot_Task()]
+
+        def power(vm):
+            return [] if vm.runtime.powerState == "poweredOn" else [vm.PowerOnVM_Task()]
+
+        with self._vim() as si:
+            failed = self._fan_out(si, vm_ids, revert)
+            if power_on:
+                # The snapshots are taken without memory, so a revert leaves the VM off.
+                failed.update(self._fan_out(si, [v for v in vm_ids if v not in failed], power))
+            return failed
+
+    def _delete_snapshot_sync(self, vm_ids: list[str], name: str) -> dict[str, str]:
+        with self._vim() as si:
+            # A VM without the snapshot submits nothing and so counts as cleaned.
+            return self._fan_out(
+                si,
+                vm_ids,
+                lambda vm: [n.snapshot.RemoveSnapshot_Task(removeChildren=False) for n in _named_snapshots(vm, name)],
+            )
+
+    async def _vim_op(self, provision_output: dict, fn: Callable, *args) -> tuple[int, list[str]]:
+        """Run a blocking pyVmomi operation over the range's VMs; count successes."""
+        vms = provision_output.get("vms", [])
+        vm_ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
+        # A VM with no recorded id cannot be addressed, so the operation cannot cover
+        # the whole range. That is a failure, not something to skip over quietly.
+        errors = [f"VM {vm.get('name')}: no vm_id recorded" for vm in vms if not vm.get("vm_id")]
+        if vm_ids:
+            try:
+                failed = await asyncio.to_thread(fn, vm_ids, *args)
+            except Exception as exc:  # could not connect or log in: no VM was touched
+                failed = dict.fromkeys(vm_ids, str(exc))
+            errors += [f"VM {vm_id}: {msg}" for vm_id, msg in failed.items()]
+        return len(vms) - len(errors), errors
 
     # ------------------------------------------------------------------ #
     # BaseProvisioner implementation
@@ -465,24 +588,44 @@ class VsphereAPIProvisioner(BaseProvisioner):
         name: str,
     ) -> SnapshotResult:
         start = time.monotonic()
-        errors: list[str] = []
-        vms = provision_output.get("vms", [])
-
-        try:
-            session = await self._get_session()
-            async with self._client(session) as client:
-                tasks = [self._create_snapshot(client, vm["vm_id"], name) for vm in vms if vm.get("vm_id")]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for vm, res in zip(vms, results):
-                    if isinstance(res, Exception):
-                        errors.append(f"VM {vm.get('name')}: {res}")
-        except Exception as exc:
-            errors.append(str(exc))
-
+        snapped, errors = await self._vim_op(provision_output, self._snapshot_sync, name)
         return SnapshotResult(
-            status="ok" if not errors else "partial",
+            status=outcome(snapped, errors),
             snapshot_name=name,
-            vms_snapped=len(vms) - len(errors),
+            vms_snapped=snapped,
+            duration_seconds=time.monotonic() - start,
+            errors=errors,
+        )
+
+    async def restore(
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
+        power_on: bool,
+    ) -> RestoreResult:
+        start = time.monotonic()
+        restored, errors = await self._vim_op(provision_output, self._restore_sync, name, power_on)
+        return RestoreResult(
+            status=outcome(restored, errors),
+            snapshot_name=name,
+            vms_restored=restored,
+            duration_seconds=time.monotonic() - start,
+            errors=errors,
+        )
+
+    async def delete_snapshot(
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
+    ) -> SnapshotDeleteResult:
+        start = time.monotonic()
+        cleaned, errors = await self._vim_op(provision_output, self._delete_snapshot_sync, name)
+        return SnapshotDeleteResult(
+            status=outcome(cleaned, errors),
+            snapshot_name=name,
+            vms_cleaned=cleaned,
             duration_seconds=time.monotonic() - start,
             errors=errors,
         )

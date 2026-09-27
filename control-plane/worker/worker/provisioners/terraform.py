@@ -429,14 +429,18 @@ class TerraformProvisioner(BaseProvisioner):
         provision_output: dict,
         name: str,
     ) -> SnapshotResult:
-        """Terraform does not natively snapshot; delegate to provider scripts."""
+        """Terraform does not natively snapshot; delegate to provider scripts.
+
+        Reports ``failed``: this used to say ``ok`` with zero VMs snapped, and the worker
+        recorded that as a usable snapshot that nothing could ever be restored from.
+        """
         start = time.monotonic()
         logger.warning(
             "TerraformProvisioner.snapshot is a no-op stub for range %s",
             range_id,
         )
         return SnapshotResult(
-            status="ok",
+            status="failed",
             snapshot_name=name,
             vms_snapped=0,
             duration_seconds=time.monotonic() - start,
