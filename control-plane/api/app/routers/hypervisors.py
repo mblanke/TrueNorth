@@ -1,11 +1,12 @@
 """TrueNorth Range -- Hypervisor Configuration Router.
 
-DB-backed CRUD for hypervisor connections (Proxmox, vSphere, Hyper-V),
+DB-backed CRUD for hypervisor connections (vSphere, plus legacy Proxmox and Hyper-V),
 node discovery, pool management, and connection testing.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import uuid
 from datetime import datetime
 
@@ -30,20 +31,23 @@ from ..schemas import (
     HypervisorTestResult,
 )
 
-# Router-level authentication. Hypervisor connection CRUD and discovery. POST /connections stores
-# credentials, so this is write-level for the whole router.
+# Router-level authentication is read-level, so the host inventory and summary can feed the
+# dashboard for anyone who may see platform health (instructors included). Every connection
+# route — they expose hosts and usernames, store credentials, or reach out to vCenter — also
+# carries WRITE below.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/hypervisors", tags=["Infrastructure"], dependencies=[Depends(require_permission(Permission.INFRA_WRITE))])
+router = APIRouter(prefix="/hypervisors", tags=["Infrastructure"], dependencies=[Depends(require_permission(Permission.INFRA_READ))])
+WRITE = [Depends(require_permission(Permission.INFRA_WRITE))]
 
 
 # -- Connections CRUD ----------------------------------------------------
-@router.get("/connections", response_model=list[HypervisorConnectionOut])
+@router.get("/connections", response_model=list[HypervisorConnectionOut], dependencies=WRITE)
 def list_connections(db: Session = Depends(get_db)):
     return db.query(HypervisorConnection).order_by(HypervisorConnection.created_at.desc()).all()
 
 
-@router.post("/connections", response_model=HypervisorConnectionOut, status_code=201)
+@router.post("/connections", response_model=HypervisorConnectionOut, status_code=201, dependencies=WRITE)
 def create_connection(payload: HypervisorConnectionIn, db: Session = Depends(get_db)):
     conn = HypervisorConnection(
         name=payload.name,
@@ -64,7 +68,7 @@ def create_connection(payload: HypervisorConnectionIn, db: Session = Depends(get
     return conn
 
 
-@router.get("/connections/{conn_id}", response_model=HypervisorConnectionOut)
+@router.get("/connections/{conn_id}", response_model=HypervisorConnectionOut, dependencies=WRITE)
 def get_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     conn = db.get(HypervisorConnection, str(conn_id))
     if not conn:
@@ -72,7 +76,7 @@ def get_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     return conn
 
 
-@router.patch("/connections/{conn_id}", response_model=HypervisorConnectionOut)
+@router.patch("/connections/{conn_id}", response_model=HypervisorConnectionOut, dependencies=WRITE)
 def update_connection(conn_id: uuid.UUID, payload: HypervisorConnectionUpdate, db: Session = Depends(get_db)):
     conn = db.get(HypervisorConnection, str(conn_id))
     if not conn:
@@ -87,7 +91,7 @@ def update_connection(conn_id: uuid.UUID, payload: HypervisorConnectionUpdate, d
     return conn
 
 
-@router.delete("/connections/{conn_id}", status_code=204, response_class=Response)
+@router.delete("/connections/{conn_id}", status_code=204, response_class=Response, dependencies=WRITE)
 def delete_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     conn = db.get(HypervisorConnection, str(conn_id))
     if not conn:
@@ -97,7 +101,7 @@ def delete_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
 
 
 # -- Connection Testing --------------------------------------------------
-@router.post("/connections/{conn_id}/test", response_model=HypervisorTestResult)
+@router.post("/connections/{conn_id}/test", response_model=HypervisorTestResult, dependencies=WRITE)
 def test_connection(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     conn = db.get(HypervisorConnection, str(conn_id))
     if not conn:
@@ -266,7 +270,7 @@ def _resolve_node_ip(prox, node_name: str, fallback: str) -> str:
     return fallback
 
 
-@router.post("/connections/{conn_id}/discover")
+@router.post("/connections/{conn_id}/discover", dependencies=WRITE)
 def discover_nodes(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     conn = db.get(HypervisorConnection, str(conn_id))
     if not conn:
@@ -364,8 +368,21 @@ def _discover_proxmox(conn_id, conn: HypervisorConnection, db) -> dict:
         return {"message": f"Discovery failed: {exc}", "nodes_discovered": 0}
 
 
+def _host_ip(name: str) -> str | None:
+    """An ESXi host's inventory name is its IP when it was added by address, else an FQDN."""
+    try:
+        return str(ipaddress.ip_address(name))
+    except ValueError:
+        return None
+
+
 def _discover_vsphere(conn_id, conn: HypervisorConnection, db) -> dict:
-    """Discover vSphere hosts and cluster via the vCenter REST API."""
+    """Discover ESXi hosts via the vCenter Automation REST API.
+
+    That API reports each host's name and connection state, and lists VMs per host, but
+    has no host CPU or memory figures. Those are left empty (None, "not reported"), never
+    0, which would read as an idle host. Host capacity needs pyVmomi or the VI/JSON API.
+    """
     import httpx
 
     base = f"https://{conn.host}"
@@ -380,27 +397,41 @@ def _discover_vsphere(conn_id, conn: HypervisorConnection, db) -> dict:
             hosts_resp.raise_for_status()
             hosts = hosts_resp.json()
 
+            now = datetime.utcnow()
             discovered = 0
             for h in hosts:
                 node_name = h.get("name", h.get("host", "unknown"))
-                existing = db.query(HypervisorNode).filter_by(node_name=node_name).first()
+                # Scoped to this vCenter: two vCenters can each have a host called esxi01.
+                existing = (
+                    db.query(HypervisorNode)
+                    .filter(HypervisorNode.connection_id == str(conn_id), HypervisorNode.node_name == node_name)
+                    .first()
+                )
                 status = "online" if h.get("connection_state") == "CONNECTED" else "offline"
+
+                vm_count = existing.vm_count if existing else 0
+                if h.get("host"):
+                    try:
+                        vms_resp = client.get(f"{base}/api/vcenter/vm", params={"hosts": h["host"]}, headers=headers)
+                        vms_resp.raise_for_status()
+                        vm_count = len(vms_resp.json())
+                    except httpx.HTTPError:
+                        pass  # keep the last known count rather than report an empty host
+
                 if existing:
                     existing.status = status
+                    existing.vm_count = vm_count
+                    existing.ip_address = _host_ip(node_name)
+                    existing.last_seen_at = now
                 else:
                     db.add(
                         HypervisorNode(
                             connection_id=str(conn_id),
                             node_name=node_name,
-                            ip_address=conn.host,
+                            ip_address=_host_ip(node_name),
                             status=status,
-                            cpu_total=0,
-                            cpu_used=0.0,
-                            memory_total_gb=0.0,
-                            memory_used_gb=0.0,
-                            storage_total_gb=0.0,
-                            storage_used_gb=0.0,
-                            vm_count=0,
+                            vm_count=vm_count,
+                            last_seen_at=now,
                         )
                     )
                     discovered += 1
@@ -481,18 +512,18 @@ def _discover_hyperv(conn_id, conn: HypervisorConnection, db) -> dict:
         return {"message": f"Hyper-V discovery failed: {exc}", "nodes_discovered": 0}
 
 
-@router.get("/connections/{conn_id}/nodes", response_model=list[HypervisorNodeOut])
+@router.get("/connections/{conn_id}/nodes", response_model=list[HypervisorNodeOut], dependencies=WRITE)
 def list_nodes(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     return db.query(HypervisorNode).filter(HypervisorNode.connection_id == str(conn_id)).all()
 
 
-@router.get("/connections/{conn_id}/pools", response_model=list[HypervisorPoolOut])
+@router.get("/connections/{conn_id}/pools", response_model=list[HypervisorPoolOut], dependencies=WRITE)
 def list_pools(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     return db.query(HypervisorPool).filter(HypervisorPool.connection_id == str(conn_id)).all()
 
 
 # -- Set Primary ---------------------------------------------------------
-@router.post("/connections/{conn_id}/set-primary")
+@router.post("/connections/{conn_id}/set-primary", dependencies=WRITE)
 def set_primary(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     conn = db.get(HypervisorConnection, str(conn_id))
     if not conn:
@@ -512,20 +543,29 @@ def set_primary(conn_id: uuid.UUID, db: Session = Depends(get_db)):
     return {"message": f"{conn.name} set as primary {conn.hypervisor_type} connection"}
 
 
+def _unique_nodes(db: Session) -> list[HypervisorNode]:
+    # In a Proxmox cluster the same physical node may be recorded under
+    # different connections.  Keep only one row per node_name.
+    seen: dict[str, HypervisorNode] = {}
+    for n in db.query(HypervisorNode).order_by(HypervisorNode.node_name).all():
+        seen[n.node_name] = n  # last-write wins (all rows are updated identically)
+    return list(seen.values())
+
+
+# -- Inventory -----------------------------------------------------------
+@router.get("/nodes", response_model=list[HypervisorNodeOut])
+def list_all_nodes(db: Session = Depends(get_db)):
+    """Every discovered host across all connections, as last discovered. Read-only; the
+    dashboard's cluster panel. No hypervisor is contacted — run discovery to refresh."""
+    return _unique_nodes(db)
+
+
 # -- Summary -------------------------------------------------------------
 @router.get("/summary", response_model=HypervisorSummaryOut)
 def hypervisor_summary(db: Session = Depends(get_db)):
     conns = db.query(HypervisorConnection).all()
-    all_nodes = db.query(HypervisorNode).all()
     active = [c for c in conns if c.is_active]
-
-    # ── DEDUPLICATE NODES BY NAME ──
-    # In a cluster, the same physical node may be recorded under
-    # different connections.  Keep only one row per node_name.
-    seen: dict[str, HypervisorNode] = {}
-    for n in all_nodes:
-        seen[n.node_name] = n  # last-write wins (all rows are updated identically)
-    nodes = list(seen.values())
+    nodes = _unique_nodes(db)
 
     online = [n for n in nodes if n.status == "online"]
     by_type: dict[str, int] = {}

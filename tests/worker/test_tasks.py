@@ -320,8 +320,11 @@ class TestSnapshotRange:
         def side_effect(*args, **kwargs):
             result = MagicMock()
             if call_count[0] == 0:
-                # First call: get provisioner_output
-                result.first.return_value = (prov_output,)
+                # First call: the snapshot row (state, data, range state at snapshot)
+                result.first.return_value = ("creating", None, "ready")
+            elif call_count[0] == 1:
+                # Second call: the range (state, provisioner_output, provisioner_backend)
+                result.first.return_value = ("ready", prov_output, "mock")
             else:
                 result.first.return_value = None
             call_count[0] += 1

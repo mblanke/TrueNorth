@@ -106,9 +106,14 @@ def test_upgrade_head_works_on_an_empty_database(tmp_path):
     create_all().
     """
     db = tmp_path / "fresh.db"
+    _run_upgrade_head(f"sqlite:///{db}")
+    _assert_schema_matches_orm(f"sqlite:///{db}")
+
+
+def _run_upgrade_head(database_url: str) -> None:
     env = {
         "PATH": "/usr/bin:/bin:/usr/local/bin",
-        "DATABASE_URL": f"sqlite:///{db}",
+        "DATABASE_URL": database_url,
         "PYTHONPATH": str(API),
         "AUTH_DISABLED": "true",
     }
@@ -121,17 +126,76 @@ def test_upgrade_head_works_on_an_empty_database(tmp_path):
         timeout=300,
     )
     assert result.returncode == 0, (
-        "alembic upgrade head failed on an empty database:\n"
-        + result.stdout[-3000:]
-        + "\n"
-        + result.stderr[-3000:]
+        "alembic upgrade head failed on an empty database:\n" + result.stdout[-3000:] + "\n" + result.stderr[-3000:]
     )
 
-    import sqlite3
 
-    con = sqlite3.connect(db)
-    built = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    con.close()
+def _assert_schema_matches_orm(database_url: str, *, foreign_keys: bool = False) -> None:
+    """Every ORM table and column exists, and optionally every foreign key.
 
-    missing = sorted(_orm_tables() - built)
-    assert not missing, f"migrated schema is missing ORM table(s): {missing}"
+    Checking tables alone missed 35 columns the models had gained with no migration,
+    among them `users.first_name`: a migrated database could not load a single user.
+    """
+    import sqlalchemy as sa
+    from app.models import Base
+
+    engine = sa.create_engine(database_url)
+    try:
+        inspector = sa.inspect(engine)
+        built = set(inspector.get_table_names())
+        missing = sorted(_orm_tables() - built)
+        assert not missing, f"migrated schema is missing ORM table(s): {missing}"
+
+        missing_columns = [
+            f"{table.name}.{column.name}"
+            for table in Base.metadata.tables.values()
+            for column in table.columns
+            if column.name not in {c["name"] for c in inspector.get_columns(table.name)}
+        ]
+        assert not missing_columns, f"migrated schema is missing ORM column(s): {missing_columns}"
+
+        if foreign_keys:
+            have = {(t, tuple(fk["constrained_columns"])) for t in built for fk in inspector.get_foreign_keys(t)}
+            want = {
+                (table.name, tuple(c.name for c in fkc.columns))
+                for table in Base.metadata.tables.values()
+                for fkc in table.foreign_key_constraints
+            }
+            assert not want - have, f"migrated schema is missing foreign key(s): {sorted(want - have)}"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.slow
+def test_upgrade_head_works_on_an_empty_postgres_database():
+    """The same proof on Postgres, which is what production runs.
+
+    SQLite let two breakages through: it accepts a FOREIGN KEY to a table that does
+    not exist yet (b0c1d2e3f4a5 made three), and it has no enum types, so it never
+    saw b0c1d2e3f4a5 create every enum and a later revision fail to create one again.
+
+    Set TEST_POSTGRES_ADMIN_URL to a superuser URL, for example
+    postgresql+psycopg://postgres@127.0.0.1:5432/postgres. The test creates and drops
+    its own scratch database.
+    """
+    import os
+    import uuid
+
+    import sqlalchemy as sa
+
+    admin_url = os.getenv("TEST_POSTGRES_ADMIN_URL")
+    if not admin_url:
+        pytest.skip("set TEST_POSTGRES_ADMIN_URL to run the chain against Postgres")
+
+    name = f"tn_migrate_{uuid.uuid4().hex[:12]}"
+    admin = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(sa.text(f'CREATE DATABASE "{name}"'))
+    try:
+        url = sa.engine.make_url(admin_url).set(database=name).render_as_string(hide_password=False)
+        _run_upgrade_head(url)
+        _assert_schema_matches_orm(url, foreign_keys=True)
+    finally:
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        admin.dispose()

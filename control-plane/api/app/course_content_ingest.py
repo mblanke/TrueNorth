@@ -39,7 +39,6 @@ import yaml
 from sqlalchemy.orm import Session
 
 from . import qsp_paths
-from .programme_ingest import catalogue_tags, delivered_qsp_codes
 from .models import (
     ContentKind,
     Course,
@@ -54,6 +53,7 @@ from .models import (
     QuizQuestion,
     QuizQuestionType,
 )
+from .programme_ingest import catalogue_tags, delivered_qsp_codes
 
 _OPTION_PREFIX_LEN = 3  # "A) "
 

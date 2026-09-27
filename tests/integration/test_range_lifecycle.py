@@ -138,24 +138,13 @@ class TestRangeLifecycle:
         resp = api_client.post(f"/ranges/{lifecycle_range}/snapshots", json={})
         assert resp.status_code == 422
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "restore is broken on the mock backend: worker.tasks.restore_snapshot calls "
-            "provisioner.restore(), which MockProvisioner does not implement "
-            "(AttributeError) — nor does any other provisioner: vsphere, hyperv, "
-            "proxmox and terraform all implement snapshot() and none implement "
-            "restore(), so this endpoint cannot succeed on any backend. The retrying "
-            "task also stamps 'failed' over whatever terminal state the range reached, "
-            "which is why restore runs on a range of its own here."
-        ),
-    )
     def test_restore_range(self, api_client, make_range, range_template):
         """Restore runs on its own range.
 
-        Sharing the lifecycle range would let the retrying restore task stamp `failed`
-        over the `destroyed` state the teardown test asserts — the failure would then
-        land on destroy, which is not where the defect is.
+        This was a strict xfail until every provisioner gained restore() and the task
+        stopped stamping `failed` over states the range had moved on to (see
+        tests/worker/test_snapshot_lifecycle.py). It stays on its own range so that,
+        if restore regresses, the failure lands here rather than on destroy.
         """
         range_id = make_range("integ-range-restore")
         assert api_client.post(f"/ranges/{range_id}/provision").status_code in (200, 202)
@@ -172,6 +161,10 @@ class TestRangeLifecycle:
 
         resp = api_client.post(f"/ranges/{range_id}/snapshots/{snapshot_id}/restore")
         assert resp.status_code in (200, 202), resp.text
+        # The API marks the snapshot `restoring`, and only the worker hands it back as
+        # `ready`. Waiting for that proves the task ran; a range that merely stays
+        # `ready` would pass even if no worker were listening.
+        _poll_snapshot_ready(api_client, range_id, snapshot_id)
         # Polling for READY alone proves nothing here — the range is already READY, so
         # the assertion passes whether or not the restore ran. Wait for the task to
         # settle and require that it did not fail.

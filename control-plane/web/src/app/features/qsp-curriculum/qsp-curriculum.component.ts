@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { ApiService } from '@core/services/api.service';
 import { CurriculumMap, CurriculumMapService } from '@core/services/curriculum-map.service';
 import { CareerPathListComponent } from './career-path-list.component';
+import { CareerMapComponent } from './career-map.component';
 
 interface LearningPath {
   id: string;
@@ -32,6 +33,7 @@ interface LearningPath {
     MatIconModule,
     MatTooltipModule,
     CareerPathListComponent,
+    CareerMapComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -84,6 +86,15 @@ interface LearningPath {
           </div>
         </div>
       } @else {
+        <!-- The visual career-map tile: rank-ladder stages with each period's
+             term track, clickable course chips and prerequisite arrows. -->
+        <tn-career-map
+          [map]="map()"
+          [selected]="selectedCode()"
+          (selectedChange)="select($event)"
+        />
+
+        <!-- The selected stage's objectives + programme, folded, below the map. -->
         <tn-career-path-list
           [map]="map()"
           [selected]="selectedCode()"
@@ -210,10 +221,6 @@ export class QspCurriculumComponent implements OnInit {
   /** Selection is held in the URL so a qualification is linkable. */
   protected readonly selectedCode = signal<string | null>(null);
 
-  protected readonly selectedNode = computed(
-    () => this.map()?.nodes.find(n => n.qsp_code === this.selectedCode()) ?? null,
-  );
-
   ngOnInit(): void {
     this.selectedCode.set(this.route.snapshot.queryParamMap.get('qual'));
     this.load();
@@ -236,10 +243,10 @@ export class QspCurriculumComponent implements OnInit {
       next: data => {
         this.map.set(data);
         this.loading.set(false);
-        // Default to wherever the learner is, so the page opens on something useful.
-        if (!this.selectedNode()) {
-          this.select(data.learner?.current_qsp_code ?? data.nodes[0]?.qsp_code ?? null);
-        }
+        // The map above is the navigator and marks the learner's current stage on its
+        // own ("you are here"), so the detail list below starts collapsed. It opens when
+        // a stage is picked, or from a `?qual=` deep link — rather than dumping the
+        // current stage's whole programme and objectives on load.
       },
       error: (err: unknown) => {
         this.loading.set(false);

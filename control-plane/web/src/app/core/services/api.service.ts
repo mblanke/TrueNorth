@@ -3,7 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
-  AAR, Exercise, HealthResponse, Objective, Range, RangeDocument,
+  AAR, Exercise, HealthResponse, HypervisorNode, Objective, Range, RangeDocument,
   Scenario, Team, Template, Tenant, TelemetryEvent, User,
 } from '../models';
 
@@ -379,7 +379,13 @@ export class ApiService {
     return this.http.post<{ accepted: number }>(`${this.base}/telemetry/${rangeId}/events`, events);
   }
 
-  // ── Proxmox Cluster ───────────────────────────────────────
+  // ── Hypervisor inventory (vSphere) ───────────────────────
+  /** Every discovered host, as of its connection's last discovery. Contacts no hypervisor. */
+  hypervisorNodes(): Observable<HypervisorNode[]> {
+    return this.http.get<HypervisorNode[]>(`${this.base}/hypervisors/nodes`);
+  }
+
+  // ── Proxmox Cluster (legacy) ─────────────────────────────
   proxmoxPing(): Observable<any> {
     return this.http.get<any>(`${this.base}/proxmox/ping`);
   }

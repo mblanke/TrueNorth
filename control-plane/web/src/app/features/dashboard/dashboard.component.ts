@@ -16,20 +16,13 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '@core/services/api.service';
 import { HttpClient } from '@angular/common/http';
-import { Range, Exercise, HealthResponse } from '@core/models';
+import { Range, Exercise, HealthResponse, HypervisorNode } from '@core/models';
 import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective, MotionService } from '../../shared/motion';
 
-interface ClusterNode {
-  node: string;
-  status: string;
-  ip: string;
-  cpu_pct: number;
-  maxcpu: number;
-  mem_used_gb: number;
-  mem_total_gb: number;
-  uptime_h: number;
-  vms: any[];
-  networks: any[];
+/** Percent of `used` in `total`, or null when the hypervisor doesn't report it. */
+export function usagePct(used: number | null | undefined, total: number | null | undefined): number | null {
+  if (used == null || !total) return null;
+  return Math.round((used / total) * 1000) / 10;
 }
 
 interface CapacityInfo {
@@ -132,57 +125,73 @@ interface DeploymentProfile {
       <div class="cluster-panel">
         <!-- Node cards -->
         <div class="node-cards">
-          @for (node of clusterNodes(); track node.node) {
+          @for (node of clusterNodes(); track node.id) {
             <mat-card class="node-card" [class.offline]="node.status !== 'online'">
               <div class="node-header">
                 <mat-icon [style.color]="node.status === 'online' ? 'var(--success)' : 'var(--alert)'">
                   {{ node.status === 'online' ? 'check_circle' : 'error' }}
                 </mat-icon>
-                <span class="node-name">{{ node.node }}</span>
-                <span class="node-ip">{{ node.ip }}</span>
+                <span class="node-name">{{ node.node_name }}</span>
+                @if (node.ip_address && node.ip_address !== node.node_name) {
+                  <span class="node-ip">{{ node.ip_address }}</span>
+                }
               </div>
               <div class="gauge-row">
                 <div class="gauge">
                   <div class="gauge-label">CPU</div>
-                  <div class="tn-gauge-bg">
-                    <div class="tn-gauge-fill" [style.width.%]="node.cpu_pct"
-                         [class.warn]="node.cpu_pct > 70" [class.crit]="node.cpu_pct > 90">
+                  @if (node.cpu_used !== null) {
+                    <div class="tn-gauge-bg">
+                      <div class="tn-gauge-fill" [style.width.%]="node.cpu_used"
+                           [class.warn]="node.cpu_used > 70" [class.crit]="node.cpu_used > 90">
+                      </div>
                     </div>
-                  </div>
-                  <div class="gauge-val">{{ node.cpu_pct }}% of {{ node.maxcpu }} cores</div>
+                    <div class="gauge-val">{{ node.cpu_used }}% of {{ node.cpu_total }} cores</div>
+                  } @else {
+                    <div class="gauge-val not-reported">Not reported</div>
+                  }
                 </div>
                 <div class="gauge">
                   <div class="gauge-label">RAM</div>
-                  <div class="tn-gauge-bg">
-                    <div class="tn-gauge-fill"
-                         [style.width.%]="node.mem_total_gb ? (node.mem_used_gb / node.mem_total_gb * 100) : 0"
-                         [class.warn]="node.mem_used_gb / node.mem_total_gb > 0.7"
-                         [class.crit]="node.mem_used_gb / node.mem_total_gb > 0.9">
+                  @if (memPct(node) !== null) {
+                    <div class="tn-gauge-bg">
+                      <div class="tn-gauge-fill" [style.width.%]="memPct(node)"
+                           [class.warn]="memPct(node)! > 70" [class.crit]="memPct(node)! > 90">
+                      </div>
                     </div>
-                  </div>
-                  <div class="gauge-val">{{ node.mem_used_gb }}GB / {{ node.mem_total_gb }}GB</div>
+                    <div class="gauge-val">{{ node.memory_used_gb }}GB / {{ node.memory_total_gb }}GB</div>
+                  } @else {
+                    <div class="gauge-val not-reported">Not reported</div>
+                  }
                 </div>
               </div>
               <div class="node-footer">
-                <span><mat-icon class="sm-icon">computer</mat-icon> {{ node.vms.length }} VMs</span>
-                <span><mat-icon class="sm-icon">lan</mat-icon> {{ node.networks.length }} bridges</span>
-                <span><mat-icon class="sm-icon">schedule</mat-icon> {{ node.uptime_h | number:'1.0-0' }}h up</span>
+                <span><mat-icon class="sm-icon">computer</mat-icon> {{ node.vm_count }} VMs</span>
+                @if (node.last_seen_at) {
+                  <span [matTooltip]="'Last discovery ' + (node.last_seen_at | date:'medium')">
+                    <mat-icon class="sm-icon">schedule</mat-icon> {{ node.last_seen_at | date:'short' }}
+                  </span>
+                }
               </div>
             </mat-card>
           }
           @if (clusterNodes().length === 0 && !clusterLoading()) {
             <mat-card class="node-card empty-card">
               <mat-icon class="empty-big">cloud_off</mat-icon>
-              <p>No cluster data – API offline or hypervisor unreachable</p>
-              <button mat-stroked-button (click)="refreshCluster()">
-                <mat-icon>refresh</mat-icon> Retry
-              </button>
+              <p>No ESXi hosts yet. Add your vCenter under Infrastructure and run discovery.</p>
+              <div class="empty-actions">
+                <a mat-stroked-button routerLink="/infrastructure">
+                  <mat-icon>settings</mat-icon> Infrastructure
+                </a>
+                <button mat-stroked-button (click)="refreshCluster()">
+                  <mat-icon>refresh</mat-icon> Retry
+                </button>
+              </div>
             </mat-card>
           }
           @if (clusterLoading()) {
             <mat-card class="node-card empty-card">
               <mat-icon class="empty-big spin">sync</mat-icon>
-              <p>Discovering hypervisor cluster...</p>
+              <p>Loading ESXi hosts...</p>
             </mat-card>
           }
         </div>
@@ -507,6 +516,8 @@ interface DeploymentProfile {
     .gauge-row { display: flex; flex-direction: column; gap: 8px; }
     .gauge-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
     .gauge-val { font-size: 12px; color: var(--text-secondary); }
+    .gauge-val.not-reported { color: var(--text-muted); font-style: italic; }
+    .empty-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
     .node-footer {
       display: flex; gap: 12px; margin-top: 12px; padding-top: 10px;
       border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12px;
@@ -628,7 +639,7 @@ export class DashboardComponent implements OnInit {
   rangeCount = signal(0);
   exerciseCount = signal(0);
 
-  clusterNodes = signal<ClusterNode[]>([]);
+  clusterNodes = signal<HypervisorNode[]>([]);
   clusterLoading = signal(false);
   capacity = signal<CapacityInfo | null>(null);
   scheduledEvents = signal<ScheduledEvent[]>([]);
@@ -708,11 +719,12 @@ export class DashboardComponent implements OnInit {
     });
   }
 
+  /** ESXi hosts as of the last vCenter discovery (Infrastructure → Discover). */
   refreshCluster(): void {
     this.clusterLoading.set(true);
-    this.api.proxmoxDiscover().subscribe({
-      next: (res: any) => {
-        this.clusterNodes.set(res.cluster || []);
+    this.api.hypervisorNodes().subscribe({
+      next: nodes => {
+        this.clusterNodes.set(nodes);
         this.clusterLoading.set(false);
         this.animateGauges();
       },
@@ -721,6 +733,10 @@ export class DashboardComponent implements OnInit {
         this.clusterLoading.set(false);
       },
     });
+  }
+
+  memPct(node: HypervisorNode): number | null {
+    return usagePct(node.memory_used_gb, node.memory_total_gb);
   }
 
   /** Committed-capacity percentage for the ring gauges. */

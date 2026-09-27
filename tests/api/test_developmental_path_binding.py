@@ -7,10 +7,10 @@ never inferred. These tests hold that line while keeping the mapping a one-line 
 edit for Standards.
 """
 
-import json
 import csv
-import uuid
+import json
 import pathlib
+import uuid
 
 import pytest
 import yaml

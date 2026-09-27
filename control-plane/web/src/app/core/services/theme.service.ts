@@ -9,8 +9,9 @@ export interface ThemeOption {
   scheme: 'dark' | 'light';
 }
 
-// New brand default also applies to browsers carrying the former teal default.
+// v2: the new red/white default also reaches browsers still carrying the former teal default.
 const STORAGE_KEY = 'tn-theme-v2';
+/** Red on white. Also set on <body> in index.html so the first paint matches. */
 const DEFAULT_THEME = 'great-white-north';
 
 @Injectable({ providedIn: 'root' })
@@ -26,6 +27,7 @@ export class ThemeService {
   readonly activeTheme: Signal<string> = this.activeThemeSignal.asReadonly();
 
   constructor() {
+    // A theme someone picked (saved in this browser) still wins over the default.
     const saved = localStorage.getItem(STORAGE_KEY) || DEFAULT_THEME;
     this.applyTheme(saved);
   }
@@ -47,8 +49,8 @@ export class ThemeService {
   private applyTheme(id: string): void {
     const body = document.body;
     this.themes.forEach((t) => body.classList.remove(t.className));
-    const found = this.themes.find((t) => t.id === id)
-      ?? this.themes.find((t) => t.id === DEFAULT_THEME)!;
+    const found =
+      this.themes.find((t) => t.id === id) ?? this.themes.find((t) => t.id === DEFAULT_THEME)!;
     body.classList.add(found.className);
     // Keep UA-rendered widgets (scrollbars, form controls) in step.
     document.documentElement.style.colorScheme = found.scheme;

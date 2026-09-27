@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------
 # TrueNorth Range — Makefile
 # ------------------------------------------------------------------
-.PHONY: help dev dev-down test lint format build clean migrate \
+.PHONY: help dev dev-down import-content test lint format build clean migrate \
                 packer-validate tf-plan k6 pre-commit security-scan \
                 prod-config prod-up prod-down prod-ps prod-logs
 
@@ -36,6 +36,16 @@ dev-down: ## Stop dev stack
 
 dev-logs: ## Tail logs for all services
 	$(COMPOSE) logs -f --tail=100
+
+# A fresh dev database is empty: `make dev` loads no content. This loads everything
+# under content/ through the API (curriculum, VM image catalogue, range templates,
+# scenarios, detection rules, plus demo people, ranges and exercises) and is safe to
+# re-run. Stdlib-only Python, so a stock macOS python3 is enough. For a deployment
+# with auth on: python3 scripts/load_content.py --api URL --token TOKEN
+DEV_API ?= http://127.0.0.1:8081
+
+import-content: ## Load all content (curriculum, templates, scenarios, detections, demo data)
+	python3 scripts/load_content.py --api $(DEV_API)
 
 # ── Production ──────────────────────────────────────────────
 # Normally driven by install/ (Ansible) on the platform host; these targets are

@@ -69,8 +69,16 @@ def _update_range_state(
     new_state: str,
     error: str | None = None,
     output: str | None = None,
+    only_from: tuple[str, ...] | None = None,
+    clear_error: bool = False,
 ):
-    """Update range state in the database."""
+    """Update range state in the database.
+
+    ``only_from`` makes the update conditional on the range still being in one of
+    those states, so a late or retried task cannot overwrite a state the range has
+    moved to since (a failed restore used to stamp ``failed`` over ``destroyed``).
+    ``clear_error`` drops a stale error_message, for a success after a failed attempt.
+    """
     with _db_session() as db:
         from sqlalchemy import text
 
@@ -79,10 +87,17 @@ def _update_range_state(
         if error:
             sql += ", error_message = :error"
             params["error"] = error
+        elif clear_error:
+            sql += ", error_message = NULL"
         if output:
             sql += ", provisioner_output = :output"
             params["output"] = output
         sql += " WHERE id = :range_id"
+        if only_from:
+            keys = [f"from_{i}" for i in range(len(only_from))]
+            # CAST: `state` is a native enum on Postgres and plain text on SQLite.
+            sql += f" AND CAST(state AS TEXT) IN ({', '.join(':' + k for k in keys)})"
+            params.update(zip(keys, only_from, strict=True))
         db.execute(text(sql), params)
 
 
@@ -852,8 +867,52 @@ def collect_range_metrics(self):
 
 
 # -- Range Snapshots ----------------------------------------------------
-def _update_snapshot_state(snapshot_id: str, new_state: str, data: str | None = None, size: int | None = None):
-    """Update snapshot state in the database."""
+# States routers/ranges.py:restore_snapshot accepts. A restore only ever writes to a
+# range still in one of them; if the range moved on (say, it was destroyed while the
+# task queued or retried), the range is left alone.
+_RESTORABLE_STATES = ("ready", "stopped", "failed")
+# Snapshot states the snapshot task may still write over: its first attempt, or a retry.
+_SNAPSHOT_PENDING = ("creating", "failed")
+
+
+def _backend_snapshot_name(snapshot_id: str) -> str:
+    """The name the hypervisor stores the snapshot under.
+
+    Proxmox requires a snapname that starts with a letter, uses only letters, digits,
+    ``-`` and ``_``, and is at most 40 characters. The bare UUID used before starts
+    with a digit ten times in sixteen, and Proxmox rejected those.
+    """
+    return "tn" + "".join(ch for ch in snapshot_id if ch.isalnum())[:38]
+
+
+def _last_attempt(task) -> bool:
+    """True when a failure now will not be retried, or the task was called directly."""
+    return bool(task.request.called_directly) or task.request.retries >= (task.max_retries or 0)
+
+
+def _discard_snapshot(provisioner, range_id: str, prov_output: dict, name: str) -> None:
+    """Best-effort removal of a snapshot no row will stand behind."""
+    try:
+        result = asyncio.run(provisioner.delete_snapshot(range_id, prov_output, name))
+        if result.status != "ok":
+            logger.warning(f"[snapshot] Could not discard snapshot {name}: {result.errors}")
+    except Exception as e:
+        logger.warning(f"[snapshot] Could not discard snapshot {name}: {e}")
+
+
+def _update_snapshot_state(
+    snapshot_id: str,
+    new_state: str,
+    data: str | None = None,
+    size: int | None = None,
+    only_from: tuple[str, ...] | None = None,
+) -> int:
+    """Update snapshot state in the database; return how many rows changed.
+
+    ``only_from`` makes it conditional, as in _update_range_state. The API can
+    delete a snapshot while a task holds it, and writing `ready` back over
+    `deleted` brought the row back pointing at nothing.
+    """
     with _db_session() as db:
         from sqlalchemy import text
 
@@ -866,43 +925,96 @@ def _update_snapshot_state(snapshot_id: str, new_state: str, data: str | None = 
             sql += ", size_bytes = :size"
             params["size"] = size
         sql += " WHERE id = :snapshot_id"
-        db.execute(text(sql), params)
+        if only_from:
+            keys = [f"from_{i}" for i in range(len(only_from))]
+            sql += f" AND snapshot_state IN ({', '.join(':' + k for k in keys)})"
+            params.update(zip(keys, only_from, strict=True))
+        return db.execute(text(sql), params).rowcount
+
+
+def _snapshot_context(snapshot_id: str, range_id: str):
+    """(snapshot_state, snapshot_data, range_state_at_snapshot), (state, provisioner_output, provisioner_backend)."""
+    with _db_session() as db:
+        from sqlalchemy import text
+
+        snap = db.execute(
+            text("SELECT snapshot_state, snapshot_data, range_state_at_snapshot FROM range_snapshots WHERE id = :sid"),
+            {"sid": snapshot_id},
+        ).first()
+        rng = db.execute(
+            text("SELECT state, provisioner_output, provisioner_backend FROM ranges WHERE id = :rid"),
+            {"rid": range_id},
+        ).first()
+    return snap, rng
+
+
+def _range_backend(rng) -> str:
+    """The range's own backend, as provision and destroy use it; the env is the fallback.
+
+    The snapshot tasks used to read PROVISIONER_BACKEND alone, so a range could be
+    snapshotted, restored or deleted through a different backend from its own.
+    """
+    return (rng[2] if rng and rng[2] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.snapshot_range")
 def snapshot_range(self, range_id: str, snapshot_id: str):
     """Create a point-in-time snapshot of a range."""
     logger.info(f"[snapshot] Creating snapshot {snapshot_id} for range {range_id}")
-
-    provisioner = _get_backend()
+    name = _backend_snapshot_name(snapshot_id)
 
     try:
-        with _db_session() as db:
-            from sqlalchemy import text
+        snap, rng = _snapshot_context(snapshot_id, range_id)
+        state = snap[0] if snap else None
+        if state == "ready":
+            # A duplicate delivery (the broker redelivers when a worker dies with
+            # acks_late): an earlier run finished this. Running again would replace it.
+            return {"status": "ready", "snapshot_id": snapshot_id}
+        if state not in _SNAPSHOT_PENDING:
+            logger.warning(f"[snapshot] Snapshot {snapshot_id} is '{state}'; not taking it")
+            return {"status": "skipped", "snapshot_id": snapshot_id, "state": state}
 
-            row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
+        prov_output = json.loads(rng[1]) if rng and rng[1] else {}
+        if not prov_output.get("vms"):
+            raise RuntimeError("range has no VMs recorded, so there is nothing to snapshot")
+        backend = _range_backend(rng)
+        provisioner = _get_backend(backend)
 
-        prov_output = json.loads(row[0]) if row and row[0] else {}
+        # Clear whatever an earlier attempt of this task left under this name. The row
+        # is not `ready`, so nothing depends on it, and a leftover made the create fail
+        # with "name already used", after which the discard below removed the earlier
+        # attempt's complete snapshot.
+        _discard_snapshot(provisioner, range_id, prov_output, name)
 
-        result = asyncio.run(provisioner.snapshot(range_id, prov_output, snapshot_id))
+        result = asyncio.run(provisioner.snapshot(range_id, prov_output, name))
+        if result.status != "ok":
+            # Until this check, a failed or partial snapshot was stored as `ready`. A
+            # partial one cannot restore the range as a whole, so take back what was
+            # taken: a retry then starts clean and nothing is left on the hypervisor.
+            _discard_snapshot(provisioner, range_id, prov_output, name)
+            raise RuntimeError(f"snapshot {result.status}: {'; '.join(result.errors) or 'no detail'}")
 
         snapshot_data = json.dumps(
             {
-                "provider": os.getenv("PROVISIONER_BACKEND", "mock"),
+                "provider": backend,
                 "range_id": range_id,
-                "snapshot_refs": getattr(result, "snapshot_refs", {}),
+                "snapshot_name": name,
                 "vm_count": len(prov_output.get("vms", [])),
             }
         )
         size = getattr(result, "size_bytes", 0)
 
-        _update_snapshot_state(snapshot_id, "ready", data=snapshot_data, size=size)
+        if not _update_snapshot_state(snapshot_id, "ready", data=snapshot_data, size=size, only_from=_SNAPSHOT_PENDING):
+            # Deleted while this ran: no row will ever restore or delete this copy.
+            _discard_snapshot(provisioner, range_id, prov_output, name)
+            logger.warning(f"[snapshot] Snapshot {snapshot_id} was deleted while being taken; discarded")
+            return {"status": "skipped", "snapshot_id": snapshot_id, "state": "deleted"}
         _notify_api("range", {"id": range_id, "snapshot_id": snapshot_id, "state": "snapshot_ready"})
         logger.info(f"[snapshot] Snapshot {snapshot_id} ready for range {range_id}")
         return {"status": "ready", "snapshot_id": snapshot_id}
 
     except Exception as e:
-        _update_snapshot_state(snapshot_id, "failed")
+        _update_snapshot_state(snapshot_id, "failed", only_from=_SNAPSHOT_PENDING)
         _notify_api("range", {"id": range_id, "snapshot_id": snapshot_id, "state": "snapshot_failed", "error": str(e)})
         logger.error(f"[snapshot] Snapshot {snapshot_id} FAILED: {e}")
         raise
@@ -912,36 +1024,58 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
 def restore_snapshot(self, range_id: str, snapshot_id: str):
     """Restore a range from a snapshot."""
     logger.info(f"[restore] Restoring range {range_id} from snapshot {snapshot_id}")
-
-    provisioner = _get_backend()
+    changed = False  # whether any VM was reverted, fully or not
 
     try:
-        with _db_session() as db:
-            from sqlalchemy import text
-
-            row = db.execute(
-                text("SELECT snapshot_data, range_state_at_snapshot FROM range_snapshots WHERE id = :sid"),
-                {"sid": snapshot_id},
-            ).first()
-
-        if not row or not row[0]:
+        snap, rng = _snapshot_context(snapshot_id, range_id)
+        if not snap or not snap[1]:
             raise RuntimeError(f"Snapshot {snapshot_id} has no data")
 
-        snapshot_data = json.loads(row[0])
-        original_state = row[1]
+        current_state = rng[0] if rng else None
+        if current_state not in _RESTORABLE_STATES:
+            _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))
+            logger.warning(f"[restore] Range {range_id} is '{current_state}' now; restore abandoned, range untouched")
+            return {"status": "skipped", "range_id": range_id, "state": current_state}
 
-        asyncio.run(provisioner.restore(range_id, snapshot_data))
+        snapshot_data = json.loads(snap[1])
+        original_state = snap[2]
+        prov_output = json.loads(rng[1]) if rng[1] else {}
+        if not prov_output.get("vms"):
+            raise RuntimeError("range has no VMs recorded, so there is nothing to restore")
+        # Snapshots from before the name was recorded were taken under the bare id.
+        name = snapshot_data.get("snapshot_name") or snapshot_id
 
-        _update_range_state(range_id, original_state)
-        _update_snapshot_state(snapshot_id, "ready")  # back to ready after restore
+        provisioner = _get_backend(_range_backend(rng))
+        result = asyncio.run(provisioner.restore(range_id, prov_output, name, power_on=original_state == "ready"))
+        changed = result.vms_reverted > 0
+        if result.status != "ok":
+            raise RuntimeError(f"restore {result.status}: {'; '.join(result.errors) or 'no detail'}")
+
+        _update_range_state(range_id, original_state, only_from=_RESTORABLE_STATES, clear_error=True)
+        _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))  # back to ready after restore
         _notify_api("range", {"id": range_id, "state": original_state, "restored_from": snapshot_id})
         logger.info(f"[restore] Range {range_id} restored to state '{original_state}'")
         return {"status": "restored", "range_id": range_id, "state": original_state}
 
     except Exception as e:
-        _update_range_state(range_id, "failed", error=f"Restore from snapshot failed: {e}")
-        _update_snapshot_state(snapshot_id, "ready")  # snapshot itself is still valid
-        _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        if changed:
+            # Some VMs reverted and some did not, so the range matches neither its old
+            # state nor the snapshot. Guarded, because this runs on every failed attempt,
+            # retries included: the old unconditional write stamped `failed` over a
+            # range destroyed meanwhile.
+            _update_range_state(
+                range_id, "failed", error=f"Restore from snapshot failed: {e}", only_from=_RESTORABLE_STATES
+            )
+            _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        else:
+            # Nothing on the hypervisor changed (snapshot missing, vCenter unreachable,
+            # a backend without restore), so the range is exactly as it was and keeps
+            # its state. Marking it `failed` blocked stop, start and expiry cleanup.
+            _notify_api("range", {"id": range_id, "restore_failed": snapshot_id, "error": str(e)})
+        if _last_attempt(self):
+            # Until then a retry still owns the snapshot, and `restoring` keeps the API
+            # from starting another restore or deleting it underneath the retry.
+            _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))
         logger.error(f"[restore] Range {range_id} restore FAILED: {e}")
         raise
 
@@ -951,19 +1085,19 @@ def delete_snapshot(self, range_id: str, snapshot_id: str):
     """Delete snapshot data from the provisioner backend."""
     logger.info(f"[snapshot] Deleting snapshot {snapshot_id} for range {range_id}")
 
-    provisioner = _get_backend()
-
     try:
-        with _db_session() as db:
-            from sqlalchemy import text
+        snap, rng = _snapshot_context(snapshot_id, range_id)
 
-            row = db.execute(
-                text("SELECT snapshot_data FROM range_snapshots WHERE id = :sid"), {"sid": snapshot_id}
-            ).first()
-
-        snapshot_data = json.loads(row[0]) if row and row[0] else {}
-
-        asyncio.run(provisioner.delete_snapshot(range_id, snapshot_data))
+        # snapshot_data is written only when a snapshot becomes `ready`. Without it
+        # there is nothing on the hypervisor: the snapshot failed and was discarded,
+        # and the API refuses to delete one that is still being taken.
+        if snap and snap[1]:
+            snapshot_data = json.loads(snap[1])
+            prov_output = json.loads(rng[1]) if rng and rng[1] else {}
+            name = snapshot_data.get("snapshot_name") or snapshot_id
+            result = asyncio.run(_get_backend(_range_backend(rng)).delete_snapshot(range_id, prov_output, name))
+            if result.status != "ok":
+                raise RuntimeError(f"delete {result.status}: {'; '.join(result.errors) or 'no detail'}")
 
         _update_snapshot_state(snapshot_id, "deleted")
         logger.info(f"[snapshot] Snapshot {snapshot_id} deleted")
