@@ -107,8 +107,46 @@ def upgrade() -> None:
     ]
     if not wanted:
         return
+    if bind.dialect.name != "sqlite":
+        wanted = _without_forward_foreign_keys(wanted, available=existing | {t.name for t in wanted})
     # sort_tables orders by foreign-key dependency, so parents are created first.
-    Base.metadata.create_all(bind=bind, tables=sa.schema.sort_tables(wanted), checkfirst=True)
+    #
+    # Table by table, not metadata.create_all(tables=...): a metadata-level create
+    # fires every Postgres enum type registered on the metadata, whichever tables are
+    # named, so it made all of the ORM's enums here, including ones like
+    # `curriculumstatus` that a7b8c9d0e1f2 then failed to CREATE TYPE again. A
+    # table-level create makes only the enums that table uses.
+    for table in sa.schema.sort_tables(wanted):
+        table.create(bind=bind, checkfirst=True)
+
+
+def _without_forward_foreign_keys(tables: list[sa.Table], available: set[str]) -> list[sa.Table]:
+    """Copies of ``tables`` minus any foreign key to a table that does not exist yet.
+
+    Building from the live ORM means taking whatever keys the models have *now*, and
+    the models have since grown three whose targets a later revision creates:
+    courses.qualification_id, course_modules.po_id and
+    competency_auto_assessments.quiz_attempt_id. Postgres refuses a FOREIGN KEY to a
+    missing table, so `upgrade head` on an empty database died here, at CREATE TABLE
+    courses. SQLite does not check the target at CREATE time, which is why the chain
+    looked fine there and is left as it was.
+
+    The later revisions see the column already present and skip adding it, so the
+    keys dropped here are added at the head of the chain by e6f7a8b9c0d1.
+    """
+    scratch = sa.MetaData()
+    for table in Base.metadata.sorted_tables:  # a key's target must resolve in the same MetaData
+        table.to_metadata(scratch)
+    copies = [scratch.tables[t.name] for t in tables]
+    for table in copies:
+        for fkc in list(table.foreign_key_constraints):
+            if fkc.elements[0].target_fullname.split(".")[0] in available:
+                continue
+            table.constraints.discard(fkc)
+            for fk in fkc.elements:
+                fk.parent.foreign_keys.discard(fk)
+                table.foreign_keys.discard(fk)
+    return copies
 
 
 def downgrade() -> None:
