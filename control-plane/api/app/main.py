@@ -87,6 +87,15 @@ def _seed_dev_data(dev_account: bool = True) -> None:
     try:
         # Use deterministic UUIDs that match the AUTH_DISABLED dev stub in auth.py
         _dev_uuid = "00000000-0000-0000-0000-000000000001"
+        if not dev_account and db.query(User).filter(User.email == "admin@truenorth.local").first():
+            # Starts before SEED_DEV_DATA was honoured created this account wherever the
+            # tenants table was empty, production included. Say so rather than delete a
+            # user row other tables may reference.
+            logger.warning(
+                "SEED_DEV_DATA is off but the development admin admin@truenorth.local exists "
+                "(id %s). Deactivate or remove it: it is not a real person.",
+                _dev_uuid,
+            )
         if dev_account and db.query(Tenant).count() == 0:
             tenant = Tenant(id=_dev_uuid, name="Default Org", slug="default")
             db.add(tenant)

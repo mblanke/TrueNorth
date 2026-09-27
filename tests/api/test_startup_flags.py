@@ -60,6 +60,17 @@ class TestSeed:
             admin = db.query(User).filter(User.email == "admin@truenorth.local").one()
             assert str(admin.id) == "00000000-0000-0000-0000-000000000001"
 
+    def test_a_dev_admin_left_from_earlier_starts_is_reported(self, fresh_db, caplog):
+        main._seed_dev_data(dev_account=True)  # what every start used to do
+        with caplog.at_level("WARNING", logger="truenorth.api"):
+            main._seed_dev_data(dev_account=False)
+        assert any("admin@truenorth.local exists" in r.getMessage() for r in caplog.records)
+
+    def test_no_warning_without_one(self, fresh_db, caplog):
+        with caplog.at_level("WARNING", logger="truenorth.api"):
+            main._seed_dev_data(dev_account=False)
+        assert not any("admin@truenorth.local" in r.getMessage() for r in caplog.records)
+
 
 class TestLifespan:
     def _start(self):
