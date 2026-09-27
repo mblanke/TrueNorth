@@ -107,9 +107,14 @@ _INJECTOR_REGISTRY: dict[str, type[BaseInjector]] = {}
 
 
 def register_injector(cls: type[BaseInjector]) -> type[BaseInjector]:
-    """Decorator to register an injector class under its ``action_name``."""
+    """Decorator to register an injector class under its ``action_name``.
+
+    Key derivation tolerates both base classes: this package's ``BaseInjector``
+    exposes ``action_name``; the plain ``base.BaseInjector`` subclasses only
+    carry ``name``.
+    """
     instance = cls()
-    key = instance.action_name
+    key = getattr(instance, "action_name", "") or getattr(instance, "name", "")
     if not key:
         raise ValueError(f"Injector {cls.__name__} has no action_name/name")
     _INJECTOR_REGISTRY[key] = cls
@@ -163,15 +168,31 @@ def run_inject(action: str, params: dict, ctx: RangeContext) -> InjectResult:
 
 
 def _auto_discover() -> None:
-    """Import all injector modules to trigger registration."""
+    """Import all injector modules and register every concrete injector class.
+
+    Registration is done here rather than by per-module decorators: every
+    injector module subclasses ``base.BaseInjector`` and none carried the
+    ``@register_injector`` decorator, so the registry was silently empty and
+    ``run_inject`` failed for every action. Scanning at discovery time also
+    means a future injector cannot forget to register itself.
+    """
+    import inspect
     import pathlib
+
+    from .base import BaseInjector as _PlainBase
 
     pkg_dir = pathlib.Path(__file__).parent
     for f in pkg_dir.glob("*.py"):
-        if f.name.startswith("_"):
+        if f.name.startswith("_") or f.stem == "base":
             continue
         with contextlib.suppress(Exception):
-            importlib.import_module(f".{f.stem}", package="scenario_engine.injectors")
+            mod = importlib.import_module(f".{f.stem}", package="scenario_engine.injectors")
+            for _, obj in inspect.getmembers(mod, inspect.isclass):
+                if obj.__module__ != mod.__name__ or inspect.isabstract(obj):
+                    continue
+                if issubclass(obj, (_PlainBase, BaseInjector)):
+                    with contextlib.suppress(Exception):
+                        register_injector(obj)
 
 
 _auto_discovered = False

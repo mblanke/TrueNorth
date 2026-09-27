@@ -86,7 +86,11 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:latest
+    # minio/minio was removed from Docker Hub (404) when MinIO stopped publishing
+    # community images, so every fresh `make dev` failed at the pull. pgsty/minio
+    # ("Silo") is a community rebuild of the same server from source: same command,
+    # same MINIO_ROOT_* variables, amd64 + arm64. Pinned rather than :latest.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -145,6 +149,9 @@ services:
   # -- Learning Record Store (xAPI/cmi5) ----------------------------------
   lrs:
     image: yetanalytics/lrsql:latest
+    # Published for amd64 only. Naming the platform lets Apple Silicon hosts run it
+    # under emulation instead of failing the pull with "no matching manifest".
+    platform: linux/amd64
     restart: unless-stopped
     command: /lrsql/bin/run_postgres.sh
     environment:
@@ -199,9 +206,11 @@ services:
       SEARCH_BACKEND: opensearch
       # AI orchestrator serves on 6000 (the code default of 8100 is stale)
       AI_ORCHESTRATOR_URL: http://ai-orchestrator:6000
-      # Curriculum RAG embedding dimension — must match the served embed model
-      # (LiteLLM "embed" = bge-small-en-v1.5 = 384). Enables semantic kNN retrieval.
-      EMBED_DIM: "${EMBED_DIM:-384}"
+      # Optional pin for the curriculum RAG embedding width. Unset by default: the
+      # API probes the served model, and an existing index's width wins over both.
+      # This used to default to 384 while .env.example said 1024 — whichever was
+      # wrong silently dropped every vector and degraded retrieval to BM25.
+      EMBED_DIM: "${EMBED_DIM:-}"
       LTI_TOOL_BASE_URL: "${LTI_TOOL_BASE_URL:-http://localhost:8081}"
       LTI_WEB_BASE_URL: "${LTI_WEB_BASE_URL:-http://localhost:4200}"
       CORS_ORIGINS: http://localhost:4200,http://localhost:3000
@@ -212,6 +221,13 @@ services:
       DB_STATEMENT_TIMEOUT_MS: "30000"
       # Uvicorn runs 4 workers (--workers 4 in Dockerfile)
       UVICORN_WORKERS: "4"
+      # The scenario engine owns the canonical scenario/template schemas and the
+      # inject registry. It is a sibling directory, not a pip dependency, and the
+      # API image is built from control-plane/api alone — so it is mounted rather
+      # than copied. Without it /injectors and the validate endpoints 503.
+      SCENARIO_ENGINE_DIR: /opt/scenario-engine
+    volumes:
+      - ../../../scenario-engine:/opt/scenario-engine:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -317,7 +333,7 @@ services:
       OPENAI_TIMEOUT_S: "${OPENAI_TIMEOUT_S:-600}"
       AI_HEAVY_MODEL: "${AI_HEAVY_MODEL:-agent}"
       AI_GENERAL_MODEL: "${AI_GENERAL_MODEL:-agent}"
-      AI_CODE_MODEL: "${AI_CODE_MODEL:-agent}"
+      AI_CODE_MODEL: "${AI_CODE_MODEL:-coder-fast}"
       AI_EMBED_BACKEND: "${AI_EMBED_BACKEND:-openai}"
       AI_EMBED_MODEL: "${AI_EMBED_MODEL:-embed}"
       MAX_LLM_CONCURRENCY: "${MAX_LLM_CONCURRENCY:-4}"

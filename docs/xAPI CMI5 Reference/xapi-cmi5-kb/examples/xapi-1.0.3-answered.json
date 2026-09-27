@@ -1,0 +1,31 @@
+{
+  "id": "6b8e1f0c-3a52-4d8e-9f0a-1c2d3e4f5a6b",
+  "actor": {"objectType": "Agent", "account": {"homePage": "https://id.example.org", "name": "a7f3c2e9-5d1b-4a0e-9c1f-2b8e6d4a1c07"}},
+  "verb": {"id": "http://adlnet.gov/expapi/verbs/answered", "display": {"en-CA": "answered", "fr-CA": "a répondu"}},
+  "object": {
+    "objectType": "Activity",
+    "id": "https://content.example.org/xapi/activities/net-defence-101/q/07",
+    "definition": {
+      "type": "http://adlnet.gov/expapi/activities/cmi.interaction",
+      "name": {"en-CA": "Q7: Identify the lateral movement indicator", "fr-CA": "Q7 : Repérer l'indicateur de déplacement latéral"},
+      "interactionType": "choice",
+      "correctResponsesPattern": ["b"],
+      "choices": [
+        {"id": "a", "description": {"en-CA": "Single failed logon"}},
+        {"id": "b", "description": {"en-CA": "Service creation on a remote host by a user account"}},
+        {"id": "c", "description": {"en-CA": "DNS query to a CDN"}}
+      ]
+    }
+  },
+  "result": {"success": true, "response": "b", "duration": "PT42S"},
+  "context": {
+    "registration": "0e5a7b3c-1d2f-4a6b-8c9d-0e1f2a3b4c5d",
+    "contextActivities": {
+      "parent": [{"id": "https://content.example.org/xapi/activities/net-defence-101/quiz-2"}],
+      "grouping": [{"id": "https://content.example.org/xapi/activities/net-defence-101"}]
+    },
+    "language": "en-CA",
+    "platform": "Example Authoring Runtime"
+  },
+  "timestamp": "2026-09-23T14:05:12.345Z"
+}

@@ -17,7 +17,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -167,29 +167,33 @@ from .routers import (
     ad_sync_router,
     adaptive_learning_router,
     admin_router,
+    ai_authoring_router,
     ai_config_router,
     auth_zones_router,
     certifications_router,
+    collective_exercises_router,
     competency_router,
     courses_router,
     curriculum_router,
     detection_rules_router,
     directory_router,
-    golden_images_router,
     exercise_forge_router,
     exercises_router,
-    collective_exercises_router,
+    golden_images_router,
     hypervisors_router,
+    injectors_router,
     integrations_router,
     kit_router,
     learning_paths_router,
     lti_router,
     network_devices_router,
+    onboarding_router,
     ops_center_router,
     proxmox_router,
     qsp_router,
     quizzes_router,
     ranges_router,
+    registration_router,
     scenarios_router,
     scheduling_router,
     storage_router,
@@ -198,12 +202,20 @@ from .routers import (
     transcript_router,
 )
 
+# Identity intake. Registration is mounted first because /auth/me is the one
+# endpoint reachable without a users row — it is how the SPA learns whether the
+# caller needs to register, is awaiting approval, or is a full user.
+app.include_router(registration_router)
+app.include_router(onboarding_router)
+
 # Core routers
 app.include_router(ranges_router)
 app.include_router(exercises_router)
 app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)
+app.include_router(injectors_router)
+app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)
 app.include_router(scheduling_router)

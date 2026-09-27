@@ -1,18 +1,28 @@
 ---
-# TrueNorth Range -- Full Kit Deployment
-# Usage: ansible-playbook site.yml
+# TrueNorth Range — full platform install.
 #
-# COTE naming convention: cote-<env>-<site>-<kit>-<rack>-<role>-<idx>
-# VLANs: 10=Mgmt, 20=Provision, 30=Blue, 40=Red, 50=Storage, 60=Services
-# MTU: 9000 (data), 1500 (management)
+#   ansible-playbook site.yml
+#
+# Takes TN-MGMT01 from "Docker installed, /srv/truenorth empty" to a running,
+# AD-federated TrueNorth with a working trainee registration path.
+#
+# Every stage is idempotent and independently re-runnable — running site.yml a
+# second time should report zero changed tasks, and that clean second run is the
+# real proof the installer works.
+#
+# The ESXi and vCenter layer beneath this is built by the PowerCLI tooling in the
+# deployment repo. Ansible starts here, at the Ubuntu management VM, because
+# that is the first host in the stack it can actually manage.
 
 - import_playbook: playbooks/00-preflight.yml
-- import_playbook: playbooks/01-common.yml
-- import_playbook: playbooks/02-networking.yml
-- import_playbook: playbooks/03-storage.yml
-- import_playbook: playbooks/04-proxmox.yml
-- import_playbook: playbooks/05-control-plane.yml
-- import_playbook: playbooks/06-security.yml
-- import_playbook: playbooks/07-templates.yml
-- import_playbook: playbooks/08-smoke-test.yml
-- import_playbook: playbooks/09-validate.yml
+- import_playbook: playbooks/10-base.yml
+- import_playbook: playbooks/20-fetch-app.yml
+- import_playbook: playbooks/30-config.yml
+- import_playbook: playbooks/40-tls.yml
+- import_playbook: playbooks/50-stack-up.yml
+- import_playbook: playbooks/60-keycloak.yml
+- import_playbook: playbooks/70-telemetry.yml
+- import_playbook: playbooks/80-seed.yml
+- import_playbook: playbooks/90-vsphere.yml
+- import_playbook: playbooks/95-smoke-test.yml
+- import_playbook: playbooks/99-validate.yml

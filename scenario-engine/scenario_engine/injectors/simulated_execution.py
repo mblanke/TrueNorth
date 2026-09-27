@@ -7,6 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 class SimulatedExecutionInjector(BaseInjector):
+    name = "simulated_execution"
+    description = "Simulates execution of a MITRE technique on a target host."
+    required_params: list[str] = []
+
     def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         return {
             "injector": "simulated_execution",

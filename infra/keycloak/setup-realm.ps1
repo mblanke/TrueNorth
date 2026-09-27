@@ -122,7 +122,7 @@ Write-Host ""
 Write-Host "  Dev users:" -ForegroundColor White
 Write-Host "    admin@truenorth.local      / admin      (admin role)"
 Write-Host "    instructor@truenorth.local / instructor (instructor role)"
-Write-Host "    trainee@truenorth.local    / trainee    (trainee role)"
+Write-Host "    trainee@truenorth.local    / trainee    (student role)"
 Write-Host ""
 Write-Host "  SPA client  : truenorth-web  (public, PKCE)"
 Write-Host "  API client  : truenorth-api  (confidential, secret=CHANGE_ME_IN_PRODUCTION)"

@@ -55,6 +55,39 @@ def get_owned(
     return obj
 
 
+def get_owned_or_global(
+    db: Session,
+    model: type[T],
+    obj_id: uuid.UUID | str,
+    user: CurrentUser,
+    *,
+    not_found: str | None = None,
+) -> T:
+    """Like :func:`get_owned`, but also allows rows with a NULL ``tenant_id``.
+
+    Catalogue models — qualifications, learning paths, courses — carry a
+    *nullable* ``tenant_id``: NULL means shared content available to every
+    tenant, rather than content belonging to no one. ``get_owned`` would 404 on
+    exactly that shared content, so a trainee could not enrol on the standard
+    programme.
+
+    Use this ONLY for read-only catalogue lookups. Anything a caller can mutate
+    must go through :func:`get_owned`, because "global" and "writable by
+    anyone" are not the same thing.
+    """
+    oid = obj_id if isinstance(obj_id, uuid.UUID) else uuid.UUID(str(obj_id))
+    q = db.query(model).filter(
+        model.id == oid,
+        (model.tenant_id == tenant_uuid(user)) | (model.tenant_id.is_(None)),
+    )
+    if hasattr(model, "deleted_at"):
+        q = q.filter(model.deleted_at.is_(None))
+    obj = q.first()
+    if not obj:
+        raise HTTPException(404, not_found or f"{model.__name__} not found")
+    return obj
+
+
 def owned_or_404(
     db: Session,
     model: type[T],
@@ -76,3 +109,34 @@ def owned_or_404(
     if len(found) != len(set(ids)):
         raise HTTPException(404, f"{model.__name__} not found")
     return found
+
+
+def authorize_record_access(
+    db: Session,
+    caller: CurrentUser,
+    subject_id: uuid.UUID | str,
+    *,
+    permission,
+) -> None:
+    """Raise unless the caller may act on ``subject_id``'s learning record.
+
+    Enrolments, progress, transcripts and external activities are personal records.
+    The rule is the same everywhere:
+
+    - your own record: always;
+    - anyone else's: the caller needs ``permission`` (a ``rbac.Permission``), AND the
+      subject must be in the caller's tenant.
+
+    A caller without the permission gets 403 (they know their own role; nothing is
+    disclosed). A subject outside the tenant is 404, never 403, so user ids cannot be
+    probed across tenants.
+    """
+    from .models import User
+    from .rbac import user_has_permission
+
+    sid = subject_id if isinstance(subject_id, uuid.UUID) else uuid.UUID(str(subject_id))
+    if str(sid) == str(caller.id):
+        return
+    if not user_has_permission(caller, permission):
+        raise HTTPException(403, f"Missing permission: {permission.value}")
+    get_owned(db, User, sid, caller, not_found="User not found")

@@ -13,6 +13,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Exercise, Range, Scenario } from '@core/models';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
 @Component({
   selector: 'tn-exercises',
@@ -20,7 +21,7 @@ import { Exercise, Range, Scenario } from '@core/models';
   imports: [
     CommonModule, FormsModule, MatCardModule, MatTableModule,
     MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatChipsModule, MatTooltipModule,
+    MatSelectModule, MatChipsModule, MatTooltipModule, EmptyStateComponent,
   ],
   template: `
     <div class="page-container">
@@ -100,7 +101,14 @@ import { Exercise, Range, Scenario } from '@core/models';
         </ng-container>
         <ng-container matColumnDef="score">
           <th mat-header-cell *matHeaderCellDef>Score</th>
-          <td mat-cell *matCellDef="let e">{{ e.total_score }}/{{ e.max_score }}</td>
+          <td mat-cell *matCellDef="let e">
+            <span class="score-cell">
+              <span>{{ e.total_score }}/{{ e.max_score }}</span>
+              <span class="tn-gauge-bg score-gauge" aria-hidden="true">
+                <span class="tn-gauge-fill" [style.width.%]="e.max_score ? (e.total_score / e.max_score) * 100 : 0"></span>
+              </span>
+            </span>
+          </td>
         </ng-container>
         <ng-container matColumnDef="created">
           <th mat-header-cell *matHeaderCellDef>Created</th>
@@ -146,6 +154,24 @@ import { Exercise, Range, Scenario } from '@core/models';
         <tr mat-header-row *matHeaderRowDef="columns"></tr>
         <tr mat-row *matRowDef="let row; columns: columns"></tr>
       </table>
+
+      @if (loading()) {
+        <div class="tn-skeleton-group mt-2" aria-busy="true">
+          <div class="tn-skeleton tn-skeleton-row"></div>
+          <div class="tn-skeleton tn-skeleton-row"></div>
+          <div class="tn-skeleton tn-skeleton-row"></div>
+        </div>
+      } @else if (exercises().length === 0) {
+        <tn-empty-state
+          icon="fitness_center"
+          title="No exercises yet"
+          message="Create one from a range and a scenario to start a training run."
+        >
+          <button mat-stroked-button (click)="showCreate = true">
+            <mat-icon>add</mat-icon> New Exercise
+          </button>
+        </tn-empty-state>
+      }
     </div>
   `,
   styles: [`
@@ -155,12 +181,16 @@ import { Exercise, Range, Scenario } from '@core/models';
     mat-card-content mat-form-field:not(.full-width) { width: 100%; max-width: 400px; }
     .edit-form mat-card-content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; flex-direction: row; }
     .edit-form mat-form-field { flex: 1; min-width: 200px; }
+    .score-cell { display: flex; align-items: center; gap: 8px; }
+    .score-gauge { display: inline-block; width: 64px; height: 6px; }
+    .score-gauge .tn-gauge-fill { display: block; }
   `],
 })
 export class ExercisesComponent implements OnInit {
   exercises = signal<Exercise[]>([]);
   ranges = signal<Range[]>([]);
   scenarios = signal<Scenario[]>([]);
+  loading = signal(true);
   showCreate = false;
   form = { name: '', range_id: '', scenario_id: '' };
   columns = ['name', 'state', 'score', 'created', 'actions'];
@@ -176,7 +206,12 @@ export class ExercisesComponent implements OnInit {
     this.api.listScenarios().subscribe(s => this.scenarios.set(s));
   }
 
-  load(): void { this.api.listExercises().subscribe(e => this.exercises.set(e)); }
+  load(): void {
+    this.api.listExercises().subscribe({
+      next: e => { this.exercises.set(e); this.loading.set(false); },
+      error: () => this.loading.set(false),
+    });
+  }
 
   create(): void {
     this.api.createExercise(this.form).subscribe({

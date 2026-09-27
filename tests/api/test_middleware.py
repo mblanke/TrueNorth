@@ -80,6 +80,62 @@ class TestRateLimit:
         assert resp.status_code == 200
         redis.pipeline.assert_not_called()
 
+    def test_route_limits_are_counted_per_route(self):
+        """A per-route limit must not be enforced against a shared per-client tally.
+
+        The counter key used to carry only the client identity while the *limit* varied
+        by route, so every request landed in one tally and each was compared against
+        whichever route's ceiling it matched. The strictest configured route therefore
+        became the client's global ceiling: 31 reads — well inside the 200/min GET
+        budget — returned 429 on `POST /ranges`, and the 5/min on `batch-provision`
+        was tripped by any five requests of any kind.
+        """
+        from app.middleware import _match_route_limit
+
+        get_limit, get_bucket = _match_route_limit("GET", "/ranges", 100)
+        post_limit, post_bucket = _match_route_limit("POST", "/ranges", 100)
+        batch_limit, batch_bucket = _match_route_limit(
+            "POST", "/ranges/batch-provision", 100
+        )
+
+        # Different ceilings must live in different buckets, or the smallest wins.
+        assert get_limit != post_limit
+        assert len({get_bucket, post_bucket, batch_bucket}) == 3
+        assert batch_limit < post_limit < get_limit
+
+    def test_unmatched_routes_share_the_default_bucket(self):
+        from app.middleware import _match_route_limit
+
+        limit, bucket = _match_route_limit("DELETE", "/whatever", 100)
+        assert (limit, bucket) == (100, "default")
+
+    def test_client_key_is_scoped_by_bucket(self):
+        """Two buckets for the same client must not share a counter."""
+        from types import SimpleNamespace
+
+        from app.middleware import RateLimitMiddleware
+
+        request = SimpleNamespace(
+            state=SimpleNamespace(tenant_id="t-1"), headers={}, client=None
+        )
+        a = RateLimitMiddleware._client_key(request, "POST:/ranges")
+        b = RateLimitMiddleware._client_key(request, "GET:")
+        assert a != b
+        assert "t-1" in a and "t-1" in b
+
+    def test_client_key_falls_back_to_ip_and_still_scopes(self):
+        from types import SimpleNamespace
+
+        from app.middleware import RateLimitMiddleware
+
+        request = SimpleNamespace(
+            state=SimpleNamespace(), headers={}, client=SimpleNamespace(host="10.0.0.9")
+        )
+        a = RateLimitMiddleware._client_key(request, "POST:/ranges")
+        b = RateLimitMiddleware._client_key(request, "GET:")
+        assert a != b
+        assert "10.0.0.9" in a
+
     def test_rate_limit_disabled_without_redis(self, mw_client):
         """Without Redis the limiter degrades gracefully (no 429, no headers)."""
         resp = mw_client.get("/items")

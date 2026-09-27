@@ -27,13 +27,20 @@ import logging
 import os
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from proxmoxer import ProxmoxAPI
 from pydantic import BaseModel, Field
 
+from ..rbac import Permission, require_permission
+
 logger = logging.getLogger("truenorth.api.proxmox")
 
-router = APIRouter(prefix="/proxmox", tags=["proxmox"])
+# Router-level authentication. Direct hypervisor control: VM power, snapshots, clone, console tickets.
+# Read and control are not split here — there is no use case for browsing a
+# hypervisor's node list that does not also imply operating it.
+#
+# Every route here was previously reachable with no credentials at all.
+router = APIRouter(prefix="/proxmox", tags=["proxmox"], dependencies=[Depends(require_permission(Permission.INFRA_CONTROL))])
 
 # ── Config ──────────────────────────────────────────────────────────────
 # No hosts are assumed: until PROXMOX_HOSTS points at reachable nodes,

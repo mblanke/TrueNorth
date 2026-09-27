@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import httpx
 import pytest
-
-from app.lms import NullLMSBackend, XAPILRSBackend, get_lms_backend
-from app.lms import _reset_backend  # noqa: PLC2701 — test-only helper
-
+from app.lms import (
+    NullLMSBackend,
+    XAPILRSBackend,
+    _reset_backend,  # noqa: PLC2701 — test-only helper
+    get_lms_backend,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -85,17 +84,13 @@ class TestXAPILRSBackend:
 
     @pytest.mark.asyncio
     async def test_emit_statement_success_200(self, respx_mock):
-        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(
-            return_value=httpx.Response(200)
-        )
+        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(return_value=httpx.Response(200))
         backend = self._make_backend()
         assert await backend.emit_statement(_SAMPLE_STMT) is True
 
     @pytest.mark.asyncio
     async def test_emit_statement_success_204(self, respx_mock):
-        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(
-            return_value=httpx.Response(204)
-        )
+        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(return_value=httpx.Response(204))
         backend = self._make_backend()
         assert await backend.emit_statement(_SAMPLE_STMT) is True
 
@@ -109,17 +104,13 @@ class TestXAPILRSBackend:
 
     @pytest.mark.asyncio
     async def test_emit_statement_network_error_returns_false(self, respx_mock):
-        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(
-            side_effect=httpx.ConnectError("refused")
-        )
+        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(side_effect=httpx.ConnectError("refused"))
         backend = self._make_backend()
         assert await backend.emit_statement(_SAMPLE_STMT) is False
 
     @pytest.mark.asyncio
     async def test_emit_statement_sends_correct_headers(self, respx_mock):
-        route = respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(
-            return_value=httpx.Response(200)
-        )
+        route = respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(return_value=httpx.Response(200))
         backend = self._make_backend()
         await backend.emit_statement(_SAMPLE_STMT)
 
@@ -130,9 +121,7 @@ class TestXAPILRSBackend:
 
     @pytest.mark.asyncio
     async def test_emit_statement_no_auth_header_when_empty(self, respx_mock):
-        route = respx_mock.post("http://no-auth-lrs:8080/xapi/statements").mock(
-            return_value=httpx.Response(200)
-        )
+        route = respx_mock.post("http://no-auth-lrs:8080/xapi/statements").mock(return_value=httpx.Response(200))
         backend = XAPILRSBackend(lrs_url="http://no-auth-lrs:8080", lrs_auth="")
         await backend.emit_statement(_SAMPLE_STMT)
 
@@ -153,23 +142,17 @@ class TestXAPILRSBackend:
         assert count == 2
 
     def test_emit_statement_sync_success(self, respx_mock):
-        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(
-            return_value=httpx.Response(200)
-        )
+        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(return_value=httpx.Response(200))
         backend = self._make_backend()
         assert backend.emit_statement_sync(_SAMPLE_STMT) is True
 
     def test_emit_statement_sync_failure_returns_false(self, respx_mock):
-        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(
-            return_value=httpx.Response(503)
-        )
+        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(return_value=httpx.Response(503))
         backend = self._make_backend()
         assert backend.emit_statement_sync(_SAMPLE_STMT) is False
 
     def test_emit_statement_sync_network_error_returns_false(self, respx_mock):
-        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(
-            side_effect=httpx.ConnectError("refused")
-        )
+        respx_mock.post("http://mock-lrs:8080/xapi/statements").mock(side_effect=httpx.ConnectError("refused"))
         backend = self._make_backend()
         assert backend.emit_statement_sync(_SAMPLE_STMT) is False
 
@@ -183,9 +166,7 @@ class TestXAPILRSBackend:
 
     @pytest.mark.asyncio
     async def test_health_check_lrs_down(self, respx_mock):
-        respx_mock.get("http://mock-lrs:8080/xapi/about").mock(
-            side_effect=httpx.ConnectError("refused")
-        )
+        respx_mock.get("http://mock-lrs:8080/xapi/about").mock(side_effect=httpx.ConnectError("refused"))
         backend = self._make_backend()
         assert await backend.health_check() is False
 

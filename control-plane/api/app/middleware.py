@@ -140,12 +140,21 @@ _DEFAULT_ROUTE_LIMITS: dict[tuple[str, str], int] = {
 _UNLIMITED_PATHS: list[str] = ["/health"]
 
 
-def _match_route_limit(method: str, path: str, default: int) -> int:
-    """Return the rate-limit (req/min) for a given method+path."""
+def _match_route_limit(method: str, path: str, default: int) -> tuple[int, str]:
+    """Return the (rate-limit, bucket) for a given method+path.
+
+    The bucket identifies *which* limit was matched, and has to be part of the counter
+    key. A per-route limit counted against a shared per-client key is not a per-route
+    limit at all: every request lands in one tally, and each one is compared against
+    whichever route's ceiling it happened to match, so the strictest configured route
+    silently becomes the client's global ceiling. Concretely, 31 reads — well inside the
+    200/min GET budget — used to make `POST /ranges` return 429, and the 5/min on
+    `batch-provision` was tripped by any five requests of any kind.
+    """
     for (m, prefix), limit in _DEFAULT_ROUTE_LIMITS.items():
         if method == m and (prefix == "" or path.startswith(prefix)):
-            return limit
-    return default
+            return limit, f"{m}:{prefix}"
+    return default, "default"
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -168,14 +177,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     # ----- helpers ----------------------------------------------------------
 
     @staticmethod
-    def _client_key(request: Request) -> str:
-        """Key by tenant_id (if authenticated) else client IP."""
+    def _client_key(request: Request, bucket: str = "default") -> str:
+        """Key by tenant_id (if authenticated) else client IP, per rate-limit bucket.
+
+        `bucket` scopes the counter to the route whose limit is being applied — without
+        it the configured per-route numbers are all enforced against one shared tally.
+        See `_match_route_limit`.
+        """
         tenant = getattr(request.state, "tenant_id", None)
         if tenant:
-            return f"rl:tenant:{tenant}"
+            return f"rl:tenant:{tenant}:{bucket}"
         forwarded = request.headers.get("x-forwarded-for")
         ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
-        return f"rl:ip:{ip}"
+        return f"rl:ip:{ip}:{bucket}"
 
     async def _check_rate_limit(self, key: str, limit: int, now: float) -> tuple[bool, int, int]:
         """
@@ -214,8 +228,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(p) for p in _UNLIMITED_PATHS):
             return await call_next(request)
 
-        limit = _match_route_limit(method, path, self.default_limit)
-        key = self._client_key(request)
+        limit, bucket = _match_route_limit(method, path, self.default_limit)
+        key = self._client_key(request, bucket)
         now = time.time()
 
         try:

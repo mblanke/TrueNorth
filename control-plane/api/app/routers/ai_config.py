@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import AIBackendConfig, AIFleetNode, AIModelRoute
+from ..rbac import Permission, require_permission
 from ..schemas import (
     AIBackendConfigIn,
     AIBackendConfigOut,
@@ -33,7 +34,10 @@ from ..schemas import (
 
 logger = logging.getLogger("truenorth.api.ai_config")
 
-router = APIRouter(prefix="/ai-config", tags=["AI Orchestrator"])
+# Router-level authentication. AI backend endpoints, model routing and fleet nodes.
+#
+# Every route here was previously reachable with no credentials at all.
+router = APIRouter(prefix="/ai-config", tags=["AI Orchestrator"], dependencies=[Depends(require_permission(Permission.AI_CONFIG_WRITE))])
 
 
 # -- Backends CRUD -------------------------------------------------------

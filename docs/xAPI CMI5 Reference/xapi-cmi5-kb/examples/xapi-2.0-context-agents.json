@@ -1,0 +1,42 @@
+{
+  "id": "3c1d9e7a-2b4f-4c6d-8e0a-5f7b9c1d3e5a",
+  "actor": {"objectType": "Agent", "account": {"homePage": "https://id.example.org", "name": "a7f3c2e9-5d1b-4a0e-9c1f-2b8e6d4a1c07"}},
+  "verb": {"id": "https://vocab.example.org/xapi/verbs/detected", "display": {"en-CA": "detected", "fr-CA": "a détecté"}},
+  "object": {
+    "objectType": "Activity",
+    "id": "https://vocab.example.org/xapi/activities/exercise/ex-2026-09/inject/042",
+    "definition": {
+      "type": "https://vocab.example.org/xapi/activity-types/inject",
+      "name": {"en-CA": "Inject 42: credential dumping on file server"}
+    }
+  },
+  "result": {
+    "success": true,
+    "duration": "PT7M30S",
+    "extensions": {"https://vocab.example.org/xapi/extensions/time-to-detect-s": 450}
+  },
+  "context": {
+    "registration": "8d2e4f6a-1b3c-4d5e-9f7a-2c4e6a8b0d1f",
+    "contextActivities": {
+      "parent": [{"id": "https://vocab.example.org/xapi/activities/exercise/ex-2026-09/phase/2"}],
+      "grouping": [{"id": "https://vocab.example.org/xapi/activities/exercise/ex-2026-09"}],
+      "category": [{"id": "https://vocab.example.org/xapi/profiles/range-exercise/v1"}]
+    },
+    "contextAgents": [
+      {
+        "objectType": "contextAgent",
+        "agent": {"objectType": "Agent", "account": {"homePage": "https://id.example.org", "name": "instr-0042"}},
+        "relevantTypes": ["https://vocab.example.org/xapi/relevant-types/assessor"]
+      }
+    ],
+    "contextGroups": [
+      {
+        "objectType": "contextGroup",
+        "group": {"objectType": "Group", "account": {"homePage": "https://id.example.org", "name": "team-blue-3"}},
+        "relevantTypes": ["https://vocab.example.org/xapi/relevant-types/defending-team"]
+      }
+    ],
+    "extensions": {"https://vocab.example.org/xapi/extensions/range-environment": "lab-enclave-a"}
+  },
+  "timestamp": "2026-09-23T15:22:41.120Z"
+}

@@ -12,7 +12,6 @@ import sys
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-
 from alembic import op
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))

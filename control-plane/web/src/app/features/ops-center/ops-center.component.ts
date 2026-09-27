@@ -14,7 +14,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatBadgeModule } from '@angular/material/badge';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { EnterStaggerDirective } from '../../shared/motion';
+import { CountUpDirective, EnterStaggerDirective } from '../../shared/motion';
 
 interface Annotation {
   id: string;
@@ -51,7 +51,7 @@ interface OpsStats {
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatInputModule, MatFormFieldModule, MatSelectModule,
-    MatChipsModule, MatListModule, MatBadgeModule, EnterStaggerDirective,
+    MatChipsModule, MatListModule, MatBadgeModule, EnterStaggerDirective, CountUpDirective,
   ],
   template: `
     <div class="page-container">
@@ -75,28 +75,30 @@ interface OpsStats {
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">group</mat-icon>
-            <div class="stat-value">{{ stats()?.active_analysts || 0 }}</div>
+            <div class="stat-value" [tnCountUp]="stats()?.active_analysts || 0"></div>
             <div class="stat-label">Active Analysts</div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">note_add</mat-icon>
-            <div class="stat-value">{{ stats()?.annotations_count || 0 }}</div>
+            <div class="stat-value" [tnCountUp]="stats()?.annotations_count || 0"></div>
             <div class="stat-label">Annotations</div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">terminal</mat-icon>
-            <div class="stat-value">{{ stats()?.shared_commands_count || 0 }}</div>
+            <div class="stat-value" [tnCountUp]="stats()?.shared_commands_count || 0"></div>
             <div class="stat-label">Shared Commands</div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card">
           <mat-card-content>
             <mat-icon color="primary">flag</mat-icon>
-            <div class="stat-value">{{ stats()?.objectives_completed || 0 }}/{{ stats()?.objectives_total || 0 }}</div>
+            <div class="tn-ring objectives-ring" [style.--ring-pct]="objectivesPct()">
+              <span class="ring-text">{{ stats()?.objectives_completed || 0 }}/{{ stats()?.objectives_total || 0 }}</span>
+            </div>
             <div class="stat-label">Objectives</div>
           </mat-card-content>
         </mat-card>
@@ -155,7 +157,7 @@ interface OpsStats {
                   <div matListItemTitle>
                     <strong>{{ a.user_display_name }}</strong>
                     <span class="type-badge" [attr.data-type]="a.annotation_type">{{ a.annotation_type }}</span>
-                    <span class="severity-badge" [attr.data-severity]="a.severity">{{ a.severity }}</span>
+                    <span class="status-chip" [class]="'sev-' + a.severity">{{ a.severity }}</span>
                   </div>
                   <div matListItemLine>{{ a.content }}</div>
                   <div matListItemMeta>{{ a.created_at | date:'shortTime' }}</div>
@@ -199,7 +201,7 @@ interface OpsStats {
                   </mat-card-subtitle>
                 </mat-card-header>
                 <mat-card-content>
-                  <pre class="command-text">{{ cmd.command }}</pre>
+                  <pre class="tn-code-block command-text">{{ cmd.command }}</pre>
                   @if (cmd.description) {
                     <p class="command-desc">{{ cmd.description }}</p>
                   }
@@ -247,9 +249,11 @@ interface OpsStats {
     </div>
   `,
   styles: [`
-    .subtitle { color: var(--text-secondary); margin-bottom: 16px; }
+    .subtitle { margin-bottom: 16px; }
     .stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
     .stats-row mat-card { flex: 1; min-width: 120px; text-align: center; }
+    .objectives-ring { --ring-size: 72px; --ring-width: 8px; margin: 4px auto; }
+    .objectives-ring .ring-text { font-size: 14px; font-weight: 600; color: var(--text-primary); }
     .tab-content { padding: 16px 0; }
     .mt-2 { margin-top: 16px; }
     .input-card { margin-bottom: 16px; }
@@ -257,15 +261,10 @@ interface OpsStats {
     .flex-grow { flex: 1; }
     .full-width { width: 100%; }
     .command-card { margin-bottom: 8px; }
-    .command-text { background: var(--mat-sys-surface-container); padding: 8px 12px; border-radius: 4px; overflow-x: auto; font-family: monospace; font-size: 13px; }
+    .command-text { margin: 0; }
     .command-desc { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
-    .type-badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 8px; background: var(--mat-sys-primary-container); }
-    .severity-badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
-    .severity-badge[data-severity="critical"] { background: #dc2626; color: white; }
-    .severity-badge[data-severity="high"] { background: #ea580c; color: white; }
-    .severity-badge[data-severity="medium"] { background: #d97706; color: white; }
-    .severity-badge[data-severity="low"] { background: #2563eb; color: white; }
-    .severity-badge[data-severity="info"] { background: #6b7280; color: white; }
+    .type-badge { font-size: 11px; padding: 1px 6px; border-radius: var(--radius-sm); margin-left: 8px; background: var(--accent-muted); color: var(--accent); }
+    .annotation-item .status-chip { margin-left: 4px; }
     .inject-form { display: flex; flex-direction: column; gap: 12px; }
     .annotation-item { margin-bottom: 4px; }
   `],
@@ -377,6 +376,12 @@ export class OpsCenterComponent implements OnInit, OnDestroy {
       },
       error: () => this.notify.error('Failed to send inject'),
     });
+  }
+
+  objectivesPct(): number {
+    const s = this.stats();
+    if (!s || !s.objectives_total) return 0;
+    return (s.objectives_completed / s.objectives_total) * 100;
   }
 
   formatElapsed(seconds: number): string {

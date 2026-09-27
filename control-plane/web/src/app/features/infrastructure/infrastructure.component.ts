@@ -18,6 +18,8 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { CountUpDirective } from '../../shared/motion';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
 /* ── Local interfaces (match backend schemas) ───────────────── */
 interface HypervisorConnection {
@@ -26,6 +28,10 @@ interface HypervisorConnection {
   is_primary: boolean; is_active: boolean; datacenter: string | null;
   notes: string | null; created_at: string;
 }
+/** vCenter HTTPS, the Proxmox API, WinRM over HTTP. */
+const DEFAULT_PORT: Record<HypervisorConnection['hypervisor_type'], number> = {
+  vsphere: 443, proxmox: 8006, hyperv: 5985,
+};
 interface HypervisorNode {
   id: string; node_name: string; ip_address: string | null; status: string;
   cpu_total: number | null; cpu_used: number | null;
@@ -75,7 +81,7 @@ interface NetworkSummary {
     MatIconModule, MatTableModule, MatChipsModule, MatDialogModule,
     MatFormFieldModule, MatInputModule, MatSelectModule,
     MatSlideToggleModule, MatProgressBarModule, MatTooltipModule,
-    MatBadgeModule, MatSnackBarModule,
+    MatBadgeModule, MatSnackBarModule, CountUpDirective, EmptyStateComponent,
   ],
   template: `
     <div class="page-container">
@@ -98,17 +104,17 @@ interface NetworkSummary {
           <div class="summary-row" *ngIf="hvSummary">
             <mat-card class="stat-card">
               <mat-icon>link</mat-icon>
-              <div class="stat-value">{{ hvSummary.total_connections }}</div>
+              <div class="stat-value" [tnCountUp]="hvSummary.total_connections"></div>
               <div class="stat-label">Connections</div>
             </mat-card>
             <mat-card class="stat-card">
               <mat-icon>computer</mat-icon>
-              <div class="stat-value">{{ hvSummary.total_nodes }}</div>
+              <div class="stat-value" [tnCountUp]="hvSummary.total_nodes"></div>
               <div class="stat-label">Nodes</div>
             </mat-card>
             <mat-card class="stat-card">
               <mat-icon>memory</mat-icon>
-              <div class="stat-value">{{ hvSummary.total_cpu }}</div>
+              <div class="stat-value" [tnCountUp]="hvSummary.total_cpu"></div>
               <div class="stat-label">vCPUs</div>
             </mat-card>
             <mat-card class="stat-card">
@@ -123,7 +129,7 @@ interface NetworkSummary {
             </mat-card>
             <mat-card class="stat-card">
               <mat-icon>cloud</mat-icon>
-              <div class="stat-value">{{ hvSummary.total_vms }}</div>
+              <div class="stat-value" [tnCountUp]="hvSummary.total_vms"></div>
               <div class="stat-label">VMs</div>
             </mat-card>
           </div>
@@ -144,7 +150,7 @@ interface NetworkSummary {
           <div class="summary-row" *ngIf="storageSummary || networkSummary">
             <mat-card class="stat-card" *ngIf="storageSummary">
               <mat-icon>inventory_2</mat-icon>
-              <div class="stat-value">{{ storageSummary.total_appliances }}</div>
+              <div class="stat-value" [tnCountUp]="storageSummary.total_appliances"></div>
               <div class="stat-label">Storage Appliances</div>
             </mat-card>
             <mat-card class="stat-card" *ngIf="storageSummary">
@@ -154,7 +160,7 @@ interface NetworkSummary {
             </mat-card>
             <mat-card class="stat-card" *ngIf="networkSummary">
               <mat-icon>router</mat-icon>
-              <div class="stat-value">{{ networkSummary.total_devices }}</div>
+              <div class="stat-value" [tnCountUp]="networkSummary.total_devices"></div>
               <div class="stat-label">Network Devices</div>
             </mat-card>
           </div>
@@ -181,13 +187,13 @@ interface NetworkSummary {
               <div class="form-row">
                 <mat-form-field appearance="outline">
                   <mat-label>Name</mat-label>
-                  <input matInput [(ngModel)]="newConn.name" placeholder="Production Proxmox">
+                  <input matInput [(ngModel)]="newConn.name" placeholder="Range vCenter">
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Type</mat-label>
-                  <mat-select [(ngModel)]="newConn.hypervisor_type" panelClass="tn-select-panel">
+                  <mat-select [(ngModel)]="newConn.hypervisor_type" (selectionChange)="onTypeChange()" panelClass="tn-select-panel">
+                    <mat-option value="vsphere">VMware vSphere (vCenter)</mat-option>
                     <mat-option value="proxmox">Proxmox VE</mat-option>
-                    <mat-option value="vsphere">VMware vSphere</mat-option>
                     <mat-option value="hyperv">Microsoft Hyper-V</mat-option>
                   </mat-select>
                 </mat-form-field>
@@ -195,7 +201,7 @@ interface NetworkSummary {
               <div class="form-row">
                 <mat-form-field appearance="outline">
                   <mat-label>Host</mat-label>
-                  <input matInput [(ngModel)]="newConn.host" placeholder="192.168.1.85">
+                  <input matInput [(ngModel)]="newConn.host" [placeholder]="newConn.hypervisor_type === 'vsphere' ? 'vcsa.example.local' : '192.168.1.85'">
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Port</mat-label>
@@ -205,7 +211,7 @@ interface NetworkSummary {
               <div class="form-row">
                 <mat-form-field appearance="outline">
                   <mat-label>Username</mat-label>
-                  <input matInput [(ngModel)]="newConn.username" placeholder="root@pam">
+                  <input matInput [(ngModel)]="newConn.username" [placeholder]="usernameHint()">
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Password / Token</mat-label>
@@ -268,7 +274,9 @@ interface NetworkSummary {
                   <tr mat-row *matRowDef="let row; columns: connCols;"></tr>
                 </table>
               </div>
-              <p *ngIf="connections.length === 0" class="empty-state">No hypervisor connections configured.</p>
+              <tn-empty-state *ngIf="connections.length === 0" icon="cloud"
+                title="No hypervisor connections"
+                message="Add your vCenter to start discovering ESXi hosts." />
             </mat-card-content>
           </mat-card>
 
@@ -296,15 +304,48 @@ interface NetworkSummary {
                   </ng-container>
                   <ng-container matColumnDef="cpu">
                     <th mat-header-cell *matHeaderCellDef>CPU</th>
-                    <td mat-cell *matCellDef="let n">{{ n.cpu_total }} cores {{ n.cpu_used !== null ? '(' + (n.cpu_used | number:'1.0-0') + '%)' : '' }}</td>
+                    <td mat-cell *matCellDef="let n">
+                      <span *ngIf="n.cpu_total === null" class="not-reported">Not reported</span>
+                      <span *ngIf="n.cpu_total !== null" class="cap-cell">
+                        <span>{{ n.cpu_total }} cores {{ n.cpu_used !== null ? '(' + (n.cpu_used | number:'1.0-0') + '%)' : '' }}</span>
+                        <span *ngIf="n.cpu_used !== null" class="tn-gauge-bg cap-gauge" aria-hidden="true">
+                          <span class="tn-gauge-fill"
+                            [class.warn]="n.cpu_used >= 75 && n.cpu_used < 90"
+                            [class.crit]="n.cpu_used >= 90"
+                            [style.width.%]="n.cpu_used"></span>
+                        </span>
+                      </span>
+                    </td>
                   </ng-container>
                   <ng-container matColumnDef="memory">
                     <th mat-header-cell *matHeaderCellDef>Memory</th>
-                    <td mat-cell *matCellDef="let n">{{ n.memory_used_gb | number:'1.1-1' }} / {{ n.memory_total_gb | number:'1.1-1' }} GB</td>
+                    <td mat-cell *matCellDef="let n">
+                      <span *ngIf="n.memory_total_gb === null" class="not-reported">Not reported</span>
+                      <span *ngIf="n.memory_total_gb !== null" class="cap-cell">
+                        <span>{{ n.memory_used_gb | number:'1.1-1' }} / {{ n.memory_total_gb | number:'1.1-1' }} GB</span>
+                        <span *ngIf="n.memory_total_gb" class="tn-gauge-bg cap-gauge" aria-hidden="true">
+                          <span class="tn-gauge-fill"
+                            [class.warn]="usagePct(n.memory_used_gb, n.memory_total_gb) >= 75 && usagePct(n.memory_used_gb, n.memory_total_gb) < 90"
+                            [class.crit]="usagePct(n.memory_used_gb, n.memory_total_gb) >= 90"
+                            [style.width.%]="usagePct(n.memory_used_gb, n.memory_total_gb)"></span>
+                        </span>
+                      </span>
+                    </td>
                   </ng-container>
                   <ng-container matColumnDef="storage">
                     <th mat-header-cell *matHeaderCellDef>Storage</th>
-                    <td mat-cell *matCellDef="let n">{{ n.storage_used_gb | number:'1.0-0' }} / {{ n.storage_total_gb | number:'1.0-0' }} GB</td>
+                    <td mat-cell *matCellDef="let n">
+                      <span *ngIf="n.storage_total_gb === null" class="not-reported">Not reported</span>
+                      <span *ngIf="n.storage_total_gb !== null" class="cap-cell">
+                        <span>{{ n.storage_used_gb | number:'1.0-0' }} / {{ n.storage_total_gb | number:'1.0-0' }} GB</span>
+                        <span *ngIf="n.storage_total_gb" class="tn-gauge-bg cap-gauge" aria-hidden="true">
+                          <span class="tn-gauge-fill"
+                            [class.warn]="usagePct(n.storage_used_gb, n.storage_total_gb) >= 75 && usagePct(n.storage_used_gb, n.storage_total_gb) < 90"
+                            [class.crit]="usagePct(n.storage_used_gb, n.storage_total_gb) >= 90"
+                            [style.width.%]="usagePct(n.storage_used_gb, n.storage_total_gb)"></span>
+                        </span>
+                      </span>
+                    </td>
                   </ng-container>
                   <ng-container matColumnDef="vms">
                     <th mat-header-cell *matHeaderCellDef>VMs</th>
@@ -389,12 +430,12 @@ interface NetworkSummary {
           <div class="summary-row" *ngIf="storageSummary">
             <mat-card class="stat-card">
               <mat-icon>inventory_2</mat-icon>
-              <div class="stat-value">{{ storageSummary.total_appliances }}</div>
+              <div class="stat-value" [tnCountUp]="storageSummary.total_appliances"></div>
               <div class="stat-label">Appliances</div>
             </mat-card>
             <mat-card class="stat-card">
               <mat-icon>check_circle</mat-icon>
-              <div class="stat-value">{{ storageSummary.active_appliances }}</div>
+              <div class="stat-value" [tnCountUp]="storageSummary.active_appliances"></div>
               <div class="stat-label">Active</div>
             </mat-card>
             <mat-card class="stat-card">
@@ -409,7 +450,7 @@ interface NetworkSummary {
             </mat-card>
             <mat-card class="stat-card">
               <mat-icon>topic</mat-icon>
-              <div class="stat-value">{{ storageSummary.total_volumes }}</div>
+              <div class="stat-value" [tnCountUp]="storageSummary.total_volumes"></div>
               <div class="stat-label">Volumes</div>
             </mat-card>
           </div>
@@ -465,7 +506,9 @@ interface NetworkSummary {
                   <tr mat-row *matRowDef="let row; columns: applianceCols;"></tr>
                 </table>
               </div>
-              <p *ngIf="appliances.length === 0" class="empty-state">No storage appliances registered.</p>
+              <tn-empty-state *ngIf="appliances.length === 0" icon="storage"
+                title="No storage appliances"
+                message="Register an appliance to track capacity, protocols and volumes." />
             </mat-card-content>
           </mat-card>
         </mat-tab>
@@ -542,12 +585,12 @@ interface NetworkSummary {
           <div class="summary-row" *ngIf="networkSummary">
             <mat-card class="stat-card">
               <mat-icon>router</mat-icon>
-              <div class="stat-value">{{ networkSummary.total_devices }}</div>
+              <div class="stat-value" [tnCountUp]="networkSummary.total_devices"></div>
               <div class="stat-label">Devices</div>
             </mat-card>
             <mat-card class="stat-card">
               <mat-icon>check_circle</mat-icon>
-              <div class="stat-value">{{ networkSummary.active_devices }}</div>
+              <div class="stat-value" [tnCountUp]="networkSummary.active_devices"></div>
               <div class="stat-label">Active</div>
             </mat-card>
           </div>
@@ -607,7 +650,9 @@ interface NetworkSummary {
                   <tr mat-row *matRowDef="let row; columns: netCols;"></tr>
                 </table>
               </div>
-              <p *ngIf="netDevices.length === 0" class="empty-state">No network devices registered.</p>
+              <tn-empty-state *ngIf="netDevices.length === 0" icon="router"
+                title="No network devices"
+                message="Add switches, routers and firewalls to inventory the range fabric." />
             </mat-card-content>
           </mat-card>
         </mat-tab>
@@ -618,17 +663,19 @@ interface NetworkSummary {
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     .header-left { display: flex; align-items: center; gap: 16px; }
     h1 { margin: 0; font-size: 24px; color: var(--text-primary); }
-    .subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
     .tab-icon { margin-right: 6px; font-size: 20px; width: 20px; height: 20px; }
     .tab-actions { display: flex; justify-content: flex-end; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
     .summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin: 16px 0; }
     .stat-card { background: var(--bg-card); border: 1px solid var(--border); padding: 16px; text-align: center; }
     .add-form-card { margin-bottom: 16px; background: var(--bg-card); border: 1px solid var(--accent); }
     .full-width { width: 100%; }
-    .status-online { color: #4caf50; }
-    .status-offline { color: #f44336; }
-    .primary-badge { color: #ffc107; font-size: 16px; width: 16px; height: 16px; vertical-align: middle; margin-left: 4px; }
-    .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .status-online { color: var(--success); }
+    .status-offline { color: var(--alert); }
+    .primary-badge { color: var(--warning); font-size: 16px; width: 16px; height: 16px; vertical-align: middle; margin-left: 4px; }
+    .cap-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+    .not-reported { color: var(--text-muted); font-style: italic; white-space: nowrap; }
+    .cap-gauge { display: inline-block; width: 72px; height: 6px; flex-shrink: 0; }
+    .cap-gauge .tn-gauge-fill { display: block; }
     .notice-card { margin: 16px 0; border: 1px solid var(--warning); background: color-mix(in srgb, var(--warning) 12%, var(--bg-card)); }
     .notice-content { display: flex; gap: 12px; align-items: flex-start; }
     .notice-content mat-icon { color: var(--warning); margin-top: 2px; }
@@ -652,10 +699,30 @@ export class InfrastructureComponent implements OnInit {
   newConn: {
     name: string; hypervisor_type: HypervisorConnection['hypervisor_type']; host: string;
     port: number; username: string; password: string; verify_ssl: boolean; is_primary: boolean;
-  } = {
-    name: '', hypervisor_type: 'proxmox', host: '', port: 8006,
-    username: '', password: '', verify_ssl: false, is_primary: false,
-  };
+  } = this.blankConnection();
+
+  /** vSphere is the range platform; Proxmox and Hyper-V remain for older sites. */
+  private blankConnection(): InfrastructureComponent['newConn'] {
+    return {
+      name: '', hypervisor_type: 'vsphere', host: '', port: DEFAULT_PORT.vsphere,
+      username: '', password: '', verify_ssl: false, is_primary: false,
+    };
+  }
+
+  /** Move the port with the type, unless someone already typed a non-default one. */
+  onTypeChange(): void {
+    if (Object.values(DEFAULT_PORT).includes(this.newConn.port)) {
+      this.newConn.port = DEFAULT_PORT[this.newConn.hypervisor_type];
+    }
+  }
+
+  usernameHint(): string {
+    switch (this.newConn.hypervisor_type) {
+      case 'vsphere': return 'svc-truenorth@vsphere.local';
+      case 'proxmox': return 'root@pam';
+      default: return 'DOMAIN\\svc-truenorth';
+    }
+  }
 
   /* ── Storage state ─────────────────────────────────────────── */
   appliances: StorageAppliance[] = [];
@@ -682,6 +749,12 @@ export class InfrastructureComponent implements OnInit {
   };
 
   constructor(private http: HttpClient, private snack: MatSnackBar) {}
+
+  /** Percent used, clamped to 0-100. Returns 0 when the total is missing or zero. */
+  usagePct(used: number | null, total: number | null): number {
+    if (!total || used === null || used === undefined) return 0;
+    return Math.min(100, Math.max(0, (used / total) * 100));
+  }
 
   ngOnInit(): void {
     this.loadConnections();
@@ -834,10 +907,7 @@ export class InfrastructureComponent implements OnInit {
   cancelConnectionEdit(): void {
     this.editingConnectionId = null;
     this.connectionSaving = false;
-    this.newConn = {
-      name: '', hypervisor_type: 'proxmox', host: '', port: 8006,
-      username: '', password: '', verify_ssl: false, is_primary: false,
-    };
+    this.newConn = this.blankConnection();
   }
 
   /* ── Storage helpers ───────────────────────────────────────── */

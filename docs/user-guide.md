@@ -26,13 +26,43 @@
 
 ### First Login
 
-1. Navigate to `https://your-truenorth-instance.com` in a modern browser (Chrome 120+, Firefox 120+, Edge 120+, Safari 17+)
-2. Click **Sign In** — you will be redirected to the Keycloak login page
-3. Enter the credentials provided by your administrator
-4. On first login, you may be prompted to:
-   - Change your temporary password
-   - Set up multi-factor authentication (if required by your organization)
-5. After authentication, you will be redirected to the TrueNorth Range dashboard
+TrueNorth does not issue you a password. You sign in with your **existing domain
+credentials** — the same username and password you use for everything else — and
+the range checks them against Active Directory.
+
+1. Navigate to `https://your-truenorth-instance.com` in a modern browser
+   (Chrome 120+, Firefox 120+, Edge 120+, Safari 17+)
+2. Click **Sign In** — you are redirected to the Keycloak login page
+3. Enter your **domain** credentials. If your organisation requires multi-factor
+   authentication, you are challenged for it here, as usual.
+4. What happens next depends on whether you already have a TrueNorth account:
+   - **You have one** — you land on the dashboard.
+   - **You do not** — you land on a short **access request** form instead. This
+     is expected on a first login and is not an error.
+
+### Requesting access
+
+Authenticating proves who you are. It does not, by itself, create an account —
+an instructor admits you.
+
+The form already knows your name, email and directory details, and those fields
+are read-only: they come from the directory, and editing them here would only
+put the two out of step. It asks for what the directory does not know — your
+rank, unit, callsign, nation, time zone, the qualification you are joining, and
+your cohort or serial number.
+
+Submit it and you are on a waiting screen that checks for you every 30 seconds.
+You can leave it open or sign out and come back. If your request is declined you
+will see the reason and can submit a new one.
+
+### Getting started once approved
+
+The first time you sign in with a live account you get three short steps:
+confirm the details you already gave, confirm the training path you have been
+enrolled on, and a quick tour of where things live. You will not be asked again.
+
+> Full detail, including the instructor's side of the approval queue, is in
+> [onboarding.md](onboarding.md).
 
 ### Understanding Your Role
 
@@ -50,9 +80,17 @@ Your role determines what you can see and do:
 | Acknowledge objectives | X | X | X | | |
 | Generate AARs | X | X | | | |
 | View AARs | X | X | X | X | |
+| Approve access requests | X | X | | | |
 | Manage users | X | | | | |
 | Manage tenants | X | | | | |
 | View audit logs | X | | | | |
+
+Your role is assigned when your access request is approved. Directory group
+membership *suggests* a role to the approver but does not set it — being in
+`TN-Platform-Admins` does not make you an administrator here.
+
+> The interface says **Trainee**; the underlying role value is `student`. They
+> are the same thing.
 
 ### Navigation
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -57,11 +57,20 @@ def _out(img: GoldenImage) -> GoldenImageOut:
     except json.JSONDecodeError:
         aliases = []
     return GoldenImageOut(
-        id=str(img.id), catalogue_id=img.catalogue_id, os_family=img.os_family,
-        version=img.version, role=img.role, hypervisor=img.hypervisor,
-        template_name=img.template_name, datastore=img.datastore, os_aliases=aliases,
-        sensor_baked=img.sensor_baked, enabled=img.enabled, build_status=img.build_status,
-        golden_gb=img.golden_gb, notes=img.notes,
+        id=str(img.id),
+        catalogue_id=img.catalogue_id,
+        os_family=img.os_family,
+        version=img.version,
+        role=img.role,
+        hypervisor=img.hypervisor,
+        template_name=img.template_name,
+        datastore=img.datastore,
+        os_aliases=aliases,
+        sensor_baked=img.sensor_baked,
+        enabled=img.enabled,
+        build_status=img.build_status,
+        golden_gb=img.golden_gb,
+        notes=img.notes,
     )
 
 
@@ -81,8 +90,7 @@ async def import_catalogue(
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail=f"catalogue must be UTF-8 CSV: {exc}") from exc
     try:
-        stats = golden_images.import_catalogue(db, csv_text, hypervisor=hypervisor,
-                                               tenant_id=user.tenant_id or None)
+        stats = golden_images.import_catalogue(db, csv_text, hypervisor=hypervisor, tenant_id=user.tenant_id or None)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         logger.exception("golden-image import failed")

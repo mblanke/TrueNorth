@@ -1,0 +1,50 @@
+# SQL LRS (Yet Analytics) on PostgreSQL for a local xAPI/cmi5 lab.
+# Based on the upstream demo compose (github.com/yetanalytics/lrsql/blob/main/docker-compose.yml),
+# with secrets moved to .env, localhost-only ports and a DB health check.
+# Lab use only: add TLS, pinned digests, backups and per-client credentials before any real data.
+name: xapi-lab
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lrsql_user
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+      POSTGRES_DB: lrsql_db
+    volumes:
+      - lrs_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lrsql_user -d lrsql_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  lrs:
+    image: yetanalytics/lrsql:latest   # pin a release tag or digest for anything beyond a lab
+    restart: unless-stopped
+    command: ["/lrsql/bin/run_postgres.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"          # xAPI at http://127.0.0.1:8080/xapi ; admin UI at http://127.0.0.1:8080/
+    environment:
+      LRSQL_API_KEY_DEFAULT: ${LRS_KEY:?set LRS_KEY in .env}
+      LRSQL_API_SECRET_DEFAULT: ${LRS_SECRET:?set LRS_SECRET in .env}
+      LRSQL_ADMIN_USER_DEFAULT: ${LRS_ADMIN_USER:-lrsadmin}
+      LRSQL_ADMIN_PASS_DEFAULT: ${LRS_ADMIN_PASS:?set LRS_ADMIN_PASS in .env}
+      LRSQL_DB_HOST: db
+      LRSQL_DB_PORT: 5432
+      LRSQL_DB_NAME: lrsql_db
+      LRSQL_DB_USER: lrsql_user
+      LRSQL_DB_PASSWORD: ${PG_PASSWORD}
+      LRSQL_POOL_INITIALIZATION_FAIL_TIMEOUT: 10000
+      # Accept both xAPI versions (default). Set strict mode to downgrade 2.0.0 statements for 1.0.3 readers.
+      LRSQL_SUPPORTED_VERSIONS: "1.0.3,2.0.0"
+      LRSQL_ENABLE_STRICT_VERSION: "false"
+      # CORS: explicit allowlist rather than allow-all.
+      LRSQL_ALLOW_ALL_ORIGINS: "false"
+      LRSQL_ALLOWED_ORIGINS: ${LRS_ALLOWED_ORIGINS:-http://127.0.0.1:8000}
+
+volumes:
+  lrs_pgdata:

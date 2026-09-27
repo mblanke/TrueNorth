@@ -13,9 +13,14 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import AuthZonePolicy
+from ..rbac import Permission, require_permission
 from ..schemas import AuthZonePolicyIn, AuthZonePolicyOut
 
-router = APIRouter(prefix="/auth-zones", tags=["Directory"])
+# Router-level authentication. Authentication zone policy — MFA requirements, clearance floors and IP
+# allow-lists. Changing these changes who can get in.
+#
+# Every route here was previously reachable with no credentials at all.
+router = APIRouter(prefix="/auth-zones", tags=["Directory"], dependencies=[Depends(require_permission(Permission.USER_UPDATE))])
 
 
 @router.get("", response_model=list[AuthZonePolicyOut])

@@ -136,27 +136,21 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
     async def _find_cluster(self, client: httpx.AsyncClient, dc_id: str) -> str:
         """Return the cluster ID for the configured cluster name."""
-        items = await self._api_get(
-            client, f"/vcenter/cluster?names={self._cluster}&datacenters={dc_id}"
-        )
+        items = await self._api_get(client, f"/vcenter/cluster?names={self._cluster}&datacenters={dc_id}")
         if not items:
             raise RuntimeError(f"Cluster not found: {self._cluster!r}")
         return items[0]["cluster"]
 
     async def _find_datastore(self, client: httpx.AsyncClient, dc_id: str) -> str:
         """Return the datastore MoRef ID for the configured datastore name."""
-        items = await self._api_get(
-            client, f"/vcenter/datastore?names={self._datastore}&datacenters={dc_id}"
-        )
+        items = await self._api_get(client, f"/vcenter/datastore?names={self._datastore}&datacenters={dc_id}")
         if not items:
             raise RuntimeError(f"Datastore not found: {self._datastore!r}")
         return items[0]["datastore"]
 
     async def _find_network(self, client: httpx.AsyncClient, dc_id: str) -> str:
         """Return the network MoRef ID for the configured network name."""
-        items = await self._api_get(
-            client, f"/vcenter/network?names={self._network}&datacenters={dc_id}"
-        )
+        items = await self._api_get(client, f"/vcenter/network?names={self._network}&datacenters={dc_id}")
         if not items:
             raise RuntimeError(f"Network not found: {self._network!r}")
         return items[0]["network"]
@@ -164,9 +158,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
     async def _find_library_item(self, client: httpx.AsyncClient, template_name: str) -> str:
         """Return the Content Library item ID for the given OVF template name."""
         # Find the library first
-        libs = await self._api_get(
-            client, f"/content/library?action=find&spec={{\"name\":\"{self._content_library}\"}}"
-        )
+        libs = await self._api_get(client, f'/content/library?action=find&spec={{"name":"{self._content_library}"}}')
         if not libs:
             raise RuntimeError(f"Content Library not found: {self._content_library!r}")
         lib_id = libs[0] if isinstance(libs, list) else libs
@@ -174,13 +166,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
         # Find the item within the library
         items = await self._api_post(
             client,
-            f"/content/library/item?action=find",
+            "/content/library/item?action=find",
             json={"name": template_name, "library_id": lib_id},
         )
         if not items:
-            raise RuntimeError(
-                f"Template {template_name!r} not found in library {self._content_library!r}"
-            )
+            raise RuntimeError(f"Template {template_name!r} not found in library {self._content_library!r}")
         return items[0] if isinstance(items, list) else items
 
     # ------------------------------------------------------------------ #
@@ -298,9 +288,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 ds_id = await self._find_datastore(client, dc_id)
 
                 # vSphere resource pool is derived from cluster
-                rp_items = await self._api_get(
-                    client, f"/vcenter/resource-pool?clusters={cluster_id}"
-                )
+                rp_items = await self._api_get(client, f"/vcenter/resource-pool?clusters={cluster_id}")
                 rp_id = rp_items[0]["resource_pool"] if rp_items else None
 
                 # VM folder (datacenter root)
@@ -317,8 +305,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     vm_name = f"{range_id}-{vm_def['name']}"
                     tasks.append(
                         self._provision_one_vm(
-                            client, vm_def, vm_name, template_name,
-                            folder_id, rp_id, ds_id,
+                            client,
+                            vm_def,
+                            vm_name,
+                            template_name,
+                            folder_id,
+                            rp_id,
+                            ds_id,
                         )
                     )
 
@@ -357,9 +350,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         ds_id: str,
     ) -> dict:
         library_item_id = await self._find_library_item(client, template_name)
-        vm_id = await self._deploy_ovf(
-            client, library_item_id, vm_name, folder_id, rp_id, ds_id
-        )
+        vm_id = await self._deploy_ovf(client, library_item_id, vm_name, folder_id, rp_id, ds_id)
 
         # Resize hardware to match vm_def
         hw_update: dict = {}
@@ -425,10 +416,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         try:
             session = await self._get_session()
             async with self._client(session) as client:
-                tasks = [
-                    self._power_action(client, vm["vm_id"], "stop")
-                    for vm in vms if vm.get("vm_id")
-                ]
+                tasks = [self._power_action(client, vm["vm_id"], "stop") for vm in vms if vm.get("vm_id")]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for vm, res in zip(vms, results):
                     if isinstance(res, Exception):
@@ -455,10 +443,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         try:
             session = await self._get_session()
             async with self._client(session) as client:
-                tasks = [
-                    self._power_action(client, vm["vm_id"], "start")
-                    for vm in vms if vm.get("vm_id")
-                ]
+                tasks = [self._power_action(client, vm["vm_id"], "start") for vm in vms if vm.get("vm_id")]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for vm, res in zip(vms, results):
                     if isinstance(res, Exception):
@@ -486,10 +471,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         try:
             session = await self._get_session()
             async with self._client(session) as client:
-                tasks = [
-                    self._create_snapshot(client, vm["vm_id"], name)
-                    for vm in vms if vm.get("vm_id")
-                ]
+                tasks = [self._create_snapshot(client, vm["vm_id"], name) for vm in vms if vm.get("vm_id")]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for vm, res in zip(vms, results):
                     if isinstance(res, Exception):

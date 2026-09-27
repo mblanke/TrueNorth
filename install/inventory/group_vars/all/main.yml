@@ -1,0 +1,122 @@
+---
+# TrueNorth Range — installer variables (non-secret).
+#
+# Secrets live in inventory/group_vars/all/vault.yml, encrypted with
+# ansible-vault. See vault.yml.example for the required keys.
+
+# ── Where the application comes from ──────────────────────────────────
+# THIS IS THE BLOCKER RECORDED THROUGHOUT THE DEPLOYMENT REPO
+# ("TrueNorth app Git URL — required at M4 install"). Now answered.
+tn_app_source_mode: git # git | local | tarball
+tn_app_git_repo: "https://git.guapo613.beer/soadmin/truenorth.git"
+# Pin a tag or commit SHA. A bare branch name makes re-runs non-deterministic:
+# the same playbook would deploy different code on different days.
+tn_app_git_version: "main"
+tn_app_local_path: "" # air-gapped: rsync a checkout from the control node
+tn_app_tarball: "" # air-gapped: a release archive
+
+# ── Paths on the platform host ────────────────────────────────────────
+tn_data_root: /srv/truenorth
+tn_app_dir: "{{ tn_data_root }}/app"
+tn_config_dir: "{{ tn_data_root }}/config"
+tn_tls_dir: "{{ tn_data_root }}/tls"
+tn_state_dir: "{{ tn_data_root }}/state"
+# The env file lives OUTSIDE the checkout on purpose:
+# infra/platform/docker/.env.production was a git-tracked path, so rendering
+# real secrets there would commit them on the next `git add -A`.
+tn_env_file: "{{ tn_config_dir }}/.env.production"
+tn_compose_file: "{{ tn_app_dir }}/infra/platform/docker/compose.prod.yml"
+
+# ── Identity: Active Directory on TN-DC01 ─────────────────────────────
+tn_domain: corp.tnrange.lab
+tn_dc_host: tn-dc01.corp.tnrange.lab
+tn_ldap_port: 636
+tn_ldap_base_dn: "DC=corp,DC=tnrange,DC=lab"
+tn_ldap_users_dn: "OU=Users,OU=TrueNorth,DC=corp,DC=tnrange,DC=lab"
+tn_ldap_groups_dn: "OU=Groups,OU=TrueNorth,DC=corp,DC=tnrange,DC=lab"
+tn_ldap_bind_dn: "CN=TrueNorth Keycloak Bind,OU=ServiceAccounts,OU=TrueNorth,DC=corp,DC=tnrange,DC=lab"
+tn_files_dir: "{{ inventory_dir }}/../files"
+# Copied from the deployment repo's certs/. Anchored on inventory_dir because
+# Ansible resolves a bare `files/` against the PLAYBOOK directory, which here
+# is install/playbooks/, not install/.
+tn_root_ca_file: "{{ tn_files_dir }}/corp-root-ca.cer"
+
+# The service hostname the platform is reached on.
+tn_domain_fqdn: tn-mgmt01.corp.tnrange.lab
+
+# ── Keycloak ──────────────────────────────────────────────────────────
+tn_keycloak_realm: truenorth
+tn_keycloak_base: "https://{{ tn_domain_fqdn }}/auth"
+tn_keycloak_web_client: truenorth-web
+tn_keycloak_api_client: truenorth-api
+# AD security groups. These are the groups the Keycloak group mapper exposes as
+# the `groups` claim, which registration reads to suggest a role.
+tn_ad_groups:
+  - TN-Platform-Admins
+  - TN-Range-Operators
+  - TN-Instructors
+  - TN-Content-Authors
+  - TN-Students
+  - TN-Observers
+
+# ── Registration / onboarding policy ──────────────────────────────────
+tn_registration_allowed_groups: "{{ tn_ad_groups | join(',') }}"
+tn_registration_group_role_map:
+  TN-Platform-Admins: admin
+  TN-Range-Operators: range_ops
+  TN-Instructors: instructor
+  TN-Content-Authors: instructor
+  TN-Students: student
+  TN-Observers: observer
+tn_tenant_name: "TrueNorth Range"
+tn_tenant_slug: default
+# Developmental progression a newly approved trainee is enrolled on (DP1 -> DP2).
+tn_default_progression: DP1
+# The named AD account that becomes the first admin. Without this nobody can
+# drain the approval queue and the install completes into a dead end.
+tn_bootstrap_admin_upn: ""
+
+# ── vSphere ───────────────────────────────────────────────────────────
+# NOTE: vsphere_api, NOT "vsphere" — the registry keys in
+# worker/provisioners/__init__.py are mock | proxmox_api | vsphere_api |
+# hyperv | terraform | terraform_{proxmox,vsphere,hyperv}.
+tn_provisioner_backend: vsphere_api
+tn_vcenter_host: 192.168.1.10
+tn_vcenter_user: "svc-truenorth@vsphere.local"
+tn_vsphere_datacenter: DC-Lab
+tn_vsphere_cluster: CL-Lab
+tn_vsphere_datastore: esx04-local
+tn_vsphere_network: dPG-TN-MGMT
+tn_vsphere_verify_ssl: false
+# Report rather than fail when the provisioning role is unassigned — see
+# roles/tn_vsphere. Flip to true once the role has been granted.
+tn_fail_on_missing_vsphere_privs: false
+
+# ── AI ────────────────────────────────────────────────────────────────
+tn_ai_base_url: "http://133.1.14.240:4000/v1"
+
+# ── TLS ───────────────────────────────────────────────────────────────
+# provided  — you issue the cert from AD CS out of band and drop the pair in
+#             install/files/tls/ as truenorth.crt / truenorth.key
+# selfsigned — generated here; fine for lab bring-up, not for a real cohort
+#
+# There is deliberately no `adcs` mode: nothing on TN-DC01 today (no WinRM
+# listener, no CES/CEP web enrolment) lets Ansible drive certreq. Claiming
+# otherwise would be a mode that never works.
+tn_tls_mode: provided
+
+# ── Preflight thresholds ──────────────────────────────────────────────
+tn_min_free_gb: 200
+tn_min_docker_version: "24.0.0"
+tn_min_compose_version: "2.20.0"
+
+# ── Behaviour switches ────────────────────────────────────────────────
+# Demo content ("ACME Corp", "Wayne Enterprises") has no place in a range that
+# will hold CAF curriculum. Opt in deliberately.
+tn_seed_demo_data: false
+# `alembic stamp` papers over a schema that was created by create_all() instead
+# of by migrations. Never do it silently.
+tn_allow_alembic_stamp: false
+# Assert discovery results in 99-validate. False on a first install, when
+# nothing has been discovered yet.
+tn_expect_discovered: false

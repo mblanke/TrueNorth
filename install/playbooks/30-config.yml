@@ -1,0 +1,10 @@
+---
+# Render .env.production and the backup environment. Generates secrets once.
+#
+# Re-runnable on its own:  ansible-playbook playbooks/30-config.yml
+- name: "Render .env.production and the backup environment. Generates secrets once."
+  hosts: platform
+  gather_facts: true
+  roles:
+    - role: tn_config
+      tags: [config]
