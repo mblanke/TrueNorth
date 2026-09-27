@@ -48,8 +48,12 @@ async def lifespan(app: FastAPI):
     ``/admin/startup`` in production bootstrap scripts.
     """
     logger.info("Starting TrueNorth Range API v%s", APP_VERSION)
-    Base.metadata.create_all(bind=engine)
-    _seed_dev_data()
+    # Production sets both false (compose.prod.yml, the installer): Alembic owns the
+    # schema there, and the hardcoded dev admin must not exist. Until 2026-09-27
+    # neither flag was read, so both ran in production regardless of the setting.
+    if _env_flag("DB_AUTO_CREATE"):
+        Base.metadata.create_all(bind=engine)
+    _seed_dev_data(dev_account=_env_flag("SEED_DEV_DATA"))
 
     yield
 
@@ -65,15 +69,25 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down TrueNorth Range API")
 
 
-def _seed_dev_data() -> None:
-    """Seed development data if DB is empty."""
+def _env_flag(name: str) -> bool:
+    """On unless set to a false-ish value, so development keeps its defaults."""
+    return os.getenv(name, "true").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _seed_dev_data(dev_account: bool = True) -> None:
+    """Seed reference data, and with ``dev_account`` the dev tenant and admin if DB is empty.
+
+    The reference seeders run either way; the installer relies on them. Only the
+    hardcoded admin@truenorth.local is development-only: in production the first
+    administrator comes from app.bootstrap_admin.
+    """
     from .db import SessionLocal
 
     db = SessionLocal()
     try:
         # Use deterministic UUIDs that match the AUTH_DISABLED dev stub in auth.py
         _dev_uuid = "00000000-0000-0000-0000-000000000001"
-        if db.query(Tenant).count() == 0:
+        if dev_account and db.query(Tenant).count() == 0:
             tenant = Tenant(id=_dev_uuid, name="Default Org", slug="default")
             db.add(tenant)
             db.flush()

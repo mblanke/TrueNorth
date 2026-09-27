@@ -8,7 +8,6 @@ network devices are registered once they actually exist and are reachable.
 from __future__ import annotations
 
 import logging
-import uuid
 
 from sqlalchemy.orm import Session
 
@@ -179,16 +178,15 @@ def seed_infrastructure(db: Session) -> None:
     """Insert Proxmox connections plus storage + network if missing. Tenant-scoped."""
     seeded_any = False
 
-    # Resolve tenant (create default dev tenant if none exist)
+    # Resolve tenant. With none there is nothing to backfill onto. This used to mint
+    # a "Dev Tenant" instead, which in development never happened (the dev seed
+    # makes that same tenant first) and in production put a stray tenant beside
+    # the one app.bootstrap_admin creates.
     tenant_row = db.query(Tenant.id).first()
-    if tenant_row:
-        tenant_id = tenant_row[0]
-    else:
-        tenant_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
-        tenant = Tenant(id=tenant_id, name="Dev Tenant", slug="dev", is_active=True)
-        db.add(tenant)
-        db.commit()
-        logger.info("Created default dev tenant %s", tenant_id)
+    if not tenant_row:
+        logger.info("Infrastructure seed skipped (no tenant yet)")
+        return
+    tenant_id = tenant_row[0]
 
     # Backfill tenant_id on any existing infra rows
     updated = (
