@@ -357,6 +357,10 @@ services:
 
   # -- Scenario Engine ---------------------------------------------------
   scenario-engine:
+    # This image is a one-shot CLI runner that requires a scenario path; it is
+    # not a daemon. Keep it available for `docker compose run` without leaving
+    # a misleading exited container in every normal development deployment.
+    profiles: [tools]
     build:
       context: ../../../scenario-engine
       dockerfile: Dockerfile
@@ -396,13 +400,14 @@ services:
   nginx:
     build:
       context: ../../../infra/platform/nginx
-      dockerfile: Dockerfile
+      # Development gets a generated localhost certificate baked into the image.
+      # Production keeps using Dockerfile plus its required external certificate
+      # mount, so a missing production certificate still fails closed.
+      dockerfile: Dockerfile.dev
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       api:
         condition: service_started

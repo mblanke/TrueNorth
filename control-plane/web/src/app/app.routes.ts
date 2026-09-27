@@ -135,6 +135,7 @@ export const routes: Routes = [
         { label: 'My progress', path: 'progress' },
         { label: 'Competency', path: 'competency' },
         { label: 'Curriculum', path: 'curriculum' },
+        { label: 'LMS & readiness previews', path: 'previews' },
         { label: 'Admin', path: 'admin', instructorOnly: true },
       ],
     },
@@ -142,6 +143,12 @@ export const routes: Routes = [
       { path: '', redirectTo: 'career-path', pathMatch: 'full' },
       // Old name for the career path; redirects keep ?qual= deep links working.
       { path: 'qualifications', redirectTo: 'career-path', pathMatch: 'full' },
+      {
+        path: 'previews',
+        loadComponent: () =>
+          import('./features/learning-preview/learning-preview.component').then(m => m.LearningPreviewComponent),
+        title: 'LMS & readiness previews - TrueNorth',
+      },
       {
         path: 'career-path',
         loadComponent: () =>
@@ -283,6 +290,13 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/exercise-detail/exercise-detail.component').then(m => m.ExerciseDetailComponent),
     title: 'Exercise - TrueNorth Range',
+  },
+  {
+    path: 'ops-center/select',
+    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    loadComponent: () =>
+      import('./features/ops-center/exercise-selector.component').then(m => m.ExerciseSelectorComponent),
+    title: 'Select an exercise - TrueNorth',
   },
   {
     path: 'ops-center/:exerciseId',

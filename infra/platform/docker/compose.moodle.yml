@@ -7,10 +7,10 @@
 # Moodle UI: http://localhost:8083  (admin / TrueNorth-Moodle1)
 #
 # LTI wiring (Site administration -> Plugins -> External tool -> Manage tools):
-#   Tool URL:            http://host.docker.internal:8980/api/lti/launch
-#   Initiate login URL:  http://host.docker.internal:8980/api/lti/login
-#   JWKS URL:            http://host.docker.internal:8980/api/lti/jwks
-#   Deep linking URL:    http://host.docker.internal:8980/api/lti/launch
+#   Tool URL:            http://host.docker.internal:8081/lti/launch
+#   Initiate login URL:  http://host.docker.internal:8081/lti/login
+#   JWKS URL:            http://host.docker.internal:8081/lti/jwks
+#   Deep linking URL:    http://host.docker.internal:8081/lti/launch
 # Then register Moodle in TrueNorth (POST /api/integrations/platforms) with
 # the issuer/client/deployment values Moodle shows after activation, plus:
 #   lti_auth_login_url:  http://localhost:8083/mod/lti/auth.php
@@ -18,43 +18,45 @@
 #   lti_jwks_url:        http://localhost:8083/mod/lti/certs.php
 services:
   moodle-db:
-    image: mariadb:11
+    image: postgres:16
     environment:
-      MARIADB_ROOT_PASSWORD: moodleroot
-      MARIADB_DATABASE: moodle
-      MARIADB_USER: moodle
-      MARIADB_PASSWORD: moodle
+      POSTGRES_DB: moodle
+      POSTGRES_USER: moodle
+      POSTGRES_PASSWORD: moodle
     volumes:
-      - moodle-db-data:/var/lib/mysql
+      - moodle-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      test: ["CMD-SHELL", "pg_isready -U moodle -d moodle"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   moodle:
-    image: bitnami/moodle:4.4
+    # Maintained, multi-architecture Moodle image. Bitnami removed its versioned
+    # community images in 2025, making the former bitnami/moodle:4.4 reference
+    # impossible to pull on a clean machine.
+    image: ghcr.io/erseco/alpine-moodle:v5.2.3
     depends_on:
       moodle-db:
         condition: service_healthy
     environment:
-      MOODLE_DATABASE_TYPE: mariadb
-      MOODLE_DATABASE_HOST: moodle-db
-      MOODLE_DATABASE_PORT_NUMBER: "3306"
-      MOODLE_DATABASE_NAME: moodle
-      MOODLE_DATABASE_USER: moodle
-      MOODLE_DATABASE_PASSWORD: moodle
+      DB_TYPE: pgsql
+      DB_HOST: moodle-db
+      DB_PORT: "5432"
+      DB_NAME: moodle
+      DB_USER: moodle
+      DB_PASS: moodle
       MOODLE_USERNAME: admin
       MOODLE_PASSWORD: TrueNorth-Moodle1
-      MOODLE_SITE_NAME: TrueNorth LTI Test
-      MOODLE_HOST: localhost:8083
-      MOODLE_ENABLE_EMPTY_PASSWORD: "no"
-      PHP_UPLOAD_MAX_FILESIZE: 64M
+      # The image's CLI bootstrap expands this value as one shell argument.
+      MOODLE_SITENAME: TrueNorth_LTI_Test
+      SITE_URL: http://localhost:8083
     ports:
       - "8083:8080"
     volumes:
-      - moodle-data:/bitnami/moodle
-      - moodle-moodledata:/bitnami/moodledata
+      - moodle-data:/var/www/html
+      - moodle-moodledata:/var/www/moodledata
+      - ../nginx/moodle-public-port.sh:/docker-entrypoint-init.d/99-public-port.sh:ro
 
 volumes:
   moodle-db-data:

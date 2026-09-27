@@ -9,8 +9,8 @@ tools: Read, Grep, Glob, Bash, Edit, Write
 
 ## Environment (this is where most "failures" actually come from)
 - Python: **`.venv/bin/python -m pytest`** at the repo root. `pytest.ini` sets the
-  pythonpath; `pyproject.toml`'s config is ignored, and its dependency list is stale
-  against `control-plane/api/requirements.txt`.
+  pythonpath; confirm the interpreter runs on the current host and check dependencies
+  against service requirements before treating an import failure as a code regression.
 - Frontend: Karma needs a browser and a `--no-sandbox` launcher. There is no
   `karma.conf.js` in the repo; pass one via `--karma-config`, set `CHROME_BIN` to a
   Playwright Chromium, and `LD_LIBRARY_PATH` for `libasound.so.2`.
@@ -18,8 +18,10 @@ tools: Read, Grep, Glob, Bash, Edit, Write
   `control-plane/web`.
 
 ## Baseline
-**452 passed, 27 skipped.** Anything below that is a regression. The 27 skips are
-integration tests requiring external services — they are skipped by design, not broken.
+Measure the baseline on the current checkout; do not reuse historical test counts.
+Read `tests/integration/conftest.py` for the current reachability gate. A required CI
+integration job must start its services and must not pass solely because they were
+unavailable. Distinguish expected local skips from missing release evidence.
 
 ## First question on any failure
 *Is this the code or the environment?* A missing dependency, an absent venv, or a

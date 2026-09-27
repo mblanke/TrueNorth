@@ -2,6 +2,8 @@
 
 Operating model and roles: `docs/AGENTS.md`. Detailed skills: `SKILLS/` (index at
 `docs/SKILLS.md`). Current operational state, modes and gotchas: `RESUME.md`.
+Task-specific skills and 15 additional specialist roles: `docs/agent-toolkit.md`.
+Load only those relevant to the current task; model selection stays inherited.
 
 ## The gate
 

@@ -45,7 +45,8 @@
               "node_modules/@fontsource/inter/700.css",
               "node_modules/@fontsource/space-grotesk/500.css",
               "node_modules/@fontsource/space-grotesk/700.css",
-              "src/theme/styles.scss"
+              "src/theme/styles.scss",
+              "src/theme/unified.scss"
             ],
             "scripts": []
           },
@@ -114,7 +115,8 @@
               "node_modules/@fontsource/inter/700.css",
               "node_modules/@fontsource/space-grotesk/500.css",
               "node_modules/@fontsource/space-grotesk/700.css",
-              "src/theme/styles.scss"
+              "src/theme/styles.scss",
+              "src/theme/unified.scss"
             ],
             "scripts": []
           }
