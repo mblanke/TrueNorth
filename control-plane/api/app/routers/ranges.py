@@ -31,12 +31,23 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile, status
 from fastapi.responses import Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import object_store
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models import Exercise, ExerciseState, Range, RangeDocument, RangeSnapshot, RangeState, Template
+from ..models import (
+    EventState,
+    Exercise,
+    ExerciseState,
+    Range,
+    RangeDocument,
+    RangeSnapshot,
+    RangeState,
+    ScheduledEvent,
+    Template,
+)
 from ..rbac import Permission, require_permission
 from ..schemas import (
     BatchProvisionIn,
@@ -97,6 +108,18 @@ def _tenant_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
 
 # Snapshot states in which a worker task still owns the row.
 _SNAPSHOT_BUSY = ("creating", "restoring")
+
+# A range's record may go only once nothing still needs it:
+#  - its VMs are gone, because it was never provisioned or has been destroyed.
+#    Deleting the row of a live (or failed) range loses the only handle on VMs that
+#    keep running on the hypervisor; /destroy works from `failed` too;
+#  - no exercise ran on it. Exercises are training records (scores, AARs), and they
+#    keep their range, so a range that hosted one stays as part of that history;
+#  - no draft, scheduled or active event still reserves it.
+# Snapshot rows go with it: on a destroyed range their hypervisor copies went with
+# the VMs. So do its documents, rows and stored bytes.
+_DELETABLE_RANGE_STATES = (RangeState.created, RangeState.destroyed)
+_RESERVING_EVENT_STATES = (EventState.draft, EventState.scheduled, EventState.active)
 
 
 def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
@@ -214,10 +237,46 @@ def delete_range(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_DELETE)),
 ):
-    """Delete a range record.  **Permission: range:delete**"""
+    """Delete a range record.  **Permission: range:delete**
+
+    409, with the reason, while something still depends on the range (see
+    `_DELETABLE_RANGE_STATES`). This used to let the database refuse instead, so a
+    range with an exercise or a scheduled event came back as a 500.
+    """
     rng = _tenant_range(db, range_id, user)
+    if rng.state not in _DELETABLE_RANGE_STATES:
+        raise HTTPException(
+            409, f"Range is {rng.state.value}; destroy it first so its VMs are torn down, then delete it"
+        )
+    # tenant-safe: rng came from _tenant_range(), so what references it is the caller's.
+    exercises = db.query(Exercise.id).filter(Exercise.range_id == range_id).count()
+    if exercises:
+        raise HTTPException(409, f"Range has {exercises} exercise(s) on record and is kept as part of their history")
+    # tenant-safe: as above.
+    events = db.query(ScheduledEvent.id).filter(
+        ScheduledEvent.range_id == range_id, ScheduledEvent.state.in_(_RESERVING_EVENT_STATES)
+    )
+    if reserved := events.count():
+        raise HTTPException(409, f"Range is reserved by {reserved} scheduled event(s); cancel them first")
+    # Completed and cancelled events are history: they keep their row, without the range.
+    db.query(ScheduledEvent).filter(ScheduledEvent.range_id == range_id).update(
+        {ScheduledEvent.range_id: None}, synchronize_session=False
+    )
+
+    # Snapshots and documents cascade with the range (Range.snapshots/.documents).
+    # The documents' stored bytes do not, so note them for removal after the commit.
+    stored = [doc.minio_key for doc in rng.documents if doc.minio_key]
     db.delete(rng)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # A reference added after this was written; still not a 500.
+        logger.exception("Range %s is referenced by a table delete_range does not handle", range_id)
+        raise HTTPException(409, "Range is still referenced by other records and cannot be deleted") from None
+    for key in stored:
+        with contextlib.suppress(Exception):
+            object_store.delete_object(key, bucket=RANGE_BUCKET)
     _audit(db, user, "delete", "range", str(range_id))
     db.commit()
 
