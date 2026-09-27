@@ -151,6 +151,25 @@ describe('ApiService', () => {
     req.flush({ id: 'r1', state: 'destroying' });
   });
 
+  // ── Designer topology ──────────────────────────────────────────────
+  it('saveRangeTopology() should POST the diagram to /ranges/{id}/topology', () => {
+    const diagram = { cells: [{ id: 'n1' }] };
+    service.saveRangeTopology('r1', diagram).subscribe(res => expect(res.node_count).toBe(1));
+    const req = httpMock.expectOne(`${base}/ranges/r1/topology`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ diagram_json: diagram });
+    req.flush({ range_id: 'r1', template_id: 't1', created: true, node_count: 1, vlan_count: 1, warnings: [], template: {} });
+  });
+
+  it('templateFromDiagram() should POST the diagram and name to /templates/from-diagram', () => {
+    const diagram = { cells: [] };
+    service.templateFromDiagram(diagram, 'Lab').subscribe();
+    const req = httpMock.expectOne(`${base}/templates/from-diagram`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ diagram_json: diagram, name: 'Lab' });
+    req.flush({ template: {}, yaml: '', warnings: [] });
+  });
+
   // ── Templates ──────────────────────────────────────────────────────
   it('listTemplates() should make GET /api/templates with params', () => {
     service.listTemplates(10, 5).subscribe();

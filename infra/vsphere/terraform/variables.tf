@@ -74,7 +74,7 @@ variable "folder" {
 variable "template_name" {
   description = "vSphere VM template to clone from (must exist in the datacenter)"
   type        = string
-  default     = "ubuntu-2204-cloud"
+  default     = "ubuntu-2404-cloud"
 }
 
 variable "vm_definitions" {

@@ -64,8 +64,9 @@ interface OsOption {
  * catalogue still produces YAML the provisioner understands.
  */
 const FALLBACK_OS_OPTIONS: OsOption[] = [
-  { value: 'ubuntu-22.04', label: 'Ubuntu 22.04' },
   { value: 'ubuntu-24.04', label: 'Ubuntu 24.04' },
+  // Deprecated: kept so designs saved with it still show their OS. Resolves to 24.04.
+  { value: 'ubuntu-22.04', label: 'Ubuntu 22.04 (deprecated → 24.04)' },
   { value: 'windows-server-2022', label: 'Windows Server 2022' },
   { value: 'windows-11', label: 'Windows 11' },
   { value: 'kali-2024', label: 'Kali Linux 2024' },
@@ -342,12 +343,21 @@ export class TextPromptDialogComponent {
               <span class="dirty-dot"></span>
             }
           </button>
+          <button mat-flat-button color="primary" (click)="saveTopology()" [disabled]="!rangeId() || savingTopology()"
+                  matTooltip="Make this diagram the topology the range provisions (VMs, OS, specs, VLANs)">
+            <mat-icon>account_tree</mat-icon> Save topology
+          </button>
           <button mat-stroked-button [routerLink]="['/topology-3d']" [queryParams]="{ range: rangeId() }"
                   [disabled]="!rangeId()" matTooltip="View the saved diagram in 3D">
             <mat-icon>3d_rotation</mat-icon> View in 3D
           </button>
-          <button mat-stroked-button (click)="exportYaml()">
+          <button mat-stroked-button (click)="exportTopology('yaml')"
+                  matTooltip="Download the provisionable template as YAML">
             <mat-icon>download</mat-icon> Export YAML
+          </button>
+          <button mat-stroked-button (click)="exportTopology('json')"
+                  matTooltip="Download the provisionable template as JSON">
+            <mat-icon>data_object</mat-icon> Export JSON
           </button>
           <button mat-stroked-button (click)="importYaml()">
             <mat-icon>upload</mat-icon> Import YAML
@@ -871,6 +881,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
 
   /* OS picker — replaced at runtime by the golden-image catalogue if present */
   osOptions = signal<OsOption[]>(FALLBACK_OS_OPTIONS);
+  savingTopology = signal(false);
 
   /* Range / template picker overlay */
   showPicker = signal(false);
@@ -902,7 +913,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     { type: 'workstation', label: 'Workstation', icon: 'computer', category: 'compute',
       defaults: { os_template: 'windows-11', vcpu: '2', ram_mb: '4096', disk_gb: '60' } },
     { type: 'server', label: 'Server', icon: 'dns', category: 'compute',
-      defaults: { os_template: 'ubuntu-22.04', vcpu: '4', ram_mb: '8192', disk_gb: '100' } },
+      defaults: { os_template: 'ubuntu-24.04', vcpu: '4', ram_mb: '8192', disk_gb: '100' } },
     { type: 'dc', label: 'Domain Controller', icon: 'domain', category: 'compute',
       defaults: { os_template: 'windows-server-2022', vcpu: '4', ram_mb: '8192', disk_gb: '120' } },
     { type: 'kali', label: 'Kali Attacker', icon: 'bug_report', category: 'compute',
@@ -1740,70 +1751,63 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  /* --- YAML Export --- */
-  exportYaml(): void {
-    const elements = this.graph.getElements();
-    const links = this.graph.getLinks();
-    const lines: string[] = [
-      '# TrueNorth Range Template - exported from Range Designer',
-      '# Generated: ' + new Date().toISOString(),
-      'id: range-design-export',
-      'name: "Range Design Export"',
-      'version: "1.0"',
-      '',
-      'nodes:',
-    ];
-    for (const el of elements) {
-      const data = el.prop('nodeData') || {};
-      const nodeType = el.prop('nodeType') || 'unknown';
-      const pos = el.position();
-      lines.push('  - id: ' + el.id);
-      lines.push('    type: ' + nodeType);
-      lines.push('    label: "' + (data.label || '') + '"');
-      lines.push('    position: { x: ' + pos.x + ', y: ' + pos.y + ' }');
-      if (data.hostname) lines.push('    hostname: "' + data.hostname + '"');
-      if (data.ip) lines.push('    ip: "' + data.ip + '"');
-      if (data.os_template) lines.push('    os_template: ' + data.os_template);
-      if (data.vcpu) lines.push('    vcpu: ' + data.vcpu);
-      if (data.ram_mb) lines.push('    ram_mb: ' + data.ram_mb);
-      if (data.disk_gb) lines.push('    disk_gb: ' + data.disk_gb);
-      if (data.vlan) lines.push('    vlan: ' + data.vlan);
-      if (data.services) {
-        const svcs = data.services.split(',').filter((s: string) => s);
-        if (svcs.length > 0) {
-          lines.push('    services:');
-          for (const s of svcs) {
-            lines.push('      - ' + s);
-          }
-        }
-      }
-      if (data.cidr) lines.push('    cidr: "' + data.cidr + '"');
-      lines.push('');
-    }
-    if (links.length > 0) {
-      lines.push('links:');
-      for (const link of links) {
-        const src = link.source();
-        const tgt = link.target();
-        if (src.id && tgt.id) {
-          lines.push('  - source: ' + src.id);
-          lines.push('    target: ' + tgt.id);
-          if (src.port) lines.push('    source_port: ' + src.port);
-          if (tgt.port) lines.push('    target_port: ' + tgt.port);
-          lines.push('');
-        }
-      }
-    }
+  /* --- Topology: save to range / export --- */
 
-    const yaml = lines.join('\n');
-    const blob = new Blob([yaml], { type: 'text/yaml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'range-design.yaml';
-    a.click();
-    URL.revokeObjectURL(url);
-    this.snack.open('YAML exported', '', { duration: 2000, panelClass: 'snack-success' });
+  /**
+   * Make this diagram what the range provisions. The server converts it to a
+   * template the worker renders (VMs, OS, specs, VLANs from zones), owned by this
+   * range, and points the range at it. Refused (409) once the range has VMs.
+   */
+  saveTopology(): void {
+    const id = this.rangeId();
+    if (!id) {
+      this.snack.open('Open or create a range to save its topology', '', { duration: 3000 });
+      return;
+    }
+    this.savingTopology.set(true);
+    this.api.saveRangeTopology(id, this.graph.toJSON()).subscribe({
+      next: (res) => {
+        this.savingTopology.set(false);
+        this.dirty.set(false);
+        this.cdr.detectChanges();
+        const warn = res.warnings.length ? ` \u2014 ${res.warnings.length} warning(s): ${res.warnings[0]}` : '';
+        this.snack.open(
+          `Topology saved: ${res.node_count} VM(s) across ${res.vlan_count} VLAN(s)${warn}`,
+          res.warnings.length ? 'Dismiss' : '',
+          { duration: res.warnings.length ? 8000 : 3000, panelClass: res.warnings.length ? '' : 'snack-success' },
+        );
+      },
+      error: (err) => {
+        this.savingTopology.set(false);
+        const detail = err?.error?.detail;
+        const msg = typeof detail === 'string' ? detail : detail?.message || 'Could not save the topology';
+        this.snack.open(msg, 'Dismiss', { duration: 5000, panelClass: 'snack-error' });
+      },
+    });
+  }
+
+  /**
+   * Download the diagram as the template Save topology would provision. The server
+   * does the conversion so the file and the provisioned range can never disagree.
+   */
+  exportTopology(format: 'yaml' | 'json'): void {
+    this.api.templateFromDiagram(this.graph.toJSON()).subscribe({
+      next: (res) => {
+        const body = format === 'json' ? JSON.stringify(res.template, null, 2) + '\n' : res.yaml;
+        const blob = new Blob([body], { type: format === 'json' ? 'application/json' : 'text/yaml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'range-design.' + format;
+        a.click();
+        URL.revokeObjectURL(url);
+        const warn = res.warnings.length ? ` (${res.warnings.length} warning(s): ${res.warnings[0]})` : '';
+        this.snack.open(format.toUpperCase() + ' exported' + warn, '', { duration: warn ? 6000 : 2000 });
+      },
+      error: (err) => this.snack.open(
+        err?.error?.detail || 'Export failed', 'Dismiss', { duration: 4000, panelClass: 'snack-error' },
+      ),
+    });
   }
 
   importYaml(): void {
@@ -1916,7 +1920,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
 
       /* Determine node type and OS template */
       let nodeType = 'server';
-      let osTemplate = 'ubuntu-22.04';
+      let osTemplate = 'ubuntu-24.04';
       const label = hostname || ip || 'Host ' + (idx + 1);
       const detectedServices: string[] = [];
 
@@ -1947,7 +1951,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
           osTemplate = 'rocky-9';
         } else {
           nodeType = 'server';
-          osTemplate = 'ubuntu-22.04';
+          osTemplate = 'ubuntu-24.04';
         }
       } else if (osName.includes('pfsense') || osName.includes('freebsd')) {
         nodeType = 'firewall';
@@ -1970,7 +1974,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
           osTemplate = 'windows-server-2022';
         } else if (hasLinuxSvc) {
           nodeType = 'server';
-          osTemplate = 'ubuntu-22.04';
+          osTemplate = 'ubuntu-24.04';
         }
       }
 

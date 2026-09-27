@@ -77,6 +77,25 @@ export interface CollectiveExerciseDetail {
   mesl: MeslEvent[];
 }
 
+
+/** Result of POST /ranges/{id}/topology. */
+export interface RangeTopologySave {
+  range_id: string;
+  template_id: string;
+  created: boolean;
+  node_count: number;
+  vlan_count: number;
+  warnings: string[];
+  template: Record<string, unknown>;
+}
+
+/** Result of POST /templates/from-diagram: the same template as a dict and as YAML. */
+export interface DiagramTemplate {
+  template: Record<string, unknown>;
+  yaml: string;
+  warnings: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private base = environment.apiUrl;
@@ -184,6 +203,13 @@ export class ApiService {
   saveRangeDiagram(id: string, diagram: any): Observable<{ range_id: string; diagram_json: any }> {
     return this.http.put<{ range_id: string; diagram_json: any }>(`${this.base}/ranges/${id}/diagram`, diagram);
   }
+  /**
+   * Make a designer diagram the topology the range provisions: the server converts
+   * it to a template (range-owned) and repoints the range. 409 once the range has VMs.
+   */
+  saveRangeTopology(id: string, diagram: any): Observable<RangeTopologySave> {
+    return this.http.post<RangeTopologySave>(`${this.base}/ranges/${id}/topology`, { diagram_json: diagram });
+  }
   getRangeStats(): Observable<RangeStats> {
     return this.http.get<RangeStats>(`${this.base}/ranges/stats`);
   }
@@ -222,6 +248,10 @@ export class ApiService {
     return this.http.post<{ template_id: string; diagram_json: any }>(
       `${this.base}/templates/${id}/diagram-preview`, {},
     );
+  }
+  /** Convert a designer diagram to the template Save topology would provision (no write). */
+  templateFromDiagram(diagram: any, name = 'Range Design'): Observable<DiagramTemplate> {
+    return this.http.post<DiagramTemplate>(`${this.base}/templates/from-diagram`, { diagram_json: diagram, name });
   }
   /** The real injector registry — replaces hard-coded action lists. */
   listInjectors(): Observable<InjectorInfo[]> {

@@ -454,7 +454,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 vm_defs = template.get("vms", [])
                 tasks = []
                 for vm_def in vm_defs:
-                    template_name = vm_def.get("template_name", "ubuntu-2204-cloud")
+                    template_name = vm_def.get("template_name", "ubuntu-2404-cloud")
                     vm_name = f"{range_id}-{vm_def['name']}"
                     tasks.append(
                         self._provision_one_vm(

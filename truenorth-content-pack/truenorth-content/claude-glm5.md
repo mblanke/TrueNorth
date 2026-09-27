@@ -26,8 +26,8 @@ Proxmox and Hyper‑V Packer files in `infra/` are **non‑authoritative** refer
   you do not build them).
 
 ### Flags you must respect (from the reconciliation)
-- `ubuntu-lts` version mismatch: catalogue says 24.04, the shipped Packer files say 22.04.3 — do not
-  guess; use whichever a human pins.
+- `ubuntu-lts` is pinned to **24.04.5** (decided 2026-09-27). `ubuntu-2204` / `ubuntu-22.04` are
+  deprecated aliases that still resolve to it; write `ubuntu-2404` in anything new.
 - `GAP-vyos`: the `red-vs-blue` range references a `vyos-1.4` router that has **no** golden image.
   Do not fabricate one — flag it if a scenario needs it.
 - `c2-server`, `win-xp-sp3` are `enabled=no` — never reference them in a generated scenario.

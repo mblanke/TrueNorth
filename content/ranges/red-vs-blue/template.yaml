@@ -127,7 +127,7 @@ nodes:
   - id: jump01
     name: Jump Host
     role: jump_host
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.10"
     node: coyote
@@ -138,7 +138,7 @@ nodes:
   - id: score01
     name: Scoreboard
     role: scoreboard
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.20"
     node: coyote
@@ -149,7 +149,7 @@ nodes:
   - id: siem01
     name: SIEM
     role: siem
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.30"
     node: coyote
@@ -160,7 +160,7 @@ nodes:
   - id: relay01
     name: Log Relay
     role: log_relay
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.40"
     node: coyote
@@ -171,7 +171,7 @@ nodes:
   - id: nids01
     name: Network IDS
     role: network_ids
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.50"
     node: coyote
@@ -186,7 +186,7 @@ nodes:
   - id: web01
     name: Web Server 1
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.20.0.10"
     node: acme
@@ -198,7 +198,7 @@ nodes:
   - id: web02
     name: Web Server 2
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.20.0.11"
     node: acme
@@ -210,7 +210,7 @@ nodes:
   - id: mx01
     name: Mail Gateway
     role: mail_gateway
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.20.0.30"
     node: acme
@@ -222,7 +222,7 @@ nodes:
   - id: rproxy01
     name: Reverse Proxy
     role: reverse_proxy
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.20.0.40"
     node: acme
@@ -277,7 +277,7 @@ nodes:
   - id: db01
     name: Database Server
     role: database_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: server_vlan
     ip: "10.30.0.30"
     node: acme
@@ -313,7 +313,7 @@ nodes:
   - id: bak01
     name: Backup Server
     role: backup_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: server_vlan
     ip: "10.30.0.60"
     node: acme
@@ -337,7 +337,7 @@ nodes:
   - id: webapp01
     name: Internal Web Application
     role: web_application
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: server_vlan
     ip: "10.30.0.80"
     node: acme
@@ -405,7 +405,7 @@ nodes:
   - id: lnx01
     name: Dev Workstation 1
     role: workstation
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: corporate_lan
     ip: "10.10.0.50"
     node: acme
@@ -418,7 +418,7 @@ nodes:
   - id: lnx02
     name: Dev Workstation 2
     role: workstation
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: corporate_lan
     ip: "10.10.0.51"
     node: acme
@@ -435,7 +435,7 @@ nodes:
   - id: blue01
     name: Blue Analyst 1
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.10"
     node: coyote
@@ -446,7 +446,7 @@ nodes:
   - id: blue02
     name: Blue Analyst 2
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.11"
     node: coyote
@@ -457,7 +457,7 @@ nodes:
   - id: blue03
     name: Blue Analyst 3
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.12"
     node: coyote
@@ -468,7 +468,7 @@ nodes:
   - id: blue04
     name: Blue Analyst 4
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.13"
     node: coyote
@@ -479,7 +479,7 @@ nodes:
   - id: blue05
     name: Blue Analyst 5
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.14"
     node: coyote
@@ -538,7 +538,7 @@ nodes:
   - id: red-phish01
     name: Red Phishing Server
     role: red_phishing
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: red_team
     ip: "10.66.0.50"
     node: coyote
@@ -586,7 +586,7 @@ nodes:
   - id: tgen01
     name: Traffic Generator
     role: traffic_generator
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: corporate_lan
     ip: "10.10.0.99"
     node: acme
@@ -597,7 +597,7 @@ nodes:
   - id: honey01
     name: Honeypot
     role: honeypot
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: corporate_lan
     ip: "10.10.0.200"
     node: acme
@@ -609,7 +609,7 @@ nodes:
   - id: ids01
     name: IDS Sensor
     role: ids_sensor
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.60"
     node: coyote

@@ -64,7 +64,7 @@ nodes:
   - id: localstack01
     name: LocalStack (AWS Simulator)
     role: cloud_sim_aws
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cloud_sim
     ip: "10.80.0.10"
     specs: { cores: 4, memory_mb: 16384, disk_gb: 100 }
@@ -82,7 +82,7 @@ nodes:
   - id: azure-mock01
     name: Azure Mock Endpoints
     role: cloud_sim_azure
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cloud_sim
     ip: "10.80.0.20"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 60 }
@@ -98,7 +98,7 @@ nodes:
   - id: terraform01
     name: Terraform State Server
     role: iac_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cloud_sim
     ip: "10.80.0.30"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -113,7 +113,7 @@ nodes:
   - id: k3s-master
     name: k3s Master Node
     role: k8s_master
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: container_cluster
     ip: "10.80.1.10"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -122,7 +122,7 @@ nodes:
   - id: k3s-worker01
     name: k3s Worker Node 1
     role: k8s_worker
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: container_cluster
     ip: "10.80.1.20"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -138,7 +138,7 @@ nodes:
   - id: k3s-worker02
     name: k3s Worker Node 2
     role: k8s_worker
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: container_cluster
     ip: "10.80.1.21"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -154,7 +154,7 @@ nodes:
   - id: registry01
     name: Container Registry
     role: container_registry
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: container_cluster
     ip: "10.80.1.30"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 200 }
@@ -167,7 +167,7 @@ nodes:
   - id: gitlab01
     name: GitLab CE
     role: scm
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cicd_pipeline
     ip: "10.80.2.10"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
@@ -181,7 +181,7 @@ nodes:
   - id: jenkins01
     name: Jenkins Server
     role: ci_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cicd_pipeline
     ip: "10.80.2.20"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -195,7 +195,7 @@ nodes:
   - id: argocd01
     name: ArgoCD
     role: gitops
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cicd_pipeline
     ip: "10.80.2.30"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -207,7 +207,7 @@ nodes:
   - id: sonarqube01
     name: SonarQube
     role: code_analysis
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cicd_pipeline
     ip: "10.80.2.40"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
@@ -217,7 +217,7 @@ nodes:
   - id: cloud-siem01
     name: Cloud SIEM (OpenSearch)
     role: siem
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: monitoring
     ip: "10.80.3.10"
     specs: { cores: 8, memory_mb: 32768, disk_gb: 500 }
@@ -226,7 +226,7 @@ nodes:
   - id: falco01
     name: Falco Runtime Security
     role: runtime_security
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: monitoring
     ip: "10.80.3.20"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -235,7 +235,7 @@ nodes:
   - id: prowler01
     name: Prowler / ScoutSuite
     role: cloud_audit
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: monitoring
     ip: "10.80.3.30"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -245,7 +245,7 @@ nodes:
   - id: jump01
     name: Jump Host
     role: jump_host
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.80.4.10"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }

@@ -10,7 +10,7 @@
 param(
     [Parameter(Position = 0)]
     [ValidateSet(
-        "ubuntu-2204",
+        "ubuntu-2404",
         "windows-server-2022",
         "windows-10-workstation",
         "kali-linux",
@@ -30,7 +30,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # Build order: infrastructure images first, then dependent workloads
 $BuildOrder = @(
     "pfsense"
-    "ubuntu-2204"
+    "ubuntu-2404"
     "security-onion"
     "kali-linux"
     "windows-server-2022"
@@ -39,7 +39,7 @@ $BuildOrder = @(
 
 # Map template names to HCL files
 $TemplateFiles = @{
-    "ubuntu-2204"           = "ubuntu-2204.pkr.hcl"
+    "ubuntu-2404"           = "ubuntu-2404.pkr.hcl"
     "windows-server-2022"   = "windows-server-2022.pkr.hcl"
     "windows-10-workstation" = "windows-10-workstation.pkr.hcl"
     "kali-linux"            = "kali-linux.pkr.hcl"

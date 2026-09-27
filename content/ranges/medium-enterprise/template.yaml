@@ -44,7 +44,7 @@ nodes:
   - id: web01
     name: Web Server
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.10.300.10"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
@@ -53,7 +53,7 @@ nodes:
   - id: mail01
     name: Mail Server
     role: mail_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.10.300.20"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
@@ -78,7 +78,7 @@ nodes:
   - id: siem01
     name: SIEM
     role: siem
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.10.400.10"
     specs: { cores: 4, memory_mb: 16384, disk_gb: 500 }

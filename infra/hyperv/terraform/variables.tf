@@ -63,7 +63,7 @@ variable "vhd_path" {
 variable "golden_image_path" {
   description = "Path to the golden VHDX image to create differencing disks from"
   type        = string
-  default     = "C:\\HyperV\\Images\\ubuntu-2204.vhdx"
+  default     = "C:\\HyperV\\Images\\ubuntu-2404.vhdx"
 }
 
 # ── VM Definitions ──────────────────────────────────────────────────────────

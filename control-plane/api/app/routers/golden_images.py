@@ -18,6 +18,7 @@ from .. import golden_images
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import GoldenImage
+from ..rbac import Permission, require_permission
 
 logger = logging.getLogger("truenorth.api.golden_images")
 
@@ -79,7 +80,7 @@ async def import_catalogue(
     file: UploadFile,
     hypervisor: str = Query("vsphere"),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.INFRA_WRITE)),
 ) -> dict:
     """Seed the golden-image registry from vm_iso_catalogue.csv (idempotent)."""
     raw = await file.read()
@@ -137,9 +138,16 @@ def update_image(
     image_id: str,
     body: GoldenImagePatch,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    _user: CurrentUser = Depends(require_permission(Permission.INFRA_WRITE)),
 ) -> GoldenImageOut:
-    """Operator registration: set the real template name / datastore / enabled / build status."""
+    """Operator registration: set the real template name / datastore / enabled / build status.
+
+    **Permission: infra:write** — the registry is platform-wide, so only operators edit it.
+    """
+    # tenant-safe: the golden-image registry is platform infrastructure, one row per
+    # (catalogue_id, hypervisor) for the whole install (uq_image_hypervisor), shared by
+    # every tenant's ranges; tenant_id only records who imported it. Writes are gated
+    # on infra:write (admin, range_ops) above instead of on tenant.
     img = db.query(GoldenImage).filter_by(id=image_id).one_or_none()
     if img is None:
         raise HTTPException(status_code=404, detail="golden image not found")

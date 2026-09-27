@@ -17,6 +17,38 @@ from .models import GoldenImage
 
 _TRUE = {"yes", "true", "y", "1"}
 
+# OS identifiers that were renamed. Stored ranges, saved designer diagrams and older
+# golden-image registries still carry the old names, so they must keep resolving.
+# Mirrored in control-plane/worker/worker/render.py and
+# scenario-engine/template_engine/renderer.py (a test keeps the three in step).
+DEPRECATED_OS_ALIASES: dict[str, str] = {
+    "ubuntu-2204": "ubuntu-2404",
+    "ubuntu2204": "ubuntu-2404",
+    "ubuntu-22.04": "ubuntu-24.04",
+}
+
+# Spellings of one golden image. A registry imported before a rename only knows the
+# old spelling, and one imported after only the new, so resolution tries them all.
+EQUIVALENT_OS_ALIASES: tuple[tuple[str, ...], ...] = (
+    ("ubuntu-2404", "ubuntu-24.04", "ubuntu-2204", "ubuntu-22.04", "ubuntu2204"),
+)
+
+
+def canonical_os(os_alias: str) -> str:
+    """Map a deprecated OS identifier to its current name; anything else is unchanged."""
+    alias = (os_alias or "").strip()
+    return DEPRECATED_OS_ALIASES.get(alias, alias)
+
+
+def os_alias_candidates(os_alias: str) -> list[str]:
+    """Identifiers to try, in order: the current name, as given, then its equivalents."""
+    alias = (os_alias or "").strip()
+    out = [canonical_os(alias), alias]
+    for group in EQUIVALENT_OS_ALIASES:
+        if alias in group:
+            out.extend(group)
+    return list(dict.fromkeys(a for a in out if a))
+
 
 def _aliases(row: dict, catalogue_id: str) -> list[str]:
     raw = (row.get("os_aliases_in_ranges") or "").strip()
@@ -98,24 +130,24 @@ def import_catalogue(db: Session, csv_text: str, hypervisor: str = "vsphere",
 
 def resolve_template(db: Session, os_alias: str, hypervisor: str = "vsphere") -> str | None:
     """Resolve a topology os alias -> hypervisor template name (enabled images only)."""
-    if not os_alias:
+    if not os_alias or not os_alias.strip():
         return None
-    alias = os_alias.strip()
     images = (
         db.query(GoldenImage)
         .filter_by(hypervisor=hypervisor, enabled=True, deleted_at=None)
         .all()
     )
-    for img in images:
-        if img.catalogue_id == alias:
-            return img.template_name or img.catalogue_id
-    for img in images:
-        try:
-            aliases = json.loads(img.os_aliases or "[]")
-        except json.JSONDecodeError:
-            aliases = []
-        if alias in aliases:
-            return img.template_name or img.catalogue_id
+    for alias in os_alias_candidates(os_alias):
+        for img in images:
+            if img.catalogue_id == alias:
+                return img.template_name or img.catalogue_id
+        for img in images:
+            try:
+                aliases = json.loads(img.os_aliases or "[]")
+            except json.JSONDecodeError:
+                aliases = []
+            if alias in aliases:
+                return img.template_name or img.catalogue_id
     return None
 
 
@@ -130,4 +162,13 @@ def resolve_map(db: Session, hypervisor: str = "vsphere") -> dict[str, str]:
                 out.setdefault(a, tn)
         except json.JSONDecodeError:
             pass
+    # Add the current spellings of anything resolvable, so the designer offers the new
+    # name even against a registry imported before a rename. Deprecated names are not
+    # added: they still resolve, but should not be offered for new designs.
+    for group in EQUIVALENT_OS_ALIASES:
+        hit = next((out[a] for a in group if a in out), None)
+        if hit is not None:
+            for a in group:
+                if a not in DEPRECATED_OS_ALIASES:
+                    out.setdefault(a, hit)
     return out

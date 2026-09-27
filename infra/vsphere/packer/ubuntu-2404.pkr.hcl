@@ -1,4 +1,4 @@
-# TrueNorth Range — Packer template for Ubuntu 22.04 on vSphere
+# TrueNorth Range — Packer template for Ubuntu 24.04 on vSphere
 # Builds a cloud-init ready template via the vsphere-iso builder.
 packer {
   required_plugins {
@@ -9,7 +9,7 @@ packer {
   }
 }
 
-source "vsphere-iso" "ubuntu-2204" {
+source "vsphere-iso" "ubuntu-2404" {
   vcenter_server      = var.vcenter_server
   username            = var.vcenter_username
   password            = var.vcenter_password
@@ -20,8 +20,8 @@ source "vsphere-iso" "ubuntu-2204" {
   datastore  = var.vsphere_datastore
   folder     = var.vsphere_folder
 
-  vm_name              = "ubuntu-2204-cloud"
-  notes                = "TrueNorth Ubuntu 22.04 template built by Packer"
+  vm_name              = "ubuntu-2404-cloud"
+  notes                = "TrueNorth Ubuntu 24.04 template built by Packer"
 
   guest_os_type = "ubuntu64Guest"
   firmware      = "efi"
@@ -41,8 +41,8 @@ source "vsphere-iso" "ubuntu-2204" {
     network_card = "vmxnet3"
   }
 
-  iso_url      = "https://releases.ubuntu.com/22.04/ubuntu-22.04.3-live-server-amd64.iso"
-  iso_checksum = "sha256:a4acfda10b18da50e2ec50ccaf860d7f20b389df8765611142305c0e911d16fd"
+  iso_url      = "https://releases.ubuntu.com/24.04.5/ubuntu-24.04.5-live-server-amd64.iso"
+  iso_checksum = "sha256:97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8"
 
   http_directory = "../proxmox/packer/http"
 
@@ -50,7 +50,7 @@ source "vsphere-iso" "ubuntu-2204" {
   boot_command = [
     "<esc><esc><esc><esc>e<wait>",
     "<down><down><down><end>",
-    " autoinstall ds=nocloud-net;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/",
+    " autoinstall ds=nocloud-net\\;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/ubuntu/",
     "<f10>"
   ]
 
@@ -63,7 +63,7 @@ source "vsphere-iso" "ubuntu-2204" {
     for_each = var.content_library != "" ? [1] : []
     content {
       library = var.content_library
-      name    = "ubuntu-2204-cloud"
+      name    = "ubuntu-2404-cloud"
       ovf     = true
       destroy = false
     }
@@ -78,7 +78,7 @@ source "vsphere-iso" "ubuntu-2204" {
 }
 
 build {
-  sources = ["source.vsphere-iso.ubuntu-2204"]
+  sources = ["source.vsphere-iso.ubuntu-2404"]
 
   provisioner "shell" {
     inline = [
@@ -94,7 +94,7 @@ build {
 
   provisioner "shell" {
     inline = [
-      "wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb",
+      "wget -q https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb",
       "sudo dpkg -i /tmp/packages-microsoft-prod.deb || true",
       "sudo apt-get update",
       "sudo apt-get install -y sysinternalsebpf sysmonforlinux || echo 'Sysmon install skipped'",

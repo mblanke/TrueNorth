@@ -15,6 +15,22 @@ import yaml
 
 from .cloud_init import CloudInitGenerator
 
+# Renamed OS identifiers. Mirror of the table in control-plane/api/app/golden_images.py
+# (tests/api/test_os_aliases.py keeps them in step). Rendered VMs carry the current
+# name; the golden-image registry still resolves the old one for stored ranges.
+DEPRECATED_OS_ALIASES: dict[str, str] = {
+    "ubuntu-2204": "ubuntu-2404",
+    "ubuntu2204": "ubuntu-2404",
+    "ubuntu-22.04": "ubuntu-24.04",
+}
+DEFAULT_OS = "ubuntu-2404"
+
+
+def canonical_os(os_alias: str) -> str:
+    """Map a deprecated OS identifier to its current name; anything else is unchanged."""
+    alias = (os_alias or "").strip()
+    return DEPRECATED_OS_ALIASES.get(alias, alias)
+
 
 class TemplateRenderer:
     """Renders a range template YAML into Terraform-consumable variables."""
@@ -84,7 +100,7 @@ class TemplateRenderer:
                     "name": vm_name,
                     "node_id": node["id"],
                     "role": node.get("role", "generic"),
-                    "os": node.get("os", node.get("type", "ubuntu-2204")),
+                    "os": canonical_os(node.get("os", node.get("type", DEFAULT_OS))),
                     "vlan_id": vm_vlan_id,
                     "ip": node.get("ip", ""),
                     "cores": specs.get("cores", 2),
@@ -195,7 +211,7 @@ class TemplateRenderer:
                         "id": asset.get("role", "vm"),
                         "name": asset.get("role", "vm"),
                         "role": asset.get("role", "generic"),
-                        "os": asset.get("os", "ubuntu-2204"),
+                        "os": asset.get("os", DEFAULT_OS),
                         "type": asset.get("type", "vm"),
                         "count": asset.get("count", 1),
                         "tags": asset.get("tags", []),

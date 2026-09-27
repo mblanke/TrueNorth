@@ -1,6 +1,6 @@
 # TrueNorth Range - Hyper-V Packer Variables
 # NOTE: hyperv-iso builds MUST run on a Windows host with the Hyper-V role installed.
-# Run from an elevated PowerShell session: packer build -only=hyperv-iso.ubuntu-2204 .
+# Run from an elevated PowerShell session: packer build -only=hyperv-iso.ubuntu-2404 .
 
 variable "hyperv_switch" {
   description = "Hyper-V virtual switch to connect the build VM to (must be External)"

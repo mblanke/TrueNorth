@@ -46,7 +46,7 @@ variable "range_name" {
 variable "template_name" {
   description = "Proxmox VM template to clone from"
   type        = string
-  default     = "ubuntu-2204-cloud"
+  default     = "ubuntu-2404-cloud"
 }
 
 # Multi-node support for load distribution
