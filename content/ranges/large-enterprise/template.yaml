@@ -96,7 +96,7 @@ nodes:
   - id: ansible01
     name: Ansible Controller
     role: automation
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.50.105.20"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -106,7 +106,7 @@ nodes:
   - id: web01
     name: External Web Server 1
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.50.100.10"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -115,7 +115,7 @@ nodes:
   - id: web02
     name: External Web Server 2
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.50.100.11"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -124,7 +124,7 @@ nodes:
   - id: mail-relay01
     name: Mail Relay
     role: mail_relay
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.50.100.20"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
@@ -133,7 +133,7 @@ nodes:
   - id: dns-ext01
     name: External DNS
     role: dns_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.50.100.30"
     specs: { cores: 1, memory_mb: 2048, disk_gb: 20 }
@@ -338,7 +338,7 @@ nodes:
   - id: siem01
     name: SIEM (OpenSearch)
     role: siem
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: security_vlan
     ip: "10.50.103.10"
     specs: { cores: 8, memory_mb: 32768, disk_gb: 1000 }
@@ -347,7 +347,7 @@ nodes:
   - id: ids01
     name: IDS/IPS (Suricata)
     role: ids_ips
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: security_vlan
     ip: "10.50.103.20"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
@@ -356,7 +356,7 @@ nodes:
   - id: vuln01
     name: Vulnerability Scanner
     role: vulnerability_scanner
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: security_vlan
     ip: "10.50.103.30"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -365,7 +365,7 @@ nodes:
   - id: edr01
     name: EDR Server (Velociraptor)
     role: edr
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: security_vlan
     ip: "10.50.103.40"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
@@ -374,7 +374,7 @@ nodes:
   - id: soar01
     name: SOAR Platform (TheHive)
     role: soar
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: security_vlan
     ip: "10.50.103.50"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -383,7 +383,7 @@ nodes:
   - id: tip01
     name: Threat Intel Platform (MISP)
     role: threat_intel
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: security_vlan
     ip: "10.50.103.60"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
@@ -420,7 +420,7 @@ nodes:
   - id: plc01
     name: PLC Simulator 1
     role: plc
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: ot_scada
     ip: "10.50.104.30"
     specs: { cores: 1, memory_mb: 1024, disk_gb: 10 }
@@ -429,7 +429,7 @@ nodes:
   - id: plc02
     name: PLC Simulator 2
     role: plc
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: ot_scada
     ip: "10.50.104.31"
     specs: { cores: 1, memory_mb: 1024, disk_gb: 10 }
@@ -511,7 +511,7 @@ nodes:
   - id: arc01
     name: Azure Arc Agent
     role: cloud_management
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cloud_hybrid
     ip: "10.50.107.30"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
@@ -545,7 +545,7 @@ nodes:
   - id: ntp01
     name: NTP Server
     role: time_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.50.105.30"
     specs: { cores: 1, memory_mb: 1024, disk_gb: 10 }
@@ -554,7 +554,7 @@ nodes:
   - id: syslog01
     name: Syslog Collector
     role: log_collector
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: security_vlan
     ip: "10.50.103.70"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 500 }

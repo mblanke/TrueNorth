@@ -313,7 +313,7 @@ def diagram_summary(po) -> str:
 _ROLE_STENCIL: dict[str, tuple[str, str]] = {
     "dc": ("dc", "windows-server-2022"),
     "domain_controller": ("dc", "windows-server-2022"),
-    "server": ("server", "ubuntu-22.04"),
+    "server": ("server", "ubuntu-24.04"),
     "workstation": ("workstation", "windows-11"),
     "client": ("workstation", "windows-11"),
     "kali": ("kali", "kali-2024"),
@@ -367,6 +367,6 @@ def build_template_diagram(template_yaml: str) -> dict:
     cells: list[dict] = [_cell_node("fw01", "Gateway", "firewall", "pfsense", "10.0.0.1", 280, 20)]
     cells.append(_cell_zone("zone-0", name, cidr, 40, 130, dmz=False))
     for i, (label, role) in enumerate(hosts[:24]):  # cap so a huge template stays legible
-        node_type, os_t = _ROLE_STENCIL.get(role.lower(), ("server", "ubuntu-22.04"))
+        node_type, os_t = _ROLE_STENCIL.get(role.lower(), ("server", "ubuntu-24.04"))
         cells.append(_cell_node(f"n-{i}", label, node_type, os_t, f"10.0.0.{10 + i}", 70 + (i % 4) * 150, 175 + (i // 4) * 95))
     return {"cells": cells}

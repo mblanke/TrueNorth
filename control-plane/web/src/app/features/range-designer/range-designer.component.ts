@@ -64,8 +64,9 @@ interface OsOption {
  * catalogue still produces YAML the provisioner understands.
  */
 const FALLBACK_OS_OPTIONS: OsOption[] = [
-  { value: 'ubuntu-22.04', label: 'Ubuntu 22.04' },
   { value: 'ubuntu-24.04', label: 'Ubuntu 24.04' },
+  // Deprecated: kept so designs saved with it still show their OS. Resolves to 24.04.
+  { value: 'ubuntu-22.04', label: 'Ubuntu 22.04 (deprecated → 24.04)' },
   { value: 'windows-server-2022', label: 'Windows Server 2022' },
   { value: 'windows-11', label: 'Windows 11' },
   { value: 'kali-2024', label: 'Kali Linux 2024' },
@@ -902,7 +903,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     { type: 'workstation', label: 'Workstation', icon: 'computer', category: 'compute',
       defaults: { os_template: 'windows-11', vcpu: '2', ram_mb: '4096', disk_gb: '60' } },
     { type: 'server', label: 'Server', icon: 'dns', category: 'compute',
-      defaults: { os_template: 'ubuntu-22.04', vcpu: '4', ram_mb: '8192', disk_gb: '100' } },
+      defaults: { os_template: 'ubuntu-24.04', vcpu: '4', ram_mb: '8192', disk_gb: '100' } },
     { type: 'dc', label: 'Domain Controller', icon: 'domain', category: 'compute',
       defaults: { os_template: 'windows-server-2022', vcpu: '4', ram_mb: '8192', disk_gb: '120' } },
     { type: 'kali', label: 'Kali Attacker', icon: 'bug_report', category: 'compute',
@@ -1916,7 +1917,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
 
       /* Determine node type and OS template */
       let nodeType = 'server';
-      let osTemplate = 'ubuntu-22.04';
+      let osTemplate = 'ubuntu-24.04';
       const label = hostname || ip || 'Host ' + (idx + 1);
       const detectedServices: string[] = [];
 
@@ -1947,7 +1948,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
           osTemplate = 'rocky-9';
         } else {
           nodeType = 'server';
-          osTemplate = 'ubuntu-22.04';
+          osTemplate = 'ubuntu-24.04';
         }
       } else if (osName.includes('pfsense') || osName.includes('freebsd')) {
         nodeType = 'firewall';
@@ -1970,7 +1971,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
           osTemplate = 'windows-server-2022';
         } else if (hasLinuxSvc) {
           nodeType = 'server';
-          osTemplate = 'ubuntu-22.04';
+          osTemplate = 'ubuntu-24.04';
         }
       }
 

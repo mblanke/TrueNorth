@@ -65,7 +65,7 @@ nodes:
   - id: t-web01
     name: Corporate Website
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: target_dmz
     ip: "10.70.1.10"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -80,7 +80,7 @@ nodes:
   - id: t-web02
     name: Customer Portal
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: target_dmz
     ip: "10.70.1.11"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -94,7 +94,7 @@ nodes:
   - id: t-mail01
     name: Mail Server
     role: mail_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: target_dmz
     ip: "10.70.1.20"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
@@ -118,7 +118,7 @@ nodes:
   - id: t-dns01
     name: External DNS
     role: dns_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: target_dmz
     ip: "10.70.1.40"
     specs: { cores: 1, memory_mb: 1024, disk_gb: 20 }
@@ -232,7 +232,7 @@ nodes:
   - id: t-linux01
     name: Internal Linux Server
     role: application
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: target_corp
     ip: "10.70.0.50"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
@@ -261,7 +261,7 @@ nodes:
   - id: t-mysql01
     name: MySQL Server
     role: database
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: target_db
     ip: "10.70.2.20"
     specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
@@ -273,7 +273,7 @@ nodes:
   - id: t-redis01
     name: Redis Cache
     role: cache
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: target_db
     ip: "10.70.2.30"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 20 }
@@ -306,7 +306,7 @@ nodes:
   - id: a-teamserver
     name: Cobalt Strike Teamserver
     role: c2_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: attacker_infra
     ip: "10.70.3.20"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 60 }
@@ -315,7 +315,7 @@ nodes:
   - id: a-redir01
     name: HTTPS Redirector
     role: redirector
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: attacker_infra
     ip: "10.70.3.30"
     specs: { cores: 1, memory_mb: 1024, disk_gb: 20 }
@@ -324,7 +324,7 @@ nodes:
   - id: a-redir02
     name: DNS Redirector
     role: redirector
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: attacker_infra
     ip: "10.70.3.31"
     specs: { cores: 1, memory_mb: 1024, disk_gb: 20 }
@@ -333,7 +333,7 @@ nodes:
   - id: a-payload
     name: Payload Hosting
     role: staging
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: attacker_infra
     ip: "10.70.3.40"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
@@ -353,7 +353,7 @@ nodes:
   - id: p-jump01
     name: Pivot Jump Host 1
     role: jump_host
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: pivot_network
     ip: "10.70.4.20"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }

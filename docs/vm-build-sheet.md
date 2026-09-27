@@ -39,8 +39,9 @@ anything in stage **P** has to come from an internal software depot, not from th
 | TN-MGMT01 | Ubuntu Server 24.04 LTS | 12–16 | 64 GB min, 96–128 GB preferred | 100 GB OS + 500 GB data (min) | TrueNorth platform: API, frontend, Postgres, Redis, Celery, Keycloak, MinIO, OpenSearch, AI orchestrator, Terraform | vSphere architecture §2 |
 | TN-DC01 | Windows Server 2022 (or 2025) | 4 | 8–16 GB | 100 GB | AD DS + DNS for platform identity (Keycloak LDAP federation). **Not** a range DC | vSphere architecture §2 |
 | TN-RANGE01 | any small template | 2 | 4 GB | 40 GB | Throwaway VM that proves TrueNorth can create, start, observe and destroy a VM | vSphere architecture §2 |
-| TN-DEPOT01 **(proposed)** | Ubuntu 24.04 | 4 | 16 GB | 100 GB + 1–2 TB | Offline software depot: Nexus/Sonatype OSS (or Artifactory OSS) hosting an internal Chocolatey feed, apt proxy/mirror, PyPI and Docker registry mirror, plus an ISO/installer share. Ranges reach this host and nothing else | Needed for the no-egress rule |
-| TN-BUILD01 **(proposed)** | Ubuntu 24.04 | 8 | 16 GB | 200 GB | Runs Packer and Ansible for the template builds. This is the **only** host with controlled internet egress. Can be folded into TN-MGMT01 if capacity is tight | `.github/workflows/packer-build.yml` |
+| TN-DEPOT01 **(decided: separate VM)** | Ubuntu 24.04 | 4 | 16 GB | 100 GB + 1–2 TB | Offline software depot: Nexus/Sonatype OSS (or Artifactory OSS) hosting an internal Chocolatey feed, apt proxy/mirror, PyPI and Docker registry mirror, plus an ISO/installer share. Ranges reach this host and nothing else | Needed for the no-egress rule |
+| TN-BUILD01 **(decided: separate VM)** | Ubuntu 24.04 | 8 | 16 GB | 200 GB | Runs Packer and Ansible for the template builds. This is the **only** host with controlled internet egress. Kept separate from TN-MGMT01 and TN-DEPOT01 (§8) | `.github/workflows/packer-build.yml` |
+| TN-KMS01 **(decided)** | Windows Server 2022 | 2 | 4 GB | 60 GB | Dedicated KMS host for range VMs only. Ranges may reach it on **TCP 1688 and nothing else**. Prod only; test uses evaluation media | §8 |
 | TN-WSUS01 **(proposed, optional)** | Windows Server 2022 | 2 | 8 GB | 300 GB | Patch source for templates and role snapshots | — |
 
 **Activation and licensing (decided, see §8):** all licences are held and are applied in
@@ -48,9 +49,8 @@ anything in stage **P** has to come from an internal software depot, not from th
 build it from evaluation media (Windows Server and Windows Enterprise: 180 days; Exchange
 and SharePoint trial mode) and leave the templates unactivated. Keep product keys out of
 the templates in both environments. Prod activates at deploy time (the KMS client key, GVLK,
-is used by default, plus reachability to KMS) or through role-snapshot rebuilds. Isolated
-range VLANs still need a route to the prod KMS host (TCP 1688), or a KMS host cloned into
-the range. Platform AD-based activation cannot reach range domains.
+is used by default) against **TN-KMS01**, the one KMS host that every range reaches on TCP
+1688 only. Platform AD-based activation cannot reach range domains.
 
 ---
 
@@ -70,7 +70,7 @@ range resizes the clone at deploy time (see §3). Build hours and golden size co
 | 6 | `srv2022` | Windows Server 2022 Std/DC | 2 / 4 GB / 35 GB | 14 | 35 | yes | Modern DC/member | Every range template uses this. **Build second** |
 | 7 | `precomp-host` | Win10 / Srv2019 derived | per parent | 12 | 35 | yes | Pre-compromised start state | Clone of 1 or 5 with staged artifacts |
 | 8 | `detonation-host` | Win10 derived | per parent | 12 | 35 | **no** | Sterile malware detonation | No sensor, no egress ever, snapshot-revert after each use |
-| 9 | `ubuntu-lts` | Ubuntu Server 24.04 LTS | 2 / 4 GB / 15 GB | 8 | 15 | yes | Web/app/DB victim, and base for most Linux roles | **Decided: 24.04.** Range YAML still says `ubuntu-2204`; build 24.04 and treat `ubuntu-2204` as an alias until renamed (§7) |
+| 9 | `ubuntu-lts` | Ubuntu Server 24.04 LTS | 2 / 4 GB / 15 GB | 8 | 15 | yes | Web/app/DB victim, and base for most Linux roles | **Decided: 24.04.5.** Renamed repo-wide to `ubuntu-2404`; `ubuntu-2204` is a deprecated alias that still resolves here (§8) |
 | 10 | `rocky` | Rocky Linux 9 | 2 / 4 GB / 15 GB | 8 | 15 | yes | Enterprise Linux victim | |
 | 11 | `kali` | Kali 2024.x installer | 2 / 4 GB / 30 GB | 10 | 30 | no | Attacker / analyst workstation | Ranges deploy it at 4 vCPU / 8 GB / 120 GB |
 | 12 | `remnux` | Ubuntu + REMnux installer | per ubuntu-lts | 10 | 25 | no | Malware analysis | Packer marked `todo(vsphere)` |
@@ -89,7 +89,8 @@ range resizes the clone at deploy time (see §3). Build hours and golden size co
 |---|---|---|
 | `win10-ltsc` (Windows 10 IoT/Ent LTSC 2021) | large-enterprise HMI + engineering workstations | 2 / 4 GB / 60 GB |
 | `vyos-1.4` | red-vs-blue `rtr01` | 1 / 2 GB / 4 GB |
-| `c2-server` (catalogue `enabled=no`) | red-team, soc-training, red-vs-blue | ubuntu-lts + Sliver/Mythic, 4 / 8 GB / 60 GB. The catalogue says instructor sign-off is required |
+| `c2-server` (catalogue `enabled=no`) | red-team, soc-training, red-vs-blue | ubuntu-lts + Sliver and Mythic baked in, 4 / 8 GB / 60 GB. Enabling it needs the instructor/Standards sign-off the catalogue requires |
+| `c2-server-cs` **(decided: add)** | same, when Cobalt Strike is called for | ubuntu-lts + Cobalt Strike teamserver from licensed media, 4 / 8 GB / 60 GB. Licence key applied in prod at role-snapshot stage, never in the template. Not built in test |
 | `win-xp-sp3` (`enabled=no`) | none | Leave disabled unless an EO requires it |
 
 Build order: `srv2022` → `win10-22h2` → `ubuntu-lts` → `pfsense` → `securityonion` →
@@ -168,7 +169,8 @@ Deploy spec = the largest spec any range template asks for. Stage: **T**/**R**/*
 | Role | Template | vCPU / RAM / Disk | Key installs |
 |---|---|---|---|
 | Attack platform / operator | kali | 4 / 8 GB / 120 GB | see §5.3 |
-| C2 teamserver | c2-server | 4 / 8 GB / 60–100 GB | Sliver, Mythic, Empire, Metasploit |
+| C2 teamserver (open source) | c2-server | 4 / 8 GB / 60–100 GB | Sliver, Mythic, Empire, Metasploit |
+| C2 teamserver (Cobalt Strike) | c2-server-cs | 4 / 8 GB / 60–100 GB | Cobalt Strike (licensed, prod only) |
 | Redirector | ubuntu-lts | 1 / 1 GB / 20 GB | nginx, socat, iptables |
 | Payload / staging | ubuntu-lts | 2 / 2 GB / 40–100 GB | nginx, SFTP, DNS-exfil listener |
 | Phishing | ubuntu-lts | 2 / 4 GB / 40 GB | GoPhish, Postfix, nginx |
@@ -341,7 +343,7 @@ libapache2-mod-security2, WordPress, and GitLab CE. The intentionally vulnerable
 | Impacket, NetExec | apt / pipx | NetExec replaces the deprecated CrackMapExec that the YAML names |
 | Certipy, Evil-WinRM, Kerbrute | apt / gh | AD CS and AD attacks |
 | Sliver, Mythic, Empire (+ Starkiller) | gh / Docker | Open-source C2 |
-| Cobalt Strike | vendor | **Licensed and export-controlled.** Use Sliver/Mythic unless a licence is held. The YAML already calls it `cobalt_strike_sim` in places |
+| Cobalt Strike | vendor | **Licensed and export-controlled.** Both options are available (§8): Cobalt Strike on `c2-server-cs` in prod, Sliver/Mythic on `c2-server` everywhere. Restrict who can deploy the CS variant |
 | Burp Suite Pro | vendor | Licence; CE is in Kali |
 | GoPhish | gh | |
 | Chisel, Ligolo-ng, proxychains4, socat | gh / apt | Pivoting |
@@ -394,7 +396,7 @@ These are repo issues the build team will hit. They are listed here and not fixe
    `10.10.400.0/24` (an octet cannot exceed 255). The same scheme appears in the IPs
    `10.10.300.x` and `10.10.400.x`.
 3. **Ubuntu version mismatch.** The catalogue says `ubuntu-lts` = 24.04; every range YAML and
-   `infra/proxmox|hyperv/packer` say `ubuntu-2204`. **Decided: 24.04**; the rename is pending (§8).
+   `infra/proxmox|hyperv/packer` said `ubuntu-2204`. **Fixed**: renamed to `ubuntu-2404` / 24.04.5 (§8).
 4. **Templates referenced but not catalogued:** `win10-ltsc`, `vyos-1.4`; `c2-server` is used
    by three ranges but is `enabled=no`.
 5. **Security Onion template is undersized** (4 GB RAM / 60 GB). It will fail the SO 2.4
@@ -418,21 +420,27 @@ These are repo issues the build team will hit. They are listed here and not fixe
 
 | Topic | Decision | Build impact |
 |---|---|---|
-| Activation | KMS in **prod**; test probably has none | Test: evaluation media, no keys. Prod: default KMS client keys (GVLK), activate against KMS at deploy. No keys in any template |
+| Activation | KMS in **prod**; test probably has none | Test: evaluation media, no keys. Prod: default KMS client keys (GVLK), activate against TN-KMS01 at deploy. No keys in any template |
 | Licences | All held (Office LTSC, Exchange, SharePoint, SQL, MECM, etc.). Applied in prod | Test builds run on trial/eval. Prod swaps in keys at role-snapshot build |
 | Exchange / SharePoint | **Both** versions: 2019 **and** Subscription Edition | Four role snapshots: `exch2019` (srv2022), `exchSE` (srv2022), `sp2019` (**srv2019**), `spSE` (srv2022). 2019 = vulnerable/legacy scenarios, SE = current-estate scenarios |
-| `ubuntu-lts` | **Ubuntu 24.04 LTS** | Standard support runs to 2029 (22.04 ends Apr 2027), and it matches `vm_catalogue.csv`. Rename `ubuntu-2204` → `ubuntu-2404` across the repo in a separate change (see below) |
+| `ubuntu-lts` | **Ubuntu 24.04 LTS** | Standard support runs to 2029 (22.04 ends Apr 2027), and it matches `vm_catalogue.csv`. Renamed `ubuntu-2204` → `ubuntu-2404` across the repo (**done**, see below) |
+| Management VMs | TN-DEPOT01 and TN-BUILD01 are **separate VMs**, not folded into TN-MGMT01 | TN-BUILD01 has internet egress and TN-DEPOT01 is reachable from every range. Keeping both off TN-MGMT01 means a range, or anything inside one, never gets a path to the platform (Keycloak, OpenSearch holding CAF material) or to the internet |
+| KMS for ranges | One **dedicated** KMS host, **TN-KMS01**, in the management plane. Ranges reach it on TCP 1688 only | A KMS clone per range does not work: KMS will not activate clients until it has seen 25 client or 5 server machines, which most ranges never reach. Each KMS host also uses up one of the limited host activations on the KMS host key. A shared host sees every range and clears that count. It is kept apart from the corporate prod KMS and from any DC, so red-team traffic can only ever touch a hardened 1688 listener. Firewall: allow range → TN-KMS01:1688, deny everything else |
+| C2 | **Both**: `c2-server` (Sliver + Mythic, open source) and `c2-server-cs` (Cobalt Strike, licensed) | CS installed from licensed media at the role-snapshot stage in prod only; key never in a template; deploy restricted to instructor roles (export-controlled) |
 
-The `ubuntu-2204` identifier is wired into code, not just content:
-`control-plane/api/app/range_topology.py`, `control-plane/worker/worker/render.py`,
-`control-plane/worker/worker/provisioners/{vsphere_api,hyperv}.py`,
-`scenario-engine/template_engine/renderer.py`, the range designer UI,
-`infra/{vsphere,proxmox,hyperv}/packer/ubuntu-2204.pkr.hcl`, the Terraform variables,
-`.github/workflows/packer-build.yml` and all six range YAMLs. Until that rename lands, build
-the image as 24.04 and publish it under the name the code expects.
+**Ubuntu rename — done.** `ubuntu-2404` / `ubuntu-24.04` are the current names in the range
+YAMLs, the worker and scenario-engine renderers, the API topology stencil, the Range
+Designer, the Packer templates (`infra/{vsphere,proxmox,hyperv}/packer/ubuntu-2404.pkr.hcl`,
+ISO 24.04.5, with an autoinstall seed in `infra/proxmox/packer/http/ubuntu/`), the Terraform
+defaults and `.github/workflows/packer-build.yml`. `ubuntu-2204`, `ubuntu-22.04` and
+`ubuntu2204` are **deprecated aliases**. They still resolve to `ubuntu-lts`, through the
+catalogue's `os_aliases_in_ranges` and a fallback in the resolvers, so stored ranges and
+registries imported before the rename keep working (`tests/api/test_os_aliases.py`).
+Re-import the catalogue (`POST /golden-images/import-catalogue`) to register the new aliases.
+Rebuild the image to get `ubuntu-2404-cloud`; until then, existing `ubuntu-2204-cloud`
+templates are still what the registry's `template_name` points at.
 
 ### Still open
 
-- Whether to stand up TN-DEPOT01 and TN-BUILD01 as separate VMs or fold them into TN-MGMT01.
-- Whether ranges route to the prod KMS host or get a cloned KMS host per range.
-- Cobalt Strike (licensed) vs Sliver/Mythic for the C2 template.
+- Nothing blocking the build. Enabling `c2-server` / `c2-server-cs` in the catalogue still
+  needs the instructor/Standards sign-off recorded in `vm_catalogue.csv`.

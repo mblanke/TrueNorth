@@ -280,7 +280,7 @@ if ($addr) {{ $addr }} else {{ '' }}
 
         async def _provision_one(vm_def: dict) -> dict:
             vm_name = f"{range_id}-{vm_def['name']}"
-            template_name = vm_def.get("template_name", "ubuntu-2204")
+            template_name = vm_def.get("template_name", "ubuntu-2404")
             cores = vm_def.get("cores", 2)
             memory_mb = vm_def.get("memory", 2048)
             disk_gb = vm_def.get("disk_gb", 40)

@@ -1,4 +1,4 @@
-﻿# TrueNorth Range — Packer template for Ubuntu 22.04 cloud-init base image
+﻿# TrueNorth Range — Packer template for Ubuntu 24.04 cloud-init base image
 packer {
   required_plugins {
     proxmox = {
@@ -28,18 +28,18 @@ variable "proxmox_node" {
   default = "pve"
 }
 
-source "proxmox-iso" "ubuntu-2204" {
+source "proxmox-iso" "ubuntu-2404" {
   proxmox_url              = var.proxmox_url
   username                 = var.proxmox_username
   password                 = var.proxmox_password
   node                     = var.proxmox_node
   insecure_skip_tls_verify = true
 
-  iso_file    = "local:iso/ubuntu-22.04.3-live-server-amd64.iso"
+  iso_file    = "local:iso/ubuntu-24.04.5-live-server-amd64.iso"
   iso_storage_pool = "local"
 
-  vm_name              = "ubuntu-2204-cloud"
-  template_description = "Ubuntu 22.04 LTS cloud-init template for TrueNorth Range"
+  vm_name              = "ubuntu-2404-cloud"
+  template_description = "Ubuntu 24.04 LTS cloud-init template for TrueNorth Range"
 
   cores   = 2
   memory  = 2048
@@ -70,7 +70,7 @@ source "proxmox-iso" "ubuntu-2204" {
   boot_command = [
     "<esc><esc><esc><esc>e<wait>",
     "<down><down><down><end>",
-    " autoinstall ds=nocloud-net;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/",
+    " autoinstall ds=nocloud-net\\;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/ubuntu/",
     "<f10>"
   ]
 
@@ -78,7 +78,7 @@ source "proxmox-iso" "ubuntu-2204" {
 }
 
 build {
-  sources = ["source.proxmox-iso.ubuntu-2204"]
+  sources = ["source.proxmox-iso.ubuntu-2404"]
 
   provisioner "shell" {
     inline = [
@@ -94,7 +94,7 @@ build {
   provisioner "shell" {
     inline = [
       "# Install Sysmon for Linux (optional - for telemetry)",
-      "wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb",
+      "wget -q https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb",
       "sudo dpkg -i /tmp/packages-microsoft-prod.deb || true",
       "sudo apt-get update",
       "sudo apt-get install -y sysinternalsebpf sysmonforlinux || echo 'Sysmon install skipped'",
