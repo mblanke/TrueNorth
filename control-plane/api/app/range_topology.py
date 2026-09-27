@@ -8,6 +8,7 @@ red-team / incident-response), laid into VLAN subnet zones. Deterministic, no LL
 
 from __future__ import annotations
 
+import ipaddress
 import json
 
 # JointJS stencil nodeType -> colour (mirrors range-designer nodeColors) so the
@@ -387,10 +388,20 @@ def build_template_diagram(template_yaml: str) -> dict:
 # provisions from a template's `nodes` + `network.vlans` (worker/render.py). These two
 # functions are the bridge, in both directions, so a designed topology is what gets
 # built. JSON and YAML carry the same dict: the worker reads either.
+#
+# Round trip is lossless for templates: keys the designer has no field for ride along
+# in `nodeData.template_extra`, zones keep their exact VLAN name and id, and nodes keep
+# their template order. Only `count` is not preserved: each instance becomes a node.
+
+
+
+MAX_DIAGRAM_CELLS = 2000
 
 _ZONE_TYPES = frozenset({"subnet", "dmz"})
 # Drawn for readability, never built: a switch is the port group, the cloud is outside.
 _NON_VM_TYPES = frozenset({"switch", "cloud"}) | _ZONE_TYPES
+# Rendered templates give every VM one NIC, so these can't route when placed alone.
+_MULTI_HOMED_TYPES = frozenset({"firewall", "router"})
 
 _TYPE_ROLE: dict[str, str] = {
     "dc": "domain_controller",
@@ -402,8 +413,15 @@ _TYPE_ROLE: dict[str, str] = {
     "seconion": "network_monitor",
 }
 
+_NODE_FIELDS = frozenset({"id", "name", "role", "os", "vlan", "ip", "specs", "services", "count"})
+_VLAN_FIELDS = frozenset({"id", "name", "cidr"})
+
 _GRID_COLS = 4
 _CELL_W, _CELL_H = 150, 95
+
+
+class TopologyError(ValueError):
+    """The diagram cannot be converted at all (as opposed to per-node warnings)."""
 
 
 def _node_type_for(role: str, os_name: str) -> str:
@@ -425,171 +443,322 @@ def _node_type_for(role: str, os_name: str) -> str:
 
 
 def template_to_diagram(doc: dict) -> dict:
-    """Lay a full-node template out as a designer diagram, keeping everything provisioning reads.
+    """Lay a full-node template out as a designer diagram, keeping everything.
 
-    One zone per VLAN (with its CIDR and VLAN id), every node expanded by `count`,
-    and each node's OS, specs, services, IP and role carried in `nodeData`.
-    Inverse of `diagram_to_template`.
+    One zone per VLAN (exact name, CIDR, id), every node expanded by `count`, each
+    node's OS, specs, services, IP and role in `nodeData`, and any other template
+    keys in `nodeData.template_extra`. Zones come first, then nodes in template
+    order. Inverse of `diagram_to_template`.
     """
     network = doc.get("network") if isinstance(doc.get("network"), dict) else {}
     vlans = [v for v in (network.get("vlans") or []) if isinstance(v, dict)]
     nodes = [n for n in (doc.get("nodes") or []) if isinstance(n, dict)]
+    vlan_names = [str(v.get("name")) for v in vlans]
 
-    by_vlan: dict[str, list[dict]] = {}
+    # Expand counts once, remembering each instance's zone.
+    instances: list[tuple[str, dict, str]] = []
     for node in nodes:
-        by_vlan.setdefault(str(node.get("vlan", "default")), []).append(node)
-    zone_order = [str(v.get("name")) for v in vlans] + sorted(k for k in by_vlan if k not in {str(v.get("name")) for v in vlans})
+        count = max(1, int(node.get("count", 1) or 1))
+        base = str(node.get("id") or node.get("name") or "node")
+        zone = str(node.get("vlan", "default"))
+        for r in range(count):
+            instances.append((f"{base}-{r}" if count > 1 else base, node, zone))
+    zone_order = vlan_names + sorted({z for _, _, z in instances} - set(vlan_names))
 
-    cells: list[dict] = []
-    y = 40
     zone_w = 40 + _GRID_COLS * _CELL_W
+    zone_cells: list[dict] = []
+    slot: dict[str, tuple[int, int]] = {}  # zone -> (top y, next index)
+    y = 40
     for zi, zname in enumerate(zone_order):
         meta = next((v for v in vlans if str(v.get("name")) == zname), {})
-        members: list[tuple[str, dict]] = []
-        for node in by_vlan.get(zname, []):
-            count = max(1, int(node.get("count", 1) or 1))
-            base = str(node.get("id") or node.get("name") or "node")
-            for r in range(count):
-                members.append((f"{base}-{r}" if count > 1 else base, node))
-        rows = max(1, -(-len(members) // _GRID_COLS))
-        vid = meta.get("id")
-        cells.append(_cell_zone(
+        members = sum(1 for _, _, z in instances if z == zname)
+        rows = max(1, -(-members // _GRID_COLS))
+        vid = _int_or_none(meta.get("id"))
+        cell = _cell_zone(
             f"zone-{zi}", zname, str(meta.get("cidr") or ""), 40, y,
-            dmz="dmz" in zname.lower(), width=zone_w, height=50 + rows * _CELL_H,
-            vlan=int(vid) if str(vid).isdigit() else None,
-        ))
-        for mi, (nid, node) in enumerate(members):
-            os_name = str(node.get("os") or "")
-            role = str(node.get("role") or "")
-            ip = str(node.get("ip") or "") if int(node.get("count", 1) or 1) == 1 else ""
-            cell = _cell_node(
-                nid, str(node.get("name") or nid), _node_type_for(role, os_name), os_name, ip,
-                60 + (mi % _GRID_COLS) * _CELL_W, y + 40 + (mi // _GRID_COLS) * _CELL_H,
-            )
-            data = cell["nodeData"]
-            data["hostname"] = nid
-            if role:
-                data["role"] = role
-            specs = node.get("specs") if isinstance(node.get("specs"), dict) else {}
-            for src, dst in (("cores", "vcpu"), ("memory_mb", "ram_mb"), ("disk_gb", "disk_gb")):
-                if specs.get(src) is not None:
-                    data[dst] = str(specs[src])
-            if isinstance(vid, int) or str(vid).isdigit():
-                data["vlan"] = str(vid)
-            services = node.get("services") or []
-            if isinstance(services, list) and services:
-                data["services"] = ",".join(str(x) for x in services)
-            cells.append(cell)
+            dmz="dmz" in zname.lower(), width=zone_w, height=50 + rows * _CELL_H, vlan=vid,
+        )
+        extra = {k: v for k, v in meta.items() if k not in _VLAN_FIELDS}
+        if extra:
+            cell["nodeData"]["template_extra"] = extra
+        zone_cells.append(cell)
+        slot[zname] = (y, 0)
         y += 50 + rows * _CELL_H + 40
-    return {"cells": cells}
+
+    zone_vid = {c["nodeData"]["label"]: c["nodeData"].get("vlan") for c in zone_cells}
+    node_cells: list[dict] = []
+    for nid, node, zname in instances:
+        top, idx = slot[zname]
+        slot[zname] = (top, idx + 1)
+        os_name = str(node.get("os") or "")
+        role = str(node.get("role") or "")
+        ip = str(node.get("ip") or "") if int(node.get("count", 1) or 1) == 1 else ""
+        cell = _cell_node(
+            nid, str(node.get("name") or nid), _node_type_for(role, os_name), os_name, ip,
+            60 + (idx % _GRID_COLS) * _CELL_W, top + 40 + (idx // _GRID_COLS) * _CELL_H,
+        )
+        data = cell["nodeData"]
+        data["hostname"] = nid
+        if role:
+            data["role"] = role
+        specs = node.get("specs") if isinstance(node.get("specs"), dict) else {}
+        for src, dst in (("cores", "vcpu"), ("memory_mb", "ram_mb"), ("disk_gb", "disk_gb")):
+            if specs.get(src) is not None:
+                data[dst] = str(specs[src])
+        extra_specs = {k: v for k, v in specs.items() if k not in ("cores", "memory_mb", "disk_gb")}
+        if zone_vid.get(zname) is not None:
+            data["vlan"] = str(zone_vid[zname])
+        services = node.get("services") or []
+        if isinstance(services, list) and services:
+            data["services"] = ",".join(str(x) for x in services)
+        extra = {k: v for k, v in node.items() if k not in _NODE_FIELDS}
+        if extra_specs:
+            extra["specs"] = extra_specs
+        if extra:
+            data["template_extra"] = extra
+        node_cells.append(cell)
+    return {"cells": zone_cells + node_cells}
 
 
-def _slug(text: str) -> str:
-    out = "".join(c if c.isalnum() or c == "-" else "-" for c in text.strip().lower())
-    return "-".join(p for p in out.split("-") if p)[:48]
+def _name(text: str) -> str:
+    """Identifier-safe name that leaves already-clean names (a-z 0-9 _ -) untouched."""
+    out = "".join(c if c.isalnum() or c in "-_" else "-" for c in str(text).strip().lower())
+    return "-".join(p for p in out.split("-") if p)[:63]
 
 
 def _int_or_none(value) -> int | None:
+    if isinstance(value, bool):
+        return None
     try:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return None
 
 
-def _centre_in(cell: dict, zone: dict) -> bool:
-    pos, size = cell.get("position") or {}, cell.get("size") or {}
-    zpos, zsize = zone.get("position") or {}, zone.get("size") or {}
-    cx = float(pos.get("x", 0)) + float(size.get("width", 0)) / 2
-    cy = float(pos.get("y", 0)) + float(size.get("height", 0)) / 2
-    zx, zy = float(zpos.get("x", 0)), float(zpos.get("y", 0))
-    return zx <= cx <= zx + float(zsize.get("width", 0)) and zy <= cy <= zy + float(zsize.get("height", 0))
+def _num(value) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f and abs(f) < 1e9 else None  # rejects NaN and absurd coordinates
+
+
+def _box(cell: dict) -> tuple[float, float, float, float] | None:
+    pos, size = cell.get("position"), cell.get("size")
+    if not isinstance(pos, dict):
+        return None
+    x, y = _num(pos.get("x", 0)), _num(pos.get("y", 0))
+    w = _num((size or {}).get("width", 0)) if isinstance(size, dict) else 0.0
+    h = _num((size or {}).get("height", 0)) if isinstance(size, dict) else 0.0
+    if None in (x, y, w, h):
+        return None
+    return x, y, w, h
+
+
+def _free_cidr(taken: list) -> str:
+    for third in range(200, 255):
+        cand = ipaddress.ip_network(f"10.{third}.0.0/24")
+        if not any(cand.overlaps(t) for t in taken):
+            return str(cand)
+    return "10.254.254.0/24"
 
 
 def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: str | None = None) -> dict:
     """Turn a designer diagram into a template the worker provisions from.
 
     Zones become `network.vlans`; each compute node becomes a `nodes` entry with
-    `os`, `specs`, `vlan`, `ip`, `role` and `services`. A node belongs to the zone
-    its centre sits in; a node outside every zone uses its VLAN ID field, matched to a
-    zone with that ID or else given a VLAN of its own. Switches, clouds and zones
-    are layout, not VMs, so they are not emitted.
+    `os`, `specs`, `vlan`, `ip`, `role` and `services` (plus any `template_extra`
+    it carried). A node belongs to the smallest zone its centre sits in; a node
+    outside every zone uses its VLAN ID field, matched to a zone with that ID or
+    else given a VLAN and subnet of its own that collide with nothing. Switches,
+    clouds and zones are layout, not VMs.
 
-    Returns ``{"template": {...}, "warnings": [...]}``. Warnings describe what was
-    dropped or guessed; they never stop the conversion.
+    Returns ``{"template": {...}, "warnings": [...]}``. Anything malformed in a
+    single cell is skipped or dropped with a warning. Raises TopologyError only
+    when the diagram as a whole is unusable (not a cell list, or too large).
     """
     from .golden_images import canonical_os
 
-    cells = [c for c in (diagram or {}).get("cells", []) or [] if isinstance(c, dict)]
-    zones = [c for c in cells if c.get("nodeType") in _ZONE_TYPES]
+    raw_cells = (diagram or {}).get("cells") if isinstance(diagram, dict) else None
+    if not isinstance(raw_cells, list):
+        raise TopologyError("diagram must be an object with a 'cells' list")
+    if len(raw_cells) > MAX_DIAGRAM_CELLS:
+        raise TopologyError(f"diagram has {len(raw_cells)} cells; the limit is {MAX_DIAGRAM_CELLS}")
     warnings: list[str] = []
+    cells: list[dict] = []
+    for c in raw_cells:
+        if not isinstance(c, dict) or c.get("type") == "standard.Link":
+            continue
+        if not isinstance(c.get("nodeType"), str):
+            if c.get("nodeType") is not None:
+                warnings.append(f"cell {str(c.get('id'))[:40]}: unreadable node type; skipped")
+            continue
+        if not isinstance(c.get("nodeData"), dict):
+            if c.get("nodeData") is not None:
+                warnings.append(f"cell {str(c.get('id'))[:40]}: unreadable properties; treated as empty")
+            c = {**c, "nodeData": {}}
+        cells.append(c)
 
-    vlans: list[dict] = []
-    zone_vlan: dict[str, str] = {}  # zone cell id -> vlan name
+    # ── zones -> vlans ──
+    zones: list[tuple[dict, tuple | None]] = [(z, _box(z)) for z in cells if z["nodeType"] in _ZONE_TYPES]
     used_ids: set[int] = set()
     used_names: set[str] = set()
-    for zi, zone in enumerate(zones):
-        data = zone.get("nodeData") or {}
-        vid = _int_or_none(data.get("vlan"))
-        if vid is None or vid in used_ids:
-            vid = 100 + zi
-            while vid in used_ids:
-                vid += 1
-        used_ids.add(vid)
-        vname = _slug(str(data.get("label") or "")) or f"zone{zi}"
-        while vname in used_names:
-            vname += f"-{vid}"
-        used_names.add(vname)
-        vlan = {"id": vid, "name": vname}
-        if data.get("cidr"):
-            vlan["cidr"] = str(data["cidr"])
-        vlans.append(vlan)
-        zone_vlan[str(zone.get("id"))] = vname
+    requested: list[int | None] = []
+    for zone, _ in zones:
+        vid = _int_or_none(zone["nodeData"].get("vlan"))
+        requested.append(vid if vid is not None and 1 <= vid <= 4094 else None)
+    for vid in requested:  # explicit ids first, so auto ids never steal them
+        if vid is not None:
+            used_ids.add(vid)
 
+    def _next_id() -> int:
+        vid = 100
+        while vid in used_ids:
+            vid += 1
+        used_ids.add(vid)
+        return vid
+
+    vlans: list[dict] = []
+    networks: dict[str, object] = {}
+    zone_vlan: dict[int, str] = {}  # index into zones -> vlan name
+    seen_explicit: set[int] = set()
+    for zi, (zone, _) in enumerate(zones):
+        data = zone["nodeData"]
+        label = str(data.get("label") or "")
+        vid = requested[zi]
+        if vid is not None and vid in seen_explicit:
+            new = _next_id()
+            warnings.append(f"zone {label or zi}: VLAN {vid} already used by another zone; renumbered to {new}")
+            vid = new
+        elif vid is None:
+            vid = _next_id()
+        seen_explicit.add(vid)
+        vname = _name(label) or f"zone{zi}"
+        while vname in used_names:
+            vname = f"{vname}-{vid}"
+        used_names.add(vname)
+        vlan: dict = {"id": vid, "name": vname}
+        if data.get("cidr"):
+            try:
+                net = ipaddress.ip_network(str(data["cidr"]).strip(), strict=False)
+                vlan["cidr"] = str(data["cidr"]).strip()
+                networks[vname] = net
+            except ValueError:
+                # Kept as written so the worker renders exactly what it did before (its
+                # own fallback); flagged so the author fixes it.
+                vlan["cidr"] = str(data["cidr"]).strip()
+                warnings.append(f"zone {label or vname}: CIDR {data['cidr']!r} is not valid")
+        extra = data.get("template_extra")
+        if isinstance(extra, dict):
+            vlan = {**{k: v for k, v in extra.items() if k not in _VLAN_FIELDS}, **vlan}
+        vlans.append(vlan)
+        zone_vlan[zi] = vname
+
+    def _zone_for(cell: dict) -> int | None:
+        box = _box(cell)
+        if box is None:
+            return None
+        cx, cy = box[0] + box[2] / 2, box[1] + box[3] / 2
+        best, best_area = None, None
+        for zi, (_, zb) in enumerate(zones):
+            if zb is None:
+                continue
+            zx, zy, zw, zh = zb
+            if zx <= cx <= zx + zw and zy <= cy <= zy + zh and (best_area is None or zw * zh < best_area):
+                best, best_area = zi, zw * zh
+        return best
+
+    # ── compute nodes ──
     nodes: list[dict] = []
-    seen_ids: set[str] = set()
+    default_vlan: str | None = None  # shared by loose nodes that name no VLAN
+    id_counts: dict[str, int] = {}
+    used_ips: set = set()
     for cell in cells:
-        ntype = str(cell.get("nodeType") or "")
-        if cell.get("type") == "standard.Link" or not ntype or ntype in _NON_VM_TYPES:
+        ntype = cell["nodeType"]
+        if ntype in _NON_VM_TYPES:
             continue
-        data = cell.get("nodeData") or {}
-        label = str(data.get("label") or cell.get("id") or "node")
+        data = cell["nodeData"]
+        label = str(data.get("label") or cell.get("id") or "node")[:120]
         os_name = canonical_os(str(data.get("os_template") or data.get("os") or ""))
         if not os_name:
             warnings.append(f"{label}: no OS template set; skipped")
             continue
 
-        nid = _slug(str(data.get("hostname") or "")) or _slug(label) or _slug(str(cell.get("id"))) or "node"
-        base, n = nid, 2
-        while nid in seen_ids:
-            nid, n = f"{base}-{n}", n + 1
-        seen_ids.add(nid)
+        base = _name(data.get("hostname") or "") or _name(label) or _name(cell.get("id") or "") or "node"
+        n = id_counts.get(base, 0) + 1
+        id_counts[base] = n
+        nid = base if n == 1 else f"{base}-{n}"
+        while nid in id_counts and nid != base:  # a literal "web-2" elsewhere
+            n += 1
+            nid = f"{base}-{n}"
+        id_counts.setdefault(nid, 1)
 
-        zone = next((z for z in zones if _centre_in(cell, z)), None)
-        if zone is not None:
-            vlan_name = zone_vlan[str(zone.get("id"))]
+        zi = _zone_for(cell)
+        if zi is not None:
+            vlan_name = zone_vlan[zi]
         else:
             vid = _int_or_none(data.get("vlan"))
             match = next((v for v in vlans if v["id"] == vid), None) if vid is not None else None
             if match is not None:
                 vlan_name = match["name"]
+            elif vid is None and default_vlan is not None:
+                vlan_name = default_vlan
             else:
-                vid = vid if vid is not None else 100
+                wants_default = vid is None
+                vid = vid if vid is not None and 1 <= vid <= 4094 and vid not in used_ids else _next_id()
+                used_ids.add(vid)
                 vlan_name = f"vlan{vid}"
-                if vlan_name not in used_names:
-                    used_names.add(vlan_name)
-                    used_ids.add(vid)
-                    vlans.append({"id": vid, "name": vlan_name})
-                    warnings.append(f"{label}: outside every zone; placed on {vlan_name} with an allocated subnet")
+                while vlan_name in used_names:
+                    vlan_name += "-x"
+                used_names.add(vlan_name)
+                cidr = _free_cidr(list(networks.values()))
+                networks[vlan_name] = ipaddress.ip_network(cidr)
+                vlans.append({"id": vid, "name": vlan_name, "cidr": cidr})
+                if wants_default:
+                    default_vlan = vlan_name
+                warnings.append(f"{label}: outside every zone; placed on VLAN {vid} ({cidr})")
+            if ntype in _MULTI_HOMED_TYPES:
+                warnings.append(f"{label}: a {ntype} outside the zones has a single NIC and will not route between them")
 
-        node: dict = {"id": nid, "name": label, "role": str(data.get("role") or _TYPE_ROLE.get(ntype, ntype)),
-                      "os": os_name, "vlan": vlan_name}
-        if data.get("ip"):
-            node["ip"] = str(data["ip"])
-        specs = {}
+        extra = data.get("template_extra")
+        node: dict = {k: v for k, v in extra.items() if k not in _NODE_FIELDS} if isinstance(extra, dict) else {}
+        node.update({"id": nid, "name": label, "role": str(data.get("role") or _TYPE_ROLE.get(ntype, ntype)),
+                     "os": os_name, "vlan": vlan_name})
+
+        ip_raw = str(data.get("ip") or "").strip()
+        if ip_raw:
+            net = networks.get(vlan_name)
+            try:
+                ip = ipaddress.ip_address(ip_raw)
+            except ValueError:
+                # Kept as written, like an invalid zone CIDR: the author must fix it.
+                node["ip"] = ip_raw
+                warnings.append(f"{label}: IP {ip_raw!r} is not valid")
+            else:
+                reason = None
+                if net is not None and ip not in net:
+                    reason = f"is outside {vlan_name} ({net})"
+                elif net is not None and ip in (net.network_address, net.broadcast_address):
+                    reason = "is the subnet's network or broadcast address"
+                elif net is not None and ip == net.network_address + 1 and ntype not in _MULTI_HOMED_TYPES:
+                    reason = "is the subnet gateway (.1), which only a firewall or router should hold"
+                elif ip in used_ips:
+                    reason = "is already used by another node"
+                if reason:
+                    warnings.append(f"{label}: IP {ip} {reason}; one will be allocated")
+                else:
+                    used_ips.add(ip)
+                    node["ip"] = str(ip)
+
+        specs = dict(extra.get("specs")) if isinstance(extra, dict) and isinstance(extra.get("specs"), dict) else {}
         for src, dst in (("vcpu", "cores"), ("ram_mb", "memory_mb"), ("disk_gb", "disk_gb")):
             val = _int_or_none(data.get(src))
             if val is not None and val > 0:
                 specs[dst] = val
+            elif data.get(src) not in (None, ""):
+                warnings.append(f"{label}: {src} {data.get(src)!r} is not a positive number; default used")
         if specs:
             node["specs"] = specs
         services = data.get("services")

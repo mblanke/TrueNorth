@@ -259,8 +259,17 @@ def save_range_diagram(
 
 # States in which the range has no VMs, so its topology may be replaced. Changing the
 # template under a built range would leave the record describing machines that are
-# not the ones running.
-_TOPOLOGY_EDITABLE = {RangeState.created, RangeState.failed, RangeState.destroyed}
+# not the ones running. `failed` qualifies only if nothing was ever built: a failed
+# destroy also lands there, with its VMs still up.
+_TOPOLOGY_EDITABLE = (RangeState.created, RangeState.destroyed, RangeState.failed)
+# Top-level template keys the designer owns; everything else is carried over.
+_DESIGNER_KEYS = frozenset({"name", "version", "nodes", "network", "assets", "source"})
+
+
+def _topology_editable(rng: Range) -> bool:
+    if rng.state == RangeState.failed:
+        return not (rng.provisioner_output or "").strip()
+    return rng.state in _TOPOLOGY_EDITABLE
 
 
 @router.post("/{range_id}/topology")
@@ -275,41 +284,87 @@ def save_range_topology(
     **Permission: range:update + template:create**
 
     Converts the diagram (``body.diagram_json``, else the saved one) into a template
-    and points the range at it. The first save creates a private template owned by
-    this range; later saves update that same template. A shared or content template
-    the range started from is never modified. 409 once the range has VMs.
+    and points the range at it. The range's own template (created here earlier for
+    this range and used by no other range) is updated in place; any other template,
+    shared, public, or one a second range also uses, is copied, never modified.
+    A copy keeps the source template's other keys and its PO links, so the
+    curriculum spine survives. 409 once the range has VMs, checked atomically with
+    the switch so a concurrent provision cannot slip in between.
     """
     import yaml as pyyaml
 
     from .. import range_topology
+    from ..models import RangeObjectiveMap
 
     rng = _tenant_range(db, range_id, user)
-    if rng.state not in _TOPOLOGY_EDITABLE:
-        raise HTTPException(409, f"Range is {rng.state.value}; destroy it before changing its topology")
-    diagram = (body or {}).get("diagram_json") if isinstance(body, dict) else None
+    if not _topology_editable(rng):
+        raise HTTPException(409, f"Range is {rng.state.value} with VMs; destroy it before changing its topology")
+    diagram = body.get("diagram_json") if isinstance(body, dict) else None
     if diagram is None:
         diagram = rng.diagram_json
     if not isinstance(diagram, dict):
         raise HTTPException(422, "No diagram to save: draw or load one first")
 
-    out = range_topology.diagram_to_template(diagram, rng.name, range_id=str(rng.id))
+    try:
+        out = range_topology.diagram_to_template(diagram, rng.name, range_id=str(rng.id))
+    except range_topology.TopologyError as exc:
+        raise HTTPException(422, str(exc)) from exc
     template = out["template"]
     if not template["nodes"]:
         raise HTTPException(422, {"message": "Diagram has no VMs to provision", "warnings": out["warnings"]})
-    text = pyyaml.safe_dump(template, sort_keys=False)
 
+    # The template the range points at now. Read-only here (keys and PO links are
+    # copied from it); it is written only if it passes the ownership test below.
+    # tenant-safe: the range is tenant-scoped above; a range may point at its own
+    # tenant's template or a shared (public / NULL-tenant) one, never another tenant's.
     current = (
         db.query(Template)
-        .filter(Template.id == rng.template_id, Template.tenant_id == rng.tenant_id)
+        .filter(
+            Template.id == rng.template_id,
+            (Template.tenant_id == rng.tenant_id) | Template.tenant_id.is_(None) | Template.is_public.is_(True),
+        )
         .first()
     )
-    owned = False
-    if current is not None and not current.is_public:
+    parsed: dict = {}
+    if current is not None:
         try:
-            src = (pyyaml.safe_load(current.yaml or "") or {}).get("source") or {}
+            loaded = pyyaml.safe_load(current.yaml or "")
+            parsed = loaded if isinstance(loaded, dict) else {}
         except pyyaml.YAMLError:
-            src = {}
-        owned = isinstance(src, dict) and src.get("range_id") == str(rng.id)
+            parsed = {}
+    for key, value in parsed.items():
+        if key not in _DESIGNER_KEYS:
+            template.setdefault(key, value)
+    if isinstance(parsed.get("network"), dict):
+        for key, value in parsed["network"].items():
+            if key != "vlans":
+                template["network"].setdefault(key, value)
+    text = pyyaml.safe_dump(template, sort_keys=False)
+
+    # Claim the range first: a conditional UPDATE that only matches while the range is
+    # still editable. On Postgres it holds the row lock until commit, so a concurrent
+    # provision waits and then builds the new topology; if the provision got there
+    # first, nothing matches and nothing has been written.
+    editable_now = (Range.state.in_([RangeState.created, RangeState.destroyed])) | (
+        (Range.state == RangeState.failed)
+        & (Range.provisioner_output.is_(None) | (Range.provisioner_output == ""))
+    )
+    claimed = (
+        db.query(Range)
+        .filter(Range.id == rng.id, Range.tenant_id == rng.tenant_id, editable_now)
+        .update({Range.diagram_json: diagram}, synchronize_session=False)
+    )
+    if claimed != 1:
+        raise HTTPException(409, "Range changed state while saving; reload and try again")
+
+    src = parsed.get("source") if isinstance(parsed.get("source"), dict) else {}
+    owned = (
+        current is not None
+        and current.tenant_id == rng.tenant_id
+        and not current.is_public
+        and src.get("range_id") == str(rng.id)
+        and db.query(Range).filter(Range.template_id == current.id, Range.id != rng.id).count() == 0
+    )
 
     if owned:
         current.yaml = text
@@ -319,8 +374,13 @@ def save_range_topology(
                         tenant_id=rng.tenant_id, is_public=False)
         db.add(tmpl)
         db.flush()
-        rng.template_id = tmpl.id
-    rng.diagram_json = diagram
+        if current is not None:
+            for m in db.query(RangeObjectiveMap).filter(RangeObjectiveMap.template_id == current.id).all():
+                db.add(RangeObjectiveMap(template_id=tmpl.id, po_id=m.po_id, source=m.source, tenant_id=m.tenant_id))
+
+    db.query(Range).filter(Range.id == rng.id, Range.tenant_id == rng.tenant_id).update(
+        {Range.template_id: tmpl.id}, synchronize_session=False
+    )
     _audit(db, user, "update", "range.topology", str(rng.id),
            detail=f"template={tmpl.id} nodes={len(template['nodes'])} created={not owned}")
     db.commit()
