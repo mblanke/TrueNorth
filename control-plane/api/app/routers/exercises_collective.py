@@ -21,6 +21,7 @@ from .. import mesl as mesl_parse
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import Exercise, ExerciseObjective, ExerciseState, MeslEvent, Range
+from ..tenancy import get_owned, tenant_uuid
 
 AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 logger = logging.getLogger("truenorth.api.collective")
@@ -83,9 +84,13 @@ def _mesl_out(m: MeslEvent) -> MeslEventOut:
     )
 
 
-def _get_collective(db: Session, exercise_id: str) -> Exercise:
-    ex = db.query(Exercise).filter_by(id=exercise_id, kind="collective").one_or_none()
-    if ex is None:
+def _get_collective(db: Session, exercise_id: str, user: CurrentUser) -> Exercise:
+    """The caller's own collective exercise, or 404 (also for another tenant's id)."""
+    try:
+        ex = get_owned(db, Exercise, exercise_id, user, not_found="collective exercise not found")
+    except ValueError as exc:  # not a UUID
+        raise HTTPException(status_code=404, detail="collective exercise not found") from exc
+    if ex.kind != "collective":
         raise HTTPException(status_code=404, detail="collective exercise not found")
     return ex
 
@@ -120,9 +125,10 @@ def create_exercise(
     user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Create a collective exercise on a range (optionally with objectives)."""
-    rng = db.query(Range).filter_by(id=body.range_id).one_or_none()
-    if rng is None:
-        raise HTTPException(status_code=422, detail="range not found")
+    try:
+        rng = get_owned(db, Range, body.range_id, user, not_found="range not found")
+    except (ValueError, HTTPException) as exc:  # bad UUID, or not this tenant's range
+        raise HTTPException(status_code=422, detail="range not found") from exc
     ex = Exercise(
         name=body.name,
         kind="collective",
@@ -141,10 +147,15 @@ def create_exercise(
 @router.get("")
 def list_exercises(
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> list[dict]:
     out = []
-    for ex in db.query(Exercise).filter_by(kind="collective").filter(Exercise.deleted_at.is_(None)).all():
+    for ex in (
+        db.query(Exercise)
+        .filter_by(kind="collective")
+        .filter(Exercise.deleted_at.is_(None), Exercise.tenant_id == tenant_uuid(user))
+        .all()
+    ):
         out.append(
             {
                 "id": str(ex.id),
@@ -162,9 +173,9 @@ def list_exercises(
 def get_exercise(
     exercise_id: str,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> dict:
-    ex = _get_collective(db, exercise_id)
+    ex = _get_collective(db, exercise_id, user)
     objs = db.query(ExerciseObjective).filter_by(exercise_id=ex.id).order_by(ExerciseObjective.ordinal).all()
     mesl = db.query(MeslEvent).filter_by(exercise_id=ex.id).order_by(MeslEvent.serial).all()
     return {
@@ -183,10 +194,10 @@ async def import_objectives(
     exercise_id: str,
     file: UploadFile,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Ingest exercise objectives from a CSV."""
-    ex = _get_collective(db, exercise_id)
+    ex = _get_collective(db, exercise_id, user)
     text = (await file.read())[:MAX_CSV_BYTES].decode("utf-8-sig", errors="replace")
     added = _add_objectives(db, ex, mesl_parse.parse_objectives(text))
     db.commit()
@@ -198,10 +209,10 @@ async def import_mesl(
     exercise_id: str,
     file: UploadFile,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Ingest a planner MESL (CSV) into structured serials linked to objectives."""
-    ex = _get_collective(db, exercise_id)
+    ex = _get_collective(db, exercise_id, user)
     text = (await file.read())[:MAX_CSV_BYTES].decode("utf-8-sig", errors="replace")
     serials = mesl_parse.parse_mesl(text)
     # replace the MESL wholesale on import
@@ -243,7 +254,7 @@ def patch_mesl_event(
     event_id: str,
     body: MeslEventPatch,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Edit a single MESL serial (title/timing/delivery/status/...).
 
@@ -251,7 +262,7 @@ def patch_mesl_event(
     this the only way to change a serial was to re-import or regenerate the
     whole list. Vocabularies are enforced so the board's chips stay meaningful.
     """
-    _get_collective(db, exercise_id)  # 404s if the exercise is not collective
+    _get_collective(db, exercise_id, user)  # 404s if the exercise is not collective
     event = db.query(MeslEvent).filter_by(id=event_id, exercise_id=exercise_id).one_or_none()
     if event is None:
         raise HTTPException(status_code=404, detail="MESL event not found on this exercise")
@@ -281,10 +292,10 @@ def generate_mesl(
     exercise_id: str,
     body: MeslGenerateReq,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Draft a MESL on-box from the exercise objectives (model-generated, human-refined)."""
-    ex = _get_collective(db, exercise_id)
+    ex = _get_collective(db, exercise_id, user)
     objs = db.query(ExerciseObjective).filter_by(exercise_id=ex.id).order_by(ExerciseObjective.ordinal).all()
     if not objs:
         raise HTTPException(status_code=422, detail="add objectives before generating a MESL")

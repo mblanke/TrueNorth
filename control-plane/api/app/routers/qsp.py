@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -36,6 +37,8 @@ from ..models import (
     RangeObjectiveMap,
     Template,
 )
+from ..rbac import Permission, require_any_permission, require_permission
+from ..tenancy import get_owned, tenant_uuid
 
 logger = logging.getLogger("truenorth.api.qsp")
 
@@ -455,6 +458,36 @@ class _POContext:
 # ── Range ↔ PO linkage — "curriculum in the range section" ────────────────
 
 
+def _uuid_or_404(value: str, what: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(str(value))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=f"{what} not found") from exc
+
+
+def _readable_template(db: Session, template_id, user: CurrentUser) -> Template:
+    """A template the caller may read: their tenant's, a public one, or shared catalogue
+    (NULL tenant) — the same visibility as GET /templates. 404 otherwise."""
+    tid = template_id if isinstance(template_id, uuid.UUID) else _uuid_or_404(template_id, "template")
+    template = (
+        db.query(Template)
+        .filter(
+            Template.id == tid,
+            (Template.tenant_id == tenant_uuid(user)) | Template.tenant_id.is_(None) | Template.is_public.is_(True),
+            Template.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if template is None:
+        raise HTTPException(status_code=404, detail="template not found")
+    return template
+
+
+def _writable_template(db: Session, template_id: str, user: CurrentUser) -> Template:
+    """Only the caller's own tenant's template; public and catalogue ones are read-only."""
+    return get_owned(db, Template, _uuid_or_404(template_id, "template"), user, not_found="template not found")
+
+
 class AttachObjectives(BaseModel):
     po_ids: list[str]
     source: str = "manual"
@@ -465,12 +498,13 @@ def attach_template_objectives(
     template_id: str,
     body: AttachObjectives,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_any_permission(Permission.TEMPLATE_UPDATE, Permission.TEMPLATE_CREATE)),
 ) -> dict:
-    """Link a range template to one or more POs (idempotent upsert)."""
-    template = db.query(Template).filter_by(id=template_id).one_or_none()
-    if template is None:
-        raise HTTPException(status_code=404, detail="template not found")
+    """Link a range template to one or more POs (idempotent upsert).
+
+    **Permission: template:update or template:create.** Own-tenant templates only.
+    """
+    template = _writable_template(db, template_id, user)
     added = 0
     for po_id in body.po_ids:
         po = db.query(PerformanceObjective).filter_by(id=po_id).one_or_none()
@@ -498,11 +532,13 @@ def detach_template_objective(
     template_id: str,
     po_id: str,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_any_permission(Permission.TEMPLATE_UPDATE, Permission.TEMPLATE_CREATE)),
 ) -> dict:
+    """Unlink a PO from a template. **Permission: template:update or template:create.**"""
+    template = _writable_template(db, template_id, user)
     row = (
         db.query(RangeObjectiveMap)
-        .filter_by(template_id=template_id, po_id=po_id)
+        .filter_by(template_id=template.id, po_id=_uuid_or_404(po_id, "objective"))
         .one_or_none()
     )
     detached = row is not None
@@ -516,28 +552,25 @@ def detach_template_objective(
 def template_curriculum(
     template_id: str,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
 ) -> dict:
-    """The QSP POs/EOs (and their lessons) a range template supports."""
-    template = db.query(Template).filter_by(id=template_id).one_or_none()
-    if template is None:
-        raise HTTPException(status_code=404, detail="template not found")
-    return _template_curriculum(db, template)
+    """The QSP POs/EOs (and their lessons) a range template supports. **Permission: template:read**"""
+    return _template_curriculum(db, _readable_template(db, template_id, user))
 
 
 @router.get("/ranges/{range_id}/curriculum")
 def range_curriculum(
     range_id: str,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> dict:
-    """The curriculum a provisioned range supports (resolved via its template)."""
-    rng = db.query(Range).filter_by(id=range_id).one_or_none()
-    if rng is None:
-        raise HTTPException(status_code=404, detail="range not found")
-    template = db.query(Template).filter_by(id=rng.template_id).one_or_none()
-    if template is None:
-        raise HTTPException(status_code=404, detail="range template not found")
+    """The curriculum a provisioned range supports (resolved via its template).
+
+    **Permission: range:read.** The caller's own range only; its template may be
+    their tenant's or a shared one.
+    """
+    rng = get_owned(db, Range, _uuid_or_404(range_id, "range"), user, not_found="range not found")
+    template = _readable_template(db, rng.template_id, user)
     payload = _template_curriculum(db, template)
     payload["range_id"] = str(rng.id)
     payload["range_name"] = rng.name
