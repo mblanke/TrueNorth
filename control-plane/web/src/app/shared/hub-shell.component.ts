@@ -6,7 +6,6 @@ import {
   RouterLinkActive,
   RouterOutlet,
 } from '@angular/router';
-import { MatTabsModule } from '@angular/material/tabs';
 import { AuthService } from '@core/services/auth.service';
 import { QuietStylesComponent } from './quiet-styles.component';
 
@@ -26,29 +25,31 @@ interface HubTab {
 @Component({
   selector: 'tn-hub-shell',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MatTabsModule, QuietStylesComponent],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, QuietStylesComponent],
   template: `
     <tn-quiet-styles />
     <section class="hub">
       @if (title) {
-        <h1 class="hub-title">{{ title }}</h1>
+        <header class="hub-heading">
+          <p class="hub-eyebrow">TrueNorth / {{ title }}</p>
+          <h1 class="hub-title">{{ title }}</h1>
+          <p class="hub-description">{{ description }}</p>
+        </header>
       }
-      <nav mat-tab-nav-bar [tabPanel]="tabPanel" class="hub-tabs">
+      <nav class="hub-tabs" [attr.aria-label]="title + ' sections'">
         @for (tab of visibleTabs(); track tab.path) {
           <a
-            mat-tab-link
             [routerLink]="tab.path"
-            routerLinkActive
-            #rla="routerLinkActive"
-            [active]="rla.isActive"
+            routerLinkActive="selected"
+            ariaCurrentWhenActive="page"
           >
             {{ tab.label }}
           </a>
         }
       </nav>
-      <mat-tab-nav-panel #tabPanel class="hub-panel">
+      <div class="hub-panel">
         <router-outlet />
-      </mat-tab-nav-panel>
+      </div>
     </section>
   `,
   styles: [
@@ -56,17 +57,28 @@ interface HubTab {
       .hub {
         display: flex;
         flex-direction: column;
-        height: 100%;
         min-height: 0;
+        padding: 28px;
+        max-width: 1400px;
+        margin: 0 auto;
       }
       .hub-title {
         margin: 0 0 0.5rem;
-        font-size: 1.25rem;
+        font-size: 25px;
         font-weight: 600;
       }
       .hub-tabs {
-        margin-bottom: 1rem;
+        display: flex; flex-wrap: wrap; gap: 6px;
+        margin: 24px 0; padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
       }
+      .hub-eyebrow { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
+      .hub-description { color: var(--text-muted); margin: 0; font-size: 14px; }
+      .hub-tabs a { padding: 8px 12px; border-radius: 5px; color: var(--text-secondary); text-decoration: none; font-size: 14px; }
+      .hub-tabs a:hover, .hub-tabs a.selected { background: var(--accent-muted); color: var(--accent); }
+      .hub-tabs a.selected { font-weight: 600; }
+      .hub-tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      @media (max-width: 720px) { .hub { padding: 20px 16px; } }
       .hub-panel {
         flex: 1 1 auto;
         min-height: 0;
@@ -78,6 +90,9 @@ export class HubShellComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly auth = inject(AuthService);
   readonly title: string = this.route.snapshot.data['title'] ?? '';
+  readonly description: string = this.title === 'Learning'
+    ? 'Your programme, courses, and progress. One continuing development record.'
+    : 'Build the content and environments behind a purposeful training experience.';
   readonly tabs: HubTab[] = this.route.snapshot.data['tabs'] ?? [];
 
   readonly visibleTabs = computed(() =>

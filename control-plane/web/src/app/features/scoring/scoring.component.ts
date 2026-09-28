@@ -35,7 +35,9 @@ import { Exercise, Objective, AAR } from '@core/models';
         </div>
       </div>
 
-      <mat-form-field appearance="outline">
+      <section class="review-selector">
+      <div><h2>Start with an exercise</h2><p>Review its objectives, supporting evidence, and after-action report together.</p></div>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
         <mat-label>Select Exercise</mat-label>
         <mat-select panelClass="tn-select-panel" [(ngModel)]="selectedExerciseId" (selectionChange)="loadExercise()">
           @for (ex of exercises(); track ex.id) {
@@ -43,6 +45,7 @@ import { Exercise, Objective, AAR } from '@core/models';
           }
         </mat-select>
       </mat-form-field>
+      </section>
 
       @if (selectedExercise()) {
         <mat-card class="mt-2">
@@ -111,6 +114,10 @@ import { Exercise, Objective, AAR } from '@core/models';
     </div>
   `,
   styles: [`
+    .review-selector { display: grid; grid-template-columns: 1fr minmax(240px, 400px); gap: 24px; align-items: center; padding: 24px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); }
+    .review-selector h2 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+    .review-selector p { color: var(--text-muted); font-size: 13px; margin: 0; }
+    @media (max-width: 800px) { .review-selector { grid-template-columns: minmax(0, 1fr); } }
     .achieved { border-left: 4px solid var(--success); }
     .meta { color: var(--text-muted); font-size: 13px; }
     :host > .page-container > mat-form-field { width: 100%; max-width: 500px; display: block; margin-bottom: 16px; }

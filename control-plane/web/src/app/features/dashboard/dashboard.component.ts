@@ -78,27 +78,42 @@ interface DeploymentProfile {
       <div class="page-header">
         <div class="header-left">
           <div>
-            <div class="tn-kicker">Command Center</div>
-            <h1>Dashboard</h1>
-            <p class="subtitle">System overview and quick actions</p>
+            <div class="tn-kicker">Your TrueNorth workspace</div>
+            <h1>What are you working towards?</h1>
+            <p class="subtitle">Continue your learning, prepare an exercise, or build what your team needs next.</p>
           </div>
         </div>
       </div>
 
-      <!-- ──── TOP STATS ROW ────────────────────────────────────────────────────────────────────── -->
+      <section class="workspace-launcher" aria-label="Choose your next task">
+        <a class="workspace-primary" routerLink="/learning/career-path">
+          <span class="workspace-eyebrow">Learn & develop</span>
+          <h2>Your programme. Your next step.</h2>
+          <p>Explore the course pathway, revisit your progress, and connect learning to practice.</p>
+          <span class="workspace-action">Open your learning workspace <mat-icon>arrow_forward</mat-icon></span>
+        </a>
+        <div class="workspace-support">
+          <a routerLink="/exercises"><strong>Prepare an exercise</strong><span>Bring the scenario, range, and training run together.</span><mat-icon>arrow_forward</mat-icon></a>
+          <a routerLink="/authoring"><strong>Create training content</strong><span>Work on scenarios, detections, and range designs.</span><mat-icon>arrow_forward</mat-icon></a>
+          <a routerLink="/scoring"><strong>Review the evidence</strong><span>Inspect scoring and after-action reports.</span><mat-icon>arrow_forward</mat-icon></a>
+        </div>
+      </section>
+
+      <details class="workspace-disclosure">
+      <summary><strong>Platform & capacity</strong><span>Recent activity counts, connected hosts, and deployment estimates</span></summary>
       <div class="stats-row" tnEnterStagger>
         <mat-card class="stat-card tn-stagger-item" tnHoverLift>
           <mat-card-content>
             <div class="tn-icon-squircle"><mat-icon>dns</mat-icon></div>
             <div class="stat-value tn-gradient-text" [tnCountUp]="rangeCount()"></div>
-            <div class="stat-label">Active Ranges</div>
+            <div class="stat-label">Active in latest 5 ranges</div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card tn-stagger-item" tnHoverLift>
           <mat-card-content>
             <div class="tn-icon-squircle"><mat-icon>fitness_center</mat-icon></div>
             <div class="stat-value tn-gradient-text" [tnCountUp]="exerciseCount()"></div>
-            <div class="stat-label">Exercises</div>
+            <div class="stat-label">Latest exercises · up to 5</div>
           </mat-card-content>
         </mat-card>
         <mat-card class="stat-card tn-stagger-item" [matTooltip]="healthTooltip()" tnHoverLift>
@@ -258,8 +273,9 @@ interface DeploymentProfile {
         </div>
       </div>
 
-      <!-- ──── EVENT SCHEDULER ────────────────────────────────────────────────────────────────── -->
-      <h2 class="section-heading"><mat-icon>event</mat-icon> Scheduled Events</h2>
+      </details>
+      <details class="workspace-disclosure">
+      <summary><strong>Schedule & resources</strong><span>Plan an event and check the capacity it requires</span></summary>
       <div class="scheduler-panel">
         <!-- New event form -->
         <mat-card class="new-event-card">
@@ -356,6 +372,7 @@ interface DeploymentProfile {
         </div>
       </div>
 
+      </details>
       <!-- ──── RECENT ACTIVITY ────────────────────────────────────────────────────────────────── -->
       <div class="recent-row">
         <div class="recent-col">
@@ -404,9 +421,7 @@ interface DeploymentProfile {
         </div>
       </div>
       <!-- ── PERSONAL DASHBOARD ────────────────────────── -->
-      <mat-divider style="margin: 32px 0;"></mat-divider>
-      <h2 class="section-heading"><mat-icon>person</mat-icon> My Training Dashboard</h2>
-
+      <h2 class="section-heading">Your development workspace</h2>
       <div class="personal-row">
         <mat-card class="personal-card" tnHoverLift>
           <mat-card-header>
@@ -414,8 +429,7 @@ interface DeploymentProfile {
             <mat-card-title>Active Courses</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="big-number" [tnCountUp]="myActiveCourses"></div>
-            <p class="card-note">courses in progress</p>
+            <p class="card-note">Browse courses by period and semester.</p>
           </mat-card-content>
           <mat-card-actions>
             <button mat-button routerLink="/learning/courses">Go to Training</button>
@@ -425,11 +439,10 @@ interface DeploymentProfile {
         <mat-card class="personal-card" tnHoverLift>
           <mat-card-header>
             <mat-icon mat-card-avatar>trending_up</mat-icon>
-            <mat-card-title>Competency Score</mat-card-title>
+            <mat-card-title>Learning progress</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="big-number accent-text"><span [tnCountUp]="myCompetencyPct"></span>%</div>
-            <mat-progress-bar mode="determinate" [value]="myCompetencyPct"></mat-progress-bar>
+            <p class="card-note">See your recorded learning and next steps.</p>
           </mat-card-content>
           <mat-card-actions>
             <button mat-button routerLink="/my-progress">View Progress</button>
@@ -439,11 +452,10 @@ interface DeploymentProfile {
         <mat-card class="personal-card" tnHoverLift>
           <mat-card-header>
             <mat-icon mat-card-avatar>emoji_events</mat-icon>
-            <mat-card-title>Certifications</mat-card-title>
+            <mat-card-title>Competency framework</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="big-number" [tnCountUp]="myCertCount"></div>
-            <p class="card-note">active certifications</p>
+            <p class="card-note">Connect learning to the skills you are developing.</p>
           </mat-card-content>
           <mat-card-actions>
             <button mat-button routerLink="/competency">View Framework</button>
@@ -453,11 +465,10 @@ interface DeploymentProfile {
         <mat-card class="personal-card" tnHoverLift>
           <mat-card-header>
             <mat-icon mat-card-avatar>public</mat-icon>
-            <mat-card-title>Coalition Status</mat-card-title>
+            <mat-card-title>People & teams</mat-card-title>
           </mat-card-header>
           <mat-card-content>
-            <div class="big-number"><span [tnCountUp]="nationCount"></span> nations</div>
-            <p class="card-note">{{ coalitionCount }} coalitions active</p>
+            <p class="card-note">Open the directory to explore teams and membership.</p>
           </mat-card-content>
           <mat-card-actions>
             <button mat-button routerLink="/users">View Directory</button>
@@ -478,6 +489,24 @@ interface DeploymentProfile {
   `,
   styles: [`
     :host { display: block; }
+    .workspace-launcher { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; margin-bottom: 24px; }
+    .workspace-primary { padding: 28px; border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); text-decoration: none; }
+    .workspace-eyebrow { font-size: 12px; color: var(--text-muted); }
+    .workspace-primary h2 { font-size: 23px; line-height: 1.3; font-weight: 600; margin: 12px 0; }
+    .workspace-primary p { color: var(--text-muted); font-size: 14px; line-height: 1.6; max-width: 440px; }
+    .workspace-action { display: inline-flex; align-items: center; gap: 12px; color: var(--accent); font-weight: 600; font-size: 13px; margin-top: 18px; }
+    .workspace-support { border: 1px solid var(--border); border-radius: 8px; padding: 0 20px; background: var(--bg-card); }
+    .workspace-support a { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; padding: 19px 0; color: inherit; text-decoration: none; }
+    .workspace-support a + a { border-top: 1px solid var(--border); }
+    .workspace-support strong { font-weight: 600; font-size: 14px; }
+    .workspace-support span { color: var(--text-muted); font-size: 13px; grid-column: 1; }
+    .workspace-support mat-icon { grid-column: 2; grid-row: 1 / 3; align-self: center; color: var(--accent); font-size: 18px; }
+    .workspace-launcher a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .workspace-disclosure { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); padding: 0 20px; margin-bottom: 12px; }
+    .workspace-disclosure summary { cursor: pointer; padding: 18px 0; font-size: 14px; }
+    .workspace-disclosure summary span { color: var(--text-muted); font-size: 12px; margin-left: 14px; }
+    .workspace-disclosure[open] { padding-bottom: 20px; }
+    @media (max-width: 820px) { .workspace-launcher { grid-template-columns: 1fr; } .workspace-disclosure summary span { display: block; margin: 6px 0 0; } }
     .subtitle { color: var(--text-muted); }
     .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
     .stat-card mat-card-content { text-align: center; padding: 24px; }
@@ -502,7 +531,7 @@ interface DeploymentProfile {
 
     /* ──── Cluster Capacity Panel ────────────────────────────────────────── */
     .cluster-panel { display: flex; gap: 20px; flex-wrap: wrap; }
-    .node-cards { display: flex; gap: 16px; flex: 1; min-width: 320px; flex-wrap: wrap; }
+    .node-cards { display: flex; gap: 16px; flex: 1; min-width: min(100%, 320px); flex-wrap: wrap; }
     .node-card {
       flex: 1 1 280px; max-width: 420px; padding: 16px;
       border-left: 4px solid var(--success);
@@ -532,7 +561,7 @@ interface DeploymentProfile {
 
     /* ──── Aggregate capacity rings ────────────────────────────────────── */
     .capacity-aggregate {
-      flex: 0 0 320px; display: flex; flex-direction: column; gap: 22px;
+      flex: 1 1 240px; display: flex; flex-direction: row; flex-wrap: wrap; gap: 22px;
       align-items: center; justify-content: center;
       padding: 24px 16px; background: var(--bg-secondary); border-radius: var(--radius-md);
       border: 1px solid var(--glass-border);

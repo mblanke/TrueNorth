@@ -1,6 +1,7 @@
 ﻿import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -19,7 +20,7 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
   selector: 'tn-exercises',
   standalone: true,
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatTableModule,
+    CommonModule, FormsModule, RouterLink, MatCardModule, MatTableModule,
     MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatChipsModule, MatTooltipModule, EmptyStateComponent,
   ],
@@ -29,8 +30,9 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
         <div class="header-left">
           <mat-icon class="page-icon">fitness_center</mat-icon>
           <div>
+            <div class="tn-kicker">Prepare / Run / Review</div>
             <h1>Exercises</h1>
-            <p class="subtitle">Create and manage training exercises</p>
+            <p class="subtitle">Bring the scenario, range, and training evidence together.</p>
           </div>
         </div>
         <button mat-raised-button color="primary" (click)="showCreate = !showCreate">
@@ -88,10 +90,13 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
         </mat-card>
       }
 
-      <table mat-table [dataSource]="exercises()" class="mt-2 full-width">
+      <section class="exercise-workspace">
+      <header class="list-heading"><h2>Training runs</h2><span>Open a run to prepare, operate, or review it.</span></header>
+      <div class="table-wrap">
+      <table mat-table [dataSource]="exercises()" class="full-width">
         <ng-container matColumnDef="name">
           <th mat-header-cell *matHeaderCellDef>Name</th>
-          <td mat-cell *matCellDef="let e">{{ e.name }}</td>
+          <td mat-cell *matCellDef="let e"><a [routerLink]="['/exercises', e.id]">{{ e.name }}</a></td>
         </ng-container>
         <ng-container matColumnDef="state">
           <th mat-header-cell *matHeaderCellDef>State</th>
@@ -117,35 +122,36 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef>Actions</th>
           <td mat-cell *matCellDef="let e">
+            <a mat-button [routerLink]="['/exercises', e.id]">Open</a>
             @if (e.state === 'pending') {
-              <button mat-icon-button (click)="startEdit(e)" matTooltip="Rename" [disabled]="saving">
+              <button mat-icon-button (click)="startEdit(e)" matTooltip="Rename" aria-label="Rename exercise" [disabled]="saving">
                 <mat-icon>edit</mat-icon>
               </button>
-              <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Start">
+              <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Start" aria-label="Start exercise">
                 <mat-icon>play_arrow</mat-icon>
               </button>
             }
             @if (e.state === 'running') {
-              <button mat-icon-button (click)="pause(e.id)" matTooltip="Pause">
+              <button mat-icon-button (click)="pause(e.id)" matTooltip="Pause" aria-label="Pause exercise">
                 <mat-icon>pause</mat-icon>
               </button>
-              <button mat-icon-button color="accent" (click)="complete(e.id)" matTooltip="Complete">
+              <button mat-icon-button color="accent" (click)="complete(e.id)" matTooltip="Complete" aria-label="Complete exercise">
                 <mat-icon>stop</mat-icon>
               </button>
             }
             @if (e.state === 'paused') {
-              <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Resume">
+              <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Resume" aria-label="Resume exercise">
                 <mat-icon>play_arrow</mat-icon>
               </button>
-              <button mat-icon-button color="accent" (click)="complete(e.id)" matTooltip="Complete">
+              <button mat-icon-button color="accent" (click)="complete(e.id)" matTooltip="Complete" aria-label="Complete exercise">
                 <mat-icon>stop</mat-icon>
               </button>
             }
             @if (e.state === 'completed') {
-              <button mat-icon-button (click)="genAAR(e.id)" matTooltip="Generate AAR">
+              <button mat-icon-button (click)="genAAR(e.id)" matTooltip="Generate AAR" aria-label="Generate after-action report">
                 <mat-icon>assessment</mat-icon>
               </button>
-              <button mat-icon-button (click)="downloadAARPdf(e.id)" matTooltip="Download AAR PDF">
+              <button mat-icon-button (click)="downloadAARPdf(e.id)" matTooltip="Download AAR PDF" aria-label="Download after-action report PDF">
                 <mat-icon>picture_as_pdf</mat-icon>
               </button>
             }
@@ -154,6 +160,7 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
         <tr mat-header-row *matHeaderRowDef="columns"></tr>
         <tr mat-row *matRowDef="let row; columns: columns"></tr>
       </table>
+      </div>
 
       @if (loading()) {
         <div class="tn-skeleton-group mt-2" aria-busy="true">
@@ -161,6 +168,10 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
           <div class="tn-skeleton tn-skeleton-row"></div>
           <div class="tn-skeleton tn-skeleton-row"></div>
         </div>
+      } @else if (loadError()) {
+        <tn-empty-state icon="error_outline" title="Exercises could not be loaded" message="Try again to retrieve the training runs.">
+          <button mat-stroked-button (click)="load()">Retry</button>
+        </tn-empty-state>
       } @else if (exercises().length === 0) {
         <tn-empty-state
           icon="fitness_center"
@@ -172,10 +183,17 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
           </button>
         </tn-empty-state>
       }
+      </section>
     </div>
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; }
+    .exercise-workspace { padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); }
+    .list-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .list-heading h2 { font-size: 17px; font-weight: 600; }
+    .list-heading span { font-size: 13px; color: var(--text-muted); }
+    td a:not([mat-button]) { color: var(--text-primary); font-weight: 600; text-decoration: none; }
+    td a:not([mat-button]):hover { color: var(--accent); text-decoration: underline; }
     .full-width { width: 100%; }
     mat-card-content { display: flex; flex-direction: column; gap: 12px; }
     mat-card-content mat-form-field:not(.full-width) { width: 100%; max-width: 400px; }
@@ -191,6 +209,7 @@ export class ExercisesComponent implements OnInit {
   ranges = signal<Range[]>([]);
   scenarios = signal<Scenario[]>([]);
   loading = signal(true);
+  loadError = signal(false);
   showCreate = false;
   form = { name: '', range_id: '', scenario_id: '' };
   columns = ['name', 'state', 'score', 'created', 'actions'];
@@ -207,9 +226,11 @@ export class ExercisesComponent implements OnInit {
   }
 
   load(): void {
+    this.loading.set(true);
+    this.loadError.set(false);
     this.api.listExercises().subscribe({
       next: e => { this.exercises.set(e); this.loading.set(false); },
-      error: () => this.loading.set(false),
+      error: () => { this.loading.set(false); this.loadError.set(true); },
     });
   }
 

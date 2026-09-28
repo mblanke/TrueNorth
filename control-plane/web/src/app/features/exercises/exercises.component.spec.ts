@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { ExercisesComponent } from './exercises.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
@@ -52,6 +53,7 @@ describe('ExercisesComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ExercisesComponent, NoopAnimationsModule],
       providers: [
+        provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
       ],
@@ -188,5 +190,19 @@ describe('ExercisesComponent', () => {
     const el: HTMLElement = fixture.nativeElement;
     const rows = el.querySelectorAll('tr.mat-mdc-row');
     expect(rows.length).toBe(3);
+  });
+
+  it('links each run to its own exercise workspace', () => {
+    fixture.detectChanges();
+    const links = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('td a'));
+    expect(links.some(link => link.getAttribute('href') === '/exercises/e2')).toBeTrue();
+  });
+
+  it('shows a retry state when the exercise request fails', () => {
+    mockApi.listExercises.and.returnValue(throwError(() => new Error('offline')));
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('Exercises could not be loaded');
+    expect(el.textContent).not.toContain('No exercises yet');
   });
 });

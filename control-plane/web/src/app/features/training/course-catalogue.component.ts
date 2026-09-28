@@ -72,7 +72,10 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
   template: `
     <div class="cat tn-quiet">
       <header class="cat-head">
-        <p class="tn-muted">Every course in the programme, by the period and term that teaches it.</p>
+        <div>
+          <h2>Course catalogue</h2>
+          <p class="tn-muted">Explore the programme by period and semester. Open a course to see its learning activities.</p>
+        </div>
         <label class="search">
           <mat-icon aria-hidden="true">search</mat-icon>
           <span class="sr-only">Search courses</span>
@@ -126,7 +129,7 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
               </mat-expansion-panel-header>
 
               <ng-template matExpansionPanelContent>
-                <mat-accordion multi displayMode="flat">
+                <mat-accordion multi displayMode="flat" class="semester-grid">
                   @for (t of s.terms; track t.code) {
                     <mat-expansion-panel class="term" [expanded]="!!query() || s.terms.length === 1">
                       <mat-expansion-panel-header>
@@ -163,7 +166,11 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
   `,
   styles: [
     `
-      .cat { padding: 4px 2px 24px; max-width: 980px; }
+      .cat { padding: 4px 0 24px; }
+      .cat-head h2 { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+      .semester-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; align-items: start; }
+      .stage { margin-bottom: 14px; }
+      .term { margin: 0 !important; background: var(--bg-card); }
       .cat-head {
         display: flex;
         flex-wrap: wrap;
@@ -180,7 +187,7 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
         flex: 0 1 300px;
         padding: 6px 12px;
         border: 1px solid var(--border);
-        border-radius: 999px;
+        border-radius: 6px;
         background: var(--bg-input);
         color: var(--text-muted);
       }
@@ -201,11 +208,11 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
 
       .courses { list-style: none; margin: 0; padding: 0; }
       .course {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: 1fr auto;
         align-items: baseline;
         gap: 4px 12px;
-        padding: 8px 6px;
+        padding: 12px 8px;
         border-bottom: 1px solid var(--border);
         color: inherit;
         text-decoration: none;
@@ -215,8 +222,9 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
       .course:hover { background: color-mix(in srgb, var(--text-primary) 4%, transparent); }
       .course:hover .name { color: var(--accent); }
       .course:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-      .course .tn-code { min-width: 64px; }
-      .name { flex: 1 1 14rem; }
+      .course .tn-code { font-size: 12px; font-weight: 600; }
+      .name { grid-row: 2; grid-column: 1 / -1; font-size: 13px; }
+      .meta { grid-row: 1; grid-column: 2; }
       /* CSS, not the titlecase pipe: the pipe pulls ~8 kB into the initial bundle. */
       .cap { text-transform: capitalize; }
       .draft {
