@@ -1,6 +1,6 @@
 ---
 description: "ARC² — turn a free-text course request into a staged, QA-checked TrueNorth course bundle plus a cmi5 package under build/arc2/<slug>/. Never commits, applies, provisions or imports."
-argument-hint: "<free-text course request> | --resume <slug> [accept | <feedback>]"
+argument-hint: "[--slug <slug>] <free-text course request> | --resume <slug> [accept | <feedback>]"
 ---
 
 # /arc2
@@ -31,6 +31,9 @@ Exit codes: `merge` 1 rejected / 2 STOP; `check` 0 pass / 1 fail / 3 HUMAN-TAKEO
      No gate pending and `stages.content-architect.stop_reason` starts `request missing:` →
      append the text as a new line to `$RUN/request.txt`, then step 3. Otherwise refuse and
      print status.
+   - `--slug <slug> <request>` → a new request whose slug is chosen by the caller (the Course
+     Studio runner does this so it can track the run). `<slug>` must match
+     `^arc2-[a-z0-9-]{1,60}$`; otherwise refuse and stop. Step 2 uses it as `SLUG`.
    - Anything else is a new request (step 2). After this command has printed a status, a bare
      `accept` or a free-text reply in the thread counts as `--resume <last slug> …`.
 1. **Preflight.** `$PY -c "import sys"` must *run* (a `-x` test is not enough: a venv built
@@ -40,7 +43,8 @@ Exit codes: `merge` 1 rejected / 2 STOP; `check` 0 pass / 1 fail / 3 HUMAN-TAKEO
    `git rev-parse HEAD`. `git status --porcelain` — warn if dirty; keep the output for step 3.
    `INIT_FLAGS=`; if `ARC2_ENCLAVE=1` then `INIT_FLAGS=--enclave`.
    `PYTHONPATH=tools $PY -c "import arc2.check, arc2.cmi5, pytest"` — stop on ImportError.
-2. **Slug and init.** `SLUG=arc2-<2-4 lowercase tokens from the request>`;
+2. **Slug and init.** `SLUG` = the `--slug` value if one was given, else
+   `arc2-<2-4 lowercase tokens from the request>`;
    `RUN=$PWD/build/arc2/$SLUG`. If `$RUN/manifest.json` exists, say "run already exists;
    resuming it" and go to step 3. Otherwise `mkdir -p build/arc2`, write the request
    verbatim to `build/arc2/$SLUG.request.txt`, then
