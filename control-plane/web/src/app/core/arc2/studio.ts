@@ -45,7 +45,9 @@ export function primaryAction(run: RunSummary | null): PrimaryAction {
     case 'preview': return { label: '✓ Approve & Package', enabled: true, hint: 'or type feedback below to request changes', kind: 'accept' };
     case 'packaged': return { label: '✓ Packaged', enabled: false, hint: 'Package candidate · not published' };
     case 'queued': case 'running': return { label: 'Working…', enabled: false, hint: run.phase_text };
-    case 'stopped': case 'takeover': case 'failed': return { label: 'Needs a person', enabled: false, hint: run.phase_text };
+    // Stopped between stages (for example a safety check): /arc2 --resume … accept carries on from the manifest.
+    case 'paused': case 'stopped': return { label: '▶ Continue', enabled: true, hint: run.phase_text, kind: 'accept' };
+    case 'takeover': case 'failed': return { label: 'Needs a person', enabled: false, hint: run.phase_text };
     default: return { label: 'Waiting', enabled: false, hint: run.phase_text };
   }
 }

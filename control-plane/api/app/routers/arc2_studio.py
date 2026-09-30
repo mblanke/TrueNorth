@@ -372,7 +372,8 @@ def reply(slug: str, body: Reply, user: CurrentUser = Depends(author)):
     if body.action == "accept":
         if phase not in ("outline", "preview", "stopped", "takeover", "paused"):
             raise HTTPException(409, "There is nothing to accept yet.")
-        text, shown = "accept", ("Outline accepted." if phase == "outline" else "Approved: build the package.")
+        text = "accept"
+        shown = {"outline": "Outline accepted.", "preview": "Approved: build the package."}.get(phase, "Continue.")
     else:
         text = " ".join((body.text or "").split())
         if not text:

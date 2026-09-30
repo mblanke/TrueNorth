@@ -25,6 +25,12 @@ emit({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": 
       "input": {"subagent_type": "arc2-content-architect", "prompt": "Stage 1"}}]}})
 if mode == "slow":
     time.sleep(5)
+if mode == "auth" and os.environ.get("ANTHROPIC_AUTH_TOKEN") != "ollama":
+    emit({"type": "result", "is_error": True, "result": "Failed to authenticate: OAuth session expired"})
+    sys.exit(1)
+if mode == "auth":
+    emit({"type": "result", "is_error": False, "result": "Outline ready (model " + os.environ["ANTHROPIC_MODEL"] + ").", "num_turns": 3})
+    sys.exit(0)
 if mode == "fail":
     emit({"type": "result", "is_error": True, "result": "merge rejected"})
     sys.exit(1)
@@ -64,7 +70,9 @@ def test_start_runs_arc2_with_the_callers_slug_and_records_the_result(tmp_path, 
     args = json.loads(args_file.read_text())
     assert args[:2] == ["-p", "/arc2 --slug arc2-wireshark-basics 60 min beginner course on packet sniffing and Wireshark"]
     assert "--dangerously-skip-permissions" not in args
-    assert args[args.index("--permission-mode") + 1] == "acceptEdits"
+    assert args[args.index("--permission-mode") + 1] == "dontAsk"
+    tools = args[args.index("--allowedTools") + 1:]
+    assert "Write(./build/arc2/**)" in tools and "Write" not in tools and "Edit" not in tools
 
     [rec] = records(runs)
     assert rec["state"] == "done"
@@ -132,3 +140,80 @@ def test_the_runner_does_not_leak_api_settings_to_the_engine(tmp_path, fake_clau
     queue_job(runs)
     runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
     assert json.loads(Path(os.environ["FAKE_ARGS"]).read_text())[-1] == "unset"
+
+
+def test_when_claude_is_unavailable_the_step_runs_again_on_the_local_model(tmp_path, fake_claude, monkeypatch):
+    exe, args_file = fake_claude
+    monkeypatch.setenv("FAKE_MODE", "auth")
+    monkeypatch.setenv("ARC2_FALLBACK_MODEL", "qwen3.8:27b-mlx")
+    for var in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL", "ARC2_FALLBACK"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(runner.Fallback, "reachable", lambda self, timeout=3.0: True)
+    runs = tmp_path / "runs"
+    queue_job(runs)
+    runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
+    [rec] = records(runs)
+    assert rec["state"] == "done"
+    assert rec["engine"] == "ollama:qwen3.8:27b-mlx"
+    assert "Failed to authenticate" in rec["fallback_from"]
+    assert rec["result"] == "Outline ready (model qwen3.8:27b-mlx)."
+    args = json.loads(args_file.read_text())
+    assert args[args.index("--model") + 1] == "qwen3.8:27b-mlx"
+
+
+def test_no_fallback_when_it_is_off_or_unreachable(tmp_path, fake_claude, monkeypatch):
+    exe, _ = fake_claude
+    monkeypatch.setenv("FAKE_MODE", "auth")
+    monkeypatch.setattr(runner.Fallback, "reachable", lambda self, timeout=3.0: False)
+    runs = tmp_path / "runs"
+    queue_job(runs)
+    runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
+    [rec] = records(runs)
+    assert (rec["state"], rec["engine"]) == ("failed", "claude")
+
+    monkeypatch.setenv("ARC2_FALLBACK", "off")
+    assert runner.Fallback.from_env() is None
+
+
+def test_a_stop_or_a_merge_refusal_never_falls_back():
+    assert runner.should_fall_back({"state": "failed", "error": "merge rejected"}) is False
+    assert runner.should_fall_back({"state": "failed", "error": "timed out after 240 min"}) is False
+    assert runner.should_fall_back({"state": "failed", "error": "API Error: 529 overloaded"}) is True
+
+
+def test_the_fallback_environment_points_claude_code_at_ollama():
+    env = runner.Fallback("http://127.0.0.1:11434/", "qwen3:8b").env({"ANTHROPIC_API_KEY": "sk-real", "PATH": "/bin"})
+    assert env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:11434"
+    assert env["ANTHROPIC_API_KEY"] == ""
+    assert env["CLAUDE_CODE_SUBAGENT_MODEL"] == env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "qwen3:8b"
+    assert env["PATH"] == "/bin"
+
+
+def test_each_job_is_committed_to_the_courses_own_history(tmp_path, fake_claude):
+    import subprocess
+    exe, _ = fake_claude
+    runs = tmp_path / "runs"
+    run = runs / "arc2-wireshark-basics" / "01-blueprint"
+    run.mkdir(parents=True)
+    (run / "outline.yaml").write_text("course: ARC2-WSB\n")
+    queue_job(runs)
+    runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
+    [rec] = records(runs)
+    assert rec["history_commit"]
+    course = runs / "arc2-wireshark-basics"
+    log = subprocess.run(["git", "-C", str(course), "log", "--format=%s"], capture_output=True, text=True).stdout
+    assert log.strip() == "start · done on claude"
+    files = subprocess.run(["git", "-C", str(course), "ls-files"], capture_output=True, text=True).stdout.split()
+    assert "01-blueprint/outline.yaml" in files
+    assert any(f.startswith("_transcripts/") and f.endswith(f"-{rec['id']}.jsonl") for f in files)
+
+
+def test_no_history_when_the_run_was_never_created(tmp_path, fake_claude, monkeypatch):
+    exe, _ = fake_claude
+    monkeypatch.setenv("FAKE_MODE", "fail")
+    runs = tmp_path / "runs"
+    queue_job(runs)
+    runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
+    [rec] = records(runs)
+    assert "history_commit" not in rec
+    assert not (runs / "arc2-wireshark-basics").exists()

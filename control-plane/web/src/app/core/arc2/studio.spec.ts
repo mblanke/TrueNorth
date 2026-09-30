@@ -28,6 +28,12 @@ describe('ARC² studio view rules', () => {
     expect(primaryAction(failed)).toEqual({ label: '↻ Try again', enabled: true, hint: 'Failed to authenticate', kind: 'retry' });
   });
 
+  it('lets a run that stopped between stages carry on', () => {
+    expect(primaryAction(run({ phase: 'paused', phase_text: 'Paused between stages' }))).toEqual(
+      { label: '▶ Continue', enabled: true, hint: 'Paused between stages', kind: 'accept' });
+    expect(primaryAction(run({ phase: 'takeover' })).enabled).toBeFalse();
+  });
+
   it('takes feedback only at a review', () => {
     expect(canReply(run())).toBeTrue();
     expect(canReply(run({ phase: 'queued' }))).toBeFalse();

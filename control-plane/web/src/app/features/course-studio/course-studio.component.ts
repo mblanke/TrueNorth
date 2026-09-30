@@ -208,7 +208,7 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
     </div>
     <div class="banner">{{ marking }}</div>
 
-    <ng-template #none><div class="card"><h3>Not generated yet</h3><p class="small muted">This appears once the ARC² agents have written it.</p></div></ng-template>
+    <ng-template #none><div class="card"><h3>Not generated yet</h3><p class="small muted">{{ notYet[tab()] }}</p></div></ng-template>
   `,
   styles: [`
     :host { display:flex; flex-direction:column; min-height:100vh; background:var(--tn-bg); color:var(--tn-ink); font:14px/1.5 var(--tn-font); }
@@ -307,6 +307,17 @@ export class CourseStudioComponent implements OnInit {
   readonly heads: Record<Tab, string> = {
     files: 'Run files', outline: 'Review your course outline', quiz: 'Quiz bank', preview: 'Review your generated course',
     code: 'Code', lab: 'Lab', validation: 'Validation',
+  };
+
+  /** Which agent writes what each tab shows, and when: an empty tab says so instead of looking broken. */
+  readonly notYet: Record<Tab, string> = {
+    files: 'Files appear as each agent writes them.',
+    outline: 'The Content Architect writes the outline first. It appears here when stage 1 finishes.',
+    quiz: 'The Code Generator writes the quizzes (stage 2), after you accept the outline.',
+    preview: 'The Code Generator writes the module pages (stage 2), after you accept the outline.',
+    code: 'The module files are written in stage 2, after you accept the outline.',
+    lab: 'The Range Engineer builds the lab and inject timeline (stage 3), after you accept the outline.',
+    validation: 'QA runs after stages 2–5.',
   };
 
   readonly runs = signal<RunSummary[]>([]);
