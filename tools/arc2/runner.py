@@ -77,7 +77,7 @@ class JobError(ValueError):
 
 
 def now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def dirs(runs: Path) -> tuple[Path, Path]:

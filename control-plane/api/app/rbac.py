@@ -78,6 +78,11 @@ class Permission(str, Enum):
     AI_CONFIG_READ = "ai_config:read"
     AI_CONFIG_WRITE = "ai_config:write"
 
+    # ARC² Course Studio: start course generation and pass its two reviews. Generation
+    # runs the ARC² agents on the host (docs/arc2-course-studio.md); publishing is not
+    # part of it.
+    COURSE_AUTHOR = "course:author"
+
     # External learning platforms (Moodle etc.). A registered platform's JWKS URL is
     # what LTI launches are verified against, so INTEGRATION_WRITE amounts to "may
     # decide which issuer can sign users in" — admin only.
@@ -139,6 +144,8 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.INFRA_READ,
         Permission.AI_CONFIG_READ,
         Permission.INTEGRATION_READ,
+        # Authoring courses with ARC² (generation and the two reviews; not publishing).
+        Permission.COURSE_AUTHOR,
         # Their cohort's records: progress, transcripts, grade passback retries.
         Permission.LEARNING_RECORD_READ,
         Permission.LEARNING_RECORD_WRITE,
