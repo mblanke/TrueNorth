@@ -62,9 +62,24 @@ ALLOWED_TOOLS = [
     "Write(./build/arc2/**)", "Edit(./build/arc2/**)",
     "Bash(.venv/bin/python:*)",
     "Bash(PYTHONPATH=tools .venv/bin/python:*)",
-    "Bash(git status:*)", "Bash(git rev-parse:*)",
-    "Bash(mkdir:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(cat:*)", "Bash(wc:*)",
+    "Bash(git status:*)", "Bash(git rev-parse:*)", "Bash(git diff:*)", "Bash(git log:*)",
+    "Bash(mkdir:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(cat:*)", "Bash(wc:*)",
+    "Bash(echo:*)", "Bash(printf:*)", "Bash(grep:*)", "Bash(sort:*)", "Bash(diff:*)", "Bash(stat:*)",
+    "Bash(test:*)", "Bash(true)",
 ]
+
+# Headless, a chained command is allowed only if every part is on the list above, and a
+# variable assignment (RUN=...) is not. /arc2 writes its steps that way, so tell it how
+# to phrase them; PYTHONPATH is preset so the plain form works.
+RUNNER_GUIDANCE = (
+    "You are running headless for the ARC2 Course Studio runner; nobody can approve a prompt. "
+    "Run shell commands one at a time: no variable assignments (RUN=..., PY=...), no $VARIABLES, "
+    "no command substitution. Write $RUN as the absolute run directory and $ARC as "
+    "`.venv/bin/python -m arc2.check` (PYTHONPATH=tools is already set). "
+    "Chaining with ; && | is fine only between allowed commands: python via .venv/bin/python, "
+    "git status/rev-parse/diff/log, ls, cat, head, tail, wc, grep, sort, diff, stat, echo, printf, test, mkdir. "
+    "File edits are allowed only under build/arc2/."
+)
 
 AGENT_NAMES = {
     "arc2-content-architect": "Content Architect",
@@ -123,6 +138,7 @@ def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
         "--output-format", "stream-json", "--verbose",
         "--permission-mode", "dontAsk",
         "--allowedTools", *ALLOWED_TOOLS,
+        "--append-system-prompt", RUNNER_GUIDANCE,
     ]
     return cmd + (["--model", model] if model else [])
 
@@ -235,6 +251,7 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
             fallback: Fallback | None = None) -> dict:
     """Run one job on Claude; if Claude is unavailable, run it again on the local fallback."""
     env = {k: v for k, v in os.environ.items() if k not in ("AUTH_DISABLED", "DATABASE_URL")}
+    env["PYTHONPATH"] = "tools"
     record["engine"] = "claude"
     record = _attempt(record, path, command_for(record, claude), env, timeout, append=False)
     if fallback and should_fall_back(record) and fallback.reachable():
