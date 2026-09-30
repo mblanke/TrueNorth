@@ -1,4 +1,4 @@
-import { RunSummary, canReply, pageRef, pollMs, primaryAction, runnerLooksIdle, stageDots } from './studio';
+import { RunSummary, authorTodo, canReply, pageRef, pollMs, primaryAction, runnerLooksIdle, stageDots } from './studio';
 
 const run = (over: Partial<RunSummary> = {}): RunSummary => ({
   slug: 'arc2-wireshark', name: 'Wireshark', title: null, code: null, request: 'x',
@@ -32,6 +32,17 @@ describe('ARC² studio view rules', () => {
     expect(primaryAction(run({ phase: 'paused', phase_text: 'Paused between stages' }))).toEqual(
       { label: '▶ Continue', enabled: true, hint: 'Paused between stages', kind: 'accept' });
     expect(primaryAction(run({ phase: 'takeover' })).enabled).toBeFalse();
+  });
+
+  it('groups what people must do as decide / supply / confirm, blocking first', () => {
+    const groups = authorTodo([
+      { id: '1', stage: 'orchestrator', category: 'standards', text: 'bind PO', blocks_promotion: true, status: 'open' },
+      { id: '2', stage: 'range-engineer', category: 'security', text: 'real capture', blocks_promotion: true, status: 'open' },
+      { id: '3', stage: 'code-generator', category: 'content', text: 'approve draft', blocks_promotion: false, status: 'open', ask: 'confirm', who: 'Instructor' },
+      { id: '4', stage: 'code-generator', category: 'content', text: 'done one', blocks_promotion: false, status: 'done' },
+    ]);
+    expect(groups.map(g => [g.ask, g.items.map(i => i.who)])).toEqual([
+      ['decide', ['Standards']], ['supply', ['Cleared author']], ['confirm', ['Instructor']]]);
   });
 
   it('takes feedback only at a review', () => {

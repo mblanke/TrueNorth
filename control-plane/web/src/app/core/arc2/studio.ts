@@ -27,10 +27,36 @@ export interface RunDetail extends RunSummary {
   pages: string[];
   lab: { range: string | null; injects: { id: string; t_offset_min: number; objective_id: string; critical: boolean; author_required: boolean; description: string }[]; noise_floor: { id: string; description: string }[] };
   findings: { check: string; severity: string; owner_stage: string; message: string }[];
-  human_actions: { id: string; stage: string; category: string; text: string; blocks_promotion: boolean; status: string }[];
+  human_actions: HumanAction[];
   files: { path: string; stage: string; kind: string }[];
   package_ready: boolean;
 }
+export interface HumanAction {
+  id: string; stage: string; category: string; text: string; blocks_promotion: boolean; status: string;
+  ask?: 'decide' | 'supply' | 'confirm'; who?: string;
+}
+
+export type Ask = 'decide' | 'supply' | 'confirm';
+export const ASK_LABEL: Record<Ask, string> = {
+  decide: 'Decide: a judgement only an authority can make',
+  supply: 'Supply: material only a person can provide',
+  confirm: 'Confirm: approve something ARC² made',
+};
+const ASK_FROM_CATEGORY: Record<string, Ask> = { standards: 'decide', security: 'supply' };
+const WHO_FROM_CATEGORY: Record<string, string> = {
+  standards: 'Standards', security: 'Cleared author', infra: 'Range ops', content: 'Instructor', package: 'Instructor', qa: 'Instructor',
+};
+
+/** Open actions grouped as Decide / Supply / Confirm, blocking first. Older runs carry only a category. */
+export function authorTodo(actions: HumanAction[]): { ask: Ask; items: (HumanAction & { ask: Ask; who: string })[] }[] {
+  const open = actions.filter(a => a.status === 'open').map(a => ({
+    ...a, ask: a.ask ?? ASK_FROM_CATEGORY[a.category] ?? 'confirm', who: a.who ?? WHO_FROM_CATEGORY[a.category] ?? 'Instructor',
+  }));
+  return (['decide', 'supply', 'confirm'] as Ask[])
+    .map(ask => ({ ask, items: open.filter(a => a.ask === ask).sort((x, y) => Number(y.blocks_promotion) - Number(x.blocks_promotion)) }))
+    .filter(g => g.items.length);
+}
+
 export interface RunList { runs: RunSummary[]; runner_seen: string | null }
 
 export interface PrimaryAction { label: string; enabled: boolean; hint: string; kind?: 'accept' | 'retry' }

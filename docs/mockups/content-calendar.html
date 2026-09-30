@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>TrueNorth content calendar mockup</title>
+<!--
+  Mockup: content lifecycle calendar. Authors see their own content and review it; a POC
+  (assigned per programme) sees the master schedule and decides replace/archive proposals.
+  Covers courses (catalogue + ARC²), scenarios, range templates and detections: real names
+  from content/, fictional owners, dates and signals. Styles: docs/mockups/app-shell.html.
+  Deep link: content-calendar.html#who=poc&status=attention   who: author | poc | poc2
+-->
+<style>
+  :root {
+    --tn-bg:#fff7f7; --tn-surface:#ffffff; --tn-ink:#292326; --tn-muted:#655b60;
+    --tn-line:#eadbdd; --tn-accent:#b5122b; --tn-soft:#fcecef; --tn-warm:#fff0f2;
+    --tn-warm-ink:#961b30; --tn-button:#bd1631; --tn-button-ink:#ffffff;
+    --tn-ok:#1f6b45; --tn-ok-soft:#e6f3ec; --tn-space:22px;
+    color-scheme: light;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--tn-bg); }
+  body { font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; color:var(--tn-ink); }
+  button,select,input,textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:3px solid var(--tn-accent); outline-offset:3px; }
+
+  .mk-bar { padding:8px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#292326; color:#fff; font-size:12px; }
+  .mk-bar select { background:#fff; color:var(--tn-ink); border:0; border-radius:6px; padding:5px 7px; }
+  .mk-bar label { display:flex; gap:8px; align-items:center; }
+
+  .tn-app { display:grid; grid-template-columns:200px minmax(0,1fr); min-height:calc(100vh - 38px); }
+  .tn-side { background:var(--tn-surface); border-right:1px solid var(--tn-line); padding:18px 12px; display:flex; flex-direction:column; }
+  .tn-brand { font-size:18px; font-weight:650; letter-spacing:-.5px; padding:0 10px 18px; }
+  .tn-brand span { color:var(--tn-accent); }
+  .tn-switch { margin:0 6px 18px; }
+  .tn-switch label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--tn-muted); margin:0 4px 6px; }
+  .tn-switch select { width:100%; background:var(--tn-bg); border:1px solid var(--tn-line); border-radius:7px; padding:7px 8px; }
+  .tn-side-title { font-size:11px; text-transform:uppercase; letter-spacing:1.3px; color:var(--tn-muted); padding:0 10px 10px; }
+  .tn-nav { display:flex; flex-direction:column; gap:3px; }
+  .tn-nav button { border:0; background:transparent; padding:10px; text-align:left; border-radius:7px; width:100%; cursor:pointer; }
+  .tn-nav button[aria-current="page"] { background:var(--tn-soft); color:var(--tn-accent); font-weight:600; }
+  .tn-nav button:hover { background:var(--tn-soft); }
+  .tn-side-foot { margin-top:auto; border-top:1px solid var(--tn-line); padding:14px 10px 0; font-size:12px; color:var(--tn-muted); }
+  .tn-side-foot strong { display:block; color:var(--tn-ink); font-weight:500; }
+  .tn-side-foot button { border:0; background:none; padding:6px 0 0; color:var(--tn-accent); cursor:pointer; }
+
+  .tn-top { display:flex; align-items:center; gap:10px; padding:12px var(--tn-space); border-bottom:1px solid var(--tn-line); background:var(--tn-surface); font-size:12px; color:var(--tn-muted); min-height:45px; }
+  .tn-top strong { color:var(--tn-ink); font-weight:500; }
+  .tn-menu-btn { display:none; border:1px solid var(--tn-line); background:var(--tn-surface); border-radius:7px; padding:5px 10px; }
+  main { min-width:0; padding:var(--tn-space); max-width:1180px; }
+
+  h1 { font-size:27px; line-height:1.18; font-weight:600; letter-spacing:-.8px; margin:5px 0 9px; }
+  h2 { font-size:17px; font-weight:600; margin:0 0 13px; }
+  h3 { font-size:14px; font-weight:600; margin:0 0 5px; }
+  p { margin:0 0 12px; }
+  .tn-muted { color:var(--tn-muted); }
+  .tn-small { font-size:12px; }
+  .tn-eyebrow { font-size:11px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--tn-accent); }
+  .tn-pagehead { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+  .tn-pagehead p { max-width:62ch; margin:0; }
+  .tn-panel { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:10px; padding:18px; min-width:0; }
+  .tn-panel + .tn-panel { margin-top:15px; }
+  .tn-grid { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:16px; align-items:start; }
+  .tn-stack { display:grid; gap:16px; }
+  .tn-stack .tn-panel { margin:0; }
+  .tn-hero { background:var(--tn-soft); border:0; margin-bottom:18px; }
+  .tn-hero h2 { font-size:22px; line-height:1.25; margin:7px 0 9px; letter-spacing:-.4px; }
+  .tn-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; }
+  .tn-action { border:1px solid var(--tn-line); border-radius:7px; padding:8px 13px; background:var(--tn-surface); cursor:pointer; }
+  .tn-primary { background:var(--tn-button); color:var(--tn-button-ink); border-color:transparent; }
+  .tn-link { background:transparent; border:0; color:var(--tn-accent); padding:4px 0; cursor:pointer; text-align:left; white-space:nowrap; }
+  .tn-link::after { content:" →"; }
+  .tn-row { padding:12px 0; border-top:1px solid var(--tn-line); display:flex; justify-content:space-between; gap:14px; align-items:center; }
+  .tn-row:first-of-type { border-top:0; padding-top:0; }
+  .tn-row:last-child { padding-bottom:0; }
+  .tn-row p { margin:3px 0 0; }
+  .tn-row strong { font-weight:600; }
+  .tn-row-end { display:flex; gap:10px; align-items:center; flex-shrink:0; }
+  .tn-chip { display:inline-block; padding:3px 7px; border-radius:5px; background:var(--tn-soft); color:var(--tn-accent); font-size:11px; font-weight:500; white-space:nowrap; }
+  .tn-chip.warm { color:var(--tn-warm-ink); background:var(--tn-warm); border:1px solid var(--tn-line); }
+  .tn-chip.neutral { background:var(--tn-bg); color:var(--tn-muted); }
+  .tn-chip.ok { background:var(--tn-ok-soft); color:var(--tn-ok); }
+  .tn-meta { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
+  .tn-tabs { display:flex; gap:5px; flex-wrap:wrap; border-bottom:1px solid var(--tn-line); margin-bottom:18px; padding-bottom:9px; }
+  .tn-tabs button { background:transparent; border:0; padding:7px 11px; border-radius:6px; color:var(--tn-muted); cursor:pointer; }
+  .tn-tabs button[aria-pressed="true"] { color:var(--tn-accent); background:var(--tn-soft); }
+  .tn-note { padding:13px 15px; border-left:3px solid var(--tn-accent); background:var(--tn-soft); margin:16px 0; }
+  .tn-note p:last-child { margin:0; }
+  .tn-kv { display:grid; grid-template-columns:120px minmax(0,1fr); gap:7px 12px; font-size:13px; margin:0; }
+  .tn-kv dt { color:var(--tn-muted); }
+  .tn-kv dd { margin:0; }
+  .tn-path { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; margin:0 0 22px; }
+  .tn-path button { border:1px solid var(--tn-line); border-radius:8px; padding:12px 9px; background:var(--tn-surface); text-align:left; cursor:pointer; }
+  .tn-path button[aria-pressed="true"] { background:var(--tn-soft); border-color:var(--tn-accent); }
+  .tn-path strong,.tn-path span { display:block; }
+  .tn-path strong { font-size:12px; font-weight:600; }
+  .tn-path span { font-size:11px; color:var(--tn-muted); margin-top:5px; }
+  .tn-back { margin-bottom:14px; }
+  .tn-back::after { content:none; }
+  .tn-back::before { content:"← "; }
+  .tn-bar-meter { height:6px; background:var(--tn-bg); border-radius:3px; overflow:hidden; width:120px; border:1px solid var(--tn-line); }
+  .tn-bar-meter i { display:block; height:100%; background:var(--tn-accent); }
+
+  .tn-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .tn-input { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:7px; padding:8px 10px; min-width:0; }
+  .tn-toolbar .tn-input { flex:1 1 220px; max-width:320px; }
+  .tn-table-wrap { overflow-x:auto; }
+  .tn-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .tn-table th { text-align:left; color:var(--tn-muted); font-weight:500; font-size:12px; }
+  .tn-table th,.tn-table td { padding:11px 10px; border-bottom:1px solid var(--tn-line); vertical-align:middle; }
+  .tn-table tr:last-child td { border-bottom:0; }
+  .tn-table td:last-child,.tn-table th:last-child { text-align:right; }
+  .tn-pager { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--tn-muted); padding-top:12px; }
+
+  .tn-form { max-width:520px; }
+  .tn-field { display:block; margin-bottom:16px; }
+  .tn-field span { display:block; font-weight:500; margin-bottom:5px; }
+  .tn-field small { display:block; color:var(--tn-muted); margin-top:4px; font-size:12px; }
+  .tn-field .tn-input { width:100%; }
+  .tn-field.error .tn-input { border-color:var(--tn-accent); }
+  .tn-field.error small { color:var(--tn-accent); }
+
+  .tn-canvas-wrap { display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:0; border:1px solid var(--tn-line); border-radius:10px; overflow:hidden; background:var(--tn-surface); }
+  .tn-canvas-tools { grid-column:1 / -1; display:flex; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--tn-line); flex-wrap:wrap; }
+  .tn-canvas-tools .tn-sep { width:1px; align-self:stretch; background:var(--tn-line); }
+  .tn-canvas { min-height:420px; background-image:radial-gradient(var(--tn-line) 1px, transparent 1px); background-size:18px 18px; position:relative; }
+  .tn-canvas .node { position:absolute; border:1px solid var(--tn-line); background:var(--tn-surface); border-radius:8px; padding:8px 10px; font-size:12px; }
+  .tn-canvas .node.sel { border-color:var(--tn-accent); box-shadow:0 0 0 3px var(--tn-soft); }
+  .tn-canvas svg { position:absolute; inset:0; width:100%; height:100%; }
+  .tn-inspector { border-left:1px solid var(--tn-line); padding:16px; }
+
+  .tn-skel { height:12px; background:linear-gradient(90deg,var(--tn-bg),var(--tn-soft),var(--tn-bg)); border-radius:4px; margin:10px 0; }
+  .tn-state { text-align:left; padding:6px 0; }
+  .tn-state h3 { margin-bottom:4px; }
+
+  .tn-embed { display:block; width:100%; height:1080px; border:1px solid var(--tn-line); border-radius:10px; background:#fafafa; }
+  .tn-code { font-weight:600; font-size:12px; color:var(--tn-muted); margin-right:6px; }
+  .tn-term { margin-top:18px; }
+  .tn-term:first-child { margin-top:0; }
+  .tn-term h3 { display:flex; justify-content:space-between; gap:10px; }
+  .tn-term h3 span { font-weight:400; font-size:12px; color:var(--tn-muted); }
+  .tn-bare { min-height:calc(100vh - 38px); display:grid; place-items:center; padding:24px 16px; }
+  .tn-bare .tn-panel { width:100%; max-width:560px; padding:28px; }
+
+  .tn-live { position:fixed; bottom:14px; right:14px; background:#292326; color:#fff; padding:10px 14px; border-radius:8px; font-size:12px; max-width:340px; }
+  .tn-live:empty { display:none; }
+
+  @media (max-width:800px) {
+    .tn-app { grid-template-columns:minmax(0,1fr); }
+    .tn-side { position:fixed; z-index:20; top:38px; bottom:0; left:0; width:240px; transform:translateX(-100%); transition:transform .2s; box-shadow:0 0 0 100vmax transparent; }
+    .tn-app.open .tn-side { transform:none; box-shadow:0 0 0 100vmax rgba(41,35,38,.35); }
+    .tn-menu-btn { display:inline-block; }
+    .tn-grid { grid-template-columns:1fr; }
+    .tn-path { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .tn-canvas-wrap { grid-template-columns:1fr; }
+    .tn-inspector { border-left:0; border-top:1px solid var(--tn-line); }
+  }
+  @media (max-width:550px) {
+    :root { --tn-space:14px; }
+    h1 { font-size:23px; }
+    .tn-path { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .tn-row { align-items:flex-start; flex-wrap:wrap; }
+    .tn-kv { grid-template-columns:100px minmax(0,1fr); }
+    .tn-table .hide-sm { display:none; }
+    .tn-bare .tn-panel { padding:20px; }
+  }
+  @media (pointer:coarse) { button,select,input { min-height:44px; } }
+
+  /* ── Content calendar additions ─────────────────────────── */
+  .cc-strip { display:grid; grid-template-columns:repeat(13,minmax(0,1fr)); gap:5px; margin:0 0 18px; }
+  .cc-strip button { border:1px solid var(--tn-line); border-radius:8px; padding:8px 6px; background:var(--tn-surface); cursor:pointer; text-align:left; min-width:0; }
+  .cc-strip button strong { display:block; font-size:11px; font-weight:600; }
+  .cc-strip button span { display:block; font-size:18px; font-weight:600; margin-top:2px; }
+  .cc-strip button em { display:block; font-style:normal; font-size:10px; color:var(--tn-muted); }
+  .cc-strip button.over { background:var(--tn-warm); border-color:var(--tn-accent); }
+  .cc-strip button.over span, .cc-strip button.over strong { color:var(--tn-warm-ink); }
+  .cc-strip button[aria-pressed="true"] { border-color:var(--tn-accent); box-shadow:inset 0 -3px 0 var(--tn-accent); background:var(--tn-soft); }
+  .cc-filters { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; align-items:center; }
+  .cc-filters button { border:1px solid var(--tn-line); background:var(--tn-surface); border-radius:14px; padding:4px 10px; font-size:12px; cursor:pointer; }
+  .cc-filters button[aria-pressed="true"] { background:var(--tn-soft); border-color:var(--tn-accent); color:var(--tn-accent); font-weight:600; }
+  .cc-filters .lbl { font-size:11px; color:var(--tn-muted); margin-right:2px; }
+  .cc-type { font-size:10px; font-weight:600; letter-spacing:.6px; text-transform:uppercase; color:var(--tn-muted); }
+  .cc-why { font-size:12px; color:var(--tn-warm-ink); margin-top:3px; }
+  .cc-why.plain { color:var(--tn-muted); }
+  .tn-table tr.sel td { background:var(--tn-soft); }
+  .tn-table tr { cursor:pointer; }
+  .cc-split { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:16px; align-items:start; }
+  .cc-log { list-style:none; margin:0; padding:0; font-size:12px; }
+  .cc-log li { padding:7px 0; border-top:1px solid var(--tn-line); }
+  .cc-log li:first-child { border-top:0; }
+  .cc-bar { height:8px; border-radius:4px; background:var(--tn-bg); border:1px solid var(--tn-line); overflow:hidden; }
+  .cc-bar i { display:block; height:100%; background:var(--tn-accent); }
+  .cc-act { display:flex; flex-wrap:wrap; gap:6px; }
+  .cc-act .tn-action { padding:5px 9px; font-size:12px; }
+  @media (max-width:1100px) { .cc-split { grid-template-columns:1fr; } .cc-strip { grid-template-columns:repeat(7,minmax(0,1fr)); } }
+  @media (max-width:550px) { .cc-strip { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+</style></head><body>
+
+<div class="mk-bar"><span>DESIGN MOCKUP · Content calendar · real content names; owners, dates and signals are fictional · no data is saved</span>
+  <label>Viewing as <select id="mk-who" aria-label="Mockup viewer">
+    <option value="author">WO Morgan Roy · author</option>
+    <option value="poc">Capt Dana Kim · POC, Cyber Operator programme</option>
+    <option value="poc2">Sgt Priya Das · POC, Ranges &amp; exercises</option>
+  </select></label></div>
+<div id="mk-root"><div class="tn-app" id="tn-app">
+      <aside class="tn-side" aria-label="Main navigation"><div class="tn-brand">True<span>North</span></div>
+        <div class="tn-side-title">Teaching</div>
+        <nav class="tn-nav"><button type="button" data-action="toast:Home (other page)">Home</button><button type="button" data-action="toast:Courses (other page)">Courses</button><button type="button" data-action="toast:Exercises (other page)">Exercises</button><button type="button" data-action="toast:Authoring (other page)">Authoring</button><button type="button" aria-current="page" data-action="noop">Content calendar</button></nav>
+        <div class="tn-side-foot"><strong>WO Morgan Roy</strong>Instructor<br><button type="button" data-action="toast:Would sign out.">Sign out</button></div></aside>
+      <div><div class="tn-top"><button class="tn-menu-btn" data-action="menu" aria-label="Open navigation">Menu</button><span>Teaching</span><span aria-hidden="true">/</span><strong>Content calendar</strong></div>
+      <main style="max-width:1320px"><div class="tn-pagehead"><div><span class="tn-eyebrow">Content calendar</span><h1>My content</h1><p class="tn-muted">19 items you own. Review what is due; everything else stays current until its date.</p></div></div><section class="tn-panel tn-hero"><span class="tn-eyebrow">6 need you</span><h2>Suspicious PowerShell Download Cradle</h2><p>Needs update. Rule matched 0 times in the last 3 exercises</p><div class="tn-actions"><button type="button" class="tn-action tn-primary" data-action="pick:powershell-download">Review it</button></div></section><div class="cc-split"><div class="tn-stack">
+          <section class="tn-panel"><h2>Needs you · 6</h2><div class="tn-table-wrap"><table class="tn-table"><thead><tr><th class="">Item</th><th class="">Status</th><th class="hide-sm">Due</th></tr></thead><tbody>
+      <tr class="" data-action="pick:powershell-download"><td class=""><div class="cc-type">Detection</div><strong>Suspicious PowerShell Download Cradle</strong><div class="cc-why ">Rule matched 0 times in the last 3 exercises</div></td><td class=""><span class="tn-chip warm">Needs update</span></td><td class="hide-sm">Aug 4, 2026</td></tr><tr class="" data-action="pick:data-exfil-dns-tunnel"><td class=""><div class="cc-type">Detection</div><strong>Data Exfiltration via DNS Tunneling</strong></td><td class=""><span class="tn-chip ">Due this month</span></td><td class="hide-sm">Oct 2, 2026</td></tr><tr class="" data-action="pick:C303"><td class=""><div class="cc-type">Course</div><strong>C303 · Cloud Security (AWS/Azure)</strong><div class="cc-why ">Cloud provider services changed since last review</div></td><td class=""><span class="tn-chip warm">Needs update</span></td><td class="hide-sm">Oct 11, 2026</td></tr><tr class="" data-action="pick:incident-response-drill"><td class=""><div class="cc-type">Scenario</div><strong>Incident Response Drill</strong></td><td class=""><span class="tn-chip ">Due this month</span></td><td class="hide-sm">Oct 13, 2026</td></tr><tr class="" data-action="pick:C209"><td class=""><div class="cc-type">Course</div><strong>C209 · Malware Analysis 101</strong><div class="cc-why ">Average quiz 54% in cohort 2026-1 (target 70%)</div></td><td class=""><span class="tn-chip warm">Needs update</span></td><td class="hide-sm">Jan 9, 2027</td></tr><tr class="" data-action="pick:ARC2-ADLM"><td class=""><div class="cc-type">Course</div><strong>ARC2-ADLM · Detecting Active Directory Lateral Movement</strong><div class="cc-why ">19 blocking actions still open from ARC²</div></td><td class=""><span class="tn-chip warm">Needs update</span></td><td class="hide-sm">Jan 26, 2027</td></tr>
+      </tbody></table></div></section>
+          <section class="tn-panel"><h2>Coming up · 13</h2><div class="tn-table-wrap"><table class="tn-table"><thead><tr><th class="">Item</th><th class="">Next review</th></tr></thead><tbody>
+      <tr class="" data-action="pick:C109"><td class=""><div class="cc-type">Course</div><strong>C109 · Network Services &amp; Protocols</strong></td><td class="">Nov 5, 2026</td></tr><tr class="" data-action="pick:medium-enterprise"><td class=""><div class="cc-type">Range</div><strong>Medium Enterprise range</strong></td><td class="">Dec 24, 2026</td></tr><tr class="" data-action="pick:RMC C209"><td class=""><div class="cc-type">Course</div><strong>RMC C209 · Cyber Threat Intelligence</strong></td><td class="">Jan 1, 2027</td></tr><tr class="" data-action="pick:C105"><td class=""><div class="cc-type">Course</div><strong>C105 · Foundations of Cybersecurity</strong></td><td class="">Jan 12, 2027</td></tr><tr class="" data-action="pick:soc-training"><td class=""><div class="cc-type">Range</div><strong>SOC Training range</strong></td><td class="">Jan 23, 2027</td></tr><tr class="" data-action="pick:C101"><td class=""><div class="cc-type">Course</div><strong>C101 · Computer Architecture &amp; Systems</strong></td><td class="">Mar 16, 2027</td></tr><tr class="" data-action="pick:RMC C201"><td class=""><div class="cc-type">Course</div><strong>RMC C201 · Advanced Network Defense</strong></td><td class="">Mar 23, 2027</td></tr><tr class="" data-action="pick:ARC2-WSBASIC"><td class=""><div class="cc-type">Course</div><strong>ARC2-WSBASIC · Packet Sniffing Basics with Wireshark</strong><div class="cc-why plain">New course · first review in 6 months · 3 blocking actions from ARC²</div></td><td class="">Mar 30, 2027</td></tr>
+      </tbody></table></div><p class="tn-small tn-muted" style="margin-top:8px">+ 5 more, all current</p></section>
+        </div><section class="tn-panel"><p class="tn-muted tn-small">Select an item to see why it is due, its history and what you can do.</p></section></div></main></div></div></div>
+<div id="tn-live" class="tn-live" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const DATA = {"courses": [["C101", "Computer Architecture & Systems", "DP1"], ["C102", "Operating-System Fundamentals", "DP1"], ["C103", "Intro to Networking", "DP1"], ["C104", "Intro to Programming (Python)", "DP1"], ["C105", "Foundations of Cybersecurity", "DP1"], ["C106", "Cryptography Basics", "DP1"], ["C107", "Secure Software Development", "DP1"], ["C108", "Linux System Administration", "DP1"], ["C109", "Network Services & Protocols", "DP1"], ["C110", "Intro to Risk Management", "DP1"], ["C201", "Network Defense & Firewalls", "DP1"], ["C202", "Secure Communications (TLS/VPN)", "DP1"], ["C203", "Identity & Access Management", "DP1"], ["C204", "Security Monitoring & SIEM", "DP1"], ["C205", "Lab: Hardened Lab Network", "DP1"], ["C206", "Incident Response Foundations", "DP1"], ["C207", "Incident Response Foundations", "DP1"], ["C208", "Windows Forensics", "DP1"], ["C209", "Malware Analysis 101", "DP1"], ["C210", "Threat Modeling & ATT&CK", "DP1"], ["C211", "Lab: Simulated Incident Exercise", "DP1"], ["C212", "Advanced Incident Response", "DP1"], ["C301", "Advanced Threat Hunting", "DP1"], ["C302", "Red-Team Fundamentals", "DP1"], ["C303", "Cloud Security (AWS/Azure)", "DP1"], ["C304", "IoT & Embedded Device Security", "DP1"], ["C305", "Advanced Malware Reverse-Engineering", "DP1"], ["C306", "Lab: Full-Scale Adversary Emulation", "DP1"], ["C401", "Professional Ethics & Legal Frameworks", "DP1"], ["C402", "Capstone Project Planning", "DP1"], ["C403", "Capstone Implementation", "DP1"], ["C404", "Capstone Assessment & Presentation", "DP1"], ["RMC C201", "Advanced Network Defense", "DP2"], ["RMC C202", "Threat Hunting \u2014 Advanced", "DP2"], ["RMC C203", "Cloud Security \u2014 Advanced", "DP2"], ["RMC C204", "IoT Firmware Reverse-Engineering", "DP2"], ["RMC C205", "Red-Team Operations", "DP2"], ["RMC C206", "Capstone Planning", "DP2"], ["RMC C207", "Advanced Malware Analysis", "DP2"], ["RMC C208", "Incident Response \u2014 End-to-End", "DP2"], ["RMC C209", "Cyber Threat Intelligence", "DP2"], ["RMC C210", "Cloud-Native Defense", "DP2"], ["RMC C211", "Advanced IoT Security", "DP2"], ["RMC C212", "Capstone Execution & Assessment", "DP2"]], "scenarios": [["apt-nation-state", "apt-nation-state"], ["cloud-breach", "cloud-breach"], ["ics-attack", "ics-attack"], ["incident-response-drill", "incident-response-drill"], ["insider-threat-advanced", "insider-threat-advanced"], ["ransomware-lite", "ransomware-lite"]], "detections": [["credential-dumping-lsass", "Credential Dumping via LSASS Memory Access"], ["data-exfil-dns-tunnel", "Data Exfiltration via DNS Tunneling"], ["defense-evasion-timestomp", "Defense Evasion via File Timestomping"], ["lateral-movement-psexec", "Lateral Movement via PsExec"], ["persistence-scheduled-task", "Persistence via Scheduled Task Creation"], ["powershell-download", "Suspicious PowerShell Download Cradle"], ["rdp-brute-force", "RDP Brute Force Attempt"], ["suspicious-dns-dga", "Suspicious DNS Queries to Known DGA Patterns"], ["vss-deletion", "Volume Shadow Copy Deletion"]], "ranges": ["cloud-security", "large-enterprise", "medium-enterprise", "red-team", "red-vs-blue", "small-enterprise", "soc-training"]};
+  const root = document.getElementById('mk-root'), live = document.getElementById('tn-live');
+  const TODAY = new Date(2026, 8, 30);
+  const params = new URLSearchParams(location.hash.slice(1));
+  let who = ['author','poc','poc2'].includes(params.get('who')) ? params.get('who') : 'author';
+  let month = params.get('month') || '';
+  let fStatus = params.get('status') || 'all', fType = params.get('type') || 'all';
+  let sel = params.get('item') || '';
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const chip = (t, cls='') => `<span class="tn-chip ${cls}">${t}</span>`;
+  const btn = (label, action, primary=false) => `<button type="button" class="tn-action ${primary?'tn-primary':''}" data-action="${action}">${label}</button>`;
+  const panel = (title, body) => `<section class="tn-panel">${title?`<h2>${title}</h2>`:''}${body}</section>`;
+  const head = (eyebrow, title, sub) => `<div class="tn-pagehead"><div><span class="tn-eyebrow">${eyebrow}</span><h1>${title}</h1><p class="tn-muted">${sub}</p></div></div>`;
+  const hero = (kicker, title, body, actions) => `<section class="tn-panel tn-hero"><span class="tn-eyebrow">${kicker}</span><h2>${title}</h2><p>${body}</p><div class="tn-actions">${actions}</div></section>`;
+  const fmt = d => d.toLocaleDateString('en-CA', { day:'numeric', month:'short', year:'numeric' });
+  const monthKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const addMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth()+n); return x; };
+
+  // ── Build the register from real content (deterministic fictional dates/owners) ──
+  const AUTHORS = ['WO Morgan Roy','Sgt Priya Das','Lt Sam Chen','PO2 Alex Martin'];
+  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  const nice = s => s.split('-').map(w => w.length <= 3 && w !== 'ics' ? w.toUpperCase() : w[0].toUpperCase()+w.slice(1)).join(' ').replace('Ics','ICS').replace('Apt','APT');
+  const items = [];
+  const add = (id, type, title, programme, cadence, owner) => {
+    const last = addMonths(TODAY, -Math.floor(rnd() * (cadence + 3)));
+    last.setDate(1 + Math.floor(rnd() * 27));
+    items.push({ id, type, title, programme, cadence, owner, last, due: addMonths(last, cadence), status: null, why: null, log: [], proposal: null });
+  };
+  DATA.courses.forEach(([code, t, dp], i) => {
+    const tool = /Python|Linux|Cloud|Windows|SIEM|IoT|Firewall/i.test(t);
+    add(code, 'Course', `${code} · ${t}`, 'Cyber Operator', tool ? 6 : 12, AUTHORS[i % 4]);
+  });
+  add('ARC2-ADLM', 'Course', 'ARC2-ADLM · Detecting Active Directory Lateral Movement', 'Cyber Operator', 6, 'WO Morgan Roy');
+  add('ARC2-WSBASIC', 'Course', 'ARC2-WSBASIC · Packet Sniffing Basics with Wireshark', 'Cyber Operator', 6, 'WO Morgan Roy');
+  DATA.scenarios.forEach(([slug], i) => add(slug, 'Scenario', nice(slug), 'Ranges & exercises', 6, AUTHORS[(i+1) % 4]));
+  DATA.ranges.forEach((slug, i) => add(slug, 'Range', nice(slug) + ' range', 'Ranges & exercises', 12, AUTHORS[(i+2) % 4]));
+  DATA.detections.forEach(([slug, t], i) => add(slug, 'Detection', t, 'Ranges & exercises', 3, AUTHORS[(i+3) % 4]));
+  const byId = Object.fromEntries(items.map(i => [i.id, i]));
+
+  // Signals that make something due regardless of the date (fictional examples).
+  const flag = (id, status, why, extra={}) => { const it = byId[id]; if (it) Object.assign(it, { status, why }, extra); };
+  flag('C103', 'update', 'QSP crosswalk revised 12 Sep 2026: ALJQ PO_006 changed');
+  flag('C104', 'update', 'Written for Python 3.11; 3.14 is current');
+  flag('C303', 'update', 'Cloud provider services changed since last review', { owner: 'WO Morgan Roy' });
+  flag('C209', 'update', 'Average quiz 54% in cohort 2026-1 (target 70%)', { owner: 'WO Morgan Roy' });
+  flag('ARC2-ADLM', 'update', '19 blocking actions still open from ARC²');
+  Object.assign(byId['ARC2-WSBASIC'], { last: new Date(2026,8,30), due: new Date(2027,2,30), why: 'New course · first review in 6 months · 3 blocking actions from ARC²' });
+  flag('powershell-download', 'update', 'Rule matched 0 times in the last 3 exercises');
+  flag('ransomware-lite', 'replace', 'Proposed replacement: ARC² course “Ransomware response” (draft)', { proposal: { kind: 'Replace', by: 'Sgt Priya Das', when: '24 Sep 2026' } });
+  flag('small-enterprise', 'archive', 'Superseded by the medium-enterprise range; no exercise used it in 12 months', { proposal: { kind: 'Archive', by: 'PO2 Alex Martin', when: '19 Sep 2026' } });
+  flag('C110', 'archived', 'Archived 2 Jun 2026 · replaced by C206 content; history kept');
+  items.forEach(it => {
+    if (!it.status) it.status = it.due < TODAY ? 'due' : (it.due - TODAY) / 864e5 <= 31 ? 'soon' : 'current';
+    it.log = [{ d: it.last, t: `Reviewed by ${it.owner}: still current` }];
+    if (it.status === 'update') it.log.unshift({ d: new Date(2026, 8, 15 + (it.id.length % 10)), t: `Flagged “Needs update”: ${it.why}` });
+    if (!it.why && it.status === 'due') it.why = `Review was due ${fmt(it.due)}`;
+  });
+  const STATUS = {
+    due: ['Review due', 'warm'], soon: ['Due this month', ''], update: ['Needs update', 'warm'],
+    replace: ['Replace proposed', ''], archive: ['Archive proposed', 'neutral'], archived: ['Archived', 'neutral'], current: ['Current', 'ok'],
+  };
+  const sChip = it => chip(STATUS[it.status][0], STATUS[it.status][1]);
+  const needsAttention = it => ['due','soon','update','replace','archive'].includes(it.status);
+  const scope = () => who === 'author' ? items.filter(i => i.owner === 'WO Morgan Roy')
+    : items.filter(i => i.programme === (who === 'poc' ? 'Cyber Operator' : 'Ranges & exercises'));
+
+  function detail(it, pocMode) {
+    if (!it) return panel('', `<p class="tn-muted tn-small">Select an item to see why it is due, its history and what you can do.</p>`);
+    const actions = pocMode
+      ? (it.proposal ? btn(`Approve ${it.proposal.kind.toLowerCase()}`, `toast:Would approve: ${it.proposal.kind} ${it.title}`, true) + btn('Decline', 'toast:Would decline and notify the author')
+        : btn('Remind the owner', `toast:Would remind ${it.owner}`) + btn('Reassign', 'toast:Would pick a new owner') + btn('Change cadence', 'toast:Would set 3 / 6 / 12 / 24 months'))
+      : (it.status === 'archived' ? '' : btn('✓ Reviewed, still good', `toast:Would record the review; next due ${fmt(addMonths(TODAY, it.cadence))}`, true)
+        + btn('Needs update', it.type === 'Course' ? 'toast:Would open a rework of this course in the Course Studio (a new release; enrolled students stay on theirs)' : 'toast:Would open it in its editor as a new version')
+        + btn('Propose replace', 'toast:Would ask the POC to approve a replacement') + btn('Propose archive', 'toast:Would ask the POC to approve archiving (no new enrolments; records kept)'));
+    return `<section class="tn-panel"><span class="cc-type">${it.type} · ${it.programme}</span><h2 style="margin:4px 0 8px">${esc(it.title)}</h2>
+      <div class="tn-meta">${sChip(it)}${chip(`every ${it.cadence} months`, 'neutral')}</div>
+      <dl class="tn-kv"><dt>Owner</dt><dd>${it.owner}</dd><dt>Last reviewed</dt><dd>${fmt(it.last)}</dd><dt>Next review</dt><dd>${fmt(it.due)}</dd>
+        ${it.why ? `<dt>Why now</dt><dd>${esc(it.why)}</dd>` : ''}
+        ${it.proposal ? `<dt>Proposal</dt><dd>${it.proposal.kind} by ${it.proposal.by}, ${it.proposal.when}</dd>` : ''}</dl>
+      ${actions ? `<div class="cc-act" style="margin-top:14px">${actions}</div>` : ''}
+      <h3 style="margin-top:16px">History</h3><ul class="cc-log">${it.log.map(l => `<li><span class="tn-muted">${fmt(l.d)}</span> · ${esc(l.t)}</li>`).join('')}</ul></section>`;
+  }
+
+  function rowsTable(list, cols) {
+    return `<div class="tn-table-wrap"><table class="tn-table"><thead><tr>${cols.map(c => `<th class="${c[2]||''}">${c[0]}</th>`).join('')}</tr></thead><tbody>
+      ${list.map(it => `<tr class="${it.id===sel?'sel':''}" data-action="pick:${it.id}">${cols.map(c => `<td class="${c[2]||''}">${c[1](it)}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>`;
+  }
+  const titleCell = it => `<div class="cc-type">${it.type}</div><strong>${esc(it.title)}</strong>${it.why ? `<div class="cc-why ${it.status==='current'||it.status==='archived'?'plain':''}">${esc(it.why)}</div>` : ''}`;
+
+  function authorView() {
+    const mine = scope();
+    const act = mine.filter(needsAttention).sort((a,b) => a.due - b.due);
+    const next = act[0];
+    const later = mine.filter(i => i.status === 'current').sort((a,b) => a.due - b.due);
+    return head('Content calendar', 'My content', `${mine.length} items you own. Review what is due; everything else stays current until its date.`)
+      + (next ? hero(`${act.length} need${act.length===1?'s':''} you`, esc(next.title), `${STATUS[next.status][0]}. ${esc(next.why || '')}`,
+          btn('Review it', `pick:${next.id}`, true)) : hero('All current', 'Nothing needs you right now.', 'Your next review is listed below.', ''))
+      + `<div class="cc-split"><div class="tn-stack">
+          ${panel(`Needs you · ${act.length}`, rowsTable(act, [['Item', titleCell], ['Status', sChip], ['Due', it => fmt(it.due), 'hide-sm']]))}
+          ${panel(`Coming up · ${later.length}`, rowsTable(later.slice(0, 8), [['Item', titleCell], ['Next review', it => fmt(it.due)]]) + (later.length > 8 ? `<p class="tn-small tn-muted" style="margin-top:8px">+ ${later.length-8} more, all current</p>` : ''))}
+        </div>${detail(byId[sel], false)}</div>`;
+  }
+
+  function pocView() {
+    const all = scope();
+    const prog = who === 'poc' ? 'Cyber Operator programme' : 'Ranges & exercises';
+    const months = []; for (let i = 0; i < 12; i++) months.push(addMonths(new Date(TODAY.getFullYear(), TODAY.getMonth(), 1), i));
+    const overdue = all.filter(i => i.status !== 'archived' && i.due < TODAY);
+    const strip = `<div class="cc-strip" role="group" aria-label="Reviews by month">
+      <button type="button" class="over" aria-pressed="${month==='over'}" data-action="month:over"><strong>Overdue</strong><span>${overdue.length}</span><em>past due</em></button>
+      ${months.map(m => { const k = monthKey(m); const n = all.filter(i => i.status!=='archived' && monthKey(i.due) === k && i.due >= TODAY).length;
+        return `<button type="button" aria-pressed="${month===k}" data-action="month:${k}"><strong>${m.toLocaleDateString('en-CA',{month:'short'})} ${String(m.getFullYear()).slice(2)}</strong><span>${n}</span><em>reviews</em></button>`; }).join('')}
+    </div>`;
+    let list = all.slice();
+    if (month === 'over') list = overdue; else if (month) list = list.filter(i => monthKey(i.due) === month && i.due >= TODAY);
+    if (fStatus !== 'all') list = list.filter(i => fStatus === 'attention' ? needsAttention(i) : i.status === fStatus);
+    if (fType !== 'all') list = list.filter(i => i.type === fType);
+    list.sort((a,b) => (needsAttention(b) - needsAttention(a)) || a.due - b.due);
+    const types = [...new Set(all.map(i => i.type))];
+    const filters = `<div class="cc-filters"><span class="lbl">Show</span>
+      ${[['all','All'],['attention','Needs attention'],['update','Needs update'],['due','Review due'],['archived','Archived']].map(([v,l]) => `<button type="button" aria-pressed="${fStatus===v}" data-action="status:${v}">${l}</button>`).join('')}
+      <span class="lbl" style="margin-left:10px">Type</span>
+      ${['all', ...types].map(v => `<button type="button" aria-pressed="${fType===v}" data-action="type:${v}">${v==='all'?'All':v+'s'}</button>`).join('')}</div>`;
+    const proposals = all.filter(i => i.proposal);
+    const load = AUTHORS.map(a => [a, all.filter(i => i.owner === a && needsAttention(i)).length, all.filter(i => i.owner === a).length]).filter(x => x[2]);
+    const maxLoad = Math.max(1, ...load.map(x => x[1]));
+    return head('Content calendar', 'Master schedule', `${prog} · ${all.length} items · ${all.filter(needsAttention).length} need attention`)
+      + strip + `<div class="cc-split"><div class="tn-stack">${panel('', filters + rowsTable(list.slice(0, 14), [
+          ['Item', titleCell], ['Owner', it => it.owner, 'hide-sm'], ['Status', sChip], ['Next review', it => fmt(it.due), 'hide-sm']])
+          + (list.length > 14 ? `<p class="tn-small tn-muted" style="margin-top:8px">Showing 14 of ${list.length}</p>` : '') + (list.length ? '' : `<p class="tn-muted tn-small">Nothing matches.</p>`))}</div>
+        <div class="tn-stack">
+          ${sel ? detail(byId[sel], true) : ''}
+          ${panel(`Waiting for your decision · ${proposals.length}`, proposals.length ? proposals.map(it => `<div class="tn-row"><div><strong>${it.proposal.kind}: ${esc(it.title)}</strong><p class="tn-small tn-muted">${it.proposal.by}, ${it.proposal.when}</p></div><div class="tn-row-end"><button type="button" class="tn-link" data-action="pick:${it.id}">Decide</button></div></div>`).join('') : `<p class="tn-small tn-muted">Nothing waiting.</p>`)}
+          ${panel('Workload', load.map(([a, n, t]) => `<div class="tn-row"><div style="flex:1"><strong>${a}</strong><p class="tn-small tn-muted">${n} to do · ${t} owned</p><div class="cc-bar"><i style="width:${Math.round(100*n/maxLoad)}%"></i></div></div></div>`).join(''))}
+        </div></div>`;
+  }
+
+  function render() {
+    document.getElementById('mk-who').value = who;
+    history.replaceState(null, '', '#' + new URLSearchParams({ who, ...(month?{month}:{}), ...(fStatus!=='all'?{status:fStatus}:{}), ...(fType!=='all'?{type:fType}:{}), ...(sel?{item:sel}:{}) }));
+    const person = who === 'author' ? ['WO Morgan Roy','Instructor'] : who === 'poc' ? ['Capt Dana Kim','Administrator · POC'] : ['Sgt Priya Das','Range Ops · POC'];
+    const menu = who === 'poc2'
+      ? [['home','Home'],['ops','Ops Center'],['ranges','Ranges'],['calendar','Content calendar'],['infrastructure','Infrastructure']]
+      : [['home','Home'],['courses','Courses'],['exercises','Exercises'],['authoring','Authoring'],['calendar','Content calendar']];
+    root.innerHTML = `<div class="tn-app" id="tn-app">
+      <aside class="tn-side" aria-label="Main navigation"><div class="tn-brand">True<span>North</span></div>
+        <div class="tn-side-title">${who === 'poc2' ? 'Range operations' : 'Teaching'}</div>
+        <nav class="tn-nav">${menu.map(([id,l]) => `<button type="button" ${id==='calendar'?'aria-current="page"':''} data-action="${id==='calendar'?'noop':'toast:'+l+' (other page)'}">${l}</button>`).join('')}</nav>
+        <div class="tn-side-foot"><strong>${person[0]}</strong>${person[1]}<br><button type="button" data-action="toast:Would sign out.">Sign out</button></div></aside>
+      <div><div class="tn-top"><button class="tn-menu-btn" data-action="menu" aria-label="Open navigation">Menu</button><span>${who==='poc2'?'Range operations':'Teaching'}</span><span aria-hidden="true">/</span><strong>Content calendar</strong></div>
+      <main style="max-width:1320px">${who === 'author' ? authorView() : pocView()}</main></div></div>`;
+  }
+
+  root.addEventListener('click', e => {
+    const b = e.target.closest('[data-action]'); if (!b) return;
+    const [a, ...r] = b.dataset.action.split(':'); const arg = r.join(':');
+    if (a === 'pick') { sel = sel === arg ? '' : arg; render(); }
+    if (a === 'month') { month = month === arg ? '' : arg; render(); }
+    if (a === 'status') { fStatus = arg; render(); }
+    if (a === 'type') { fType = arg; render(); }
+    if (a === 'menu') document.getElementById('tn-app').classList.toggle('open');
+    if (a === 'toast') { live.textContent = arg + ' (mockup)'; setTimeout(() => { if (live.textContent.startsWith(arg)) live.textContent = ''; }, 3500); }
+  });
+  document.getElementById('mk-who').addEventListener('change', e => { who = e.target.value; sel = ''; month = ''; fStatus = 'all'; fType = 'all'; render(); window.scrollTo(0,0); });
+  render();
+})();
+</script>
+
+</body></html>

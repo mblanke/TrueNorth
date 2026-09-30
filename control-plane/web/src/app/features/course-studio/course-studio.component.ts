@@ -5,7 +5,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '@core/services/auth.service';
 import {
-  Message, RunDetail, RunSummary, canReply, pageRef, pollMs, primaryAction, runnerLooksIdle, shortTime, stageDots,
+  ASK_LABEL, Message, RunDetail, RunSummary, authorTodo, canReply, pageRef, pollMs, primaryAction, runnerLooksIdle, shortTime, stageDots,
 } from '@core/arc2/studio';
 import { CourseStudioService } from './course-studio.service';
 
@@ -174,10 +174,16 @@ const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (
                 } @else { <ng-container *ngTemplateOutlet="none" /> }
               }
               @case ('validation') {
-                <div class="grid2"><div class="card"><h3>Open items · {{ r.actions_open }} @if (r.actions_blocking) { <span class="tag warn">{{ r.actions_blocking }} block promotion</span> }</h3>
-                  @for (a of openActions(); track a.id) {
-                    <div class="row"><span class="small"><b>{{ a.category }}</b> · {{ a.text }}</span><span class="tag" [class.warn]="a.blocks_promotion">{{ a.blocks_promotion ? 'blocking' : 'advisory' }}</span></div>
-                  } @empty { <p class="small muted">Nothing open.</p> }</div>
+                <div class="grid2"><div>
+                  @for (g of todo(); track g.ask) {
+                    <div class="card"><h3>{{ askLabel[g.ask] }} · {{ g.items.length }}</h3>
+                      @for (a of g.items; track a.id) {
+                        <div class="row"><span class="small"><b>{{ a.who }}</b> · {{ a.text }}</span>
+                          <span class="tag" [class.warn]="a.blocks_promotion">{{ a.blocks_promotion ? 'blocks promotion' : 'advisory' }}</span></div>
+                      }
+                    </div>
+                  } @empty { <div class="card"><p class="small muted">Nothing for a person to do.</p></div> }
+                  </div>
                   <div><div class="card"><h3>QA</h3>
                     <div class="row"><span class="small muted">Result</span><span class="tag" [class.ok]="r.qa.result === 'pass'" [class.red]="r.qa.result === 'fail'">{{ r.qa.result || 'not run' }}</span></div>
                     <div class="row"><span class="small muted">Cycle</span><span class="small">{{ r.qa.cycle ?? 0 }} of 3</span></div></div>
@@ -303,10 +309,10 @@ export class CourseStudioComponent implements OnInit {
   @ViewChild('msgs') private msgsEl?: ElementRef<HTMLElement>;
 
   readonly marking = MARKING;
-  readonly tabs: [Tab, string][] = [['files', 'Files'], ['outline', 'Outline'], ['quiz', 'Quiz Bank'], ['preview', 'Preview'], ['code', 'Code'], ['lab', 'Lab'], ['validation', 'Validation']];
+  readonly tabs: [Tab, string][] = [['files', 'Files'], ['outline', 'Outline'], ['quiz', 'Quiz Bank'], ['preview', 'Preview'], ['code', 'Code'], ['lab', 'Lab'], ['validation', 'To-do']];
   readonly heads: Record<Tab, string> = {
     files: 'Run files', outline: 'Review your course outline', quiz: 'Quiz bank', preview: 'Review your generated course',
-    code: 'Code', lab: 'Lab', validation: 'Validation',
+    code: 'Code', lab: 'Lab', validation: 'What people need to do',
   };
 
   /** Which agent writes what each tab shows, and when: an empty tab says so instead of looking broken. */
@@ -317,7 +323,7 @@ export class CourseStudioComponent implements OnInit {
     preview: 'The Code Generator writes the module pages (stage 2), after you accept the outline.',
     code: 'The module files are written in stage 2, after you accept the outline.',
     lab: 'The Range Engineer builds the lab and inject timeline (stage 3), after you accept the outline.',
-    validation: 'QA runs after stages 2–5.',
+    validation: 'What people need to do appears once the agents have run; QA runs after stages 2–5.',
   };
 
   readonly runs = signal<RunSummary[]>([]);
@@ -338,7 +344,8 @@ export class CourseStudioComponent implements OnInit {
   readonly dots = computed(() => stageDots(this.run()));
   readonly idle = computed(() => runnerLooksIdle(this.run(), this.runnerSeen()));
   readonly canSend = computed(() => (this.selected() ? canReply(this.run()) : !!this.draft()));
-  readonly openActions = computed(() => (this.run()?.human_actions ?? []).filter(a => a.status === 'open'));
+  readonly todo = computed(() => authorTodo(this.run()?.human_actions ?? []));
+  readonly askLabel = ASK_LABEL;
   readonly time = shortTime;
   private timer?: ReturnType<typeof setTimeout>;
   private destroyed = false;

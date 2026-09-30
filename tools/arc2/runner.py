@@ -65,7 +65,7 @@ ALLOWED_TOOLS = [
     "Bash(git status:*)", "Bash(git rev-parse:*)", "Bash(git diff:*)", "Bash(git log:*)",
     "Bash(mkdir:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(cat:*)", "Bash(wc:*)",
     "Bash(echo:*)", "Bash(printf:*)", "Bash(grep:*)", "Bash(sort:*)", "Bash(diff:*)", "Bash(stat:*)",
-    "Bash(test:*)", "Bash(true)",
+    "Bash(test:*)", "Bash(true)", "Bash(shasum:*)", "Bash(command -v:*)",
 ]
 
 # Headless, a chained command is allowed only if every part is on the list above, and a
