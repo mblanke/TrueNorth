@@ -15,7 +15,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-
 from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
 from app.models import UserRole

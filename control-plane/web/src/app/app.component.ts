@@ -33,6 +33,11 @@ interface NavSection {
   items: NavItem[];
 }
 
+/** Full-screen pages: sign-in, and the ARC² Course Studio, which has its own chrome. */
+const BARE_ROUTES = ['/login', '/arc2'];
+const isBareRoute = (url: string): boolean =>
+  BARE_ROUTES.some(r => url === r || url.startsWith(r + '/') || url.startsWith(r + '?'));
+
 @Component({
   selector: 'tn-root',
   imports: [
@@ -372,7 +377,7 @@ export class AppComponent implements OnDestroy {
     this.themes = this.theme.themes;
     this.mobileQuery.addEventListener('change', this.onViewportChange);
     this.activeTheme = this.theme.activeTheme;
-    this.isBareRoute.set(this.router.url.startsWith('/login'));
+    this.isBareRoute.set(isBareRoute(this.router.url));
 
     this.routerSub = this.router.events.subscribe((event) => {
       if (event instanceof NavigationStart) {
@@ -386,7 +391,7 @@ export class AppComponent implements OnDestroy {
           'ai-orchestrator': 'AI Orchestrator', integrations: 'Integrations', users: 'People',
           admin: 'Administration',
         } as Record<string, string>)[path] ?? 'Overview');
-        this.isBareRoute.set(event.urlAfterRedirects.startsWith('/login'));
+        this.isBareRoute.set(isBareRoute(event.urlAfterRedirects));
         if (!this.isBareRoute()) {
           // Wait a frame so the routed component and routerLinkActive exist.
           requestAnimationFrame(() => {

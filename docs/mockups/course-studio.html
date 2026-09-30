@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; frame-src about:; form-action 'none'; base-uri 'none'">
+<title>ARC² — AI Rapid Course Creator (mockup, TrueNorth colours)</title>
+<!--
+  Phase 0 mockup, v2: the ARC² Course Studio laid out like Beau Farley's ARC² (USCYBERCOM J7 / ACTEC),
+  from the user's photos of the 2026-09-23 demo: dark indigo, purple classification banners,
+  project list | pipeline chat with Approve & Package | Files · Outline · Quiz Bank · Preview · Code · Lab tabs,
+  agent status bar. Content is the real dry run build/arc2/arc2-ad-lateral-movement.
+  "CAC Site" (meaning unknown) is replaced by "Validation". Static; no data is saved.
+  Deep link: arc2-studio.html#tab=preview&state=preview      tab: files outline quiz preview code lab validation
+-->
+<style>
+  :root {
+    --bg:#fff7f7; --bg2:#ffffff; --panel:#ffffff; --panel2:#ffffff; --line:#eadbdd; --ink:#292326; --muted:#655b60;
+    --violet:#b5122b; --violet2:#bd1631; --violet-soft:#fcecef; --banner:#b5122b; --blue:#b5122b; --green:#1f6b45; --green-ink:#ffffff;
+    --amber:#961b30; --red:#b5122b;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink); }
+  body { font:14px/1.5 "Segoe UI",-apple-system,BlinkMacSystemFont,Inter,sans-serif; display:flex; flex-direction:column; min-height:100vh; }
+  button,input,select,textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+  .banner { background:var(--banner); color:#ffffff; text-align:center; font-size:11px; font-weight:700; letter-spacing:.8px; padding:3px 8px; text-transform:uppercase; }
+  .app { flex:1; display:grid; grid-template-columns:240px 300px minmax(0,1fr); min-height:0; }
+
+  /* left: projects */
+  .side { background:#ffffff; border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  .brand { text-align:center; padding:18px 12px 14px; border-bottom:1px solid var(--line); }
+  .logo { color:#fff !important; width:52px; height:52px; margin:0 auto 8px; border-radius:10px; display:grid; place-items:center; background:radial-gradient(circle at 40% 35%,#d4344c,#b5122b 75%); box-shadow:0 0 18px rgba(181,18,43,.22); font-weight:800; font-size:17px; color:#292326; }
+  .brand h1 { margin:0; font-size:22px; color:#b5122b; letter-spacing:.5px; }
+  .brand p { margin:2px 0 0; font-size:10px; letter-spacing:1.6px; color:#292326; text-transform:uppercase; }
+  .seg { display:flex; gap:6px; padding:12px 10px 8px; }
+  .seg button { flex:1; background:var(--bg2); border:1px solid var(--line); border-radius:7px; padding:6px 4px; font-size:12px; color:#292326; cursor:pointer; }
+  .seg button[aria-pressed="true"] { background:var(--violet-soft); border-color:var(--violet); color:var(--violet); font-weight:600; }
+  .newp { padding:4px 10px 12px; border-bottom:1px solid var(--line); }
+  .input { width:100%; background:#ffffff; border:1px solid var(--line); border-radius:7px; padding:8px 10px; color:var(--ink); }
+  .input::placeholder { color:#9a8f94; }
+  .btn-new { width:100%; margin-top:8px; background:var(--violet2); border:0; border-radius:7px; padding:8px; color:#fff; cursor:pointer; }
+  .projects { overflow:auto; padding:8px; flex:1; }
+  .proj { display:block; width:100%; text-align:left; background:transparent; border:1px solid transparent; border-radius:8px; padding:10px 12px; margin-bottom:4px; cursor:pointer; }
+  .proj strong { display:block; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .proj span { display:block; font-size:12px; color:var(--muted); }
+  .proj small { display:block; font-size:11px; color:#655b60; }
+  .proj[aria-current="true"] { background:var(--violet-soft); border-color:var(--violet); box-shadow:inset 3px 0 0 var(--violet); }
+  .proj[aria-current="true"] strong { color:#b5122b; }
+  .signout { border-top:1px solid var(--line); text-align:center; padding:12px; font-size:13px; color:#292326; background:none; border-left:0; border-right:0; border-bottom:0; cursor:pointer; }
+
+  /* middle: pipeline chat */
+  .chat { background:var(--bg); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  .chat-mode { display:flex; gap:16px; padding:8px 14px; border-bottom:1px solid var(--line); font-size:11px; color:#655b60; }
+  .chat-mode span[aria-current="true"] { color:#292326; }
+  .msgs { flex:1; overflow:auto; padding:14px 12px; display:flex; flex-direction:column; gap:12px; }
+  .msg { border-radius:12px; padding:11px 13px; font-size:13px; max-width:92%; }
+  .msg.user { align-self:flex-end; background:var(--violet-soft); color:var(--ink); border:1px solid var(--line); box-shadow:0 2px 10px rgba(41,35,38,.10); }
+  .msg.pipe { align-self:flex-start; background:#ffffff; border:1px solid var(--line); }
+  .msg.pipe b { display:block; font-size:11px; letter-spacing:.8px; color:var(--blue); margin-bottom:3px; }
+  .msg.pipe.warn b { color:var(--amber); }
+  .msg time { display:block; font-size:10px; color:#655b60; margin-top:5px; }
+  .approve { display:flex; align-items:center; gap:12px; padding:12px; border-top:1px solid var(--line); }
+  .btn-approve { background:var(--violet2); color:#ffffff; border:0; border-radius:8px; padding:10px 14px; font-weight:700; cursor:pointer; min-width:120px; line-height:1.25; }
+  .btn-approve:disabled { background:#efe3e5; color:#655b60; cursor:not-allowed; }
+  .approve p { margin:0; font-size:12px; color:#292326; }
+  .send { display:flex; gap:8px; padding:0 12px 12px; }
+  .send .input { flex:1; }
+  .btn-send { background:var(--violet2); border:0; border-radius:7px; padding:0 14px; color:#fff; cursor:pointer; }
+  .btn-send:disabled, .input:disabled { opacity:.45; cursor:not-allowed; }
+  .route { padding:0 12px 8px; font-size:12px; color:#655b60; display:flex; gap:6px; align-items:center; }
+  .route select { background:#ffffff; border:1px solid var(--line); border-radius:6px; padding:3px 6px; font-size:12px; }
+
+  /* right: workspace */
+  .work { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--bg); }
+  .tabs { display:flex; gap:4px; padding:0 16px; border-bottom:1px solid var(--line); background:#ffffff; overflow-x:auto; }
+  .tabs button { background:none; border:0; border-bottom:2px solid transparent; padding:11px 12px 9px; color:#292326; cursor:pointer; white-space:nowrap; }
+  .tabs button[aria-pressed="true"] { color:var(--blue); border-bottom-color:var(--blue); }
+  .tabs button .n { background:#b5122b; color:#fff; border-radius:9px; padding:0 6px; font-size:11px; margin-left:4px; }
+  .workhead { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; padding:12px 18px; border-bottom:1px solid var(--line); background:#ffffff; flex-wrap:wrap; }
+  .workhead h2 { margin:0; font-size:15px; }
+  .workhead p { margin:2px 0 0; font-size:12px; color:var(--muted); }
+  .toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .toggle { display:flex; gap:8px; align-items:center; font-size:12px; color:#292326; }
+  .switch { width:34px; height:18px; border-radius:9px; background:#eadbdd; position:relative; border:0; cursor:pointer; }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#ffffff; transition:left .15s; }
+  .switch[aria-checked="true"] { background:var(--violet); } .switch[aria-checked="true"]::after { left:18px; }
+  .btn-ap-out { background:#ffffff; color:var(--violet); border:1px solid var(--violet); border-radius:7px; padding:6px 11px; font-weight:600; cursor:pointer; }
+  .btn-ap-out:disabled { color:#655b60; border-color:#eadbdd; background:none; cursor:not-allowed; }
+  .hint { font-size:11px; color:#655b60; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; padding:10px 18px; border-bottom:1px solid var(--line); }
+  .chip { background:#fcecef; border:1px solid #eadbdd; border-radius:6px; padding:4px 10px; font:12px ui-monospace,Menlo,monospace; color:#292326; cursor:pointer; }
+  .chip[aria-pressed="true"] { background:#fcecef; border-color:var(--blue); color:var(--violet); font-weight:600; }
+  .body { flex:1; overflow:auto; padding:18px; min-height:0; }
+  .frame { display:block; width:100%; height:100%; min-height:520px; border:0; border-radius:8px; background:#ffffff; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .card h3 { margin:0 0 8px; font-size:14px; color:#292326; }
+  .muted { color:var(--muted); } .small { font-size:12px; } .mono { font:12px/1.5 ui-monospace,Menlo,monospace; }
+  .row { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-top:1px solid #eadbdd; align-items:flex-start; }
+  .row:first-of-type { border-top:0; padding-top:0; }
+  .tag { display:inline-block; border-radius:5px; padding:2px 7px; font-size:11px; white-space:nowrap; background:#fff7f7; color:#655b60; border:1px solid #eadbdd; }
+  .tag.ok { background:rgba(31,107,69,.10); color:var(--green); } .tag.warn { background:#fff0f2; color:var(--amber); } .tag.red { background:#fcecef; color:var(--red); }
+  .grid2 { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:12px; align-items:start; }
+  .tree { list-style:none; margin:0; padding:0; font:13px/1.9 ui-monospace,Menlo,monospace; }
+  .tree li { white-space:nowrap; } .tree .d { color:#b5122b; } .tree .i1 { padding-left:18px; } .tree .i2 { padding-left:36px; }
+  .tree .x { color:#655b60; font-size:11px; margin-left:8px; }
+  pre.code { margin:0; background:#fbf6f6; border:1px solid var(--line); border-radius:8px; padding:14px; overflow:auto; font:12px/1.55 ui-monospace,Menlo,monospace; color:#292326; }
+  .q { margin:0 0 4px; font-weight:600; } .opts { margin:6px 0 0; padding-left:18px; font-size:13px; color:#292326; } .opts li.a { color:var(--green); }
+  .mod-line { height:3px; background:linear-gradient(90deg,var(--blue) 35%,#eadbdd 35%); border-radius:2px; margin:6px 0 14px; }
+
+  /* bottom: agent status bar */
+  .agents { display:flex; align-items:center; gap:16px; padding:7px 14px; background:#ffffff; border-top:1px solid var(--line); font-size:12px; overflow-x:auto; white-space:nowrap; }
+  .agents .phase { font-weight:700; display:flex; gap:6px; align-items:center; }
+  .agents .sep { width:1px; height:16px; background:var(--line); }
+  .agents .lbl { color:#655b60; }
+  .dot { width:7px; height:7px; border-radius:50%; background:#eadbdd; display:inline-block; margin-right:5px; }
+  .dot.done { background:var(--green); } .dot.now { background:var(--violet); box-shadow:0 0 8px var(--violet); } .dot.wait { background:var(--amber); }
+  .agents .who { color:#292326; } .agents .who.done { color:#292326; }
+
+  .st-cmd { background:#292326; color:#fff; border-radius:7px; padding:8px 10px; font:12px/1.5 ui-monospace,Menlo,monospace; white-space:normal; overflow-wrap:anywhere; }
+  .mk { position:fixed; right:10px; bottom:48px; background:#292326; color:#ffffff; border-radius:8px; padding:6px 8px; font-size:11px; box-shadow:0 4px 18px rgba(41,35,38,.18); z-index:50; }
+  .mk select { font-size:11px; color:#292326; background:#fff; border:0; border-radius:5px; padding:2px 4px; }
+  .toast { position:fixed; left:50%; transform:translateX(-50%); bottom:56px; background:#fcecef; border:1px solid var(--violet); color:#fff; padding:8px 14px; border-radius:8px; font-size:12px; z-index:60; }
+  .toast:empty { display:none; }
+
+  @media (max-width:1100px) { .app { grid-template-columns:220px 260px minmax(0,1fr); } .grid2 { grid-template-columns:1fr; } }
+  @media (max-width:800px) {
+    .app { grid-template-columns:1fr; }
+    .side { max-height:none; } .projects { max-height:180px; }
+    .chat { border-right:0; border-bottom:1px solid var(--line); } .msgs { max-height:360px; }
+    .frame { min-height:460px; }
+  }
+</style></head><body>
+<div class="banner" id="banner-top">Dynamic page · highest possible classification: UNCLASSIFIED (set per deployment)</div>
+<div class="app" id="app"><aside class="side" aria-label="Projects">
+      <div class="brand"><div class="logo" aria-hidden="true">A²</div><h1>ARC²</h1><p>AI Rapid Course Creator</p></div>
+      <div class="seg"><button type="button" aria-pressed="true" data-act="side:projects">Projects</button><button type="button" aria-pressed="false" data-act="side:observe">Observe</button><button type="button" aria-pressed="false" data-act="side:access">Access</button></div>
+      <div class="newp"><input class="input" id="np-name" placeholder="New project name…" aria-label="New project name"><button type="button" class="btn-new" data-act="newproj">+ New Project</button></div>
+      <div class="projects">
+        <button type="button" class="proj" aria-current="true"><strong>Detecting AD Lateral Movement</strong><span>Preview review</span><small>Updated 26 Sep 21:19 · ARC2-ADLM</small></button>
+        <p class="small muted" style="padding:8px 12px">No other runs in build/arc2/.</p>
+      </div>
+      <button type="button" class="signout" data-act="toast:Would sign out">Sign Out</button>
+    </aside><section class="chat" aria-label="Pipeline">
+      <div class="chat-mode"><span aria-current="true">Standard</span><span title="Seen in Beau's ARC²; meaning not known yet">Essentials</span></div>
+      <div class="msgs"><div class="msg user">Audience: SOC tier-2 analysts, 8 h, intermediate, instructor-led; topic: detecting AD lateral movement; no live malware.<time>26 Sep 18:44</time></div><div class="msg pipe "><b>PIPELINE</b>Content Architect drafted 3 modules, 6 objectives and 1 critical event (lateral movement). Review your course outline in the Outline tab. Click Accept to proceed, or type feedback to refine.<time>26 Sep 18:51</time></div><div class="msg user">Outline accepted — starting content generation.<time>26 Sep 19:09</time></div><div class="msg pipe "><b>PIPELINE</b>Code Generator, Range Engineer, Artifact Creator and Sensor Gateway finished: 12 pages, 3 quizzes, a 40-minute inject timeline, rubric and validators.<time>26 Sep 19:39</time></div><div class="msg pipe warn"><b>PIPELINE</b>QA passed on the first cycle (0 of 3). 21 items need a person; see Validation.<time>26 Sep 19:45</time></div><div class="msg pipe "><b>PIPELINE</b>Course generation complete. Review in the Preview tab, then approve or request changes.<time>26 Sep 19:45</time></div></div>
+      <div class="approve"><button type="button" class="btn-approve" data-act="toast:Would run: arc2.check gate preview accept (QA re-checks first); the Package Builder then builds the cmi5 package">✓ Approve &amp; Package</button><p>or type feedback below to request changes</p></div>
+      <div class="route">Send to <select aria-label="Agent to rework"><option>Code Generator</option><option>Content Architect</option><option>Range Engineer</option><option>Artifact Creator</option><option>Sensor Gateway</option></select></div>
+      <div class="send"><input class="input" placeholder="Describe what needs to be changed…" aria-label="Feedback"><button type="button" class="btn-send" data-act="toast:Would run: arc2.check gate preview feedback --text …">Send</button></div>
+    </section><section class="work" aria-label="Workspace">
+      <nav class="tabs"><button type="button" aria-pressed="false" data-act="tab:files">Files</button><button type="button" aria-pressed="false" data-act="tab:outline">Outline</button><button type="button" aria-pressed="false" data-act="tab:quiz">Quiz Bank</button><button type="button" aria-pressed="true" data-act="tab:preview">Preview</button><button type="button" aria-pressed="false" data-act="tab:code">Code</button><button type="button" aria-pressed="false" data-act="tab:lab">Lab</button><button type="button" aria-pressed="false" data-act="tab:validation">Validation<span class="n">21</span></button></nav>
+      <div class="workhead"><div><h2>Review your generated course</h2><p>Approve to build the cmi5 package, or use the chat to request changes.</p></div>
+        <div class="toolbar"><span class="toggle">Preview Mode <button type="button" class="switch" role="switch" aria-checked="false" aria-label="Edit mode" data-act="toast:Edit Mode is not part of the first version"></button> Edit Mode</span>
+          <button type="button" class="btn-ap-out" data-act="toast:Same as the button in the chat">Approve &amp; Package</button><span class="hint">or describe changes in chat</span></div></div>
+      <div class="chips"><button type="button" class="chip" aria-pressed="true" data-act="chip:mod_001">mod_001/course-config.json</button><button type="button" class="chip" aria-pressed="false" data-act="chip:mod_002">mod_002/course-config.json</button><button type="button" class="chip" aria-pressed="false" data-act="chip:mod_003">mod_003/course-config.json</button></div>
+      <div class="body"><iframe class="frame" sandbox="" title="Course preview" srcdoc="&lt;!doctype html&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;style&gt;body{background:#ffffff;color:#292326;font:14px/1.65 &quot;Segoe UI&quot;,sans-serif;margin:18px 24px}h1{font-size:20px;margin:0}h2{color:#b5122b;font-size:18px;margin:18px 0 6px}h3{font-size:15px;margin:16px 0 6px}.bar{height:3px;background:linear-gradient(90deg,#b5122b 30%,#eadbdd 30%);margin:8px 0 18px}table{border-collapse:collapse;font-size:13px;margin:10px 0}th,td{border:1px solid #eadbdd;padding:6px 8px;text-align:left;vertical-align:top}th{color:#b5122b}li{margin:2px 0}strong{color:#292326}&lt;/style&gt;&lt;h1&gt;Authentication telemetry for lateral movement&lt;/h1&gt;&lt;div class=&quot;bar&quot;&gt;&lt;/div&gt;&lt;h2&gt;Where authentication is recorded&lt;/h2&gt;
+&lt;p&gt;Lateral movement in an Active Directory domain almost always means authenticating to another host with a valid account. Each authenticated hop can leave evidence in up to three places, and an analyst who knows which place records what can find the hop even when one source is missing.&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;&lt;th&gt;Where&lt;/th&gt;&lt;th&gt;What it records&lt;/th&gt;&lt;th&gt;Key Security log events&lt;/th&gt;&lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    &lt;tr&gt;&lt;td&gt;Destination host&lt;/td&gt;&lt;td&gt;The logon session that was created, and its end&lt;/td&gt;&lt;td&gt;4624 (logon succeeded), 4625 (logon failed), 4634 / 4647 (logoff), 4672 (special privileges assigned to the new logon)&lt;/td&gt;&lt;/tr&gt;
+    &lt;tr&gt;&lt;td&gt;Domain controller&lt;/td&gt;&lt;td&gt;The validation of a domain account's credentials&lt;/td&gt;&lt;td&gt;Kerberos: 4768 (ticket-granting ticket requested), 4769 (service ticket requested), 4771 (pre-authentication failed). NTLM: 4776 (credential validation)&lt;/td&gt;&lt;/tr&gt;
+    &lt;tr&gt;&lt;td&gt;Source host&lt;/td&gt;&lt;td&gt;A user or process choosing to use credentials against another host&lt;/td&gt;&lt;td&gt;4648 (logon attempted with explicit credentials), 4624 logon type 9 (new credentials for outbound connections)&lt;/td&gt;&lt;/tr&gt;
+  &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;h3&gt;Audit policy comes first&lt;/h3&gt;
+&lt;p&gt;None of these events exists unless the advanced audit policy enables it. Before trusting an absence of evidence, confirm that the relevant policy settings are on for the hosts in scope:&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;strong&gt;Logon/Logoff:&lt;/strong&gt; Audit Logon and Audit Special Logon (4624, 4625, 4634, 4648, 4672).&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Account Logon:&lt;/strong&gt; Audit Kerberos Authentication Service, Audit Kerberos Service Ticket Operations and Audit Credential Validation (4768, 4769, 4771, 4776), on domain controllers.&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Object Access:&lt;/strong&gt; Audit File Share and Audit Detailed File Share (5140, 5145), covered in Module 2.&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;System:&lt;/strong&gt; Audit Security System Extension (4697, service installed), covered in Module 2.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3&gt;Collection gaps that hide movement&lt;/h3&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;strong&gt;Workstation logs not collected.&lt;/strong&gt; Many SOCs forward domain controller and server logs only. Movement from one workstation to another then leaves no destination-side record in the SIEM; only the domain controller sees the credential validation.&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Local accounts.&lt;/strong&gt; NTLM authentication with a local account is validated by the destination host itself, so the 4776 event is written on that host, not on a domain controller.&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Time.&lt;/strong&gt; Correlating a domain controller event with a destination-host event depends on synchronised clocks. Normalise every timestamp to UTC and note any host whose clock drifts.&lt;/li&gt;
+  &lt;li&gt;&lt;strong&gt;Retention.&lt;/strong&gt; Workstation Security logs roll over quickly under default sizes. An intrusion found late may have lost its early hops on the host and survive only in forwarded copies.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;The rest of this module works from the destination host outward: what a logon event says (page 2), how to attribute it to a source host, account and logon type through NTLM and Kerberos evidence (page 3), and how to decide that a remote logon is anomalous (page 4).&lt;/p&gt;
+"></iframe></div>
+    </section></div>
+<div id="agents-bar"><div class="agents" role="status"><span class="phase"><span class="dot now"></span>Review &amp; Approve</span><span class="sep"></span><span class="lbl">Agents:</span><span class="who done"><span class="dot done"></span>Content Architect</span><span class="who done"><span class="dot done"></span>Code Generator</span><span class="who done"><span class="dot done"></span>Range Engineer</span><span class="who done"><span class="dot done"></span>Artifact Creator</span><span class="who done"><span class="dot done"></span>Sensor Gateway</span><span class="who done"><span class="dot done"></span>QA Tester</span><span class="who "><span class="dot "></span>Package Builder</span></div></div><div class="banner" id="banner-bottom">Dynamic page · highest possible classification: UNCLASSIFIED (set per deployment)</div>
+<div class="mk">MOCKUP · show run as <select id="mk-state" aria-label="Run state for the mockup">
+  <option value="outline">Outline ready</option><option value="preview" selected="">Preview ready</option><option value="package">Packaged (real state)</option></select></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const MARKING = 'Dynamic page · highest possible classification: UNCLASSIFIED (set per deployment)';
+  document.getElementById('banner-top').textContent = MARKING;
+  document.getElementById('banner-bottom').textContent = MARKING;
+  const PAGE01 = "<h2>Where authentication is recorded</h2>\n<p>Lateral movement in an Active Directory domain almost always means authenticating to another host with a valid account. Each authenticated hop can leave evidence in up to three places, and an analyst who knows which place records what can find the hop even when one source is missing.</p>\n\n<table>\n  <thead>\n    <tr><th>Where</th><th>What it records</th><th>Key Security log events</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>Destination host</td><td>The logon session that was created, and its end</td><td>4624 (logon succeeded), 4625 (logon failed), 4634 / 4647 (logoff), 4672 (special privileges assigned to the new logon)</td></tr>\n    <tr><td>Domain controller</td><td>The validation of a domain account's credentials</td><td>Kerberos: 4768 (ticket-granting ticket requested), 4769 (service ticket requested), 4771 (pre-authentication failed). NTLM: 4776 (credential validation)</td></tr>\n    <tr><td>Source host</td><td>A user or process choosing to use credentials against another host</td><td>4648 (logon attempted with explicit credentials), 4624 logon type 9 (new credentials for outbound connections)</td></tr>\n  </tbody>\n</table>\n\n<h3>Audit policy comes first</h3>\n<p>None of these events exists unless the advanced audit policy enables it. Before trusting an absence of evidence, confirm that the relevant policy settings are on for the hosts in scope:</p>\n<ul>\n  <li><strong>Logon/Logoff:</strong> Audit Logon and Audit Special Logon (4624, 4625, 4634, 4648, 4672).</li>\n  <li><strong>Account Logon:</strong> Audit Kerberos Authentication Service, Audit Kerberos Service Ticket Operations and Audit Credential Validation (4768, 4769, 4771, 4776), on domain controllers.</li>\n  <li><strong>Object Access:</strong> Audit File Share and Audit Detailed File Share (5140, 5145), covered in Module 2.</li>\n  <li><strong>System:</strong> Audit Security System Extension (4697, service installed), covered in Module 2.</li>\n</ul>\n\n<h3>Collection gaps that hide movement</h3>\n<ul>\n  <li><strong>Workstation logs not collected.</strong> Many SOCs forward domain controller and server logs only. Movement from one workstation to another then leaves no destination-side record in the SIEM; only the domain controller sees the credential validation.</li>\n  <li><strong>Local accounts.</strong> NTLM authentication with a local account is validated by the destination host itself, so the 4776 event is written on that host, not on a domain controller.</li>\n  <li><strong>Time.</strong> Correlating a domain controller event with a destination-host event depends on synchronised clocks. Normalise every timestamp to UTC and note any host whose clock drifts.</li>\n  <li><strong>Retention.</strong> Workstation Security logs roll over quickly under default sizes. An intrusion found late may have lost its early hops on the host and survive only in forwarded copies.</li>\n</ul>\n\n<p>The rest of this module works from the destination host outward: what a logon event says (page 2), how to attribute it to a source host, account and logon type through NTLM and Kerberos evidence (page 3), and how to decide that a remote logon is anomalous (page 4).</p>\n";
+  const app = document.getElementById('app'), toastEl = document.getElementById('toast');
+  const params = new URLSearchParams(location.hash.slice(1));
+  let state = ['outline','preview','package'].includes(params.get('state')) ? params.get('state') : 'preview';
+  let tab = params.get('tab') || (state==='outline' ? 'outline' : 'preview');
+  let chipSel = 'mod_001'; let edit = false; let side = 'projects';
+  let drafts = []; let current = -1; // -1 = the real run; otherwise an index into drafts
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const AGENTS = ['Content Architect','Code Generator','Range Engineer','Artifact Creator','Sensor Gateway','QA Tester','Package Builder'];
+  const done = () => ({outline:1, preview:6, package:7})[state];
+  const modules = [
+    ['mod_001','Authentication telemetry for lateral movement',120,['Where authentication is recorded','Logon events and logon types','Attributing NTLM and Kerberos authentications','Detecting anomalous remote logons']],
+    ['mod_002','Remote execution and admin-share telemetry',150,['Admin shares and named pipes','Remote service creation and other execution footprints','The network sensor view of SMB','Reconstructing a multi-hop path']],
+    ['mod_003','Range exercise: triage and reconstruct lateral movement',210,['Range exercise: brief and working method','Triage against the noise floor','Writing the technical report','Scoped containment recommendations']],
+  ];
+  const objectives = [
+    ['M01-O01','Detect anomalous remote logons between hosts from Windows authentication telemetry'],
+    ['M01-O02','Identify from telemetry the source host, account and logon type behind a suspicious NTLM or Kerberos authentication'],
+    ['M02-O01','Detect remote service creation and admin-share access from host and SMB telemetry'],
+    ['M02-O02','Reconstruct a multi-hop lateral movement path from correlated authentication and SMB telemetry'],
+    ['M03-O01','Triage lateral movement alerts against a noise floor of legitimate administrative activity'],
+    ['M03-O02','Document the reconstructed path, its supporting telemetry and scoped containment recommendations in a technical report'],
+  ];
+  const quiz = [
+    ['Quiz 1 · Authentication telemetry', [
+      ['On the destination host, which 4624 field shows whether a remote logon was authenticated with NTLM or Kerberos?',['Logon Type','Authentication Package','Elevated Token','Linked Logon ID'],1],
+      ['Which domain controller event records a request for a Kerberos service ticket, including the service name and the client address?',['4768','4776','4769','4771'],2]]],
+    ['Quiz 2 · Remote execution and admin shares', [
+      ['Which pair of events on a target host most directly shows an administrative share being used and then a service being installed?',['4625 followed by 4740','5140 for ADMIN$ followed by 7045','4768 followed by 4769','4634 followed by 4647'],1],
+      ['In a 7045 event, which fields matter most when judging whether a newly installed service is suspicious?',['The event record number and the channel','The provider GUID and the keywords','The service file name and the account the service runs as','The computer’s time zone and locale'],2]]],
+    ['Quiz 3 · Range exercise', [
+      ['An alert fires for service installs on 200 workstations from the software deployment server during a change window. What should triage check first?',['Whether the source, account, service image path and timing match the approved deployment pattern','Whether all 200 workstations should be reimaged','Whether the domain controllers are reachable','Whether the alert rule should be disabled'],0],
+      ['Why should an allowlist entry for administrative activity name the account, source host and action rather than the account alone?',['Account-only entries are faster for the SIEM to evaluate','Scoped entries never need to be reviewed','An account-only entry would also suppress that account being misused from any other host','Account-only entries prevent Kerberos logging'],2]]],
+  ];
+  const injects = [
+    ['t+0','inj-01-auth-baseline','30-day host-to-host authentication baseline, for comparison',false,false],
+    ['t+10','inj-02-hop1-remote-logon','First workstation-to-workstation remote logon on the path',true,true],
+    ['t+20','inj-03-hop2-admin-share-service','Admin-share access, then a new service on the second-hop host',true,true],
+    ['t+30','inj-04-hop3-file-server','Onward hop to the file server, completing the path',true,true],
+    ['t+40','inj-05-alert-queue','SIEM alert queue mixing path alerts with the noise floor',false,false],
+  ];
+  const actions = [
+    ['Security',6,'Cleared author supplies pre-captured telemetry for injects 2–4 and their variant B retests; attacker nodes on soc-training stay off'],
+    ['Standards',6,'Bind a PO (candidates ALJQ PO_009, PO_007); rubric pass standard; summative verdict; CE-01 reading'],
+    ['Infrastructure',3,'Egress isolation on vSphere; confirm reuse of soc-training; no candidate-findings index yet'],
+    ['Content',4,'Variant B noise floor; answer key drafts; detection citation; validator names'],
+    ['Package',4,'XSD not vendored; provisional publisher IDs; zip and promote by hand'],
+    ['QA',1,'M03-O02 is named by no inject'],
+    ['Advisory',1,'—'],
+  ];
+
+  // Pipeline messages, from the manifest's stage and gate timestamps.
+  function messages() {
+    const m = [['user','Audience: SOC tier-2 analysts, 8 h, intermediate, instructor-led; topic: detecting AD lateral movement; no live malware.','26 Sep 18:44']];
+    m.push(['pipe','Content Architect drafted 3 modules, 6 objectives and 1 critical event (lateral movement). Review your course outline in the Outline tab. Click Accept to proceed, or type feedback to refine.','26 Sep 18:51']);
+    if (state==='outline') return m;
+    m.push(['user','Outline accepted — starting content generation.','26 Sep 19:09']);
+    m.push(['pipe','Code Generator, Range Engineer, Artifact Creator and Sensor Gateway finished: 12 pages, 3 quizzes, a 40-minute inject timeline, rubric and validators.','26 Sep 19:39']);
+    m.push(['pipe','QA passed on the first cycle (0 of 3). 21 items need a person; see Validation.','26 Sep 19:45','warn']);
+    m.push(['pipe','Course generation complete. Review in the Preview tab, then approve or request changes.','26 Sep 19:45']);
+    if (state==='preview') return m;
+    m.push(['user','Approved — build the package.','26 Sep 21:15']);
+    m.push(['pipe','Package Builder wrote the cmi5 package (30 files) and PROMOTE.md. Package candidate: not published; 25 actions open, 19 blocking promotion.','26 Sep 21:19']);
+    return m;
+  }
+
+  const gateLabel = () => state==='outline' ? 'Accept Outline' : state==='preview' ? '✓ Approve & Package' : '✓ Packaged';
+  const gateHint = () => state==='outline' ? 'or type feedback below to refine the outline' : state==='preview' ? 'or type feedback below to request changes' : 'Package candidate · not published';
+
+  function left() {
+    const status = state==='outline' ? 'Outline review' : state==='preview' ? 'Preview review' : 'Packaged · 25 open';
+    return `<aside class="side" aria-label="Projects">
+      <div class="brand"><div class="logo" aria-hidden="true">A²</div><h1>ARC²</h1><p>AI Rapid Course Creator</p></div>
+      <div class="seg">${['projects','observe','access'].map(s=>`<button type="button" aria-pressed="${s===side}" data-act="side:${s}">${s[0].toUpperCase()+s.slice(1)}</button>`).join('')}</div>
+      <div class="newp"><input class="input" id="np-name" placeholder="New project name…" aria-label="New project name"><button type="button" class="btn-new" data-act="newproj">+ New Project</button></div>
+      <div class="projects">
+        ${drafts.map((d,i)=>`<button type="button" class="proj" aria-current="${current===i}" data-act="pick:${i}"><strong>${esc(d.name)}</strong><span>${d.request?'Ready to start in Claude Code':'Describe the course'}</span><small>Created just now · not started</small></button>`).join('')}
+        <button type="button" class="proj" aria-current="${current===-1}" data-act="pick:-1"><strong>Detecting AD Lateral Movement</strong><span>${status}</span><small>Updated 26 Sep 21:19 · ARC2-ADLM</small></button>
+      </div>
+      <button type="button" class="signout" data-act="toast:Would sign out">Sign Out</button>
+    </aside>`;
+  }
+
+  function middle() {
+    if (current >= 0) {
+      const d = drafts[current];
+      const cmd = `/arc2 "${(d.request||'').replace(/"/g,"'")}"`;
+      const msgs = [`<div class="msg user">${esc(d.name)}<time>just now</time></div>`,
+        `<div class="msg pipe"><b>PIPELINE</b>Project created. Describe the course below: audience, length, level, topic and limits (for example “SOC tier-1 analysts, 4 h, beginner, self-paced; triaging suspicious logins; no live malware”).</div>`];
+      if (d.request) msgs.push(`<div class="msg user">${esc(d.request)}<time>just now</time></div>`,
+        `<div class="msg pipe warn"><b>PIPELINE</b>Ready to generate. In this first version ARC² runs in Claude Code: paste the command below there. This run appears here as soon as it starts, and you review the outline and preview on this page.<div class="st-cmd" style="margin-top:8px"><span>${esc(cmd)}</span></div><button type="button" class="btn-ap-out" style="margin-top:8px" data-act="copy">Copy command</button></div>`);
+      return `<section class="chat" aria-label="Pipeline">
+      <div class="chat-mode"><span aria-current="true">Standard</span><span title="Seen in Beau's ARC²; meaning not known yet">Essentials</span></div>
+      <div class="msgs">${msgs.join('')}</div>
+      <div class="approve"><button type="button" class="btn-approve" disabled>Waiting to start</button><p>Nothing to approve until the outline exists</p></div>
+      <div class="send"><input class="input" id="draft-req" placeholder="Audience, length, level, topic, limits…" aria-label="Course request" value="${esc(d.request||'')}"><button type="button" class="btn-send" data-act="draftsend">Send</button></div>
+    </section>`;
+    }
+    return `<section class="chat" aria-label="Pipeline">
+      <div class="chat-mode"><span aria-current="true">Standard</span><span title="Seen in Beau's ARC²; meaning not known yet">Essentials</span></div>
+      <div class="msgs">${messages().map(([k,t,ts,x])=> k==='user' ? `<div class="msg user">${esc(t)}<time>${ts}</time></div>` : `<div class="msg pipe ${x||''}"><b>PIPELINE</b>${esc(t)}<time>${ts}</time></div>`).join('')}</div>
+      <div class="approve"><button type="button" class="btn-approve" ${state==='package'?'disabled':''} data-act="toast:${state==='outline'?'Would run: arc2.check gate outline accept':'Would run: arc2.check gate preview accept (QA re-checks first); the Package Builder then builds the cmi5 package'}">${gateLabel()}</button><p>${gateHint()}</p></div>
+      ${state==='preview' ? `<div class="route">Send to <select aria-label="Agent to rework"><option>Code Generator</option><option>Content Architect</option><option>Range Engineer</option><option>Artifact Creator</option><option>Sensor Gateway</option></select></div>` : ''}
+      <div class="send"><input class="input" placeholder="Describe what needs to be changed…" aria-label="Feedback" ${state==='package'?'disabled':''}><button type="button" class="btn-send" data-act="toast:Would run: arc2.check gate ${state} feedback --text …" ${state==='package'?'disabled':''}>Send</button></div>
+    </section>`;
+  }
+
+  const TABS = [['files','Files'],['outline','Outline'],['quiz','Quiz Bank'],['preview','Preview'],['code','Code'],['lab','Lab'],['validation','Validation']];
+  const heads = {
+    files:['Run files','Everything the seven agents wrote, and the cmi5 package once it is built.'],
+    outline:['Review your course outline', state==='outline' ? 'Accept to start generation, or use the chat to refine it.' : 'Accepted 26 Sep 19:09 · re-opens automatically if the outline changes.'],
+    quiz:['Quiz bank','3 quizzes, 15 questions. Correct answers are marked for the reviewer only.'],
+    preview:['Review your generated course','Approve to build the cmi5 package, or use the chat to request changes.'],
+    code:['Code','The files as the package will carry them.'],
+    lab:['Lab','Replayed, pre-captured telemetry on the existing SOC training range. No live activity; attacker nodes stay off.'],
+    validation:['Validation','QA result and the items a person has to close before promotion.'],
+  };
+  const notYet = what => `<div class="card"><h3>Not generated yet</h3><p class="muted small">${what} are written after you accept the outline.</p></div>`;
+
+  function content() {
+    if (tab==='outline') return `<div class="grid2"><div>${modules.map(([id,t,min],i)=>`<div class="card"><h3>Module ${i+1} · ${t}</h3><p class="small muted">${min} min · critical event CE-01 lateral movement</p>${objectives.slice(i*2,i*2+2).map(([o,tx])=>`<div class="row"><span class="small"><span class="mono muted">${o}</span> ${tx}</span></div>`).join('')}</div>`).join('')}</div>
+      <div><div class="card"><h3>Left out on purpose</h3>${['Scanning before movement: keeps 8 h on lateral movement','Exfiltration: outside the topic','Hands-on containment: recommendations go in the report','Cloud identity: on-premises AD only','Attacker-side walkthroughs: detection only'].map(c=>`<p class="small" style="margin:0 0 6px">• ${c}</p>`).join('')}</div>
+      <div class="card"><h3>Qualification</h3><p class="small">No PO bound. Candidates for Standards: <b>ALJQ PO_009</b>, <b>ALJQ PO_007</b>.</p></div></div></div>`;
+    if (tab==='quiz') return state==='outline' ? notYet('Quizzes') : quiz.map(([t,qs])=>`<div class="card"><h3>${t} <span class="tag">5 questions</span></h3>${qs.map(([q,o,a])=>`<div class="row"><div><p class="q small">${esc(q)}</p><ol class="opts" type="A">${o.map((x,i)=>`<li class="${i===a?'a':''}">${esc(x)}${i===a?' ✓':''}</li>`).join('')}</ol></div></div>`).join('')}<p class="small muted" style="margin:8px 0 0">+ 3 more</p></div>`).join('');
+    if (tab==='preview') {
+      if (state==='outline') return notYet('Module pages');
+      const body = chipSel==='mod_001' ? PAGE01 : `<h2>${esc(modules.find(m=>m[0]===chipSel)[3][0])}</h2><p style="color:#655b60">In the mockup only module 1 carries its real text. The Studio shows every page exactly as the package will.</p>`;
+      const title = modules.find(m=>m[0]===chipSel)[1];
+      const src = `<!doctype html><meta charset="utf-8"><style>body{background:#ffffff;color:#292326;font:14px/1.65 "Segoe UI",sans-serif;margin:18px 24px}h1{font-size:20px;margin:0}h2{color:#b5122b;font-size:18px;margin:18px 0 6px}h3{font-size:15px;margin:16px 0 6px}.bar{height:3px;background:linear-gradient(90deg,#b5122b 30%,#eadbdd 30%);margin:8px 0 18px}table{border-collapse:collapse;font-size:13px;margin:10px 0}th,td{border:1px solid #eadbdd;padding:6px 8px;text-align:left;vertical-align:top}th{color:#b5122b}li{margin:2px 0}strong{color:#292326}</style><h1>${esc(title)}</h1><div class="bar"></div>${body}`;
+      return `<iframe class="frame" sandbox="" title="Course preview" srcdoc="${esc(src)}"></iframe>`;
+    }
+    if (tab==='code') return state==='outline' ? notYet('Package files') : `<pre class="code">${esc(`// 02-content/mod_001/course-config.json
+{
+  "schema": "arc2/course-config/0.1",
+  "module_id": "mod_001",
+  "ordinal": 1,
+  "title": "Module 1: Authentication telemetry for lateral movement",
+  "au_id": "https://ccoe.forces.gc.ca/xapi/arc2/arc2-adlm/au/mod_001",
+  "objective_ids": ["M01-O01", "M01-O02"],
+  "objectives": [
+    { "id": "M01-O01", "text": "Detect anomalous remote logons between hosts from Windows authentication telemetry", … },
+    { "id": "M01-O02", "text": "Identify from telemetry the source host, account and logon type behind a suspicious NTLM or Kerberos authentication", … }
+  ],
+  "pages": ["content/page-01.html", "content/page-02.html", "content/page-03.html", "content/page-04.html"],
+  …
+}`)}</pre><p class="small muted">Read-only here. Edit Mode is not part of the first version.</p>`;
+    if (tab==='lab') return state==='outline' ? notYet('The range and injects') : `<div class="grid2"><div class="card"><h3>Inject timeline · 40 min</h3>${injects.map(([t,id,d,c,a])=>`<div class="row"><span class="small"><span class="mono muted">${t}</span> <b>${id}</b><br><span class="muted">${d}</span></span><span>${c?'<span class="tag red">critical · CE-01</span> ':''}${a?'<span class="tag warn">author required</span>':''}</span></div>`).join('')}</div>
+      <div><div class="card"><h3>Range</h3><div class="row"><span class="small muted">Mode</span><span class="small">Reuse existing</span></div><div class="row"><span class="small muted">Range</span><span class="mono">content/ranges/soc-training</span></div><div class="row"><span class="small muted">Retest</span><span class="small">Variant B timeline</span></div></div>
+      <div class="card"><h3>Noise floor</h3><p class="small">nf-01 nightly backup agent · nf-02 software deployment in a change window · nf-03 helpdesk RDP from the jump host</p></div></div></div>`;
+    if (tab==='validation') return state==='outline' ? notYet('QA results') : `<div class="grid2"><div class="card"><h3>Open items · ${state==='preview'?21:25} <span class="tag warn">${state==='preview'?17:19} block promotion</span></h3>${actions.filter(a=>a[0]!=='Advisory').map(([c,n,t])=>`<div class="row"><span class="small"><b>${c}</b> · ${t}</span><span class="tag">${n}</span></div>`).join('')}</div>
+      <div><div class="card"><h3>QA</h3><div class="row"><span class="small muted">Result</span><span class="tag ok">Pass</span></div><div class="row"><span class="small muted">Cycle</span><span class="small">0 of 3 · a person takes over after 3 failures</span></div></div>
+      <div class="card"><h3>Package</h3><p class="small">${state==='package'?'<span class="tag ok">Built</span> cmi5 · 30 files · <span class="tag warn">not published</span><br>XSD not run · publisher IDs provisional':'Built after you approve.'}</p></div></div></div>`;
+    // files
+    const stages = ['01-blueprint/  outline.yaml · po_fit.md · catalogue_row.csv','02-content/  arc2-adlm.yaml · mod_001–003 (12 pages)','03-range/  timeline.yaml','04-artifacts/  rubric.md · deliverable.md · xapi.json · variant_B/ · instructor/','05-sensor/  scenario.yaml · validators/ (3)','06-qa/  report.md · check.json'];
+    const shown = state==='outline' ? stages.slice(0,1) : stages;
+    return `<div class="grid2"><div class="card"><h3>build/arc2/arc2-ad-lateral-movement/</h3><ul class="tree">${shown.map(s=>{const [d,...r]=s.split('  ');return `<li class="d">▸ ${d}<span class="x">${r.join('')}</span></li>`}).join('')}
+      ${state==='package'?`<li class="d">▾ 07-bundle/</li><li class="i1">PROMOTE.md</li><li class="i1 d">▾ cmi5/</li><li class="i2">cmi5.xml · cmi5.js · course.js · README.md</li><li class="i2">mod_001/ · mod_002/ · mod_003/<span class="x">index.html, course-config.json, 4 pages each</span></li><li class="i2">images/ · videos/</li>`:''}
+      <li>manifest.json · request.txt</li></ul></div>
+      <div class="card"><h3>Instructor only</h3><p class="small muted">answer_key.md and inject_solutions.md stay with the run and never go in the student package.</p>${state==='package'?`<button type="button" class="btn-ap-out" data-act="toast:Would download ARC2-ADLM-cmi5.zip">Download cmi5 ZIP</button>`:''}</div></div>`;
+  }
+
+  function right() {
+    if (current >= 0) return `<section class="work" aria-label="Workspace"><nav class="tabs">${TABS.map(([v,l])=>`<button type="button" aria-pressed="${v===tab}" data-act="tab:${v}">${l}</button>`).join('')}</nav>
+      <div class="workhead"><div><h2>${esc(drafts[current].name)}</h2><p>Not started. The outline appears here once ARC² runs.</p></div></div>
+      <div class="body"><div class="card"><h3>Nothing generated yet</h3><p class="small muted">Describe the course in the chat, then start it with the command it gives you. The Content Architect writes the outline first, and you review it before anything else is generated.</p></div></div></section>`;
+    const [h,p] = heads[tab];
+    const showChips = tab==='preview' && state!=='outline';
+    return `<section class="work" aria-label="Workspace">
+      <nav class="tabs">${TABS.map(([v,l])=>`<button type="button" aria-pressed="${v===tab}" data-act="tab:${v}">${l}${v==='validation'&&state!=='outline'?`<span class="n">${state==='preview'?21:25}</span>`:''}</button>`).join('')}</nav>
+      <div class="workhead"><div><h2>${h}</h2><p>${p}</p></div>
+        <div class="toolbar">${tab==='preview'&&state!=='outline'?`<span class="toggle">Preview Mode <button type="button" class="switch" role="switch" aria-checked="${edit}" aria-label="Edit mode" data-act="toast:Edit Mode is not part of the first version"></button> Edit Mode</span>`:''}
+          ${(tab==='preview'&&state==='preview')||(tab==='outline'&&state==='outline')?`<button type="button" class="btn-ap-out" data-act="toast:Same as the button in the chat">${tab==='outline'?'Accept Outline':'Approve &amp; Package'}</button><span class="hint">or describe changes in chat</span>`:''}</div></div>
+      ${showChips?`<div class="chips">${modules.map(([id])=>`<button type="button" class="chip" aria-pressed="${id===chipSel}" data-act="chip:${id}">${id}/course-config.json</button>`).join('')}</div>`:''}
+      <div class="body">${content()}</div>
+    </section>`;
+  }
+
+  function agentsBar() {
+    if (current >= 0) return `<div class="agents" role="status"><span class="phase"><span class="dot wait"></span>Waiting to start</span><span class="sep"></span><span class="lbl">Agents:</span>${AGENTS.map(a=>`<span class="who"><span class="dot"></span>${a}</span>`).join('')}</div>`;
+    const phase = state==='outline' ? 'Outline review' : state==='preview' ? 'Review & Approve' : 'Packaged';
+    return `<div class="agents" role="status"><span class="phase"><span class="dot now"></span>${phase}</span><span class="sep"></span><span class="lbl">Agents:</span>${AGENTS.map((a,i)=>`<span class="who ${i<done()?'done':''}"><span class="dot ${i<done()?'done':''}"></span>${a}</span>`).join('')}</div>`;
+  }
+
+  function render() {
+    document.getElementById('mk-state').value = state;
+    history.replaceState(null,'','#'+new URLSearchParams({tab, state}));
+    app.innerHTML = left() + middle() + right();
+    const msgs = app.querySelector('.msgs'); if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    let bar = document.getElementById('agents-bar');
+    if (!bar) { bar = document.createElement('div'); bar.id='agents-bar'; document.body.insertBefore(bar, document.getElementById('banner-bottom')); }
+    bar.innerHTML = agentsBar();
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const [a,...r] = b.dataset.act.split(':'); const arg = r.join(':');
+    if (a==='tab') { tab = arg; render(); }
+    if (a==='chip') { chipSel = arg; render(); }
+    if (a==='side') { if (arg!=='projects') toast(arg==='observe' ? 'Observe: watch runs read-only (later)' : 'Access: who may author, approve and publish (later)'); }
+    if (a==='toast') toast(arg);
+    if (a==='newproj') newProject();
+    if (a==='pick') { current = Number(arg); tab = current>=0 ? 'outline' : (state==='outline'?'outline':'preview'); render(); }
+    if (a==='draftsend') { const v = (document.getElementById('draft-req')||{}).value || ''; if (!v.trim()) { toast('Describe the course first'); return; } drafts[current].request = v.trim(); render(); }
+    if (a==='copy') { const t = app.querySelector('.st-cmd span')?.textContent || ''; (navigator.clipboard?.writeText(t) || Promise.reject()).then(()=>toast('Command copied'), ()=>{ const r=document.createRange(); r.selectNodeContents(app.querySelector('.st-cmd span')); getSelection().removeAllRanges(); getSelection().addRange(r); toast('Selected: press Cmd+C to copy'); }); }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key!=='Enter') return;
+    if (e.target.id==='np-name') newProject();
+    if (e.target.id==='draft-req') app.querySelector('[data-act="draftsend"]')?.click();
+  });
+  function newProject() {
+    const el = document.getElementById('np-name'); const name = (el?.value||'').trim();
+    if (!name) { toast('Type a project name first'); el?.focus(); return; }
+    drafts.unshift({name, request:''}); current = 0; tab = 'outline'; render();
+    document.getElementById('draft-req')?.focus();
+  }
+  function toast(t) { toastEl.textContent = t + (/^Would /.test(t) ? ' (mockup)' : ''); clearTimeout(toast.t); toast.t = setTimeout(()=>toastEl.textContent='', 3500); }
+  document.getElementById('mk-state').addEventListener('change', e => { state = e.target.value; tab = state==='outline' ? 'outline' : 'preview'; location.hash = ''; render(); });
+  render();
+})();
+</script>
+
+</body></html>

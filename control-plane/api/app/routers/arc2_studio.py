@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from ..auth import CurrentUser
 from ..rbac import Permission, require_permission
 
+
 def enabled() -> bool:
     return os.getenv("ARC2_STUDIO_ENABLED", "").lower() in {"1", "true", "yes"}
 

@@ -13,7 +13,6 @@ import stat
 from pathlib import Path
 
 import pytest
-
 from arc2 import runner
 
 FAKE = r"""#!/usr/bin/env python3
