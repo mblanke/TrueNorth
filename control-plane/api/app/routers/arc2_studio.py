@@ -346,6 +346,21 @@ def create_run(body: NewRun, user: CurrentUser = Depends(author)):
     return _detail(slug)
 
 
+@router.post("/runs/{slug}/retry")
+def retry(slug: str, user: CurrentUser = Depends(author)):
+    """Queue the last job again when it failed (for example the runner could not sign in)."""
+    _run_path(slug)
+    if _active_job(slug):
+        raise HTTPException(409, "ARC² is still working on this run.")
+    jobs = _jobs(slug)
+    last = jobs[-1] if jobs else None
+    if not last or last.get("state") != "failed":
+        raise HTTPException(409, "Nothing failed, so there is nothing to retry.")
+    _append_chat(slug, {"text": "Try again.", "ts": _now(), "by": user.email or user.id})
+    _enqueue(slug, last["action"], last["text"], user)
+    return _detail(slug)
+
+
 @router.post("/runs/{slug}/reply")
 def reply(slug: str, body: Reply, user: CurrentUser = Depends(author)):
     """Accept the pending review, or send feedback; the runner resumes /arc2 with it."""

@@ -456,7 +456,8 @@ export class CourseStudioComponent implements OnInit {
     if (!slug || !this.action().enabled || this.busy()) return;
     this.busy.set(true);
     this.note.set(null);
-    this.api.reply(slug, 'accept').subscribe({
+    const req = this.action().kind === 'retry' ? this.api.retry(slug) : this.api.reply(slug, 'accept');
+    req.subscribe({
       next: r => { this.busy.set(false); this.run.set(r); this.refreshList(); this.load(slug); },
       error: (err: HttpErrorResponse) => { this.busy.set(false); this.note.set(this.message(err)); },
     });

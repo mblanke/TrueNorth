@@ -191,3 +191,15 @@ def test_a_failed_start_says_so(client, runs):
     d = client.get(f"/arc2/runs/{slug}").json()
     assert d["phase"] == "failed"
     assert d["messages"][-1]["error"] is True
+
+
+def test_a_failed_job_can_be_tried_again_and_only_then(client, runs):
+    slug = client.post("/arc2/runs", json={"name": "Wireshark", "request": REQUEST}).json()["slug"]
+    assert client.post(f"/arc2/runs/{slug}/retry").status_code == 409  # still queued
+    runner_finishes(runs, "Failed to authenticate: OAuth session expired", state="failed")
+    r = client.post(f"/arc2/runs/{slug}/retry")
+    assert r.status_code == 200
+    [job] = queued(runs)
+    assert (job["action"], job["text"]) == ("start", REQUEST)
+    runner_finishes(runs, "Outline ready.")
+    assert client.post(f"/arc2/runs/{slug}/retry").status_code == 409  # last job succeeded

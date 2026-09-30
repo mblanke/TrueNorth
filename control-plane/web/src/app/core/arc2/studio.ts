@@ -33,14 +33,16 @@ export interface RunDetail extends RunSummary {
 }
 export interface RunList { runs: RunSummary[]; runner_seen: string | null }
 
-export interface PrimaryAction { label: string; enabled: boolean; hint: string }
+export interface PrimaryAction { label: string; enabled: boolean; hint: string; kind?: 'accept' | 'retry' }
 
 /** The big button under the chat: what it says, and whether it does anything now. */
 export function primaryAction(run: RunSummary | null): PrimaryAction {
   if (!run) return { label: 'Waiting to start', enabled: false, hint: 'Describe the course, then Send' };
+  // The last step failed before ARC² could do anything with it: offer to repeat it.
+  if (run.job?.state === 'failed') return { label: '↻ Try again', enabled: true, hint: run.job.error ?? 'The last step failed', kind: 'retry' };
   switch (run.phase) {
-    case 'outline': return { label: 'Accept Outline', enabled: true, hint: 'or type feedback below to refine the outline' };
-    case 'preview': return { label: '✓ Approve & Package', enabled: true, hint: 'or type feedback below to request changes' };
+    case 'outline': return { label: 'Accept Outline', enabled: true, hint: 'or type feedback below to refine the outline', kind: 'accept' };
+    case 'preview': return { label: '✓ Approve & Package', enabled: true, hint: 'or type feedback below to request changes', kind: 'accept' };
     case 'packaged': return { label: '✓ Packaged', enabled: false, hint: 'Package candidate · not published' };
     case 'queued': case 'running': return { label: 'Working…', enabled: false, hint: run.phase_text };
     case 'stopped': case 'takeover': case 'failed': return { label: 'Needs a person', enabled: false, hint: run.phase_text };

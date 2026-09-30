@@ -23,6 +23,10 @@ export class CourseStudioService {
   reply(slug: string, action: 'accept' | 'feedback', text?: string): Observable<RunDetail> {
     return this.http.post<RunDetail>(`${this.base}/runs/${encodeURIComponent(slug)}/reply`, { action, text });
   }
+  /** Repeat the last step when it failed. */
+  retry(slug: string): Observable<RunDetail> {
+    return this.http.post<RunDetail>(`${this.base}/runs/${encodeURIComponent(slug)}/retry`, {});
+  }
   file(slug: string, path: string): Observable<{ path: string; text: string; instructor_only: boolean }> {
     return this.http.get<{ path: string; text: string; instructor_only: boolean }>(
       `${this.base}/runs/${encodeURIComponent(slug)}/file`, { params: { path } });

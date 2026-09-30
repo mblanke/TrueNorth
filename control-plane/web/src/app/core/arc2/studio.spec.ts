@@ -22,6 +22,12 @@ describe('ARC² studio view rules', () => {
     expect(primaryAction(null).enabled).toBeFalse();
   });
 
+  it('offers to repeat a step that failed', () => {
+    const failed = run({ phase: 'failed', job: { id: 'j', action: 'start', state: 'failed', current_agent: null,
+      error: 'Failed to authenticate', created_at: null, started_at: null, finished_at: null } });
+    expect(primaryAction(failed)).toEqual({ label: '↻ Try again', enabled: true, hint: 'Failed to authenticate', kind: 'retry' });
+  });
+
   it('takes feedback only at a review', () => {
     expect(canReply(run())).toBeTrue();
     expect(canReply(run({ phase: 'queued' }))).toBeFalse();
