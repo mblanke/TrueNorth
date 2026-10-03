@@ -384,8 +384,51 @@ Use soc-training, or a small PO range. Check:
 - [ ] the pfSense LAN interface is the `.1` of each range subnet
 - [ ] Security Onion sees traffic on the monitoring port group (promiscuous mode is
       enabled only there)
+- [ ] port mirroring (see **7.1**) copies each zone named in a `mirror` rule to the sensors
 - [ ] the full lifecycle works: scenario → telemetry in OpenSearch → AAR → destroy, with
       nothing left in vCenter
+
+### 7.1 Port mirroring (SPAN / TAP zones)
+
+A `mirror` rule becomes two sessions on `vDS-10G` per sensor zone (`vsphere_infra.py`,
+"Port mirroring"): `tn-<range8>-<zone>` (Distributed Port Mirroring (legacy):
+the source zones' VM ports to the sensors' ports, plus one uplink tagged with the
+range's RSPAN VLAN) and `tn-<range8>-<zone>-rx` (Remote Mirroring Destination: that
+VLAN to the sensors' ports). The local session alone only reaches a sensor on the same
+host as the source; the RSPAN VLAN carries the other hosts' copies. They are listed in
+`provisioner_output.mirrors`, and the RSPAN VLAN in `networks[]` with `"rspan": true`.
+vcsim does not model mirroring, so none of this has been run against a real vCenter.
+
+Before the first range (network team): the RSPAN VLANs come from `VSPHERE_VLAN_POOL`, so
+they are already trunked to esx02–04. **MAC learning must be off on the pool VLANs used
+for RSPAN** (Cisco: `vlan N` / `remote-span`). Otherwise the switch learns the mirrored
+MACs, stops flooding, and sensors miss traffic from other hosts. Which VLAN is RSPAN is
+known only after the build (step 1), so the simplest fix is to turn learning off for the
+whole pool. If the switch can't do that, use `VSPHERE_PLACEMENT=per-range-host`: with all
+of a range's VMs on one host, the local session is all it needs.
+
+Check after building colosseum (or soc-training):
+1. vSphere Client → `vDS-10G` → Configure → Port mirroring: the two sessions per sensor
+   zone exist and are **enabled**; the sources are the zone VMs' ports, the destinations
+   the sensors' ports (never the pfSense port), plus `dvUplink1` and the encapsulation
+   VLAN on the first session. A `mirror …` line in the build's `errors` means vCenter
+   refused a session. Check its fault text: if vCenter refuses a port as the destination
+   of two sessions, report that.
+2. Find which hosts the VMs are on. Pick a source VM on a **different** host from the
+   sensor, and one on the **same** host.
+3. On the sensor (`tcpdump -ni <span NIC> host <source VM IP>`; Security Onion:
+   `so-tcpdump`), ping each source VM from its zone's gateway or another VM. Both must
+   show up. If only the same-host VM shows up, the RSPAN path is broken: check the
+   uplink and trunk, and MAC learning on the RSPAN VLAN.
+4. Each ICMP request should appear **once**. Broadcasts (ARP) repeated once per VM in the
+   zone mean the copy direction is reversed: set `VSPHERE_MIRROR_DIRECTION=transmitted`
+   on the worker, then destroy and rebuild. Unicast packets doubled means it is `both`.
+5. A non-range port group does not show the traffic: no leak out of the range.
+6. Destroy the range: both sessions are gone from the vDS (destroy also removes any
+   `tn-<range8>-*` session that was never recorded).
+
+`VSPHERE_MIRROR_UPLINK` selects the uplink (default: the vDS's first uplink). It must be
+an active uplink on every host.
 
 ---
 

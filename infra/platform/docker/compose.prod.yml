@@ -372,6 +372,9 @@ services:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      # GET /software-catalogue (Range Designer autocomplete) reads the same file the
+      # provisioning worker installs from.
+      - ../../../content/catalogue:/app/content/catalogue:ro
     depends_on:
       postgres:
         condition: service_healthy

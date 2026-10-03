@@ -289,7 +289,7 @@ def build_config(
             name = str(rule.get("name") or f"rule{n + 1}")
             action = str(rule.get("action") or "allow").lower()
             if action == "mirror":
-                continue  # SPAN: the monitoring port group is promiscuous (vsphere_infra), not a pf rule
+                continue  # SPAN: a vDS port-mirroring session (vsphere_infra), not a pf rule
             if action not in ("allow", "pass", "deny", "block", "reject"):
                 notes.append(f"firewall rule {name!r}: action {action!r} is not a pfSense filter rule (skipped)")
                 continue

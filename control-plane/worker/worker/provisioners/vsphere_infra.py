@@ -448,3 +448,180 @@ def windows_customization(vm_def: dict, password: str | None = None):
     return c.Specification(
         identity=identity, globalIPSettings=c.GlobalIPSettings(dnsServerList=dns), nicSettingMap=adapters
     )
+
+
+# --------------------------------------------------------------------------- #
+# Port mirroring (the templates' ``action: mirror`` rules)
+# --------------------------------------------------------------------------- #
+#
+# A mirror rule ("copy zone X's traffic to the sensors on zone Y") becomes two vDS
+# port-mirroring sessions per destination zone Y:
+#
+#   tn-<range8>-<Y>     mixedDestMirror ("Distributed Port Mirroring (legacy)"). Sources:
+#                       the dvPorts of every range NIC on the source zones. Destinations:
+#                       the sensor NICs' dvPorts on Y AND one vDS uplink, the copy for the
+#                       uplink tagged with a per-range RSPAN VLAN.
+#   tn-<range8>-<Y>-rx  remoteMirrorDest ("Remote Mirroring Destination"). Source: frames
+#                       arriving on the RSPAN VLAN. Destinations: the same sensor dvPorts.
+#
+# Why not a single dvPortMirror session: dvPortMirror and mixedDestMirror only deliver to
+# destination ports on the same host as the source port, so with spread placement (or
+# after any vMotion) a sensor sees only the VMs that happen to share its host. The
+# uplink copy carries every other host's traffic across the physical network on the
+# RSPAN VLAN, and the -rx session hands it to the sensor on whichever host it runs. A
+# sensor's own host is covered by the local destination (the physical switch does not
+# send a frame back out the port it came in on, so nothing arrives twice). ERSPAN
+# (encapsulatedRemoteMirrorSource) needs the sensor reachable by IP from the hosts'
+# vmkernel network, which an isolated range VLAN is not.
+#
+# The RSPAN VLAN comes from the range VLAN pool (already trunked to every host), one per
+# destination zone so two TAPs never share a VLAN. The physical switch must not learn
+# MAC addresses on it (Cisco: ``remote-span`` VLAN), or it stops flooding the copies
+# once it has learnt a MAC from them; see vmware-site-runbook.md §7.
+
+# Logical keys for RSPAN VLANs in a range's VLAN reservation (networks[].vlan_id):
+# never a template VLAN id, which is a real 802.1Q id (1-4094).
+RSPAN_LOGICAL_BASE = 100000
+MIRROR_LOCAL_TYPE = "mixedDestMirror"
+MIRROR_REMOTE_DEST_TYPE = "remoteMirrorDest"
+
+
+def _zone_label(zone: str) -> str:
+    clean = "".join(c if c.isalnum() or c in "-_" else "-" for c in str(zone)).strip("-")
+    return clean or "zone"
+
+
+def mirror_session_name(range_id: str, zone: str) -> str:
+    return f"tn-{range_id[:8]}-{_zone_label(zone)}"
+
+
+def mirror_session_prefix(range_id: str) -> str:
+    """Every session a range owns starts with this (destroy removes them by it)."""
+    return f"tn-{range_id[:8]}-"
+
+
+def mirror_rules(template: dict) -> list[dict]:
+    """The template's ``network.firewall_rules`` entries with ``action: mirror``."""
+    net = template.get("network") if isinstance(template.get("network"), dict) else {}
+    return [r for r in (net.get("firewall_rules") or [])
+            if isinstance(r, dict) and str(r.get("action") or "").lower() == "mirror"]
+
+
+def plan_mirrors(rules: list[dict], networks: list[dict]) -> tuple[list[dict], list[str]]:
+    """Mirror rules grouped by destination zone, against the rendered networks.
+
+    Returns ([{dst, dst_vlan, sources: [(zone, logical vlan)], rspan_key, rules}], notes).
+    ``src: "*"`` (or ``any``) means every zone except the mirror destinations themselves.
+    A rule naming a zone the template does not define is skipped with a note.
+    """
+    by_name = {str(n.get("name")): int(n["vlan_id"]) for n in networks
+               if n.get("vlan_id") is not None and int(n["vlan_id"]) < RSPAN_LOGICAL_BASE}
+    notes: list[str] = []
+    dests = {str(r.get("dst")) for r in rules if str(r.get("dst")) in by_name}
+    plans: dict[str, dict] = {}
+    for n, rule in enumerate(rules):
+        name = str(rule.get("name") or f"mirror{n + 1}")
+        src, dst = str(rule.get("src") or "*"), str(rule.get("dst") or "")
+        if dst not in by_name:
+            notes.append(f"mirror rule {name!r}: unknown destination zone {dst!r} (skipped)")
+            continue
+        if src in ("*", "any"):
+            sources = [z for z in by_name if z not in dests]
+        elif src in by_name and src != dst:
+            sources = [src]
+        else:
+            notes.append(f"mirror rule {name!r}: unknown source zone {src!r} (skipped)")
+            continue
+        plan = plans.setdefault(dst, {"dst": dst, "dst_vlan": by_name[dst], "sources": [],
+                                      "rspan_key": RSPAN_LOGICAL_BASE + by_name[dst], "rules": []})
+        plan["rules"].append(name)
+        for zone in sources:
+            if (zone, by_name[zone]) not in plan["sources"]:
+                plan["sources"].append((zone, by_name[zone]))
+    return list(plans.values()), notes
+
+
+def vspan_sessions(range_id: str, plan: dict, src_ports: list[str], dst_ports: list[str],
+                   uplink: str | None, rspan_vlan: int, direction: str = "received") -> list:
+    """The two sessions (see above) for one destination zone, as vim VspanSession objects.
+
+    ``direction``: which side of each source dvPort to copy. ``received`` (default) is
+    what the port receives from its VM, so every frame on a zone is copied once, from
+    the port that sent it; ``transmitted`` is what the port delivers to its VM;
+    ``both`` copies each unicast frame twice (sender and receiver are both sources).
+    Without ``uplink`` only the local session is made: sensors see their own host only.
+    """
+    v = vim.dvs.VmwareDistributedVirtualSwitch
+    src = v.VspanPorts(portKey=list(src_ports))
+    name = mirror_session_name(range_id, plan["dst"])
+    note = f"TrueNorth range {range_id[:8]}: {', '.join(z for z, _ in plan['sources'])} -> {plan['dst']}"
+    local = v.VspanSession(
+        name=name, description=note, enabled=True, sessionType=MIRROR_LOCAL_TYPE,
+        sourcePortReceived=src if direction in ("received", "both") else None,
+        sourcePortTransmitted=src if direction in ("transmitted", "both") else None,
+        destinationPort=v.VspanPorts(portKey=list(dst_ports), uplinkPortName=[uplink] if uplink else []),
+        # The uplink copy carries the RSPAN tag only (no double tag); sensors get it untagged.
+        encapsulationVlanId=rspan_vlan if uplink else None, stripOriginalVlan=True,
+        # A sensor's mirror NIC may also be its management NIC (soc-training).
+        normalTrafficAllowed=True,
+    )
+    if not uplink:
+        return [local]
+    remote = v.VspanSession(
+        name=f"{name}-rx", description=note + " (from other hosts)", enabled=True,
+        sessionType=MIRROR_REMOTE_DEST_TYPE,
+        sourcePortReceived=v.VspanPorts(vlans=[rspan_vlan]),
+        destinationPort=v.VspanPorts(portKey=list(dst_ports)),
+        stripOriginalVlan=True, normalTrafficAllowed=True,
+    )
+    return [local, remote]
+
+
+def _vspan_existing(dvs) -> dict:
+    return {s.name: s for s in (getattr(getattr(dvs, "config", None), "vspanSession", None) or [])}
+
+
+def _reconfigure_vspan(dvs, ops: list, wait) -> None:
+    v = vim.dvs.VmwareDistributedVirtualSwitch
+    spec = v.ConfigSpec(configVersion=dvs.config.configVersion, vspanConfigSpec=ops)
+    wait(dvs.ReconfigureDvs_Task(spec))
+
+
+def ensure_vspan_sessions(dvs, sessions: list, wait) -> None:
+    """Create the sessions on the vDS in one reconfigure; one that exists (a retried
+    build) is replaced in place (``edit`` with its key)."""
+    v = vim.dvs.VmwareDistributedVirtualSwitch
+    existing = _vspan_existing(dvs)
+    ops = []
+    for session in sessions:
+        found = existing.get(session.name)
+        if found is not None:
+            session.key = found.key
+        ops.append(v.VspanConfigSpec(vspanSession=session, operation="edit" if found is not None else "add"))
+    if ops:
+        _reconfigure_vspan(dvs, ops, wait)
+
+
+def remove_vspan_sessions(dvs, prefix: str, wait) -> int:
+    """Remove every session whose name starts with ``prefix``; 0 when there are none."""
+    v = vim.dvs.VmwareDistributedVirtualSwitch
+    doomed = [s for name, s in _vspan_existing(dvs).items() if name.startswith(prefix)]
+    if not doomed:
+        return 0
+    ops = [v.VspanConfigSpec(vspanSession=v.VspanSession(key=s.key, name=s.name), operation="remove")
+           for s in doomed]
+    _reconfigure_vspan(dvs, ops, wait)
+    return len(doomed)
+
+
+def nic_port_keys(devices) -> list[tuple[str | None, str | None]]:
+    """(port group key, dvPort key) of each NIC in guest NIC order; (None, None) off a vDS.
+
+    On an earlyBinding port group vCenter picks the port when the NIC is connected and
+    writes its key into the backing; that key is what a mirror session names.
+    """
+    out = []
+    for card in nic_cards(devices):
+        port = getattr(card.backing, "port", None)
+        out.append((getattr(port, "portgroupKey", None), getattr(port, "portKey", None)))
+    return out

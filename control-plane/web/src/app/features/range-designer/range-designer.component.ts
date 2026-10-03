@@ -22,6 +22,13 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatChipInputEvent, MatChipsModule } from '@angular/material/chips';
+import {
+  MatAutocompleteModule,
+  MatAutocompleteSelectedEvent,
+  MatAutocompleteTrigger,
+} from '@angular/material/autocomplete';
+import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import {
   MatDialog,
@@ -34,7 +41,10 @@ import { Observable } from 'rxjs';
 import * as joint from 'jointjs';
 import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
-import { ApiService } from '@core/services/api.service';
+import { ApiService, SoftwareCatalogue } from '@core/services/api.service';
+import {
+  OsFamily, ServiceSuggestion, installWarning, joinServices, osFamilyOf, parseServices, suggestServices,
+} from './software-suggest';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { Range, Template } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -239,6 +249,7 @@ export class TextPromptDialogComponent {
     CommonModule, FormsModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatTooltipModule,
     MatSliderModule, MatDividerModule, MatSnackBarModule, MatDialogModule, FilterCategoryPipe,
+    MatChipsModule, MatAutocompleteModule,
     RangeNotesComponent,
     EmptyStateComponent,
   ],
@@ -467,6 +478,56 @@ export class TextPromptDialogComponent {
                   </div>
                 </div>
               }
+
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width services-field">
+                <mat-label>Software &amp; services</mat-label>
+                <mat-chip-grid #serviceChips aria-label="Software and services for this node">
+                  @for (svc of propServices; track svc) {
+                    <mat-chip-row (removed)="removeService(svc)"
+                                  [class.svc-warn]="!!serviceWarning(svc)"
+                                  [matTooltip]="serviceWarning(svc) || ''">
+                      @if (serviceWarning(svc)) {
+                        <mat-icon matChipAvatar class="svc-warn-icon">warning</mat-icon>
+                      }
+                      {{ svc }}
+                      <button matChipRemove [attr.aria-label]="'Remove ' + svc">
+                        <mat-icon>cancel</mat-icon>
+                      </button>
+                    </mat-chip-row>
+                  }
+                  <input #serviceInput
+                         placeholder="Add software or a role…"
+                         [value]="serviceQuery()"
+                         (input)="serviceQuery.set(serviceInput.value)"
+                         [matChipInputFor]="serviceChips"
+                         [matChipInputSeparatorKeyCodes]="serviceSeparators"
+                         [matChipInputAddOnBlur]="false"
+                         (matChipInputTokenEnd)="addServiceFromInput($event)"
+                         [matAutocomplete]="serviceAuto">
+                </mat-chip-grid>
+                <mat-autocomplete #serviceAuto="matAutocomplete"
+                                  (optionSelected)="onServiceSelected($event, serviceInput)">
+                  @for (opt of serviceSuggestions(); track opt.value) {
+                    <mat-option [value]="opt.value">
+                      <span class="svc-opt">{{ opt.value }}</span>
+                      @if (opt.kind === 'role') {
+                        <span class="svc-opt-meta">role</span>
+                      } @else if (opt.aliases.length) {
+                        <span class="svc-opt-meta">{{ opt.aliases.join(', ') }}</span>
+                      }
+                    </mat-option>
+                  }
+                </mat-autocomplete>
+              </mat-form-field>
+              <div class="svc-hint" aria-live="polite">
+                @if (softwareCatalogueState() === 'error') {
+                  Software list unavailable; type names freely.
+                } @else if (selectedFamily() === 'appliance') {
+                  Appliance images take no software installs; role names only.
+                } @else if (selectedFamily()) {
+                  Suggestions installable on {{ selectedFamily() }}. Free text is kept.
+                }
+              </div>
 
               <div class="prop-row">
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -856,6 +917,15 @@ export class TextPromptDialogComponent {
       margin-bottom: 12px;
     }
     .hint { font-size: 12px; color: var(--text-muted); }
+
+    /* Software & services chips */
+    :host ::ng-deep .properties .services-field .mat-mdc-form-field-infix { min-height: 44px !important; height: auto; }
+    .services-field input { color: var(--text-primary); font-size: 13px; }
+    .svc-warn { --mdc-chip-elevated-container-color: color-mix(in srgb, var(--warning) 18%, transparent); }
+    .svc-warn-icon { color: var(--warning) !important; }
+    .svc-hint { font-size: 11px; color: var(--text-muted); margin-top: -4px; min-height: 14px; }
+    .svc-opt { font-size: 13px; }
+    .svc-opt-meta { margin-left: 8px; font-size: 11px; color: var(--text-muted); }
   `],
 })
 export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
@@ -907,6 +977,14 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
   propVlan = 100;
   propCidr = '';
   propServices: string[] = [];
+
+  /* Software autocomplete, fed by GET /software-catalogue */
+  softwareCatalogue = signal<SoftwareCatalogue | null>(null);
+  softwareCatalogueState = signal<'loading' | 'ready' | 'error'>('loading');
+  /** Text typed in the services input, not yet a chip. */
+  serviceQuery = signal('');
+  readonly serviceSeparators = [ENTER, COMMA] as const;
+  @ViewChild(MatAutocompleteTrigger) private serviceAutoTrigger?: MatAutocompleteTrigger;
 
   /* Stencil palette definition */
   stencils: StencilItem[] = [
@@ -972,6 +1050,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     this.initPaper();
     this.bindEvents();
     this.loadOsOptions();
+    this.loadSoftwareCatalogue();
     this.resetHistory();
 
     const id = this.route.snapshot.queryParamMap.get('range');
@@ -1270,7 +1349,8 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     this.propDisk = parseInt(data.disk_gb, 10) || 40;
     this.propVlan = parseInt(data.vlan, 10) || 100;
     this.propCidr = data.cidr || '';
-    this.propServices = data.services ? data.services.split(',').filter((s: string) => s) : [];
+    this.propServices = parseServices(data.services);
+    this.serviceQuery.set('');
     this.cdr.detectChanges();
   }
 
@@ -1302,28 +1382,81 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
   }
 
   onOsChange(value: string): void {
+    // Services are no longer Windows-only roles, so an OS change keeps them; chips the
+    // new OS family cannot install are flagged instead of silently dropped.
     this.updateNodeData('os_template', value);
-    if (value !== 'windows-server-2022') {
-      this.propServices = [];
-      const el = this.selectedNode();
-      if (el) el.prop('nodeData/services', '');
-    }
     this.scheduleSnapshot();
     this.cdr.detectChanges();
   }
 
-  toggleService(serviceId: string): void {
-    const idx = this.propServices.indexOf(serviceId);
-    if (idx >= 0) {
-      this.propServices = this.propServices.filter(s => s !== serviceId);
-    } else {
-      this.propServices = [...this.propServices, serviceId];
+  /* --- Software & services chips ------------------------------------ */
+
+  /** The selected node's OS family as the worker will see it. */
+  selectedFamily(): OsFamily | null {
+    return osFamilyOf(this.propOs, this.selectedNodeType());
+  }
+
+  serviceSuggestions(): ServiceSuggestion[] {
+    return suggestServices(this.softwareCatalogue(), this.selectedFamily(), this.serviceQuery(), this.propServices);
+  }
+
+  serviceWarning(value: string): string | null {
+    return installWarning(this.softwareCatalogue(), this.selectedFamily(), value);
+  }
+
+  /** Free text (Enter or comma). Skipped when an autocomplete option is taking the key. */
+  addServiceFromInput(event: MatChipInputEvent): void {
+    if (this.serviceAutoTrigger?.activeOption) return;
+    this.addService(event.value);
+    event.chipInput.clear();
+    this.serviceQuery.set('');
+  }
+
+  onServiceSelected(event: MatAutocompleteSelectedEvent, input: HTMLInputElement): void {
+    this.addService(String(event.option.value));
+    // Clear before the chip input reads the field, so the typed fragment is not added too.
+    input.value = '';
+    this.serviceQuery.set('');
+  }
+
+  removeService(value: string): void {
+    this.setServices(this.propServices.filter(s => s !== value));
+  }
+
+  private addService(raw: string): void {
+    // A pasted "git, vlc" becomes two chips; commas cannot live inside a stored name.
+    const have = new Set(this.propServices.map(s => s.toLowerCase()));
+    const fresh: string[] = [];
+    for (const v of parseServices(raw)) {
+      if (have.has(v.toLowerCase())) continue;
+      have.add(v.toLowerCase());
+      fresh.push(v);
     }
+    if (fresh.length) this.setServices([...this.propServices, ...fresh]);
+  }
+
+  private setServices(values: string[]): void {
+    this.propServices = values;
     const el = this.selectedNode();
     if (el) {
-      el.prop('nodeData/services', this.propServices.join(','));
+      el.prop('nodeData/services', joinServices(values));
       this.scheduleSnapshot();
     }
+    this.cdr.detectChanges();
+  }
+
+  private loadSoftwareCatalogue(): void {
+    this.api.getSoftwareCatalogue().subscribe({
+      next: (c) => { this.softwareCatalogue.set(c); this.softwareCatalogueState.set('ready'); this.cdr.detectChanges(); },
+      // Free text still works; the hint says the list is missing rather than offering nothing silently.
+      error: () => { this.softwareCatalogueState.set('error'); this.cdr.detectChanges(); },
+    });
+  }
+
+  toggleService(serviceId: string): void {
+    this.setServices(this.propServices.includes(serviceId)
+      ? this.propServices.filter(s => s !== serviceId)
+      : [...this.propServices, serviceId]);
   }
 
   isServiceSelected(serviceId: string): boolean {

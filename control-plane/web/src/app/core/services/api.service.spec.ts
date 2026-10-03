@@ -151,6 +151,39 @@ describe('ApiService', () => {
     req.flush({ id: 'r1', state: 'destroying' });
   });
 
+  // ── Range power ────────────────────────────────────────────────────
+  it('startRange() should POST to /api/ranges/{id}/start', () => {
+    let got: Range | undefined;
+    service.startRange('r1').subscribe(r => (got = r));
+    const req = httpMock.expectOne(`${base}/ranges/r1/start`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({});
+    req.flush({ id: 'r1', state: 'running' });
+    expect(got?.state).toBe('running');
+  });
+
+  it('startRange() should surface a 409 as an error, not a range', () => {
+    let status = 0;
+    service.startRange('r1').subscribe({ next: () => fail('expected error'), error: e => (status = e.status) });
+    httpMock.expectOne(`${base}/ranges/r1/start`)
+      .flush({ detail: 'Cannot start range in state running' }, { status: 409, statusText: 'Conflict' });
+    expect(status).toBe(409);
+  });
+
+  it('stopRange() should POST to /api/ranges/{id}/stop', () => {
+    service.stopRange('r1').subscribe();
+    const req = httpMock.expectOne(`${base}/ranges/r1/stop`);
+    expect(req.request.method).toBe('POST');
+    req.flush({ id: 'r1', state: 'stopped' });
+  });
+
+  it('getSoftwareCatalogue() should GET /api/software-catalogue', () => {
+    service.getSoftwareCatalogue().subscribe(c => expect(c.roles).toEqual(['dns']));
+    const req = httpMock.expectOne(`${base}/software-catalogue`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ software: [], roles: ['dns'] });
+  });
+
   // ── Designer topology ──────────────────────────────────────────────
   it('saveRangeTopology() should POST the diagram to /ranges/{id}/topology', () => {
     const diagram = { cells: [{ id: 'n1' }] };

@@ -63,7 +63,9 @@ class GUID(TypeDecorator):
 _RANGE_TRANSITIONS: dict[str, list[str]] = {
     "created": ["provisioning", "destroyed"],
     "provisioning": ["ready", "failed"],
-    "ready": ["running", "destroying"],
+    # A provisioned range's VMs are already powered on, so it can be stopped
+    # straight from ready.
+    "ready": ["running", "stopped", "destroying"],
     "running": ["stopped", "destroying"],
     "stopped": ["running", "destroying"],
     "destroying": ["destroyed", "failed"],

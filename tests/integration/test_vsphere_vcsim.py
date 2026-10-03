@@ -23,6 +23,8 @@ What vcsim does NOT implement, and how this test handles it (govmomi v0.56.0):
 * Content Library / OVF deploy (``/api/content/library``, ``/api/vcenter/ovf``) are not
   exercised: vcsim only has the legacy ``/rest/com/vmware/...`` forms. The lab has no
   library either (VSPHERE_CONTENT_LIBRARY empty -> inventory-template clone path).
+* vDS port mirroring (the templates' ``action: mirror`` rules): vcsim stores no
+  ``vspanConfigSpec`` and gives VM NICs no dvPort key. See test_mirror_rules_vcsim_gap.
 
 Run it (vcsim + govc on PATH or ~/go/bin; see scripts/dev/vcsim-up.sh for installing):
 
@@ -479,6 +481,33 @@ def test_range_lifecycle(vcsim, si, prov):
     health = _run(prov.health_check(RANGE_ID, output))
     assert health.healthy, health.errors
 
+    # --- metrics: as the scheduled run reads them, in one session, one call per range -----
+    async def scheduled_run():
+        async with prov.session():
+            return await prov.collect_metrics(RANGE_ID, output), await prov.health_check(RANGE_ID, output)
+
+    metrics, health = _run(scheduled_run())
+    print("metrics:", metrics.vms)
+    assert metrics.status == "ok" and metrics.source == "vsphere" and not metrics.synthetic, metrics.errors
+    assert health.healthy, health.errors
+    assert prov._session_token is None  # the run's REST session was logged out
+    read = {m["name"]: m for m in metrics.vms}
+    assert sorted(read) == sorted(vms)
+    # vcsim's quickStats carry no load (CPU, active memory and uptime are 0; Tools never
+    # runs), and it answers a nested path whose value is unset with Go's zero value where
+    # vCenter leaves it out (summary.runtime.maxCpuUsage: unset on the object, 0 by path).
+    # So this proves the batched read and the property paths against a real collector,
+    # not realistic numbers. A zero CPU ceiling yields no cpu_pct (worker.tasks._usage).
+    for name, vm in vms.items():
+        m, qs = read[name], vm.summary.quickStats
+        assert m["power_state"] == vm.runtime.powerState == "poweredOn"
+        assert m["tools_status"] == vm.guest.toolsRunningStatus
+        assert m["memory_configured_mb"] == vm.summary.config.memorySizeMB == 512
+        assert m["cpu_capacity_mhz"] == (vm.summary.runtime.maxCpuUsage or 0)
+        assert m["cpu_usage_mhz"] == (qs.overallCpuUsage or 0)
+        assert m["memory_active_mb"] == (qs.guestMemoryUsage or 0)
+        assert m["uptime_seconds"] == (qs.uptimeSeconds or 0)
+
     stopped = _run(prov.stop(RANGE_ID, output))
     assert stopped.status == "ok" and stopped.vms_stopped == 4, stopped.errors
     assert {vm.runtime.powerState for vm in vms.values()} == {"poweredOff"}
@@ -514,6 +543,12 @@ def test_range_lifecycle(vcsim, si, prov):
     twice = _run(prov.destroy(RANGE_ID, output))  # a retried destroy: everything already gone
     assert twice.status == "ok", twice.errors
 
+    # Metrics of VMs vCenter no longer has: reported as not found, nothing made up.
+    after = _run(prov.collect_metrics(RANGE_ID, output))
+    assert after.status == "failed" and len(after.errors) == 4, after.errors
+    assert {m["power_state"] for m in after.vms} == {"notFound"}
+    assert all(m["cpu_usage_mhz"] is None for m in after.vms)
+
 
 def test_failed_build_leaves_nothing_behind(vcsim, si, prov):
     """A template that is not in the inventory: every VM fails, the port groups are rolled back."""
@@ -546,3 +581,45 @@ def test_unreachable_vcenter_fails_cleanly(vcsim, prov):
     assert result.status == "failed" and result.errors
     assert time.monotonic() - started < 60
 
+
+
+def test_mirror_rules_vcsim_gap(vcsim, si, prov):
+    """Mirror rules against vcsim: what it can check, and the gap (govmomi v0.56.0).
+
+    vcsim GAP: it implements no port mirroring. ReconfigureDvs_Task accepts a
+    ``vspanConfigSpec`` and succeeds, but stores nothing (``config.vspanSession`` stays
+    empty), and it never connects a VM NIC to a dvPort (no ``backing.port.portKey``), so
+    the provisioner finds no ports to mirror. The session specs themselves are checked in
+    tests/worker/test_vsphere_provision.py (TestMirrorSessions, real pyVmomi objects);
+    on vCenter, docs/deployment/vmware-site-runbook.md §7 says how to verify them.
+    What vcsim does check: the RSPAN VLAN is reserved from the pool without a port group,
+    the build is not broken by the rules, and the switch accepts the reconfigure call.
+    """
+    tpl = {**TEMPLATE, "network": {**TEMPLATE["network"], "firewall_rules": [
+        {"name": "tap", "src": "victim_network", "dst": "network_monitoring", "action": "mirror"}]}}
+    out = render.render_topology(tpl, RANGE_ID, IMAGES.get)
+    built = {"name": tpl["name"], "vms": out["vm_definitions"], "networks": out["network_definitions"],
+             "network": tpl["network"]}
+    result = _run(prov.provision(RANGE_ID, built, {"used_vlans": [100]}))
+    assert result.status == "ok", result.errors
+    dvs = _by_name(si, vim.DistributedVirtualSwitch, DVS)
+    rspan = next(n for n in result.networks if n.get("rspan"))
+    assert rspan["physical_vlan"] == 103 and "portgroup" not in rspan  # after the zones' 101, 102
+    assert sorted(pg.name for pg in dvs.portgroup if pg.name.startswith(f"tn-{R8}-")) == [
+        f"tn-{R8}-v101", f"tn-{R8}-v102"]
+    # The gap: no dvPort keys on the NICs, so nothing to mirror (a warning, not an error).
+    assert result.mirrors == []
+    assert any("has no dvPort" in w for w in result.warnings), result.warnings
+
+    # The reconfigure itself, with ports vcsim does have: accepted, but not stored.
+    ports = dvs.FetchDVPorts(vim.dvs.PortCriteria(portgroupKey=[pg.key for pg in dvs.portgroup
+                                                                if pg.name.startswith(f"tn-{R8}-")], inside=True))
+    plan = {"dst": "network_monitoring", "sources": [("victim_network", 201)]}
+    sessions = infra.vspan_sessions(RANGE_ID, plan, [ports[0].key], [ports[-1].key], "dvUplink1", 103)
+    infra.ensure_vspan_sessions(dvs, sessions, lambda t: WaitForTask(t, si=si))
+    assert list(dvs.config.vspanSession or []) == []  # vcsim GAP; on vCenter: both sessions
+
+    output = {"vms": result.vms, "networks": result.networks, "mirrors": result.mirrors}
+    gone = _run(prov.destroy(RANGE_ID, output))
+    assert gone.status == "ok", gone.errors
+    assert _range_vms(si) == []

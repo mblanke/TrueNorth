@@ -133,21 +133,63 @@ class FakeDVS:
         self.portgroup: list = []
         for vlan in existing_vlans:
             self.portgroup.append(FakePortgroup(self, infra.dvs_portgroup_spec(f"dPG-VM-{vlan}", vlan, False)))
+        self.config = SimpleNamespace(
+            configVersion="1", vspanSession=[],
+            uplinkPortPolicy=SimpleNamespace(uplinkPortName=["dvUplink1", "dvUplink2"]))
+        self.dvs_specs: list = []
+        self.reconfig_fail: str | None = None
 
     def CreateDVPortgroup_Task(self, spec):  # noqa: N802
         self.portgroup.append(FakePortgroup(self, spec))
         return FakeTask(label=f"create-pg:{spec.name}")
 
+    def ReconfigureDvs_Task(self, spec):  # noqa: N802
+        """vCenter's vspanConfigSpec handling: add (new key), edit (by key), remove (by key)."""
+        assert isinstance(spec, vim.dvs.VmwareDistributedVirtualSwitch.ConfigSpec)
+        assert spec.configVersion == self.config.configVersion  # vCenter refuses a stale version
+        self.dvs_specs.append(spec)
+        if self.reconfig_fail:
+            return FakeTask(fail=self.reconfig_fail)
+        sessions = list(self.config.vspanSession)
+        for op in spec.vspanConfigSpec:
+            sess = op.vspanSession
+            if op.operation == "add":
+                assert sess.key is None and all(s.name != sess.name for s in sessions)
+                sess.key = f"vspan-{next(_ids)}"
+                sessions.append(sess)
+            elif op.operation == "edit":
+                sessions = [sess if s.key == sess.key else s for s in sessions]
+            else:
+                assert any(s.key == sess.key for s in sessions)
+                sessions = [s for s in sessions if s.key != sess.key]
+        self.config.vspanSession = sessions
+        self.config.configVersion = str(int(self.config.configVersion) + 1)
+        return FakeTask(label="reconfigure-dvs")
+
+
+def _connect(card):
+    """An earlyBinding port group: vCenter picks the NIC's dvPort and writes its key back."""
+    port = getattr(card.backing, "port", None)
+    if port is not None and not port.portKey:
+        port.portKey = str(next(_ids))
+    return card
+
 
 def _apply(devices: list, changes) -> list:
-    """What vCenter does with a deviceChange list: edit in place, add (with a MAC), remove."""
+    """What vCenter does with a deviceChange list: edit (new backing, same MAC), add (with a
+    MAC), remove; NICs on a vDS port group get a dvPort."""
     out = list(devices)
     for change in changes or []:
         dev = change.device
         if change.operation == "add":
             dev.key = 4000 + len(out) + 100
             dev.macAddress = f"00:50:56:aa:00:{len(out):02x}"
-            out.append(dev)
+            out.append(_connect(dev))
+        elif change.operation == "edit":
+            old = next(d for d in out if d.key == dev.key)
+            card = vim.vm.device.VirtualVmxnet3(key=dev.key, backing=dev.backing, connectable=dev.connectable)
+            card.macAddress = old.macAddress
+            out = [_connect(card) if d.key == dev.key else d for d in out]
         elif change.operation == "remove":
             out = [d for d in out if d.key != dev.key]
     return out
@@ -257,6 +299,18 @@ class FakeVM:
         return None
 
 
+class FreshHardware:
+    """A template's hardware as pyVmomi serves it: new device objects on every read, so two
+    clones of one template built side by side never share (and re-point) one NIC object."""
+
+    def __init__(self, network: str):
+        self.network = network
+
+    @property
+    def device(self) -> list:
+        return [_card(4000, self.network)]
+
+
 class FakeVCenter:
     """Inventory plus a REST handler with vCenter's /api behaviour."""
 
@@ -269,7 +323,8 @@ class FakeVCenter:
         self.vms: dict[str, FakeVM] = {}
         self.templates = {}
         for name in templates:
-            tmpl = FakeVM(name, [_card(4000, MGMT)], template=True)
+            tmpl = FakeVM(name, [], template=True)
+            tmpl.config.hardware = FreshHardware(MGMT)
             self.templates[name] = tmpl
             self.dc.vmFolder.childEntity.append(tmpl)
         self.library = library  # {"name": ..., "items": {template_name: item_id}} or None
@@ -1275,3 +1330,204 @@ class TestWaitTask:
         mod._wait_task(vim.Task("task-5", None), si, 60, clock=lambda: clock[0])
         assert a.filters[0].objectSet[0].obj._moId == "task-4" and b.filters[0].objectSet[0].obj._moId == "task-5"
         assert a.destroyed and b.destroyed
+
+
+# --------------------------------------------------------------------------- #
+# Port mirroring: the templates' ``action: mirror`` rules as vDS sessions
+# --------------------------------------------------------------------------- #
+
+CONTENT = __import__("pathlib").Path(__file__).resolve().parents[2] / "content" / "ranges"
+MIRROR_TEMPLATE = {**TEMPLATE, "network": {**TEMPLATE["network"], "firewall_rules": [
+    {"name": "attacker-to-victim", "src": "attacker_infra", "dst": "victim_network", "action": "allow"},
+    {"name": "tap-victim", "src": "victim_network", "dst": "network_monitoring", "action": "mirror"},
+]}}
+
+
+def _mirror_build(template=MIRROR_TEMPLATE) -> dict:
+    return {**_rendered(template), "network": template["network"]}
+
+
+def _sessions(vc) -> dict:
+    return {s.name: s for s in vc.dvs.config.vspanSession}
+
+
+def _nic_ports(vc, node: str, zone_pg: str) -> list[str]:
+    """dvPort keys the node's NICs hold on the port group named ``zone_pg``."""
+    vm = next(v for v in vc.vms.values() if v.name == f"{R8}-{node}")
+    pg_key = next(pg.key for pg in vc.dvs.portgroup if pg.name == zone_pg)
+    return [p for g, p in infra.nic_port_keys(vm.config.hardware.device) if g == pg_key]
+
+
+class TestMirrorPlan:
+    NETS = [{"name": n, "vlan_id": v} for n, v in
+            (("attacker_infra", 200), ("victim_network", 201), ("soc_tools", 202), ("network_monitoring", 203))]
+
+    def test_one_plan_per_destination_zone(self):
+        rules = [{"name": "a", "src": "victim_network", "dst": "network_monitoring", "action": "mirror"},
+                 {"name": "b", "src": "attacker_infra", "dst": "network_monitoring", "action": "mirror"}]
+        (plan,), notes = infra.plan_mirrors(rules, self.NETS)
+        assert notes == []
+        assert plan["dst"] == "network_monitoring" and plan["dst_vlan"] == 203 and plan["rules"] == ["a", "b"]
+        assert plan["sources"] == [("victim_network", 201), ("attacker_infra", 200)]
+        assert plan["rspan_key"] == infra.RSPAN_LOGICAL_BASE + 203
+
+    def test_star_is_every_zone_but_the_mirror_destinations(self):
+        (plan,), _ = infra.plan_mirrors([{"src": "*", "dst": "network_monitoring", "action": "mirror"}], self.NETS)
+        assert [z for z, _ in plan["sources"]] == ["attacker_infra", "victim_network", "soc_tools"]
+
+    def test_unknown_zones_are_skipped_with_a_note(self):
+        rules = [{"name": "x", "src": "victim_network", "dst": "nowhere"},
+                 {"name": "y", "src": "nowhere", "dst": "network_monitoring"},
+                 {"name": "z", "src": "network_monitoring", "dst": "network_monitoring"}]
+        plans, notes = infra.plan_mirrors(rules, self.NETS)
+        assert plans == []
+        assert [n.split(":")[0] for n in notes] == ["mirror rule 'x'", "mirror rule 'y'", "mirror rule 'z'"]
+
+    def test_only_mirror_actions_are_mirror_rules(self):
+        tpl = {"network": {"firewall_rules": [{"action": "allow"}, {"action": "MIRROR", "dst": "x"}, "junk"]}}
+        assert infra.mirror_rules(tpl) == [{"action": "MIRROR", "dst": "x"}]
+        assert infra.mirror_rules({}) == []
+
+    @pytest.mark.parametrize(("name", "expected"), [
+        ("colosseum", {"span_domain": ["domain"], "span_dmz": ["dmz"]}),
+        ("soc-training", {"network_monitoring": ["attacker_infra", "victim_network", "soc_tools", "management"]}),
+    ])
+    def test_shipped_templates(self, name, expected):
+        tpl = yaml.safe_load((CONTENT / name / "template.yaml").read_text())
+        nets = render.render_topology(tpl, RANGE_ID, lambda _: "tmpl")["network_definitions"]
+        plans, notes = infra.plan_mirrors(infra.mirror_rules(tpl), nets)
+        assert notes == []
+        assert {p["dst"]: [z for z, _ in p["sources"]] for p in plans} == expected
+
+
+class TestMirrorSessions:
+    def test_build_creates_local_and_remote_sessions(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {"used_vlans": [100, 101]}))
+        assert result.status == "ok", result.errors
+        assert result.warnings == []
+
+        # The RSPAN VLAN is reserved from the pool like a zone's, but gets no port group.
+        rspan = next(n for n in result.networks if n.get("rspan"))
+        assert rspan["vlan_id"] == infra.RSPAN_LOGICAL_BASE + 203 and "portgroup" not in rspan
+        zone_vlans = {n["physical_vlan"] for n in result.networks if not n.get("rspan")}
+        assert rspan["physical_vlan"] == 105 and rspan["physical_vlan"] not in zone_vlans
+        assert sorted(pg.name for pg in vc.dvs.portgroup) == [f"tn-{R8}-v{v}" for v in (102, 103, 104)]
+
+        victim_pg, monitor_pg = f"tn-{R8}-v103", f"tn-{R8}-v104"
+        sources = sorted(_nic_ports(vc, "web01", victim_pg) + _nic_ports(vc, "dc01", victim_pg)
+                         + _nic_ports(vc, "fw", victim_pg))
+        sensor = _nic_ports(vc, "sensor", monitor_pg)
+        assert len(sources) == 3 and len(sensor) == 1
+
+        name = f"tn-{R8}-network_monitoring"
+        sessions = _sessions(vc)
+        assert sorted(sessions) == [name, f"{name}-rx"]
+        local, remote = sessions[name], sessions[f"{name}-rx"]
+        assert local.sessionType == "mixedDestMirror" and local.enabled
+        assert sorted(local.sourcePortReceived.portKey) == sources  # each frame once: from its sender
+        assert local.sourcePortTransmitted is None
+        assert local.destinationPort.portKey == sensor
+        assert local.destinationPort.uplinkPortName == ["dvUplink1"]
+        assert local.encapsulationVlanId == 105 and local.stripOriginalVlan is True
+        assert local.normalTrafficAllowed is True
+        assert remote.sessionType == "remoteMirrorDest"
+        assert remote.sourcePortReceived.vlans == [105] and remote.destinationPort.portKey == sensor
+        assert remote.stripOriginalVlan is True
+        # Both in one reconfigure, against the switch's current config version.
+        (spec,) = vc.dvs.dvs_specs
+        assert [op.operation for op in spec.vspanConfigSpec] == ["add", "add"]
+
+        assert [(m["name"], m["type"]) for m in result.mirrors] == [
+            (name, "mixedDestMirror"), (f"{name}-rx", "remoteMirrorDest")]
+        assert result.mirrors[0]["source_zones"] == ["victim_network"]
+        assert result.mirrors[0]["source_ports"] == sources and result.mirrors[0]["destination_ports"] == sensor
+        assert result.mirrors[0]["rspan_vlan"] == 105 and result.mirrors[0]["uplink"] == "dvUplink1"
+        json.dumps(result.mirrors)  # stored in provisioner_output as JSON
+
+    def test_reserved_rspan_vlan_is_used(self, vc):
+        reserved = {200: 150, 201: 151, 203: 152, infra.RSPAN_LOGICAL_BASE + 203: 160}
+        result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {"physical_vlans": reserved}))
+        assert result.status == "ok", result.errors
+        assert _sessions(vc)[f"tn-{R8}-network_monitoring"].encapsulationVlanId == 160
+
+    def test_direction_and_uplink_are_configurable(self, vc):
+        prov = _prov(vc)
+        prov._mirror_direction, prov._mirror_uplink = "both", "dvUplink2"
+        assert _run(prov.provision(RANGE_ID, _mirror_build(), {})).status == "ok"
+        local = _sessions(vc)[f"tn-{R8}-network_monitoring"]
+        assert local.sourcePortReceived.portKey == local.sourcePortTransmitted.portKey
+        assert local.destinationPort.uplinkPortName == ["dvUplink2"]
+
+    def test_bad_direction_falls_back_to_received(self, vc):
+        prov = _prov(vc)
+        prov._mirror_direction = "sideways"
+        result = _run(prov.provision(RANGE_ID, _mirror_build(), {}))
+        assert any("VSPHERE_MIRROR_DIRECTION" in w for w in result.warnings)
+        assert _sessions(vc)[f"tn-{R8}-network_monitoring"].sourcePortReceived is not None
+
+    def test_a_switch_without_uplinks_mirrors_locally_only(self, vc):
+        vc.dvs.config.uplinkPortPolicy = None
+        result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))
+        assert result.status == "ok", result.errors
+        assert sorted(_sessions(vc)) == [f"tn-{R8}-network_monitoring"]
+        local = _sessions(vc)[f"tn-{R8}-network_monitoring"]
+        assert local.destinationPort.uplinkPortName == [] and local.encapsulationVlanId is None
+        assert any("no uplinks" in w for w in result.warnings)
+
+    def test_retry_replaces_the_sessions_in_place(self, vc):
+        _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))
+        keys = {n: s.key for n, s in _sessions(vc).items()}
+        _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))
+        assert {n: s.key for n, s in _sessions(vc).items()} == keys
+        assert [op.operation for op in vc.dvs.dvs_specs[-1].vspanConfigSpec] == ["edit", "edit"]
+
+    def test_no_sensor_nic_is_a_warning_not_a_session(self, vc):
+        tpl = {**MIRROR_TEMPLATE, "nodes": [n for n in TEMPLATE["nodes"] if n["id"] != "sensor"]}
+        tpl["nodes"][0] = {**tpl["nodes"][0], "interfaces": tpl["nodes"][0]["interfaces"][:2]}
+        result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(tpl), {}))
+        assert result.status == "ok", result.errors
+        assert _sessions(vc) == {} and result.mirrors == []
+        assert any("no VM has a NIC on 'network_monitoring'" in w for w in result.warnings)
+
+    def test_refused_session_makes_the_range_partial(self, vc):
+        vc.dvs.reconfig_fail = "A specified parameter was not correct: destinationPort"
+        result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))
+        assert result.status == "partial" and len(result.vms) == 4
+        assert result.errors == [f"mirror tn-{R8}-network_monitoring: A specified parameter was not correct: "
+                                 "destinationPort"]
+        assert result.mirrors == []
+
+    def test_standard_switches_skip_mirroring(self, vc):
+        prov = _prov(vc)
+        prov._switch_mode = "vss"
+        result = _run(prov.provision(RANGE_ID, _mirror_build(), {}))
+        assert result.status == "ok", result.errors
+        assert not any(n.get("rspan") for n in result.networks) and result.mirrors == []
+        assert any("port mirroring needs VSPHERE_RANGE_SWITCH_MODE=vds" in w for w in result.warnings)
+
+    def test_destroy_removes_the_sessions_idempotently(self, vc):
+        other = infra.vspan_sessions("ffffffff-other", {"dst": "x", "sources": [("y", 1)]}, ["9"], ["8"], None, 0)
+        infra.ensure_vspan_sessions(vc.dvs, other, lambda t: None)
+        result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))
+        output = {"vms": result.vms, "networks": result.networks, "mirrors": result.mirrors}
+        destroyed = _run(_prov(vc).destroy(RANGE_ID, output))
+        assert destroyed.status == "ok", destroyed.errors
+        assert sorted(_sessions(vc)) == ["tn-ffffffff-x"]  # another range's session is not touched
+        removal = vc.dvs.dvs_specs[-1]
+        assert [op.operation for op in removal.vspanConfigSpec] == ["remove", "remove"]
+        assert vc.dvs.portgroup == []  # the port groups went after the sessions
+        again = _run(_prov(vc).destroy(RANGE_ID, output))
+        assert again.status == "ok", again.errors
+        assert vc.dvs.dvs_specs[-1] is removal  # nothing left to remove: no reconfigure
+
+    def test_destroy_removes_unrecorded_sessions_too(self, vc):
+        """A build that died after making its sessions recorded none; destroy still finds them."""
+        result = _run(_prov(vc).provision(RANGE_ID, _mirror_build(), {}))
+        output = {"vms": result.vms, "networks": result.networks}
+        assert _run(_prov(vc).destroy(RANGE_ID, output)).status == "ok"
+        assert _sessions(vc) == {}
+
+    def test_session_names(self):
+        assert infra.mirror_session_name(RANGE_ID, "span_domain") == f"tn-{R8}-span_domain"
+        assert infra.mirror_session_name(RANGE_ID, "a b/c") == f"tn-{R8}-a-b-c"
+        assert infra.mirror_session_prefix(RANGE_ID) == f"tn-{R8}-"

@@ -216,6 +216,7 @@ nodes). Right-sized on 2026-10-03 for the 4-host vSphere lab:
 | soc-training | 23 | **48** (69) | 157 GB | 3.9 TB | ≤ 48 |
 | red-team | 28 | **48** (67) | 153 GB | 2.1 TB | ≤ 48 |
 | red-vs-blue | 40 | **64** (80) | 162 GB | 1.4 TB | ≤ 64 |
+| colosseum (added 2026-10-03) | 31 | **66** (new) | 227 GB | 4.2 TB | 60–70 |
 | large-enterprise | 50 | **106** (142) | 375 GB | 7.4 TB | as low as reasonable |
 
 What changed: vCPU only, by role. User workstations, DCs, file servers, PKI, Linux jump
@@ -227,6 +228,18 @@ raised where the template was below a minimum: Windows 11 disks 60 → 64 GB (32
 red-vs-blue), red-vs-blue `exch01` 2 → 4 vCPU and 48 → 150 GB, `ca01` 16 → 40 GB (below the
 35 GB srv2022 golden image), red-team GitLab host 4 → 8 GB RAM, and Ubuntu disks under the
 15 GB golden image (PLCs, NTP, traffic generator) to 16 GB. Roles and topology are unchanged.
+
+**colosseum** (`content/ranges/colosseum/`) reproduces CSTE's Colosseum (network diagram and
+Operators Manual in `docs/Coloseum/`), sized with the §3 roles: Grey Space (ACE, user-emulation
+server, hotmail, RainLoop, social, OpenCTI, MISP) 11 vCPU; OPFOR (Cobalt Strike team server,
+Caldera, Kali, Windows payload VM) 8; DMZ CMS 2; SOC (Security Onion with two TAP interfaces,
+Arkime, Velociraptor, Carbon Black, DFIR-IRIS, Assemblyline, SIFT analyst) 20; corp.ca (DC,
+Exchange, file, WEC, 4 workstations) 18; OT (PLC, HMI, historian) 5; pfSense edge 2. Two
+departures from §3, both disk only: Security Onion 250 GB (the manual's figure; SO 2.4 needs
+200 GB) and Arkime 500 GB, which keeps the range under the 4.98 TB of range datastores. Only
+`ubuntu-lts` is built on vSphere today; the template marks every other VM `NOT BUILT`. The
+TAP port groups (`span_domain`, `span_dmz`) are promiscuous but are not fed yet: that needs a
+DVS port-mirroring session the provisioner does not create.
 
 Fit on the lab (esx02–04: 3 × 16 threads × 4 vCPU/thread = 192 vCPU, minus ~34 for the
 management VMs = 158; 1.4 TB RAM after management): every range fits at least once; see the

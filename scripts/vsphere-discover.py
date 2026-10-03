@@ -81,6 +81,7 @@ RANGE_SIZES_FALLBACK = [
     {"name": "soc-training", "vms": 23, "vcpu": 48, "ram_gb": 157.0, "disk_tb": 3.84},
     {"name": "red-team", "vms": 28, "vcpu": 48, "ram_gb": 153.0, "disk_tb": 2.08},
     {"name": "red-vs-blue", "vms": 40, "vcpu": 64, "ram_gb": 162.0, "disk_tb": 1.32},
+    {"name": "colosseum", "vms": 31, "vcpu": 66, "ram_gb": 227.0, "disk_tb": 4.22},
     {"name": "large-enterprise", "vms": 50, "vcpu": 106, "ram_gb": 375.0, "disk_tb": 7.23},
 ]
 RANGE_CAPACITY_SCRIPT = Path(__file__).resolve().parent / "range-capacity.py"

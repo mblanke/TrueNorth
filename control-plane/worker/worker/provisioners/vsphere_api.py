@@ -32,6 +32,7 @@ import contextlib
 import ipaddress
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -55,6 +56,7 @@ from .base import BaseProvisioner
 from .results import (
     DestroyResult,
     HealthResult,
+    MetricsResult,
     ProvisionResult,
     RestoreResult,
     SnapshotDeleteResult,
@@ -123,6 +125,26 @@ TN_SOFTWARE_INSTALL_TIMEOUT: int = int(os.environ.get("TN_SOFTWARE_INSTALL_TIMEO
 # still unacknowledged after its visibility timeout (celery_app.py, 3600s), and a second
 # copy of a range build is the one thing worse than a slow one.
 VSPHERE_PROVISION_BUDGET: int = int(os.environ.get("VSPHERE_PROVISION_BUDGET", "3300"))
+# Socket timeout (seconds) of the session the scheduled metrics read opens: connect and
+# every SOAP reply. Keep it well under the metrics run's budget (worker.tasks).
+VSPHERE_METRICS_TIMEOUT: int = int(os.environ.get("VSPHERE_METRICS_TIMEOUT", "15"))
+# Port mirroring for the templates' ``action: mirror`` rules (vsphere_infra, "Port
+# mirroring"). The vDS uplink that carries mirrored copies to the sensors' hosts on the
+# RSPAN VLAN (empty: the vDS's first uplink), and which side of each source port to copy
+# (received | transmitted | both); see vmware-site-runbook.md §7 to check it on site.
+VSPHERE_MIRROR_UPLINK: str = os.environ.get("VSPHERE_MIRROR_UPLINK", "")
+VSPHERE_MIRROR_DIRECTION: str = os.environ.get("VSPHERE_MIRROR_DIRECTION", "received").lower()
+
+# What collect_metrics reads, for every VM of a range in one PropertyCollector call.
+METRIC_PATHS = (
+    "runtime.powerState",
+    "guest.toolsRunningStatus",
+    "summary.quickStats.overallCpuUsage",
+    "summary.quickStats.guestMemoryUsage",
+    "summary.quickStats.uptimeSeconds",
+    "summary.runtime.maxCpuUsage",
+    "summary.config.memorySizeMB",
+)
 
 
 def _names(csv: str) -> set[str]:
@@ -203,6 +225,61 @@ def _named_snapshots(vm, name: str) -> list:
     return sorted(found, key=lambda node: node.createTime)
 
 
+def _read_vm_metrics(si, vm_ids: list[str]) -> tuple[dict[str, dict], set[str]]:
+    """METRIC_PATHS of every VM in ``vm_ids``, in one RetrievePropertiesEx call.
+
+    Returns {vm_id: {path: value}} and the VMs vCenter does not have. One call per range,
+    not one per VM per property: pyVmomi's attribute access (``vm.summary``) is a round
+    trip each, and the whole summary is far more than these numbers. A VM deleted outside
+    TrueNorth makes vCenter fail the whole call with ManagedObjectNotFound naming it; it
+    is dropped and the call repeated, so the other VMs are still read.
+    """
+    pcq = vmodl.query.PropertyCollector
+    pc = si.content.propertyCollector
+    remaining, missing = list(vm_ids), set()
+    while remaining:
+        spec = pcq.FilterSpec(
+            objectSet=[pcq.ObjectSpec(obj=vim.VirtualMachine(v, si._stub), skip=False) for v in remaining],
+            propSet=[pcq.PropertySpec(type=vim.VirtualMachine, all=False, pathSet=list(METRIC_PATHS))],
+        )
+        try:
+            result = pc.RetrievePropertiesEx(specSet=[spec], options=pcq.RetrieveOptions())
+        except vmodl.fault.ManagedObjectNotFound as fault:
+            gone = getattr(getattr(fault, "obj", None), "_moId", None)
+            if gone not in remaining:
+                raise
+            remaining.remove(gone)
+            missing.add(gone)
+            continue
+        props: dict[str, dict] = {}
+        while result is not None:
+            for content in result.objects or []:
+                props[content.obj._moId] = {p.name: p.val for p in content.propSet or []}
+            result = pc.ContinueRetrievePropertiesEx(token=result.token) if result.token else None
+        # Not in the answer at all: gone too, as far as metrics go.
+        return props, missing | {v for v in remaining if v not in props}
+    return {}, missing
+
+
+def _vm_metrics(vm: dict, props: dict | None) -> dict:
+    """One MetricsResult VM entry from the properties read (None: vCenter has no such VM)."""
+    def val(path):
+        v = (props or {}).get(path)
+        return str(v) if isinstance(v, str) else v  # pyVmomi enums are str subclasses
+
+    return {
+        "vm_id": vm.get("vm_id", ""),
+        "name": vm.get("name", ""),
+        "power_state": val("runtime.powerState") if props is not None else "notFound",
+        "tools_status": val("guest.toolsRunningStatus"),
+        "cpu_usage_mhz": val("summary.quickStats.overallCpuUsage"),
+        "cpu_capacity_mhz": val("summary.runtime.maxCpuUsage"),
+        "memory_active_mb": val("summary.quickStats.guestMemoryUsage"),
+        "memory_configured_mb": val("summary.config.memorySizeMB"),
+        "uptime_seconds": val("summary.quickStats.uptimeSeconds"),
+    }
+
+
 class VsphereAPIProvisioner(BaseProvisioner):
     """VMware vSphere provisioner (Automation REST API + pyVmomi).
 
@@ -253,6 +330,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._library_id: str | None = None
         self._library_looked_up = False
         self._transport = None  # an httpx transport for tests; None = the network
+        self._metrics_timeout = VSPHERE_METRICS_TIMEOUT
+        self._mirror_uplink = VSPHERE_MIRROR_UPLINK.strip()
+        self._mirror_direction = VSPHERE_MIRROR_DIRECTION
+        self._scope: dict | None = None  # set inside session(): the run's shared pyVmomi login
         if credentials:
             self.use_credentials(credentials)
 
@@ -450,18 +531,24 @@ class VsphereAPIProvisioner(BaseProvisioner):
     # REST VM ids ("vm-42") are managed-object ids, so the vm_id that provision()
     # recorded addresses the same VM here.
 
-    @contextmanager
-    def _vim(self):
+    def _connect(self, timeout: float | None = None):
+        """A pyVmomi session; ``timeout`` bounds connect and every reply (socket timeout)."""
         if SmartConnect is None:
             raise RuntimeError("pyvmomi is required for vSphere snapshots (pip install pyvmomi)")
         url = urlparse(self._base_url)
-        si = SmartConnect(
+        extra = {"httpConnectionTimeout": timeout} if timeout else {}
+        return SmartConnect(
             host=url.hostname,
             port=url.port or 443,
             user=self._username,
             pwd=self._password,
             disableSslCertValidation=not self._verify_ssl,
+            **extra,
         )
+
+    @contextmanager
+    def _vim(self):
+        si = self._connect()
         try:
             yield si
         finally:
@@ -673,7 +760,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         finally:
             view.Destroy()
         folder = infra.ensure_folder(dc, f"{self._range_folder}/{range_id[:8]}")
-        return {"dc": dc, "cluster": cluster, "pool": cluster.resourcePool, "folder": folder, "templates": templates}
+        return {"dc": dc, "cluster": cluster, "pool": cluster.resourcePool, "folder": folder, "templates": templates,
+                "dvs": dvs if self._switch_mode != "vss" else None}
 
     def _clone_sync(self, si, site: dict, vm_def: dict):
         """Clone the inventory VM template onto the placed host and datastore, NICs wired, powered off."""
@@ -749,11 +837,20 @@ class VsphereAPIProvisioner(BaseProvisioner):
         # TODO(appliance): VyOS / OPNsense configs. Until then those boot with their
         # template config (the runbook, §4.1a, says what that config must hold).
 
-    def _teardown_sync(self, si, range_id: str, networks: list[dict]) -> int:
-        """Remove the range's port groups and its (empty) VM folder. Missing ones are fine."""
+    def _teardown_sync(self, si, range_id: str, networks: list[dict], mirrors: bool = False) -> int:
+        """Remove the range's mirror sessions, port groups and (empty) VM folder. Missing
+        ones are fine. Sessions go by name prefix (``tn-<range8>-``), so ones a build made
+        but never recorded go too; they go first, while their port groups still exist."""
         dc, cluster = self._datacenter_and_cluster(si)
         removed = 0
         dvs = None
+        if mirrors or any(n.get("switch_mode", self._switch_mode) != "vss" for n in networks):
+            dvs = self._find(si, vim.DistributedVirtualSwitch, self._dvs_name)
+            if dvs is not None:
+                removed += infra.remove_vspan_sessions(dvs, infra.mirror_session_prefix(range_id),
+                                                       lambda t: self._wait(t, si))
+            elif mirrors:
+                raise RuntimeError(f"Distributed switch not found: {self._dvs_name!r}")
         for net in networks:
             name = net["portgroup"]
             if net.get("switch_mode", self._switch_mode) == "vss":
@@ -818,6 +915,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         networks = [dict(n) for n in template.get("networks", [])]
         physical: dict[int, int] = {}
         uplink: dict | None = None
+        mirrors: list[dict] = []
 
         try:
             if SmartConnect is None:
@@ -825,11 +923,17 @@ class VsphereAPIProvisioner(BaseProvisioner):
             uplink = self._plan_uplink(vm_defs, allocations)
             self._plan_software(vm_defs, uplink, warnings)
             self._plan_appliances(vm_defs, template, networks, warnings)
+            mirror_plans = self._plan_mirrors(template, networks, warnings)
             logical = sorted({int(n["vlan"]) for v in vm_defs for n in v["nics"] if n.get("vlan") is not None})
+            rspan_keys = [p["rspan_key"] for p in mirror_plans]
             physical = {int(k): int(v) for k, v in (allocations.get("physical_vlans") or {}).items()}
-            if missing := [v for v in logical if v not in physical]:
+            if missing := [v for v in logical + rspan_keys if v not in physical]:
                 used = {int(v) for v in allocations.get("used_vlans") or ()} | set(physical.values())
                 physical.update(vlan_pool.allocate(missing, used, vlan_pool.parse_pool(self._vlan_pool)))
+            for plan in mirror_plans:  # an RSPAN VLAN: reserved like the zones', but no port group
+                plan["rspan_vlan"] = physical[plan["rspan_key"]]
+                networks.append({"name": f"rspan-{plan['dst']}", "vlan_id": plan["rspan_key"],
+                                 "physical_vlan": plan["rspan_vlan"], "rspan": True})
             physical = {k: v for k, v in physical.items() if k in logical}
             for net in networks:
                 if net.get("vlan_id") in physical:
@@ -856,6 +960,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                             errors.append(f"VM {vm_def['name']}: {self._redact(res, vm_def)}")
                         else:
                             vms_out.append(res)
+                    if mirror_plans and vms_out:
+                        mirrors = await asyncio.to_thread(self._mirror_sync, si, site, range_id, mirror_plans,
+                                                          vm_defs, vms_out, errors, warnings)
                     await self._install_software(si, vm_defs, vms_out, start, errors, warnings)
                 except Exception as exc:
                     errors.append(self._redact(exc, *vm_defs))
@@ -878,6 +985,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             errors=errors,
             warnings=warnings,
             uplink=uplink,
+            mirrors=mirrors,
         )
 
     # ------------------------------------------------------------------ #
@@ -932,6 +1040,94 @@ class VsphereAPIProvisioner(BaseProvisioner):
             )
             vm_def["_pfsense"] = cfg
             warnings += [f"VM {vm_def['name']}: {n}" for n in cfg.notes]
+
+    def _plan_mirrors(self, template: dict, networks: list[dict], warnings: list[str]) -> list[dict]:
+        """The template's mirror rules, grouped by destination zone (vsphere_infra.plan_mirrors).
+
+        Port mirroring is a vDS feature: on standard switches the rules are skipped with
+        a warning (the monitoring port groups are still promiscuous, which shows a sensor
+        the traffic of its own host's VMs on its own VLAN, nothing more)."""
+        rules = infra.mirror_rules(template)
+        if not rules:
+            return []
+        if self._switch_mode == "vss":
+            warnings.append("mirror rules skipped: port mirroring needs VSPHERE_RANGE_SWITCH_MODE=vds")
+            return []
+        if self._mirror_direction not in ("received", "transmitted", "both"):
+            warnings.append(f"VSPHERE_MIRROR_DIRECTION={self._mirror_direction!r} is not received, transmitted "
+                            "or both; using received")
+            self._mirror_direction = "received"
+        plans, notes = infra.plan_mirrors(rules, networks)
+        warnings += notes
+        return plans
+
+    def _mirror_sync(self, si, site: dict, range_id: str, plans: list[dict], vm_defs: list[dict],
+                     vms_out: list[dict], errors: list[str], warnings: list[str]) -> list[dict]:
+        """Create the port-mirroring sessions for the built VMs; returns what was made.
+
+        Sources and destinations are the dvPorts the built VMs' NICs hold on the zones'
+        port groups. A zone with no sensor NIC, or nothing to mirror, is a warning; a
+        session vCenter refuses is an error (the range is then ``partial``)."""
+        dvs = site.get("dvs")
+        if dvs is None:
+            return []
+        by_name = {v["name"]: v for v in vm_defs}
+        ports: dict[int, list[str]] = {}  # logical VLAN -> dvPort keys of the range's NICs on it
+        sensors: dict[int, list[str]] = {}  # the same, less routers/firewalls: who receives copies
+        for out in vms_out:
+            vm_def = by_name[out["name"]]
+            pg_vlan = {ref["key"]: nic["vlan"] for nic, ref in zip(vm_def["nics"], vm_def["_refs"], strict=True)
+                       if ref and ref.get("kind") == "dvs" and nic.get("vlan") is not None}
+            try:
+                keys = infra.nic_port_keys(self._vm(si, out["vm_id"]).config.hardware.device)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"mirror: could not read the NICs of VM {out['name']}: {self._redact(exc)}")
+                continue
+            for pg_key, port_key in keys:
+                if pg_key in pg_vlan:
+                    if port_key:
+                        ports.setdefault(pg_vlan[pg_key], []).append(str(port_key))
+                        # The zone's gateway (soc-training's pfSense has a leg on the
+                        # monitoring zone) must not be handed every other zone's frames.
+                        if infra.os_family(vm_def) != "appliance":
+                            sensors.setdefault(pg_vlan[pg_key], []).append(str(port_key))
+                    else:
+                        warnings.append(f"mirror: VM {out['name']} has no dvPort on its NIC on port group "
+                                        f"{pg_key} (not mirrored)")
+        uplinks = list(getattr(getattr(dvs.config, "uplinkPortPolicy", None), "uplinkPortName", None) or [])
+        uplink = self._mirror_uplink or (uplinks[0] if uplinks else None)
+        if uplink is None:
+            warnings.append(f"mirror: {self._dvs_name} has no uplinks; sensors see only VMs on their own host")
+        made: list[dict] = []
+        for plan in plans:
+            dst_ports = sorted(set(sensors.get(plan["dst_vlan"], [])))
+            src_ports = sorted({p for _, vlan in plan["sources"] for p in ports.get(vlan, [])})
+            name = infra.mirror_session_name(range_id, plan["dst"])
+            if not dst_ports:
+                warnings.append(f"mirror {name}: no VM has a NIC on {plan['dst']!r} to receive the copy (skipped)")
+                continue
+            if not src_ports:
+                warnings.append(f"mirror {name}: no VM NIC on {', '.join(z for z, _ in plan['sources'])} "
+                                "to mirror (skipped)")
+                continue
+            sessions = infra.vspan_sessions(range_id, plan, src_ports, dst_ports, uplink, plan["rspan_vlan"],
+                                            self._mirror_direction)
+            try:
+                infra.ensure_vspan_sessions(dvs, sessions, lambda t: self._wait(t, si))
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"mirror {name}: {self._redact(exc)}")
+                continue
+            made += [{
+                "name": s.name, "type": s.sessionType, "switch": self._dvs_name,
+                "source_zones": [z for z, _ in plan["sources"]] if s.sessionType == infra.MIRROR_LOCAL_TYPE else [],
+                "destination_zone": plan["dst"], "rules": plan["rules"],
+                "source_ports": src_ports if s.sessionType == infra.MIRROR_LOCAL_TYPE else [],
+                "destination_ports": dst_ports,
+                "uplink": uplink if s.sessionType == infra.MIRROR_LOCAL_TYPE else None,
+                "rspan_vlan": plan["rspan_vlan"] if uplink else None,
+                "direction": self._mirror_direction if s.sessionType == infra.MIRROR_LOCAL_TYPE else None,
+            } for s in sessions]
+        return made
 
     def _plan_software(self, vm_defs: list[dict], uplink: dict | None, warnings: list[str]) -> None:
         """Resolve each VM's ``services`` against the catalogue; give VMs that will install
@@ -1093,8 +1289,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         errors: list[str] = []
         vms = provision_output.get("vms", [])
         portgroups = [n for n in provision_output.get("networks", []) if n.get("portgroup")]
+        mirrors = bool(provision_output.get("mirrors"))
 
-        if not vms and not portgroups:
+        if not vms and not portgroups and not mirrors:
             return DestroyResult(status="ok", resources_removed=0, duration_seconds=0.0)
 
         removed = 0
@@ -1108,11 +1305,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     else:
                         removed += 1
             # A port group still has VMs on it until every VM is gone.
-            if portgroups and not errors:
+            if (portgroups or mirrors) and not errors:
                 if SmartConnect is None:
                     raise RuntimeError("pyvmomi is required to remove range port groups (pip install pyvmomi)")
                 with self._vim() as si:
-                    removed += await asyncio.to_thread(self._teardown_sync, si, range_id, portgroups)
+                    removed += await asyncio.to_thread(self._teardown_sync, si, range_id, portgroups, mirrors)
         except Exception as exc:
             errors.append(str(exc))
 
@@ -1248,6 +1445,111 @@ class VsphereAPIProvisioner(BaseProvisioner):
             healthy=healthy,
             status="ok" if healthy else ("degraded" if vm_statuses else "unhealthy"),
             vm_statuses=vm_statuses,
+            duration_seconds=time.monotonic() - start,
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Scheduled reads: one login per run, metrics in one call per range
+    # ------------------------------------------------------------------ #
+
+    @contextlib.asynccontextmanager
+    async def session(self):
+        """One vCenter login for a whole scheduled run, logged out at its end.
+
+        Inside it, collect_metrics shares one pyVmomi session (opened on first use), and
+        the REST token health_check gets is reused for every range and then deleted. A
+        run every 30 to 60 seconds used to leave a REST session behind each time, and
+        sessions are capped per vCenter.
+        """
+        self._scope = {"si": None, "error": None, "closed": False, "lock": threading.Lock()}
+        try:
+            yield self
+        finally:
+            scope, self._scope = self._scope, None
+            await asyncio.to_thread(self._close_scope, scope)
+            if self._session_token:
+                await self._logout()
+
+    @staticmethod
+    def _close_scope(scope: dict) -> None:
+        with scope["lock"]:  # waits for a login still in progress, so it is not leaked
+            scope["closed"] = True
+            si, scope["si"] = scope["si"], None
+        if si is not None:
+            with contextlib.suppress(Exception):
+                Disconnect(si)
+
+    def _scope_si(self, scope: dict):
+        """The run's pyVmomi session, logging in once. A failed login is not retried in the run."""
+        with scope["lock"]:
+            if scope["closed"]:
+                raise RuntimeError("the run's vCenter session has ended")
+            if scope["error"]:
+                raise RuntimeError(scope["error"])
+            if scope["si"] is None:
+                try:
+                    scope["si"] = self._connect(self._metrics_timeout)
+                except Exception as exc:
+                    scope["error"] = f"vCenter login failed: {self._redact(exc)}"
+                    raise RuntimeError(scope["error"]) from exc
+            return scope["si"]
+
+    def _metrics_sync(self, vm_ids: list[str]) -> tuple[dict[str, dict], set[str]]:
+        scope = self._scope
+        if scope is not None:
+            return _read_vm_metrics(self._scope_si(scope), vm_ids)
+        si = self._connect(self._metrics_timeout)  # a call outside a run: a session of its own
+        try:
+            return _read_vm_metrics(si, vm_ids)
+        finally:
+            with contextlib.suppress(Exception):
+                Disconnect(si)
+
+    async def _logout(self) -> None:
+        token, self._session_token = self._session_token, None
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._base_url, verify=self._verify_ssl, timeout=10.0, transport=self._transport
+            ) as client:
+                await client.delete("/api/session", headers={"vmware-api-session-id": token})
+        except Exception as exc:  # noqa: BLE001 — the session expires on its own after 30 idle minutes
+            logger.debug("vCenter REST logout failed: %s", exc)
+
+    async def collect_metrics(
+        self,
+        range_id: str,
+        provision_output: dict,
+    ) -> MetricsResult:
+        """Power state, Tools status and quickStats of every VM of the range, read in one call.
+
+        A VM vCenter no longer has is reported with power_state ``notFound`` and an error
+        (the range is then ``partial``); a VM with no recorded id is an error. Nothing is
+        estimated: a value vCenter did not send is None.
+        """
+        start = time.monotonic()
+        vms = provision_output.get("vms", [])
+        errors = [f"VM {vm.get('name')}: no vm_id recorded" for vm in vms if not vm.get("vm_id")]
+        ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
+        out: list[dict] = []
+        if ids:
+            try:
+                props, missing = await asyncio.to_thread(self._metrics_sync, ids)
+            except Exception as exc:
+                errors.append(f"could not read VM metrics from vCenter: {self._redact(exc)}")
+            else:
+                for vm in vms:
+                    if not vm.get("vm_id"):
+                        continue
+                    found = vm["vm_id"] not in missing
+                    out.append(_vm_metrics(vm, props.get(vm["vm_id"], {}) if found else None))
+                    if not found:
+                        errors.append(f"VM {vm.get('name') or vm['vm_id']}: not found in vCenter")
+        read = sum(1 for v in out if v["power_state"] != "notFound")
+        return MetricsResult(
+            status=outcome(read, errors) if vms else "ok",
+            vms=out,
+            source="vsphere",
             duration_seconds=time.monotonic() - start,
             errors=errors,
         )

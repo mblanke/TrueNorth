@@ -28,8 +28,11 @@ def dispatched():
         yield spy
 
 
-def test_stop_dispatches_the_worker(client, db_session, dispatched):
-    rng = _range(db_session, "running")
+@pytest.mark.parametrize("state", ["running", "ready"])
+def test_stop_dispatches_the_worker(client, db_session, dispatched, state):
+    # `ready` is a freshly provisioned range with its VMs powered on; it must be
+    # stoppable, or it could never be stopped at all (/start needs `stopped`).
+    rng = _range(db_session, state)
     resp = client.post(f"/ranges/{rng.id}/stop")
     assert resp.status_code == 200, resp.text
     assert resp.json()["state"] == "stopped"

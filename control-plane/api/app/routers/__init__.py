@@ -33,6 +33,7 @@ from .ranges import router as ranges_router
 from .registration import router as registration_router
 from .scenarios import router as scenarios_router
 from .scheduling import router as scheduling_router
+from .software_catalogue import router as software_catalogue_router
 from .storage import router as storage_router
 from .templates import router as templates_router
 from .threat_intel import router as threat_intel_router
@@ -51,6 +52,7 @@ __all__ = [
     "admin_router",
     "proxmox_router",
     "scheduling_router",
+    "software_catalogue_router",
     "courses_router",
     "learning_paths_router",
     "transcript_router",

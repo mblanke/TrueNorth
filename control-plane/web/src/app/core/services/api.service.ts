@@ -96,6 +96,20 @@ export interface DiagramTemplate {
   warnings: string[];
 }
 
+/** One entry of GET /software-catalogue. */
+export interface SoftwareEntry {
+  name: string;
+  aliases: string[];
+  /** Which guest families the catalogue can install it on. */
+  os_families: ('windows' | 'linux')[];
+}
+
+/** GET /software-catalogue: installable software plus role names (never installed). */
+export interface SoftwareCatalogue {
+  software: SoftwareEntry[];
+  roles: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private base = environment.apiUrl;
@@ -191,6 +205,10 @@ export class ApiService {
   stopRange(id: string): Observable<Range> {
     return this.http.post<Range>(`${this.base}/ranges/${id}/stop`, {});
   }
+  /** Power a stopped range back on. 409 unless the range is `stopped`. */
+  startRange(id: string): Observable<Range> {
+    return this.http.post<Range>(`${this.base}/ranges/${id}/start`, {});
+  }
   updateRange(id: string, data: Partial<Range>): Observable<Range> {
     return this.http.put<Range>(`${this.base}/ranges/${id}`, data);
   }
@@ -252,6 +270,10 @@ export class ApiService {
   /** Convert a designer diagram to the template Save topology would provision (no write). */
   templateFromDiagram(diagram: any, name = 'Range Design'): Observable<DiagramTemplate> {
     return this.http.post<DiagramTemplate>(`${this.base}/templates/from-diagram`, { diagram_json: diagram, name });
+  }
+  /** Software names a designer node's `services` can install, with OS families. */
+  getSoftwareCatalogue(): Observable<SoftwareCatalogue> {
+    return this.http.get<SoftwareCatalogue>(`${this.base}/software-catalogue`);
   }
   /** The real injector registry — replaces hard-coded action lists. */
   listInjectors(): Observable<InjectorInfo[]> {

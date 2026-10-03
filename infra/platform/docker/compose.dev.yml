@@ -228,6 +228,8 @@ services:
       SCENARIO_ENGINE_DIR: /opt/scenario-engine
     volumes:
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      # GET /software-catalogue reads the worker's software catalogue.
+      - ../../../content/catalogue:/app/content/catalogue:ro
     depends_on:
       postgres:
         condition: service_healthy
