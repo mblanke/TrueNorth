@@ -170,6 +170,16 @@ describe('ApiService', () => {
     req.flush({ template: {}, yaml: '', warnings: [] });
   });
 
+  // ── Golden images ──────────────────────────────────────────────────
+  it('getGoldenImageAliasMap() should unwrap the {hypervisor, map} envelope', () => {
+    let got: Record<string, string> | undefined;
+    service.getGoldenImageAliasMap('vsphere').subscribe(m => (got = m));
+    const req = httpMock.expectOne((r) => r.url === `${base}/golden-images/alias-map`);
+    expect(req.request.params.get('hypervisor')).toBe('vsphere');
+    req.flush({ hypervisor: 'vsphere', map: { 'win11-analyst': 'win11-analyst', 'windows-11': 'win11-24h2' } });
+    expect(got).toEqual({ 'win11-analyst': 'win11-analyst', 'windows-11': 'win11-24h2' });
+  });
+
   // ── Templates ──────────────────────────────────────────────────────
   it('listTemplates() should make GET /api/templates with params', () => {
     service.listTemplates(10, 5).subscribe();

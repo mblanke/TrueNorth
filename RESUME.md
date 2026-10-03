@@ -121,7 +121,20 @@ The 5 xfails are real gaps, named in the tests, not hidden:
    components file was reachable, and inventing ids was not acceptable.
 4. `scenario-engine/{runner,template_engine}` have zero importers and no packaged
    counterpart — possibly dead, not safe to delete blind.
-5. vSphere work is unreachable from this box (separate LAN).
+5. **vSphere (2026-10-03): code ready, never run against the live lab.**
+   - `vsphere_api` now does the following, tested against fakes only:
+     - per-range port groups on `vDS-10G` from VLAN pool 100–199
+     - spread placement across local datastores
+     - inventory-template clone (with Content Library OVF as an option)
+     - multi-NIC
+     - cloud-init and Sysprep IP customization
+     - stop/start tasks
+   - Also in place: `scripts/vsphere-discover.py` (read-only inventory) and the buildable
+     Packer library in `infra/vsphere/packer/`.
+   - The on-site plan is `docs/deployment/vmware-site-runbook.md`, and image building is
+     `docs/deployment/vm-build-guide.md`.
+   - The lab's own state lives in the deployment repo `COTE/TrueNorth-Demo/state/`.
+   - Acceptance test: runbook §5, the Day 2 smoke test. Record its result here.
 
 ## Gotchas that cost time — do not relearn them
 

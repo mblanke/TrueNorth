@@ -52,7 +52,10 @@
   loop_control:
     label: "{{ item.item.kind }}={{ item.item.name }}"
 
-- name: vSphere — is the range port group present?
+# Range port groups are created per range by the provisioner (tn-<range>-v<vlan>
+# on tn_vsphere_range_dvs), so there is no single range network to look for.
+# tn_vsphere_network is only the fallback for a VM with no VLAN; check it when set.
+- name: vSphere — is the fallback network present?
   ansible.builtin.uri:
     url: "https://{{ tn_vcenter_host }}/api/vcenter/network?names={{ tn_vsphere_network | urlencode }}"
     headers: "{{ tn_vc_headers }}"
@@ -60,13 +63,37 @@
     status_code: 200
   register: tn_vc_network
   failed_when: false
+  when: tn_vsphere_network | default('') | length > 0
 
-- name: vSphere — report the port group
+- name: vSphere — report the fallback network
   ansible.builtin.debug:
     msg: >-
-      Network '{{ tn_vsphere_network }}':
+      Fallback network '{{ tn_vsphere_network }}':
       {{ 'present' if (tn_vc_network.json | default([]) | length) > 0
-         else 'NOT FOUND — range provisioning will fail until it exists.' }}
+         else 'NOT FOUND — single-NIC VMs with no VLAN will fail to provision.' }}
+  when: tn_vsphere_network | default('') | length > 0
+
+# The REST API lists distributed port groups but not the switches themselves;
+# scripts/vsphere-discover.py confirms the vDS by name. This catches a cluster
+# with no distributed switching at all while vds mode is configured.
+- name: vSphere — distributed port groups exist (vds mode)
+  ansible.builtin.uri:
+    url: "https://{{ tn_vcenter_host }}/api/vcenter/network?types=DISTRIBUTED_PORTGROUP"
+    headers: "{{ tn_vc_headers }}"
+    validate_certs: "{{ tn_vsphere_verify_ssl | bool }}"
+    status_code: 200
+  register: tn_vc_dvpg
+  failed_when: false
+  when: tn_vsphere_range_switch_mode | default('vds') == 'vds'
+
+- name: vSphere — report range switching
+  ansible.builtin.debug:
+    msg: >-
+      Range switch mode '{{ tn_vsphere_range_switch_mode | default('vds') }}' on
+      '{{ tn_vsphere_range_dvs | default('') }}', VLAN pool {{ tn_vsphere_vlan_pool | default('') }}:
+      {{ ((tn_vc_dvpg.json | default([]) | length) ~ ' distributed port groups visible')
+         if tn_vsphere_range_switch_mode | default('vds') == 'vds'
+         else 'standard vSwitch ' ~ (tn_vsphere_range_vswitch | default('vSwitch1')) ~ ' must exist on every range host' }}
 
 # ── The privilege probe ───────────────────────────────────────────────
 # A ReadOnly account can list VMs perfectly well, so listing proves nothing.
@@ -134,6 +161,10 @@
         "datastore": "{{ tn_vsphere_datastore }}",
         "network": "{{ tn_vsphere_network }}",
         "network_present": {{ ((tn_vc_network.json | default([]) | length) > 0) | lower }},
+        "range_switch_mode": "{{ tn_vsphere_range_switch_mode | default('vds') }}",
+        "range_dvs": "{{ tn_vsphere_range_dvs | default('') }}",
+        "vlan_pool": "{{ tn_vsphere_vlan_pool | default('') }}",
+        "placement": "{{ tn_vsphere_placement | default('spread') }}",
         "can_provision": {{ tn_can_provision | lower }},
         "note": "{{ 'ready' if tn_can_provision else 'TrueNorth-Provision role is NOT assigned; provisioning will fail at first use' }}"
       }

@@ -25,6 +25,11 @@ class ProvisionResult:
     duration_seconds: float = 0.0
     terraform_state: str | None = None
     errors: list[str] = field(default_factory=list)
+    # Things skipped on purpose that do not make the build partial (vSphere: software
+    # names not in the catalogue, installs skipped for want of a depot path).
+    warnings: list[str] = field(default_factory=list)
+    # vSphere: the edge firewall's WAN address on the depot uplink network, if any.
+    uplink: dict | None = None
 
 
 @dataclass

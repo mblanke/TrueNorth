@@ -90,17 +90,77 @@ def parse_catalogue(csv_text: str, hypervisor: str = "vsphere") -> list[dict]:
     return rows
 
 
+# Custom images (Packer variants, infra/vsphere/packer/variants/) are registered through
+# POST /golden-images rather than the catalogue CSV. They carry this marker as the first
+# token of `notes` so a catalogue re-import never overwrites or re-purposes them.
+VARIANT_ORIGIN = "origin=variant"
+
+
+def is_variant(img: GoldenImage) -> bool:
+    """True for an image registered as a custom variant, not seeded from the catalogue."""
+    return (img.notes or "").split(";", 1)[0].strip() == VARIANT_ORIGIN
+
+
+class CatalogueConflictError(ValueError):
+    """A variant tried to take a catalogue image's (catalogue_id, hypervisor) slot."""
+
+
+def upsert_variant(db: Session, data: dict, tenant_id: str | None = None) -> tuple[GoldenImage, bool]:
+    """Create or update a custom (non-catalogue) golden image. Returns (image, created).
+
+    Keyed on (catalogue_id, hypervisor), like the catalogue import. A catalogue image in
+    that slot is never taken over (CatalogueConflictError); a soft-deleted variant is revived.
+    The image always resolves by its own catalogue_id, so the alias list includes it.
+    """
+    cid, hypervisor = data["catalogue_id"], data["hypervisor"]
+    img = db.query(GoldenImage).filter_by(catalogue_id=cid, hypervisor=hypervisor).one_or_none()
+    created = img is None
+    if img is not None and not is_variant(img):
+        raise CatalogueConflictError(
+            f"'{cid}' on {hypervisor} is a catalogue image; manage it with PATCH /golden-images/{{id}}"
+        )
+    if created:
+        img = GoldenImage(catalogue_id=cid, hypervisor=hypervisor, tenant_id=tenant_id)
+        db.add(img)
+    aliases = [a.strip() for a in data.get("os_aliases") or [] if a and a.strip()]
+    img.os_aliases = json.dumps(sorted({cid, *aliases}))
+    img.os_family = data.get("os_family") or ""
+    img.version = data.get("version") or ""
+    img.role = data.get("role") or ""
+    img.template_name = data.get("template_name") or cid
+    img.build_status = data.get("build_status") or "planned"
+    img.enabled = bool(data.get("enabled", True))
+    if data.get("datastore") is not None:
+        img.datastore = data["datastore"]
+    if data.get("golden_gb") is not None:
+        img.golden_gb = int(data["golden_gb"])
+    extra = (data.get("notes") or "").strip()
+    img.notes = "; ".join(x for x in (VARIANT_ORIGIN, extra) if x)
+    img.deleted_at = None
+    db.commit()
+    db.refresh(img)
+    return img, created
+
+
 def import_catalogue(db: Session, csv_text: str, hypervisor: str = "vsphere",
                      tenant_id: str | None = None) -> dict:
-    """Upsert GoldenImage rows from the catalogue for one hypervisor. Idempotent."""
+    """Upsert GoldenImage rows from the catalogue for one hypervisor. Idempotent.
+
+    Only touches the rows the CSV names. Custom variant images are never deleted, and a
+    CSV row that collides with a variant's catalogue_id is skipped (counted in
+    ``skipped_variants``) rather than overwriting it.
+    """
     rows = parse_catalogue(csv_text, hypervisor)
-    stats = {"created": 0, "updated": 0, "hypervisor": hypervisor, "total": len(rows)}
+    stats = {"created": 0, "updated": 0, "skipped_variants": 0, "hypervisor": hypervisor, "total": len(rows)}
     for r in rows:
         img = (
             db.query(GoldenImage)
             .filter_by(catalogue_id=r["catalogue_id"], hypervisor=hypervisor)
             .one_or_none()
         )
+        if img is not None and is_variant(img):
+            stats["skipped_variants"] += 1
+            continue
         if img is None:
             img = GoldenImage(
                 catalogue_id=r["catalogue_id"], hypervisor=hypervisor,

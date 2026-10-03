@@ -1,0 +1,71 @@
+# TrueNorth Range — vSphere Packer variables for the lab.
+# Copy to lab.auto.pkrvars.hcl (git-ignored) and fill in the secrets. Values below are the
+# real lab discovery output (vCenter 8.0.3, DC-Lab, ISOs on [esx01-local] ISO/). Cross-check
+# against docs/deployment/vsphere-inventory.md before a run.
+
+# --- vCenter ---------------------------------------------------------------
+vcenter_server      = "192.168.1.10"          # or vcenter.truenorth.lab
+vcenter_username    = "administrator@vsphere.local"
+vcenter_password    = "CHANGE-ME"             # do NOT commit the real password
+insecure_connection = true
+
+# --- Placement -------------------------------------------------------------
+vsphere_datacenter = "DC-Lab"
+vsphere_cluster    = ""                        # empty: build on vsphere_host directly
+# ISOs live on a HOST-LOCAL datastore, so the build MUST run on that host:
+vsphere_host       = "192.168.1.11"            # esx01 (esx01.truenorth.lab)
+vsphere_datastore  = "esx01-local"
+vsphere_folder     = "TrueNorth/Templates"
+
+# --- ISO media (already staged on [esx01-local] ISO/) ----------------------
+iso_datastore = "esx01-local"
+iso_folder    = "ISO"
+# Present in the lab today (exact filenames):
+iso_srv2022    = "en-us_windows_server_2022_updated_july_2026_x64_dvd_75aa9e18.iso"
+iso_srv2025    = "en-us_windows_server_2025_updated_july_2026_x64_dvd_4e6f5a42.iso"
+iso_win11_24h2 = "en-us_windows_11_consumer_editions_version_24h2_updated_feb_2026_x64_dvd_4e400c9e.iso"
+iso_win11_26h1 = "en-us_windows_11_consumer_editions_version_26h1_updated_july_2026_x64_dvd_f69a9a1e.iso"
+iso_ubuntu     = "ubuntu-24.04.4-live-server-amd64.iso"
+iso_kali       = "kali-linux-2026.1-installer-everything-amd64.iso"
+iso_rocky      = "Rocky-10.2-x86_64-dvd1.iso"
+iso_debian     = "debian-13.6.0-amd64-DVD-1.iso"
+iso_parrot     = "Parrot-security-7.3_amd64.iso"
+# NOT present yet — upload to [esx01-local] ISO/ before building these templates:
+# iso_win10         = "Win10_Enterprise_Eval_x64.iso"
+# iso_win10_ltsc    = "Win10_Enterprise_LTSC_2021_x64.iso"   # eval media: also gvlk_win10_ltsc = ""
+# iso_srv2019       = "SERVER_2019_EVAL_x64FRE_en-us.iso"
+# iso_srv2016       = "SERVER_2016_EVAL_x64FRE_en-us.iso"
+# iso_pfsense       = "pfSense-CE-2.7.2-RELEASE-amd64.iso"
+# iso_securityonion = "securityonion-2.4.10-20240220.iso"
+# iso_vyos          = "vyos-1.4-generic-amd64.iso"
+
+# VMware Tools ISO (for the pvscsi WinPE driver). ESXi ships it at this path.
+vmtools_iso_path = "[] /vmimages/tools-isoimages/windows.iso"
+
+# --- Networking ------------------------------------------------------------
+# Packer runs on TN-BUILD01, which sits on dPG-TN-BUILD. That port group has DHCP and is the
+# ONLY network with internet egress (vm-build-sheet.md §8: build egress stays off TN-MGMT01).
+# VLAN 31 / 10.30.31.0/24 is the proposed value; confirm it in docs/deployment/vmware-site-runbook.md §4.
+build_network = "dPG-TN-BUILD"
+# pfsense_lan_network = "dPG-TN-BUILD"  # defaults to build_network if unset
+
+# --- Output ----------------------------------------------------------------
+content_library    = "TrueNorth-Templates"   # create first: govc library.create -ds esx01-local TrueNorth-Templates
+publish_to_library = true                     # also keep inventory templates (always on)
+
+# --- Depot (optional; no-egress range software source) ---------------------
+# depot_url = "http://10.30.32.10"            # TN-DEPOT01 on dPG-TN-SVC; enables depot Chocolatey/apt feeds
+
+# --- Build credentials (build-time only; sysprep/cloud-init reset on clone) -
+windows_admin_password = "CHANGE-ME-Build1!"
+ssh_username           = "ubuntu"
+ssh_password           = "ubuntu"
+
+# --- Windows 11 ------------------------------------------------------------
+win11_vtpm = false   # true requires a vCenter key provider; false injects LabConfig bypasses
+
+# --- Derived (vsphere-clone) base inventory templates ----------------------
+# The existing cloud-image template tmpl-ubuntu-2404 can serve as the Ubuntu base directly:
+# base_ubuntu_template = "tmpl-ubuntu-2404"
+base_ubuntu_template = "ubuntu-lts"
+base_win10_template  = "win10-22h2"

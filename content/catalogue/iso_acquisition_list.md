@@ -18,12 +18,12 @@ installer) are marked accordingly.
 ## Microsoft Evaluation Center (free eval media, 180‑day)
 | Image | ISO | Notes |
 |---|---|---|
-| win10-22h2 | Win10_Enterprise_Eval_x64.iso (+ virtio-win.iso) | ⚠ range alias `windows-10-ltsc` — confirm 22H2 vs LTSC channel |
-| win11-24h2 | Win11_Enterprise_Eval_x64.iso (+ virtio-win.iso) | no Packer file yet |
+| win10-22h2 | Win10_Enterprise_Eval_x64.iso | ⚠ range alias `windows-10-ltsc` — confirm 22H2 vs LTSC channel |
+| win11-24h2 | Win11_Enterprise_Eval_x64.iso | no Packer file yet |
 | srv2016 | SERVER_2016_EVAL_x64FRE_en-us.iso | distinct from 2019/2022 |
 | srv2019 | SERVER_2019_EVAL_x64FRE_en-us.iso | distinct from 2022 |
-| srv2022 | SERVER_EVAL_x64FRE_en-us.iso (+ virtio-win.iso) | ✅ vSphere Packer present |
-| virtio-win | virtio-win.iso | https://fedorapeople.org/groups/virt/virtio-win/ — required alongside every Windows build |
+| srv2022 | SERVER_EVAL_x64FRE_en-us.iso | ✅ vSphere Packer present |
+| virtio-win | virtio-win.iso | **Proxmox only — not needed on vSphere.** vSphere Windows builds load the pvscsi driver from the VMware Tools ISO every ESXi host ships (`[] /vmimages/tools-isoimages/windows.iso`) |
 
 ## Licensed / entitlement‑gated (NO public eval — procurement action)
 | Image | Blocker |
@@ -48,4 +48,4 @@ installer) are marked accordingly.
 3. **Author vSphere Packer files** for every `enabled=yes` image lacking one (all except srv2022, kali,
    ubuntu) — this is Taz task 1.
 4. **Decide GAP‑vyos** (add image vs swap red‑vs‑blue router to pfSense).
-5. **Stage virtio-win.iso** on the datastore — needed by every Windows build.
+5. ~~Stage virtio-win.iso~~ — not needed on vSphere (VMware Tools ISO supplies pvscsi/vmxnet3). Lab media actually present on `[esx01-local] ISO/`: see `docs/deployment/vm-build-guide.md` §1.

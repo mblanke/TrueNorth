@@ -462,3 +462,28 @@ def test_state_change_between_check_and_write_is_409_and_writes_nothing(client, 
     res = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": _DIAGRAM})
     assert res.status_code == 409
     assert db_session.query(Template).count() == before
+
+
+# ── a firewall cabled to several zones gets a NIC in each ─────────────────
+
+
+def test_linked_firewall_spans_the_zones_it_is_cabled_to():
+    """The designer's links used to be dropped, so every firewall had one NIC and routed nothing."""
+    diagram = {"cells": [
+        _cell("fw", "firewall", 280, 20, label="Gateway", os_template="pfsense"),
+        _zone("z0", "corp", "10.1.0.0/24", 0, 130),
+        _zone("z1", "dmz", "10.2.0.0/24", 0, 400),
+        _cell("web", "server", 50, 450, label="web", os_template="ubuntu-24.04"),
+        {"type": "standard.Link", "id": "l1", "source": {"id": "fw"}, "target": {"id": "z0"}},
+        {"type": "standard.Link", "id": "l2", "source": {"id": "web"}, "target": {"id": "fw"}},  # via a node
+    ]}
+    out = rt.diagram_to_template(diagram)
+    fw = out["template"]["nodes"][0]
+    assert fw["vlan"] == "corp"  # outside every zone, so it joins the first one it is cabled to
+    assert fw["interfaces"] == [{"vlan": "corp"}, {"vlan": "dmz"}]
+    assert not any("single NIC" in w for w in out["warnings"])
+    assert [v["name"] for v in out["template"]["network"]["vlans"]] == ["corp", "dmz"]  # no stray VLAN
+
+    vms = {v["node_id"]: v for v in worker_render.render_topology(out["template"], "r", lambda a: a)["vm_definitions"]}
+    assert [(n["network"], n["ip"]) for n in vms["gateway"]["nics"]] == [("corp", "10.1.0.1"), ("dmz", "10.2.0.1")]
+    assert vms["web"]["gateway"] == "10.2.0.1"

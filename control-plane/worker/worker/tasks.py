@@ -11,6 +11,7 @@ Designed for 70,000-VM scale:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -39,7 +40,19 @@ def _get_backend(backend: str | None = None):
     to ``"mock"`` when neither the caller nor the env provides a value.
     """
     resolved = backend or os.getenv("PROVISIONER_BACKEND", "mock")
-    return get_provisioner(resolved)
+    provisioner = get_provisioner(resolved)
+    # vSphere without VSPHERE_URL in the environment: use the primary vSphere
+    # connection registered through the API (Hypervisors page) instead.
+    if resolved == "vsphere_api" and not os.getenv("VSPHERE_URL"):
+        try:
+            with _db_session() as db:
+                creds = _hypervisor_creds(db, "vsphere")
+        except Exception as e:  # noqa: BLE001 — the provisioner then reports the missing endpoint
+            logger.warning(f"Could not read the vSphere connection from the database: {e}")
+            creds = {}
+        if creds:
+            provisioner.use_credentials(creds)
+    return provisioner
 
 
 # -- DB session management (one per task, no leaks) ---------------------
@@ -145,6 +158,138 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
     }
 
 
+@contextmanager
+def _vlan_lock():
+    """Serialise VLAN reservations across workers (Redis lock; skipped if Redis is down)."""
+    lock = None
+    try:
+        import redis
+
+        lock = redis.Redis.from_url(REDIS_URL).lock("truenorth:vsphere-vlan-alloc", timeout=60, blocking_timeout=30)
+        if not lock.acquire():
+            raise RuntimeError("timed out waiting for the VLAN allocation lock")
+    except RuntimeError:
+        raise
+    except Exception as e:  # noqa: BLE001 — no Redis (tests, single worker): carry on unlocked
+        logger.warning(f"VLAN allocation lock unavailable, allocating without it: {e}")
+        lock = None
+    try:
+        yield
+    finally:
+        if lock is not None:
+            with contextlib.suppress(Exception):
+                lock.release()
+
+
+def _physical_vlans(output: str | None) -> dict[int, int]:
+    """{logical VLAN: physical VLAN} a range's stored provisioner_output holds."""
+    try:
+        nets = (json.loads(output) if output else {}).get("networks") or []
+    except (ValueError, AttributeError):
+        return {}
+    return {
+        int(n["vlan_id"]): int(n["physical_vlan"])
+        for n in nets
+        if isinstance(n, dict) and n.get("vlan_id") is not None and n.get("physical_vlan") is not None
+    }
+
+
+def _reserve_vlans(range_id: str, logical: list[int]) -> dict[int, int]:
+    """Give each of the range's logical VLANs a physical VLAN of its own, and record it now.
+
+    Every range that is not destroyed keeps its VLANs (a failed one may still have its
+    port groups), so the pool is what is left after all of them. The reservation is
+    written to provisioner_output before the build starts, under a lock, so a second
+    range provisioning at the same moment cannot pick the same VLANs, and a destroy
+    after a failed build still finds the port groups to remove. A retry reuses it.
+    """
+    from sqlalchemy import text
+
+    from .provisioners.vsphere_infra import portgroup_name
+    from .vlan_pool import allocate, parse_pool
+
+    pool = parse_pool(os.getenv("VSPHERE_VLAN_POOL", "100-199"))
+    with _vlan_lock(), _db_session() as db:
+        others = db.execute(
+            text(
+                "SELECT provisioner_output FROM ranges WHERE id <> :rid "
+                "AND CAST(state AS TEXT) <> 'destroyed' AND provisioner_output IS NOT NULL"
+            ),
+            {"rid": range_id},
+        ).fetchall()
+        used = {v for (out,) in others for v in _physical_vlans(out).values()}
+        row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
+        try:
+            current = json.loads(row[0]) if row and row[0] else {}
+        except ValueError:
+            current = {}
+        mine = {k: v for k, v in _physical_vlans(row[0] if row else None).items() if v not in used}
+        missing = [v for v in logical if v not in mine]
+        if missing:
+            mine.update(allocate(missing, used | set(mine.values()), pool))
+        current.setdefault("provider", "vsphere_api")
+        current.setdefault("range_id", range_id)
+        current.setdefault("vms", [])
+        mode = os.getenv("VSPHERE_RANGE_SWITCH_MODE", "vds").lower()
+        current["networks"] = [
+            {"vlan_id": k, "physical_vlan": v, "portgroup": portgroup_name(range_id, v), "switch_mode": mode}
+            for k, v in sorted(mine.items())
+        ]
+        db.execute(
+            text("UPDATE ranges SET provisioner_output = :out WHERE id = :rid"),
+            {"out": json.dumps(current), "rid": range_id},
+        )
+    return mine
+
+
+def _uplink_ip(output: str | None) -> str | None:
+    """The edge-firewall WAN address a range's stored provisioner_output holds."""
+    try:
+        up = (json.loads(output) if output else {}).get("uplink") or {}
+    except (ValueError, AttributeError):
+        return None
+    return str(up["ip"]) if isinstance(up, dict) and up.get("ip") else None
+
+
+def _reserve_uplink_ip(range_id: str) -> str:
+    """Give the range's edge firewall a WAN address of its own on the uplink network.
+
+    Same rules as _reserve_vlans: under the same lock, every range that is not destroyed
+    keeps its address, the reservation is written before the build, a retry reuses it.
+    """
+    from sqlalchemy import text
+
+    from .uplink_pool import allocate_ip, parse_ip_pool
+
+    pool = parse_ip_pool(os.getenv("VSPHERE_RANGE_UPLINK_POOL", ""))
+    with _vlan_lock(), _db_session() as db:
+        others = db.execute(
+            text(
+                "SELECT provisioner_output FROM ranges WHERE id <> :rid "
+                "AND CAST(state AS TEXT) <> 'destroyed' AND provisioner_output IS NOT NULL"
+            ),
+            {"rid": range_id},
+        ).fetchall()
+        used = {ip for (out,) in others if (ip := _uplink_ip(out))}
+        row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
+        try:
+            current = json.loads(row[0]) if row and row[0] else {}
+        except ValueError:
+            current = {}
+        mine = _uplink_ip(row[0] if row else None)
+        if not mine or mine in used or mine not in pool:
+            mine = allocate_ip(used, pool)
+        current.setdefault("provider", "vsphere_api")
+        current.setdefault("range_id", range_id)
+        current.setdefault("vms", [])
+        current["uplink"] = {"network": os.getenv("VSPHERE_RANGE_UPLINK_NETWORK", ""), "ip": mine}
+        db.execute(
+            text("UPDATE ranges SET provisioner_output = :out WHERE id = :rid"),
+            {"out": json.dumps(current), "rid": range_id},
+        )
+    return mine
+
+
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
 def provision_range(self, range_id: str):
     """Provision a single range using the configured backend.
@@ -213,6 +358,19 @@ def provision_range(self, range_id: str):
             if rendered["unresolved"]:
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
+        if backend == "vsphere_api":
+            logical = {
+                nic.get("vlan") if "nics" in vm else vm.get("vlan_id")
+                for vm in template.get("vms", [])
+                for nic in (vm.get("nics") or [{}])
+            }
+            allocations["physical_vlans"] = _reserve_vlans(range_id, sorted(v for v in logical if v is not None))
+            if os.getenv("VSPHERE_RANGE_UPLINK_NETWORK", "").strip():
+                from .provisioners.vsphere_infra import os_family
+
+                if any(os_family(vm) == "appliance" for vm in template.get("vms", [])):
+                    allocations["uplink_ip"] = _reserve_uplink_ip(range_id)
+
         provisioner = _get_backend(backend)
 
         result = asyncio.run(provisioner.provision(range_id, template, allocations))
@@ -220,14 +378,24 @@ def provision_range(self, range_id: str):
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
 
-        output = json.dumps(
-            {
-                "provider": backend,
-                "range_id": range_id,
-                "vms": result.vms,
-                "networks": result.networks,
-            }
-        )
+        stored = {
+            "provider": backend,
+            "range_id": range_id,
+            "vms": result.vms,
+            "networks": result.networks,
+        }
+        # vSphere: the edge firewall's WAN address (kept until destroy, like the VLANs),
+        # and what was skipped on purpose (unknown software, no depot path).
+        if getattr(result, "uplink", None):
+            stored["uplink"] = result.uplink
+        if getattr(result, "warnings", None):
+            stored["warnings"] = result.warnings
+            for w in result.warnings:
+                logger.warning(f"[provision] Range {range_id}: {w}")
+        if result.status == "partial":
+            stored["errors"] = result.errors
+            logger.warning(f"[provision] Range {range_id} partial: {'; '.join(result.errors)}")
+        output = json.dumps(stored)
 
         _update_range_state(range_id, "ready", output=output)
         _notify_api("range", {"id": range_id, "state": "ready"})
@@ -303,6 +471,51 @@ def destroy_range(self, range_id: str):
         _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[destroy] Range {range_id} FAILED: {e}")
         raise
+
+
+def _power_range(task, range_id: str, action: str, state: str):
+    """Power every VM of a range off (``stop``) or on (``start``).
+
+    The API has already moved the range to ``state`` (stopped/running); this makes the
+    hypervisor match. Powering a VM already in that state is a no-op, so a retry is
+    safe. When the last attempt fails the range is marked failed, unless it has moved
+    on meanwhile (destroyed, say).
+    """
+    logger.info(f"[{action}] Range {range_id}")
+    try:
+        with _db_session() as db:
+            from sqlalchemy import text
+
+            row = db.execute(
+                text("SELECT provisioner_output, provisioner_backend FROM ranges WHERE id = :rid"),
+                {"rid": range_id},
+            ).first()
+        prov_output = json.loads(row[0]) if row and row[0] else {}
+        provisioner = _get_backend((row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock"))
+        op = provisioner.stop if action == "stop" else provisioner.start
+        result = asyncio.run(op(range_id, prov_output))
+        if result.status != "ok":
+            raise RuntimeError(f"{action} {result.status}: {'; '.join(result.errors) or 'no detail'}")
+        _notify_api("range", {"id": range_id, "state": state})
+        return {"status": state, "range_id": range_id}
+    except Exception as e:
+        if _last_attempt(task):
+            _update_range_state(range_id, "failed", error=str(e), only_from=(state,))
+            _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        logger.error(f"[{action}] Range {range_id} FAILED: {e}")
+        raise
+
+
+@app.task(base=ReliableTask, bind=True, name="worker.tasks.stop_range")
+def stop_range(self, range_id: str):
+    """Power off every VM of a range (POST /ranges/{id}/stop)."""
+    return _power_range(self, range_id, "stop", "stopped")
+
+
+@app.task(base=ReliableTask, bind=True, name="worker.tasks.start_range")
+def start_range(self, range_id: str):
+    """Power on every VM of a stopped range (POST /ranges/{id}/start)."""
+    return _power_range(self, range_id, "start", "running")
 
 
 # -- Scenario Execution --------------------------------------------------

@@ -444,3 +444,17 @@ templates are still what the registry's `template_name` points at.
 
 - Nothing blocking the build. Enabling `c2-server` / `c2-server-cs` in the catalogue still
   needs the instructor/Standards sign-off recorded in `vm_catalogue.csv`.
+
+### Lab deviations (2026-10-03, vSphere lab bring-up)
+
+These came out of fitting this sheet to the real lab media and hardware
+(`docs/deployment/vm-build-guide.md`). Each one needs either a decision or nothing at all.
+
+| Topic | Sheet says | Lab reality | Status |
+|---|---|---|---|
+| KMS / activation | Prod activates against TN-KMS01; no keys in any template | **KMS paused** for future integration and testing. The lab's Server 2022/2025 and Win11 ISOs are retail/VL media, which need an edition key at setup, so the Autounattend uses Microsoft's **public** GVLK. Templates run unactivated | Deferred: revisit with TN-KMS01 |
+| Media versions | Exchange 2019 CU15 + SE; Office LTSC 2024; Ubuntu 24.04.5 | Datastore has Exchange 2016, Office Pro Plus 2021, Ubuntu 24.04.4 | Open: obtain the decided media or accept these |
+| Windows media | Enterprise eval (Win10/11, Server) | Win11 is consumer media (Pro edition); Server 2022/2025 are full media; no Win10, Server 2019 or 2016 ISOs on site | Upload the missing ISOs |
+| Build order | srv2022 → win10 → ubuntu → pfsense → SO → kali → win11 → srv2019 | ubuntu-lts first (`tmpl-ubuntu-2404` already exists), win11 moved up (no Win10 ISO), pfSense and SO after their ISOs arrive | Accepted for bring-up |
+| Build host | TN-BUILD01 (the only host with egress) | The deployment repo installed Packer on TN-MGMT01. **Do not use it.** Stand up TN-BUILD01 on `dPG-TN-BUILD` first (runbook §4.1a) | Accepted |
+| Extra templates | — | `srv2025`, `debian13`, `parrot` (media on site), `vyos` | Added to the Packer library |

@@ -18,6 +18,7 @@ DELETE /ranges/{range_id}          RANGE_DELETE
 POST   /ranges/{range_id}/provision  RANGE_PROVISION
 POST   /ranges/{range_id}/destroy    RANGE_DESTROY
 POST   /ranges/{range_id}/stop       RANGE_PROVISION
+POST   /ranges/{range_id}/start      RANGE_PROVISION
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
 """
@@ -503,7 +504,32 @@ async def stop_range(
     rng = _tenant_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.stopped):
         raise HTTPException(409, f"Cannot stop range in state {rng.state.value}")
+    _refuse_while_restoring(db, range_id)
     rng.state = RangeState.stopped
+    db.commit()
+    # The state used to be all this did: the VMs kept running. The worker powers them off.
+    _dispatch_task("stop_range", str(rng.id))
+    _audit(db, user, "stop", "range", str(rng.id))
+    db.commit()
+    db.refresh(rng)
+    return rng
+
+
+@router.post("/{range_id}/start", response_model=RangeOut)
+async def start_range(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
+) -> Range:
+    """Power a stopped range back on (async Celery task).  **Permission: range:provision**"""
+    rng = _tenant_range(db, range_id, user)
+    if rng.state != RangeState.stopped:
+        raise HTTPException(409, f"Cannot start range in state {rng.state.value}")
+    _refuse_while_restoring(db, range_id)
+    rng.state = RangeState.running
+    db.commit()
+    _dispatch_task("start_range", str(rng.id))
+    _audit(db, user, "start", "range", str(rng.id))
     db.commit()
     db.refresh(rng)
     return rng

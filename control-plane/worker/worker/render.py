@@ -88,6 +88,60 @@ def _extract_nodes(t: dict) -> list[dict]:
     return []
 
 
+_ROUTER_ROLES = frozenset({"firewall", "router", "gateway"})
+_ROUTER_OS_PREFIXES = ("pfsense", "opnsense", "vyos")
+
+
+def _is_router(node: dict, os_alias: str) -> bool:
+    """A firewall/router: holds each zone's gateway (.1) and gets one NIC per zone."""
+    return str(node.get("role", "")).lower() in _ROUTER_ROLES or os_alias.lower().startswith(_ROUTER_OS_PREFIXES)
+
+
+def _next_ip(netinfo: dict, routes: bool) -> str:
+    """The zone gateway for a router (first come), else the next free host address."""
+    if routes and not netinfo.get("gateway_taken"):
+        netinfo["gateway_taken"] = True
+        return netinfo["gateway"]
+    ip = str(ipaddress.ip_address(netinfo["next"]))
+    netinfo["next"] += 1
+    return ip
+
+
+def _render_nics(node: dict, vlan_name: str, vid: int, ip: str, vlan_map: dict, net_by_name: dict,
+                 routes: bool, single: bool) -> list[dict]:
+    """One entry per NIC, in NIC order: the node's `interfaces` if it declares any (a
+    firewall spanning zones), else just its own VLAN. The node's own VLAN (the one
+    `vlan_id`/`ip` describe) is always present, first if `interfaces` leaves it out.
+    Interfaces on a VLAN the template does not define are dropped."""
+    names: list[str] = []
+    by_name: dict[str, dict] = {}
+    for iface in node.get("interfaces") or []:
+        name = str(iface.get("vlan")) if isinstance(iface, dict) else ""
+        if (name == vlan_name or name in vlan_map) and name not in by_name:
+            names.append(name)
+            by_name[name] = iface
+    if vlan_name not in by_name:
+        names.insert(0, vlan_name)
+    nics: list[dict] = []
+    for name in names:
+        info = net_by_name.get(name)
+        if name == vlan_name:
+            nic_ip = ip
+        else:
+            nic_ip = str(by_name[name].get("ip") or "") if single else ""
+            if not nic_ip and info:
+                nic_ip = _next_ip(info, routes)
+        gateway = info["gateway"] if info else ""
+        nics.append({
+            "vlan": vid if name == vlan_name else vlan_map[name], "network": name, "ip": nic_ip,
+            "prefix": info["net"].prefixlen if info else 24,
+            "netmask": str(info["net"].netmask) if info else "255.255.255.0",
+            # A router is the gateway; it does not route through itself.
+            "gateway": "" if nic_ip == gateway else gateway,
+        })
+    return nics
+
+
 def render_topology(
     template: dict,
     range_id: str,
@@ -97,7 +151,9 @@ def render_topology(
     """Return {range_name, vm_definitions, network_definitions, vlan_map, unresolved}.
 
     Each vm_definition carries: name, node_id, role, os, template_name, vlan_id/vlan_tag,
-    ip, gateway, netmask, prefix, cores, memory/memory_mb, disk_gb.
+    ip, gateway, netmask, prefix, cores, memory/memory_mb, disk_gb, and `nics`: one
+    {vlan, network, ip, prefix, netmask, gateway} per NIC, in NIC order.
+    VLAN ids here are the template's, logical; vSphere maps them to physical VLANs.
     """
     range_name = template.get("name") or template.get("id") or range_id
 
@@ -141,23 +197,29 @@ def render_topology(
             if template_name is None:
                 unresolved.append(os_alias)
                 template_name = os_alias  # best-effort; provisioning will surface the miss
-            ip = node.get("ip", "")
+            routes = _is_router(node, os_alias)
+            ip = node.get("ip", "") if count == 1 else ""
             if not ip and netinfo:
-                ip = str(ipaddress.ip_address(netinfo["next"]))
-                netinfo["next"] += 1
+                ip = _next_ip(netinfo, routes)
             specs = _node_specs(node)
             gateway = netinfo["gateway"] if netinfo else ""
             netmask = str(netinfo["net"].netmask) if netinfo else "255.255.255.0"
             prefix = netinfo["net"].prefixlen if netinfo else 24
+            if netinfo and ip == netinfo["gateway"]:
+                netinfo["gateway_taken"] = True
+            nics = _render_nics(node, vlan_name, vid, ip, vlan_map, net_by_name, routes, count == 1)
             vms.append({
                 "name": name, "node_id": node.get("id", suffix), "role": node.get("role", "generic"),
                 "os": os_alias, "template_name": template_name,
                 "vlan_id": vid, "vlan_tag": vid,
                 "ip": ip, "gateway": gateway, "netmask": netmask, "prefix": prefix,
+                "nics": nics,
                 "cores": specs.get("cores", 2),
                 "memory": specs.get("memory_mb", 4096), "memory_mb": specs.get("memory_mb", 4096),
                 "disk_gb": specs.get("disk_gb", 60),
                 "services": node.get("services", []),
+                # The range's edge firewall (WAN uplink to the depot); see vsphere_infra.pick_edge.
+                **({"edge": True} if node.get("edge") or node.get("wan") else {}),
             })
 
     return {

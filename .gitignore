@@ -52,3 +52,7 @@ install/files/tls/*.pem
 control-plane/web/devtools-shots/
 .ai-refresh/
 .dod-pass
+
+# vSphere Packer local vars + build logs
+infra/vsphere/packer/lab.auto.pkrvars.hcl
+infra/vsphere/packer/logs/

@@ -103,6 +103,8 @@ app.conf.task_routes.update(
         "worker.tasks.health_check_ranges": {"queue": "default"},
         "worker.tasks.collect_range_metrics": {"queue": "telemetry"},
         "worker.tasks.delete_snapshot": {"queue": "provision"},
+        "worker.tasks.stop_range": {"queue": "provision"},
+        "worker.tasks.start_range": {"queue": "provision"},
         # EPIC 1: Exercise Forge
         "worker.tasks.forge_exercise": {"queue": "default"},
         # EPIC 3: Adaptive Learning

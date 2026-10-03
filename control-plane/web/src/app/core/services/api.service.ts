@@ -1,6 +1,6 @@
 ﻿import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { environment } from '@env/environment';
 import {
   AAR, Exercise, HealthResponse, HypervisorNode, Objective, Range, RangeDocument,
@@ -257,11 +257,17 @@ export class ApiService {
   listInjectors(): Observable<InjectorInfo[]> {
     return this.http.get<InjectorInfo[]>(`${this.base}/injectors`);
   }
-  /** Hypervisor-verified OS aliases for the designer's image picker. */
+  /**
+   * Hypervisor-verified OS aliases for the designer's image picker, including custom
+   * variant images registered through POST /golden-images. The endpoint answers
+   * `{hypervisor, map}`; callers get the inner alias -> template map.
+   */
   getGoldenImageAliasMap(hypervisor?: string): Observable<Record<string, string>> {
     let params = new HttpParams();
     if (hypervisor) params = params.set('hypervisor', hypervisor);
-    return this.http.get<Record<string, string>>(`${this.base}/golden-images/alias-map`, { params });
+    return this.http
+      .get<{ hypervisor: string; map: Record<string, string> }>(`${this.base}/golden-images/alias-map`, { params })
+      .pipe(map(res => res?.map ?? {}));
   }
   aiScenarioDraft(body: { objectives: string[]; difficulty?: string; duration_minutes?: number }):
     Observable<{ output: string; model_used: string }> {
