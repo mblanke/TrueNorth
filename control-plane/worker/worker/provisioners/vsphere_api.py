@@ -19,6 +19,10 @@ isolated.
 
 Software named in a node's ``services`` is installed after power-on through VMware
 guest operations (vsphere_guest.py), from the depot behind the uplink.
+
+Each pfSense VM gets a per-range config.xml (worker/pfsense_config.py: zone gateways,
+WAN, NAT, the template's firewall rules, depot-only egress) in its guestinfo before its
+first power-on; the template's boot script applies it.
 """
 
 from __future__ import annotations
@@ -40,12 +44,11 @@ except ImportError:
 
 try:
     from pyVim.connect import Disconnect, SmartConnect
-    from pyVim.task import WaitForTask
-    from pyVmomi import vim
+    from pyVmomi import vim, vmodl
 except ImportError:  # only the snapshot operations need it
-    Disconnect = SmartConnect = WaitForTask = vim = None  # type: ignore[assignment]
+    Disconnect = SmartConnect = vim = vmodl = None  # type: ignore[assignment]
 
-from .. import software_catalogue, uplink_pool, vlan_pool
+from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
 from .base import BaseProvisioner
@@ -111,6 +114,9 @@ VSPHERE_RANGE_UPLINK_PREFIX: int = int(os.environ.get("VSPHERE_RANGE_UPLINK_PREF
 TN_DEPOT_URL: str = os.environ.get("TN_DEPOT_URL", "").rstrip("/")
 TN_DEPOT_CHOCO_FEED: str = os.environ.get("TN_DEPOT_CHOCO_FEED", "")
 TN_DEPOT_APT_PROXY: str = os.environ.get("TN_DEPOT_APT_PROXY", "")
+# TCP ports of the depot the range pfSense lets the zones reach through the WAN (Nexus,
+# apt-cacher-ng); everything else outbound on the WAN is blocked.
+TN_DEPOT_PORTS: str = os.environ.get("TN_DEPOT_PORTS", "8081,3142")
 # Per VM, for all of its installs together.
 TN_SOFTWARE_INSTALL_TIMEOUT: int = int(os.environ.get("TN_SOFTWARE_INSTALL_TIMEOUT", "1800"))
 # No new work starts once a provision has run this long: Celery redelivers a task that is
@@ -123,18 +129,63 @@ def _names(csv: str) -> set[str]:
     return {n.strip() for n in (csv or "").split(",") if n.strip()}
 
 
-def _wait_task(task, si, timeout: float) -> None:
-    """WaitForTask on a property collector of its own.
+class TaskTimeoutError(TimeoutError):
+    """A vCenter task did not finish within the wait's overall timeout."""
 
-    The session's collector (``si.content.propertyCollector``, pyVim's default) hands each
-    update to whichever WaitForUpdates call collects it first. Builds wait from several
-    threads at once (one per VM), so on a shared collector one thread takes another's
-    task completion and that thread then waits for an update that never comes; pyVim
-    checks ``maxWaitTime`` only between updates, so it waits forever. Found against vcsim.
+
+# Longest single WaitForUpdatesEx call. Each call returns at the latest after this many
+# seconds, so the overall deadline is checked at least this often.
+TASK_POLL_SECONDS = 30
+
+
+def _wait_task(task, si, timeout: float, *, clock: Callable[[], float] = time.monotonic,
+               poll_seconds: int = TASK_POLL_SECONDS) -> None:
+    """Wait for a vCenter task to finish, for at most ``timeout`` seconds; raise its fault.
+
+    On a property collector of its own: the session's collector hands each update to
+    whichever WaitForUpdates call collects it first. Builds wait from several threads at
+    once (one per VM), so on a shared collector one thread takes another's task
+    completion and then waits for an update that never comes. Found against vcsim.
+
+    And bounded: pyVim's WaitForTask checks ``maxWaitTime`` only between updates, so a
+    task that never updates again held the worker forever. Here every WaitForUpdatesEx
+    call carries ``maxWaitSeconds`` (it returns None when nothing changed), and the
+    deadline is checked between calls. A task still running at the deadline raises
+    TaskTimeoutError; it is left running in vCenter (cancelling a half-done clone or
+    snapshot is not obviously safer than letting it finish).
     """
+    deadline = clock() + timeout
     pc = si.content.propertyCollector.CreatePropertyCollector()
     try:
-        WaitForTask(task, si=si, pc=pc, maxWaitTime=timeout)
+        pcq = vmodl.query.PropertyCollector
+        pc.CreateFilter(pcq.FilterSpec(
+            objectSet=[pcq.ObjectSpec(obj=task, skip=False)],
+            propSet=[pcq.PropertySpec(type=vim.Task, all=False, pathSet=["info.state", "info.error"])],
+        ), False)
+        version, state, error = "", None, None
+        while True:
+            remaining = deadline - clock()
+            if remaining <= 0:
+                raise TaskTimeoutError(
+                    f"vCenter task {getattr(task, '_moId', task)} still {state or 'queued'} after {timeout:g}s")
+            wait = max(1, min(int(poll_seconds), int(remaining + 0.999)))
+            update = pc.WaitForUpdatesEx(version, pcq.WaitOptions(maxWaitSeconds=wait))
+            if update is None:
+                continue
+            version = update.version
+            for fs in update.filterSet or []:
+                for obj in fs.objectSet or []:
+                    for change in obj.changeSet or []:
+                        if change.name == "info.state":
+                            state = change.val
+                        elif change.name == "info.error":
+                            error = change.val
+            if state == "success":
+                return
+            if state == "error":
+                if error is None:
+                    error = task.info.error
+                raise error if isinstance(error, BaseException) else RuntimeError(f"vCenter task failed: {error}")
     finally:
         with contextlib.suppress(Exception):
             pc.DestroyPropertyCollector()
@@ -175,6 +226,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._semaphore = asyncio.Semaphore(VSPHERE_CONCURRENCY)
         self._tools_timeout = VSPHERE_TOOLS_TIMEOUT
         self._session_token: str | None = None
+        self._login_loop = None
+        self._login_gate: asyncio.Lock | None = None
         self._concurrency = max(1, VSPHERE_CONCURRENCY)
         self._snapshot_timeout = VSPHERE_SNAPSHOT_TIMEOUT
         self._switch_mode = VSPHERE_RANGE_SWITCH_MODE
@@ -193,6 +246,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._choco_feed = TN_DEPOT_CHOCO_FEED or (f"{TN_DEPOT_URL}:8081/repository/chocolatey/" if TN_DEPOT_URL
                                                    else "")
         self._apt_proxy = TN_DEPOT_APT_PROXY or TN_DEPOT_URL
+        self._depot_ports = tuple(int(p) for p in TN_DEPOT_PORTS.replace(" ", "").split(",") if p)
         self._install_timeout = TN_SOFTWARE_INSTALL_TIMEOUT
         self._budget = VSPHERE_PROVISION_BUDGET
         self._guest_poll = 5.0
@@ -243,10 +297,22 @@ class VsphereAPIProvisioner(BaseProvisioner):
             # vCenter returns the token as a JSON string
             return resp.json()
 
+    def _login_lock(self) -> asyncio.Lock:
+        """One login at a time, per event loop (provision() and friends each run in a new one)."""
+        loop = asyncio.get_running_loop()
+        if self._login_loop is not loop:
+            self._login_loop, self._login_gate = loop, asyncio.Lock()
+        return self._login_gate
+
     async def _get_session(self) -> str:
-        """Return a valid session token, creating one if needed."""
+        """Return a valid session token, creating one if needed.
+
+        A build's VMs reach their first REST call together; without the lock each logged in
+        on its own, leaving vCenter with one session per VM (sessions are capped per vCenter)."""
         if not self._session_token:
-            self._session_token = await self._authenticate()
+            async with self._login_lock():
+                if not self._session_token:
+                    self._session_token = await self._authenticate()
         return self._session_token
 
     async def _request(self, client: httpx.AsyncClient, method: str, path: str, **kwargs):
@@ -657,9 +723,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         """Hostname and static IPs, applied while the VM is still powered off.
 
         Linux: cloud-init guestinfo metadata, NICs matched by MAC. Windows: Sysprep
-        guest customization. Routers/firewalls (pfSense, VyOS): none; their NIC order
-        is WAN first (the uplink, when there is one), then the zones, and their config
-        ships separately.
+        guest customization. pfSense: the per-range config.xml (``_pfsense``, planned in
+        ``_plan_appliances``) in ``guestinfo.tn.pfsense.*``, with the NICs' MACs, for the
+        template's boot script to apply. Other routers (VyOS, OPNsense): none yet; their
+        NIC order is WAN first (the uplink, when there is one), then the zones.
 
         A VM with software to install carries ``_guest`` credentials: the Windows
         Administrator password Sysprep sets, or the Linux install user cloud-init creates.
@@ -674,10 +741,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
         elif family == "windows":
             password = creds.password.reveal() if creds else None
             self._wait(vm.CustomizeVM_Task(spec=infra.windows_customization(vm_def, password)), si)
-        # TODO(appliance): render a per-range pfSense config.xml / VyOS config from the
-        # zones and attach it; until then the appliance boots with its template config.
-        # With an uplink, that config must give WAN (NIC 0) the address in vm_def["nics"][0]
-        # and allow only the zones -> TN-DEPOT01 (see the runbook, §4.1a).
+        elif vm_def.get("_pfsense") is not None:
+            macs = [card.macAddress for card in infra.nic_cards(vm.config.hardware.device)]
+            values = pfsense_config.guestinfo(vm_def["_pfsense"], macs)
+            spec = vim.vm.ConfigSpec(extraConfig=[vim.option.OptionValue(key=k, value=v) for k, v in values.items()])
+            self._wait(vm.ReconfigVM_Task(spec=spec), si)
+        # TODO(appliance): VyOS / OPNsense configs. Until then those boot with their
+        # template config (the runbook, §4.1a, says what that config must hold).
 
     def _teardown_sync(self, si, range_id: str, networks: list[dict]) -> int:
         """Remove the range's port groups and its (empty) VM folder. Missing ones are fine."""
@@ -754,6 +824,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 raise RuntimeError("pyvmomi is required to build vSphere ranges (pip install pyvmomi)")
             uplink = self._plan_uplink(vm_defs, allocations)
             self._plan_software(vm_defs, uplink, warnings)
+            self._plan_appliances(vm_defs, template, networks, warnings)
             logical = sorted({int(n["vlan"]) for v in vm_defs for n in v["nics"] if n.get("vlan") is not None})
             physical = {int(k): int(v) for k, v in (allocations.get("physical_vlans") or {}).items()}
             if missing := [v for v in logical if v not in physical]:
@@ -815,7 +886,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
     @staticmethod
     def _redact(exc, *vm_defs: dict) -> str:
-        return guest.redact(str(exc), *(v.get("_guest") for v in vm_defs))
+        # A vSphere fault often has an empty str(); its msg or its type still says what failed.
+        text = str(exc) or getattr(exc, "msg", None) or type(exc).__name__
+        return guest.redact(text, *(v.get("_guest") for v in vm_defs))
 
     def _plan_uplink(self, vm_defs: list[dict], allocations: dict) -> dict | None:
         """Put the edge firewall's WAN NIC (NIC 0) on the uplink network, with its address."""
@@ -841,6 +914,24 @@ class VsphereAPIProvisioner(BaseProvisioner):
         })
         return {"network": self._uplink_network, "ip": ip, "prefix": prefix, "gateway": self._uplink_gateway,
                 "vm": edge["name"], "node_id": edge.get("node_id", "")}
+
+    def _plan_appliances(self, vm_defs: list[dict], template: dict, networks: list[dict],
+                         warnings: list[str]) -> None:
+        """Render each pfSense VM's per-range config.xml (``_pfsense``), after the uplink NIC
+        is planned. The template's ``network.firewall_rules`` apply when it has any; rules
+        that cannot become pfSense rules are skipped with a warning."""
+        net = template.get("network") if isinstance(template.get("network"), dict) else {}
+        rules = [r for r in (net.get("firewall_rules") or []) if isinstance(r, dict)]
+        depot_host = (urlparse(self._depot_url).hostname or "") if self._depot_url else ""
+        for vm_def in vm_defs:
+            if infra.os_family(vm_def) != "appliance" or not pfsense_config.is_pfsense(vm_def):
+                continue
+            cfg = pfsense_config.build_config(
+                vm_def, networks=networks, rules=rules, depot_host=depot_host, depot_ports=self._depot_ports,
+                hostname=infra.hostname(vm_def),
+            )
+            vm_def["_pfsense"] = cfg
+            warnings += [f"VM {vm_def['name']}: {n}" for n in cfg.notes]
 
     def _plan_software(self, vm_defs: list[dict], uplink: dict | None, warnings: list[str]) -> None:
         """Resolve each VM's ``services`` against the catalogue; give VMs that will install
@@ -975,7 +1066,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         ip = await self._get_vm_ip(client, vm_id) if tools_ready else None
         host, datastore = vm_def["_placement"]
         primary = next((n for n in vm_def["nics"] if not n.get("uplink")), vm_def["nics"][0])
+        extra = {"pfsense": vm_def["_pfsense"].summary()} if vm_def.get("_pfsense") is not None else {}
         return {
+            **extra,
             "vm_id": vm_id,
             "name": vm_def["name"],
             "node_id": vm_def.get("node_id", ""),

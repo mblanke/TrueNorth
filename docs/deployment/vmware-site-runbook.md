@@ -195,6 +195,7 @@ uplink (in `group_vars/all/main.yml`, or the `.env.production` keys in brackets)
 | `tn_depot_url` (`TN_DEPOT_URL`) | `http://10.30.32.10` | The depot as range guests reach it. Empty = no deploy-time installs |
 | `tn_depot_choco_feed` (`TN_DEPOT_CHOCO_FEED`) | empty → `http://10.30.32.10:8081/repository/chocolatey/` | Nexus Chocolatey (NuGet) feed |
 | `tn_depot_apt_proxy` (`TN_DEPOT_APT_PROXY`) | **`http://10.30.32.10:3142`** | HTTP **forward** proxy for apt/dnf: apt-cacher-ng on the depot. **Set it**: empty falls back to `TN_DEPOT_URL` (port 80), where nothing listens. Guests keep their stock sources; the Rocky template must use the `http://dl.rockylinux.org` `baseurl` (an HTTPS mirrorlist can only be tunnelled, and the depot refuses tunnels) |
+| `TN_DEPOT_PORTS` | `8081,3142` | TCP ports of the depot each range pfSense lets the zones reach through its WAN; everything else out of the WAN is blocked |
 | `tn_software_install_timeout` (`TN_SOFTWARE_INSTALL_TIMEOUT`) | `1800` | Seconds per VM for all of its installs |
 | `tn_vsphere_provision_budget` (`VSPHERE_PROVISION_BUDGET`) | `3300` | No new provisioning work after this many seconds (Celery redelivers after 3600) |
 
@@ -206,19 +207,36 @@ pool before the build (under the same lock as the VLANs), stored in the range's
 `provisioner_output.uplink`, and released when the range is destroyed. `dPG-TN-SVC`
 itself is never created or removed by TrueNorth.
 
-**pfSense rule requirement.** The provisioner does not configure pfSense yet (there is no
-per-range `config.xml` delivery; `TODO(appliance)` in `vsphere_api.py`). Until it does, the
-pfSense template must provide:
-- WAN = `vtnet0`/`vmx0` (NIC 0), static, with the address recorded in
-  `provisioner_output.uplink.ip`, gateway `10.30.32.1`. Without that, the WAN has no
-  address and every install fails (the range is still built; it is marked partial).
-- Outbound NAT on WAN (the automatic default is fine).
-- WAN egress rules, in this order: **allow** each LAN/zone net → `10.30.32.10` TCP
-  `8081, 3142` (Nexus feed, apt-cacher-ng); **block** everything else outbound on WAN;
-  **block** all inbound on WAN (the default).
+**pfSense is configured per range at deploy.** The worker renders a `config.xml` for every
+pfSense VM in the range (`control-plane/worker/worker/pfsense_config.py`) and writes it to
+the VM's guestinfo (`guestinfo.tn.pfsense.config`, gzip + base64, plus
+`guestinfo.tn.pfsense.ifmap` with the NICs' MACs) before the first power-on. The
+template's boot script (`/usr/local/sbin/tn-pfsense-config`, an `earlyshellcmd`; build
+guide, pfSense) applies it on first boot and reboots once into it. The config holds:
+- WAN = NIC 0 (`vmx0`; matched by MAC in the guest), static, at
+  `provisioner_output.uplink.ip`/`VSPHERE_RANGE_UPLINK_PREFIX`, gateway
+  `VSPHERE_RANGE_UPLINK_GATEWAY`; then one interface per zone at the zone's `.1`. Without
+  an uplink, the first zone takes pfSense's WAN slot (no gateway, NAT off).
+- Outbound NAT on WAN (automatic), the DNS resolver on the zones, no DHCP.
+- Rules: each zone → the firewall's DNS; each zone → `10.30.32.10` (the host of
+  `TN_DEPOT_URL`) TCP `TN_DEPOT_PORTS` (default `8081,3142`: Nexus, apt-cacher-ng); the
+  template's `network.firewall_rules` (`allow`/`deny`, `ports` as TCP/UDP, `dst: "*"` =
+  every range subnet, never the internet; `mirror` is the promiscuous monitoring port
+  group's job), or zone ↔ zone when the template has none. Floating rules on WAN: pass out
+  to the depot ports, **block out everything else**; inbound on WAN is pfSense's default
+  block. Template rules that cannot be translated are skipped and listed in
+  `provisioner_output.warnings`.
+- `provisioner_output.vms[].pfsense` records the interfaces and the config's sha256;
+  `tn-pfsense-config status` in the firewall shell shows what guestinfo holds and what
+  was applied (`/conf/tn-pfsense-config.log`).
+- **Passwords:** none in guestinfo. Range firewalls keep the template's users, groups,
+  web GUI/SSH settings and certificates, so the admin password is the template's.
 - The UniFi side of VLAN 32 (§ table above) still denies `dPG-TN-SVC` → internet, mgmt
   and 192.168.1.0/24. Both layers are needed: the UniFi rule protects the platform if a
   student reconfigures pfSense.
+
+OPNsense and VyOS get no generated config yet (`TODO(appliance)` in `vsphere_api.py`); a
+range that uses one as its edge must carry the rules above in its template.
 
 #### Per-VM software at deploy time
 
@@ -324,6 +342,18 @@ real pyVmomi spec objects. If the smoke test fails, the first places to look are
 7. The power endpoints, which report states as `POWERED_ON` / `POWERED_OFF`.
 8. With the uplink on: the WAN NIC is NIC 0 in the pfSense guest (`vmx0`), on
    `dPG-TN-SVC`, and the zones follow in order.
+8a. pfSense per-range config: on the firewall console, `tn-pfsense-config status` shows the
+   same sha256 for "guestinfo config" and "applied"; `/conf/tn-pfsense-config.log` has one
+   "applied … rebooting" line and the VM rebooted exactly once; Interfaces shows WAN at
+   `provisioner_output.uplink.ip` and each zone at its `.1`; Firewall → Rules → Floating
+   has the depot pass and the block. Not provable off site: that `vmtoolsd --cmd info-get`
+   works as an `earlyshellcmd` this early in pfSense CE 2.7.2's boot, that the generated
+   config loads without the GUI flagging anything, and the vmxN↔MAC mapping on a 6-NIC
+   firewall (soc-training). If the log says "NOT applied", the firewall runs the template
+   config: fix the cause, then `tn-pfsense-config apply`.
+8b. vCenter task waits are bounded (`VSPHERE_SNAPSHOT_TIMEOUT` per task; each
+   WaitForUpdatesEx call returns within 30 s): a clone or snapshot that hangs in vCenter
+   fails that VM with "still running after …" instead of holding the worker.
 9. Guest operations: `guest.customizationInfo` reports `TOOLSDEPLOYPKG_SUCCEEDED` after
    Sysprep; `StartProgramInGuest` as the Sysprep Administrator runs `choco.exe` elevated;
    cloud-init on Ubuntu 24.04 creates `tn-install` from `guestinfo.userdata` (`users:`

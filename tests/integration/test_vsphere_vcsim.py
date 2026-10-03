@@ -37,12 +37,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import hashlib
 import os
 import re
 import shutil
 import socket
 import subprocess
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -57,7 +59,7 @@ yaml = pytest.importorskip("yaml")
 from pyVim.connect import Disconnect, SmartConnect  # noqa: E402
 from pyVim.task import WaitForTask  # noqa: E402
 from pyVmomi import vim, vmodl  # noqa: E402
-from worker import render  # noqa: E402
+from worker import pfsense_config, render  # noqa: E402
 from worker.provisioners import vsphere_api as mod  # noqa: E402
 from worker.provisioners import vsphere_infra as infra  # noqa: E402
 
@@ -212,19 +214,25 @@ class VcsimRestBridge(httpx.AsyncBaseTransport):
 
     def __init__(self, sim: dict):
         self._sim = sim
-        self._net = httpx.AsyncHTTPTransport(verify=False)
+        self._net, self._net_loop = None, None
         self._si = SmartConnect(host=sim["host"], port=sim["port"], user=sim["user"], pwd=sim["password"],
                                 disableSslCertValidation=True)
         self.log: list[tuple[str, str, str]] = []
 
     async def aclose(self) -> None:
-        await self._net.aclose()
+        # Every httpx client the provisioner opens closes its transport on exit; this one is
+        # shared by all of them (on site each client has its own), so closing the pool here
+        # cut off other clients' requests in flight (ReadError <- ClosedResourceError).
+        pass
 
     def close(self) -> None:
         Disconnect(self._si)
 
     async def _vcsim(self, method: str, path: str, headers: dict) -> httpx.Response:
         req = httpx.Request(method, f"{self._sim['url']}{path}", headers=headers)
+        loop = asyncio.get_running_loop()
+        if self._net_loop is not loop:  # pooled connections belong to the loop that opened them
+            self._net, self._net_loop = httpx.AsyncHTTPTransport(verify=False), loop
         resp = await self._net.handle_async_request(req)
         await resp.aread()
         return resp
@@ -426,7 +434,7 @@ def test_range_lifecycle(vcsim, si, prov):
         assert {n.name for n in vm.network}.isdisjoint(MGMT)
         assert [n["network"] for n in reported[f"{R8}-{node}"]["nics"]] == pg_names
 
-    # --- customization: cloud-init guestinfo on Linux, Sysprep on Windows, none on pfSense
+    # --- customization: cloud-init guestinfo on Linux, Sysprep on Windows, config.xml on pfSense
     for node, ip in (("web01", "10.60.201.20"), ("sensor", None)):
         vm = vms[f"{R8}-{node}"]
         extra = _guestinfo(vm)
@@ -439,7 +447,19 @@ def test_range_lifecycle(vcsim, si, prov):
         if ip:
             assert eth["addresses"] == [f"{ip}/24"]
         assert base64.b64decode(extra["guestinfo.userdata"]).decode().startswith("#cloud-config")
-    assert not _guestinfo(vms[f"{R8}-fw"]) and not _guestinfo(vms[f"{R8}-dc01"])
+    assert not _guestinfo(vms[f"{R8}-dc01"])
+    # pfSense: its per-range config.xml, read back from the simulator, NICs named by the
+    # MACs vcsim generated for the clone.
+    fw = vms[f"{R8}-fw"]
+    extra = _guestinfo(fw)
+    assert set(extra) == {"guestinfo.tn.pfsense.config", "guestinfo.tn.pfsense.ifmap"}
+    macs = [c.macAddress.lower() for c in infra.nic_cards(fw.config.hardware.device)]
+    assert extra["guestinfo.tn.pfsense.ifmap"] == f"vmx0={macs[0]} vmx1={macs[1]}"
+    fw_cfg = ET.fromstring(pfsense_config.decode(extra["guestinfo.tn.pfsense.config"]))
+    assert [(el.tag, el.findtext("ipaddr")) for el in fw_cfg.find("interfaces")] == [
+        ("wan", "10.60.201.1"), ("lan", "10.60.203.1")]  # no uplink here: the first zone takes WAN
+    assert reported[f"{R8}-fw"]["pfsense"]["config_sha256"] == hashlib.sha256(
+        pfsense_config.decode(extra["guestinfo.tn.pfsense.config"]).encode()).hexdigest()
     # vcsim accepted the clone spec with vAppConfigRemoved from a vApp template. It proves no
     # more: vcsim ignores vAppConfigRemoved and never copies vAppConfig to a clone (unit test).
     assert vms[f"{R8}-web01"].config.vAppConfig is None and tmpl.config.vAppConfig is not None

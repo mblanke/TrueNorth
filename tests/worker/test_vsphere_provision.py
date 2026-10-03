@@ -16,6 +16,7 @@ import base64
 import itertools
 import json
 import re
+import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -23,7 +24,7 @@ import httpx
 import pytest
 import yaml
 from pyVmomi import vim
-from worker import render, vlan_pool
+from worker import pfsense_config, render, vlan_pool
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_guest as guest_mod
 from worker.provisioners import vsphere_infra as infra
@@ -302,10 +303,9 @@ class FakeVCenter:
             rootFolder=object(), viewManager=SimpleNamespace(CreateContainerView=view), propertyCollector=collector,
             guestOperationsManager=self.guest_ops))
 
-    def wait(self, task, si=None, pc=None, maxWaitTime=None):  # noqa: N803 -- pyVim's keyword
-        assert maxWaitTime, "an unbounded wait can outlive Celery's visibility timeout"
-        # Concurrent waits on the session's one collector steal each other's updates (vcsim hung).
-        assert pc is not None, "wait on a private property collector"
+    def wait(self, task, si, timeout):
+        # mod._wait_task itself (private collector, bounded) is tested in TestWaitTask.
+        assert timeout, "an unbounded wait can outlive Celery's visibility timeout"
         self.waited.append(task.label)
         if task.fail:
             raise RuntimeError(task.fail)
@@ -375,7 +375,7 @@ def vc(monkeypatch):
     FAKE = FakeVCenter(hosts, templates=["tmpl-ubuntu-2404", "tmpl-win2022", "tmpl-pfsense"])
     monkeypatch.setattr(mod, "SmartConnect", MagicMock(side_effect=lambda **kw: FAKE.si()))
     monkeypatch.setattr(mod, "Disconnect", MagicMock())
-    monkeypatch.setattr(mod, "WaitForTask", lambda task, **kw: FAKE.wait(task, **kw))
+    monkeypatch.setattr(mod, "_wait_task", lambda task, si, timeout: FAKE.wait(task, si, timeout))
     for name, value in {
         "VSPHERE_URL": "https://vcsa.test", "VSPHERE_DATACENTER": "DC-Lab", "VSPHERE_CLUSTER": "CL-Lab",
         "VSPHERE_CONTENT_LIBRARY": "", "VSPHERE_NETWORK": "", "VSPHERE_MGMT_NETWORK": MGMT,
@@ -384,7 +384,7 @@ def vc(monkeypatch):
         "VSPHERE_MAX_VCPU_PER_THREAD": 4.0, "VSPHERE_TOOLS_TIMEOUT": 0,
         "VSPHERE_RANGE_UPLINK_NETWORK": "", "VSPHERE_RANGE_UPLINK_POOL": "", "VSPHERE_RANGE_UPLINK_GATEWAY": "",
         "VSPHERE_RANGE_UPLINK_PREFIX": 24, "TN_DEPOT_URL": "", "TN_DEPOT_CHOCO_FEED": "", "TN_DEPOT_APT_PROXY": "",
-        "TN_SOFTWARE_INSTALL_TIMEOUT": 1800, "VSPHERE_PROVISION_BUDGET": 3300,
+        "TN_SOFTWARE_INSTALL_TIMEOUT": 1800, "VSPHERE_PROVISION_BUDGET": 3300, "TN_DEPOT_PORTS": "8081,3142",
     }.items():
         monkeypatch.setattr(mod, name, value)
     return FAKE
@@ -461,6 +461,7 @@ class TestProvisionClone:
         folder = infra.find_folder(vc.dc, f"truenorth/ranges/{R8}")
         assert sorted(v.name for v in folder.childEntity) == names
         assert all(vc.power[vm["vm_id"]] == "POWERED_ON" for vm in result.vms)
+        assert vc.logins == 1  # four VMs reach REST together; one vCenter session between them
         # Cloned straight onto the placed host's local datastore, never the VCSA host.
         for vm in result.vms:
             loc = vc.vms[vm["vm_id"]].placed
@@ -484,7 +485,11 @@ class TestProvisionClone:
         assert fw_spec.config.numCPUs == 2 and fw_spec.config.memoryMB == 2048
         assert fw_spec.powerOn is False and fw_spec.template is False
         fw = next(v for v in vc.vms.values() if v.name == f"{R8}-fw")
-        assert fw.reconfig_specs == [] and fw.customize_specs == []  # appliance: left alone
+        # pfSense: no guest customization; one reconfigure that only sets its config guestinfo.
+        assert fw.customize_specs == []
+        (spec,) = fw.reconfig_specs
+        assert not spec.deviceChange
+        assert {o.key for o in spec.extraConfig} == {"guestinfo.tn.pfsense.config", "guestinfo.tn.pfsense.ifmap"}
 
     def test_linux_guestinfo_carries_the_rendered_ips(self, vc):
         prov = _prov(vc)
@@ -1126,3 +1131,147 @@ class TestDeployTimeSoftware:
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(tpl), {}))
         assert result.status == "ok", result.errors
         assert polls["n"] == 1  # no login attempt while customization was still running
+
+
+# --------------------------------------------------------------------------- #
+# pfSense: the per-range config.xml in guestinfo
+# --------------------------------------------------------------------------- #
+
+
+def _pfsense_guestinfo(vm) -> tuple[ET.Element, str]:
+    extra = {o.key: o.value for spec in vm.reconfig_specs for o in (spec.extraConfig or [])}
+    root = ET.fromstring(pfsense_config.decode(extra["guestinfo.tn.pfsense.config"]))
+    return root, extra["guestinfo.tn.pfsense.ifmap"]
+
+
+class TestPfsenseConfigDelivery:
+    def test_edge_firewall_config_has_the_wan_zones_and_depot_rules(self, depot):
+        vc = depot
+        tpl = {**TEMPLATE, "network": {**TEMPLATE["network"], "firewall_rules": [
+            {"name": "attacker-to-victim", "src": "attacker_infra", "dst": "victim_network", "action": "allow"},
+            {"name": "span", "src": "*", "dst": "network_monitoring", "action": "mirror"},
+            {"name": "ghost", "src": "attacker_infra", "dst": "nowhere", "action": "allow"},
+        ]}}
+        # worker.tasks passes the template through with the rendered vms/networks added.
+        built = {**_rendered(tpl), "network": tpl["network"]}
+        result = _run(_prov(vc).provision(RANGE_ID, built, {"uplink_ip": "10.30.32.101"}))
+        assert result.status == "ok", result.errors
+        fw = next(v for v in vc.vms.values() if v.name == f"{R8}-fw")
+        root, ifmap = _pfsense_guestinfo(fw)
+
+        # NIC order: WAN on the uplink, then the zones; the ifmap names each by the clone's MAC.
+        macs = [c.macAddress.lower() for c in infra.nic_cards(fw.config.hardware.device)]
+        assert ifmap == " ".join(f"vmx{i}={m}" for i, m in enumerate(macs)) and len(macs) == 4
+        ifs = {el.tag: (el.findtext("if"), el.findtext("ipaddr"), el.findtext("subnet"))
+               for el in root.find("interfaces")}
+        assert ifs == {"wan": ("vmx0", "10.30.32.101", "24"), "lan": ("vmx1", "10.60.200.1", "24"),
+                       "opt1": ("vmx2", "10.60.201.1", "24"), "opt2": ("vmx3", "10.60.203.1", "24")}
+        assert root.findtext("gateways/gateway_item/gateway") == "10.30.32.1"
+        assert root.findtext("aliases/alias[name='TN_DEPOT']/address") == "10.30.32.10"
+        assert root.findtext("aliases/alias[name='TN_DEPOT_PORTS']/address") == "8081 3142"
+        descrs = [r.findtext("descr") for r in root.find("filter")]
+        assert "attacker-to-victim" in descrs and not any(d.startswith("span") for d in descrs)
+        assert root.find("system/user") is None  # the guest keeps the template's users
+
+        out = _vm_out(result, "fw")["pfsense"]
+        assert out["delivery"] == "guestinfo" and len(out["config_sha256"]) == 64
+        assert [i["name"] for i in out["interfaces"]] == ["wan", "lan", "opt1", "opt2"]
+        assert any("ghost" in w and "unknown destination zone" in w for w in result.warnings)
+        assert not any("span" in w for w in result.warnings)
+
+    def test_isolated_range_firewall_has_no_wan_uplink(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        assert result.status == "ok", result.errors
+        fw = next(v for v in vc.vms.values() if v.name == f"{R8}-fw")
+        root, _ = _pfsense_guestinfo(fw)
+        assert root.findtext("interfaces/wan/ipaddr") == "10.60.200.1"
+        assert root.find("gateways") is None
+        assert root.findtext("nat/outbound/mode") == "disabled"
+        assert not [r for r in root.find("filter") if r.findtext("floating")]
+
+    def test_other_vms_get_no_pfsense_keys(self, vc):
+        _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        for vm in vc.vms.values():
+            if vm.name.endswith("-fw"):
+                continue
+            keys = {o.key for spec in vm.reconfig_specs for o in (spec.extraConfig or [])}
+            assert not any(k.startswith("guestinfo.tn.pfsense") for k in keys), vm.name
+
+
+# --------------------------------------------------------------------------- #
+# Bounded vCenter task waits
+# --------------------------------------------------------------------------- #
+
+
+def _update(version: str, **props):
+    changes = [SimpleNamespace(name=f"info.{k}", val=v) for k, v in props.items()]
+    return SimpleNamespace(version=version, filterSet=[SimpleNamespace(objectSet=[SimpleNamespace(changeSet=changes)])])
+
+
+class FakeCollector:
+    """A private PropertyCollector: scripted WaitForUpdatesEx results on a fake clock."""
+
+    def __init__(self, updates, clock):
+        self.updates = list(updates)
+        self.clock = clock
+        self.waits: list[tuple[str, int]] = []
+        self.filters: list = []
+        self.destroyed = False
+
+    def CreateFilter(self, spec, partialUpdates):  # noqa: N802, N803
+        self.filters.append(spec)
+
+    def WaitForUpdatesEx(self, version, options):  # noqa: N802
+        self.waits.append((version, options.maxWaitSeconds))
+        nxt = self.updates.pop(0) if self.updates else None
+        if nxt is None:  # nothing changed: vCenter returns after maxWaitSeconds
+            self.clock[0] += options.maxWaitSeconds
+        return nxt
+
+    def DestroyPropertyCollector(self):  # noqa: N802
+        self.destroyed = True
+
+
+class TestWaitTask:
+    def _si(self, *collectors):
+        made = iter(collectors)
+        return SimpleNamespace(content=SimpleNamespace(propertyCollector=SimpleNamespace(
+            CreatePropertyCollector=lambda: next(made))))
+
+    def test_returns_on_success_and_destroys_its_collector(self):
+        clock = [0.0]
+        pc = FakeCollector([_update("1", state="queued"), None, _update("2", state="running"),
+                            _update("3", state="success")], clock)
+        mod._wait_task(vim.Task("task-1", None), self._si(pc), 600, clock=lambda: clock[0])
+        assert pc.destroyed
+        (spec,) = pc.filters
+        assert spec.objectSet[0].obj._moId == "task-1"
+        assert sorted(spec.propSet[0].pathSet) == ["info.error", "info.state"]
+        assert [v for v, _ in pc.waits] == ["", "1", "1", "2"]  # each call resumes from the last version
+
+    def test_a_task_that_never_finishes_times_out(self):
+        clock = [0.0]
+        pc = FakeCollector([_update("1", state="running")], clock)
+        with pytest.raises(mod.TaskTimeoutError, match="still running after 100s"):
+            mod._wait_task(vim.Task("task-2", None), self._si(pc), 100, clock=lambda: clock[0], poll_seconds=30)
+        # Every server-side wait is bounded, and the last one only as long as the time left.
+        assert [s for _, s in pc.waits] == [30, 30, 30, 30, 10]
+        assert clock[0] == 100 and pc.destroyed
+
+    def test_a_failed_task_raises_its_fault(self):
+        clock = [0.0]
+        fault = vim.fault.DuplicateName(name="x")
+        pc = FakeCollector([_update("1", state="error", error=fault)], clock)
+        with pytest.raises(vim.fault.DuplicateName):
+            mod._wait_task(vim.Task("task-3", None), self._si(pc), 600, clock=lambda: clock[0])
+        assert pc.destroyed
+
+    def test_each_wait_has_a_collector_of_its_own(self):
+        clock = [0.0]
+        a = FakeCollector([_update("1", state="success")], clock)
+        b = FakeCollector([_update("1", state="success")], clock)
+        si = self._si(a, b)
+        mod._wait_task(vim.Task("task-4", None), si, 60, clock=lambda: clock[0])
+        mod._wait_task(vim.Task("task-5", None), si, 60, clock=lambda: clock[0])
+        assert a.filters[0].objectSet[0].obj._moId == "task-4" and b.filters[0].objectSet[0].obj._moId == "task-5"
+        assert a.destroyed and b.destroyed

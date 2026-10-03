@@ -42,6 +42,11 @@ source "vsphere-iso" "pfsense" {
   }
 
   iso_paths = ["${local.iso_dir}/${var.iso_pfsense}"]
+  # Second CD (label TNPFSENSE) with the per-range config boot script, for the hand finish
+  # (vm-build-guide.md, pfSense): install it as /usr/local/sbin/tn-pfsense-config and run
+  # `tn-pfsense-config install`. communicator="none" means Packer cannot copy it in itself.
+  cd_files = ["${path.root}/files/pfsense/tn-pfsense-config", "${path.root}/http/pfsense/config.xml"]
+  cd_label = "TNPFSENSE"
 
   communicator = "none"
   boot_wait    = "40s"
@@ -198,6 +203,8 @@ build {
     "source.vsphere-iso.securityonion",
     "source.vsphere-iso.vyos",
   ]
-  # communicator="none": nothing to provision in-guest. pfSense config.xml
-  # (http/pfsense/config.xml) and SO so-setup are applied at deploy time.
+  # communicator="none": nothing to provision in-guest. Each range's pfSense config.xml is
+  # rendered by the worker (worker/pfsense_config.py) and put in the VM's guestinfo; the
+  # template's files/pfsense/tn-pfsense-config applies it at boot (needs Open-VM-Tools).
+  # http/pfsense/config.xml is the template's own config. SO so-setup runs at deploy time.
 }

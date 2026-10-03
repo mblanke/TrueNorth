@@ -22,6 +22,8 @@ variants (§5).
    - Windows: VMware Tools (needed for the IP customization TrueNorth applies at deploy).
    - Linux: `open-vm-tools` and cloud-init with the `VMware` datasource (TrueNorth passes
      each VM's network config through `guestinfo`).
+   - pfSense: the Open-VM-Tools package and the `tn-pfsense-config` boot script (the
+     range's `config.xml` also arrives through `guestinfo`; see the pfSense section).
 4. **Hardware.** vmxnet3 NICs. Disk controller: pvscsi for Windows (the driver is loaded
    at install time from the VMware Tools ISO). Linux has the driver built in.
    **Do not use virtio**; it is Proxmox-only.
@@ -170,13 +172,40 @@ ISO path:
    same network.
 2. Install with the defaults (ZFS or UFS) and reboot. Assign interfaces `vmx0` = WAN,
    `vmx1` = LAN.
-3. In the web UI: System → Package Manager → install **Open-VM-Tools**. Enable SSH. Change
-   no other configuration; each range applies its own rules at deploy (`http/pfsense/config.xml`
-   is the bootstrap).
-4. Shut down, convert to template `pfsense`, register.
+3. In the web UI: System → Package Manager → install **Open-VM-Tools** (required: the
+   per-range config arrives through it). Enable SSH. Set the admin password you want every
+   range firewall to have: ranges keep the template's users (see below).
+4. Install the boot script. From the build host:
+   `scp infra/vsphere/packer/files/pfsense/tn-pfsense-config admin@<pfsense>:/usr/local/sbin/`
+   (or, from the Packer build's second CD: `mount_cd9660 /dev/cd1 /mnt`, then
+   `cp /mnt/tn-pfsense-config /usr/local/sbin/`). Then, in a shell (option 8):
+   ```sh
+   chmod 0755 /usr/local/sbin/tn-pfsense-config
+   tn-pfsense-config install    # adds it as an earlyshellcmd in the template's config
+   tn-pfsense-config status     # "guestinfo config: none" on the template: correct
+   vmtoolsd --cmd "info-get guestinfo.tn.pfsense.config"   # "No value found": tools work
+   ```
+   Change no other configuration.
+5. Shut down, convert to template `pfsense`, register.
 
-At deploy, TrueNorth puts WAN on the range's uplink network and LAN on the range VLAN.
-pfSense owns `.1`, and egress is denied by default.
+**At deploy** the worker renders a `config.xml` for each range firewall
+(`control-plane/worker/worker/pfsense_config.py`) and puts it in the VM's guestinfo
+(`guestinfo.tn.pfsense.config`, gzip + base64, with `guestinfo.tn.pfsense.ifmap`, the
+NICs' MACs) before the first power-on. On that first boot the script writes it to
+`/conf/config.xml` and reboots once into it (one extra boot, about a minute). It holds:
+- WAN = `vmx0` on the uplink with the reserved static address and gateway (when the range
+  has an uplink), then one interface per zone (`lan`, `opt1`…) at the zone's `.1`;
+  interfaces are matched to the guest's NICs by MAC, so a renumbered `vmx` cannot put a
+  zone on the wrong network;
+- outbound NAT on WAN, the DNS resolver on the zones, no DHCP (every VM is static);
+- rules: each zone → the firewall's DNS; each zone → TN-DEPOT01 tcp/8081, 3142; the
+  template's `network.firewall_rules` (or, without any, zone ↔ zone); floating rules that
+  pass only depot traffic out of the WAN and block everything else.
+
+No credentials travel in guestinfo (any vCenter reader can see it): the script keeps the
+template's users, groups, web GUI and SSH settings and certificates, so **every range
+firewall has the template's admin password**. Log: `/conf/tn-pfsense-config.log`.
+A VM with no guestinfo config (the template itself) boots unchanged.
 
 ### Security Onion 2.4
 

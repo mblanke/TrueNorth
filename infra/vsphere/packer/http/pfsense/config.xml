@@ -1,6 +1,10 @@
 <?xml version="1.0"?>
 <!-- TrueNorth Range — pfSense bootstrap config (vSphere). Ported from the Proxmox seed:
-     interface names changed vtnet0/vtnet1 -> vmx0/vmx1 (vmxnet3 under vSphere). -->
+     interface names changed vtnet0/vtnet1 -> vmx0/vmx1 (vmxnet3 under vSphere).
+     This is the TEMPLATE's config only. Each range's firewall gets its own config.xml at
+     deploy (control-plane/worker/worker/pfsense_config.py, delivered in guestinfo), which
+     keeps this file's users, groups, web GUI/SSH settings and certificates. -->
+
 <pfsense>
   <version>23.9</version>
   <system>
@@ -29,6 +33,10 @@
     <enablesshd>enabled</enablesshd>
     <sshport>22</sshport>
     <already_run_config_wizard/>
+    <!-- TrueNorth: at boot, apply the per-range config the worker put in guestinfo
+         (files/pfsense/tn-pfsense-config; needs the Open-VM-Tools package). Without a
+         guestinfo config it does nothing, so the template itself boots as it is. -->
+    <earlyshellcmd>/usr/local/bin/php -q /usr/local/sbin/tn-pfsense-config boot</earlyshellcmd>
   </system>
 
   <interfaces>
