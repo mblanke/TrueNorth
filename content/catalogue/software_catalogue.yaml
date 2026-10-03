@@ -14,7 +14,16 @@
 #     aliases: [other, spellings]
 #     windows: {choco: <chocolatey id>, version: "<optional pinned version>"}
 #     linux:   {apt: [packages], dnf: [packages]}
+#     offline: true | false
 # An entry without a block for the VM's OS family is skipped with a warning.
+#
+# `offline` is about the Windows (Chocolatey) install: true when the package installs
+# with no internet, i.e. its .nupkg embeds the vendor installer (checked by
+# install/lab/roles/tn_prefetch, which flags the others NEEDS-INTERNALIZING) or it is
+# internalized by content/choco/<id>.yaml. Omitted on an entry with a windows block it
+# means false: the Range Designer warns and the worker logs a warning when installing it.
+# Linux-only entries default to true (apt/dnf go through the depot's caching proxy).
+# Embedded-ness checked 2026-10-03 against the community packages' current versions.
 # Every package here must be mirrored in the depot, or its install fails (the range is
 # then marked partial, not failed). Sources: docs/vm-build-sheet.md §5.
 
@@ -52,52 +61,67 @@ software:
   7zip:
     aliases: [7-zip]
     windows: {choco: 7zip}
+    offline: true  # embedded (7zip.install)
     linux: {apt: [p7zip-full], dnf: [p7zip]}
   googlechrome:
     aliases: [chrome, google-chrome]
     windows: {choco: googlechrome}
+    offline: true  # content/choco
   firefoxesr:
     aliases: [firefox, firefox-esr]
     windows: {choco: firefoxesr}
+    offline: true  # content/choco
     # Debian ships firefox-esr; Ubuntu's firefox is a snap, so mirror Mozilla's apt repo.
     linux: {apt: [firefox-esr], dnf: [firefox]}
   notepadplusplus:
     aliases: [notepad++, npp]
     windows: {choco: notepadplusplus}
+    offline: true  # embedded (notepadplusplus.install)
   vscode:
     aliases: [code, vs-code, visualstudiocode]
     windows: {choco: vscode}
+    offline: true  # content/choco
     # Needs Microsoft's apt/yum repo mirrored in the depot.
     linux: {apt: [code], dnf: [code]}
   git:
     windows: {choco: git}
+    offline: true  # embedded (git.install)
     linux: {apt: [git], dnf: [git]}
   python:
     aliases: [python3]
     windows: {choco: python}
+    offline: true  # embedded (python3 -> python314)
     linux: {apt: [python3, python3-pip], dnf: [python3, python3-pip]}
   wireshark:
     windows: {choco: wireshark}  # capture also needs Npcap OEM (not silent-installable free)
+    offline: true  # embedded; its vcredist140 dependency is content/choco
     linux: {apt: [wireshark, tshark], dnf: [wireshark-cli]}
   sysinternals:
     windows: {choco: sysinternals}
+    offline: true  # content/choco
   putty:
     windows: {choco: putty}
+    offline: true  # embedded (putty.portable)
     linux: {apt: [putty-tools], dnf: [putty]}
   winscp:
     windows: {choco: winscp}
+    offline: true  # embedded (winscp.install)
   adobereader:
     aliases: [acrobat, acrobat-reader, adobe-reader]
     windows: {choco: adobereader}
+    offline: true  # content/choco
   vlc:
     windows: {choco: vlc}
+    offline: true  # embedded (vlc.install)
     linux: {apt: [vlc], dnf: [vlc]}
   powershell-core:
     aliases: [pwsh, powershell7]
     windows: {choco: powershell-core}
+    offline: true  # content/choco
   vcredist140:
     aliases: [vcredist]
     windows: {choco: vcredist140}
+    offline: true  # content/choco
 
   # --- Linux victim / infrastructure services (build sheet §5.3) ------------------
   nginx:

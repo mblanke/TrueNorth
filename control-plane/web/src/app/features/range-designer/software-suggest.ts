@@ -100,3 +100,29 @@ export function installWarning(
   if (!e.os_families.includes(family)) return `No ${family} install in the catalogue: deploy skips it`;
   return null;
 }
+
+/**
+ * Why a chip may fail to install in a range with no internet, or null. Only Windows
+ * nodes: the flag is about the Chocolatey package (a wrapper that downloads its vendor
+ * installer at install time). Unknown names and roles are installWarning's business.
+ */
+export function offlineWarning(
+  catalogue: SoftwareCatalogue | null,
+  family: OsFamily | null,
+  value: string,
+): string | null {
+  if (!catalogue || family !== 'windows') return null;
+  const e = entryFor(catalogue, value);
+  if (!e || !e.os_families.includes('windows') || e.offline !== false) return null;
+  return 'Not offline-ready: its package downloads the vendor installer at install time, '
+    + 'so it may fail in a range with no internet (internalize it in content/choco)';
+}
+
+/** The chip's warning: one that stops the install first, else the offline one. */
+export function chipWarning(
+  catalogue: SoftwareCatalogue | null,
+  family: OsFamily | null,
+  value: string,
+): string | null {
+  return installWarning(catalogue, family, value) ?? offlineWarning(catalogue, family, value);
+}

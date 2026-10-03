@@ -30,14 +30,18 @@ iso_kali       = "kali-linux-2026.1-installer-everything-amd64.iso"
 iso_rocky      = "Rocky-10.2-x86_64-dvd1.iso"
 iso_debian     = "debian-13.6.0-amd64-DVD-1.iso"
 iso_parrot     = "Parrot-security-7.3_amd64.iso"
-# NOT present yet — upload to [esx01-local] ISO/ before building these templates:
-# iso_win10         = "Win10_Enterprise_Eval_x64.iso"
-# iso_win10_ltsc    = "Win10_Enterprise_LTSC_2021_x64.iso"   # eval media: also gvlk_win10_ltsc = ""
-# iso_srv2019       = "SERVER_2019_EVAL_x64FRE_en-us.iso"
-# iso_srv2016       = "SERVER_2016_EVAL_x64FRE_en-us.iso"
-# iso_pfsense       = "pfSense-CE-2.7.2-RELEASE-amd64.iso"
-# iso_securityonion = "securityonion-2.4.10-20240220.iso"
-# iso_vyos          = "vyos-1.4-generic-amd64.iso"
+# Downloaded 2026-10-03 to TrueNorth-Demo/ISO/ (signature-verified). Upload them to
+# [esx01-local] ISO/ before building:
+#   govc datastore.upload -ds esx01-local <file> ISO/<file>
+iso_securityonion = "securityonion-2.4.211-20260407.iso"
+iso_vyos          = "vyos-2026.10.01-0035-rolling-generic-amd64.iso"   # free rolling build; 1.4 LTS images need a subscription
+# Reported on the datastore since discovery (2026-10-03). Set the EXACT file names from
+# docs/deployment/vsphere-inventory.md (the discovery ISO table):
+# iso_win10         = "<Windows 10 ISO>"
+# iso_win10_ltsc    = "<Windows 10 LTSC 2021 ISO>"   # eval media: also gvlk_win10_ltsc = ""
+# iso_srv2019       = "<Server 2019 ISO>"
+# iso_srv2016       = "<Server 2016 ISO>"
+# iso_pfsense       = "<pfSense CE ISO>"
 
 # VMware Tools ISO (for the pvscsi WinPE driver). ESXi ships it at this path.
 vmtools_iso_path = "[] /vmimages/tools-isoimages/windows.iso"

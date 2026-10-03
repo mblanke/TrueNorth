@@ -50,10 +50,42 @@ def test_env_override_and_family_detection(client, tmp_path, monkeypatch):
     body = _get(client)
     assert body["roles"] == ["dns"]
     assert body["software"] == [
-        {"name": "nothing", "aliases": [], "os_families": []},
-        {"name": "tool", "aliases": ["t1"], "os_families": ["windows", "linux"]},
-        {"name": "winonly", "aliases": [], "os_families": ["windows"]},
+        {"name": "nothing", "aliases": [], "os_families": [], "offline": True},
+        {"name": "tool", "aliases": ["t1"], "os_families": ["windows", "linux"], "offline": False},
+        {"name": "winonly", "aliases": [], "os_families": ["windows"], "offline": False},
     ]
+
+
+def test_offline_flag(client, tmp_path, monkeypatch):
+    path = tmp_path / "cat.yaml"
+    path.write_text(yaml.safe_dump({"software": {
+        "wrapper": {"windows": {"choco": "wrapper"}},                    # unknown Windows: false
+        "embedded": {"windows": {"choco": "embedded"}, "offline": True},
+        "flagged": {"windows": {"choco": "flagged"}, "offline": False},
+        "linuxonly": {"linux": {"apt": ["x"]}},                          # apt cache: true
+    }}))
+    monkeypatch.setenv("TN_SOFTWARE_CATALOGUE", str(path))
+    flags = {e["name"]: e["offline"] for e in _get(client)["software"]}
+    assert flags == {"wrapper": False, "embedded": True, "flagged": False, "linuxonly": True}
+
+
+def test_real_catalogue_offline_flags_match_content_choco(client):
+    """Every content/choco package is marked offline, and every Windows entry says
+    explicitly whether it is offline-ready (no silent defaults in the shipped file)."""
+    from app.routers.software_catalogue import _REPO_COPY
+
+    doc = yaml.safe_load(_REPO_COPY.read_text(encoding="utf-8"))
+    by_name = {e["name"]: e for e in _get(client)["software"]}
+    internalized = {p.stem for p in (_REPO_COPY.parents[1] / "choco").glob("*.yaml")}
+    assert internalized, "content/choco has no definitions"
+    choco_ids = {}
+    for name, entry in doc["software"].items():
+        if (entry or {}).get("windows", {}).get("choco"):
+            assert isinstance(entry.get("offline"), bool), f"{name}: Windows entry without an offline flag"
+            choco_ids[entry["windows"]["choco"].lower()] = name
+    for pkg in internalized:
+        assert pkg in choco_ids, f"content/choco/{pkg}.yaml is not a catalogue Chocolatey id"
+        assert by_name[choco_ids[pkg]]["offline"] is True
 
 
 def test_missing_file_is_503_not_empty(client, tmp_path, monkeypatch):

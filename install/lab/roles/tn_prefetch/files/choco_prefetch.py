@@ -15,9 +15,13 @@ metadata. The "chocolatey" group lists hosted first.
 
 Step 5 matters: many community packages are wrappers whose chocolateyInstall.ps1 fetches
 the vendor installer at install time (e.g. from dl.google.com). Those fail in a no-egress
-range even though the .nupkg is in the depot. They need internalizing (Chocolatey for
-Business, or by hand: put the installer in the raw "installers" repo and repack) or
-baking into the template. The report lists them.
+range even though the .nupkg is in the depot. They need internalizing: add a definition
+to content/choco/ (scripts/lab/choco-internalize.py builds and pushes an offline package
+with the same id), or bake the app into the template. The report lists them.
+
+--skip: ids that choco-internalize.py builds (content/choco). They are skipped both as
+catalogue entries and as dependencies, so no community wrapper of the same id lands in
+chocolatey-hosted or the proxy cache, where it could compete with the offline build.
 
 Credentials: NEXUS_USER / NEXUS_PASSWORD in the environment (the upload-only tn-prefetch
 user). Never printed.
@@ -96,7 +100,8 @@ def inspect(nupkg):
             for line in z.read(name).decode("utf-8", "replace").splitlines():
                 if line.lstrip().startswith("#"):
                     continue
-                urls.update(u.rstrip(".,;") for u in URL_RE.findall(line))
+                # The depot's own raw repo (content/choco packages) is not the internet.
+                urls.update(u.rstrip(".,;") for u in URL_RE.findall(line) if "/repository/installers" not in u)
     return pid, ver, deps, sorted(urls), embedded
 
 
@@ -120,6 +125,7 @@ def main():
     ap.add_argument("--upstream", default="https://community.chocolatey.org/api/v2/")
     ap.add_argument("--packages", required=True, help="JSON list of {choco, version?}")
     ap.add_argument("--report", required=True)
+    ap.add_argument("--skip", default="", help="comma-separated ids internalized elsewhere (content/choco)")
     args = ap.parse_args()
     nexus = args.nexus.rstrip("/")
     upstream = args.upstream if args.upstream.endswith("/") else args.upstream + "/"
@@ -134,6 +140,7 @@ def main():
 
     with open(args.packages) as fh:
         queue = [(p["choco"], str(p.get("version") or "") or None, True) for p in json.load(fh)]
+    skip = {s.strip().lower() for s in args.skip.split(",") if s.strip()}
     seen, results = set(), []
     while queue:
         pkg_id, version, top = queue.pop(0)
@@ -142,6 +149,12 @@ def main():
             continue
         seen.add(key)
         rec = {"id": pkg_id, "requested_version": version, "catalogue": top}
+        if pkg_id.lower() in skip:
+            if pkg_id.lower() not in {r["id"].lower() for r in results if r["hosted"] == "internal"}:
+                rec.update(hosted="internal", offline_safe=True)
+                results.append(rec)
+                print(f"internal  {pkg_id}  (offline build from content/choco; not fetched)")
+            continue
         try:
             version = version or latest_version(upstream, pkg_id)
             data, rec["source"] = download(nexus, upstream, pkg_id, version)

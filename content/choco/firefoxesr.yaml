@@ -1,0 +1,23 @@
+# Firefox ESR, x64 MSI (en-US). Replaces the community "firefoxesr" wrapper, which
+# downloads the installer from download.mozilla.org at install time.
+# sha256: Mozilla's published SHA256SUMS for the release
+# (https://ftp.mozilla.org/pub/firefox/releases/140.17.0esr/SHA256SUMS,
+# "win64/en-US/Firefox Setup 140.17.0esr.msi").
+# Update: change the version in `version` and in the URL, take the new line from that
+# release's SHA256SUMS.
+name: firefoxesr
+version: "140.17.0"
+revision: 1
+title: Mozilla Firefox ESR (TrueNorth offline)
+authors: Mozilla
+type: msi
+silent_args: /qn /norestart
+valid_exit_codes: [0, 1641, 3010]
+software_name: Mozilla Firefox
+installers:
+  - arch: x64
+    url: https://ftp.mozilla.org/pub/firefox/releases/140.17.0esr/win64/en-US/Firefox%20Setup%20140.17.0esr.msi
+    file: FirefoxSetup-140.17.0esr-x64.msi
+    sha256: 67c3bdbbea8e3f8b506f1d427bd9728be59d030b4893aae93ea5c2c4201958fe
+uninstall:
+  silent_args: /qn /norestart

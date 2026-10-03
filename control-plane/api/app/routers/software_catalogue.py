@@ -6,7 +6,8 @@ The catalogue is ``content/catalogue/software_catalogue.yaml``; the provisioning
 reads it to turn a node's ``services`` names into installs. The API image is built
 from control-plane/api alone, so the file is found through ``TN_SOFTWARE_CATALOGUE``,
 then ``/app/content/catalogue`` (a compose mount), then the repository checkout. This
-is a deliberately small loader: it reports names, aliases and OS families and never
+is a deliberately small loader: it reports names, aliases, OS families and whether the
+Windows install is offline-ready, and never
 resolves installs, which stay the worker's business.
 """
 
@@ -32,6 +33,9 @@ class SoftwareEntryOut(BaseModel):
     name: str
     aliases: list[str]
     os_families: list[str]  # subset of ["windows", "linux"]
+    # The Windows (Chocolatey) install works with no internet: the package embeds its
+    # installer or is internalized (content/choco). Same rule as the worker's is_offline.
+    offline: bool
 
 
 class SoftwareCatalogueOut(BaseModel):
@@ -61,6 +65,14 @@ def _families(entry: dict) -> list[str]:
     return out
 
 
+def _offline(entry: dict) -> bool:
+    """The entry's ``offline`` flag; unset: false with a windows block, true otherwise."""
+    flag = entry.get("offline")
+    if isinstance(flag, bool):
+        return flag
+    return "windows" not in _families(entry)
+
+
 def summarise(doc: object) -> SoftwareCatalogueOut:
     """Names, aliases and OS families from a parsed catalogue document."""
     if not isinstance(doc, dict) or not isinstance(doc.get("software"), dict):
@@ -74,6 +86,7 @@ def summarise(doc: object) -> SoftwareCatalogueOut:
             name=_key(name),
             aliases=[_key(a) for a in entry.get("aliases") or [] if _key(a)],
             os_families=_families(entry),
+            offline=_offline(entry),
         ))
     software.sort(key=lambda e: e.name)
     roles = sorted({_key(r) for r in doc.get("roles") or [] if _key(r)})

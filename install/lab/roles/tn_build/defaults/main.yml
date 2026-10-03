@@ -22,6 +22,7 @@ tn_build_packages:
   - genisoimage
   - qemu-utils # qemu-img: disk conversion and inspection
   - python3-venv
+  - python3-yaml # scripts/lab/choco-internalize.py reads content/choco/*.yaml
   # prefetch.yml warms the depot from throwaway ubuntu:24.04 / rocky:9 containers, so
   # the dependency closure is that of a minimal system, not of this build host.
   - docker.io

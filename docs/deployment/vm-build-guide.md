@@ -48,12 +48,9 @@ which prints an ISO coverage table.
 | rocky | `Rocky-10.2-x86_64-dvd1.iso` | ✅ Rocky 10 |
 | debian13 | `debian-13.6.0-amd64-DVD-1.iso` | ✅ |
 | parrot | `Parrot-security-7.3_amd64.iso` | ✅ installer ignores preseed, so the build is partly manual |
-| win10-22h2 | — | ❌ get the Windows 10 Enterprise eval ISO |
-| win10-ltsc | — | ❌ get Windows 10 Enterprise LTSC 2021 (eval or VL); catalogue row is `enabled=no` until it is built |
-| srv2019 / srv2016 | — | ❌ get the eval ISOs (2019 is needed for SharePoint 2019) |
-| pfsense | — | ❌ get pfSense CE 2.7.2 (Netgate now ships a net installer; the 2.7.2 ISO is on mirrors) |
-| securityonion | — | ❌ get Security Onion 2.4.x |
-| vyos | — | ❌ get VyOS 1.4 (rolling, or a stream build) |
+| win10-22h2, win10-ltsc, srv2019, srv2016, pfsense | on the datastore (reported 2026-10-03) | ✅ take the exact file names from the discovery ISO table. win10-ltsc's catalogue row stays `enabled=no` until it is built |
+| securityonion | `securityonion-2.4.211-20260407.iso` | ⬆ downloaded to `TrueNorth-Demo/ISO/` (15.5 GB, SHA256 checked); upload to `[esx01-local] ISO/` |
+| vyos | `vyos-2026.10.01-0035-rolling-generic-amd64.iso` | ⬆ downloaded to `TrueNorth-Demo/ISO/` (628 MB, minisign checked with the nightly key); upload to `[esx01-local] ISO/`. This is the free rolling build; 1.4 LTS images need a subscription |
 | win7-sp1 | — | ❌ licensed media only, so this needs procurement |
 | Role media | SQL 2022/2025 Ent, Exchange 2016, SharePoint 2019, Office Pro Plus 2021 | ✅ used for role snapshots (§6), not for templates |
 
@@ -347,6 +344,39 @@ by name and by alias. Reload the designer after registering. `win11-soc` (and
 `windows-11-soc`) then appear in a node's OS field. Ranges resolve the name to the
 template at provision time. Check with:
 `GET /api/golden-images/resolve?os=win11-soc&hypervisor=vsphere`.
+
+### Offline Chocolatey packages
+
+A variant built with `depot_url`, and every Windows VM that gets software at deploy time,
+installs from the depot's `chocolatey` feed with no internet. Many community packages
+are wrappers that download the vendor installer at install time (`googlechrome`,
+`firefoxesr`, `adobereader`, `vscode`, `powershell-core`, `vcredist140`,
+`sysinternals`); those would fail. TrueNorth replaces them with offline builds of the
+same id, from one small definition each in `content/choco/<id>.yaml`. The prefetch
+window builds them on TN-BUILD01 (`scripts/lab/choco-internalize.py`): the installer
+goes to the depot's raw repo `installers/<id>/<version>/`, and a package whose install
+script downloads it from there, checksum-verified, goes to `chocolatey-hosted` with a
+version that sorts above the community one (`<vendor version>.<revision>`).
+
+In the software catalogue each Windows entry carries `offline: true` when its install
+works with no internet (the package embeds its installer, or it is in `content/choco`).
+The Range Designer shows a warning on chips that are not offline-ready, and the worker
+logs a warning when it installs one.
+
+**Add a package:** write `content/choco/<id>.yaml` (copy a similar one: vendor URL,
+`sha256` or `""`, `type`, `silent_args`), set `offline: true` on its catalogue entry,
+check with `python3 scripts/lab/choco-internalize.py --pack-only --baked-url
+http://10.30.32.10:8081 --workdir /tmp/tn-choco`, then run the prefetch window. A blank
+checksum is printed as `RECORDED sha256 …`: commit it into the definition.
+
+**Update a version:** change `version` (and the URL), reset `revision: 1`, set the new
+`sha256` (or `""`), run the prefetch window. Same vendor version but a changed
+definition: bump `revision` (the hosted repo never replaces a version). A floating URL
+(`googlechrome`, `sysinternals`) fails with `sha256 mismatch` once the vendor ships a new
+build: that is the cue to update.
+
+Details, including why our build wins over the community package:
+[`install/lab/README.md`](../../install/lab/README.md#offline-chocolatey-packages).
 
 ## 6. Role snapshots — Exchange, SharePoint, SQL, AD CS (build sheet §0 "R")
 

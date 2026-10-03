@@ -65,6 +65,35 @@ class TestCatalogue:
         assert spec.version == "3.12.7"
         assert guest.windows_commands([spec], "http://d/")[0].arguments.endswith("--version 3.12.7")
 
+    def test_offline_flag(self):
+        c = cat.parse({"software": {
+            "wrapper": {"windows": {"choco": "wrapper"}},  # no flag on a Windows entry: false
+            "internal": {"windows": {"choco": "internal"}, "offline": True},
+            "both": {"windows": {"choco": "both"}, "linux": {"apt": ["both"]}, "offline": False},
+            "aptonly": {"linux": {"apt": ["aptonly"]}},
+        }})
+        win, _ = cat.resolve(["wrapper", "internal", "both"], "windows", "win11", c)
+        assert {s.name: s.offline for s in win} == {"wrapper": False, "internal": True, "both": False}
+        lin, _ = cat.resolve(["both", "aptonly"], "linux", "ubuntu-2404", c)
+        assert all(s.offline for s in lin)  # apt/dnf: the depot's caching proxy
+        assert cat.is_offline({"linux": {"apt": ["x"]}}) and not cat.is_offline({"windows": {"choco": "x"}})
+
+    def test_shipped_windows_entries_are_offline_ready(self, catalogue):
+        names = [n for n, e in catalogue.entries.items() if (e.get("windows") or {}).get("choco")]
+        specs, _ = cat.resolve(names, "windows", "win11", catalogue)
+        assert specs and all(s.offline for s in specs), [s.name for s in specs if not s.offline]
+
+    def test_worker_warns_when_installing_a_non_offline_package(self, caplog):
+        from worker.provisioners import vsphere_api
+
+        specs = [cat.InstallSpec("7zip", "choco", ("7zip",), offline=True),
+                 cat.InstallSpec("wrapper", "choco", ("wrapper",), offline=False)]
+        with caplog.at_level("WARNING", logger=vsphere_api.logger.name):
+            assert vsphere_api.warn_not_offline("WS01", specs) == ["wrapper"]
+        assert any("WS01" in r.getMessage() and "wrapper" in r.getMessage() and "not offline-ready"
+                   in r.getMessage() for r in caplog.records)
+        assert vsphere_api.warn_not_offline("WS01", specs[:1]) == []
+
     def test_bad_or_missing_file(self, tmp_path):
         with pytest.raises(cat.CatalogueError):
             cat.load(tmp_path / "nope.yaml")

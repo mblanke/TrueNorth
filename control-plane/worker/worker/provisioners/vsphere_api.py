@@ -147,6 +147,20 @@ METRIC_PATHS = (
 )
 
 
+def warn_not_offline(vm_name: str, specs) -> list[str]:
+    """Log a warning for each spec that is not offline-ready; returns their names.
+
+    Not offline-ready means the catalogue does not say ``offline: true``: the Chocolatey
+    package may download its vendor installer at install time, which fails in a range
+    with no internet (content/choco internalizes such packages)."""
+    names = [s.name for s in specs if not getattr(s, "offline", True)]
+    for name in names:
+        logger.warning("VM %s: installing %s, which is not offline-ready (its package may download the "
+                       "vendor installer at install time and fail with no internet); internalize it in "
+                       "content/choco, then set offline: true in the software catalogue", vm_name, name)
+    return names
+
+
 def _names(csv: str) -> set[str]:
     return {n.strip() for n in (csv or "").split(",") if n.strip()}
 
@@ -1169,6 +1183,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
     def _install_sync(self, si, vm_def: dict, vm_id: str, deadline: float) -> dict:
         creds: guest.GuestCredentials = vm_def["_guest"]
         specs = vm_def["_software"]
+        warn_not_offline(str(vm_def.get("name") or vm_id), specs)
         if creds.family == "windows":
             commands, cleanup = guest.windows_commands(specs, self._choco_feed), None
         else:

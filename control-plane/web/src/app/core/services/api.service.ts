@@ -102,6 +102,11 @@ export interface SoftwareEntry {
   aliases: string[];
   /** Which guest families the catalogue can install it on. */
   os_families: ('windows' | 'linux')[];
+  /**
+   * The Windows (Chocolatey) install works with no internet: the package embeds its
+   * installer or is internalized via content/choco. Absent from older APIs.
+   */
+  offline?: boolean;
 }
 
 /** GET /software-catalogue: installable software plus role names (never installed). */

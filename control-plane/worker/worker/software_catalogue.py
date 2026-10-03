@@ -34,6 +34,9 @@ class InstallSpec:
     manager: str  # choco | apt | dnf
     packages: tuple[str, ...]
     version: str | None = None
+    # False: the install may need the internet (a Chocolatey wrapper that downloads the
+    # vendor installer), so it can fail in a no-egress range. See is_offline().
+    offline: bool = True
 
 
 @dataclass(frozen=True)
@@ -90,6 +93,20 @@ def load(path: str | os.PathLike | None = None) -> Catalogue:
     return _load(str(p), mtime)
 
 
+def is_offline(entry: dict) -> bool:
+    """Whether an entry's Windows (Chocolatey) install works with no internet.
+
+    The entry's ``offline`` flag when it has one; otherwise false for an entry with a
+    windows block (unknown, so assume it downloads at install time) and true for a
+    Linux-only one (apt/dnf go through the depot's caching proxy).
+    """
+    flag = (entry or {}).get("offline")
+    if isinstance(flag, bool):
+        return flag
+    win = (entry or {}).get("windows")
+    return not (isinstance(win, dict) and win.get("choco"))
+
+
 def linux_manager(os_name: str) -> str:
     """``dnf`` for Red Hat family guests, else ``apt``."""
     return "dnf" if _key(os_name).startswith(_DNF_PREFIXES) else "apt"
@@ -120,7 +137,8 @@ def resolve(services, family: str, os_name: str, catalogue: Catalogue) -> tuple[
         block = entry.get(family) or {}
         if family == "windows" and block.get("choco"):
             version = block.get("version")
-            specs.append(InstallSpec(canonical, "choco", (str(block["choco"]),), str(version) if version else None))
+            specs.append(InstallSpec(canonical, "choco", (str(block["choco"]),), str(version) if version else None,
+                                     offline=is_offline(entry)))
             continue
         if family == "linux":
             manager = linux_manager(os_name)

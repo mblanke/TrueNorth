@@ -43,7 +43,7 @@ import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
 import { ApiService, SoftwareCatalogue } from '@core/services/api.service';
 import {
-  OsFamily, ServiceSuggestion, installWarning, joinServices, osFamilyOf, parseServices, suggestServices,
+  OsFamily, ServiceSuggestion, chipWarning, joinServices, osFamilyOf, parseServices, suggestServices,
 } from './software-suggest';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { Range, Template } from '@core/models';
@@ -1401,7 +1401,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
   }
 
   serviceWarning(value: string): string | null {
-    return installWarning(this.softwareCatalogue(), this.selectedFamily(), value);
+    return chipWarning(this.softwareCatalogue(), this.selectedFamily(), value);
   }
 
   /** Free text (Enter or comma). Skipped when an autocomplete option is taking the key. */

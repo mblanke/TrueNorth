@@ -1,13 +1,15 @@
 import { SoftwareCatalogue } from '@core/services/api.service';
 import {
-  installWarning, joinServices, osFamilyOf, parseServices, suggestServices,
+  chipWarning, installWarning, joinServices, offlineWarning, osFamilyOf, parseServices, suggestServices,
 } from './software-suggest';
 
 const CATALOGUE: SoftwareCatalogue = {
   software: [
-    { name: '7zip', aliases: ['7-zip'], os_families: ['windows', 'linux'] },
-    { name: 'googlechrome', aliases: ['chrome', 'google-chrome'], os_families: ['windows'] },
-    { name: 'nginx', aliases: [], os_families: ['linux'] },
+    { name: '7zip', aliases: ['7-zip'], os_families: ['windows', 'linux'], offline: true },
+    // A community wrapper that downloads its installer at install time.
+    { name: 'googlechrome', aliases: ['chrome', 'google-chrome'], os_families: ['windows'], offline: false },
+    { name: 'nginx', aliases: [], os_families: ['linux'], offline: true },
+    // No `offline` (an older API): never warned about.
     { name: 'sysinternals', aliases: [], os_families: ['windows'] },
   ],
   roles: ['dns', 'iis'],
@@ -68,6 +70,30 @@ describe('software-suggest', () => {
       expect(installWarning(CATALOGUE, 'linux', 'frobnicator')).toContain('Not in the software catalogue');
       expect(installWarning(CATALOGUE, 'appliance', '7zip')).toContain('Appliances');
       expect(installWarning(null, 'linux', 'anything')).toBeNull();
+    });
+  });
+
+  describe('offlineWarning', () => {
+    it('flags Windows software that is not offline-ready, by name or alias', () => {
+      expect(offlineWarning(CATALOGUE, 'windows', 'googlechrome')).toContain('Not offline-ready');
+      expect(offlineWarning(CATALOGUE, 'windows', 'Chrome')).toContain('Not offline-ready');
+    });
+
+    it('is quiet for offline-ready, unflagged, non-Windows, unknown and role chips', () => {
+      expect(offlineWarning(CATALOGUE, 'windows', '7zip')).toBeNull();
+      expect(offlineWarning(CATALOGUE, 'windows', 'sysinternals')).toBeNull();
+      expect(offlineWarning(CATALOGUE, 'linux', 'googlechrome')).toBeNull();
+      expect(offlineWarning(CATALOGUE, null, 'googlechrome')).toBeNull();
+      expect(offlineWarning(CATALOGUE, 'windows', 'frobnicator')).toBeNull();
+      expect(offlineWarning(CATALOGUE, 'windows', 'dns')).toBeNull();
+      expect(offlineWarning(null, 'windows', 'googlechrome')).toBeNull();
+    });
+
+    it('chipWarning puts a blocking problem first, then the offline one', () => {
+      expect(chipWarning(CATALOGUE, 'windows', 'googlechrome')).toContain('Not offline-ready');
+      expect(chipWarning(CATALOGUE, 'linux', 'googlechrome')).toContain('No linux install');
+      expect(chipWarning(CATALOGUE, 'windows', 'frobnicator')).toContain('Not in the software catalogue');
+      expect(chipWarning(CATALOGUE, 'windows', '7zip')).toBeNull();
     });
   });
 
