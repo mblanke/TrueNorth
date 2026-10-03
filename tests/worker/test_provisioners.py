@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -235,22 +235,33 @@ class TestVsphereAPIProvisioner:
         return m
 
     def test_health_check_ok(self, vsphere_env):
+        # This used to patch httpx.Client, which the provisioner never uses (it is
+        # async), so the test passed without a single request being made.
+        import httpx
         from worker.provisioners.vsphere_api import VsphereAPIProvisioner
 
+        seen: list[str] = []
+
+        def vcenter(request: httpx.Request) -> httpx.Response:
+            seen.append(f"{request.method} {request.url.path}")
+            if request.url.path == "/api/session":
+                return httpx.Response(201, json="test-token-abc")
+            assert request.headers["vmware-api-session-id"] == "test-token-abc"
+            state = {"vm-1": "POWERED_ON", "vm-2": "POWERED_OFF"}[request.url.path.split("/")[4]]
+            return httpx.Response(200, json={"state": state})
+
         prov = VsphereAPIProvisioner()
-
-        session_token = "test-token-abc"
-        mock_client = MagicMock()
-        mock_client.__enter__ = MagicMock(return_value=mock_client)
-        mock_client.__exit__ = MagicMock(return_value=False)
-        mock_client.post.return_value = self._make_response(session_token)
-        mock_client.get.return_value = self._make_response([{"vm": "vm-1", "power_state": "POWERED_ON"}])
-        mock_client.delete.return_value = self._make_response(None, 204)
-
-        with patch("worker.provisioners.vsphere_api.httpx.Client", return_value=mock_client):
-            result = asyncio.run(prov.health_check("range-test", {}))
+        prov._transport = httpx.MockTransport(vcenter)
+        output = {"vms": [{"name": "a", "vm_id": "vm-1"}, {"name": "b", "vm_id": "vm-2"}]}
+        result = asyncio.run(prov.health_check("range-test", output))
 
         assert isinstance(result, HealthResult)
+        assert seen == ["POST /api/session", "GET /api/vcenter/vm/vm-1/power", "GET /api/vcenter/vm/vm-2/power"]
+        assert result.healthy is False and result.status == "degraded"
+        assert result.vm_statuses == [
+            {"vm_id": "vm-1", "name": "a", "status": "powered_on", "healthy": True},
+            {"vm_id": "vm-2", "name": "b", "status": "powered_off", "healthy": False},
+        ]
 
     def test_destroy_empty_state(self, vsphere_env):
         from worker.provisioners.vsphere_api import VsphereAPIProvisioner

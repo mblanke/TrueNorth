@@ -1,0 +1,115 @@
+---
+# Keycloak is reached over the container network from the platform host. Going
+# via the public URL would depend on nginx and TLS being correct first, which
+# makes a TLS problem look like an identity problem.
+tn_kc_internal: "http://localhost:8080/auth"
+tn_kc_realm_url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}"
+tn_kc_components_url: "{{ tn_kc_realm_url }}/components"
+tn_kc_provider_type: org.keycloak.storage.UserStorageProvider
+tn_kc_mapper_type: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+
+# AD user federation. editMode READ_ONLY on purpose: Active Directory is the
+# system of record for identity, and TrueNorth never writes back to it.
+tn_kc_ldap_body:
+  name: corp-ad
+  providerId: ldap
+  providerType: org.keycloak.storage.UserStorageProvider
+  config:
+    enabled: ["true"]
+    vendor: ["ad"]
+    editMode: ["READ_ONLY"]
+    importEnabled: ["true"]
+    syncRegistrations: ["false"]
+    connectionUrl: ["ldaps://{{ tn_dc_host }}:{{ tn_ldap_port }}"]
+    bindDn: ["{{ tn_ldap_bind_dn }}"]
+    bindCredential: ["{{ vault_ldap_bind_password }}"]
+    usersDn: ["{{ tn_ldap_users_dn }}"]
+    usernameLDAPAttribute: ["sAMAccountName"]
+    rdnLDAPAttribute: ["cn"]
+    uuidLDAPAttribute: ["objectGUID"]
+    userObjectClasses: ["person, organizationalPerson, user"]
+    searchScope: ["2"]
+    # The AD CS root CA is mounted into the Keycloak truststore by roles/tn_tls.
+    useTruststoreSpi: ["always"]
+    startTls: ["false"]
+    pagination: ["true"]
+    batchSizeForSync: ["1000"]
+    fullSyncPeriod: ["3600"]
+    changedSyncPeriod: ["300"]
+    trustEmail: ["true"]
+    cachePolicy: ["DEFAULT"]
+
+# Sub-mappers on the federation component.
+tn_kc_ldap_mappers:
+  - name: ad-groups
+    providerId: group-ldap-mapper
+    providerType: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+    parentId: "{{ tn_keycloak_ldap_component_id }}"
+    config:
+      groups.dn: ["{{ tn_ldap_groups_dn }}"]
+      group.name.ldap.attribute: ["cn"]
+      group.object.classes: ["group"]
+      membership.ldap.attribute: ["member"]
+      membership.attribute.type: ["DN"]
+      membership.user.ldap.attribute: ["sAMAccountName"]
+      mode: ["READ_ONLY"]
+      user.roles.retrieve.strategy: ["LOAD_GROUPS_BY_MEMBER_ATTRIBUTE"]
+      preserve.group.inheritance: ["false"]
+      drop.non.existing.groups.during.sync: ["false"]
+
+  # objectGUID is binary; without is.binary.attribute the value arrives mangled.
+  - name: ad-object-guid
+    providerId: user-attribute-ldap-mapper
+    providerType: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+    parentId: "{{ tn_keycloak_ldap_component_id }}"
+    config:
+      ldap.attribute: ["objectGUID"]
+      user.model.attribute: ["adObjectGuid"]
+      is.binary.attribute: ["true"]
+      read.only: ["true"]
+      always.read.value.from.ldap: ["true"]
+
+  - name: ad-distinguished-name
+    providerId: user-attribute-ldap-mapper
+    providerType: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+    parentId: "{{ tn_keycloak_ldap_component_id }}"
+    config:
+      ldap.attribute: ["distinguishedName"]
+      user.model.attribute: ["adDistinguishedName"]
+      read.only: ["true"]
+      always.read.value.from.ldap: ["true"]
+
+# The claim contract the registration flow depends on. email / given_name /
+# family_name come from the built-in profile+email scopes.
+tn_kc_protocol_mappers:
+  # WITHOUT THIS the access token has no `groups` claim, and role suggestion
+  # and group-based registration eligibility both silently do nothing.
+  - name: groups
+    protocol: openid-connect
+    protocolMapper: oidc-group-membership-mapper
+    config:
+      claim.name: "groups"
+      full.path: "false"
+      access.token.claim: "true"
+      id.token.claim: "true"
+      userinfo.token.claim: "true"
+
+  - name: ad_object_guid
+    protocol: openid-connect
+    protocolMapper: oidc-usermodel-attribute-mapper
+    config:
+      user.attribute: "adObjectGuid"
+      claim.name: "ad_object_guid"
+      jsonType.label: "String"
+      access.token.claim: "true"
+      id.token.claim: "true"
+
+  - name: ad_distinguished_name
+    protocol: openid-connect
+    protocolMapper: oidc-usermodel-attribute-mapper
+    config:
+      user.attribute: "adDistinguishedName"
+      claim.name: "ad_distinguished_name"
+      jsonType.label: "String"
+      access.token.claim: "true"
+      id.token.claim: "true"

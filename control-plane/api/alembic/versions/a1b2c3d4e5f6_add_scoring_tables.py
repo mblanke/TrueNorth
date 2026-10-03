@@ -10,14 +10,15 @@ import sys
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-
 from alembic import op
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from app.models import GUID
 
 revision: str = "a1b2c3d4e5f6"
-down_revision: str | None = "3731bf01ced3"
+# Re-pointed so b0c1d2e3f4a5 can create the 37 tables that no migration ever
+# built — without them this chain cannot run on an empty database.
+down_revision: str | None = "b0c1d2e3f4a5"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

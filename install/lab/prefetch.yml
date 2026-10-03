@@ -1,0 +1,85 @@
+---
+# Warm TN-DEPOT01 with every package in content/catalogue/software_catalogue.yaml, so
+# ranges can install them with no internet.
+#
+#   ../../scripts/lab/depot-uplink.sh on --apply       # 1. give the depot its uplink
+#   ansible-playbook prefetch.yml --ask-vault-pass      # 2. this
+#   ../../scripts/lab/depot-uplink.sh off --apply      # 3. take it away again
+#
+# Who fetches upstream: the DEPOT. A Nexus proxy repository and apt-cacher-ng both make
+# the outbound request themselves; TN-BUILD01 only asks for things through them. That is
+# why the depot needs its uplink NIC (dPG-TN-BUILD) for the window, and why this play
+# fails fast if the depot cannot reach upstream. Chocolatey packages are additionally
+# UPLOADED by TN-BUILD01 into chocolatey-hosted, so the Windows feed does not depend on
+# the proxy's query cache once offline.
+#
+# Order: depot online -> warm from TN-BUILD01 -> depot offline (always) -> verdict.
+
+- name: "Prefetch 1/4 — depot caches online"
+  hosts: depot
+  gather_facts: false
+  tasks:
+    - name: The depot can reach upstream (uplink NIC connected?)
+      ansible.builtin.uri:
+        url: "{{ item }}"
+        method: HEAD
+        timeout: 15
+      loop:
+        - http://archive.ubuntu.com/ubuntu/dists/noble/InRelease
+        - https://community.chocolatey.org/api/v2/
+      register: tn_up
+      failed_when: false
+
+    - name: Stop if the depot has no uplink
+      ansible.builtin.fail:
+        msg: >-
+          TN-DEPOT01 cannot reach upstream ({{ tn_up.results | rejectattr('status', 'equalto', 200)
+          | map(attribute='item') | join(', ') }}). Connect its uplink first:
+          scripts/lab/depot-uplink.sh on --apply
+      when: tn_up.results | rejectattr('status', 'equalto', 200) | list | length > 0
+
+    - name: Caches online
+      ansible.builtin.include_role:
+        name: tn_depot
+        tasks_from: upstream.yml
+      vars:
+        tn_depot_upstream_online: true
+
+- name: "Prefetch 2/4 — warm from TN-BUILD01"
+  hosts: build
+  gather_facts: false
+  roles:
+    - role: tn_prefetch
+      tags: [prefetch]
+
+- name: "Prefetch 3/4 — depot caches offline again"
+  hosts: depot
+  gather_facts: false
+  tasks:
+    - name: Caches offline
+      ansible.builtin.include_role:
+        name: tn_depot
+        tasks_from: upstream.yml
+      vars:
+        tn_depot_upstream_online: false
+
+    - name: Reminder
+      ansible.builtin.debug:
+        msg: "Caches are offline. Now disconnect the uplink NIC: scripts/lab/depot-uplink.sh off --apply"
+
+- name: "Prefetch 4/4 — verdict"
+  hosts: build
+  gather_facts: false
+  tasks:
+    - name: Prefetch did not error
+      ansible.builtin.assert:
+        that: tn_prefetch_error is not defined
+        fail_msg: "Prefetch failed (the depot is offline again): {{ tn_prefetch_error | default('') }}"
+
+    - name: Strict mode - every catalogue entry cached
+      ansible.builtin.assert:
+        that: >-
+          (tn_prefetch_linux_results | default({})).values() | map(attribute='failed') | flatten | length == 0
+          and 'failed=0 ' in (tn_prefetch_choco_run.stdout | default('failed=0 '))
+        fail_msg: "Some catalogue entries were not cached; see the report above"
+      when: tn_prefetch_strict | default(false) | bool

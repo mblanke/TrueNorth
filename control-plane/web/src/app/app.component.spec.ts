@@ -47,10 +47,12 @@ describe('AppComponent', () => {
   it('should include expected nav routes', () => {
     const routes = component.navSections.flatMap(s => s.items.map(n => n.route));
     expect(routes).toContain('/dashboard');
-    expect(routes).toContain('/ranges');
     expect(routes).toContain('/exercises');
-    expect(routes).toContain('/scenarios');
-    expect(routes).toContain('/telemetry');
+    // Scenarios live in the Authoring Studio hub (/scenarios redirects there), and
+    // live telemetry sits in the Ops Center — neither has its own nav entry now.
+    expect(routes).toContain('/authoring');
+    expect(routes).toContain('/ops-center/select');
+    expect(routes).toContain('/learning');
     expect(routes).toContain('/admin');
   });
 
@@ -64,11 +66,12 @@ describe('AppComponent', () => {
   });
 
   // ── Toolbar buttons ──────────────────────────────────────────────
-  it('should render toolbar with menu toggle, notifications, and account buttons', () => {
+  it('should give every toolbar button an accessible name', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const toolbarButtons = el.querySelectorAll('mat-toolbar button');
-    expect(toolbarButtons.length).toBeGreaterThanOrEqual(3); // menu, notifications, account + theme buttons
+    expect(toolbarButtons.length).toBeGreaterThan(0);
+    toolbarButtons.forEach(button => expect(button.getAttribute('aria-label')).toBeTruthy());
   });
 
   // ── Sidenav ──────────────────────────────────────────────────────

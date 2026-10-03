@@ -11,10 +11,10 @@ Designed for 70,000-VM scale:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
-import random
 import time
 import uuid as _uuid
 from contextlib import contextmanager
@@ -39,7 +39,19 @@ def _get_backend(backend: str | None = None):
     to ``"mock"`` when neither the caller nor the env provides a value.
     """
     resolved = backend or os.getenv("PROVISIONER_BACKEND", "mock")
-    return get_provisioner(resolved)
+    provisioner = get_provisioner(resolved)
+    # vSphere without VSPHERE_URL in the environment: use the primary vSphere
+    # connection registered through the API (Hypervisors page) instead.
+    if resolved == "vsphere_api" and not os.getenv("VSPHERE_URL"):
+        try:
+            with _db_session() as db:
+                creds = _hypervisor_creds(db, "vsphere")
+        except Exception as e:  # noqa: BLE001 — the provisioner then reports the missing endpoint
+            logger.warning(f"Could not read the vSphere connection from the database: {e}")
+            creds = {}
+        if creds:
+            provisioner.use_credentials(creds)
+    return provisioner
 
 
 # -- DB session management (one per task, no leaks) ---------------------
@@ -69,8 +81,16 @@ def _update_range_state(
     new_state: str,
     error: str | None = None,
     output: str | None = None,
+    only_from: tuple[str, ...] | None = None,
+    clear_error: bool = False,
 ):
-    """Update range state in the database."""
+    """Update range state in the database.
+
+    ``only_from`` makes the update conditional on the range still being in one of
+    those states, so a late or retried task cannot overwrite a state the range has
+    moved to since (a failed restore used to stamp ``failed`` over ``destroyed``).
+    ``clear_error`` drops a stale error_message, for a success after a failed attempt.
+    """
     with _db_session() as db:
         from sqlalchemy import text
 
@@ -79,10 +99,17 @@ def _update_range_state(
         if error:
             sql += ", error_message = :error"
             params["error"] = error
+        elif clear_error:
+            sql += ", error_message = NULL"
         if output:
             sql += ", provisioner_output = :output"
             params["output"] = output
         sql += " WHERE id = :range_id"
+        if only_from:
+            keys = [f"from_{i}" for i in range(len(only_from))]
+            # CAST: `state` is a native enum on Postgres and plain text on SQLite.
+            sql += f" AND CAST(state AS TEXT) IN ({', '.join(':' + k for k in keys)})"
+            params.update(zip(keys, only_from, strict=True))
         db.execute(text(sql), params)
 
 
@@ -128,6 +155,138 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
         "password": row[3] or "", "api_token": row[4] or "",
         "verify_ssl": bool(row[5]), "datacenter": row[6] or "",
     }
+
+
+@contextmanager
+def _vlan_lock():
+    """Serialise VLAN reservations across workers (Redis lock; skipped if Redis is down)."""
+    lock = None
+    try:
+        import redis
+
+        lock = redis.Redis.from_url(REDIS_URL).lock("truenorth:vsphere-vlan-alloc", timeout=60, blocking_timeout=30)
+        if not lock.acquire():
+            raise RuntimeError("timed out waiting for the VLAN allocation lock")
+    except RuntimeError:
+        raise
+    except Exception as e:  # noqa: BLE001 — no Redis (tests, single worker): carry on unlocked
+        logger.warning(f"VLAN allocation lock unavailable, allocating without it: {e}")
+        lock = None
+    try:
+        yield
+    finally:
+        if lock is not None:
+            with contextlib.suppress(Exception):
+                lock.release()
+
+
+def _physical_vlans(output: str | None) -> dict[int, int]:
+    """{logical VLAN: physical VLAN} a range's stored provisioner_output holds."""
+    try:
+        nets = (json.loads(output) if output else {}).get("networks") or []
+    except (ValueError, AttributeError):
+        return {}
+    return {
+        int(n["vlan_id"]): int(n["physical_vlan"])
+        for n in nets
+        if isinstance(n, dict) and n.get("vlan_id") is not None and n.get("physical_vlan") is not None
+    }
+
+
+def _reserve_vlans(range_id: str, logical: list[int]) -> dict[int, int]:
+    """Give each of the range's logical VLANs a physical VLAN of its own, and record it now.
+
+    Every range that is not destroyed keeps its VLANs (a failed one may still have its
+    port groups), so the pool is what is left after all of them. The reservation is
+    written to provisioner_output before the build starts, under a lock, so a second
+    range provisioning at the same moment cannot pick the same VLANs, and a destroy
+    after a failed build still finds the port groups to remove. A retry reuses it.
+    """
+    from sqlalchemy import text
+
+    from .provisioners.vsphere_infra import portgroup_name
+    from .vlan_pool import allocate, parse_pool
+
+    pool = parse_pool(os.getenv("VSPHERE_VLAN_POOL", "100-199"))
+    with _vlan_lock(), _db_session() as db:
+        others = db.execute(
+            text(
+                "SELECT provisioner_output FROM ranges WHERE id <> :rid "
+                "AND CAST(state AS TEXT) <> 'destroyed' AND provisioner_output IS NOT NULL"
+            ),
+            {"rid": range_id},
+        ).fetchall()
+        used = {v for (out,) in others for v in _physical_vlans(out).values()}
+        row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
+        try:
+            current = json.loads(row[0]) if row and row[0] else {}
+        except ValueError:
+            current = {}
+        mine = {k: v for k, v in _physical_vlans(row[0] if row else None).items() if v not in used}
+        missing = [v for v in logical if v not in mine]
+        if missing:
+            mine.update(allocate(missing, used | set(mine.values()), pool))
+        current.setdefault("provider", "vsphere_api")
+        current.setdefault("range_id", range_id)
+        current.setdefault("vms", [])
+        mode = os.getenv("VSPHERE_RANGE_SWITCH_MODE", "vds").lower()
+        current["networks"] = [
+            {"vlan_id": k, "physical_vlan": v, "portgroup": portgroup_name(range_id, v), "switch_mode": mode}
+            for k, v in sorted(mine.items())
+        ]
+        db.execute(
+            text("UPDATE ranges SET provisioner_output = :out WHERE id = :rid"),
+            {"out": json.dumps(current), "rid": range_id},
+        )
+    return mine
+
+
+def _uplink_ip(output: str | None) -> str | None:
+    """The edge-firewall WAN address a range's stored provisioner_output holds."""
+    try:
+        up = (json.loads(output) if output else {}).get("uplink") or {}
+    except (ValueError, AttributeError):
+        return None
+    return str(up["ip"]) if isinstance(up, dict) and up.get("ip") else None
+
+
+def _reserve_uplink_ip(range_id: str) -> str:
+    """Give the range's edge firewall a WAN address of its own on the uplink network.
+
+    Same rules as _reserve_vlans: under the same lock, every range that is not destroyed
+    keeps its address, the reservation is written before the build, a retry reuses it.
+    """
+    from sqlalchemy import text
+
+    from .uplink_pool import allocate_ip, parse_ip_pool
+
+    pool = parse_ip_pool(os.getenv("VSPHERE_RANGE_UPLINK_POOL", ""))
+    with _vlan_lock(), _db_session() as db:
+        others = db.execute(
+            text(
+                "SELECT provisioner_output FROM ranges WHERE id <> :rid "
+                "AND CAST(state AS TEXT) <> 'destroyed' AND provisioner_output IS NOT NULL"
+            ),
+            {"rid": range_id},
+        ).fetchall()
+        used = {ip for (out,) in others if (ip := _uplink_ip(out))}
+        row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
+        try:
+            current = json.loads(row[0]) if row and row[0] else {}
+        except ValueError:
+            current = {}
+        mine = _uplink_ip(row[0] if row else None)
+        if not mine or mine in used or mine not in pool:
+            mine = allocate_ip(used, pool)
+        current.setdefault("provider", "vsphere_api")
+        current.setdefault("range_id", range_id)
+        current.setdefault("vms", [])
+        current["uplink"] = {"network": os.getenv("VSPHERE_RANGE_UPLINK_NETWORK", ""), "ip": mine}
+        db.execute(
+            text("UPDATE ranges SET provisioner_output = :out WHERE id = :rid"),
+            {"out": json.dumps(current), "rid": range_id},
+        )
+    return mine
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
@@ -198,6 +357,26 @@ def provision_range(self, range_id: str):
             if rendered["unresolved"]:
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
+        if backend == "vsphere_api":
+            logical = {
+                nic.get("vlan") if "nics" in vm else vm.get("vlan_id")
+                for vm in template.get("vms", [])
+                for nic in (vm.get("nics") or [{}])
+            }
+            if os.getenv("VSPHERE_RANGE_SWITCH_MODE", "vds").lower() != "vss":
+                # Mirror rules: one RSPAN VLAN per destination zone, from the same pool
+                # (vsphere_infra, "Port mirroring").
+                from .provisioners.vsphere_infra import mirror_rules, plan_mirrors
+
+                plans, _ = plan_mirrors(mirror_rules(template), template.get("networks") or [])
+                logical |= {p["rspan_key"] for p in plans}
+            allocations["physical_vlans"] = _reserve_vlans(range_id, sorted(v for v in logical if v is not None))
+            if os.getenv("VSPHERE_RANGE_UPLINK_NETWORK", "").strip():
+                from .provisioners.vsphere_infra import os_family
+
+                if any(os_family(vm) == "appliance" for vm in template.get("vms", [])):
+                    allocations["uplink_ip"] = _reserve_uplink_ip(range_id)
+
         provisioner = _get_backend(backend)
 
         result = asyncio.run(provisioner.provision(range_id, template, allocations))
@@ -205,14 +384,26 @@ def provision_range(self, range_id: str):
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
 
-        output = json.dumps(
-            {
-                "provider": backend,
-                "range_id": range_id,
-                "vms": result.vms,
-                "networks": result.networks,
-            }
-        )
+        stored = {
+            "provider": backend,
+            "range_id": range_id,
+            "vms": result.vms,
+            "networks": result.networks,
+        }
+        # vSphere: the edge firewall's WAN address (kept until destroy, like the VLANs),
+        # and what was skipped on purpose (unknown software, no depot path).
+        if getattr(result, "uplink", None):
+            stored["uplink"] = result.uplink
+        if getattr(result, "mirrors", None):  # vSphere port-mirroring sessions; destroy removes them
+            stored["mirrors"] = result.mirrors
+        if getattr(result, "warnings", None):
+            stored["warnings"] = result.warnings
+            for w in result.warnings:
+                logger.warning(f"[provision] Range {range_id}: {w}")
+        if result.status == "partial":
+            stored["errors"] = result.errors
+            logger.warning(f"[provision] Range {range_id} partial: {'; '.join(result.errors)}")
+        output = json.dumps(stored)
 
         _update_range_state(range_id, "ready", output=output)
         _notify_api("range", {"id": range_id, "state": "ready"})
@@ -288,6 +479,51 @@ def destroy_range(self, range_id: str):
         _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[destroy] Range {range_id} FAILED: {e}")
         raise
+
+
+def _power_range(task, range_id: str, action: str, state: str):
+    """Power every VM of a range off (``stop``) or on (``start``).
+
+    The API has already moved the range to ``state`` (stopped/running); this makes the
+    hypervisor match. Powering a VM already in that state is a no-op, so a retry is
+    safe. When the last attempt fails the range is marked failed, unless it has moved
+    on meanwhile (destroyed, say).
+    """
+    logger.info(f"[{action}] Range {range_id}")
+    try:
+        with _db_session() as db:
+            from sqlalchemy import text
+
+            row = db.execute(
+                text("SELECT provisioner_output, provisioner_backend FROM ranges WHERE id = :rid"),
+                {"rid": range_id},
+            ).first()
+        prov_output = json.loads(row[0]) if row and row[0] else {}
+        provisioner = _get_backend((row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock"))
+        op = provisioner.stop if action == "stop" else provisioner.start
+        result = asyncio.run(op(range_id, prov_output))
+        if result.status != "ok":
+            raise RuntimeError(f"{action} {result.status}: {'; '.join(result.errors) or 'no detail'}")
+        _notify_api("range", {"id": range_id, "state": state})
+        return {"status": state, "range_id": range_id}
+    except Exception as e:
+        if _last_attempt(task):
+            _update_range_state(range_id, "failed", error=str(e), only_from=(state,))
+            _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        logger.error(f"[{action}] Range {range_id} FAILED: {e}")
+        raise
+
+
+@app.task(base=ReliableTask, bind=True, name="worker.tasks.stop_range")
+def stop_range(self, range_id: str):
+    """Power off every VM of a range (POST /ranges/{id}/stop)."""
+    return _power_range(self, range_id, "stop", "stopped")
+
+
+@app.task(base=ReliableTask, bind=True, name="worker.tasks.start_range")
+def start_range(self, range_id: str):
+    """Power on every VM of a stopped range (POST /ranges/{id}/start)."""
+    return _power_range(self, range_id, "start", "running")
 
 
 # -- Scenario Execution --------------------------------------------------
@@ -687,26 +923,138 @@ def cleanup_expired_ranges(self):
         raise
 
 
+# -- Periodic: health and metrics over the active ranges --------------------
+# Every range is read through the backend that built it (provisioner_backend), not the
+# worker's PROVISIONER_BACKEND: a vSphere range on a worker whose env says proxmox_api
+# used to be asked about by the Proxmox provisioner.
+#
+# Each run is bounded three ways: a Redis lock skips a run while the previous one still
+# holds it; a budget stops starting ranges once spent (the rest are counted `skipped`,
+# not unhealthy) and caps each range's call at what is left of it; Celery's time limits
+# end a run stuck past both (prefork pool only). The beat entries also expire, so runs
+# queued behind a busy worker are dropped rather than run late, one after another.
+HEALTH_CHECK_BUDGET = int(os.getenv("TN_HEALTH_CHECK_BUDGET", "45"))  # runs every 60s
+METRICS_BUDGET = int(os.getenv("TN_METRICS_BUDGET", "20"))  # runs every 30s
+
+_SKIPPED = object()  # a range the run's budget did not reach
+
+
+@contextmanager
+def _run_lock(name: str, ttl: int):
+    """Yield True when this run may go ahead, False while another run holds ``name``.
+
+    Non-blocking: a run that finds the lock taken is skipped, not queued. The lock expires
+    after ``ttl`` seconds, so a worker killed mid-run holds it no longer than that.
+    Without Redis the run goes ahead unlocked, as _vlan_lock does.
+    """
+    lock = None
+    acquired = True
+    try:
+        import redis
+
+        client = redis.Redis.from_url(REDIS_URL, socket_timeout=5, socket_connect_timeout=5)
+        lock = client.lock(f"truenorth:periodic:{name}", timeout=ttl)
+        acquired = bool(lock.acquire(blocking=False))
+    except Exception as e:  # noqa: BLE001 — no Redis (tests, single worker): carry on unlocked
+        logger.warning(f"[{name}] run lock unavailable, running without it: {e}")
+        lock = None
+    if not acquired:
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        if lock is not None:
+            with contextlib.suppress(Exception):  # expired meanwhile: nothing to release
+                lock.release()
+
+
+def _active_ranges() -> list:
+    """(id, name, provisioner_output, provisioner_backend) of every ready or running range."""
+    with _db_session() as db:
+        from sqlalchemy import text
+
+        return db.execute(
+            text(
+                "SELECT id, name, provisioner_output, provisioner_backend FROM ranges "
+                "WHERE state IN ('ready', 'running')"
+            )
+        ).fetchall()
+
+
+def _group_by_backend(rows) -> dict[str, list]:
+    """Active-range rows keyed by each range's own backend (_range_backend: the env is the fallback)."""
+    groups: dict[str, list] = {}
+    for row in rows:
+        backend = _range_backend((None, row[2], row[3] if len(row) > 3 else None))
+        groups.setdefault(backend, []).append(row)
+    return groups
+
+
+async def _run_group(provisioner, rows, op, deadline: float) -> list[tuple]:
+    """``op(provisioner, range_id, provision_output)`` over ``rows``, inside one provisioner session."""
+    results: list[tuple] = []
+    async with provisioner.session():
+        for row in rows:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                results.append((row, _SKIPPED))
+                continue
+            try:
+                prov = json.loads(row[2]) if row[2] else {}
+                res = await asyncio.wait_for(op(provisioner, str(row[0]), prov), timeout=remaining)
+            except TimeoutError:
+                res = TimeoutError("no answer before the run's time budget ran out")
+            except Exception as e:  # noqa: BLE001 — one range's failure is that range's result
+                res = e
+            results.append((row, res))
+    return results
+
+
+def _over_ranges(rows, op, deadline: float) -> dict[str, list[tuple]]:
+    """Run ``op`` for every range through its own backend: {backend: [(row, result)]}.
+
+    One provisioner instance and one session() per backend, so one hypervisor login per
+    run however many ranges it covers. A result is the op's return value, the exception
+    it raised, or _SKIPPED.
+    """
+    out: dict[str, list[tuple]] = {}
+    for backend, members in _group_by_backend(rows).items():
+        try:
+            provisioner = _get_backend(backend)
+            out[backend] = asyncio.run(_run_group(provisioner, members, op, deadline))
+        except Exception as e:  # noqa: BLE001 — unknown backend, or its session could not open
+            logger.error(f"[periodic] backend {backend!r} unavailable for {len(members)} ranges: {e}")
+            out[backend] = [(row, e) for row in members]
+    return out
+
+
 # -- Periodic: Health Check Ranges ----------------------------------------
-@app.task(bind=True, name="worker.tasks.health_check_ranges")
+@app.task(
+    bind=True,
+    name="worker.tasks.health_check_ranges",
+    soft_time_limit=HEALTH_CHECK_BUDGET + 10,
+    time_limit=HEALTH_CHECK_BUDGET + 15,
+)
 def health_check_ranges(self):
     """Periodic task: check health of all active ranges.
 
-    Queries all ranges in 'ready' state, delegates health checking to the
-    provisioner class hierarchy, marks unhealthy ranges, and alerts on
-    failures.
+    Each ready or running range is checked by its own backend's health_check. A range
+    found unhealthy gets a ``health_check_failed`` notification; any unhealthy range
+    raises one ``health_check_alert``. A range whose check raised counts as unhealthy.
     """
     logger.info("[health] Starting health check for active ranges")
 
-    provisioner = _get_backend()
+    with _run_lock("health_check_ranges", HEALTH_CHECK_BUDGET + 20) as mine:
+        if not mine:
+            logger.info("[health] The previous run is still going; skipping this one")
+            return {"status": "skipped", "reason": "previous run still in progress"}
+        return _health_check_run(time.monotonic() + HEALTH_CHECK_BUDGET)
 
+
+def _health_check_run(deadline: float) -> dict:
     try:
-        with _db_session() as db:
-            from sqlalchemy import text
-
-            active_ranges = db.execute(
-                text("SELECT id, name, provisioner_output FROM ranges WHERE state IN ('ready', 'running')")
-            ).fetchall()
+        active_ranges = _active_ranges()
 
         if not active_ranges:
             logger.info("[health] No active ranges to check")
@@ -714,17 +1062,22 @@ def health_check_ranges(self):
 
         healthy = 0
         unhealthy = 0
+        skipped = 0
         unhealthy_ids = []
+        by_backend = {}
 
-        for row in active_ranges:
-            range_id, name, prov_output = row[0], row[1], row[2]
-
-            try:
-                prov_dict = json.loads(prov_output) if prov_output else {}
-                result = asyncio.run(provisioner.health_check(range_id, prov_dict))
-                is_healthy = result.healthy
-
-                if is_healthy:
+        grouped = _over_ranges(active_ranges, lambda p, rid, out: p.health_check(rid, out), deadline)
+        for backend, results in grouped.items():
+            by_backend[backend] = len(results)
+            for row, result in results:
+                range_id, name = str(row[0]), row[1]
+                if result is _SKIPPED:
+                    skipped += 1
+                elif isinstance(result, Exception):
+                    unhealthy += 1
+                    unhealthy_ids.append(range_id)
+                    logger.error(f"[health] Error checking range {name} ({backend}): {result}")
+                elif result.healthy:
                     healthy += 1
                 else:
                     unhealthy += 1
@@ -738,17 +1091,17 @@ def health_check_ranges(self):
                         },
                     )
 
-            except Exception as vm_err:
-                unhealthy += 1
-                unhealthy_ids.append(range_id)
-                logger.error(f"[health] Error checking range {name}: {vm_err}")
+        if skipped:
+            logger.warning(f"[health] Budget of {HEALTH_CHECK_BUDGET}s spent; {skipped} ranges not checked this run")
 
         summary = {
             "status": "ok",
-            "checked": len(active_ranges),
+            "checked": healthy + unhealthy,
             "healthy": healthy,
             "unhealthy": unhealthy,
             "unhealthy_ids": unhealthy_ids,
+            "skipped": skipped,
+            "by_backend": by_backend,
         }
 
         if unhealthy > 0:
@@ -762,7 +1115,8 @@ def health_check_ranges(self):
             )
 
         logger.info(
-            f"[health] Check complete: {healthy} healthy, {unhealthy} unhealthy out of {len(active_ranges)} ranges"
+            f"[health] Check complete: {healthy} healthy, {unhealthy} unhealthy, {skipped} skipped "
+            f"out of {len(active_ranges)} ranges"
         )
         return summary
 
@@ -772,79 +1126,150 @@ def health_check_ranges(self):
 
 
 # -- Periodic: Collect Range Metrics ---------------------------------------
-@app.task(bind=True, name="worker.tasks.collect_range_metrics")
-def collect_range_metrics(self):
-    """Periodic task: collect resource utilization from active ranges.
+def _usage(vms: list[dict], used_key: str, cap_key: str) -> tuple[float | None, int | None, int | None]:
+    """(percent, used, capacity) over the VMs that report both numbers; all None when none do."""
+    pairs = [
+        (v[used_key], v[cap_key])
+        for v in vms
+        if isinstance(v.get(used_key), int | float) and isinstance(v.get(cap_key), int | float) and v[cap_key] > 0
+    ]
+    if not pairs:
+        return None, None, None
+    used, cap = sum(u for u, _ in pairs), sum(c for _, c in pairs)
+    return round(100.0 * used / cap, 1), used, cap
 
-    Uses the provisioner health check for VM status awareness, generates
-    resource metrics, stores them in OpenSearch as telemetry events, and
-    updates the range resource_usage field.
+
+def _recorded_vm_count(prov_output: str | None) -> int:
+    try:
+        return len((json.loads(prov_output) if prov_output else {}).get("vms") or [])
+    except (ValueError, AttributeError):
+        return 0
+
+
+def _range_metrics_event(range_id: str, name: str, backend: str, now: str, result, recorded_vms: int) -> dict:
+    """The ``range_metrics`` telemetry event for one range (index ``range-<id>``).
+
+    The keys the random-number version sent are all kept. cpu_pct and memory_pct are
+    measured now (CPU in use over the VMs' ceilings; active over configured guest
+    memory; powered-on VMs only); the disk and network rates no backend reads yet are
+    null, never an estimate. ``synthetic`` is True for mock numbers.
+    """
+    on = [v for v in result.vms if v.get("power_state") == "poweredOn"]
+    cpu_pct, cpu_used, cpu_cap = _usage(on, "cpu_usage_mhz", "cpu_capacity_mhz")
+    mem_pct, mem_used, mem_cfg = _usage(on, "memory_active_mb", "memory_configured_mb")
+    return {
+        "@timestamp": now,
+        "event_type": "range_metrics",
+        "range_id": range_id,
+        "range_name": name,
+        "timestamp": now,
+        "cpu_pct": cpu_pct,
+        "memory_pct": mem_pct,
+        "disk_read_mbps": None,
+        "disk_write_mbps": None,
+        "network_in_mbps": None,
+        "network_out_mbps": None,
+        "vm_count": len(result.vms) or recorded_vms,
+        "vms_powered_on": len(on),
+        "vms_tools_running": sum(1 for v in result.vms if v.get("tools_status") == "guestToolsRunning"),
+        "cpu_usage_mhz": cpu_used,
+        "cpu_capacity_mhz": cpu_cap,
+        "memory_active_mb": mem_used,
+        "memory_configured_mb": mem_cfg,
+        "backend": backend,
+        "metrics_source": result.source or backend,
+        "metrics_status": result.status,
+        "synthetic": bool(result.synthetic),
+        "metrics_errors": list(result.errors)[:20],
+        "vm_metrics": result.vms,
+    }
+
+
+@app.task(
+    bind=True,
+    name="worker.tasks.collect_range_metrics",
+    soft_time_limit=METRICS_BUDGET + 5,
+    time_limit=METRICS_BUDGET + 8,
+)
+def collect_range_metrics(self):
+    """Periodic task: resource usage of every active range, from its own backend.
+
+    Per range, one ``range_metrics`` event goes to OpenSearch (ingest_telemetry_batch),
+    including when the read failed (metrics_status ``failed``, values null), so a dead
+    vCenter is visible. A backend without metrics (``unsupported``) sends nothing: there
+    is nothing to report. A range read successfully has its updated_at bumped, as before.
     """
     logger.info("[metrics] Collecting range metrics")
 
-    provisioner = _get_backend()
+    with _run_lock("collect_range_metrics", METRICS_BUDGET + 10) as mine:
+        if not mine:
+            logger.info("[metrics] The previous run is still going; skipping this one")
+            return {"status": "skipped", "reason": "previous run still in progress"}
+        return _collect_metrics_run(time.monotonic() + METRICS_BUDGET)
+
+
+def _collect_metrics_run(deadline: float) -> dict:
+    from .provisioners.results import MetricsResult
 
     try:
-        with _db_session() as db:
-            from sqlalchemy import text
-
-            active_ranges = db.execute(
-                text("SELECT id, name, provisioner_output FROM ranges WHERE state IN ('ready', 'running')")
-            ).fetchall()
+        active_ranges = _active_ranges()
 
         if not active_ranges:
             logger.info("[metrics] No active ranges for metrics collection")
             return {"status": "ok", "ranges_collected": 0}
 
-        all_metrics = []
         now = datetime.now(UTC).isoformat()
+        collected = []  # ids as the database returned them, for the updated_at bump
+        failed = unsupported = skipped = 0
 
-        for row in active_ranges:
-            range_id, name, prov_output = row[0], row[1], row[2]
-            prov_dict = json.loads(prov_output) if prov_output else {}
+        grouped = _over_ranges(active_ranges, lambda p, rid, out: p.collect_metrics(rid, out), deadline)
+        for backend, results in grouped.items():
+            for row, result in results:
+                range_id = str(row[0])
+                if result is _SKIPPED:
+                    skipped += 1
+                    continue
+                if isinstance(result, Exception):
+                    result = MetricsResult(status="failed", source=backend, errors=[str(result) or type(result).__name__])
+                if result.status == "unsupported":
+                    unsupported += 1
+                    continue
+                if result.status in ("ok", "partial"):
+                    collected.append(row[0])
+                else:
+                    failed += 1
+                    logger.warning(f"[metrics] Range {row[1]} ({backend}): {'; '.join(result.errors)}")
 
-            # Use provisioner health check for VM status awareness
-            try:
-                health = asyncio.run(provisioner.health_check(range_id, prov_dict))
-                vm_count = len(health.vm_statuses) or len(prov_dict.get("vms", []))
-            except Exception:
-                vm_count = len(prov_dict.get("vms", []))
+                event = _range_metrics_event(range_id, row[1], backend, now, result, _recorded_vm_count(row[2]))
+                try:
+                    ingest_telemetry_batch.delay(range_id, [event])
+                except Exception as ingest_err:
+                    logger.warning(f"[metrics] Failed to queue telemetry for {range_id}: {ingest_err}")
 
-            metrics = {
-                "range_id": range_id,
-                "range_name": name,
-                "timestamp": now,
-                "cpu_pct": round(random.uniform(5.0, 85.0), 1),
-                "memory_pct": round(random.uniform(20.0, 90.0), 1),
-                "disk_read_mbps": round(random.uniform(0.1, 50.0), 1),
-                "disk_write_mbps": round(random.uniform(0.1, 30.0), 1),
-                "network_in_mbps": round(random.uniform(0.01, 100.0), 2),
-                "network_out_mbps": round(random.uniform(0.01, 50.0), 2),
-                "vm_count": max(vm_count, 1),
-            }
-
-            all_metrics.append(metrics)
-
-            # Store as telemetry event
-            event = {
-                "@timestamp": now,
-                "event_type": "range_metrics",
-                "range_id": range_id,
-                **metrics,
-            }
-            try:
-                ingest_telemetry_batch.delay(range_id, [event])
-            except Exception as ingest_err:
-                logger.warning(f"[metrics] Failed to queue telemetry for {range_id}: {ingest_err}")
-
-            # Update range resource_usage field
+        if collected:
             with _db_session() as db:
-                from sqlalchemy import text
+                from sqlalchemy import bindparam, text
 
-                db.execute(text("UPDATE ranges SET updated_at = NOW() WHERE id = :rid"), {"rid": range_id})
+                db.execute(
+                    text("UPDATE ranges SET updated_at = NOW() WHERE id IN :ids").bindparams(
+                        bindparam("ids", expanding=True)
+                    ),
+                    {"ids": collected},
+                )
 
-        logger.info(f"[metrics] Collected metrics for {len(all_metrics)} ranges")
-        return {"status": "ok", "ranges_collected": len(all_metrics)}
+        if skipped:
+            logger.warning(f"[metrics] Budget of {METRICS_BUDGET}s spent; {skipped} ranges not read this run")
+        logger.info(
+            f"[metrics] Collected metrics for {len(collected)} ranges "
+            f"({failed} failed, {unsupported} unsupported, {skipped} skipped)"
+        )
+        return {
+            "status": "ok",
+            "ranges_collected": len(collected),
+            "failed": failed,
+            "unsupported": unsupported,
+            "skipped": skipped,
+        }
 
     except Exception as e:
         logger.error(f"[metrics] Metrics collection error: {e}")
@@ -852,8 +1277,52 @@ def collect_range_metrics(self):
 
 
 # -- Range Snapshots ----------------------------------------------------
-def _update_snapshot_state(snapshot_id: str, new_state: str, data: str | None = None, size: int | None = None):
-    """Update snapshot state in the database."""
+# States routers/ranges.py:restore_snapshot accepts. A restore only ever writes to a
+# range still in one of them; if the range moved on (say, it was destroyed while the
+# task queued or retried), the range is left alone.
+_RESTORABLE_STATES = ("ready", "stopped", "failed")
+# Snapshot states the snapshot task may still write over: its first attempt, or a retry.
+_SNAPSHOT_PENDING = ("creating", "failed")
+
+
+def _backend_snapshot_name(snapshot_id: str) -> str:
+    """The name the hypervisor stores the snapshot under.
+
+    Proxmox requires a snapname that starts with a letter, uses only letters, digits,
+    ``-`` and ``_``, and is at most 40 characters. The bare UUID used before starts
+    with a digit ten times in sixteen, and Proxmox rejected those.
+    """
+    return "tn" + "".join(ch for ch in snapshot_id if ch.isalnum())[:38]
+
+
+def _last_attempt(task) -> bool:
+    """True when a failure now will not be retried, or the task was called directly."""
+    return bool(task.request.called_directly) or task.request.retries >= (task.max_retries or 0)
+
+
+def _discard_snapshot(provisioner, range_id: str, prov_output: dict, name: str) -> None:
+    """Best-effort removal of a snapshot no row will stand behind."""
+    try:
+        result = asyncio.run(provisioner.delete_snapshot(range_id, prov_output, name))
+        if result.status != "ok":
+            logger.warning(f"[snapshot] Could not discard snapshot {name}: {result.errors}")
+    except Exception as e:
+        logger.warning(f"[snapshot] Could not discard snapshot {name}: {e}")
+
+
+def _update_snapshot_state(
+    snapshot_id: str,
+    new_state: str,
+    data: str | None = None,
+    size: int | None = None,
+    only_from: tuple[str, ...] | None = None,
+) -> int:
+    """Update snapshot state in the database; return how many rows changed.
+
+    ``only_from`` makes it conditional, as in _update_range_state. The API can
+    delete a snapshot while a task holds it, and writing `ready` back over
+    `deleted` brought the row back pointing at nothing.
+    """
     with _db_session() as db:
         from sqlalchemy import text
 
@@ -866,43 +1335,96 @@ def _update_snapshot_state(snapshot_id: str, new_state: str, data: str | None = 
             sql += ", size_bytes = :size"
             params["size"] = size
         sql += " WHERE id = :snapshot_id"
-        db.execute(text(sql), params)
+        if only_from:
+            keys = [f"from_{i}" for i in range(len(only_from))]
+            sql += f" AND snapshot_state IN ({', '.join(':' + k for k in keys)})"
+            params.update(zip(keys, only_from, strict=True))
+        return db.execute(text(sql), params).rowcount
+
+
+def _snapshot_context(snapshot_id: str, range_id: str):
+    """(snapshot_state, snapshot_data, range_state_at_snapshot), (state, provisioner_output, provisioner_backend)."""
+    with _db_session() as db:
+        from sqlalchemy import text
+
+        snap = db.execute(
+            text("SELECT snapshot_state, snapshot_data, range_state_at_snapshot FROM range_snapshots WHERE id = :sid"),
+            {"sid": snapshot_id},
+        ).first()
+        rng = db.execute(
+            text("SELECT state, provisioner_output, provisioner_backend FROM ranges WHERE id = :rid"),
+            {"rid": range_id},
+        ).first()
+    return snap, rng
+
+
+def _range_backend(rng) -> str:
+    """The range's own backend, as provision and destroy use it; the env is the fallback.
+
+    The snapshot tasks used to read PROVISIONER_BACKEND alone, so a range could be
+    snapshotted, restored or deleted through a different backend from its own.
+    """
+    return (rng[2] if rng and rng[2] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.snapshot_range")
 def snapshot_range(self, range_id: str, snapshot_id: str):
     """Create a point-in-time snapshot of a range."""
     logger.info(f"[snapshot] Creating snapshot {snapshot_id} for range {range_id}")
-
-    provisioner = _get_backend()
+    name = _backend_snapshot_name(snapshot_id)
 
     try:
-        with _db_session() as db:
-            from sqlalchemy import text
+        snap, rng = _snapshot_context(snapshot_id, range_id)
+        state = snap[0] if snap else None
+        if state == "ready":
+            # A duplicate delivery (the broker redelivers when a worker dies with
+            # acks_late): an earlier run finished this. Running again would replace it.
+            return {"status": "ready", "snapshot_id": snapshot_id}
+        if state not in _SNAPSHOT_PENDING:
+            logger.warning(f"[snapshot] Snapshot {snapshot_id} is '{state}'; not taking it")
+            return {"status": "skipped", "snapshot_id": snapshot_id, "state": state}
 
-            row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
+        prov_output = json.loads(rng[1]) if rng and rng[1] else {}
+        if not prov_output.get("vms"):
+            raise RuntimeError("range has no VMs recorded, so there is nothing to snapshot")
+        backend = _range_backend(rng)
+        provisioner = _get_backend(backend)
 
-        prov_output = json.loads(row[0]) if row and row[0] else {}
+        # Clear whatever an earlier attempt of this task left under this name. The row
+        # is not `ready`, so nothing depends on it, and a leftover made the create fail
+        # with "name already used", after which the discard below removed the earlier
+        # attempt's complete snapshot.
+        _discard_snapshot(provisioner, range_id, prov_output, name)
 
-        result = asyncio.run(provisioner.snapshot(range_id, prov_output, snapshot_id))
+        result = asyncio.run(provisioner.snapshot(range_id, prov_output, name))
+        if result.status != "ok":
+            # Until this check, a failed or partial snapshot was stored as `ready`. A
+            # partial one cannot restore the range as a whole, so take back what was
+            # taken: a retry then starts clean and nothing is left on the hypervisor.
+            _discard_snapshot(provisioner, range_id, prov_output, name)
+            raise RuntimeError(f"snapshot {result.status}: {'; '.join(result.errors) or 'no detail'}")
 
         snapshot_data = json.dumps(
             {
-                "provider": os.getenv("PROVISIONER_BACKEND", "mock"),
+                "provider": backend,
                 "range_id": range_id,
-                "snapshot_refs": getattr(result, "snapshot_refs", {}),
+                "snapshot_name": name,
                 "vm_count": len(prov_output.get("vms", [])),
             }
         )
         size = getattr(result, "size_bytes", 0)
 
-        _update_snapshot_state(snapshot_id, "ready", data=snapshot_data, size=size)
+        if not _update_snapshot_state(snapshot_id, "ready", data=snapshot_data, size=size, only_from=_SNAPSHOT_PENDING):
+            # Deleted while this ran: no row will ever restore or delete this copy.
+            _discard_snapshot(provisioner, range_id, prov_output, name)
+            logger.warning(f"[snapshot] Snapshot {snapshot_id} was deleted while being taken; discarded")
+            return {"status": "skipped", "snapshot_id": snapshot_id, "state": "deleted"}
         _notify_api("range", {"id": range_id, "snapshot_id": snapshot_id, "state": "snapshot_ready"})
         logger.info(f"[snapshot] Snapshot {snapshot_id} ready for range {range_id}")
         return {"status": "ready", "snapshot_id": snapshot_id}
 
     except Exception as e:
-        _update_snapshot_state(snapshot_id, "failed")
+        _update_snapshot_state(snapshot_id, "failed", only_from=_SNAPSHOT_PENDING)
         _notify_api("range", {"id": range_id, "snapshot_id": snapshot_id, "state": "snapshot_failed", "error": str(e)})
         logger.error(f"[snapshot] Snapshot {snapshot_id} FAILED: {e}")
         raise
@@ -912,36 +1434,58 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
 def restore_snapshot(self, range_id: str, snapshot_id: str):
     """Restore a range from a snapshot."""
     logger.info(f"[restore] Restoring range {range_id} from snapshot {snapshot_id}")
-
-    provisioner = _get_backend()
+    changed = False  # whether any VM was reverted, fully or not
 
     try:
-        with _db_session() as db:
-            from sqlalchemy import text
-
-            row = db.execute(
-                text("SELECT snapshot_data, range_state_at_snapshot FROM range_snapshots WHERE id = :sid"),
-                {"sid": snapshot_id},
-            ).first()
-
-        if not row or not row[0]:
+        snap, rng = _snapshot_context(snapshot_id, range_id)
+        if not snap or not snap[1]:
             raise RuntimeError(f"Snapshot {snapshot_id} has no data")
 
-        snapshot_data = json.loads(row[0])
-        original_state = row[1]
+        current_state = rng[0] if rng else None
+        if current_state not in _RESTORABLE_STATES:
+            _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))
+            logger.warning(f"[restore] Range {range_id} is '{current_state}' now; restore abandoned, range untouched")
+            return {"status": "skipped", "range_id": range_id, "state": current_state}
 
-        asyncio.run(provisioner.restore(range_id, snapshot_data))
+        snapshot_data = json.loads(snap[1])
+        original_state = snap[2]
+        prov_output = json.loads(rng[1]) if rng[1] else {}
+        if not prov_output.get("vms"):
+            raise RuntimeError("range has no VMs recorded, so there is nothing to restore")
+        # Snapshots from before the name was recorded were taken under the bare id.
+        name = snapshot_data.get("snapshot_name") or snapshot_id
 
-        _update_range_state(range_id, original_state)
-        _update_snapshot_state(snapshot_id, "ready")  # back to ready after restore
+        provisioner = _get_backend(_range_backend(rng))
+        result = asyncio.run(provisioner.restore(range_id, prov_output, name, power_on=original_state == "ready"))
+        changed = result.vms_reverted > 0
+        if result.status != "ok":
+            raise RuntimeError(f"restore {result.status}: {'; '.join(result.errors) or 'no detail'}")
+
+        _update_range_state(range_id, original_state, only_from=_RESTORABLE_STATES, clear_error=True)
+        _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))  # back to ready after restore
         _notify_api("range", {"id": range_id, "state": original_state, "restored_from": snapshot_id})
         logger.info(f"[restore] Range {range_id} restored to state '{original_state}'")
         return {"status": "restored", "range_id": range_id, "state": original_state}
 
     except Exception as e:
-        _update_range_state(range_id, "failed", error=f"Restore from snapshot failed: {e}")
-        _update_snapshot_state(snapshot_id, "ready")  # snapshot itself is still valid
-        _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        if changed:
+            # Some VMs reverted and some did not, so the range matches neither its old
+            # state nor the snapshot. Guarded, because this runs on every failed attempt,
+            # retries included: the old unconditional write stamped `failed` over a
+            # range destroyed meanwhile.
+            _update_range_state(
+                range_id, "failed", error=f"Restore from snapshot failed: {e}", only_from=_RESTORABLE_STATES
+            )
+            _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        else:
+            # Nothing on the hypervisor changed (snapshot missing, vCenter unreachable,
+            # a backend without restore), so the range is exactly as it was and keeps
+            # its state. Marking it `failed` blocked stop, start and expiry cleanup.
+            _notify_api("range", {"id": range_id, "restore_failed": snapshot_id, "error": str(e)})
+        if _last_attempt(self):
+            # Until then a retry still owns the snapshot, and `restoring` keeps the API
+            # from starting another restore or deleting it underneath the retry.
+            _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))
         logger.error(f"[restore] Range {range_id} restore FAILED: {e}")
         raise
 
@@ -951,19 +1495,19 @@ def delete_snapshot(self, range_id: str, snapshot_id: str):
     """Delete snapshot data from the provisioner backend."""
     logger.info(f"[snapshot] Deleting snapshot {snapshot_id} for range {range_id}")
 
-    provisioner = _get_backend()
-
     try:
-        with _db_session() as db:
-            from sqlalchemy import text
+        snap, rng = _snapshot_context(snapshot_id, range_id)
 
-            row = db.execute(
-                text("SELECT snapshot_data FROM range_snapshots WHERE id = :sid"), {"sid": snapshot_id}
-            ).first()
-
-        snapshot_data = json.loads(row[0]) if row and row[0] else {}
-
-        asyncio.run(provisioner.delete_snapshot(range_id, snapshot_data))
+        # snapshot_data is written only when a snapshot becomes `ready`. Without it
+        # there is nothing on the hypervisor: the snapshot failed and was discarded,
+        # and the API refuses to delete one that is still being taken.
+        if snap and snap[1]:
+            snapshot_data = json.loads(snap[1])
+            prov_output = json.loads(rng[1]) if rng and rng[1] else {}
+            name = snapshot_data.get("snapshot_name") or snapshot_id
+            result = asyncio.run(_get_backend(_range_backend(rng)).delete_snapshot(range_id, prov_output, name))
+            if result.status != "ok":
+                raise RuntimeError(f"delete {result.status}: {'; '.join(result.errors) or 'no detail'}")
 
         _update_snapshot_state(snapshot_id, "deleted")
         logger.info(f"[snapshot] Snapshot {snapshot_id} deleted")

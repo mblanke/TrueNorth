@@ -1,0 +1,22 @@
+---
+# Rules disabled deliberately, with reasons. Everything else is enforced.
+profile: moderate
+
+skip_list:
+  # Role-internal variables here use a single project-wide `tn_` prefix rather
+  # than one prefix per role (tn_preflight_, tn_keycloak_, ...). Several of them
+  # are deliberately shared ACROSS roles — tn_secrets is built in tn_config and
+  # read in tn_migrate; tn_keycloak_ldap_component_id is set in tn_keycloak and
+  # reported in 99-validate. Per-role prefixes would make that sharing read as
+  # an accident rather than the design.
+  - var-naming[no-role-prefix]
+
+  # Task names use product spelling: "vSphere", not "VSphere".
+  - name[casing]
+
+  # site.yml is a list of import_playbook entries. The imported playbooks are
+  # named; the import lines are not plays.
+  - name[play]
+
+exclude_paths:
+  - files/

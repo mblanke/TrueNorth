@@ -21,6 +21,7 @@ import gsap from 'gsap';
 
 import { ThemeService, ThemeOption } from './core/services/theme.service';
 import { MotionService } from './shared/motion';
+import { TourOverlayComponent } from './shared/tour/tour-overlay.component';
 
 interface NavItem {
   label: string;
@@ -40,6 +41,7 @@ interface NavSection {
     CommonModule,
     RouterModule,
     RouterOutlet,
+    TourOverlayComponent,
     MatSidenavModule,
     MatToolbarModule,
     MatListModule,
@@ -64,7 +66,7 @@ interface NavSection {
             <span class="logo-text">TrueNorth</span>
           </div>
 
-          <nav class="side-nav" #sideNavEl>
+          <nav class="side-nav" #sideNavEl aria-label="TrueNorth workspaces">
             <span class="active-indicator" #indicator></span>
             <mat-accordion multi displayMode="flat">
               @for (section of navSections; track section.name) {
@@ -76,6 +78,9 @@ interface NavSection {
                     @for (item of section.items; track item.route) {
                       <a mat-list-item
                          [routerLink]="item.route"
+                         [attr.data-tour]="item.route"
+                         [attr.aria-label]="item.label"
+                         ariaCurrentWhenActive="page"
                          routerLinkActive="active-link"
                          [matTooltip]="item.label"
                          matTooltipPosition="right"
@@ -94,10 +99,11 @@ interface NavSection {
 
         <mat-sidenav-content>
           <mat-toolbar class="app-toolbar">
-            <button mat-icon-button (click)="toggleRail()" matTooltip="Toggle nav rail">
+            <button mat-icon-button (click)="toggleRail()" matTooltip="Toggle nav rail"
+                    aria-label="Toggle navigation" [attr.aria-expanded]="!collapsed()">
               <mat-icon>{{ collapsed() ? 'menu_open' : 'menu' }}</mat-icon>
             </button>
-            <span class="toolbar-kicker">TRUENORTH <span class="kicker-sep">//</span> CYBER RANGE</span>
+            <span class="toolbar-kicker">TRUENORTH <span class="kicker-sep">/</span> {{ workspaceTitle() }}</span>
 
             <span class="spacer"></span>
 
@@ -107,6 +113,8 @@ interface NavSection {
                 <button
                   class="theme-btn"
                   [class.active]="activeTheme() === t.id"
+                  [attr.aria-label]="t.label + ' theme'"
+                  [attr.aria-pressed]="activeTheme() === t.id"
                   [matTooltip]="t.label"
                   (click)="setTheme(t)">
                   <span class="swatch-half left" [style.background]="t.colorLeft"></span>
@@ -115,12 +123,6 @@ interface NavSection {
               }
             </div>
 
-            <button mat-icon-button matTooltip="Notifications">
-              <mat-icon>notifications</mat-icon>
-            </button>
-            <button mat-icon-button matTooltip="Account">
-              <mat-icon>account_circle</mat-icon>
-            </button>
           </mat-toolbar>
 
           <main class="app-content" #content>
@@ -128,6 +130,9 @@ interface NavSection {
           </main>
         </mat-sidenav-content>
       </mat-sidenav-container>
+
+      <!-- Rendered here so a tour can highlight the nav as well as the page. -->
+      <tn-tour-overlay />
     }
   `,
   styles: [`
@@ -228,6 +233,12 @@ interface NavSection {
       position: relative;
       z-index: 1;
     }
+    @media (max-width: 720px) {
+      .app-sidenav { width: 180px; }
+      .toolbar-kicker { letter-spacing: 0; font-size: 12px; }
+      .theme-label { display: none; }
+      .theme-picker { gap: 4px; }
+    }
 
     /* ── Active nav link ─────────────────────────────── */
     a.active-link {
@@ -288,29 +299,43 @@ export class AppComponent implements OnDestroy {
   collapsed = signal(false);
   navLoading = signal(false);
   isBareRoute = signal(false);
+  workspaceTitle = signal('Overview');
 
   readonly themes: ThemeOption[];
   readonly activeTheme;
 
   navSections: NavSection[] = [
     {
-      name: 'Operate',
+      name: 'Overview',
       items: [
         { label: 'Dashboard',  icon: 'dashboard',      route: '/dashboard' },
-        { label: 'Ranges',     icon: 'dns',            route: '/ranges' },
-        { label: 'Exercises',  icon: 'fitness_center', route: '/exercises' },
-        { label: 'Ops Center', icon: 'radar',          route: '/ops-center/select' },
       ],
     },
     {
-      name: 'Create & Learn',
+      name: 'Learn',
       items: [
-        { label: 'Authoring Studio', icon: 'auto_fix_high', route: '/authoring' },
         { label: 'Learning',         icon: 'school',        route: '/learning' },
       ],
     },
     {
-      name: 'Platform',
+      name: 'Create',
+      items: [
+        { label: 'Authoring Studio', icon: 'auto_fix_high', route: '/authoring' },
+      ],
+    },
+    {
+      name: 'Prepare & Operate',
+      items: [
+        { label: 'Exercises', icon: 'fitness_center', route: '/exercises' },
+        { label: 'Ops Center', icon: 'radar', route: '/ops-center/select' },
+      ],
+    },
+    {
+      name: 'Review',
+      items: [{ label: 'Scoring & debrief', icon: 'assessment', route: '/scoring' }],
+    },
+    {
+      name: 'Admin',
       items: [
         { label: 'Infrastructure',  icon: 'storage',              route: '/infrastructure' },
         { label: 'AI Orchestrator', icon: 'memory',               route: '/ai-orchestrator' },
@@ -338,6 +363,13 @@ export class AppComponent implements OnDestroy {
         this.navLoading.set(true);
       } else if (event instanceof NavigationEnd) {
         this.navLoading.set(false);
+        const path = event.urlAfterRedirects.split('/')[1]?.split('?')[0];
+        this.workspaceTitle.set(({
+          learning: 'Learning', authoring: 'Authoring', exercises: 'Exercises',
+          'ops-center': 'Ops Center', scoring: 'Review', infrastructure: 'Infrastructure',
+          'ai-orchestrator': 'AI Orchestrator', integrations: 'Integrations', users: 'People',
+          admin: 'Administration',
+        } as Record<string, string>)[path] ?? 'Overview');
         this.isBareRoute.set(event.urlAfterRedirects.startsWith('/login'));
         if (!this.isBareRoute()) {
           // Wait a frame so the routed component and routerLinkActive exist.

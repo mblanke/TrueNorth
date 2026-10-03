@@ -151,6 +151,68 @@ describe('ApiService', () => {
     req.flush({ id: 'r1', state: 'destroying' });
   });
 
+  // ── Range power ────────────────────────────────────────────────────
+  it('startRange() should POST to /api/ranges/{id}/start', () => {
+    let got: Range | undefined;
+    service.startRange('r1').subscribe(r => (got = r));
+    const req = httpMock.expectOne(`${base}/ranges/r1/start`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({});
+    req.flush({ id: 'r1', state: 'running' });
+    expect(got?.state).toBe('running');
+  });
+
+  it('startRange() should surface a 409 as an error, not a range', () => {
+    let status = 0;
+    service.startRange('r1').subscribe({ next: () => fail('expected error'), error: e => (status = e.status) });
+    httpMock.expectOne(`${base}/ranges/r1/start`)
+      .flush({ detail: 'Cannot start range in state running' }, { status: 409, statusText: 'Conflict' });
+    expect(status).toBe(409);
+  });
+
+  it('stopRange() should POST to /api/ranges/{id}/stop', () => {
+    service.stopRange('r1').subscribe();
+    const req = httpMock.expectOne(`${base}/ranges/r1/stop`);
+    expect(req.request.method).toBe('POST');
+    req.flush({ id: 'r1', state: 'stopped' });
+  });
+
+  it('getSoftwareCatalogue() should GET /api/software-catalogue', () => {
+    service.getSoftwareCatalogue().subscribe(c => expect(c.roles).toEqual(['dns']));
+    const req = httpMock.expectOne(`${base}/software-catalogue`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ software: [], roles: ['dns'] });
+  });
+
+  // ── Designer topology ──────────────────────────────────────────────
+  it('saveRangeTopology() should POST the diagram to /ranges/{id}/topology', () => {
+    const diagram = { cells: [{ id: 'n1' }] };
+    service.saveRangeTopology('r1', diagram).subscribe(res => expect(res.node_count).toBe(1));
+    const req = httpMock.expectOne(`${base}/ranges/r1/topology`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ diagram_json: diagram });
+    req.flush({ range_id: 'r1', template_id: 't1', created: true, node_count: 1, vlan_count: 1, warnings: [], template: {} });
+  });
+
+  it('templateFromDiagram() should POST the diagram and name to /templates/from-diagram', () => {
+    const diagram = { cells: [] };
+    service.templateFromDiagram(diagram, 'Lab').subscribe();
+    const req = httpMock.expectOne(`${base}/templates/from-diagram`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ diagram_json: diagram, name: 'Lab' });
+    req.flush({ template: {}, yaml: '', warnings: [] });
+  });
+
+  // ── Golden images ──────────────────────────────────────────────────
+  it('getGoldenImageAliasMap() should unwrap the {hypervisor, map} envelope', () => {
+    let got: Record<string, string> | undefined;
+    service.getGoldenImageAliasMap('vsphere').subscribe(m => (got = m));
+    const req = httpMock.expectOne((r) => r.url === `${base}/golden-images/alias-map`);
+    expect(req.request.params.get('hypervisor')).toBe('vsphere');
+    req.flush({ hypervisor: 'vsphere', map: { 'win11-analyst': 'win11-analyst', 'windows-11': 'win11-24h2' } });
+    expect(got).toEqual({ 'win11-analyst': 'win11-analyst', 'windows-11': 'win11-24h2' });
+  });
+
   // ── Templates ──────────────────────────────────────────────────────
   it('listTemplates() should make GET /api/templates with params', () => {
     service.listTemplates(10, 5).subscribe();

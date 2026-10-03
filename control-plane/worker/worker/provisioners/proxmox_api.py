@@ -22,9 +22,12 @@ from .results import (
     DestroyResult,
     HealthResult,
     ProvisionResult,
+    RestoreResult,
+    SnapshotDeleteResult,
     SnapshotResult,
     StartResult,
     StopResult,
+    outcome,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,13 @@ PROXMOX_NODE: str = os.environ.get("PROXMOX_NODE", "pve")
 PROXMOX_VERIFY_SSL: bool = os.environ.get("PROXMOX_VERIFY_SSL", "false").lower() == "true"
 PROXMOX_CONCURRENCY: int = int(os.environ.get("PROXMOX_CONCURRENCY", "4"))
 PROXMOX_AGENT_TIMEOUT: int = int(os.environ.get("PROXMOX_AGENT_TIMEOUT", "120"))
+# Snapshots are taken with vmstate=1, so each one writes out the VM's RAM.
+PROXMOX_SNAPSHOT_TIMEOUT: int = int(os.environ.get("PROXMOX_SNAPSHOT_TIMEOUT", "600"))
+
+
+def _upid(data: dict | str) -> str:
+    """The task id a Proxmox POST/DELETE returns (a bare string under ``data``)."""
+    return data if isinstance(data, str) else data.get("data", "")
 
 
 class ProxmoxAPIProvisioner(BaseProvisioner):
@@ -49,6 +59,7 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
         self._node = PROXMOX_NODE
         self._semaphore = asyncio.Semaphore(PROXMOX_CONCURRENCY)
         self._agent_timeout = PROXMOX_AGENT_TIMEOUT
+        self._snapshot_timeout = PROXMOX_SNAPSHOT_TIMEOUT
         self._headers = {
             "Authorization": f"PVEAPIToken={PROXMOX_TOKEN_ID}={PROXMOX_TOKEN_SECRET}",
         }
@@ -135,16 +146,24 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
             resp = await client.delete(f"/api2/json/nodes/{self._node}/qemu/{vmid}")
             resp.raise_for_status()
 
-    async def _wait_task(self, client: httpx.AsyncClient, upid: str, timeout: int = 120) -> None:
-        """Poll a Proxmox task until completion."""
+    async def _wait_task(self, client: httpx.AsyncClient, upid: str, timeout: int = 120, check: bool = False) -> None:
+        """Poll a Proxmox task until completion.
+
+        With ``check``, a task that ends with any exit status other than ``OK``, or
+        does not end within ``timeout``, raises. Without it, both are only logged.
+        """
         if not upid:
             return
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             data = await self._api_get(client, f"/nodes/{self._node}/tasks/{upid}/status")
             if data.get("status") == "stopped":
+                if check and data.get("exitstatus") != "OK":
+                    raise RuntimeError(f"task {upid} failed: {data.get('exitstatus')}")
                 return
             await asyncio.sleep(2)
+        if check:
+            raise TimeoutError(f"task {upid} did not complete within {timeout}s")
         logger.warning("Task %s did not complete within %ds", upid, timeout)
 
     async def _wait_qemu_agent(self, client: httpx.AsyncClient, vmid: int) -> bool:
@@ -357,33 +376,111 @@ class ProxmoxAPIProvisioner(BaseProvisioner):
         name: str,
     ) -> SnapshotResult:
         start = time.monotonic()
-        errors: list[str] = []
-        snapped = 0
-
-        vms = provision_output.get("vms", [])
-        async with self._client() as client:
-            for vm in vms:
-                vmid = vm.get("vmid")
-                if not vmid:
-                    continue
-                try:
-                    async with self._semaphore:
-                        await self._api_post(
-                            client,
-                            f"/nodes/{self._node}/qemu/{vmid}/snapshot",
-                            data={"snapname": name, "vmstate": 1},
-                        )
-                    snapped += 1
-                except Exception as exc:
-                    errors.append(f"Snapshot VM {vmid} failed: {exc}")
-
+        # The POST only queues the snapshot. Counting it as taken before the task
+        # finished meant a failed snapshot was reported as a good one.
+        snapped, errors = await self._per_vm(provision_output, self._snapshot_vm, name, "Snapshot")
         return SnapshotResult(
-            status="ok" if not errors else "partial",
+            status=outcome(snapped, errors),
             snapshot_name=name,
             vms_snapped=snapped,
             duration_seconds=time.monotonic() - start,
             errors=errors,
         )
+
+    async def restore(
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
+        power_on: bool,
+    ) -> RestoreResult:
+        start = time.monotonic()
+        reverted: set[int] = set()
+
+        async def rollback(client: httpx.AsyncClient, vmid: int, snapname: str) -> None:
+            await self._rollback_vm(client, vmid, snapname, power_on, reverted)
+
+        restored, errors = await self._per_vm(provision_output, rollback, name, "Restore")
+        return RestoreResult(
+            status=outcome(restored, errors),
+            snapshot_name=name,
+            vms_restored=restored,
+            vms_reverted=len(reverted),
+            duration_seconds=time.monotonic() - start,
+            errors=errors,
+        )
+
+    async def delete_snapshot(
+        self,
+        range_id: str,
+        provision_output: dict,
+        name: str,
+    ) -> SnapshotDeleteResult:
+        start = time.monotonic()
+        cleaned, errors = await self._per_vm(provision_output, self._delete_snapshot_vm, name, "Delete snapshot")
+        return SnapshotDeleteResult(
+            status=outcome(cleaned, errors),
+            snapshot_name=name,
+            vms_cleaned=cleaned,
+            duration_seconds=time.monotonic() - start,
+            errors=errors,
+        )
+
+    async def _per_vm(self, provision_output: dict, op, name: str, label: str) -> tuple[int, list[str]]:
+        """Run ``op(client, vmid, name)`` for every VM concurrently; count successes."""
+        vms = provision_output.get("vms", [])
+        vmids = [vm["vmid"] for vm in vms if vm.get("vmid")]
+        # A VM with no recorded vmid cannot be reached, so the range is not covered.
+        errors = [f"{label} VM {vm.get('name')} failed: no vmid recorded" for vm in vms if not vm.get("vmid")]
+        if vmids:
+            async with self._client() as client:
+                results = await asyncio.gather(*(op(client, vmid, name) for vmid in vmids), return_exceptions=True)
+            for vmid, res in zip(vmids, results, strict=True):
+                if isinstance(res, Exception):
+                    errors.append(f"{label} VM {vmid} failed: {res}")
+        return len(vms) - len(errors), errors
+
+    async def _snapshot_vm(self, client: httpx.AsyncClient, vmid: int, name: str) -> None:
+        async with self._semaphore:
+            data = await self._api_post(
+                client,
+                f"/nodes/{self._node}/qemu/{vmid}/snapshot",
+                data={"snapname": name, "vmstate": 1},
+            )
+            await self._wait_task(client, _upid(data), timeout=self._snapshot_timeout, check=True)
+
+    async def _snapshot_names(self, client: httpx.AsyncClient, vmid: int) -> set[str]:
+        listed = await self._api_get(client, f"/nodes/{self._node}/qemu/{vmid}/snapshot")
+        return {s.get("name") for s in listed or [] if isinstance(s, dict)}
+
+    async def _rollback_vm(
+        self, client: httpx.AsyncClient, vmid: int, name: str, power_on: bool, reverted: set[int]
+    ) -> None:
+        async with self._semaphore:
+            # Check first, so a missing snapshot fails before anything is touched.
+            if name not in await self._snapshot_names(client, vmid):
+                raise LookupError(f"no snapshot named {name!r}")
+            data = await self._api_post(client, f"/nodes/{self._node}/qemu/{vmid}/snapshot/{name}/rollback")
+            reverted.add(vmid)  # the rollback is under way: from here the VM may have changed
+            await self._wait_task(client, _upid(data), timeout=self._snapshot_timeout, check=True)
+            if not power_on:
+                return
+            # A vmstate snapshot of a running VM comes back running; starting it again
+            # would fail with "already running", so only start what is not.
+            current = await self._api_get(client, f"/nodes/{self._node}/qemu/{vmid}/status/current")
+            if current.get("status") != "running":
+                data = await self._api_post(client, f"/nodes/{self._node}/qemu/{vmid}/status/start")
+                await self._wait_task(client, _upid(data), check=True)
+
+    async def _delete_snapshot_vm(self, client: httpx.AsyncClient, vmid: int, name: str) -> None:
+        async with self._semaphore:
+            if name not in await self._snapshot_names(client, vmid):
+                return  # already gone: a retry after a partial delete must not fail
+            resp = await client.delete(f"/api2/json/nodes/{self._node}/qemu/{vmid}/snapshot/{name}")
+            resp.raise_for_status()
+            await self._wait_task(
+                client, _upid(resp.json().get("data", "")), timeout=self._snapshot_timeout, check=True
+            )
 
     # ------------------------------------------------------------------ #
     # health_check

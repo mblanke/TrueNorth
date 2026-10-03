@@ -1,0 +1,9 @@
+---
+# ansible-galaxy collection install -r requirements.yml
+collections:
+  - name: community.docker # docker_image, docker_container (Nexus on TN-DEPOT01)
+    version: ">=3.4.0"
+  - name: community.general
+    version: ">=8.0.0"
+  - name: ansible.posix # synchronize (local repo mode)
+    version: ">=1.5.0"

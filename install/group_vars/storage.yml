@@ -1,5 +1,0 @@
----
-# Storage appliance variables
-storage_protocol: nfs
-nfs_export_path: /vol/truenorth
-nfs_mount_options: "rw,hard,nointr,rsize=1048576,wsize=1048576"

@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from app.search_backends import (
+    NullSearchBackend,
+    OpenSearchBackend,
+    _reset_backend,  # noqa: PLC2701 — test-only helper
+    get_search_backend,
+)
 from fastapi import HTTPException
-
-from app.search_backends import NullSearchBackend, OpenSearchBackend, get_search_backend
-from app.search_backends import _reset_backend  # noqa: PLC2701 — test-only helper
 
 _SAMPLE_EVENTS = [
     {"event_type": "login", "user": "alice", "@timestamp": "2025-01-01T00:00:00Z"},
@@ -71,18 +74,14 @@ class TestOpenSearchBackend:
 
     @pytest.mark.asyncio
     async def test_ingest_success_counts_accepted(self, respx_mock):
-        respx_mock.post("http://mock-os:9200/_bulk").mock(
-            return_value=httpx.Response(200, json=_MOCK_BULK_RESPONSE)
-        )
+        respx_mock.post("http://mock-os:9200/_bulk").mock(return_value=httpx.Response(200, json=_MOCK_BULK_RESPONSE))
         backend = self._make_backend()
         count = await backend.ingest("range-1", _SAMPLE_EVENTS)
         assert count == 2
 
     @pytest.mark.asyncio
     async def test_ingest_network_error_returns_zero(self, respx_mock):
-        respx_mock.post("http://mock-os:9200/_bulk").mock(
-            side_effect=httpx.ConnectError("refused")
-        )
+        respx_mock.post("http://mock-os:9200/_bulk").mock(side_effect=httpx.ConnectError("refused"))
         backend = self._make_backend()
         assert await backend.ingest("range-1", _SAMPLE_EVENTS) == 0
 
@@ -120,9 +119,7 @@ class TestOpenSearchBackend:
 
     @pytest.mark.asyncio
     async def test_search_network_error_raises_502(self, respx_mock):
-        respx_mock.post("http://mock-os:9200/range-1/_search").mock(
-            side_effect=httpx.ConnectError("refused")
-        )
+        respx_mock.post("http://mock-os:9200/range-1/_search").mock(side_effect=httpx.ConnectError("refused"))
         with pytest.raises(HTTPException) as exc_info:
             await self._make_backend().search("range-1", "*")
         assert exc_info.value.status_code == 502
@@ -136,9 +133,7 @@ class TestOpenSearchBackend:
 
     @pytest.mark.asyncio
     async def test_health_check_unreachable_returns_false(self, respx_mock):
-        respx_mock.get("http://mock-os:9200/_cluster/health").mock(
-            side_effect=httpx.ConnectError("refused")
-        )
+        respx_mock.get("http://mock-os:9200/_cluster/health").mock(side_effect=httpx.ConnectError("refused"))
         assert await self._make_backend().health_check() is False
 
     def test_strips_trailing_slash(self):

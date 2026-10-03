@@ -1,6 +1,0 @@
----
-# Playbook 04: Proxmox VE installation and cluster setup
-- name: Proxmox -- install, cluster, pool creation
-  hosts: hypervisors
-  roles:
-    - proxmox

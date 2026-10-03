@@ -170,6 +170,14 @@ async def validate_launch(db: Session, id_token: str, state: str) -> tuple[Exter
         raise ValueError(f"No registered LTI platform for issuer {iss}")
     if not platform.lti_jwks_url:
         raise ValueError("Platform has no JWKS URL configured")
+    # Both identifiers must come from our registration, never from the token. With no
+    # registered client id the audience check below would compare the token's `aud`
+    # against itself, and without a deployment id any install of the same client on
+    # that issuer could launch into this tenant.
+    if not platform.lti_client_id:
+        raise ValueError("Platform has no LTI client id registered")
+    if not platform.lti_deployment_id:
+        raise ValueError("Platform has no LTI deployment id registered")
 
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(platform.lti_jwks_url)
@@ -180,10 +188,12 @@ async def validate_launch(db: Session, id_token: str, state: str) -> tuple[Exter
         id_token,
         platform_jwks,
         algorithms=["RS256"],
-        audience=platform.lti_client_id or client_id,
+        audience=platform.lti_client_id,
         issuer=iss,
         options={"verify_at_hash": False},
     )
+    if str(claims.get(CLAIM_DEPLOYMENT, "")) != platform.lti_deployment_id:
+        raise ValueError("LTI deployment id does not match the registered platform")
 
     # Replay protection: nonce must exist with matching state, then be consumed.
     record = (

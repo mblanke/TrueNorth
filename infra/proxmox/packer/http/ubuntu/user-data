@@ -1,0 +1,24 @@
+#cloud-config
+# Ubuntu 24.04 autoinstall seed for the ubuntu-2404 Packer templates (vSphere, Proxmox,
+# Hyper-V all serve this directory). Build-time credentials match the Packer defaults
+# ssh_username/ssh_password = ubuntu/ubuntu; override both together for real builds.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  storage:
+    layout:
+      name: lvm
+  identity:
+    hostname: ubuntu-2404
+    username: ubuntu
+    password: "$6$truenorthpkr$bVdgsetfx5CL7JMrDQFcHUqCOak0SE9VomTEvLepAaIO.OLaaIqggPw9zrNQ1AuWF73ChZfbTQKJOnkAIKymj0"
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - cloud-init
+  late-commands:
+    - "echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/ubuntu"
+    - "chmod 440 /target/etc/sudoers.d/ubuntu"

@@ -1,6 +1,6 @@
 # Golden image ubuntu-lts — vSphere-iso build -> vCenter Content Library.
-# Catalogue: os=linux 24.04 (web/app/db victim); base_iso=ubuntu-24.04-live-server-amd64.iso; sensor_baked=yes.
-# NOTE: DISCREPANCY: catalogue=24.04 but packer files ship 22.04.3. Pick one before build.
+# Catalogue: os=linux 24.04 (web/app/db victim); base_iso=ubuntu-24.04.5-live-server-amd64.iso; sensor_baked=yes.
+# Version pinned 2026-09-27: 24.04.5 (see docs/vm-build-sheet.md §8). infra/*/packer/ubuntu-2404.pkr.hcl match.
 # Do NOT run `packer build` here — files for human review + Content Library upload.
 variable "vsphere_server"   { type = string }   # vCenter FQDN
 variable "vsphere_user"     { type = string }

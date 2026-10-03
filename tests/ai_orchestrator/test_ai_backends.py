@@ -18,15 +18,16 @@ import respx
 from fastapi import HTTPException
 from httpx import Response
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def reset_backend_singletons():
     """Clear backend singleton cache before and after every test."""
     from _ai_orch.backends import _reset_backends
+
     _reset_backends()
     yield
     _reset_backends()
@@ -36,10 +37,12 @@ def reset_backend_singletons():
 # MockAIBackend
 # ---------------------------------------------------------------------------
 
+
 class TestMockAIBackend:
     @pytest.mark.asyncio
     async def test_generate_returns_mock_string(self):
         from _ai_orch.backends.mock import MockAIBackend
+
         b = MockAIBackend()
         text, model, usage = await b.generate("Hello")
         assert text.startswith("[MOCK]")
@@ -48,18 +51,21 @@ class TestMockAIBackend:
     @pytest.mark.asyncio
     async def test_generate_uses_override_model(self):
         from _ai_orch.backends.mock import MockAIBackend
+
         _, model, _ = await MockAIBackend().generate("p", model="my-model")
         assert model == "my-model"
 
     @pytest.mark.asyncio
     async def test_generate_default_model_is_mock(self):
         from _ai_orch.backends.mock import MockAIBackend
+
         _, model, _ = await MockAIBackend().generate("p")
         assert model == "mock"
 
     @pytest.mark.asyncio
     async def test_generate_truncates_long_prompt(self):
         from _ai_orch.backends.mock import MockAIBackend
+
         long_prompt = "x" * 1000
         text, _, _ = await MockAIBackend().generate(long_prompt)
         assert "..." in text
@@ -68,11 +74,13 @@ class TestMockAIBackend:
     @pytest.mark.asyncio
     async def test_health_check_always_true(self):
         from _ai_orch.backends.mock import MockAIBackend
+
         assert await MockAIBackend().health_check() is True
 
     @pytest.mark.asyncio
     async def test_usage_contains_token_counts(self):
         from _ai_orch.backends.mock import MockAIBackend
+
         _, _, usage = await MockAIBackend().generate("token count test")
         assert "prompt_tokens" in usage
         assert "completion_tokens" in usage
@@ -82,6 +90,7 @@ class TestMockAIBackend:
 # ---------------------------------------------------------------------------
 # OpenAIBackend
 # ---------------------------------------------------------------------------
+
 
 class TestOpenAIBackend:
     @pytest.mark.asyncio
@@ -125,6 +134,7 @@ class TestOpenAIBackend:
 
         async def handler(req, *args, **kwargs):
             import json
+
             captured["body"] = json.loads(req.content)
             return Response(200, json={"choices": [{"message": {"content": "ok"}}], "usage": {}})
 
@@ -139,9 +149,7 @@ class TestOpenAIBackend:
     async def test_generate_raises_502_on_http_error(self):
         from _ai_orch.backends.openai import OpenAIBackend
 
-        respx.post("https://api.openai.com/v1/chat/completions").mock(
-            return_value=Response(401, text="Unauthorized")
-        )
+        respx.post("https://api.openai.com/v1/chat/completions").mock(return_value=Response(401, text="Unauthorized"))
         with pytest.raises(HTTPException) as exc_info:
             await OpenAIBackend(api_key="bad-key").generate("Hi")
         assert exc_info.value.status_code == 502
@@ -190,6 +198,7 @@ class TestOpenAIBackend:
 # AnthropicBackend
 # ---------------------------------------------------------------------------
 
+
 class TestAnthropicBackend:
     @pytest.mark.asyncio
     @respx.mock
@@ -231,6 +240,7 @@ class TestAnthropicBackend:
 
         async def handler(req, *args, **kwargs):
             import json
+
             captured["body"] = json.loads(req.content)
             return Response(200, json={"content": [{"type": "text", "text": "ok"}], "usage": {}})
 
@@ -275,6 +285,7 @@ class TestAnthropicBackend:
 # ---------------------------------------------------------------------------
 # VLLMBackend
 # ---------------------------------------------------------------------------
+
 
 class TestVLLMBackend:
     @pytest.mark.asyncio
@@ -372,6 +383,7 @@ class TestVLLMBackend:
 # ---------------------------------------------------------------------------
 # Factory — get_cloud_backend
 # ---------------------------------------------------------------------------
+
 
 class TestGetCloudBackend:
     def test_returns_mock_backend(self):

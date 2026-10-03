@@ -9,7 +9,7 @@ installer) are marked accordingly.
 | Image | ISO | Source | Notes |
 |---|---|---|---|
 | kali | kali-linux-2024.1-installer-amd64.iso | https://cdimage.kali.org/kali-2024.1/ | vSphere Packer already present |
-| ubuntu-lts | ubuntu-24.04-live-server-amd64.iso **or** 22.04.3 | https://releases.ubuntu.com/ | ⚠ version conflict — catalogue=24.04, Packer files=22.04.3. Pin one. |
+| ubuntu-lts | ubuntu-24.04.5-live-server-amd64.iso | https://releases.ubuntu.com/24.04.5/ | Pinned to 24.04 (2026-09-27). sha256 97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8 |
 | rocky | Rocky-9-latest-x86_64-dvd.iso | https://download.rockylinux.org/pub/rocky/9/ | no Packer file yet |
 | pfsense | pfSense-CE-2.7.2-RELEASE-amd64.iso | https://www.pfsense.org/download/ | on every range; vSphere Packer TODO |
 | securityonion | securityonion-2.4.10-20240220.iso | https://securityonionsolutions.com | sensor appliance; vSphere Packer TODO |
@@ -18,12 +18,12 @@ installer) are marked accordingly.
 ## Microsoft Evaluation Center (free eval media, 180‑day)
 | Image | ISO | Notes |
 |---|---|---|
-| win10-22h2 | Win10_Enterprise_Eval_x64.iso (+ virtio-win.iso) | ⚠ range alias `windows-10-ltsc` — confirm 22H2 vs LTSC channel |
-| win11-24h2 | Win11_Enterprise_Eval_x64.iso (+ virtio-win.iso) | no Packer file yet |
+| win10-22h2 | Win10_Enterprise_Eval_x64.iso | ⚠ range alias `windows-10-ltsc` — confirm 22H2 vs LTSC channel |
+| win11-24h2 | Win11_Enterprise_Eval_x64.iso | no Packer file yet |
 | srv2016 | SERVER_2016_EVAL_x64FRE_en-us.iso | distinct from 2019/2022 |
 | srv2019 | SERVER_2019_EVAL_x64FRE_en-us.iso | distinct from 2022 |
-| srv2022 | SERVER_EVAL_x64FRE_en-us.iso (+ virtio-win.iso) | ✅ vSphere Packer present |
-| virtio-win | virtio-win.iso | https://fedorapeople.org/groups/virt/virtio-win/ — required alongside every Windows build |
+| srv2022 | SERVER_EVAL_x64FRE_en-us.iso | ✅ vSphere Packer present |
+| virtio-win | virtio-win.iso | **Proxmox only — not needed on vSphere.** vSphere Windows builds load the pvscsi driver from the VMware Tools ISO every ESXi host ships (`[] /vmimages/tools-isoimages/windows.iso`) |
 
 ## Licensed / entitlement‑gated (NO public eval — procurement action)
 | Image | Blocker |
@@ -43,9 +43,9 @@ installer) are marked accordingly.
 | c2-server | **AUTHOR‑REQUIRED / disabled** — Standards/instructor only |
 
 ## Summary of pending actions
-1. **Resolve the ubuntu version conflict** (24.04 vs 22.04.3) before any linux golden build.
+1. ~~Resolve the ubuntu version conflict~~ — resolved 2026-09-27: `ubuntu-lts` = 24.04.5 (`ubuntu-2204` kept as a deprecated alias).
 2. **Procure Win7 entitled media**; keep Win XP disabled pending justification.
 3. **Author vSphere Packer files** for every `enabled=yes` image lacking one (all except srv2022, kali,
    ubuntu) — this is Taz task 1.
 4. **Decide GAP‑vyos** (add image vs swap red‑vs‑blue router to pfSense).
-5. **Stage virtio-win.iso** on the datastore — needed by every Windows build.
+5. ~~Stage virtio-win.iso~~ — not needed on vSphere (VMware Tools ISO supplies pvscsi/vmxnet3). Lab media actually present on `[esx01-local] ISO/`: see `docs/deployment/vm-build-guide.md` §1.

@@ -1,0 +1,20 @@
+// TrueNorth's Moodle Boost branding. Keep the brand and spacing aligned with
+// control-plane/web/src/theme/unified.scss; retain Moodle's accessible controls.
+$tn-red: #bd1631;
+$tn-ink: #1a1e24;
+$tn-border: #d8dee5;
+
+body { font-family: 'Segoe UI', system-ui, sans-serif; color: $tn-ink; background: #f7f8fa; }
+h1, h2, h3 { font-family: inherit; letter-spacing: normal; }
+.navbar { background: #fff !important; border-bottom: 3px solid $tn-red; box-shadow: none; }
+.navbar-brand { color: $tn-red !important; font-weight: 600; }
+.btn, .form-control { border-radius: 6px; }
+.btn-primary { background: $tn-red; border-color: $tn-red; color: #fff; }
+.btn-primary:hover, .btn-primary:focus { background: #96112a; border-color: #96112a; }
+a { color: #a4122b; }
+.card, .dashboard-card, #region-main { border-radius: 10px; box-shadow: none; }
+.card, .dashboard-card { border: 1px solid $tn-border; }
+.moremenu .nav-link.active { border-bottom-color: $tn-red; }
+.page-header-headings h1 { font-size: 1.75rem; font-weight: 600; }
+.login-container { background: #fff; border: 1px solid $tn-border; border-top: 4px solid $tn-red; border-radius: 10px; }
+:focus-visible { outline: 2px solid $tn-red; outline-offset: 3px; }

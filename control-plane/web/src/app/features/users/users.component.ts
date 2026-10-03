@@ -16,6 +16,8 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDividerModule } from '@angular/material/divider';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { ApprovalsPanelComponent } from './approvals-panel.component';
 
 interface Nation {
   id: string; name: string; iso_alpha2: string; iso_alpha3: string;
@@ -61,7 +63,8 @@ interface AuthZone {
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, MatExpansionModule,
-    MatBadgeModule, MatSnackBarModule, MatDividerModule,
+    MatBadgeModule, MatSnackBarModule, MatDividerModule, EmptyStateComponent,
+    ApprovalsPanelComponent,
   ],
   template: `
     <div class="page-container">
@@ -195,6 +198,20 @@ interface AuthZone {
                   <mat-chip-set><mat-chip [class]="'role-' + u.role">{{ u.role }}</mat-chip></mat-chip-set>
                 </td>
               </ng-container>
+              <!-- Whether this person has finished first-run. A trainee stuck at
+                   'not started' has an account but has never actually arrived. -->
+              <ng-container matColumnDef="onboarding">
+                <th mat-header-cell *matHeaderCellDef>Onboarding</th>
+                <td mat-cell *matCellDef="let u">
+                  <mat-chip-set>
+                    <mat-chip
+                      [class]="'onb-' + (u.onboarding_state || 'not_started')"
+                      [matTooltip]="onboardingHint(u)">
+                      {{ onboardingLabel(u) }}
+                    </mat-chip>
+                  </mat-chip-set>
+                </td>
+              </ng-container>
               <ng-container matColumnDef="clearance">
                 <th mat-header-cell *matHeaderCellDef>Clearance</th>
                 <td mat-cell *matCellDef="let u">
@@ -219,7 +236,19 @@ interface AuthZone {
               <tr mat-header-row *matHeaderRowDef="userColumns"></tr>
               <tr mat-row *matRowDef="let row; columns: userColumns;"></tr>
             </table>
-            <p *ngIf="filteredUsers.length === 0" class="empty-state">No users found.</p>
+            @if (filteredUsers.length === 0) {
+              <tn-empty-state icon="person_search" title="No users found"
+                              message="Adjust the search or sync from the directory." />
+            }
+          </div>
+        </mat-tab>
+
+        <!-- ===== Approvals Tab ===== -->
+        <!-- Where registration requests are turned into accounts. Approving is
+             the only path that creates a trainee. -->
+        <mat-tab label="Approvals">
+          <div class="tab-content">
+            <tn-approvals-panel />
           </div>
         </mat-tab>
 
@@ -302,7 +331,10 @@ interface AuthZone {
                 </mat-card-actions>
               </mat-card>
             </div>
-            <p *ngIf="teams.length === 0" class="empty-state">No teams configured.</p>
+            @if (teams.length === 0) {
+              <tn-empty-state icon="groups" title="No teams configured"
+                              message="Create a team to group operators for an exercise." />
+            }
           </div>
         </mat-tab>
 
@@ -398,7 +430,10 @@ interface AuthZone {
                 </button>
               </div>
             </div>
-            <p *ngIf="ouTree.length === 0" class="empty-state">No OUs configured.</p>
+            @if (ouTree.length === 0) {
+              <tn-empty-state icon="account_tree" title="No OUs configured"
+                              message="Organizational units appear here once synced or created." />
+            }
 
             <mat-divider style="margin: 24px 0;"></mat-divider>
 
@@ -589,7 +624,6 @@ interface AuthZone {
     .header-left { display: flex; align-items: center; gap: 16px; }
 
     h1 { margin: 0; font-size: 24px; color: var(--text-primary); }
-    .subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
     .tab-content { padding: 16px 0; }
     .tab-toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
     .toolbar-spacer { flex: 1; }
@@ -619,9 +653,8 @@ interface AuthZone {
     .sync-stats { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
     .zone-card { margin-bottom: 12px; background: var(--bg-card); border: 1px solid var(--border); }
     .zone-info { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 12px; color: var(--text-secondary); }
-    .status-online { color: #4caf50; vertical-align: middle; margin-right: 8px; }
-    .status-offline { color: #f44336; vertical-align: middle; margin-right: 8px; }
-    .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
+    .status-online { color: var(--success); vertical-align: middle; margin-right: 8px; }
+    .status-offline { color: var(--alert); vertical-align: middle; margin-right: 8px; }
     table { background: transparent !important; }
     th, td { color: var(--text-primary) !important; }
   `],
@@ -636,7 +669,30 @@ export class UsersComponent implements OnInit {
   adSyncStatus: ADSyncStatus | null = null;
   authZones: AuthZone[] = [];
   userSearch = '';
-  userColumns = ['name', 'email', 'role', 'clearance', 'source', 'actions'];
+  userColumns = ['name', 'email', 'role', 'onboarding', 'clearance', 'source', 'actions'];
+
+  onboardingLabel(u: { onboarding_state?: string }): string {
+    switch (u.onboarding_state) {
+      case 'complete':
+        return 'Done';
+      case 'not_started':
+      case undefined:
+      case '':
+        return 'Not started';
+      default:
+        return 'In progress';
+    }
+  }
+
+  onboardingHint(u: { onboarding_state?: string; onboarded_at?: string }): string {
+    if (u.onboarding_state === 'complete') {
+      return u.onboarded_at ? `Completed ${new Date(u.onboarded_at).toLocaleDateString()}` : 'Completed';
+    }
+    if (!u.onboarding_state || u.onboarding_state === 'not_started') {
+      return 'Approved, but has not signed in and completed first-run yet.';
+    }
+    return `Stopped at the '${u.onboarding_state}' step.`;
+  }
 
   // Form visibility toggles
   showUserForm = false;

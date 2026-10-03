@@ -1,0 +1,32 @@
+---
+# One package family (apt or dnf) in a throwaway container. Included from main.yml.
+
+- name: Prefetch — script for {{ tn_prefetch_fam.family }}
+  ansible.builtin.template:
+    src: prefetch_linux.sh.j2
+    dest: "{{ tn_prefetch_workdir }}/prefetch-{{ tn_prefetch_fam.family }}.sh"
+    mode: "0755"
+  vars:
+    tn_prefetch_family: "{{ tn_prefetch_fam.family }}"
+    tn_prefetch_entries: "{{ tn_prefetch_sw | selectattr('value.linux.' ~ tn_prefetch_fam.family, 'defined') | list }}"
+
+- name: Prefetch — download through the depot in a container for {{ tn_prefetch_fam.family }}
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - -v
+      - "{{ tn_prefetch_workdir }}/prefetch-{{ tn_prefetch_fam.family }}.sh:/prefetch.sh:ro"
+      - "{{ tn_prefetch_fam.image }}"
+      - /bin/sh
+      - /prefetch.sh
+  register: tn_prefetch_linux_run
+  changed_when: "'TNRESULT ok' in tn_prefetch_linux_run.stdout"
+
+- name: Prefetch — results for {{ tn_prefetch_fam.family }}
+  ansible.builtin.set_fact:
+    tn_prefetch_linux_results: >-
+      {{ tn_prefetch_linux_results | default({}) | combine({tn_prefetch_fam.family: {
+           'ok': tn_prefetch_linux_run.stdout_lines | select('match', '^TNRESULT ok ') | map('regex_replace', '^TNRESULT ok ', '') | list,
+           'failed': tn_prefetch_linux_run.stdout_lines | select('match', '^TNRESULT fail ') | map('regex_replace', '^TNRESULT fail ', '') | list}}) }}

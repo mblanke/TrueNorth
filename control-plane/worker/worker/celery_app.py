@@ -82,13 +82,18 @@ app.conf.beat_schedule = {
         "task": "worker.tasks.cleanup_expired_ranges",
         "schedule": 300.0,  # every 5 minutes
     },
+    # Both expire after one interval: a run still queued when the next is due is
+    # dropped, not run late. Overlap of runs that did start is stopped by a Redis lock
+    # in the task (worker/tasks.py, _run_lock).
     "health-check-ranges": {
         "task": "worker.tasks.health_check_ranges",
         "schedule": 60.0,  # every minute
+        "options": {"expires": 60},
     },
     "collect-range-metrics": {
         "task": "worker.tasks.collect_range_metrics",
         "schedule": 30.0,  # every 30 seconds
+        "options": {"expires": 30},
     },
 }
 
@@ -103,6 +108,8 @@ app.conf.task_routes.update(
         "worker.tasks.health_check_ranges": {"queue": "default"},
         "worker.tasks.collect_range_metrics": {"queue": "telemetry"},
         "worker.tasks.delete_snapshot": {"queue": "provision"},
+        "worker.tasks.stop_range": {"queue": "provision"},
+        "worker.tasks.start_range": {"queue": "provision"},
         # EPIC 1: Exercise Forge
         "worker.tasks.forge_exercise": {"queue": "default"},
         # EPIC 3: Adaptive Learning
@@ -114,9 +121,10 @@ app.conf.task_routes.update(
 # -- Register task modules -------------------------------------------------
 # Importing at the end (after `app` is configured) registers every @app.task
 # with this Celery app. Without this the worker starts with an empty task list.
-from . import tasks  # noqa: F401, E402
-
 # -- Chaos engineering hooks (disabled by default) -------------------------
 # Importing the module registers Celery signals; actual injection is
 # controlled by CHAOS_ENABLED env var.
-from . import chaos  # noqa: F401, E402
+from . import (
+    chaos,  # noqa: F401, E402
+    tasks,  # noqa: F401, E402
+)

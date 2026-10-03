@@ -1,0 +1,221 @@
+diff --git a/DP3-5_Curriculum_Overview.md b/DP3-5_Curriculum_Overview.md
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/DP3-5_Curriculum_Overview.md
+@@ -0,0 +1,1060 @@
++# DP 3 – DP 5 Curriculum & Capability Development Overview
++
++---
++
++## 1.  Background
++
++| DP | Current CAF rank (in TrueNorth) | Existing QSP code(s) | Comment |
++|----|--------------------------------|----------------------|---------|
++| 1  | **Pte** – Private | **ALJQ** | Defined (Basic occupation) |
++| 2  | **Cpl** – Corporal | **TEMP67, TEMP64, ALRA** | Defined (Journeyman) |
++| 3  | – | – | Placeholder – **Master Corporal (MCpl)** is the logical next rank |
++| 4  | – | – | Placeholder – **Sergeant (Sgt)** |
++| 5  | – | – | Placeholder – **Warrant Officer (WO)** (often called *Sergeant‑Major* in day‑to‑day usage) |
++
++The code in `control-plane/api/app/qsp_paths.py` deliberately leaves DP 3‑5 empty.  The design below shows **what could be added** when official QSPs become available.
++
++---
++
++## 2.  Proposed QSP Definitions
++
++| DP | QSP Code | Rank | Track | Title (displayed in the UI) | Brief Description |
++|----|----------|------|-------|-----------------------------|--------------------|
++| **DP 3** | **MCPL‑001** | **MCpl** (Master Corporal) | `progression` | *Cyber Operator – Technical Specialist (MCpl RQ)* | First NCO rank where the operator becomes a **subject‑matter expert (SME)** for a specific cyber toolset. |
++| **DP 3** | **MCPL‑002** | **MCpl** | `specialty` | *Cyber Analyst – Network Monitoring (MCpl RQ)* | Focuses on continuous network monitoring, packet analysis, and basic intrusion detection. |
++| **DP 4** | **SGT‑001** | **Sgt** (Sergeant) | `progression` | *Cyber Operator – Squad Lead (Sgt RQ)* | SME who now **leads a squad**, planning and executing defensive and offensive cyber missions. |
++| **DP 4** | **SGT‑002** | **Sgt** | `specialty` | *Red Team Lead – Adversary Emulation (Sgt RQ)* | Commands a small **red‑team** cell, designs realistic adversary simulations. |
++| **DP 5** | **WO‑001** | **WO** (Warrant Officer) | `progression` | *Cyber Instructor – Senior Trainer (WO RQ)* | Senior technical instructor, author of curricula, mentor for MCpls and Sgts. |
++| **DP 5** | **WO‑002** | **WO** | `specialty` | *Cyber Operations Architect – Enterprise Defender (WO RQ)* | Designs enterprise‑wide security architectures, integrates multi‑domain defenses. |
++
++*The `track` column mirrors the existing “progression” (core ladder) and “specialty” (parallel streams such as Red Team, Malware) concepts.*
++
++---
++
++## 3.  Curriculum Overview
++
++### 3.1 DP 3 – Master Corporal (Technical Specialist)
++
++| Course Code | Course Title | Duration (hrs) | Core Learning Objectives | NIST CSF Functions | NICE Category |
++|------------|--------------|----------------|--------------------------|-------------------|--------------|
++| **MC‑CDA‑101** | Foundations of Cyber Defence (Pte → MCpl) | 120 | • Review OS hardening & basic SIEM operation<br>• Hands‑on firewall rule creation<br>• Intro to incident‑response playbooks | **Identify**, **Protect**, **Detect** | **Operate & Maintain – Cyber Defense Analyst** |
++| **MC‑NET‑102** | Network Monitoring & Traffic Analysis | 150 | • Capture‑packet analysis with Wireshark<br>• Identify attacker tactics (ATT&CK T1040, etc.)<br>• Create baseline traffic profiles | **Detect** | **Analyze – Network Analyst** |
++| **MC‑SOP‑103** | Standard Operating Procedures for MCpls | 80 | • Write SOPs for routine security tasks<br>• Conduct peer‑review of SOPs<br>• Establish escalation paths | **Identify**, **Respond** | **Operate & Maintain – Cyber Defense Analyst** |
++
++### 3.2 DP 4 – Sergeant (Squad Lead)
++
++| Course Code | Course Title | Duration (hrs) | Core Learning Objectives | NIST CSF Functions | NICE Category |
++|------------|--------------|----------------|--------------------------|-------------------|--------------|
++| **SG‑CMD‑201** | Squad Command & Tactical Planning | 180 | • Develop mission‑oriented cyber‑operation plans<br>• Conduct risk assessments (CVSS)<br>• Lead tabletop exercises | **Identify**, **Respond**, **Recover** | **Lead – Cyber Operations Lead** |
++| **SG‑RED‑202** | Red‑Team Leadership & Adversary Emulation | 160 | • Design realistic adversary TTPs (ATT&CK)<br>• Manage multi‑phase penetration tests<br>• Report findings to senior leadership | **Identify**, **Protect**, **Detect** | **Analyze – Red Team** |
++| **SG‑INSTR‑203** | Instructional Design for Cyber Training | 100 | • Apply ADDIE model to create training modules<br>• Evaluate learner performance metrics<br>• Incorporate feedback loops | **Protect**, **Respond** | **Educate – Cyber Educator** |
++
++### 3.3 DP 5 – Warrant Officer (Senior Instructor / Architect)
++
++| Course Code | Course Title | Duration (hrs) | Core Learning Objectives | NIST CSF Functions | NICE Category |
++|------------|--------------|----------------|--------------------------|-------------------|--------------|
++| **WO‑TRAIN‑301** | Advanced Cyber Instruction & Mentorship | 200 | • Coach MCpls & Sgts on leadership & technical depth<br>• Align curriculum with CAF policy<br>• Evaluate program effectiveness via KPIs | **Identify**, **Protect**, **Detect**, **Respond**, **Recover** | **Educate – Cyber Educator**, **Lead – Cyber Operations Lead** |
++| **WO‑ARCH‑302** | Enterprise Cyber Architecture & Governance | 220 | • Design zero‑trust architectures<br>• Map security controls to NIST SP 800‑53<br>• Conduct governance audits | **Identify**, **Protect**, **Detect**, **Respond**, **Recover** | **Operate & Maintain – Cybersecurity Architect** |
++| **WO‑STRAT‑303** | Strategic Cyber Policy & Advisory | 180 | • Translate strategic directives into operational plans<br>• Advise senior commanders on cyber risk posture<br>• Lead inter‑agency coordination exercises | **Identify**, **Protect**, **Respond** | **Lead – Cyber Policy & Governance** |
++
++---
++
++## 4.  Mapping to American Standards
++
++| Canadian QSP (DP) | Approx. U.S. MOS / AFSC | NIST CSF Core Functions Covered | NICE Framework **Specialty Areas** |
++|-------------------|--------------------------|--------------------------------|------------------------------------|
++| **MCPL‑001 / MCPL‑002** | **18X** (U.S. Army Cyber Operations Specialist) <br> **1B4X1** (Air Force Cyber Operations) | **Identify**, **Protect**, **Detect** | **Operate & Maintain – Cyber Defense Analyst**, **Analyze – Network Analyst** |
++| **SGT‑001 / SGT‑002** | **18C** (U.S. Army Cyber Operations Officer) <br> **1B4X2** (Air Force Cyber Warfare Officer) | **Identify**, **Protect**, **Detect**, **Respond**, **Recover** | **Lead – Cyber Operations Lead**, **Analyze – Red Team**, **Educate – Cyber Educator** |
++| **WO‑001 / WO‑002** | **18A** (U.S. Army Cyber Operations Officer – Senior) <br> **1B4X3** (Air Force Cyber Warfare Senior Officer) | **All five CSF functions** (full‑cycle) | **Educate – Cyber Educator**, **Operate & Maintain – Cybersecurity Architect**, **Lead – Cyber Policy & Governance** |
++
++*Key observations*
++
++1. **Progressive CSF coverage** – DP 3 covers Identify/Protect/Detect, DP 4 adds Respond/Recover, DP 5 achieves full‑cycle coverage.
++2. **NICE alignment** – Early DPs map to *technical analyst* roles; later DPs map to *leadership, architecture, and policy* roles, mirroring the NICE career ladder.
++3. **U.S. MOS/AFSC parallels** give a common language for joint training and interoperability.
++
++---
++
++## 5.  Capability‑Development Tracks (Mission Assurance, Cyber Intelligence, Offensive Cyber Operations)
++
++### 5.1  New QSP Codes & Tracks
++
++| DP | QSP Code | Rank | Track | Title (UI) | Core Capability |
++|----|----------|------|-------|------------|-----------------|
++| **DP 3** | **MCPL‑MA01** | MCpl | `specialty` | *Cyber Mission Assurance – IoT & OT Foundations* | Baseline hardening of Industrial‑Control‑Systems, IoT device security, Physical‑Tech (PT) risk |
++| **DP 3** | **MCPL‑CI01** | MCpl | `specialty` | *Cyber Intelligence – Collection & Analysis Fundamentals* | Intro to OSINT, SIGINT basics, threat‑intel pipelines |
++| **DP 4** | **SGT‑MA02** | Sgt | `specialty` | *Cyber Mission Assurance – Advanced OT & Resilience* | OT incident response, safety‑critical system continuity, NIST 800‑82 & IEC 62443 |
++| **DP 4** | **SGT‑CI02** | Sgt | `specialty` | *Cyber Intelligence – Operational Threat‑Modelling* | Threat‑actor profiling, ATT&CK mapping to OT/IoT, intelligence‑sharing processes |
++| **DP 4** | **SGT‑OC01** | Sgt | `specialty` | *Offensive Cyber Operations – Tactical Exploitation* | Red‑team exploitation of OT/IoT, weaponisation, C2 development |
++| **DP 5** | **WO‑MA03** | WO | `progression` | *Cyber Mission Assurance – Enterprise‑Wide Governance* | Zero‑trust for OT, supply‑chain risk management, policy authoring |
++| **DP 5** | **WO‑CI03** | WO | `progression` | *Cyber Intelligence – Strategic Advisory* | Architecture of intel‑fusion centers, briefing senior command, legal/ethical frameworks |
++| **DP 5** | **WO‑OC02** | WO | `progression` | *Offensive Cyber Operations – Campaign Design & Oversight* | Full‑cycle operation planning, legal ROE, coordination with allied forces |
++
++*The `track` field mirrors the existing “progression” (core ladder) and “specialty” (parallel streams) concepts.  For DP 5 the new capabilities are placed on the **progression** track because they become expected responsibilities of a senior NCO/Warrant Officer.*
++
++### 5.2  Curriculum Modules (Courses)
++
++| DP | Course Code | Course Title | Duration (hrs) | Expanded Learning Objectives (beyond prior DP) |
++|----|------------|--------------|----------------|-----------------------------------------------|
++| **DP 3** | MA‑IOT‑311 | IoT Device Security Fundamentals | 130 | • Identify insecure default configurations in consumer/industrial IoT<br>• Apply secure‑boot and attestation mechanisms<br>• Build lightweight monitoring agents for constrained devices |
++|  | MA‑OT‑312 | OT System Basics & Safety Integration | 150 | • Overview of PLC, SCADA, DCS architectures<br>• Map IEC 62443 zones/conduits to NIST CSF **Protect**<br>• Conduct a safety‑impact analysis of cyber‑induced faults |
++|  | CI‑OSINT‑321 | Open‑Source & Social‑Media Intelligence | 110 | • Harvest data via Shodan, Censys, and public repositories<br>• Create structured intel packets (STIX/TAXII)<br>• Correlate IoT/OT footprints with threat‑actor TTPs |
++| **DP 4** | MA‑OT‑421 | Advanced OT Incident Response | 180 | • Build isolation playbooks for live industrial processes<br>• Use FORTRACE, PLC‑Emu for post‑incident forensic capture<br>• Align response steps with **NIST CSF – Respond/Recover** |
++|  | CI‑TACT‑422 | Threat‑Modelling for OT/IoT | 160 | • Extend ATT&CK for Enterprise → OT (ATT&CK‑OT)<br>• Produce risk matrices focused on physical consequences<br>• Generate actionable intel briefs for plant managers |
++|  | OC‑EXP‑423 | Tactical Exploit Development (OT/IoT) | 170 | • Develop protocol‑specific exploits (Modbus, MQTT, OPC‑UA)<br>• Bypass safety interlocks, craft covert C2 channels<br>• Conduct red‑team “kill‑chain” exercises in a sandboxed OT environment |
++| **DP 5** | MA‑GOV‑531 | Enterprise Mission Assurance Governance | 210 | • Design zero‑trust segmentation for OT networks<br>• Lead supply‑chain security assessments (hardware, firmware)<br>• Draft policy packages for CAF Command, audit compliance |
++|  | CI‑STR‑532 | Strategic Cyber Intelligence Leadership | 200 | • Build an intelligence‑fusion centre (APT‑DB, HUMINT integration)
++• Produce high‑level threat assessments for senior command
++• Navigate legal, ethical, and international‑law constraints |
++|  | OC‑CAM‑533 | Offensive Campaign Design & Oversight | 230 | • Plan multi‑stage cyber‑operations (recon → exploitation → exfiltration)
++• Draft Rules‑of‑Engagement (ROE) aligned with NATO‑CTR
++• Coordinate with allied red‑team units, manage attribution risk |
++|  | MA‑RES‑534 | Resilience Engineering for Critical Infrastructure | 190 | • Apply resilience metrics (MTBF, MTTR) to cyber‑controlled assets
++• Conduct joint tabletop exercises with emergency‑response agencies
++• Integrate cyber‑continuity planning into CAF JOPP (Joint Operations Planning Process) |
++
++**NIST CSF Functions Covered** – Identify, Protect, Detect, Respond, Recover (as appropriate per course).
++
++**NICE Framework Specialty Areas** –
++- Mission Assurance → *Operate & Maintain – Cybersecurity Analyst (OT)*, *Securely Provision – Systems Administrator*
++- Cyber Intelligence → *Analyze – Cyber Threat Analyst*, *Collect – Cyber Collection Analyst*
++- Offensive Cyber Operations → *Operate – Penetration Tester*, *Operate – Red Team Operator*, *Lead – Cyber Operations Lead*
++
++---
++
++## 6.  Integration Steps for TrueNorth (Hypothetical)
++
++1. **Create QSP CSV rows** for the six new qualifications (MCPL‑001, MCPL‑002, SGT‑001, SGT‑002, WO‑001, WO‑002) with `dp_order` values **3**, **4**, **5** respectively, using the same schema as `qsp_source/INDEX.md`.
++2. **Ingest the CSV** via `/qsp/import-crosswalk`. The system will automatically populate `Qualification.rank_level` for DP 3‑5, turning the “planned” ghosts into real nodes.
++3. **Add catalogue courses** for each QSP (e.g., `MC‑CDA‑101`, `SG‑CMD‑201`, `WO‑ARCH‑302`). Tag them with `DP3`, `DP4`, `DP5` using the existing `catalogue_tags` logic.
++4. **Run `generate_learning_paths`** – the engine will produce paths that now include the new DP nodes and prerequisite edges.
++5. **Populate NIST/NICE mappings**: Fill the `Qualification.nist_functions` and `Qualification.nice_codes` columns so that compliance dashboards can surface the alignments.
++
++---
++
++## 7.  Mapping to American Standards (re‑stated)
++
++| Canadian QSP (DP) | Approx. U.S. MOS/AFSC | NIST CSF Functions (expanded) | NICE Specialty Areas |
++|-------------------|-----------------------|-------------------------------|----------------------|
++| **MCPL‑A01 / MCPL‑A02** | 18X (Cyber Ops Specialist) – *Advanced* | **Identify, Protect, Detect** (deep analysis) | **Analyze – Malware Analyst**, **Analyze – Network Analyst** |
++| **SGT‑B01** | 18C (Cyber Ops Officer) – *Threat‑Hunt Lead* | **Identify, Detect, Respond** (full hunt cycle) | **Operate & Maintain – Threat Hunting Analyst**, **Lead – Incident Responder** |
++| **SGT‑B02** | 18C (Red Team Officer) – *Advanced* | **Identify, Protect, Detect** (adversary modeling) | **Analyze – Red Team**, **Operate – Penetration Tester** |
++| **WO‑C01** | 18A (Cyber Ops Senior Officer) – *Instructor* | **All five** (strategic teaching) | **Educate – Cyber Educator**, **Lead – Cyber Operations Lead** |
++| **WO‑C02** | 18A (Cyber Ops Senior Officer) – *Architect* | **All five** (enterprise governance) | **Operate & Maintain – Cybersecurity Architect**, **Lead – Cyber Policy & Governance** |
++
++---
++
++## 8.  Duration Summary
++
++### 8.1 New Capability‑Development Modules (DP 3‑5)
++
++| DP | Course Code | Course Title (abbrev.) | Duration (hrs) |
++|----|------------|------------------------|----------------|
++| **DP 3** | MA‑IOT‑311 | IoT Device Security Fundamentals | 130 |
++|  | MA‑OT‑312 | OT System Basics & Safety Integration | 150 |
++|  | CI‑OSINT‑321 | Open‑Source & Social‑Media Intelligence | 110 |
++| **DP 4** | MA‑OT‑421 | Advanced OT Incident Response | 180 |
++|  | CI‑TACT‑422 | Threat‑Modelling for OT/IoT | 160 |
++|  | OC‑EXP‑423 | Tactical Exploit Development (OT/IoT) | 170 |
++| **DP 5** | MA‑GOV‑531 | Enterprise Mission Assurance Governance | 210 |
++|  | CI‑STR‑532 | Strategic Cyber Intelligence Leadership | 200 |
++|  | OC‑CAM‑533 | Offensive Campaign Design & Oversight | 230 |
++|  | MA‑RES‑534 | Resilience Engineering for Critical Infrastructure | 190 |
++
++**Subtotal per Developmental Period**
++- **DP 3 total** = 130 + 150 + 110 = **390 hrs**
++- **DP 4 total** = 180 + 160 + 170 = **510 hrs**
++- **DP 5 total** = 210 + 200 + 230 + 190 = **830 hrs**
++
++**Overall total for the new capability‑development modules** = **1,730 hrs**.
++
++### 8.2 Including Previously Defined Advanced Technical Modules
++
++| DP | Course | Duration (hrs) |
++|----|--------|----------------|
++| DP 3 | MC‑REV‑201, MC‑NET‑202, MC‑FOR‑203 | 180 + 160 + 120 = **460 hrs** |
++| DP 4 | SG‑TH‑301, SG‑IR‑302, SG‑RED‑303 | 200 + 180 + 170 = **550 hrs** |
++| DP 5 | WO‑EDU‑401, WO‑ARC‑402, WO‑POL‑403 | 220 + 240 + 180 = **640 hrs** |
++
++**Subtotal for earlier modules** = **1,650 hrs**.
++
++### 8.3 Grand Total for **all** DP 3‑5 Curriculum (technical + capability‑development)
++
++1,730 hrs (new capability modules) + 1,650 hrs (previous advanced modules) = **3,380 hrs**.
++
++---
++
++## 9.  Rationale & Benefits
++
++| Why add? | What it provides |
++|----------|------------------|
++| **Mission Assurance (IoT/OT/PT)** | Addresses the rapid proliferation of embedded devices on CAF installations, aligns with NATO’s **Cyber Defence of Critical Infrastructure** initiatives, and closes the gap between IT cyber‑defence and safety‑critical OT systems. |
++| **Cyber Intelligence** | Gives NCOs the ability to *collect, analyze, and disseminate* actionable threat data, supporting the CAF’s **Information Operations** and ensuring early detection of nation‑state actors targeting military IoT/OT. |
++| **Offensive Cyber Operations** | Prepares senior NCOs to *plan and execute* tactical cyber strikes, fulfilling the CAF’s **Cyber Expeditionary** mandate and providing a credible deterrent. |
++| **Capability Development** | By structuring these as **specialty tracks** at DP 3‑4 and **progression responsibilities** at DP 5, the ladder retains a clear career path while delivering the depth of skill required for modern, multi‑domain operations. |
++
++---
++
++## 10.  Example Learning‑Path Flow (including new capabilities)
++
++```
++DP1 (Pte)   →  DP2 (Cpl)   →  DP3 (MCpl)   →  DP4 (Sgt)   →  DP5 (WO)
++  |               |                |                |                |
++  |  Basic       |  Core Ops      |  Advanced        |  Squad Lead   |  Senior Instructor/
++  |  Foundations |  Core Tasks    |  Malware Rev‑Eng |  Threat Hunt  |  Enterprise Architect
++  |               |                |  + IoT/OT MA    |  + OT MA      |  + Cyber Intel
++  |               |                |  + Cyber Intel  |  + Offensive  |  + Offensive Ops
++```
++
++Each arrow now represents **mandatory prerequisite** edges, ensuring that competence in IoT/OT security, intelligence analysis, or offensive tactics is only granted after the foundational skills of DP 2 are mastered.
++
++---
++
++*All of the above is documentation only – no code changes have been made. To materialise the QSPs, courses, and mappings, follow the integration steps in Section 6.*
++
++

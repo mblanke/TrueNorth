@@ -2,13 +2,13 @@ id: cloud-security
 name: Cloud Security Training Environment
 version: "1.0"
 description: |
-  A cloud security training environment with 20 VMs featuring simulated AWS
+  A cloud security training environment with 16 VMs featuring simulated AWS
   (LocalStack), Azure mock endpoints, container clusters (k3s with vulnerable
   pods), and CI/CD pipelines (GitLab CE, Jenkins). Includes cloud-native SIEM
   integration for detection and response exercises.
 author: TrueNorth Range
 difficulty: intermediate
-vm_count: 20
+vm_count: 16
 
 inputs:
   range_id: string
@@ -64,10 +64,10 @@ nodes:
   - id: localstack01
     name: LocalStack (AWS Simulator)
     role: cloud_sim_aws
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cloud_sim
     ip: "10.80.0.10"
-    specs: { cores: 4, memory_mb: 16384, disk_gb: 100 }
+    specs: { cores: 2, memory_mb: 16384, disk_gb: 100 }
     services: [localstack, s3, iam, lambda, ec2_mock, cloudtrail_sim, sts]
     simulated_services:
       - name: S3
@@ -82,10 +82,10 @@ nodes:
   - id: azure-mock01
     name: Azure Mock Endpoints
     role: cloud_sim_azure
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cloud_sim
     ip: "10.80.0.20"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 60 }
     services: [azurite, azure_ad_mock, azure_keyvault_mock]
     simulated_services:
       - name: Azure AD
@@ -98,10 +98,10 @@ nodes:
   - id: terraform01
     name: Terraform State Server
     role: iac_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cloud_sim
     ip: "10.80.0.30"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 40 }
     services: [terraform, consul]
     vulnerabilities:
       - type: exposed_state_file
@@ -113,7 +113,7 @@ nodes:
   - id: k3s-master
     name: k3s Master Node
     role: k8s_master
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: container_cluster
     ip: "10.80.1.10"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -122,7 +122,7 @@ nodes:
   - id: k3s-worker01
     name: k3s Worker Node 1
     role: k8s_worker
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: container_cluster
     ip: "10.80.1.20"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -138,7 +138,7 @@ nodes:
   - id: k3s-worker02
     name: k3s Worker Node 2
     role: k8s_worker
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: container_cluster
     ip: "10.80.1.21"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
@@ -154,7 +154,7 @@ nodes:
   - id: registry01
     name: Container Registry
     role: container_registry
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: container_cluster
     ip: "10.80.1.30"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 200 }
@@ -167,7 +167,7 @@ nodes:
   - id: gitlab01
     name: GitLab CE
     role: scm
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cicd_pipeline
     ip: "10.80.2.10"
     specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
@@ -181,10 +181,10 @@ nodes:
   - id: jenkins01
     name: Jenkins Server
     role: ci_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cicd_pipeline
     ip: "10.80.2.20"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
     services: [jenkins, docker]
     vulnerabilities:
       - type: script_console_no_auth
@@ -195,10 +195,10 @@ nodes:
   - id: argocd01
     name: ArgoCD
     role: gitops
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cicd_pipeline
     ip: "10.80.2.30"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 40 }
     services: [argocd]
     vulnerabilities:
       - type: default_admin_password
@@ -207,7 +207,7 @@ nodes:
   - id: sonarqube01
     name: SonarQube
     role: code_analysis
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: cicd_pipeline
     ip: "10.80.2.40"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
@@ -217,35 +217,35 @@ nodes:
   - id: cloud-siem01
     name: Cloud SIEM (OpenSearch)
     role: siem
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: monitoring
     ip: "10.80.3.10"
-    specs: { cores: 8, memory_mb: 32768, disk_gb: 500 }
+    specs: { cores: 4, memory_mb: 32768, disk_gb: 500 }
     services: [opensearch, opensearch_dashboards, cloudtrail_ingest, k8s_audit_ingest]
 
   - id: falco01
     name: Falco Runtime Security
     role: runtime_security
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: monitoring
     ip: "10.80.3.20"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 40 }
     services: [falco, falcosidekick]
 
   - id: prowler01
     name: Prowler / ScoutSuite
     role: cloud_audit
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: monitoring
     ip: "10.80.3.30"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 40 }
     services: [prowler, scoutsuite, steampipe]
 
   # --- Management (VLAN 404) ---
   - id: jump01
     name: Jump Host
     role: jump_host
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.80.4.10"
     specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
@@ -270,8 +270,8 @@ nodes:
       - vlan: management
         ip: "10.80.4.1"
 
-resource_totals:
-  total_vms: 20
-  total_cores: 62
-  total_memory_gb: 160
-  total_disk_gb: 1980
+resource_totals:  # summed from nodes by scripts/range-capacity.py (tests hold them equal)
+  total_vms: 16
+  total_cores: 38
+  total_memory_gb: 126
+  total_disk_gb: 1740

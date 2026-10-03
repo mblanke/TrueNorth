@@ -53,7 +53,7 @@ The TrueNorth Range Content Library provides pre-built, tested, and versioned tr
 |----------|-----|------|-----|-------------------|
 | `dc01` | Windows Server 2022 | Domain Controller | 10.10.100.1 | AD DS, DNS, DHCP |
 | `ws01` | Windows 11 | Workstation | 10.10.100.10 | Office 365, Sysmon |
-| `svr01` | Ubuntu 22.04 | Web/File Server | 10.10.100.20 | Apache, Samba, auditd |
+| `svr01` | Ubuntu 24.04 | Web/File Server | 10.10.100.20 | Apache, Samba, auditd |
 
 **Network Topology:**
 ```
@@ -83,7 +83,7 @@ The TrueNorth Range Content Library provides pre-built, tested, and versioned tr
 | `ws03` | Windows 11 | HR Workstation | 10.10.100.12 | Office 365, Sysmon |
 | `ws04` | Windows 11 | General Workstation | 10.10.100.13 | Office 365, Sysmon |
 | `filesvr` | Windows Server 2022 | File Server | 10.10.100.20 | File shares, Sysmon |
-| `websvr` | Ubuntu 22.04 | Web Server | 10.10.200.10 | Nginx, PHP, auditd |
+| `websvr` | Ubuntu 24.04 | Web Server | 10.10.200.10 | Nginx, PHP, auditd |
 | `fw01` | pfSense 2.7 | Firewall | 10.10.100.254/10.10.200.254 | Suricata IDS |
 
 **Network Topology:**
@@ -124,10 +124,10 @@ The TrueNorth Range Content Library provides pre-built, tested, and versioned tr
 | `ws01-ws08` | Windows 11 | Workstations (8) | 10.10.100.0/24 |
 | `filesvr` | Win Server 2022 | File Server | 10.10.100.0/24 |
 | `exchange` | Win Server 2022 | Email Server | 10.10.100.0/24 |
-| `websvr01` | Ubuntu 22.04 | Public Web | 10.10.200.0/24 |
-| `websvr02` | Ubuntu 22.04 | Internal Web | 10.10.200.0/24 |
-| `dbsvr` | Ubuntu 22.04 | Database | 10.10.300.0/24 |
-| `siem` | Ubuntu 22.04 | SIEM (ELK) | 10.10.400.0/24 |
+| `websvr01` | Ubuntu 24.04 | Public Web | 10.10.200.0/24 |
+| `websvr02` | Ubuntu 24.04 | Internal Web | 10.10.200.0/24 |
+| `dbsvr` | Ubuntu 24.04 | Database | 10.10.30.0/24 |
+| `siem` | Ubuntu 24.04 | SIEM (ELK) | 10.10.40.0/24 |
 | `fw01` | pfSense 2.7 | Edge Firewall | All subnets |
 | `fw02` | pfSense 2.7 | Internal Firewall | Internal only |
 
@@ -146,10 +146,10 @@ The TrueNorth Range Content Library provides pre-built, tested, and versioned tr
 
 | Hostname | OS | Role | IP |
 |----------|-----|------|-----|
-| `siem` | Ubuntu 22.04 | ELK Stack (Elasticsearch + Kibana) | 10.10.100.5 |
-| `zeek` | Ubuntu 22.04 | Zeek Network Monitor | 10.10.100.6 |
+| `siem` | Ubuntu 24.04 | ELK Stack (Elasticsearch + Kibana) | 10.10.100.5 |
+| `zeek` | Ubuntu 24.04 | Zeek Network Monitor | 10.10.100.6 |
 | `ws01` | Windows 11 | Endpoint (Sysmon) | 10.10.100.10 |
-| `svr01` | Ubuntu 22.04 | Target Server | 10.10.100.20 |
+| `svr01` | Ubuntu 24.04 | Target Server | 10.10.100.20 |
 | `attacker` | Kali Linux | Attack Platform | 10.10.200.100 |
 
 ---

@@ -1,11 +1,114 @@
 ﻿import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { environment } from '@env/environment';
 import {
-  AAR, Exercise, HealthResponse, Objective, Range,
+  AAR, Exercise, HealthResponse, HypervisorNode, Objective, Range, RangeDocument,
   Scenario, Team, Template, Tenant, TelemetryEvent, User,
 } from '../models';
+
+/** Result of POST /scenarios/validate and /templates/validate. */
+export interface YamlValidation {
+  valid: boolean;
+  errors: { path: string; message: string }[];
+  normalized: Record<string, any> | null;
+}
+
+/** One entry of GET /injectors. */
+export interface InjectorInfo {
+  name: string;
+  description: string;
+  required_params: string[];
+  mitre_techniques: string[];
+}
+
+/** GET /ranges/stats. */
+export interface RangeStats {
+  total_ranges: number;
+  by_state: Record<string, number>;
+  total_vms: number;
+  active_exercises: number;
+}
+
+/** One row of GET /exercise-forge/history. */
+export interface ForgeHistoryItem {
+  id: string;
+  created_at: string | null;
+  exercise_id: string;
+  scenario_id: string;
+  exercise_name: string;
+  source: string;
+  difficulty: string;
+  model_used: string;
+  mitre_techniques: string[];
+}
+
+/** A collective exercise summary (list) and its detail (get). */
+export interface CollectiveExercise {
+  id: string;
+  name: string;
+  state: string;
+  range_id: string;
+  objectives: number;
+  mesl_events: number;
+}
+export interface MeslEvent {
+  id: string;
+  serial: number;
+  phase: string;
+  scenario_time: string;
+  title: string;
+  description: string;
+  objective_ref: string;
+  attack_technique: string;
+  delivery_method: string;
+  from_cell: string;
+  to_participant: string;
+  expected_action: string;
+  moe: string;
+  status: string;
+}
+export interface CollectiveExerciseDetail {
+  id: string;
+  name: string;
+  state: string;
+  range_id: string;
+  objectives: { id: string; ref: string; text: string; moe: string; competency_code: string }[];
+  mesl: MeslEvent[];
+}
+
+
+/** Result of POST /ranges/{id}/topology. */
+export interface RangeTopologySave {
+  range_id: string;
+  template_id: string;
+  created: boolean;
+  node_count: number;
+  vlan_count: number;
+  warnings: string[];
+  template: Record<string, unknown>;
+}
+
+/** Result of POST /templates/from-diagram: the same template as a dict and as YAML. */
+export interface DiagramTemplate {
+  template: Record<string, unknown>;
+  yaml: string;
+  warnings: string[];
+}
+
+/** One entry of GET /software-catalogue. */
+export interface SoftwareEntry {
+  name: string;
+  aliases: string[];
+  /** Which guest families the catalogue can install it on. */
+  os_families: ('windows' | 'linux')[];
+}
+
+/** GET /software-catalogue: installable software plus role names (never installed). */
+export interface SoftwareCatalogue {
+  software: SoftwareEntry[];
+  roles: string[];
+}
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -102,6 +205,10 @@ export class ApiService {
   stopRange(id: string): Observable<Range> {
     return this.http.post<Range>(`${this.base}/ranges/${id}/stop`, {});
   }
+  /** Power a stopped range back on. 409 unless the range is `stopped`. */
+  startRange(id: string): Observable<Range> {
+    return this.http.post<Range>(`${this.base}/ranges/${id}/start`, {});
+  }
   updateRange(id: string, data: Partial<Range>): Observable<Range> {
     return this.http.put<Range>(`${this.base}/ranges/${id}`, data);
   }
@@ -113,6 +220,129 @@ export class ApiService {
   }
   saveRangeDiagram(id: string, diagram: any): Observable<{ range_id: string; diagram_json: any }> {
     return this.http.put<{ range_id: string; diagram_json: any }>(`${this.base}/ranges/${id}/diagram`, diagram);
+  }
+  /**
+   * Make a designer diagram the topology the range provisions: the server converts
+   * it to a template (range-owned) and repoints the range. 409 once the range has VMs.
+   */
+  saveRangeTopology(id: string, diagram: any): Observable<RangeTopologySave> {
+    return this.http.post<RangeTopologySave>(`${this.base}/ranges/${id}/topology`, { diagram_json: diagram });
+  }
+  getRangeStats(): Observable<RangeStats> {
+    return this.http.get<RangeStats>(`${this.base}/ranges/stats`);
+  }
+  /** Replace a range's description with the contents of a text/markdown file. */
+  importRangeDescription(id: string, file: File): Observable<Range> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<Range>(`${this.base}/ranges/${id}/description/import`, form);
+  }
+  listRangeDocuments(id: string): Observable<RangeDocument[]> {
+    return this.http.get<RangeDocument[]>(`${this.base}/ranges/${id}/documents`);
+  }
+  uploadRangeDocuments(id: string, files: File[]): Observable<RangeDocument[]> {
+    const form = new FormData();
+    for (const f of files) form.append('files', f);
+    return this.http.post<RangeDocument[]>(`${this.base}/ranges/${id}/documents`, form);
+  }
+  deleteRangeDocument(id: string, documentId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/ranges/${id}/documents/${documentId}`);
+  }
+  /** Direct link for downloading an attachment in its original form. */
+  rangeDocumentUrl(id: string, documentId: string): string {
+    return `${this.base}/ranges/${id}/documents/${documentId}`;
+  }
+
+  // ── Authoring: validation, catalogues, AI drafts ─────────
+  /** Validate scenario YAML against the engine schema (see POST /scenarios/validate). */
+  validateScenario(yaml: string): Observable<YamlValidation> {
+    return this.http.post<YamlValidation>(`${this.base}/scenarios/validate`, { yaml });
+  }
+  validateTemplate(yaml: string): Observable<YamlValidation> {
+    return this.http.post<YamlValidation>(`${this.base}/templates/validate`, { yaml });
+  }
+  /** Starter topology rendered from a template's declared assets. */
+  templateDiagramPreview(id: string): Observable<{ template_id: string; diagram_json: any }> {
+    return this.http.post<{ template_id: string; diagram_json: any }>(
+      `${this.base}/templates/${id}/diagram-preview`, {},
+    );
+  }
+  /** Convert a designer diagram to the template Save topology would provision (no write). */
+  templateFromDiagram(diagram: any, name = 'Range Design'): Observable<DiagramTemplate> {
+    return this.http.post<DiagramTemplate>(`${this.base}/templates/from-diagram`, { diagram_json: diagram, name });
+  }
+  /** Software names a designer node's `services` can install, with OS families. */
+  getSoftwareCatalogue(): Observable<SoftwareCatalogue> {
+    return this.http.get<SoftwareCatalogue>(`${this.base}/software-catalogue`);
+  }
+  /** The real injector registry — replaces hard-coded action lists. */
+  listInjectors(): Observable<InjectorInfo[]> {
+    return this.http.get<InjectorInfo[]>(`${this.base}/injectors`);
+  }
+  /**
+   * Hypervisor-verified OS aliases for the designer's image picker, including custom
+   * variant images registered through POST /golden-images. The endpoint answers
+   * `{hypervisor, map}`; callers get the inner alias -> template map.
+   */
+  getGoldenImageAliasMap(hypervisor?: string): Observable<Record<string, string>> {
+    let params = new HttpParams();
+    if (hypervisor) params = params.set('hypervisor', hypervisor);
+    return this.http
+      .get<{ hypervisor: string; map: Record<string, string> }>(`${this.base}/golden-images/alias-map`, { params })
+      .pipe(map(res => res?.map ?? {}));
+  }
+  aiScenarioDraft(body: { objectives: string[]; difficulty?: string; duration_minutes?: number }):
+    Observable<{ output: string; model_used: string }> {
+    return this.http.post<{ output: string; model_used: string }>(`${this.base}/ai/scenario-draft`, body);
+  }
+  aiDetectionDraft(body: { technique: string; data_source?: string; format?: string }):
+    Observable<{ output: string; model_used: string }> {
+    return this.http.post<{ output: string; model_used: string }>(`${this.base}/ai/detection-draft`, body);
+  }
+  getForgeHistory(limit = 50, offset = 0): Observable<{ items: ForgeHistoryItem[]; total: number }> {
+    const params = new HttpParams().set('limit', limit).set('offset', offset);
+    return this.http.get<{ items: ForgeHistoryItem[]; total: number }>(
+      `${this.base}/exercise-forge/history`, { params },
+    );
+  }
+
+  // ── Collective exercises / MESL ──────────────────────────
+  listCollectiveExercises(): Observable<CollectiveExercise[]> {
+    return this.http.get<CollectiveExercise[]>(`${this.base}/collective-exercises`);
+  }
+  getCollectiveExercise(id: string): Observable<CollectiveExerciseDetail> {
+    return this.http.get<CollectiveExerciseDetail>(`${this.base}/collective-exercises/${id}`);
+  }
+  createCollectiveExercise(body: { name: string; range_id: string; objectives?: any[] }):
+    Observable<{ id: string; name: string; objectives_added: number }> {
+    return this.http.post<{ id: string; name: string; objectives_added: number }>(
+      `${this.base}/collective-exercises`, body,
+    );
+  }
+  importCollectiveObjectivesCsv(id: string, file: File): Observable<{ objectives_added: number }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ objectives_added: number }>(
+      `${this.base}/collective-exercises/${id}/objectives/import`, form,
+    );
+  }
+  /** Replaces the whole MESL — confirm with the author before calling. */
+  importMeslCsv(id: string, file: File): Observable<{ serials: number }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ serials: number }>(`${this.base}/collective-exercises/${id}/mesl/import`, form);
+  }
+  /** Also replaces the whole MESL. */
+  generateMesl(id: string, body: { event_count?: number; adversary?: string; duration_days?: number }):
+    Observable<{ serials: number; model_used: string }> {
+    return this.http.post<{ serials: number; model_used: string }>(
+      `${this.base}/collective-exercises/${id}/mesl/generate`, body,
+    );
+  }
+  patchMeslEvent(exerciseId: string, eventId: string, patch: Partial<MeslEvent>): Observable<MeslEvent> {
+    return this.http.patch<MeslEvent>(
+      `${this.base}/collective-exercises/${exerciseId}/mesl/${eventId}`, patch,
+    );
   }
 
   // ── Exercises ────────────────────────────────────────────
@@ -207,7 +437,13 @@ export class ApiService {
     return this.http.post<{ accepted: number }>(`${this.base}/telemetry/${rangeId}/events`, events);
   }
 
-  // ── Proxmox Cluster ───────────────────────────────────────
+  // ── Hypervisor inventory (vSphere) ───────────────────────
+  /** Every discovered host, as of its connection's last discovery. Contacts no hypervisor. */
+  hypervisorNodes(): Observable<HypervisorNode[]> {
+    return this.http.get<HypervisorNode[]>(`${this.base}/hypervisors/nodes`);
+  }
+
+  // ── Proxmox Cluster (legacy) ─────────────────────────────
   proxmoxPing(): Observable<any> {
     return this.http.get<any>(`${this.base}/proxmox/ping`);
   }

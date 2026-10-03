@@ -1,0 +1,141 @@
+---
+# Schema migration, and the ordering hazard it has to navigate.
+#
+# Three states are possible when this runs:
+#
+#   A. Empty database                      -> upgrade head
+#   B. alembic_version present             -> upgrade head (no-op or incremental)
+#   C. Tables exist, alembic_version does  -> a previous run let create_all()
+#      NOT                                    win the race. Do NOT guess.
+#
+# Case C is a genuine fork: stamping declares "this schema matches revision X"
+# without checking, and if that is wrong every later migration is applied to a
+# schema it was not written for. So it fails loudly unless someone opts in.
+
+- name: Migrate — inspect current schema state
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T postgres psql -U {{ vault_postgres_user | default('forge') }}
+      -d {{ vault_postgres_db | default('forge') }} -tAc
+      "SELECT coalesce((SELECT 'v' FROM information_schema.tables WHERE table_name='alembic_version' LIMIT 1),'') ||
+              coalesce((SELECT 'u' FROM information_schema.tables WHERE table_name='users' LIMIT 1),'')"
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_schema_state
+  changed_when: false
+
+- name: Migrate — classify
+  ansible.builtin.set_fact:
+    tn_schema: >-
+      {{ 'managed' if 'v' in tn_schema_state.stdout
+         else ('unmanaged' if 'u' in tn_schema_state.stdout else 'empty') }}
+
+- name: Migrate — report
+  ansible.builtin.debug:
+    msg: >-
+      Schema state: {{ tn_schema }}
+      {{ '(fresh database)' if tn_schema == 'empty'
+         else ('(alembic-managed)' if tn_schema == 'managed'
+               else '(tables exist but were never migration-managed)') }}
+
+- name: Migrate — refuse to guess at an unmanaged schema
+  ansible.builtin.fail:
+    msg: |
+      The database contains application tables but no alembic_version.
+
+      That means a previous run started the API before migrations, and
+      Base.metadata.create_all() built the schema from the ORM instead. The
+      shape may or may not match the migration history.
+
+      Two ways forward, both deliberate:
+
+        * Drop and rebuild, if the data is disposable, then re-run this play.
+
+        * Accept the current schema as the head and stamp it:
+            ansible-playbook playbooks/50-migrate.yml -e tn_allow_alembic_stamp=true
+          Only do this if you know the schema was created by the same version of
+          the code you are deploying.
+  when:
+    - tn_schema == 'unmanaged'
+    - not (tn_allow_alembic_stamp | bool)
+
+- name: Migrate — stamp an unmanaged schema (explicitly opted in)
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      run --rm --no-deps --entrypoint "" api alembic -c alembic.ini stamp head
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  when:
+    - tn_schema == 'unmanaged'
+    - tn_allow_alembic_stamp | bool
+  changed_when: true
+
+# Run in a one-shot container, NOT by starting the API: that keeps the ORM's
+# create_all() out of the picture entirely.
+#
+# DATABASE_URL points at postgres:5432 directly rather than pgbouncer.
+# pgbouncer runs POOL_MODE=transaction, and DDL plus CREATE TYPE under
+# transaction pooling is a well-known way to lose a migration halfway.
+- name: Migrate — build the direct (non-pooled) database URL
+  ansible.builtin.set_fact:
+    tn_direct_db_url: >-
+      postgresql+psycopg://{{ vault_postgres_user | default('forge') }}:{{
+      tn_secrets['postgres_password'] }}@postgres:5432/{{
+      vault_postgres_db | default('forge') }}
+  no_log: true
+
+- name: Migrate — alembic upgrade head
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      run --rm --no-deps --entrypoint ""
+      -e DATABASE_URL={{ tn_direct_db_url }}
+      api alembic -c alembic.ini upgrade head
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_alembic
+  changed_when: "'Running upgrade' in tn_alembic.stdout or 'Running upgrade' in tn_alembic.stderr"
+  no_log: true
+
+- name: Migrate — record the applied head
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T postgres psql -U {{ vault_postgres_user | default('forge') }}
+      -d {{ vault_postgres_db | default('forge') }} -tAc
+      "SELECT version_num FROM alembic_version"
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_head
+  changed_when: false
+
+- name: Migrate — report the head
+  ansible.builtin.debug:
+    msg: "alembic head: {{ tn_head.stdout | trim }}"
+
+# ── Phase 2: everything else ──────────────────────────────────────────
+- name: Migrate — bring up the full stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ tn_app_dir }}/infra/platform/docker"
+    files: [compose.prod.yml]
+    env_files: ["{{ tn_env_file }}"]
+    state: present
+    build: always
+    wait: true
+    wait_timeout: 900
+
+# docker_compose_v2's `wait` covers container start, not application readiness.
+# OpenSearch and Keycloak both declare a 60s start_period; this gate waits for
+# what their healthchecks actually say.
+- name: Migrate — wait for every healthchecked service to report healthy
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps --format json \
+        | jq -rs 'flatten | map(select(.Health != "" and .Health != null))
+                  | map(select(.Health != "healthy")) | .[].Service' \
+        | tr '\n' ' '
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_unhealthy
+  until: tn_unhealthy.stdout | trim == ""
+  retries: 60
+  delay: 10
+  changed_when: false

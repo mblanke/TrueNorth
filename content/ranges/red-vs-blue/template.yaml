@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════════════
 #  TrueNorth Range Template — Red vs Blue Cyber Exercise
-#  40 VMs · 80 vCPU · 160 GB RAM · ~1.1 TB disk
+#  40 VMs · 64 vCPU · 162 GB RAM · ~1.4 TB disk (right-sized 2026-10-03)
 #  Designed for 2-node Proxmox cluster (coyote + acme)
 # ═══════════════════════════════════════════════════════════════════════════
 id: red-vs-blue
@@ -121,35 +121,35 @@ network:
 nodes:
 
   # ════════════════════════════════════════════════════════════════════
-  # MANAGEMENT ZONE — 5 VMs  (coyote)  12 vCPU · 30 GB
+  # MANAGEMENT ZONE — 5 VMs  (coyote)  9 vCPU · 30 GB
   # ════════════════════════════════════════════════════════════════════
 
   - id: jump01
     name: Jump Host
     role: jump_host
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.10"
     node: coyote
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 32 }
     services: [ssh, rdp_gateway]
     description: "Exercise controller jump box — RDP gateway to all zones"
 
   - id: score01
     name: Scoreboard
     role: scoreboard
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.20"
     node: coyote
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 32 }
     services: [http, https, scoring_engine]
     description: "Live scoreboard and scoring engine"
 
   - id: siem01
     name: SIEM
     role: siem
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.30"
     node: coyote
@@ -160,18 +160,18 @@ nodes:
   - id: relay01
     name: Log Relay
     role: log_relay
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.40"
     node: coyote
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [rsyslog, filebeat]
     description: "Syslog relay / Filebeat forwarder to SIEM"
 
   - id: nids01
     name: Network IDS
     role: network_ids
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.50"
     node: coyote
@@ -180,17 +180,17 @@ nodes:
     description: "Network intrusion detection — Suricata + Zeek sensor"
 
   # ════════════════════════════════════════════════════════════════════
-  # DMZ — 5 VMs  (acme)  10 vCPU · 10 GB
+  # DMZ — 5 VMs  (acme)  5 vCPU · 10 GB
   # ════════════════════════════════════════════════════════════════════
 
   - id: web01
     name: Web Server 1
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.20.0.10"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [nginx, php, https]
     tags: [blue_defend]
     description: "Public-facing web server (primary)"
@@ -198,11 +198,11 @@ nodes:
   - id: web02
     name: Web Server 2
     role: web_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.20.0.11"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [apache, tomcat, https]
     tags: [blue_defend]
     description: "Public-facing web server (secondary)"
@@ -210,11 +210,11 @@ nodes:
   - id: mx01
     name: Mail Gateway
     role: mail_gateway
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.20.0.30"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [postfix, dovecot, spamassassin]
     tags: [blue_defend]
     description: "Inbound mail relay and spam filter"
@@ -222,11 +222,11 @@ nodes:
   - id: rproxy01
     name: Reverse Proxy
     role: reverse_proxy
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: dmz
     ip: "10.20.0.40"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [haproxy, modsecurity, https]
     tags: [blue_defend]
     description: "Reverse proxy / WAF for backend services"
@@ -238,13 +238,13 @@ nodes:
     vlan: dmz
     ip: "10.20.0.50"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 8 }
     services: [openvpn, ipsec]
     tags: [blue_defend]
     description: "VPN concentrator — remote access endpoint"
 
   # ════════════════════════════════════════════════════════════════════
-  # SERVER VLAN — 8 VMs  (split)  16 vCPU · 44 GB
+  # SERVER VLAN — 8 VMs  (split)  14 vCPU · 46 GB
   # ════════════════════════════════════════════════════════════════════
 
   - id: dc01
@@ -277,11 +277,11 @@ nodes:
   - id: db01
     name: Database Server
     role: database_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: server_vlan
     ip: "10.30.0.30"
     node: acme
-    specs: { cores: 2, memory_mb: 8192, disk_gb: 32 }
+    specs: { cores: 1, memory_mb: 8192, disk_gb: 32 }
     services: [postgresql, mysql]
     tags: [blue_defend]
     description: "Database server — HR, finance, and web-app backends"
@@ -305,7 +305,7 @@ nodes:
     vlan: server_vlan
     ip: "10.30.0.50"
     node: acme
-    specs: { cores: 2, memory_mb: 16384, disk_gb: 48 }
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 150 }
     services: [exchange, owa, smtp]
     tags: [blue_defend]
     description: "Exchange mail server — high-value target"
@@ -313,11 +313,11 @@ nodes:
   - id: bak01
     name: Backup Server
     role: backup_server
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: server_vlan
     ip: "10.30.0.60"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 32 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 32 }
     services: [veeam_agent, rsync, ssh]
     tags: [blue_defend]
     description: "Backup server — critical recovery target"
@@ -329,7 +329,7 @@ nodes:
     vlan: server_vlan
     ip: "10.30.0.70"
     node: coyote
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 40 }
     services: [ad_cs, ocsp]
     tags: [blue_defend]
     description: "Enterprise PKI — AD Certificate Services"
@@ -337,17 +337,17 @@ nodes:
   - id: webapp01
     name: Internal Web Application
     role: web_application
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: server_vlan
     ip: "10.30.0.80"
     node: acme
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 32 }
     services: [tomcat, java, https]
     tags: [blue_defend]
     description: "Internal CRM/ERP web application"
 
   # ════════════════════════════════════════════════════════════════════
-  # CORPORATE LAN — 6 VMs  (acme)  12 vCPU · 20 GB
+  # CORPORATE LAN — 6 VMs  (acme)  10 vCPU · 20 GB
   # ════════════════════════════════════════════════════════════════════
 
   - id: ws01
@@ -357,7 +357,7 @@ nodes:
     vlan: corporate_lan
     ip: "10.10.0.10"
     node: acme
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     services: [rdp, sysmon, defender]
     tags: [blue_defend]
     user_profile: hr_manager
@@ -370,7 +370,7 @@ nodes:
     vlan: corporate_lan
     ip: "10.10.0.11"
     node: acme
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     services: [rdp, sysmon, defender]
     tags: [blue_defend]
     user_profile: finance_analyst
@@ -383,7 +383,7 @@ nodes:
     vlan: corporate_lan
     ip: "10.10.0.12"
     node: acme
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     services: [rdp, sysmon, defender, rsat]
     tags: [blue_defend]
     user_profile: it_admin
@@ -396,7 +396,7 @@ nodes:
     vlan: corporate_lan
     ip: "10.10.0.13"
     node: acme
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 32 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     services: [rdp, sysmon, defender]
     tags: [blue_defend]
     user_profile: executive
@@ -405,11 +405,11 @@ nodes:
   - id: lnx01
     name: Dev Workstation 1
     role: workstation
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: corporate_lan
     ip: "10.10.0.50"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [ssh, auditd, docker]
     tags: [blue_defend]
     user_profile: developer
@@ -418,11 +418,11 @@ nodes:
   - id: lnx02
     name: Dev Workstation 2
     role: workstation
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: corporate_lan
     ip: "10.10.0.51"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [ssh, auditd, docker]
     tags: [blue_defend]
     user_profile: developer
@@ -435,7 +435,7 @@ nodes:
   - id: blue01
     name: Blue Analyst 1
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.10"
     node: coyote
@@ -446,7 +446,7 @@ nodes:
   - id: blue02
     name: Blue Analyst 2
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.11"
     node: coyote
@@ -457,7 +457,7 @@ nodes:
   - id: blue03
     name: Blue Analyst 3
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.12"
     node: coyote
@@ -468,7 +468,7 @@ nodes:
   - id: blue04
     name: Blue Analyst 4
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.13"
     node: coyote
@@ -479,7 +479,7 @@ nodes:
   - id: blue05
     name: Blue Analyst 5
     role: blue_analyst
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: blue_team
     ip: "10.40.0.14"
     node: coyote
@@ -488,7 +488,7 @@ nodes:
     description: "Blue Team analyst — forensic tools pre-installed"
 
   # ════════════════════════════════════════════════════════════════════
-  # RED TEAM ENCLAVE — 5 VMs  (coyote)  10 vCPU · 18 GB
+  # RED TEAM ENCLAVE — 5 VMs  (coyote)  9 vCPU · 18 GB
   # ════════════════════════════════════════════════════════════════════
 
   - id: red-c2-01
@@ -538,16 +538,16 @@ nodes:
   - id: red-phish01
     name: Red Phishing Server
     role: red_phishing
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: red_team
     ip: "10.66.0.50"
     node: coyote
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [gophish, postfix, nginx]
     description: "Phishing infrastructure — GoPhish + mail relay"
 
   # ════════════════════════════════════════════════════════════════════
-  # NETWORK INFRASTRUCTURE — 6 VMs  (split)  10 vCPU · 18 GB
+  # NETWORK INFRASTRUCTURE — 6 VMs  (split)  7 vCPU · 18 GB
   # ════════════════════════════════════════════════════════════════════
 
   - id: fw01
@@ -557,7 +557,7 @@ nodes:
     vlan: management
     ip: "10.0.0.250"
     node: coyote
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 8 }
     services: [firewall, nat, vpn, snort]
     description: "Perimeter firewall — mgmt / server / blue zones"
 
@@ -568,7 +568,7 @@ nodes:
     vlan: management
     ip: "10.0.0.251"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 8 }
     services: [firewall, nat, vpn, snort]
     description: "Perimeter firewall — dmz / corp zones"
 
@@ -586,18 +586,18 @@ nodes:
   - id: tgen01
     name: Traffic Generator
     role: traffic_generator
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: corporate_lan
     ip: "10.10.0.99"
     node: acme
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 8 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 16 }
     services: [tcpreplay, scapy, cron]
     description: "Background traffic generator for network realism"
 
   - id: honey01
     name: Honeypot
     role: honeypot
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: corporate_lan
     ip: "10.10.0.200"
     node: acme
@@ -609,7 +609,7 @@ nodes:
   - id: ids01
     name: IDS Sensor
     role: ids_sensor
-    os: ubuntu-2204
+    os: ubuntu-2404
     vlan: management
     ip: "10.0.0.60"
     node: coyote
@@ -638,8 +638,8 @@ deployment:
         - red_phishing        # red-phish01
         - firewall            # fw01
         - ids_sensor          # ids01
-      total_vcpu: 40
-      total_ram_gb: 84
+      total_vcpu: 34
+      total_ram_gb: 86
 
     acme:
       vm_count: 21
@@ -659,14 +659,14 @@ deployment:
         - router              # rtr01
         - traffic_generator   # tgen01
         - honeypot            # honey01
-      total_vcpu: 40
+      total_vcpu: 30
       total_ram_gb: 76
 
   totals:
     vms: 40
-    vcpu: 80
-    ram_gb: 160
-    disk_gb: 1092
+    vcpu: 64
+    ram_gb: 162
+    disk_gb: 1354
 
 # ─── POLICIES ─────────────────────────────────────────────────────────
 policies:

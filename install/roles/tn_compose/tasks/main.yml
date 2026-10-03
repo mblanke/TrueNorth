@@ -1,0 +1,43 @@
+---
+# Bring the stack up, in two phases.
+#
+# The phasing is not cosmetic. app/main.py's lifespan calls
+# Base.metadata.create_all() on every API start, in every uvicorn worker. On a
+# fresh database whichever worker wins creates all 68 tables from the ORM, and a
+# later `alembic upgrade head` then starts from base and dies on DuplicateTable.
+#
+# So: datastores first, migrate (roles/tn_migrate), then everything else. By the
+# time the API starts, every table exists and create_all is a no-op.
+#
+# The installer also sets DB_AUTO_CREATE=false, which removes the hazard rather
+# than sequencing around it — the phasing is belt and braces.
+
+- name: Compose — validate the production file resolves
+  ansible.builtin.command:
+    cmd: docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} config --quiet
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  changed_when: false
+  register: tn_compose_config
+  failed_when: tn_compose_config.rc != 0
+
+- name: Compose — phase 1, datastores only
+  community.docker.docker_compose_v2:
+    project_src: "{{ tn_app_dir }}/infra/platform/docker"
+    files: [compose.prod.yml]
+    env_files: ["{{ tn_env_file }}"]
+    services: [postgres, pgbouncer, redis]
+    state: present
+    wait: true
+    wait_timeout: 300
+
+- name: Compose — wait for postgres to accept connections
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T postgres pg_isready -U {{ vault_postgres_user | default('forge') }}
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_pg_ready
+  until: tn_pg_ready.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false

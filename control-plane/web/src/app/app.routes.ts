@@ -1,4 +1,12 @@
 import { Routes } from '@angular/router';
+import {
+  adminGuard,
+  authGuard,
+  instructorGuard,
+  onboardingGuard,
+  pendingGuard,
+  registrationGuard,
+} from './core/guards/auth.guard';
 
 export const routes: Routes = [
   {
@@ -6,33 +14,48 @@ export const routes: Routes = [
     redirectTo: 'dashboard',
     pathMatch: 'full',
   },
+  // -- Identity intake. Reachable while authenticated but account-less, so
+  //    these carry their own guards rather than authGuard. --
+  {
+    path: 'register',
+    canActivate: [registrationGuard],
+    loadComponent: () =>
+      import('./features/register/register.component').then(m => m.RegisterComponent),
+    title: 'Request access - TrueNorth Range',
+  },
+  {
+    path: 'registration-pending',
+    canActivate: [pendingGuard],
+    loadComponent: () =>
+      import('./features/register/registration-pending.component').then(
+        m => m.RegistrationPendingComponent,
+      ),
+    title: 'Awaiting approval - TrueNorth Range',
+  },
+  {
+    // authGuard only: the whole point is that onboarding is not yet complete,
+    // so onboardingGuard must not apply here or it would redirect to itself.
+    path: 'onboarding',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/onboarding/onboarding.component').then(m => m.OnboardingComponent),
+    title: 'Getting started - TrueNorth Range',
+  },
   {
     path: 'dashboard',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent),
     title: 'Dashboard - TrueNorth Range',
   },
-  {
-    path: 'ranges',
-    loadComponent: () =>
-      import('./features/ranges/ranges.component').then(m => m.RangesComponent),
-    title: 'Ranges - TrueNorth Range',
-  },
-  {
-    path: 'templates',
-    loadComponent: () =>
-      import('./features/templates/templates.component').then(m => m.TemplatesComponent),
-    title: 'Templates - TrueNorth Range',
-  },
-  {
-    path: 'scenarios',
-    loadComponent: () =>
-      import('./features/scenarios/scenarios.component').then(m => m.ScenariosComponent),
-    title: 'Scenarios - TrueNorth Range',
-  },
+  // Stray top-level list pages folded into the Authoring Studio hub.
+  { path: 'ranges', redirectTo: 'authoring/ranges', pathMatch: 'full' },
+  { path: 'templates', redirectTo: 'authoring/content', pathMatch: 'full' },
+  { path: 'scenarios', redirectTo: 'authoring/scenarios', pathMatch: 'full' },
   // -- Authoring Studio hub (consolidates the design/authoring screens) --
   {
     path: 'authoring',
+    canActivate: [authGuard, instructorGuard],
     loadComponent: () => import('./shared/hub-shell.component').then(m => m.HubShellComponent),
     data: {
       title: 'Authoring Studio',
@@ -40,6 +63,7 @@ export const routes: Routes = [
         { label: 'Ranges', path: 'ranges' },
         { label: 'Scenarios', path: 'scenarios' },
         { label: 'Detections', path: 'detections' },
+        { label: 'MESL', path: 'mesl' },
         { label: 'Forge', path: 'forge' },
         { label: 'Content', path: 'content' },
       ],
@@ -47,15 +71,22 @@ export const routes: Routes = [
     children: [
       { path: '', redirectTo: 'ranges', pathMatch: 'full' },
       {
+        // Ranges tab is now the range list; the designer opens per range.
         path: 'ranges',
         loadComponent: () =>
-          import('./features/range-designer/range-designer.component').then(m => m.RangeDesignerComponent),
+          import('./features/ranges/ranges.component').then(m => m.RangesComponent),
         title: 'Authoring · Ranges - TrueNorth Range',
+      },
+      {
+        path: 'ranges/designer',
+        loadComponent: () =>
+          import('./features/range-designer/range-designer.component').then(m => m.RangeDesignerComponent),
+        title: 'Authoring · Range Designer - TrueNorth Range',
       },
       {
         path: 'scenarios',
         loadComponent: () =>
-          import('./features/scenario-builder/scenario-builder.component').then(m => m.ScenarioBuilderComponent),
+          import('./features/scenario-studio/scenario-studio.component').then(m => m.ScenarioStudioComponent),
         title: 'Authoring · Scenarios - TrueNorth Range',
       },
       {
@@ -63,6 +94,18 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
         title: 'Authoring · Detections - TrueNorth Range',
+      },
+      {
+        path: 'mesl',
+        loadComponent: () =>
+          import('./features/mesl/mesl-home.component').then(m => m.MeslHomeComponent),
+        title: 'Authoring · MESL - TrueNorth Range',
+      },
+      {
+        path: 'mesl/:id',
+        loadComponent: () =>
+          import('./features/mesl/mesl-board.component').then(m => m.MeslBoardComponent),
+        title: 'Authoring · MESL Board - TrueNorth Range',
       },
       {
         path: 'forge',
@@ -81,24 +124,36 @@ export const routes: Routes = [
   // -- Learning hub (consolidates curriculum, courses, progress, competency) --
   {
     path: 'learning',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () => import('./shared/hub-shell.component').then(m => m.HubShellComponent),
     data: {
       title: 'Learning',
+      // Learner-facing tabs first; the authoring and administration screens last.
       tabs: [
-        { label: 'Qualifications', path: 'qualifications' },
-        { label: 'Curriculum', path: 'curriculum' },
+        { label: 'Career path', path: 'career-path' },
         { label: 'Courses', path: 'courses' },
-        { label: 'My Progress', path: 'progress' },
+        { label: 'My progress', path: 'progress' },
         { label: 'Competency', path: 'competency' },
+        { label: 'Curriculum', path: 'curriculum' },
+        { label: 'LMS & readiness previews', path: 'previews' },
+        { label: 'Admin', path: 'admin', instructorOnly: true },
       ],
     },
     children: [
-      { path: '', redirectTo: 'qualifications', pathMatch: 'full' },
+      { path: '', redirectTo: 'career-path', pathMatch: 'full' },
+      // Old name for the career path; redirects keep ?qual= deep links working.
+      { path: 'qualifications', redirectTo: 'career-path', pathMatch: 'full' },
       {
-        path: 'qualifications',
+        path: 'previews',
+        loadComponent: () =>
+          import('./features/learning-preview/learning-preview.component').then(m => m.LearningPreviewComponent),
+        title: 'LMS & readiness previews - TrueNorth',
+      },
+      {
+        path: 'career-path',
         loadComponent: () =>
           import('./features/qsp-curriculum/qsp-curriculum.component').then(m => m.QspCurriculumComponent),
-        title: 'QSP Curriculum - TrueNorth Range',
+        title: 'Career path - TrueNorth Range',
       },
       {
         path: 'curriculum',
@@ -107,10 +162,26 @@ export const routes: Routes = [
         title: 'Curriculum - TrueNorth Range',
       },
       {
+        // What a learner browses. Administration moved to the Admin tab.
         path: 'courses',
         loadComponent: () =>
-          import('./features/training/training.component').then(m => m.TrainingComponent),
+          import('./features/training/course-catalogue.component').then(m => m.CourseCatalogueComponent),
         title: 'Courses - TrueNorth Range',
+      },
+      {
+        path: 'admin',
+        canActivate: [instructorGuard],
+        loadComponent: () =>
+          import('./features/training/training.component').then(m => m.TrainingComponent),
+        title: 'Course administration - TrueNorth Range',
+      },
+      {
+        // A course of its own, so the developmental path can link to one rather than
+        // to the list it sits in.
+        path: 'courses/:id',
+        loadComponent: () =>
+          import('./features/training/course-detail.component').then(m => m.CourseDetailComponent),
+        title: 'Course - TrueNorth Range',
       },
       {
         path: 'progress',
@@ -127,7 +198,7 @@ export const routes: Routes = [
     ],
   },
   // -- Legacy paths kept as redirects into the hubs (no broken links) --
-  { path: 'range-designer', redirectTo: 'authoring/ranges', pathMatch: 'full' },
+  { path: 'range-designer', redirectTo: 'authoring/ranges/designer', pathMatch: 'full' },
   { path: 'scenario-builder', redirectTo: 'authoring/scenarios', pathMatch: 'full' },
   { path: 'detection-editor', redirectTo: 'authoring/detections', pathMatch: 'full' },
   { path: 'exercise-forge', redirectTo: 'authoring/forge', pathMatch: 'full' },
@@ -138,42 +209,49 @@ export const routes: Routes = [
   { path: 'competency', redirectTo: 'learning/competency', pathMatch: 'full' },
   {
     path: 'exercises',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/exercises/exercises.component').then(m => m.ExercisesComponent),
     title: 'Exercises - TrueNorth Range',
   },
   {
     path: 'scoring',
+    canActivate: [authGuard, onboardingGuard, instructorGuard],
     loadComponent: () =>
       import('./features/scoring/scoring.component').then(m => m.ScoringComponent),
     title: 'Scoring & AAR - TrueNorth Range',
   },
   {
     path: 'telemetry',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/telemetry/telemetry.component').then(m => m.TelemetryComponent),
     title: 'Telemetry - TrueNorth Range',
   },
   {
     path: 'users',
+    canActivate: [authGuard, adminGuard],
     loadComponent: () =>
       import('./features/users/users.component').then(m => m.UsersComponent),
     title: 'Users & Teams - TrueNorth Range',
   },
   {
     path: 'admin',
+    canActivate: [authGuard, adminGuard],
     loadComponent: () =>
       import('./features/admin/admin.component').then(m => m.AdminComponent),
     title: 'Admin - TrueNorth Range',
   },
   {
     path: 'quiz-player',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/quiz-player/quiz-player.component').then(m => m.QuizPlayerComponent),
     title: 'Quiz - TrueNorth Range',
   },
   {
     path: 'integrations',
+    canActivate: [authGuard, onboardingGuard, adminGuard],
     loadComponent: () =>
       import('./features/integrations/integrations.component').then(m => m.IntegrationsComponent),
     title: 'Integrations - TrueNorth Range',
@@ -181,12 +259,14 @@ export const routes: Routes = [
   // -- Infrastructure & AI --
   {
     path: 'infrastructure',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/infrastructure/infrastructure.component').then(m => m.InfrastructureComponent),
     title: 'Infrastructure - TrueNorth Range',
   },
   {
     path: 'ai-orchestrator',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/ai-orchestrator/ai-orchestrator.component').then(m => m.AiOrchestratorComponent),
     title: 'AI Orchestrator - TrueNorth Range',
@@ -199,18 +279,28 @@ export const routes: Routes = [
   },
   {
     path: 'topology-3d',
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/ops-center/topology-3d.component').then(m => m.Topology3dComponent),
     title: '3D Topology - TrueNorth Range',
   },
   {
     path: 'exercises/:id',
+    canActivate: [authGuard, onboardingGuard, instructorGuard],
     loadComponent: () =>
       import('./features/exercise-detail/exercise-detail.component').then(m => m.ExerciseDetailComponent),
     title: 'Exercise - TrueNorth Range',
   },
   {
+    path: 'ops-center/select',
+    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    loadComponent: () =>
+      import('./features/ops-center/exercise-selector.component').then(m => m.ExerciseSelectorComponent),
+    title: 'Select an exercise - TrueNorth',
+  },
+  {
     path: 'ops-center/:exerciseId',
+    canActivate: [authGuard, onboardingGuard, instructorGuard],
     loadComponent: () =>
       import('./features/ops-center/ops-center.component').then(m => m.OpsCenterComponent),
     title: 'Ops Center - TrueNorth Range',

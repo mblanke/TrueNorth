@@ -84,6 +84,59 @@ def list_presets():
     return [ForgePresetOut(**p) for p in FORGE_PRESETS]
 
 
+# ── History ──────────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/history",
+    dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
+)
+def forge_history(
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """Provenance of previously forged exercises, newest first.
+
+    The ForgedExercise table was write-only — nothing ever read it back. This
+    surfaces it so the Forge UI can show what was generated, on which model,
+    and link to the resulting exercise/scenario.
+    """
+    from ..models import Exercise
+
+    limit = max(1, min(limit, 200))
+    base = db.query(ForgedExercise).filter(ForgedExercise.tenant_id == user.tenant_id)
+    total = base.count()
+    rows = base.order_by(ForgedExercise.created_at.desc()).offset(offset).limit(limit).all()
+
+    ex_names = {
+        e.id: e.name
+        for e in db.query(Exercise)
+        .filter(
+            Exercise.id.in_([r.exercise_id for r in rows]),
+            Exercise.tenant_id == user.tenant_id,
+        )
+        .all()
+    } if rows else {}
+
+    items = [
+        {
+            "id": str(r.id),
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "exercise_id": str(r.exercise_id),
+            "scenario_id": str(r.scenario_id),
+            "exercise_name": ex_names.get(r.exercise_id, ""),
+            "source": "feed" if r.feed_id else "manual/curriculum",
+            "difficulty": r.difficulty,
+            "model_used": r.model_used,
+            "mitre_techniques": json.loads(r.mitre_techniques or "[]"),
+        }
+        for r in rows
+    ]
+    return {"items": items, "total": total}
+
+
 # ── Preview (dry-run) ────────────────────────────────────────────────────
 
 
@@ -159,15 +212,24 @@ async def generate_exercise(
     db.add(scenario)
     db.flush()
 
-    # Find a range to attach (use default template placeholder)
+    # Attach to the chosen range, or the tenant's first as before.
     from ..models import Range
 
-    range_obj = db.query(Range).filter(Range.tenant_id == user.tenant_id).first()
-    if not range_obj:
-        raise HTTPException(
-            409,
-            "No range available in your tenant. Create a range first, then forge exercises.",
+    if req.range_id is not None:
+        range_obj = (
+            db.query(Range)
+            .filter(Range.id == req.range_id, Range.tenant_id == user.tenant_id)
+            .first()
         )
+        if not range_obj:
+            raise HTTPException(404, "Range not found in your tenant.")
+    else:
+        range_obj = db.query(Range).filter(Range.tenant_id == user.tenant_id).first()
+        if not range_obj:
+            raise HTTPException(
+                409,
+                "No range available in your tenant. Create a range first, then forge exercises.",
+            )
 
     # Create Exercise record
     exercise = Exercise(

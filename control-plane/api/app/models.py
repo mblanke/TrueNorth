@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Enum,
@@ -18,11 +19,11 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -62,7 +63,9 @@ class GUID(TypeDecorator):
 _RANGE_TRANSITIONS: dict[str, list[str]] = {
     "created": ["provisioning", "destroyed"],
     "provisioning": ["ready", "failed"],
-    "ready": ["running", "destroying"],
+    # A provisioned range's VMs are already powered on, so it can be stopped
+    # straight from ready.
+    "ready": ["running", "stopped", "destroying"],
     "running": ["stopped", "destroying"],
     "stopped": ["running", "destroying"],
     "destroying": ["destroyed", "failed"],
@@ -190,6 +193,13 @@ class User(SoftDeleteMixin, TimestampMixin, Base):
     # -- Auth preferences --------------------------------------------------
     auth_method_preference: Mapped[str | None] = mapped_column(String(30), nullable=True)
     timezone: Mapped[str] = mapped_column(String(50), default="UTC")
+    # -- First-run onboarding ----------------------------------------------
+    # Three columns rather than a table: the state machine is linear and strictly
+    # one row per user, and /auth/me is on every page load and must not join.
+    # Per-step audit already has a home in audit_events.
+    onboarding_state: Mapped[str] = mapped_column(String(20), default="not_started")
+    onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    onboarding_data: Mapped[str] = mapped_column(Text, default="{}")
     tenant: Mapped[Tenant] = relationship(back_populates="users")
 
 
@@ -296,8 +306,14 @@ class Range(SoftDeleteMixin, TimestampMixin, Base):
     provisioner_output: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     diagram_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Operator-facing prose: what this range is, how it is meant to be used, ROE.
+    # Markdown, either typed in the designer or imported from a text file.
+    description: Mapped[str] = mapped_column(Text, default="")
     template: Mapped[Template] = relationship()
     snapshots: Mapped[list[RangeSnapshot]] = relationship(back_populates="range_", cascade="all, delete-orphan")
+    documents: Mapped[list[RangeDocument]] = relationship(
+        back_populates="range_", cascade="all, delete-orphan"
+    )
 
 
 class RangeSnapshot(TimestampMixin, Base):
@@ -321,6 +337,31 @@ class RangeSnapshot(TimestampMixin, Base):
     range_state_at_snapshot: Mapped[str] = mapped_column(String(20), nullable=False)
     tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
     range_: Mapped[Range] = relationship(back_populates="snapshots")
+
+
+class RangeDocument(TimestampMixin, Base):
+    """A supporting file attached to a range (ROE, briefing pack, diagrams).
+
+    Distinct from `Range.description`, which is the editable prose shown in the
+    UI: these keep their original bytes so they can be handed back out intact.
+    Stored in MinIO like curriculum courseware; the row holds the metadata.
+    """
+
+    __tablename__ = "range_documents"
+    __table_args__ = (
+        Index("ix_range_docs_range", "range_id"),
+        Index("ix_range_docs_tenant", "tenant_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    range_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("ranges.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), default="")
+    minio_key: Mapped[str] = mapped_column(String(600), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
+
+    range_: Mapped[Range] = relationship(back_populates="documents")
 
 
 # -- Exercises ------------------------------------------------------------
@@ -377,7 +418,9 @@ class MeslEvent(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="")
     objective_ref: Mapped[str] = mapped_column(String(32), default="")  # links ExerciseObjective.ref
     attack_technique: Mapped[str] = mapped_column(String(32), default="")  # optional MITRE id
-    delivery_method: Mapped[str] = mapped_column(String(20), default="cyber")  # cyber|white_cell|email|radio|physical|opfor
+    delivery_method: Mapped[str] = mapped_column(
+        String(20), default="cyber"
+    )  # cyber|white_cell|email|radio|physical|opfor
     from_cell: Mapped[str] = mapped_column(String(80), default="")  # e.g. "White Cell", "OPFOR"
     to_participant: Mapped[str] = mapped_column(String(80), default="")  # e.g. "Blue Team"
     expected_action: Mapped[str] = mapped_column(Text, default="")
@@ -570,9 +613,7 @@ class Course(TimestampMixin, Base):
     nice_work_roles: Mapped[str] = mapped_column(Text, default="")  # JSON array of NICE work role codes
     course_meta: Mapped[str] = mapped_column(Text, default="{}")  # JSON: prerequisites, learning objectives, etc.
     # CFITES anchor: the QSP qualification this course delivers (nullable for generic courses)
-    qualification_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("qualifications.id"), nullable=True
-    )
+    qualification_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("qualifications.id"), nullable=True)
 
     modules: Mapped[list[CourseModule]] = relationship(back_populates="course", order_by="CourseModule.ordinal")
     enrollments: Mapped[list[Enrollment]] = relationship(back_populates="course")
@@ -598,14 +639,10 @@ class CourseModule(TimestampMixin, Base):
     is_required: Mapped[bool] = mapped_column(Boolean, default=True)
     pass_threshold: Mapped[int] = mapped_column(Integer, default=70)  # percentage needed to pass
     # CFITES anchor: the PO this module maps to (nullable for generic modules)
-    po_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("performance_objectives.id"), nullable=True
-    )
+    po_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("performance_objectives.id"), nullable=True)
 
     course: Mapped[Course] = relationship(back_populates="modules")
-    contents: Mapped[list[ModuleContent]] = relationship(
-        back_populates="module", order_by="ModuleContent.ordinal"
-    )
+    contents: Mapped[list[ModuleContent]] = relationship(back_populates="module", order_by="ModuleContent.ordinal")
 
 
 # -- CFITES / QSP qualification spine ------------------------------------
@@ -648,9 +685,7 @@ class PerformanceObjective(TimestampMixin, Base):
         Index("ix_po_status", "status"),
     )
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
-    qualification_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("qualifications.id"), nullable=False
-    )
+    qualification_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("qualifications.id"), nullable=False)
     po_code: Mapped[str] = mapped_column(String(32), nullable=False)  # e.g. PO_007, PO_001-005
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     tier: Mapped[POTier] = mapped_column(Enum(POTier), default=POTier.core)
@@ -715,9 +750,7 @@ class Lesson(SoftDeleteMixin, TimestampMixin, Base):
     media_refs: Mapped[str] = mapped_column(Text, default="[]")  # JSON array of asset refs
     duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
     competency_codes: Mapped[str] = mapped_column(Text, default="[]")  # JSON array (NICE/DCWF)
-    source_curriculum_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("curricula.id"), nullable=True
-    )
+    source_curriculum_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("curricula.id"), nullable=True)
     generated_by_model: Mapped[str] = mapped_column(String(120), default="")
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
@@ -770,12 +803,8 @@ class ObjectiveCompetencyMap(TimestampMixin, Base):
         Index("ix_ocm_comp", "competency_id"),
     )
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
-    po_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("performance_objectives.id"), nullable=True
-    )
-    eo_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("enabling_objectives.id"), nullable=True
-    )
+    po_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("performance_objectives.id"), nullable=True)
+    eo_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("enabling_objectives.id"), nullable=True)
     competency_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("competencies.id"), nullable=False)
     relation_type: Mapped[str] = mapped_column(String(20), default="primary")  # primary|supporting
     source: Mapped[str] = mapped_column(String(40), default="curated")
@@ -995,15 +1024,13 @@ class LTILaunch(TimestampMixin, Base):
     lineitem needed for grade pass-back when the activity completes."""
 
     __tablename__ = "lti_launches"
-    __table_args__ = (
-        Index("ix_lti_launch_user_resource", "user_id", "resource_kind", "resource_id"),
-    )
+    __table_args__ = (Index("ix_lti_launch_user_resource", "user_id", "resource_kind", "resource_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     platform_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("external_platforms.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
     lti_user_sub: Mapped[str] = mapped_column(String(255), nullable=False)
-    resource_kind: Mapped[str] = mapped_column(String(50), default="")   # quiz / exercise / course
+    resource_kind: Mapped[str] = mapped_column(String(50), default="")  # quiz / exercise / course
     resource_id: Mapped[str] = mapped_column(String(100), default="")
     resource_link_id: Mapped[str] = mapped_column(String(255), default="")
     context_title: Mapped[str] = mapped_column(String(500), default="")
@@ -1324,6 +1351,99 @@ class AuthZonePolicy(TimestampMixin, Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
 
 
+class RegistrationStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    withdrawn = "withdrawn"
+
+
+class RegistrationRequest(TimestampMixin, Base):
+    """A request from an AD-authenticated person for a TrueNorth account.
+
+    Identity comes from Active Directory via Keycloak; this table holds what AD
+    does not know (rank, unit, callsign, which qualification they are joining)
+    plus the approval decision.
+
+    Deliberately NOT a half-formed ``users`` row: ``users.tenant_id`` is NOT NULL
+    and ``users.email``/``keycloak_id`` are unique, so a pending person could only
+    live there behind a placeholder tenant that every tenant-scoped query would
+    then have to exclude. Keeping them out of ``users`` also means enforcement is
+    structural — ``get_current_user`` already refuses anyone without a row, so a
+    newly written router cannot forget a check that does not exist.
+
+    Note the column is ``suggested_tenant_id``, not ``tenant_id``: the request is
+    not *owned* by that tenant, it merely proposes one. Naming it ``tenant_id``
+    would make the tenant-scoping guard expect ``get_owned()`` semantics that do
+    not apply here.
+    """
+
+    __tablename__ = "registration_requests"
+    __table_args__ = (
+        Index("ix_regreq_status", "status"),
+        Index("ix_regreq_suggested_tenant_status", "suggested_tenant_id", "status"),
+        Index("ix_regreq_keycloak_id", "keycloak_id"),
+        Index("ix_regreq_email", "email"),
+        # At most one OPEN request per identity, enforced by the database rather
+        # than by a check-then-insert that two concurrent submissions could race.
+        # Rejected/withdrawn rows stay for the audit trail and allow resubmission.
+        Index(
+            "uq_regreq_open_per_identity",
+            "keycloak_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+
+    # -- Identity, from the validated token ---------------------------------
+    keycloak_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ad_object_guid: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    ad_distinguished_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # JSON array of AD group names, snapshotted at submission time.
+    ad_groups: Mapped[str] = mapped_column(Text, default="[]")
+
+    # -- What AD does not hold; mirrors the User columns ---------------------
+    rank: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    service_branch: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    callsign: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    nation_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("nations.id"), nullable=True)
+    timezone: Mapped[str] = mapped_column(String(50), default="UTC")
+
+    # -- What they are joining ----------------------------------------------
+    requested_qualification_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("qualifications.id"), nullable=True
+    )
+    requested_learning_path_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("learning_paths.id"), nullable=True
+    )
+    requested_cohort: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # -- Advisory only: derived from AD groups, never grants anything --------
+    suggested_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    suggested_tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("tenants.id"), nullable=True
+    )
+
+    # -- Decision ------------------------------------------------------------
+    status: Mapped[RegistrationStatus] = mapped_column(
+        Enum(RegistrationStatus), default=RegistrationStatus.pending, nullable=False
+    )
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_user_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # Storage
 # ══════════════════════════════════════════════════════════════════════════
@@ -1550,9 +1670,7 @@ class CompetencyAutoAssessment(TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), nullable=False)
     # Source is either an exercise or a quiz attempt (Curriculum Forge).
     exercise_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=True)
-    quiz_attempt_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("quiz_attempts.id"), nullable=True
-    )
+    quiz_attempt_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("quiz_attempts.id"), nullable=True)
     competency_mappings: Mapped[str] = mapped_column(Text, default="[]")  # JSON: [{competency_id, delta, reason}]
     raw_score: Mapped[int] = mapped_column(Integer, default=0)
     max_score: Mapped[int] = mapped_column(Integer, default=0)
@@ -1668,9 +1786,7 @@ class CurriculumDocument(TimestampMixin, Base):
     source_url: Mapped[str] = mapped_column(Text, default="")  # set for URL ingestion
     mime_type: Mapped[str] = mapped_column(String(120), default="")
     minio_key: Mapped[str] = mapped_column(String(600), default="")  # empty for URLs
-    status: Mapped[CurriculumDocStatus] = mapped_column(
-        Enum(CurriculumDocStatus), default=CurriculumDocStatus.pending
-    )
+    status: Mapped[CurriculumDocStatus] = mapped_column(Enum(CurriculumDocStatus), default=CurriculumDocStatus.pending)
     char_count: Mapped[int] = mapped_column(Integer, default=0)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str] = mapped_column(Text, default="")
@@ -1680,10 +1796,10 @@ class CurriculumDocument(TimestampMixin, Base):
 
 
 class QuizQuestionType(str, enum.Enum):
-    mcq = "mcq"                  # single correct answer
-    multi = "multi"              # multiple correct answers
+    mcq = "mcq"  # single correct answer
+    multi = "multi"  # multiple correct answers
     truefalse = "truefalse"
-    scenario = "scenario"        # scenario stem + MCQ options
+    scenario = "scenario"  # scenario stem + MCQ options
 
 
 class Quiz(SoftDeleteMixin, TimestampMixin, Base):
@@ -1720,12 +1836,10 @@ class QuizQuestion(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     quiz_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("quizzes.id"), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
-    question_type: Mapped[QuizQuestionType] = mapped_column(
-        Enum(QuizQuestionType), default=QuizQuestionType.mcq
-    )
+    question_type: Mapped[QuizQuestionType] = mapped_column(Enum(QuizQuestionType), default=QuizQuestionType.mcq)
     stem: Mapped[str] = mapped_column(Text, nullable=False)
-    options: Mapped[str] = mapped_column(Text, default="[]")   # JSON: ["option text", ...]
-    correct: Mapped[str] = mapped_column(Text, default="[]")   # JSON: [option indices]
+    options: Mapped[str] = mapped_column(Text, default="[]")  # JSON: ["option text", ...]
+    correct: Mapped[str] = mapped_column(Text, default="[]")  # JSON: [option indices]
     explanation: Mapped[str] = mapped_column(Text, default="")
     competency_code: Mapped[str] = mapped_column(String(50), default="")  # e.g. NICE T0023
     difficulty: Mapped[str] = mapped_column(String(20), default="intermediate")

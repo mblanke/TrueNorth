@@ -1,0 +1,7 @@
+{
+  "id": "f0e1d2c3-b4a5-4968-8776-655443322110",
+  "actor": {"objectType": "Agent", "account": {"homePage": "https://id.example.org", "name": "lrs-admin-01"}},
+  "verb": {"id": "http://adlnet.gov/expapi/verbs/voided", "display": {"en-CA": "voided"}},
+  "object": {"objectType": "StatementRef", "id": "6b8e1f0c-3a52-4d8e-9f0a-1c2d3e4f5a6b"},
+  "timestamp": "2026-09-23T16:00:00.000Z"
+}

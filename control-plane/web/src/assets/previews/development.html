@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>LMS development preview</title><style>html{color-scheme:light dark}body{margin:0}i[data-lucide]{display:none}</style></head><body>
+<div id="tn-development" aria-label="TrueNorth learning and development design">
+  <style>
+    #tn-development { --tn-bg:light-dark(#f4f6f8,#111820); --tn-surface:light-dark(#ffffff,#19232d); --tn-ink:light-dark(#172b39,#edf2f6); --tn-muted:light-dark(#526473,#b1bfcb); --tn-line:light-dark(#dce3e8,#354450); --tn-accent:light-dark(#0d655e,#8bdbcf); --tn-soft:light-dark(#e5f2ee,#243b3b); --tn-warm:light-dark(#f8efe0,#3c3426); --tn-warm-ink:light-dark(#77501a,#e8c18a); --tn-button:light-dark(#163f49,#a9e0de); --tn-button-ink:light-dark(#ffffff,#102f32); --tn-space:22px; font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--tn-ink); background:var(--tn-bg); border:1px solid var(--tn-line); border-radius:14px; overflow:hidden; }
+    #tn-development * { box-sizing:border-box; }
+    #tn-development button,#tn-development select,#tn-development textarea { font:inherit; }
+    #tn-development button { color:inherit; }
+    #tn-development button:focus-visible,#tn-development select:focus-visible,#tn-development textarea:focus-visible { outline:3px solid var(--tn-accent); outline-offset:3px; }
+    #tn-development .tn-preview { padding:10px 18px; border-bottom:1px solid var(--tn-line); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:var(--tn-warm); color:var(--tn-warm-ink); font-size:12px; }
+    #tn-development .tn-preview label { display:flex; gap:8px; align-items:center; }
+    #tn-development select { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:7px; padding:7px; color:var(--tn-ink); max-width:100%; }
+    #tn-development .tn-top { display:flex; align-items:center; gap:16px; padding:17px 22px; background:var(--tn-surface); border-bottom:1px solid var(--tn-line); }
+    #tn-development .tn-brand { font-size:19px; font-weight:650; display:flex; gap:9px; align-items:center; letter-spacing:-.6px; }
+    #tn-development .tn-brand i { color:var(--tn-accent); }
+    #tn-development .tn-product { color:var(--tn-muted); border-left:1px solid var(--tn-line); padding-left:16px; }
+    #tn-development .tn-avatar { margin-left:auto; border-radius:50%; background:var(--tn-soft); color:var(--tn-accent); width:33px; height:33px; display:grid; place-items:center; font-size:12px; flex-shrink:0; }
+    #tn-development .tn-layout { display:grid; grid-template-columns:183px minmax(0,1fr); }
+    #tn-development .tn-side { background:var(--tn-surface); border-right:1px solid var(--tn-line); padding:22px 12px; }
+    #tn-development .tn-side-title { font-size:11px; text-transform:uppercase; letter-spacing:1.3px; color:var(--tn-muted); padding:0 10px 10px; }
+    #tn-development .tn-nav { display:flex; flex-direction:column; gap:5px; }
+    #tn-development .tn-nav button { border:0; background:transparent; padding:11px 10px; text-align:left; display:flex; align-items:center; gap:10px; border-radius:7px; width:100%; }
+    #tn-development .tn-nav button[aria-current="page"] { background:var(--tn-soft); color:var(--tn-accent); font-weight:600; }
+    #tn-development .tn-nav button:hover { background:var(--tn-soft); }
+    #tn-development .tn-side-foot { border-top:1px solid var(--tn-line); margin:25px 10px 0; padding-top:16px; font-size:12px; color:var(--tn-muted); }
+    #tn-development .tn-side-foot strong { display:block; color:var(--tn-ink); font-weight:500; }
+    #tn-development main { min-width:0; padding:var(--tn-space); }
+    #tn-development h1 { font-size:27px; line-height:1.18; font-weight:600; letter-spacing:-.8px; margin:5px 0 9px; }
+    #tn-development h2 { font-size:17px; font-weight:600; margin:0 0 13px; }
+    #tn-development h3 { font-size:14px; font-weight:600; margin:0 0 5px; }
+    #tn-development p { margin:0 0 12px; }
+    #tn-development .tn-muted { color:var(--tn-muted); }
+    #tn-development .tn-small { font-size:12px; }
+    #tn-development .tn-eyebrow { font-size:11px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--tn-accent); }
+    #tn-development .tn-pagehead { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+    #tn-development .tn-pagehead p { max-width:58ch; margin:0; }
+    #tn-development .tn-panel { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:10px; padding:18px; min-width:0; }
+    #tn-development .tn-panel + .tn-panel { margin-top:15px; }
+    #tn-development .tn-grid { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:16px; align-items:start; }
+    #tn-development .tn-equal { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    #tn-development .tn-stack { display:grid; gap:16px; }
+    #tn-development .tn-stack .tn-panel { margin:0; }
+    #tn-development .tn-hero { background:var(--tn-soft); border:0; margin-bottom:18px; }
+    #tn-development .tn-hero h2 { font-size:22px; line-height:1.25; margin:7px 0 9px; letter-spacing:-.4px; }
+    #tn-development .tn-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:14px; }
+    #tn-development .tn-action { border:1px solid var(--tn-line); border-radius:7px; padding:8px 12px; background:var(--tn-surface); display:inline-flex; align-items:center; gap:7px; text-align:left; }
+    #tn-development .tn-primary { background:var(--tn-button); color:var(--tn-button-ink); border-color:transparent; }
+    #tn-development .tn-link { background:transparent; border:0; color:var(--tn-accent); padding:4px 0; display:inline-flex; gap:6px; align-items:center; text-align:left; }
+    #tn-development .tn-row { padding:12px 0; border-top:1px solid var(--tn-line); display:flex; justify-content:space-between; gap:14px; align-items:center; }
+    #tn-development .tn-row:first-of-type { border-top:0; padding-top:0; }
+    #tn-development .tn-row:last-child { padding-bottom:0; }
+    #tn-development .tn-row p { margin:3px 0 0; }
+    #tn-development .tn-row strong { font-weight:600; }
+    #tn-development .tn-chip { display:inline-block; padding:3px 7px; border-radius:5px; background:var(--tn-soft); color:var(--tn-accent); font-size:11px; font-weight:500; }
+    #tn-development .tn-chip.warm { color:var(--tn-warm-ink); background:var(--tn-warm); }
+    #tn-development .tn-chip.neutral { background:var(--tn-bg); color:var(--tn-muted); }
+    #tn-development .tn-meta { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
+    #tn-development .tn-path { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; margin:22px 0; }
+    #tn-development .tn-path button { border:1px solid var(--tn-line); border-radius:8px; padding:12px 9px; background:var(--tn-surface); text-align:left; }
+    #tn-development .tn-path button[aria-pressed="true"] { background:var(--tn-soft); border-color:var(--tn-accent); }
+    #tn-development .tn-path strong,#tn-development .tn-path span { display:block; }
+    #tn-development .tn-path span { font-size:11px; color:var(--tn-muted); margin-top:5px; }
+    #tn-development .tn-path strong { font-size:12px; font-weight:600; }
+    #tn-development .tn-tabs { display:flex; gap:5px; flex-wrap:wrap; border-bottom:1px solid var(--tn-line); margin-bottom:18px; padding-bottom:9px; }
+    #tn-development .tn-tabs button { background:transparent; border:0; padding:7px 11px; border-radius:6px; color:var(--tn-muted); }
+    #tn-development .tn-tabs button[aria-pressed="true"] { color:var(--tn-accent); background:var(--tn-soft); }
+    #tn-development .tn-note { padding:13px 15px; border-left:3px solid var(--tn-accent); background:var(--tn-soft); margin:16px 0; }
+    #tn-development .tn-note p:last-child { margin:0; }
+    #tn-development .tn-unit { display:grid; grid-template-columns:170px minmax(0,1fr); gap:16px; }
+    #tn-development .tn-units { display:flex; flex-direction:column; gap:7px; }
+    #tn-development .tn-units button { background:transparent; border:0; padding:10px; border-radius:7px; text-align:left; }
+    #tn-development .tn-units button[aria-pressed="true"] { background:var(--tn-soft); color:var(--tn-accent); }
+    #tn-development .tn-answer { display:flex; align-items:flex-start; gap:8px; padding:9px 0; }
+    #tn-development .tn-answer input { margin-top:5px; }
+    #tn-development .tn-feedback { background:var(--tn-bg); border-radius:7px; padding:13px; margin-top:14px; }
+    #tn-development .tn-kv { display:grid; grid-template-columns:110px minmax(0,1fr); gap:7px 12px; font-size:12px; }
+    #tn-development .tn-kv dt { color:var(--tn-muted); }
+    #tn-development .tn-kv dd { margin:0; }
+    #tn-development .tn-observation { padding:14px 0; border-top:1px solid var(--tn-line); }
+    #tn-development .tn-observation p { margin-bottom:6px; }
+    #tn-development .tn-back { margin-bottom:15px; }
+    #tn-development .tn-check { display:flex; gap:10px; margin:13px 0; align-items:flex-start; }
+    #tn-development .tn-check i { flex-shrink:0; color:var(--tn-accent); margin-top:3px; }
+    #tn-development .tn-check p { margin:0; }
+    #tn-development textarea { width:100%; padding:10px; background:var(--tn-bg); border:1px solid var(--tn-line); color:var(--tn-ink); border-radius:7px; min-height:85px; resize:vertical; }
+    #tn-development .tn-live { padding:0 22px; color:var(--tn-accent); background:var(--tn-surface); font-size:12px; }
+    #tn-development .tn-live:not(:empty) { padding:12px 22px; border-top:1px solid var(--tn-line); }
+    #tn-development .tn-footer { padding:10px 20px; font-size:11px; color:var(--tn-muted); background:var(--tn-surface); border-top:1px solid var(--tn-line); }
+    #tn-development .tn-list { padding-left:19px; margin:10px 0; }
+    #tn-development .tn-list li { margin:7px 0; }
+    #tn-development .tn-table { width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; overflow-wrap:anywhere; }
+    #tn-development .tn-table th { text-align:left; color:var(--tn-muted); font-weight:500; }
+    #tn-development .tn-table th,#tn-development .tn-table td { padding:11px 8px; border-bottom:1px solid var(--tn-line); vertical-align:top; }
+    @media(max-width:800px) { #tn-development .tn-layout { grid-template-columns:150px minmax(0,1fr); } #tn-development .tn-grid { grid-template-columns:1fr; } #tn-development main { padding:18px; } #tn-development .tn-path { grid-template-columns:repeat(3,minmax(0,1fr)); } #tn-development .tn-unit { grid-template-columns:1fr; } #tn-development .tn-units { flex-direction:row; flex-wrap:wrap; } }
+    @media(max-width:550px) { #tn-development .tn-layout { display:block; } #tn-development .tn-side { padding:10px; border-right:0; border-bottom:1px solid var(--tn-line); } #tn-development .tn-side-title,#tn-development .tn-side-foot { display:none; } #tn-development .tn-nav { flex-direction:row; flex-wrap:wrap; gap:2px; } #tn-development .tn-nav button { width:auto; padding:8px; font-size:12px; } #tn-development .tn-nav button svg { display:none; } #tn-development .tn-top { padding:14px; gap:10px; } #tn-development .tn-product { font-size:12px; padding-left:10px; } #tn-development main { padding:14px; } #tn-development h1 { font-size:24px; } #tn-development .tn-path { grid-template-columns:repeat(2,minmax(0,1fr)); } #tn-development .tn-row { align-items:flex-start; flex-wrap:wrap; } #tn-development .tn-kv { grid-template-columns:90px minmax(0,1fr); } }
+    @media(pointer:coarse) { #tn-development button,#tn-development select { min-height:44px; } }
+  </style>
+  <div class="tn-preview"><span>DESIGN PREVIEW · Fictional people, courses &amp; records</span><label>Preview as <select id="tn-persona" aria-label="Preview persona"><option value="member">Member</option><option value="instructor">Instructor</option><option value="mentor">Mentor</option><option value="lead">Programme lead</option></select></label></div>
+  <header class="tn-top"><div class="tn-brand"><i data-lucide="compass" aria-hidden="true"></i>TrueNorth</div><span class="tn-product">Learning &amp; development</span><span class="tn-avatar" id="tn-avatar">AL</span></header>
+  <div class="tn-layout"><aside class="tn-side"><div class="tn-side-title" id="tn-workspace">My workspace</div><nav class="tn-nav" id="tn-nav" aria-label="Workspace navigation"></nav><div class="tn-side-foot"><strong>Your work. Your direction.</strong>Foundations → practice → depth → contribution</div></aside><main id="tn-main"></main></div>
+  <div id="tn-live" class="tn-live" role="status" aria-live="polite"></div>
+  <footer class="tn-footer">Proposed experience · Local preview actions only · DP1–2 pathway supplied by programme stakeholder</footer>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('tn-development');
+  const main = root.querySelector('#tn-main');
+  const initial = {role:'member', phase:'college', page:'home', stage:1, unit:1, filter:'explore', evidence:'work', saved:false, savedOpportunities:[], trainingView:'briefing', practiceRun:false, developmentSuggestion:false, handoffState:'pending'};
+  let state = {...initial};
+  let history = [];
+  const design = {density:'Comfortable', emphasis:'Balanced'};
+  const menus = {
+    member:[['home','Home','house'],['programme','Programme','route'],['learning','My learning','book-open'],['portfolio','Portfolio','folder-check'],['opportunities','Opportunities','telescope'],['plan','Development plan','sprout']],
+    instructor:[['home','Teaching','presentation'],['learning','Course workspace','book-open'],['portfolio','Assessment evidence','folder-check'],['programme','Curriculum context','route']],
+    mentor:[['home','Mentoring','users'],['plan','Development plan','sprout'],['portfolio','Shared evidence','folder-check'],['opportunities','Opportunities','telescope']],
+    lead:[['home','Programme overview','layers'],['programme','Pathway & handoffs','route'],['opportunities','Opportunity capacity','telescope']]
+  };
+  const phases = {college:['Algonquin College','Year 2 · Current semester'],ctu:['CTU Kingston · RMC activities','Current training block'],unit:['Operational development','Supervised practice & specialist growth']};
+  const icon = name => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+  const chip = (text, cls='') => `<span class="tn-chip ${cls}">${text}</span>`;
+  const btn = (label,action,primary=false) => `<button type="button" class="tn-action ${primary?'tn-primary':''}" data-action="${action}">${label}${icon('arrow-up-right')}</button>`;
+  const link = (label,action) => `<button type="button" class="tn-link" data-action="${action}">${label}${icon('arrow-right')}</button>`;
+  const row = (title,description,right='') => `<div class="tn-row"><div><strong>${title}</strong><p class="tn-small tn-muted">${description}</p></div>${right}</div>`;
+  const panel = (title,body) => `<section class="tn-panel"><h2>${title}</h2>${body}</section>`;
+  const head = (eyebrow,title,subtitle,control='') => `<div class="tn-pagehead"><div><span class="tn-eyebrow">${eyebrow}</span><h1>${title}</h1><p class="tn-muted">${subtitle}</p></div>${control}</div>`;
+  const tabs = (items,current,prefix) => `<div class="tn-tabs">${items.map(([value,label])=>`<button type="button" aria-pressed="${value===current}" data-action="${prefix}:${value}">${label}</button>`).join('')}</div>`;
+  function applySaved(saved) {
+    const s = saved?.privateContent;
+    if (!s || s.version!==1) return;
+    if (Object.hasOwn(menus,s.role)) state.role=s.role;
+    if (Object.hasOwn(phases,s.phase)) state.phase=s.phase;
+    if (['home','programme','learning','course','portfolio','evidence-detail','opportunities','opportunity','plan','handoff','submission','training','contribution'].includes(s.page)) state.page=s.page;
+    else state.page='home';
+    if (Number.isInteger(s.stage)&&s.stage>=0&&s.stage<=4) state.stage=s.stage;
+    if (['explore','depth','contribute'].includes(s.filter)) state.filter=s.filter;
+    if (Number.isInteger(s.unit)&&s.unit>=0&&s.unit<=2) state.unit=s.unit;
+    if (['work','skills','records','contributions'].includes(s.evidence)) state.evidence=s.evidence;
+    if (['briefing','practice','evidence','debrief'].includes(s.trainingView)) state.trainingView=s.trainingView;
+    state.practiceRun=s.practiceRun===true;
+    state.developmentSuggestion=s.developmentSuggestion===true;
+    if (['pending','correction','acknowledged'].includes(s.handoffState)) state.handoffState=s.handoffState;
+    if (['explore','depth','contribute'].includes(s.opportunityType)) state.opportunityType=s.opportunityType;
+    if (s.opportunityIndex===0||s.opportunityIndex===1) state.opportunityIndex=s.opportunityIndex;
+    state.savedOpportunities=Array.isArray(s.savedOpportunities)?s.savedOpportunities.filter(x=>/^(explore|depth|contribute):[01]$/.test(x)):[];
+    state.saved=state.savedOpportunities.length>0;
+  }
+  applySaved(window.openai?.widgetState);
+  function save() {
+    window.openai?.setWidgetState?.({modelContent:{workspace:state.role,phase:state.phase,view:state.page,opportunitySaved:state.saved},privateContent:{version:1,...state}})?.catch(()=>{});
+  }
+  function navigate(page) { history.push({...state}); state.page=page; render(); save(); }
+  function announce(message) { root.querySelector('#tn-live').textContent=message; }
+  function home() {
+    if(state.role==='instructor') return instructor();
+    if(state.role==='mentor') return mentoring();
+    if(state.role==='lead') return leadership();
+    const phasePicker = `<label class="tn-small tn-muted">Preview phase<br><select id="tn-phase"><option value="college" ${state.phase==='college'?'selected':''}>College · 3 years</option><option value="ctu" ${state.phase==='ctu'?'selected':''}>CTU / RMC · 8 months</option><option value="unit" ${state.phase==='unit'?'selected':''}>Operational development</option></select></label>`;
+    const content = {
+      college:{title:'Your semester, in focus.',subtitle:'Continue your studies, make room for curiosity, and keep your next step in sight.',kicker:'Continue learning · Network investigation',hero:'Turn observations into an explanation.',body:'Unit 4 · Investigating an unfamiliar traffic pattern. Your draft analysis is ready to resume.',action:'Resume unit',due:[['Traffic analysis report','Thursday · Draft saved'],['Systems administration practical','Friday · Briefing available']],next:'Discuss your investigation with your mentor',nextBody:'Tuesday, 14:00 · Bring one question and a piece of work you want to develop.'},
+      ctu:{title:'Put your foundations to work.',subtitle:'Your college evidence travels with you into military training and practical assessment.',kicker:'Prepare · CTU training block',hero:'Explain the incident. Defend your decisions.',body:'Review the exercise briefing, practise the handover, and inspect the assessment criteria before your scheduled session.',action:'Open training activity',due:[['Incident response assessment','Thursday · Preparation open'],['RMC teaching session','Friday · Readings assigned']],next:'Review the evidence for your next transition',nextBody:'One practical assessment is awaiting review. Your receiving owner will acknowledge the final package.'},
+      unit:{title:'Build depth. Make a contribution.',subtitle:'Your development plan connects supervised practice, specialist work, and the people supporting you.',kicker:'Development project · Detection engineering',hero:'Make a detection another team can trust.',body:'Your sponsor has allocated two hours each week. Next: reproduce the evaluation and review false positives with your mentor.',action:'Open development plan',due:[['Project evidence review','Thursday · Evaluation draft ready'],['Peer teaching session','Next week · Outline in progress']],next:'Your next review: evidence and direction',nextBody:'Consider what you learned, what the team can reuse, and whether this specialty still fits your interests.'}
+    }[state.phase];
+    return head(phases[state.phase][0],content.title,content.subtitle,phasePicker)+
+      `<section class="tn-panel tn-hero"><span class="tn-eyebrow">${content.kicker}</span><h2>${content.hero}</h2><p>${content.body}</p><div class="tn-actions">${btn(content.action,state.phase==='unit'?'nav:plan':state.phase==='ctu'?'nav:training':'nav:course',true)}${link('View programme','nav:programme')}</div></section>`+
+      `<div class="tn-grid"><div class="tn-stack">${panel('Coming up',content.due.map(x=>row(x[0],x[1],link('Open',state.phase==='ctu'?'nav:training':state.phase==='unit'?'nav:plan':'nav:course'))).join(''))}${panel('Feedback worth returning to',row('Your reasoning is improving','Sample instructor feedback · “Show what would disprove your explanation.”',link('Read feedback',state.phase==='ctu'?'training:debrief':state.phase==='unit'?'nav:evidence-detail':'unit:2')))}</div><div class="tn-stack">${panel('Your development conversation',`<p>${content.next}</p><p class="tn-small tn-muted">${content.nextBody}</p>${link('View your plan','nav:plan')}`)}${panel('A little room to explore',`<div class="tn-meta">${chip('Optional')}${chip('2 hours','neutral')}</div><h3>Explain an unfamiliar binary</h3><p class="tn-small tn-muted">A guided taster with a mentor. No specialty commitment.</p>${link('Explore opportunities','nav:opportunities')}`)}</div></div>`;
+  }
+  function programme() {
+    const stages=[['Year 1','Algonquin · Foundations'],['Years 2–3','Algonquin · Integration'],['8 months','CTU · includes RMC'],['Years 4–6','Practice & depth'],['Years 7–10','Expertise & contribution']];
+    const info=[
+      ['Build the foundations','Develop confidence in systems, networks, programming, and disciplined reasoning.',['Learn through structured teaching and guided practice','Try short explorations across specialties','Start a portfolio with reflections and selected work']],
+      ['Connect what you know','Use concepts across courses and build increasingly independent work.',['Follow the current term’s course offerings and deadlines','Develop a substantial project with assessed evidence','Prepare a reviewed handoff into CTU training']],
+      ['Demonstrate in context','Build on college learning through CTU training and scheduled RMC activities.',['Prepare for practical tasks against published criteria','Resolve gaps through feedback and reassessment','Complete the institutional handoff with a receiving owner']],
+      ['Find depth through useful work','Agree a development direction with a mentor and organisational sponsor.',['Practise in supervised assignments','Explore a specialty through a funded or time-supported project','Build reproducible evidence and reusable contributions']],
+      ['Multiply your expertise','Develop deep capability while strengthening colleagues and the profession.',['Maintain a technical contribution others rely on','Mentor emerging specialists and teach from experience','Feed lessons back into curriculum and research']]
+    ][state.stage];
+    return head('One continuing development record','Your programme, your possibilities.','DP1–2 spans the supplied college and CTU/RMC pathway. Later horizons illustrate development, not automatic qualification.')+
+      `<div class="tn-path" aria-label="Select a programme stage">${stages.map((s,i)=>`<button type="button" data-action="stage:${i}" aria-pressed="${state.stage===i}"><strong>${s[0]}</strong><span>${s[1]}</span></button>`).join('')}</div>`+
+      `<div class="tn-grid">${panel(info[0],`<p class="tn-muted">${info[1]}</p><ul class="tn-list">${info[2].map(s=>`<li>${s}</li>`).join('')}</ul><div class="tn-actions">${btn(state.stage<3?'View learning':'View development plan',state.stage<3?'nav:learning':'nav:plan',true)}</div>`)}${panel('The next handoff',`<div class="tn-meta">${chip('Preparation in progress','warm')}</div><h3>College → CTU Kingston</h3><p class="tn-small tn-muted">Formal records, selected developmental evidence, identified gaps, and an accountable receiving owner.</p>${link('Inspect handoff package','nav:handoff')}`)}</div><div class="tn-note tn-small">Exact course sequencing and qualification awards follow the approved curriculum version. Time in a phase does not grant a qualification.</div>`;
+  }
+  function learning() {
+    if(state.role==='member'&&state.phase==='ctu') return head('CTU Kingston · includes RMC activities','Your current training block.','Preparation, instruction, practical work, and review, connected to the same learner record.')+panel('Current training',row('Incident handover practice','Briefing, sample evidence, and a reviewed debrief',btn('Open training activity','nav:training',true))+row('RMC teaching activities','Readings and teaching sessions linked to this block',chip('Institutional source','neutral'))+row('Formal practical assessment','Scheduled separately from the practice preview',chip('Assessor-owned','warm')));
+    if(state.role==='member'&&state.phase==='unit') return head('Operational development','Work that develops your craft.','Your learning continues through agreed practice, specialist projects, and contributions.')+panel('Current development',row('Detection evaluation project','Mentor-supported · Protected time subject to sponsor agreement',btn('Open plan','nav:plan',true))+row('Turn an investigation into a teaching lab','Reuse your work with review, attribution, and a maintainer',link('Inspect contribution','nav:contribution')));
+    return head('Current offerings','Learning with a clear purpose.','Teaching, practice, assessment, and feedback stay together in each course workspace.')+
+      panel('Current semester · Sample offerings',row('Network investigation','Unit 4 · Analysis report due Thursday',btn('Continue','nav:course',true))+row('Systems administration','Unit 6 · Practical briefing available',link('Preview course pattern','nav:course'))+row('Programming for analysts','Unit 5 · Feedback returned',link('Preview course pattern','nav:course')))+
+      `<div class="tn-note tn-small">This preview demonstrates one reference course. Production offerings carry their own institutional source, calendar, enrollment, assessment policy, and course version.</div>`;
+  }
+  function course() {
+    const units=['1 · Establish a baseline','2 · Explain an anomaly','3 · Submit your analysis'];
+    const contents=[
+      `<div class="tn-meta">${chip('Learning')}${chip('20 minutes','neutral')}</div><h2>What does ordinary traffic look like?</h2><p>Before you investigate an anomaly, identify the expected hosts, services, and timing patterns. Record where your baseline comes from and what it cannot tell you.</p><div class="tn-note"><h3>Learning outcome</h3><p>Describe an expected pattern and identify the evidence needed to investigate a deviation.</p></div>${btn('Continue to practice','unit:1',true)}`,
+      `<div class="tn-meta">${chip('Practice · not graded')}${chip('15 minutes','neutral')}</div><h2>One observation. Several explanations.</h2><p>A workstation makes regular outbound connections overnight. You have timing and destination metadata, but no approved baseline.</p><p>Which next step best supports a defensible explanation?</p><label class="tn-answer"><input type="radio" name="tn-answer" value="assume">Treat regular timing as proof of malicious activity.</label><label class="tn-answer"><input type="radio" name="tn-answer" value="compare">Compare expected services and gather corroborating evidence.</label><label class="tn-answer"><input type="radio" name="tn-answer" value="ignore">Ignore the activity because no alert fired.</label><div class="tn-actions">${btn('Check reasoning','practice',true)}</div><div id="tn-practice-result" role="status"></div>`,
+      `<div class="tn-meta">${chip('Assessed assignment','warm')}${chip('Draft saved','neutral')}</div><h2>Traffic analysis report</h2><p>Submit a defensible explanation supported by evidence, alternative hypotheses, and the limits of your conclusions.</p><dl class="tn-kv"><dt>Due</dt><dd>Thursday, 16:00 · institution timezone</dd><dt>Rubric</dt><dd>Evidence quality · reasoning · reproducibility · communication</dd><dt>Submission</dt><dd>Revision 2 · sample draft</dd><dt>Feedback</dt><dd>“Explain what would disprove your leading hypothesis.”</dd></dl><div class="tn-note tn-small">Your instructor assesses this submission. Practice responses do not change your grade.</div>${btn('Preview submission review','nav:submission',true)}`
+    ];
+    return head('My learning / Network investigation','Unit 4 · From evidence to explanation','Sample course workspace · teaching and assessment requirements shown for design review.')+
+      `<div class="tn-unit"><div class="tn-units" aria-label="Course unit sections">${units.map((x,i)=>`<button type="button" data-action="unit:${i}" aria-pressed="${state.unit===i}">${x}</button>`).join('')}</div><section class="tn-panel">${contents[state.unit]}</section></div>`;
+  }
+  function portfolio() {
+    const intro=state.role==='member'?'Choose the work that tells your story.':'Inspect evidence, with the member’s sharing scope visible.';
+    const privateRow=state.role==='member'?row('Exploration reflection','Private to member · Not part of the formal record',chip('Private','neutral')):'';
+    const sharedRow=state.role==='instructor'?row('Traffic investigation · revision 2','Course submission · Assigned offering assessment scope',link('Inspect submission','nav:submission')):row('Traffic investigation · revision 2','Member-nominated · Shared with assigned mentor',link('Inspect evidence','nav:evidence-detail'));
+    return head('Portfolio',intro,'Selected work, assessed capability, and formal awards remain distinct.')+
+      tabs([['work','Selected work'],['skills','Assessed skills'],['records','Formal records'],['contributions','Contributions']],state.evidence,'evidence')+
+      (state.evidence==='work'?panel('Selected evidence',sharedRow+row('Reproducible analysis script','Instructor reviewed · Shared portfolio entry',chip('Reviewed'))+privateRow):state.evidence==='skills'?panel('Evidence before labels',row('Construct and test a hypothesis','Course assessment · Rubric v1 · Reviewer recorded',link('View supporting work',state.role==='instructor'?'nav:submission':'nav:evidence-detail'))+row('Independent incident coordination','No assessed evidence in this sample',chip('Not yet assessed','neutral'))):state.evidence==='contributions'?panel('Work others can build on',row('From investigation to teaching lab','Sample contribution · Technical review complete · Teaching review pending',link('Inspect contribution','nav:contribution'))):state.role==='member'?panel('Authoritative records',row('Academic results','Imported from the institution · Sample source record',chip('Source confirmed'))+row('CAF qualification awards','No award is asserted by this preview',chip('Authority required','warm'))):panel('Formal record access',`<p class="tn-muted">This relationship does not grant access to the member’s full transcript. Formal records require a separate authorised scope.</p>`))+`<div class="tn-note tn-small">Sharing a portfolio entry does not share private practice notes or award a qualification.</div>`;
+  }
+  function evidenceDetail() {
+    return head('Portfolio / Selected evidence','Traffic investigation','A piece of work, its context, and the claims it can support.')+
+      `<div class="tn-grid">${panel('Evidence record',`<div class="tn-meta">${chip('Member-nominated')}${chip('Review pending','warm')}</div><dl class="tn-kv"><dt>Author</dt><dd>Alex Laurent · fictional member</dd><dt>Context</dt><dd>Network investigation · sample offering</dd><dt>Version</dt><dd>Report revision 2 · rubric v1</dd><dt>Visibility</dt><dd>Member and assigned mentor</dd><dt>Source</dt><dd>Course submission reference</dd><dt>Claim</dt><dd>Developmental evidence; no formal award</dd></dl><div class="tn-note"><h3>Member reflection</h3><p>“My first explanation was too confident. Comparing the baseline changed my conclusion.”</p></div>`)}${panel('Review conversation',`<h3>Observed behaviour</h3><p>Revised a hypothesis after contradictory evidence and documented the limits of the analysis.</p><h3>Possible next step</h3><p class="tn-muted">Try a small detection evaluation project with a reproducibility requirement.</p>${btn('Explore a supported project','nav:opportunity',true)}`)}</div>`;
+  }
+  function opportunities() {
+    const items={explore:[['Explain an unfamiliar binary','Guided taster · 2 hours · Beginner-friendly','Explore'],['Teach a networking concept','Peer session · 1 hour · Communication practice','Contribute']],depth:[['Evaluate a detection','Four-week project · 2 protected hours/week · Sponsor required','Build depth'],['Investigate a research question','Supervised proposal · Mentor capacity pending','Research']],contribute:[['Turn your project into a lab','Reviewed teaching contribution · Maintainer required','Contribute'],['Mentor a first-year practice group','Supported peer mentoring · Instructor oversight','Teach']]}[state.filter];
+    return head('Explore · Build depth · Contribute','Make room for what you could become.','Choose an interest, see the support available, and agree a next step with your mentor.')+
+      tabs([['explore','Explore'],['depth','Build depth'],['contribute','Contribute']],state.filter,'filter')+
+      `<div class="tn-grid tn-equal">${items.map((x,i)=>panel(x[0],`<div class="tn-meta">${chip(x[2])}${chip('Sample opportunity','neutral')}</div><p class="tn-muted">${x[1]}</p>${link('View opportunity',`opportunity:${state.filter}:${i}`)}`)).join('')}</div><div class="tn-note tn-small">Interest starts a conversation. Placement requires a reviewer, capacity, and an agreed time allocation.</div>`;
+  }
+  function opportunity() {
+    const opportunityIndex = state.opportunityIndex ?? 0;
+    const opportunityType = state.opportunityType ?? 'depth';
+    const isSaved=state.savedOpportunities.includes(opportunityType+':'+opportunityIndex);
+    const name = {explore:['Explain an unfamiliar binary','Teach a networking concept'],depth:['Evaluate a detection','Investigate a research question'],contribute:['Turn your project into a lab','Mentor a first-year practice group']}[opportunityType][opportunityIndex];
+    return head('Opportunity / '+(opportunityType==='depth'?'Build depth':opportunityType==='explore'?'Explore':'Contribute'),name,'A bounded opportunity with a clear output and named support.')+
+      `<div class="tn-grid">${panel('The work',`<p>${opportunityType==='depth'?'Produce a reproducible investigation, test your explanation, and document what someone else would need to repeat it.':opportunityType==='explore'?'Try an unfamiliar problem with guidance. Record what interested you and one question you would like to pursue.':'Help another learner use your work. Prepare a reviewable resource and agree who will maintain it.'}</p><h3>Expected output</h3><p class="tn-muted">A short technical artefact, evidence of your process, and a review conversation.</p><h3>Eligibility</h3><p class="tn-muted">Relevant foundational learning or equivalent demonstrated experience. Your mentor can help assess readiness.</p><h3>Review criteria</h3><p class="tn-muted">Reasoning, reproducibility, communication, and usefulness to others.</p>`)}${panel('Support and commitment',`<dl class="tn-kv"><dt>Mentor</dt><dd>Jordan Singh · sample mentor</dd><dt>Sponsor</dt><dd>Programme development lead</dd><dt>Time</dt><dd>${opportunityType==='depth'?'2 hours/week for 4 weeks':'A bounded session, agreed before placement'}</dd><dt>Capacity</dt><dd>${opportunityIndex===1?'To be confirmed':'2 sample places'}</dd><dt>Review</dt><dd>At completion, before any evidence claim</dd></dl><div class="tn-actions">${btn(isSaved?'Saved for discussion':'Save for mentor discussion','save-opportunity',true)}${link('View development plan','nav:plan')}</div>`)}</div>`;
+  }
+  function plan() {
+    return head('Member + mentor + sponsor','A plan you can act on.','A few agreed goals, supported by time, people, and a review date.')+
+      (state.developmentSuggestion?`<div class="tn-note"><h3>For discussion at your next review</h3><p>Practise a concise evidence handover. Explain what is known, what remains uncertain, and what the receiving analyst should do next.</p><p class="tn-small tn-muted">Suggested from the sample practice debrief. This is not an assigned task or an agreed goal.</p></div>`:'')+
+      `<div class="tn-grid"><div class="tn-stack">${panel('Current goal',`<div class="tn-meta">${chip('Agreed development goal')}</div><h3>Build a reproducible investigation</h3><p class="tn-muted">Move from a plausible explanation to a result another analyst can evaluate.</p><dl class="tn-kv"><dt>Evidence</dt><dd>Traffic investigation · revision 2</dd><dt>Next activity</dt><dd>Detection evaluation project</dd><dt>Time</dt><dd>Proposed: 2 hours/week; sponsor confirmation pending</dd><dt>Review</dt><dd>Four weeks after placement starts</dd></dl>${link('Inspect supporting evidence','nav:evidence-detail')}`)}${panel('Next conversation',`<p>What would you like to explore, and what support would make it possible?</p><label class="tn-small" for="tn-reflection">Private preparation note · preview only</label><textarea id="tn-reflection" placeholder="A question, a challenge, or a new direction…"></textarea><div class="tn-actions">${btn('Keep note in this preview','keep-note')}</div>`)}</div><div class="tn-stack">${panel('Your support',row('Jordan Singh','Assigned mentor · Sample relationship')+row('Programme development lead','Sponsor · Confirms time and capacity'))}${panel('For your next review',`<ul class="tn-list"><li>What changed in your understanding?</li><li>What evidence supports that?</li><li>Does this direction still fit?</li><li>What will you try next?</li></ul>${state.saved?chip('Opportunity saved for discussion'):link('Find an opportunity','nav:opportunities')}`)}</div></div>`;
+  }
+  function instructor() {
+    return head('Teaching workspace','Help learning move forward.','Assigned offerings, assessment work, and specific requests for support.')+
+      `<div class="tn-grid"><div class="tn-stack">${panel('Needs your attention',row('Analysis reports awaiting review','3 sample submissions · Published rubric v1',btn('Review an example','nav:submission',true))+row('A learner requested clarification','Question about alternative hypotheses',link('Open course context','nav:course'))+row('One reassessment plan to confirm','Original result retained; new attempt proposed',link('Inspect review pattern','nav:submission')))}${panel('Current offering',row('Network investigation','Sample cohort · Unit 4 underway',link('Open workspace','nav:course')))}</div>${panel('Teaching insight',`<h3>Make the reasoning visible</h3><p class="tn-muted">Two sample drafts assert a conclusion without discussing alternatives.</p><p>Revisit one worked example before the next practical.</p>${link('View the practice activity','nav:course')}<div class="tn-note tn-small">Support prompts describe observed work. They do not label a learner’s potential.</div>`)}</div>`;
+  }
+  function mentoring() {
+    return head('Mentoring workspace','Notice the work. Enable the next step.','Development conversations stay grounded in shared evidence and member goals.')+
+      panel('Upcoming reviews',row('Alex Laurent','Wants to explore detection engineering · Shared investigation ready',btn('Review shared evidence','nav:evidence-detail',true))+row('Sam Chen','Reconsidering a specialty · Explore alternatives',link('Preview development conversation','nav:plan')))+
+      `<div class="tn-grid tn-equal" style="margin-top:16px">${panel('Observation → opportunity',`<p>Alex revised a hypothesis after finding contradictory evidence.</p><p class="tn-muted">A bounded investigation project could develop that behaviour further.</p>${link('Inspect a supported project','nav:opportunity')}`)}${panel('Capacity before commitment',`<p>Agree time and review capacity before accepting another placement.</p><p class="tn-small tn-muted">A member can pursue a different specialty after the review.</p>${link('Review the plan','nav:plan')}`)}</div>`;
+  }
+  function leadership() {
+    return head('Programme workspace','Keep the pathway connected.','Delivery, handoffs, and access to development opportunities.')+
+      `<div class="tn-grid"><div class="tn-stack">${panel('Transition queue',row('College → CTU Kingston','Sample package · Receiving acknowledgement pending',btn('Inspect handoff','nav:handoff',true))+row('CTU → Receiving unit','Sample package · Evidence review pending',link('Preview handoff pattern','nav:handoff')))}${panel('Programme feedback',`<h3>Receiving team observation</h3><p class="tn-muted">Sample feedback: incoming members explain technical findings well; concise handovers need more practice.</p>${link('Inspect curriculum context','nav:programme')}`)}</div>${panel('Access to opportunity',`<h3>Detection project</h3><p>2 sample places · mentor assigned · protected time requires sponsor confirmation.</p><h3>Supervised research</h3><p class="tn-muted">Mentor capacity is unconfirmed. Placement remains unavailable until support is agreed.</p>${link('Inspect opportunities','nav:opportunities')}`)}</div><div class="tn-note tn-small">Production measures include period, denominator, data coverage, and authorised drill-down. This preview does not rank members.</div>`;
+  }
+  function handoff() {
+    const handoffLabel={pending:'Pending review',correction:'Correction requested',acknowledged:'Acknowledged in preview'}[state.handoffState];
+    return head('Programme / Institutional handoff','A transition with an owner.','College → CTU Kingston · Sample package version 2')+
+      `<div class="tn-grid">${panel('Package contents',`<div class="tn-check">${icon('circle-check')}<div><h3>Academic record references</h3><p class="tn-small tn-muted">Source confirmed · No inferred qualifications</p></div></div><div class="tn-check">${icon('circle-check')}<div><h3>Member-selected evidence</h3><p class="tn-small tn-muted">Sharing scope reviewed with the member</p></div></div><div class="tn-check">${icon('circle-check')}<div><h3>Next development plan</h3><p class="tn-small tn-muted">Strengths, open requirements, and support actions</p></div></div><div class="tn-check">${icon(state.handoffState==='acknowledged'?'circle-check':'clock-3')}<div><h3>Receiving acknowledgement</h3><p class="tn-small tn-muted">${handoffLabel} · CTU receiving owner</p></div></div>`)}${panel('Accountability',`<dl class="tn-kv"><dt>Sending owner</dt><dd>College programme coordinator</dd><dt>Receiving owner</dt><dd>CTU training coordinator</dd><dt>Member check</dt><dd>Factual accuracy reviewed</dd><dt>Open item</dt><dd>${state.handoffState==='acknowledged'?'Receiving review recorded in this local preview':'Confirm incoming support review'}</dd><dt>Next step</dt><dd>${state.handoffState==='correction'?'Sending owner revises the package; the receiving owner reviews the new version.':state.handoffState==='acknowledged'?'Schedule the incoming support conversation. No qualification is awarded by acknowledging receipt.':'Receiving owner reviews version 2 and records acceptance or requested corrections.'}</dd></dl>${link('Inspect development plan','nav:plan')}`)}</div>`+
+      (state.role==='lead'?`<div class="tn-note"><h3>Preview a receiving-owner decision</h3><p class="tn-small">The production action is restricted to the named receiving owner and audited against the exact package version.</p><div class="tn-actions">${btn('Simulate acknowledgement','handoff:acknowledged',true)}${btn('Simulate correction request','handoff:correction')}${link('Reset preview','handoff:pending')}</div></div>`:'');
+  }
+  function training() {
+    const opening=head('CTU Kingston / Practical training','From practice to a useful debrief.','Incident handover · Sample activity · Practice and formal assessment are separate.')+
+      tabs([['briefing','Briefing'],['practice','Practice'],['evidence','Evidence'],['debrief','Debrief']],state.trainingView,'training');
+    if(state.trainingView==='briefing')return opening+`<div class="tn-grid">${panel('Prepare for the activity',`<div class="tn-meta">${chip('Practice · no qualification credit')}${chip('30 minutes','neutral')}</div><p>Investigate an unfamiliar pattern, record the limits of your explanation, and hand the work to another analyst.</p><h3>What you will practise</h3><ul class="tn-list"><li>Separate observations from assumptions.</li><li>Explain one plausible alternative.</li><li>Record a clear next action and its owner.</li></ul><div class="tn-actions">${btn('Open practice preview','training:practice',true)}</div>`)}${panel('Before you begin',row('Prior learning','Network investigation · baseline and corroboration')+row('Support','Practice hints and instructor guidance are permitted')+row('Attribution','An individual attempt inside a team activity')+row('Formal assessment','Separate scheduled attempt and published rubric'))}</div>`;
+    if(state.trainingView==='practice')return opening+`<div class="tn-grid">${panel('Practice workspace',`<div class="tn-meta">${chip('Local simulation')}${chip('No range is launched','neutral')}</div><h3>Prepare an analyst handover</h3><p>Your team has identified activity that needs further investigation. You have a timeline and a working explanation, but one evidence source is unavailable.</p><h3>Work to capture</h3><ul class="tn-list"><li>The observations supporting your explanation.</li><li>The missing evidence and its effect on confidence.</li><li>A specific follow-up action with a receiving owner.</li></ul><div class="tn-actions">${btn(state.practiceRun?'Inspect sample run':'Load a sample completed run','practice-run',true)}</div>`)}${panel('Your attempt context',`<dl class="tn-kv"><dt>Member</dt><dd>Alex Laurent · sample participant</dd><dt>Mode</dt><dd>Formative practice</dd><dt>Team evidence</dt><dd>Shared timeline with individual annotations</dd><dt>Assistance</dt><dd>Hints recorded; instructor support available</dd><dt>Credit</dt><dd>No formal credit from this preview</dd></dl><div class="tn-note tn-small">Production range failures preserve the attempt and allow recovery. Infrastructure failure does not become a learner failure.</div>`)}</div>`;
+    if(!state.practiceRun)return opening+panel('No practice evidence yet',`<p class="tn-muted">Load the fictional sample run to inspect the evidence and debrief pattern.</p>${btn('Open practice preview','training:practice',true)}`);
+    if(state.trainingView==='evidence')return opening+panel('Sample run · evidence register',row('Observed timeline','Team artefact · Alex’s annotations attributed separately',chip('Available'))+row('Alternative explanation','Individual decision note · revision 1',chip('Available'))+row('Handover ownership','Receiving owner was not recorded in the sample handover',chip('Needs practice','warm'))+`<div class="tn-note tn-small">These are pre-authored example observations. No actual session was run or assessed.</div><div class="tn-actions">${btn('Open debrief','training:debrief',true)}</div>`);
+    return opening+`<div class="tn-grid">${panel('What the evidence suggests',`<div class="tn-meta">${chip('Formative feedback')}${chip('Sample instructor review','neutral')}</div><h3>A strength to keep building</h3><p>You distinguished an observation from an assumption and recorded a credible alternative.</p><h3>A next step to practise</h3><p>The handover needs an explicit receiving owner and a testable next action. Without those, a sound analysis can still stall.</p><h3>Reflection</h3><p class="tn-muted">What would another analyst need to continue your work without asking you to reconstruct it?</p>`)}${panel('Turn feedback into development',`<p>Bring a concise handover exercise to your next mentor conversation.</p><p class="tn-small tn-muted">Your mentor and sponsor agree any project or protected time. This suggestion does not assign work automatically.</p>${btn('Add to review discussion','discuss-debrief',true)}<div class="tn-actions">${link('Return to practice','training:practice')}</div>`)}</div>`;
+  }
+  function contribution() {
+    return head('Portfolio / Contribution','Your learning becomes someone else’s starting point.','Sample contribution · From investigation to a teaching lab')+
+      `<div class="tn-grid">${panel('A reusable teaching resource',`<div class="tn-meta">${chip('Technical review complete')}${chip('Teaching review pending','warm')}</div><h3>From observation to explanation</h3><p>A guided investigation built from a reviewed student project, with an annotated dataset, facilitator notes, and a reproducible worked example.</p><dl class="tn-kv"><dt>Contributor</dt><dd>Alex Laurent · Attribution retained</dd><dt>Version</dt><dd>Draft 0.2</dd><dt>Audience</dt><dd>Foundational network investigation learners</dd><dt>Source</dt><dd>Approved training material only</dd></dl>`)}${panel('Ready to maintain',`<div class="tn-check">${icon('circle-check')}<div><h3>Technical reproduction</h3><p class="tn-small tn-muted">Reviewer repeated the worked example.</p></div></div><div class="tn-check">${icon('clock-3')}<div><h3>Teaching and accessibility review</h3><p class="tn-small tn-muted">Confirm learning objective, pacing, and accessible alternatives.</p></div></div><div class="tn-check">${icon('clock-3')}<div><h3>Maintainer and review date</h3><p class="tn-small tn-muted">Required before publishing to the next cohort.</p></div></div>${link('View the contributor’s development plan','nav:plan')}`)}</div><div class="tn-note tn-small">A contribution is recognised separately from qualification credit. Publishing requires review, permission to reuse the material, and an accountable maintainer.</div>`;
+  }
+  function submission() {
+    return head('Network investigation / Assessment','One revision. A traceable decision.','Sample submission review · No grade is changed in this preview.')+
+      panel('Traffic analysis report · revision 2',`<div class="tn-meta">${chip('Awaiting review','warm')}${chip('Rubric v1','neutral')}</div><table class="tn-table"><thead><tr><th>Criterion</th><th>Evidence to examine</th><th>State</th></tr></thead><tbody><tr><td>Evidence quality</td><td>Sources and baseline limitations are identified.</td><td>Review pending</td></tr><tr><td>Reasoning</td><td>Alternative hypotheses and disconfirming evidence.</td><td>Review pending</td></tr><tr><td>Reproducibility</td><td>Another analyst can repeat the stated process.</td><td>Review pending</td></tr></tbody></table><div class="tn-note"><h3>Previous formative feedback</h3><p>Explain what would disprove your leading hypothesis.</p></div>${link('Return to the assignment','unit:2')}`);
+  }
+  function render() {
+    root.querySelector('#tn-persona').value=state.role;
+    root.querySelector('#tn-workspace').textContent={member:'My workspace',instructor:'Teaching',mentor:'Mentoring',lead:'Programme'}[state.role];
+    root.querySelector('#tn-avatar').textContent={member:'AL',instructor:'MR',mentor:'JS',lead:'PL'}[state.role];
+    const canonicalPage={course:'learning',training:'learning',submission:'learning','evidence-detail':'portfolio',contribution:'portfolio',opportunity:'opportunities',handoff:'programme'}[state.page]||state.page;
+    root.querySelector('#tn-nav').innerHTML=menus[state.role].map(([id,label,ico])=>`<button type="button" data-action="nav:${id}" ${canonicalPage===id?'aria-current="page"':''}>${icon(ico)}${label}</button>`).join('');
+    const views={home,programme,learning,course,portfolio,'evidence-detail':evidenceDetail,opportunities,opportunity,plan,handoff,submission,training,contribution};
+    main.innerHTML=(history.length?`<button type="button" class="tn-link tn-back" data-action="back">${icon('arrow-left')}Back</button>`:'')+(views[state.page]||home)();
+    if(state.page==='home'&&state.role==='member'&&design.emphasis==='Programme first') main.insertAdjacentHTML('afterbegin',`<div class="tn-note">${link('See how this phase connects to your programme','nav:programme')}</div>`);
+    root.style.setProperty('--tn-space',design.density==='Compact'?'16px':'22px');
+    if(globalThis.lucide) globalThis.lucide.createIcons({attrs:{width:16,height:16}});
+  }
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-action]'); if(!button||!root.contains(button))return;
+    const [action,arg,extra]=button.dataset.action.split(':');
+    announce('');
+    if(action==='nav'){if(arg==='opportunity'){state.opportunityType='depth';state.opportunityIndex=0;}navigate(arg);}
+    if(action==='back'){state=history.pop()||{...initial};render();save();}
+    if(action==='stage'){state.stage=Number(arg);render();save();}
+    if(action==='unit'){state.unit=Number(arg);if(state.page!=='course')navigate('course');else{render();save();}}
+    if(action==='filter'){state.filter=arg;render();save();}
+    if(action==='evidence'){state.evidence=arg;render();save();}
+    if(action==='training'){state.trainingView=arg;if(state.page!=='training')navigate('training');else{render();save();}}
+    if(action==='practice-run'){state.practiceRun=true;state.trainingView='evidence';render();save();announce('Loaded fictional practice evidence. No exercise was run.');}
+    if(action==='discuss-debrief'){state.developmentSuggestion=true;navigate('plan');announce('Added a discussion suggestion in this preview. No task was assigned or message sent.');}
+    if(action==='handoff'&&state.role==='lead'){state.handoffState=arg;render();save();announce('Local handoff preview updated. No institutional record was changed.');}
+    if(action==='opportunity'){state.opportunityType=arg;state.opportunityIndex=Number(extra);navigate('opportunity');}
+    if(action==='save-opportunity'){const key=(state.opportunityType??'depth')+':'+(state.opportunityIndex??0);const had=state.savedOpportunities.includes(key);state.savedOpportunities=had?state.savedOpportunities.filter(x=>x!==key):[...state.savedOpportunities,key];state.saved=state.savedOpportunities.length>0;render();save();announce(!had?'Saved in this preview for mentor discussion. No application was sent.':'Removed from the preview discussion list.');}
+    if(action==='practice'){
+      const answer=root.querySelector('input[name="tn-answer"]:checked');
+      const output=root.querySelector('#tn-practice-result');
+      output.className='tn-feedback';
+      output.textContent=!answer?'Choose an explanation to see feedback.':answer.value==='compare'?'A defensible next step. Corroborating evidence helps distinguish expected automation from activity that needs investigation. This practice response does not change your grade.':'Revisit the evidence. Timing alone, or the absence of an alert, cannot settle the explanation. Compare expected activity and look for corroboration.';
+    }
+    if(action==='keep-note'){const field=root.querySelector('#tn-reflection');announce(field.value.trim()?'Note remains in this open preview. It has not been shared or saved to a member record.':'Add a preparation note first.');}
+  });
+  root.addEventListener('change',event=>{
+    if(event.target.id==='tn-persona'){state.role=event.target.value;state.page='home';history=[];render();save();announce('Previewing a fictional '+state.role+' workspace.');}
+    if(event.target.id==='tn-phase'){state.phase=event.target.value;state.stage={college:1,ctu:2,unit:3}[state.phase];render();save();announce('Showing the '+phases[state.phase][0]+' phase.');}
+  });
+  window.addEventListener('openai:set_globals',event=>{if(event.detail?.globals?.widgetState){applySaved(event.detail.globals.widgetState);render();}});
+  render();
+  if(globalThis.Tweak){const tweak=new globalThis.Tweak({container:root,onChange:render});tweak.addSelect(design,'density',{label:'Workspace density',options:['Comfortable','Compact']});tweak.addSelect(design,'emphasis',{label:'Home emphasis',options:['Balanced','Programme first']});}
+})();
+</script>
+
+<style>
+html { color-scheme: light; }
+#tn-development {
+  --tn-bg: #fff7f7; --tn-surface: #ffffff; --tn-ink: #292326;
+  --tn-muted: #655b60; --tn-line: #eadbdd; --tn-accent: #b5122b;
+  --tn-soft: #fcecef; --tn-warm: #fff0f2; --tn-warm-ink: #961b30;
+  --tn-button: #bd1631; --tn-button-ink: #ffffff;
+}
+#tn-development .tn-top { background: #bd1631; color: #ffffff; }
+#tn-development .tn-product { color: #ffffff; border-color: #e57b8c; }
+#tn-development .tn-primary { color: #ffffff; }
+#tn-development .tn-top { display: none; }
+</style>
+</body></html>

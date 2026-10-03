@@ -1,0 +1,103 @@
+---
+# Render the production environment file.
+#
+# Two rules drive this role:
+#
+#  1. Secrets are generated ONCE, on the target, and persisted. Regenerating
+#     POSTGRES_PASSWORD on the second run would lock you out of your own
+#     database — an installer that is not idempotent about secrets is worse than
+#     one that is not idempotent at all.
+#
+#  2. The env file is written OUTSIDE the checkout. infra/platform/docker/
+#     .env.production is a git-tracked path; rendering real secrets there would
+#     commit them on the next `git add -A`.
+
+- name: Config — generate and persist any secret left empty in the vault
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      f="{{ tn_config_dir }}/secrets/{{ item.name }}"
+      if [ ! -s "$f" ]; then
+        umask 077
+        printf '%s' "$(head -c 32 /dev/urandom | base64 | tr -d '=+/' | cut -c1-32)" > "$f"
+      fi
+    creates: "{{ tn_config_dir }}/secrets/{{ item.name }}"
+  loop: "{{ tn_generated_secrets }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.value | default('') | length == 0
+  no_log: true
+
+- name: Config — read persisted secrets back
+  ansible.builtin.slurp:
+    src: "{{ tn_config_dir }}/secrets/{{ item.name }}"
+  register: tn_secret_files
+  loop: "{{ tn_generated_secrets }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.value | default('') | length == 0
+  no_log: true
+
+- name: Config — assemble the effective secret map
+  ansible.builtin.set_fact:
+    tn_secrets: >-
+      {{ tn_secrets | default({}) | combine({
+           item.item.name: (item.item.value
+                            if (item.item.value | default('') | length > 0)
+                            else (item.content | b64decode))
+         }) }}
+  loop: "{{ tn_secret_files.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: item.content is defined
+  no_log: true
+
+- name: Config — carry through secrets that came from the vault
+  ansible.builtin.set_fact:
+    tn_secrets: >-
+      {{ tn_secrets | default({}) | combine({item.name: item.value}) }}
+  loop: "{{ tn_generated_secrets }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.value | default('') | length > 0
+  no_log: true
+
+# LRS_AUTH is base64("key:secret") — the API sends it as a Basic credential.
+- name: Config — derive the LRS basic-auth header value
+  ansible.builtin.set_fact:
+    tn_lrs_auth: "{{ (tn_secrets['lrs_api_key'] ~ ':' ~ tn_secrets['lrs_api_secret']) | b64encode }}"
+  no_log: true
+
+- name: Config — render .env.production
+  ansible.builtin.template:
+    src: env.production.j2
+    dest: "{{ tn_env_file }}"
+    mode: "0600"
+    owner: "{{ ansible_user }}"
+  no_log: true
+
+# compose.prod.yml binds its named volumes to $TN_DATA_ROOT/... . Docker reads
+# that at `up` time from the env file, so it must be present there too.
+- name: Config — render the backup environment
+  ansible.builtin.copy:
+    dest: "{{ tn_config_dir }}/backup.env"
+    mode: "0640"
+    content: |
+      # Sourced by scripts/backup/*.sh. Those default COMPOSE_FILE to a root
+      # docker-compose.yml that has never existed in this repository, so every
+      # `docker compose` call inside them failed silently until this was set.
+      COMPOSE_FILE={{ tn_compose_file }}
+      ENV_FILE={{ tn_env_file }}
+      BACKUP_DIR={{ tn_data_root }}/backups
+      RETENTION_DAYS=30
+
+- name: Config — nightly backup timer
+  ansible.builtin.cron:
+    name: truenorth-backup
+    minute: "17"
+    hour: "2"
+    job: >-
+      set -a; . {{ tn_config_dir }}/backup.env; set +a;
+      {{ tn_app_dir }}/scripts/backup/cron-backup.sh
+      >> {{ tn_data_root }}/logs/backup.log 2>&1
+    state: present

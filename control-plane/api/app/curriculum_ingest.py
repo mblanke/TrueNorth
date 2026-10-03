@@ -26,11 +26,28 @@ OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://opensearch:9200").rstrip("/
 
 CHUNK_CHARS = 3200      # ~800 tokens
 CHUNK_OVERLAP = 400
-# Must match the dimensionality of the served embedding model. Default 1024
-# (bge-m3). Set EMBED_DIM to match if the LiteLLM "embed" model differs
-# (e.g. 384 for bge-small-en-v1.5). Vectors whose length != EMBED_DIM are
-# dropped and the chunk is indexed text-only (BM25-searchable).
-EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
+
+# Embedding width is a property of the served model, not a preference, so it is
+# resolved rather than declared. Per index, in order:
+#
+#   1. the live index mapping  — authoritative. OpenSearch fixes knn_vector width
+#                                at index creation and accepts nothing else after.
+#   2. a one-shot model probe  — ground truth for anything not yet indexed.
+#   3. EMBED_DIM               — operator pin, honoured only when the model
+#                                cannot be reached.
+#   4. EMBED_DIM_FALLBACK      — last resort so ingest still works offline.
+#
+# Any disagreement between two of these is logged at WARNING. It used to be
+# silent: a wrong width dropped every vector, retrieval fell back to BM25, and
+# ingest still reported success — so semantic search could be off for weeks with
+# nothing in the logs to say so.
+EMBED_DIM_FALLBACK = 1024
+_EMBED_DIM_PIN = int(os.environ["EMBED_DIM"]) if os.getenv("EMBED_DIM") else None
+
+_dim_cache: dict[str, int] = {}          # index name -> resolved vector width
+_probed_dim: int | None = None           # width reported by the served model
+_probe_done = False                      # probe is attempted at most once
+_warned_mismatch: set[tuple[str, int, int]] = set()   # (index, got, want)
 
 
 def index_name(curriculum_id: uuid.UUID | str) -> str:
@@ -170,38 +187,125 @@ async def embed_text(text: str) -> tuple[list[float] | None, str]:
             resp.raise_for_status()
             data = resp.json()
             return data.get("embedding"), data.get("model_used", "")
+    except httpx.HTTPStatusError as exc:
+        # A reachable endpoint that refuses the call is a configuration fault,
+        # not the "no embedding node in dev" case below. 401 here almost always
+        # means OPENAI_API_KEY is still the placeholder rather than a live key.
+        logger.warning(
+            "Embedding endpoint returned %s; indexing text-only and retrieval will use BM25",
+            exc.response.status_code,
+        )
+        return None, ""
     except Exception as exc:
         logger.debug("Embedding unavailable (%s); indexing text-only", exc)
         return None, ""
 
 
+async def _probe_embedding_dim() -> int | None:
+    """Ask the served model how wide its vectors are. Probed at most once."""
+    global _probed_dim, _probe_done
+    if _probe_done:
+        return _probed_dim
+    _probe_done = True
+
+    vector, model = await embed_text("embedding dimension probe")
+    if not vector:
+        logger.warning(
+            "Could not probe the embedding model; assuming %d dimensions. "
+            "Semantic search stays unavailable until embeddings are reachable.",
+            _EMBED_DIM_PIN or EMBED_DIM_FALLBACK,
+        )
+        return None
+
+    _probed_dim = len(vector)
+    logger.info("Embedding model %s returns %d-dimensional vectors", model or "unknown", _probed_dim)
+    if _EMBED_DIM_PIN is not None and _probed_dim != _EMBED_DIM_PIN:
+        logger.warning(
+            "EMBED_DIM=%d contradicts the served model (%s returns %d). Using %d — "
+            "correct EMBED_DIM, or new indexes will be built at a width the model cannot fill.",
+            _EMBED_DIM_PIN, model or "unknown", _probed_dim, _probed_dim,
+        )
+    return _probed_dim
+
+
+async def _existing_index_dim(client: httpx.AsyncClient, index: str) -> int | None:
+    """Vector width already fixed in a live index, or None if it does not exist."""
+    try:
+        resp = await client.get(f"{OPENSEARCH_URL}/{index}/_mapping")
+        if resp.status_code != 200:
+            return None
+        props = resp.json()[index]["mappings"]["properties"]
+        return int(props["embedding"]["dimension"])
+    except Exception as exc:
+        logger.debug("Could not read the mapping for %s (%s)", index, exc)
+        return None
+
+
+def _warn_mismatch(index: str, got: int, want: int) -> None:
+    """Warn once per (index, got, want) that vectors are being discarded."""
+    key = (index, got, want)
+    if key in _warned_mismatch:
+        return
+    _warned_mismatch.add(key)
+    logger.warning(
+        "Embedding width mismatch on %s: the model returned %d, the index expects %d. "
+        "Chunks are indexed text-only and retrieval has fallen back to BM25. Rebuild the "
+        "index (delete it and re-ingest) to restore semantic search at %d dimensions.",
+        index, got, want, got,
+    )
+
+
 # ── OpenSearch indexing / retrieval ──────────────────────────────────────
 
 
-async def ensure_index(curriculum_id: uuid.UUID | str) -> None:
+async def ensure_index(curriculum_id: uuid.UUID | str) -> int:
+    """Create the per-curriculum index if absent. Returns its vector width."""
     index = index_name(curriculum_id)
-    mapping = {
-        "settings": {"index": {"knn": True}},
-        "mappings": {
-            "properties": {
-                "curriculum_id": {"type": "keyword"},
-                "document_id": {"type": "keyword"},
-                "filename": {"type": "keyword"},
-                "chunk_ordinal": {"type": "integer"},
-                "text": {"type": "text"},
-                "embedding": {
-                    "type": "knn_vector",
-                    "dimension": EMBED_DIM,
-                    "method": {"name": "hnsw", "engine": "lucene", "space_type": "cosinesimil"},
-                },
-            }
-        },
-    }
+    cached = _dim_cache.get(index)
+    if cached is not None:
+        return cached
+
     async with httpx.AsyncClient(timeout=15) as client:
-        exists = await client.head(f"{OPENSEARCH_URL}/{index}")
-        if exists.status_code == 404:
-            resp = await client.put(f"{OPENSEARCH_URL}/{index}", json=mapping)
-            resp.raise_for_status()
+        existing = await _existing_index_dim(client, index)
+        if existing is not None:
+            # The index wins: its width cannot be altered in place. Say so if the
+            # model has since changed, because every vector will now be dropped.
+            probed = await _probe_embedding_dim()
+            if probed is not None and probed != existing:
+                _warn_mismatch(index, probed, existing)
+            _dim_cache[index] = existing
+            return existing
+
+        dim = await _probe_embedding_dim() or _EMBED_DIM_PIN or EMBED_DIM_FALLBACK
+        mapping = {
+            "settings": {"index": {"knn": True}},
+            "mappings": {
+                "properties": {
+                    "curriculum_id": {"type": "keyword"},
+                    "document_id": {"type": "keyword"},
+                    "filename": {"type": "keyword"},
+                    "chunk_ordinal": {"type": "integer"},
+                    "text": {"type": "text"},
+                    "embedding": {
+                        "type": "knn_vector",
+                        "dimension": dim,
+                        "method": {"name": "hnsw", "engine": "lucene", "space_type": "cosinesimil"},
+                    },
+                }
+            },
+        }
+        resp = await client.put(f"{OPENSEARCH_URL}/{index}", json=mapping)
+        if resp.status_code >= 300:
+            # Lost a race with a concurrent create — adopt whatever won.
+            existing = await _existing_index_dim(client, index)
+            if existing is None:
+                resp.raise_for_status()
+            _dim_cache[index] = existing
+            return existing
+
+    logger.info("Created index %s for %d-dimensional embeddings", index, dim)
+    _dim_cache[index] = dim
+    return dim
 
 
 async def index_chunks(
@@ -211,7 +315,7 @@ async def index_chunks(
     chunks: list[str],
 ) -> tuple[int, str]:
     """Index chunks (embedding when possible). Returns (indexed_count, embed_model)."""
-    await ensure_index(curriculum_id)
+    dim = await ensure_index(curriculum_id)
     index = index_name(curriculum_id)
     embed_model = ""
 
@@ -229,8 +333,10 @@ async def index_chunks(
             "chunk_ordinal": ordinal,
             "text": chunk,
         }
-        if vector and len(vector) == EMBED_DIM:
+        if vector and len(vector) == dim:
             doc["embedding"] = vector
+        elif vector:
+            _warn_mismatch(index, len(vector), dim)
         bulk_lines.append(_json.dumps({"index": {"_index": index}}))
         bulk_lines.append(_json.dumps(doc))
 
@@ -253,11 +359,21 @@ async def index_chunks(
 
 
 async def rag_search(curriculum_id: uuid.UUID | str, query: str, k: int = 8) -> list[dict]:
-    """Top-k chunks: kNN when the query can be embedded, BM25 otherwise."""
+    """Top-k chunks: kNN when the query embeds to the index's width, BM25 otherwise."""
     index = index_name(curriculum_id)
     vector, _ = await embed_text(query)
 
-    if vector and len(vector) == EMBED_DIM:
+    dim = _dim_cache.get(index)
+    if dim is None:
+        # Read, never create: a search must not conjure an empty index.
+        async with httpx.AsyncClient(timeout=15) as client:
+            dim = await _existing_index_dim(client, index)
+        if dim is not None:
+            _dim_cache[index] = dim
+    if vector and dim is not None and len(vector) != dim:
+        _warn_mismatch(index, len(vector), dim)
+
+    if vector and dim is not None and len(vector) == dim:
         body: dict = {
             "size": k,
             "query": {"knn": {"embedding": {"vector": vector, "k": k}}},
@@ -288,5 +404,9 @@ async def rag_search(curriculum_id: uuid.UUID | str, query: str, k: int = 8) -> 
 
 
 async def delete_index(curriculum_id: uuid.UUID | str) -> None:
+    index = index_name(curriculum_id)
+    # Drop the cached width and its warnings so a rebuild re-resolves cleanly.
+    _dim_cache.pop(index, None)
+    _warned_mismatch.difference_update([k for k in _warned_mismatch if k[0] == index])
     async with httpx.AsyncClient(timeout=15) as client:
-        await client.delete(f"{OPENSEARCH_URL}/{index_name(curriculum_id)}")
+        await client.delete(f"{OPENSEARCH_URL}/{index}")

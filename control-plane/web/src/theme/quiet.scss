@@ -1,0 +1,157 @@
+/* ─────────────────────────────────────────────────────────────
+   QUIET PAGES (Learning hub)
+   Pages that are read rather than operated: one flat accordion style, no glass,
+   no glow, no pulse. Put `.tn-quiet` on the page root. Built only from the theme
+   tokens, so every runtime theme gets it without per-theme rules.
+
+   Not in styles.scss on purpose: that file is the initial bundle, which sits at its
+   budget. This is loaded with the hub pages instead (QuietStylesComponent, rendered
+   by HubShellComponent), and every page that uses it lives inside a hub.
+───────────────────────────────────────────────────────────── */
+.tn-quiet {
+  line-height: 1.55;
+  /* Rows respond to the page's own width, not the viewport's: with the side nav open
+     a wide screen can still leave a narrow page. */
+  container-type: inline-size;
+}
+
+/* Narrow page: a row's facts drop under its title instead of squeezing beside it. */
+@container (max-width: 560px) {
+  .tn-quiet .mat-expansion-panel-header .mat-content {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .tn-quiet .mat-expansion-panel-header-title {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    margin-right: 0;
+  }
+  .tn-quiet .mat-expansion-panel-header-title > * {
+    white-space: normal !important;
+  }
+  .tn-quiet .mat-expansion-panel-header-description {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    margin-right: 0;
+  }
+}
+
+.tn-quiet .mat-accordion .mat-expansion-panel {
+  background: var(--bg-card) !important;
+  color: var(--text-primary);
+  box-shadow: none !important;
+  border: 1px solid var(--border);
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+.tn-quiet .mat-accordion .mat-expansion-panel:not(:first-of-type) {
+  border-top: 0;
+}
+.tn-quiet .mat-accordion .mat-expansion-panel:first-of-type {
+  border-top-left-radius: var(--radius-md) !important;
+  border-top-right-radius: var(--radius-md) !important;
+}
+.tn-quiet .mat-accordion .mat-expansion-panel:last-of-type {
+  border-bottom-left-radius: var(--radius-md) !important;
+  border-bottom-right-radius: var(--radius-md) !important;
+}
+
+/* Nested accordions sit inside a panel: no box of their own, just hairlines. */
+.tn-quiet .mat-expansion-panel-body .mat-accordion .mat-expansion-panel {
+  background: transparent !important;
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0 !important;
+}
+.tn-quiet .mat-expansion-panel-body .mat-accordion .mat-expansion-panel:last-of-type {
+  border-bottom: 0;
+}
+
+.tn-quiet .mat-expansion-panel-header {
+  height: auto !important;
+  min-height: 52px;
+  padding: 10px 16px !important;
+  font-family: var(--font-body);
+  background: transparent !important;
+}
+.tn-quiet .mat-expansion-panel-header:hover {
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent) !important;
+}
+.tn-quiet .mat-expansion-panel-header.mat-expanded {
+  border-bottom: 1px solid var(--border);
+}
+.tn-quiet .mat-expansion-panel-header-title {
+  color: var(--text-primary);
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 10px;
+  align-items: baseline;
+}
+.tn-quiet .mat-expansion-panel-header-description {
+  color: var(--text-muted);
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-right: 8px;
+}
+.tn-quiet .mat-expansion-indicator::after {
+  color: var(--text-muted);
+}
+.tn-quiet .mat-expansion-panel-body {
+  padding: 12px 16px 16px !important;
+}
+.tn-quiet .mat-expansion-panel-body .mat-expansion-panel-header {
+  min-height: 44px;
+  padding: 8px 0 !important;
+}
+/* One step down the hierarchy per level: nested rows are lighter than their parent. */
+.tn-quiet .mat-expansion-panel-body .mat-expansion-panel-header-title {
+  font-weight: 500;
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+}
+.tn-quiet .mat-expansion-panel-body .mat-expansion-panel-body {
+  padding: 4px 0 12px !important;
+}
+
+/* Cards on quiet pages: flat surface, no blur, no lift. */
+.tn-quiet .mat-mdc-card,
+.tn-quiet mat-card {
+  background: var(--bg-card) !important;
+  backdrop-filter: none;
+  box-shadow: none !important;
+}
+
+/* State pills without the operational glow or pulse. */
+.tn-quiet .status-chip {
+  box-shadow: none !important;
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  padding: 2px 10px;
+}
+.tn-quiet .status-chip::before {
+  animation: none !important;
+}
+
+/* Small shared pieces for quiet rows. */
+.tn-quiet .tn-muted { color: var(--text-muted); }
+.tn-quiet .tn-small { font-size: 0.82rem; }
+.tn-quiet .tn-code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.tn-quiet .tn-section-label {
+  margin: 14px 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tn-quiet .tn-section-label:first-child { margin-top: 0; }
+.tn-quiet .tn-gap-count { color: var(--warning); }

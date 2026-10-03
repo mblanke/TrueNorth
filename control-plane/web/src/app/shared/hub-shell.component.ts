@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   ActivatedRoute,
@@ -7,10 +7,15 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { MatTabsModule } from '@angular/material/tabs';
+import { AuthService } from '@core/services/auth.service';
+import { QuietStylesComponent } from './quiet-styles.component';
 
 interface HubTab {
   label: string;
   path: string;
+  /** Shown only to instructors and admins. The route must still carry its own guard;
+   * hiding the tab is presentation, not access control. */
+  instructorOnly?: boolean;
 }
 
 /**
@@ -21,14 +26,15 @@ interface HubTab {
 @Component({
   selector: 'tn-hub-shell',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MatTabsModule],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MatTabsModule, QuietStylesComponent],
   template: `
+    <tn-quiet-styles />
     <section class="hub">
       @if (title) {
         <h1 class="hub-title">{{ title }}</h1>
       }
       <nav mat-tab-nav-bar [tabPanel]="tabPanel" class="hub-tabs">
-        @for (tab of tabs; track tab.path) {
+        @for (tab of visibleTabs(); track tab.path) {
           <a
             mat-tab-link
             [routerLink]="tab.path"
@@ -70,6 +76,11 @@ interface HubTab {
 })
 export class HubShellComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly auth = inject(AuthService);
   readonly title: string = this.route.snapshot.data['title'] ?? '';
   readonly tabs: HubTab[] = this.route.snapshot.data['tabs'] ?? [];
+
+  readonly visibleTabs = computed(() =>
+    this.tabs.filter(tab => !tab.instructorOnly || this.auth.isInstructor()),
+  );
 }

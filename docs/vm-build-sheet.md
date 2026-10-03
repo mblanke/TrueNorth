@@ -1,0 +1,497 @@
+# TrueNorth Range — VM Build Sheet & Software List
+
+Working list for the people building the VM library. It is derived from what the repo
+defines today, not from a new design:
+
+| Source | What it gives |
+|---|---|
+| `truenorth-content-pack/truenorth-content/vm_catalogue.csv` | Golden image library (build once, clone many) |
+| `truenorth-content-pack/truenorth-content/templates/packer/*.pkr.hcl` | Build-time vCPU / RAM / disk per template |
+| `content/ranges/*/template.yaml` | Deploy-time roles, specs and services per range |
+| `truenorth-ai-vsphere-pack/truenorth-vsphere-architecture.md` | Management-plane VMs |
+| `infra/ansible/` | What post-deploy configuration already exists |
+
+Items marked **(proposed)** are not in the repo yet. They are recommendations and need
+sign-off.
+
+---
+
+## 0. How the build is layered
+
+There are three tiers, and it matters which tier each piece of software goes into.
+
+| Stage | Code | What goes here | How |
+|---|---|---|---|
+| Golden template | **T** | Same on every clone, not tied to an identity: OS, patches, VMware Tools, runtimes, common apps, the sensor binary | Packer, then sysprep (Windows) or cloud-init clean (Linux) |
+| Role snapshot | **R** | Heavy server products that cannot be sysprepped after install and that need AD: Exchange, SharePoint, SQL with domain service accounts, AD CS, MECM, WSUS | Build once inside a *golden domain*, snapshot, then instant-clone the **whole set** into each isolated range VLAN |
+| Post-deploy | **P** | Anything specific to one range: agent enrolment keys, users and mail seeding, scenario vulnerabilities and artifacts, domain join for loose clones | Ansible at range spin-up (`infra/ansible/playbooks/setup-range.yml`) |
+
+Ranges are **no-egress** (see `range.tf`: "No egress from the range segment"). As a result,
+anything in stage **P** has to come from an internal software depot, not from the internet
+(see §6).
+
+---
+
+## 1. Management plane (persistent, build first)
+
+| VM | OS | vCPU | RAM | Disk | Purpose | Source |
+|---|---|---:|---:|---|---|---|
+| TN-MGMT01 | Ubuntu Server 24.04 LTS | 12–16 | 64 GB min, 96–128 GB preferred | 100 GB OS + 500 GB data (min) | TrueNorth platform: API, frontend, Postgres, Redis, Celery, Keycloak, MinIO, OpenSearch, AI orchestrator, Terraform | vSphere architecture §2 |
+| TN-DC01 | Windows Server 2022 (or 2025) | 4 | 8–16 GB | 100 GB | AD DS + DNS for platform identity (Keycloak LDAP federation). **Not** a range DC | vSphere architecture §2 |
+| TN-RANGE01 | any small template | 2 | 4 GB | 40 GB | Throwaway VM that proves TrueNorth can create, start, observe and destroy a VM | vSphere architecture §2 |
+| TN-DEPOT01 **(decided: separate VM)** | Ubuntu 24.04 | 4 | 16 GB | 100 GB + 1–2 TB | Offline software depot: Nexus/Sonatype OSS (or Artifactory OSS) hosting an internal Chocolatey feed, apt proxy/mirror, PyPI and Docker registry mirror, plus an ISO/installer share. Ranges reach this host and nothing else | Needed for the no-egress rule |
+| TN-BUILD01 **(decided: separate VM)** | Ubuntu 24.04 | 8 | 16 GB | 200 GB | Runs Packer and Ansible for the template builds. This is the **only** host with controlled internet egress. Kept separate from TN-MGMT01 and TN-DEPOT01 (§8) | `.github/workflows/packer-build.yml` |
+| TN-KMS01 **(decided)** | Windows Server 2022 | 2 | 4 GB | 60 GB | Dedicated KMS host for range VMs only. Ranges may reach it on **TCP 1688 and nothing else**. Prod only; test uses evaluation media | §8 |
+| TN-WSUS01 **(proposed, optional)** | Windows Server 2022 | 2 | 8 GB | 300 GB | Patch source for templates and role snapshots | — |
+
+**Activation and licensing (decided, see §8):** all licences are held and are applied in
+**prod**, where Windows KMS is available. The **test** environment probably has no KMS, so
+build it from evaluation media (Windows Server and Windows Enterprise: 180 days; Exchange
+and SharePoint trial mode) and leave the templates unactivated. Keep product keys out of
+the templates in both environments. Prod activates at deploy time (the KMS client key, GVLK,
+is used by default) against **TN-KMS01**, the one KMS host that every range reaches on TCP
+1688 only. Platform AD-based activation cannot reach range domains.
+
+---
+
+## 2. Golden templates (build once, clone many)
+
+The build specs come from the Packer files. The Packer files size the **template**; each
+range resizes the clone at deploy time (see §3). Build hours and golden size come from
+`vm_catalogue.csv`.
+
+| # | Template | OS / media | Build vCPU / RAM / disk | Build hrs | Golden GB | Sensor baked | Role | Notes |
+|---:|---|---|---|---:|---:|:-:|---|---|
+| 1 | `win10-22h2` | Windows 10 22H2 Ent | 2 / 4 GB / 35 GB | 14 | 35 | yes | Victim/analyst workstation | Workhorse image. Build first |
+| 2 | `win11-24h2` | Windows 11 24H2 Ent | 2 / 4 GB / 40 GB | 14 | 40 | yes | Current-estate victim | UEFI + Secure Boot + **vTPM** (needs a vCenter key provider). **Raise the disk to 64 GB**: 40 GB is below the Win11 minimum |
+| 3 | `win7-sp1` | Windows 7 SP1 x64 | 2 / 4 GB / 25 GB | 10 | 25 | yes | Legacy vulnerable host | Confirm licensing and EO justification. Isolated ranges only |
+| 4 | `srv2016` | Windows Server 2016 Std | 2 / 4 GB / 30 GB | 12 | 30 | yes | Legacy DC/file | |
+| 5 | `srv2019` | Windows Server 2019 Std/DC | 2 / 4 GB / 35 GB | 16 | 35 | yes | DC/DNS/DHCP/Exchange/IIS/MSSQL base | Base for most role snapshots. Also hosts SharePoint 2019 (see §7) |
+| 6 | `srv2022` | Windows Server 2022 Std/DC | 2 / 4 GB / 35 GB | 14 | 35 | yes | Modern DC/member | Every range template uses this. **Build second** |
+| 7 | `precomp-host` | Win10 / Srv2019 derived | per parent | 12 | 35 | yes | Pre-compromised start state | Clone of 1 or 5 with staged artifacts |
+| 8 | `detonation-host` | Win10 derived | per parent | 12 | 35 | **no** | Sterile malware detonation | No sensor, no egress ever, snapshot-revert after each use |
+| 9 | `ubuntu-lts` | Ubuntu Server 24.04 LTS | 2 / 4 GB / 15 GB | 8 | 15 | yes | Web/app/DB victim, and base for most Linux roles | **Decided: 24.04.5.** Renamed repo-wide to `ubuntu-2404`; `ubuntu-2204` is a deprecated alias that still resolves here (§8) |
+| 10 | `rocky` | Rocky Linux 9 | 2 / 4 GB / 15 GB | 8 | 15 | yes | Enterprise Linux victim | |
+| 11 | `kali` | Kali 2024.x installer | 2 / 4 GB / 30 GB | 10 | 30 | no | Attacker / analyst workstation | Ranges deploy it at 2 vCPU / 8 GB / 120 GB (right-sized 2026-10-03, §4) |
+| 12 | `remnux` | Ubuntu + REMnux installer | per ubuntu-lts | 10 | 25 | no | Malware analysis | Packer marked `todo(vsphere)` |
+| 13 | `sift` | Ubuntu + SIFT (cast) | per ubuntu-lts | 10 | 30 | no | DFIR/forensics workstation | Packer marked `todo(vsphere)` |
+| 14 | `securityonion` | Security Onion 2.4 ISO | 2 / 4 GB / 60 GB | 16 | 60 | n/a | Sensor + telemetry | **Undersized.** SO 2.4 minimums are about 4+ vCPU, 16–24 GB RAM and 200 GB+ disk. Build at 4 / 16 GB / 200 GB and check against current SO docs |
+| 15 | `pfsense` | pfSense CE 2.7 | 2 / 4 GB / 4 GB | 6 | 4 | n/a | Range gateway/firewall | Ranges deploy at 1–2 / 2–4 GB / 8–40 GB. Build the disk at 20 GB |
+| 16 | `svc-emulators` | ubuntu-lts derived | per parent | 12 | 20 | yes | Internet-service emulation (DNS/NTP/mail/web) | |
+| 17 | `ca-host` | ubuntu-lts derived | per parent | 8 | 10 | yes | Certificate authority (step-ca / OpenSSL) | Linux CA. AD CS is a Windows role snapshot |
+| 18 | `usersim` | ubuntu-lts derived | per parent | 20 | 15 | no | Noise floor / benign traffic | Suggest CMU SEI **GHOSTS** (server here, clients on Windows) |
+| 19 | `blueteam-soc` | mixed | per parent | 20 | 80 | yes | Blue-team SOC stack for live Red-v-Blue | |
+| 20 | `cloudlog-emu` | ubuntu-lts derived | per parent | 10 | 20 | n/a | Azure/AWS log emulation | |
+
+**Referenced by range YAML but missing from the catalogue or Packer (gaps to fill):**
+
+| Template | Used by | Suggested build |
+|---|---|---|
+| `win10-ltsc` (Windows 10 IoT/Ent LTSC 2021) | large-enterprise HMI + engineering workstations | 2 / 4 GB / 60 GB |
+| `vyos-1.4` | red-vs-blue `rtr01` | 1 / 2 GB / 4 GB |
+| `c2-server` (catalogue `enabled=no`) | red-team, soc-training, red-vs-blue | ubuntu-lts + Sliver and Mythic baked in, 4 / 8 GB / 60 GB. Enabling it needs the instructor/Standards sign-off the catalogue requires |
+| `c2-server-cs` **(decided: add)** | same, when Cobalt Strike is called for | ubuntu-lts + Cobalt Strike teamserver from licensed media, 4 / 8 GB / 60 GB. Licence key applied in prod at role-snapshot stage, never in the template. Not built in test |
+| `win-xp-sp3` (`enabled=no`) | none | Leave disabled unless an EO requires it |
+
+Build order: `srv2022` → `win10-22h2` → `ubuntu-lts` → `pfsense` → `securityonion` →
+`kali` → `win11-24h2` → `srv2019` → the rest.
+
+---
+
+## 3. Role builds (what gets deployed per range)
+
+Deploy spec = the largest spec any range template asks for. Stage: **T**/**R**/**P** as in §0.
+vCPU counts were right-sized on 2026-10-03 to fit the 4-host lab (§4); RAM was kept, since the
+lab has 512 GB per host and CPU is the bottleneck.
+
+### Windows servers
+
+| Role | Template | vCPU / RAM / Disk | Ranges | Stage | Key installs |
+|---|---|---|---|:-:|---|
+| Domain controller | srv2022 (one on srv2019 in red-team) | 2 / 8 GB / 100 GB | all | R | AD DS, DNS, DHCP, GPMC, RSAT |
+| File server | srv2022 | 2 / 8 GB / 500 GB | all | R | File Server, DFS-N/R, VSS |
+| Exchange | srv2022 | 4 / 16 GB / 200 GB | large-ent, red-vs-blue | R | **Two snapshots:** Exchange 2019 CU15 and Exchange SE (both on srv2022). OWA, SMTP/IMAP |
+| SharePoint | srv2019 (2019) / srv2022 (SE) | 4 / 16 GB / 200 GB | large-ent | R | **Two snapshots:** SharePoint 2019 on srv2019 and SharePoint SE on srv2022. IIS, SQL backend |
+| SQL | srv2022 | 4 / 32 GB / 500 GB | large-ent, red-team | R | SQL Server 2022, SSRS, SSMS |
+| PKI | srv2022 | 1–2 / 4 GB / 40–60 GB | large-ent, red-team, red-vs-blue | R | AD CS Enterprise CA, OCSP, Web Enrollment |
+| WSUS | srv2022 | 2 / 8 GB / 300 GB | large-ent | R | WSUS role |
+| MECM/SCCM | srv2022 | 4 / 16 GB / 200 GB | large-ent | R | MECM current branch, ADK + WinPE, SQL (local) |
+| Print | srv2022 | 2 / 4 GB / 60 GB | large-ent | R | Print Server role |
+| ERP/app | srv2022 | 2 / 16 GB / 200 GB | large-ent | R | IIS, .NET runtimes, sample app |
+| Hybrid identity sim | srv2022 | 2 / 4 GB / 60 GB | large-ent | R | Entra Connect (simulated, no tenant) |
+| Windows jump | srv2022 | 2 / 4 GB / 60 GB | large-ent, red-team | T+P | RDS/RDP, OpenSSH, RSAT |
+| Historian | srv2019 | 2 / 8 GB / 500 GB | large-ent | R | Historian simulator (not OSIsoft PI, which is licensed) |
+
+### Windows clients
+
+| Role | Template | vCPU / RAM / Disk | Ranges | Stage |
+|---|---|---|---|:-:|
+| User workstation | win11-24h2 | 2 / 4 GB / 64 GB (power users 2 / 16 GB / 120 GB) | all | T + P (domain join) |
+| HMI / engineering WS | win10-ltsc | 2 / 4–8 GB / 60–120 GB | large-ent | T + P |
+| Analyst seat (Windows) | win10-22h2 | 4 / 16 GB / 120 GB | PO scenarios | T |
+
+### Linux services (victim / infrastructure)
+
+| Role | Template | vCPU / RAM / Disk | Stage | Key installs |
+|---|---|---|:-:|---|
+| Web | ubuntu-lts | 2 / 4 GB / 40 GB | T+P | nginx or Apache, PHP-FPM, Tomcat, TLS |
+| Mail | ubuntu-lts | 1 / 4 GB / 60 GB | T+P | Postfix, Dovecot, Roundcube, SpamAssassin |
+| DNS | ubuntu-lts | 1 / 2 GB / 20 GB | T | BIND9 |
+| DB | ubuntu-lts | 2 / 8 GB / 100 GB | T | MySQL 8, PostgreSQL |
+| Cache | ubuntu-lts | 1 / 4 GB / 20 GB | T | Redis |
+| GitLab / app | ubuntu-lts | 4 / 8 GB / 200 GB | T | GitLab CE, Docker |
+| Reverse proxy | ubuntu-lts | 1 / 2 GB / 16 GB | T | HAProxy, ModSecurity |
+| Backup | ubuntu-lts | 1 / 2 GB / 32 GB | T | rsync, (Veeam agent — licensed) |
+| Log relay / syslog | ubuntu-lts | 2 / 4 GB / 500 GB | T | rsyslog, Logstash, Filebeat |
+| NTP | ubuntu-lts | 1 / 1 GB / 16 GB | T | chrony |
+| Linux jump | ubuntu-lts | 2 / 4 GB / 40 GB | T | Apache Guacamole, SSH, proxychains |
+| Firewall / VPN | pfsense | 1–2 / 2–4 GB / 8–40 GB | T+P | OpenVPN, IPsec, WireGuard, Snort/Suricata pkg |
+| Router | vyos | 1 / 2 GB / 4 GB | T+P | OSPF/BGP |
+
+### Blue / SOC
+
+| Role | Template | vCPU / RAM / Disk | Key installs |
+|---|---|---|---|
+| SIEM | ubuntu-lts | 4 / 16–32 GB / 500 GB (large-ent: 8 / 32 GB / 1000 GB) | OpenSearch + Dashboards, Logstash, Sigma rules |
+| Security Onion | securityonion | 4 / 16 GB / 500 GB (SO 2.4 minimum) | Zeek, Suricata, Strelka, Elastic |
+| IDS / NIDS | ubuntu-lts | 2 / 8 GB / 200 GB | Suricata, Zeek, EveBox, Arkime |
+| PCAP | ubuntu-lts | 2 / 4 GB / 1000 GB | Stenographer, Arkime |
+| EDR server | ubuntu-lts | 2 / 8 GB / 200 GB | Velociraptor server |
+| SOAR | ubuntu-lts | 2 / 8 GB / 100 GB | TheHive 5, Cortex |
+| Threat intel | ubuntu-lts | 2 / 4 GB / 60 GB | MISP |
+| Vuln scanner | ubuntu-lts | 2 / 8 GB / 100 GB | Greenbone Community (OpenVAS) |
+| DFIR workstation | sift | 4 / 16 GB / 200 GB | Autopsy, Volatility 3, Plaso, YARA |
+| Blue analyst (Linux) | ubuntu-lts | 2 / 4 GB / 32 GB | Wireshark, Zeek, Velociraptor client, xRDP |
+| Honeypot | ubuntu-lts | 1 / 2 GB / 16 GB | Cowrie, Dionaea, Elasticpot (T-Pot) |
+| Traffic gen | usersim | 1 / 2 GB / 16 GB | tcpreplay, Scapy, GHOSTS |
+| Scoreboard | ubuntu-lts | 1 / 4 GB / 32 GB | TrueNorth scoring engine |
+
+### Red
+
+| Role | Template | vCPU / RAM / Disk | Key installs |
+|---|---|---|---|
+| Attack platform / operator | kali | 2 / 8 GB / 120 GB | see §5.3 |
+| C2 teamserver (open source) | c2-server | 2 / 8 GB / 60–100 GB | Sliver, Mythic, Empire, Metasploit |
+| C2 teamserver (Cobalt Strike) | c2-server-cs | 2 / 8 GB / 60–100 GB | Cobalt Strike (licensed, prod only) |
+| Redirector | ubuntu-lts | 1 / 1 GB / 20 GB | nginx, socat, iptables |
+| Payload / staging | ubuntu-lts | 1 / 2 GB / 40–100 GB | nginx, SFTP, DNS-exfil listener |
+| Phishing | ubuntu-lts | 1 / 4 GB / 40 GB | GoPhish, Postfix, nginx |
+
+### OT (large-enterprise)
+
+| Role | Template | vCPU / RAM / Disk | Key installs |
+|---|---|---|---|
+| PLC | ubuntu-lts | 1 / 1 GB / 16 GB | OpenPLC runtime, Modbus TCP |
+| OT firewall | pfsense | 1 / 2 GB / 20 GB | — |
+
+### Cloud-security range
+
+All of these are ubuntu-lts, and most run as containers. The Docker images must be
+pre-loaded into the depot registry.
+
+| Role | vCPU / RAM / Disk | Key installs |
+|---|---|---|
+| AWS sim | 2 / 16 GB / 100 GB | LocalStack |
+| Azure sim | 2 / 8 GB / 60 GB | Azurite (+ mocks) |
+| k3s master + 2 workers | 4 / 8 GB / 100 GB each | k3s, helm, kubectl, containerd |
+| Registry | 2 / 4 GB / 200 GB | Harbor, Trivy |
+| GitLab / Jenkins / ArgoCD / SonarQube | 4 / 2 / 1 / 2 vCPU, 4–8 GB / 40–200 GB | as named |
+| Falco / Prowler | 1 / 4 GB / 40 GB | Falco, falcosidekick, Prowler, ScoutSuite, Steampipe |
+| IaC | 1 / 4 GB / 40 GB | Terraform, Consul |
+
+---
+
+## 4. Capacity per range (one instance)
+
+Summed from `content/ranges/*/template.yaml` by `scripts/range-capacity.py` (run it after
+any template change; `tests/scripts/test_range_capacity.py` holds the targets below and
+`tests/api/test_range_templates.py` holds each template's `resource_totals` equal to its
+nodes). Right-sized on 2026-10-03 for the 4-host vSphere lab:
+
+| Range | VMs | vCPU (was) | RAM | Disk (thin, provisioned) | Target |
+|---|---:|---:|---:|---:|---:|
+| small-enterprise | 5 (jump, DC, 3 users) | 10 | 20 GB | 0.3 TB | — (`assets:` schema, no specs: renderer defaults 2 / 4 GB / 60 GB) |
+| medium-enterprise | 8 | **16** (20) | 44 GB | 1.0 TB | ≤ 16 |
+| cloud-security | 16 | **38** (52) | 126 GB | 1.7 TB | ≤ 40 |
+| soc-training | 23 | **48** (69) | 157 GB | 3.9 TB | ≤ 48 |
+| red-team | 28 | **48** (67) | 153 GB | 2.1 TB | ≤ 48 |
+| red-vs-blue | 40 | **64** (80) | 162 GB | 1.4 TB | ≤ 64 |
+| colosseum (added 2026-10-03) | 31 | **66** (new) | 227 GB | 4.2 TB | 60–70 |
+| large-enterprise | 50 | **106** (142) | 375 GB | 7.4 TB | as low as reasonable |
+
+What changed: vCPU only, by role. User workstations, DCs, file servers, PKI, Linux jump
+hosts and blue/red seats are 2; DNS, NTP, redirectors, PLCs, mail/web/reverse proxies, light
+Linux services and most pfSense instances are 1. SIEMs are 4 (large-enterprise keeps 8),
+Security Onion 4 / 16 GB (the SO 2.4 minimum), SQL 4, Exchange/SharePoint/MECM 4 / 16 GB,
+k3s nodes and GitLab 4. RAM was not cut: CPU is the lab's bottleneck, not RAM. Floors were
+raised where the template was below a minimum: Windows 11 disks 60 → 64 GB (32 → 64 GB in
+red-vs-blue), red-vs-blue `exch01` 2 → 4 vCPU and 48 → 150 GB, `ca01` 16 → 40 GB (below the
+35 GB srv2022 golden image), red-team GitLab host 4 → 8 GB RAM, and Ubuntu disks under the
+15 GB golden image (PLCs, NTP, traffic generator) to 16 GB. Roles and topology are unchanged.
+
+**colosseum** (`content/ranges/colosseum/`) reproduces CSTE's Colosseum (network diagram and
+Operators Manual in `docs/Coloseum/`), sized with the §3 roles: Grey Space (ACE, user-emulation
+server, hotmail, RainLoop, social, OpenCTI, MISP) 11 vCPU; OPFOR (Cobalt Strike team server,
+Caldera, Kali, Windows payload VM) 8; DMZ CMS 2; SOC (Security Onion with two TAP interfaces,
+Arkime, Velociraptor, Carbon Black, DFIR-IRIS, Assemblyline, SIFT analyst) 20; corp.ca (DC,
+Exchange, file, WEC, 4 workstations) 18; OT (PLC, HMI, historian) 5; pfSense edge 2. Two
+departures from §3, both disk only: Security Onion 250 GB (the manual's figure; SO 2.4 needs
+200 GB) and Arkime 500 GB, which keeps the range under the 4.98 TB of range datastores. Only
+`ubuntu-lts` is built on vSphere today; the template marks every other VM `NOT BUILT`. The
+TAP port groups (`span_domain`, `span_dmz`) are promiscuous but are not fed yet: that needs a
+DVS port-mirroring session the provisioner does not create.
+
+Fit on the lab (esx02–04: 3 × 16 threads × 4 vCPU/thread = 192 vCPU, minus ~34 for the
+management VMs = 158; 1.4 TB RAM after management): every range fits at least once; see the
+runbook §8 for concurrency. Large-enterprise's 7.4 TB is provisioned, not used: it only fits
+the ~5 TB of range-host datastores because disks are thin.
+
+Instant clones share the parent's disk and memory pages, so real consumption is well below
+these numbers. Treat them as the ceiling per concurrent range when sizing the R6625 hosts
+(1 TB RAM each in the hypervisor variant).
+
+---
+
+## 5. Software list
+
+Stage: **T** template, **R** role snapshot, **P** post-deploy.
+Source: `choco:<id>` (Chocolatey), `apt:<pkg>`, `vendor` (installer from the vendor, kept in
+the depot), `gh` (GitHub release), `docker` (image mirrored to the depot).
+
+### 5.1 Windows — baseline on every Windows template
+
+| App | Stage | Source | Notes |
+|---|:-:|---|---|
+| VMware Tools | T | vendor | Required for guest customization and instant clone |
+| Latest CU + .NET Framework 4.8.1 | T | WSUS / vendor | |
+| VC++ 2015–2022 redist (x64 + x86) | T | `choco:vcredist140` | Exchange also needs VC++ 2012 and 2013 |
+| PowerShell 7 | T | `choco:powershell-core` | |
+| OpenSSH Server + WinRM (HTTPS) | T | Windows capability | Ansible transport |
+| Sysmon + config | T | `choco:sysmon`, config in depot | Ansible currently downloads it from the internet; see §7 |
+| Winlogbeat / Elastic Agent | T (binary), P (enrol) | `choco:winlogbeat` | Match the SIEM/Security Onion version |
+| Velociraptor client | P | depot | Needs per-range server cert/config |
+| 7-Zip | T | `choco:7zip` | |
+| Notepad++ | T | `choco:notepadplusplus` | |
+| Google Chrome, Firefox ESR | T | `choco:googlechrome`, `choco:firefoxesr` | Edge is built in |
+| Adobe Acrobat Reader | T | `choco:adobereader` | Phishing/PDF scenarios need a real reader |
+| PowerShell logging, audit policy | T/P | Ansible (exists) | Script block, module, transcription |
+
+### 5.2 Windows — by role
+
+**User workstations (win10/win11)**
+
+| App | Stage | Source | Notes |
+|---|:-:|---|---|
+| Microsoft Office LTSC 2024 Pro Plus (Word, Excel, PowerPoint, Outlook) | T | Office Deployment Tool + `config.xml`, volume licence | **Not** Microsoft 365 Apps: M365 needs internet sign-in and will not activate in a no-egress range. Macro-phishing and Outlook scenarios need Office |
+| Outlook profile → range Exchange | P | Ansible / GPO autodiscover | |
+| Microsoft Teams | — | — | Skip. It needs cloud |
+| VLC | T | `choco:vlc` | Realism |
+| Java JRE (only if a scenario needs it) | P | `choco:temurin17jre` | |
+| GHOSTS client | P | depot | Drives Office, browser and mail for the noise floor |
+| Scenario-vulnerable software | P | depot | Per scenario, never in the template |
+
+**Analyst workstation (Windows analyst seat, DFIR on Windows)**
+
+| App | Stage | Source |
+|---|:-:|---|
+| Wireshark | T | `choco:wireshark` |
+| Npcap | T | vendor. **Free Npcap cannot install silently**; an unattended install needs Npcap OEM |
+| Sysinternals Suite | T | `choco:sysinternals` |
+| NetworkMiner | T | `choco:networkminer` |
+| Eric Zimmerman tools (+ Timeline Explorer) | T | `Get-ZimmermanTools.ps1` → depot |
+| FTK Imager | T | vendor (registration required) |
+| Autopsy | T | `choco:autopsy` |
+| KAPE | T | vendor. Commercial use needs a licence |
+| Hayabusa, Chainsaw, DeepBlueCLI | T | gh |
+| CyberChef (offline HTML) | T | gh |
+| Volatility 3, YARA, Python 3 | T | `choco:python`, pip from depot |
+| Ghidra, x64dbg, dnSpyEx, PEStudio | T | `choco:ghidra`, `choco:x64dbg.portable`, gh, vendor |
+| VS Code, Git | T | `choco:vscode`, `choco:git` |
+| PuTTY, WinSCP | T | `choco:putty`, `choco:winscp` |
+| RSAT | T | Windows capability |
+
+**Servers (role snapshots)**
+
+| Product | Base | Prerequisites (put them all in the depot) | Licence |
+|---|---|---|---|
+| AD DS / DNS / DHCP / GPMC | srv2022 | built in | Windows Server |
+| AD CS (Enterprise CA, OCSP, Web Enrollment) | srv2022 | built in | Windows Server |
+| Exchange Server 2019 CU15 **and** Exchange SE | srv2022 | .NET 4.8.1, VC++ 2012 + 2013, UCMA 4.0, IIS URL Rewrite 2.1, AD schema prep | Exchange key (or unlicensed trial mode) |
+| SharePoint Server 2019 | **srv2019** | SharePoint prerequisite installer (offline files), SQL instance | SharePoint key |
+| SharePoint Server Subscription Edition | srv2022 | as above | SE licence |
+| SQL Server 2022 + SSRS + SSMS | srv2022 | .NET 4.8 | Developer (non-production) or Standard. Confirm which applies to training |
+| WSUS | srv2022 | built in, WID or SQL | Windows Server |
+| MECM current branch | srv2022 | Windows ADK + WinPE add-on, SQL, IIS, BITS, RDC | MECM licence / eval |
+| IIS + .NET 8 hosting bundle (ERP) | srv2022 | `choco:dotnet-8.0-windowshosting` | — |
+| Print Server | srv2022 | built in | — |
+
+### 5.3 Linux
+
+**Baseline on every Linux template (ubuntu-lts, rocky)**
+
+| Package | Stage | Source |
+|---|:-:|---|
+| open-vm-tools, cloud-init | T | apt / dnf. Required for vSphere customization |
+| auditd, rsyslog, chrony | T | apt / dnf |
+| Filebeat / Elastic Agent | T (binary), P (enrol) | vendor repo mirrored |
+| Sysmon for Linux (optional) | T | Microsoft repo mirrored |
+| Velociraptor client | P | depot |
+| curl, jq, python3, vim, tcpdump, net-tools, unzip | T | apt |
+| Docker CE (for container roles) | T | Docker repo mirrored |
+
+**Victim services** (in the role, stage T unless noted):
+nginx, apache2, php-fpm, tomcat10 + openjdk-17, mysql-server 8, postgresql, redis-server,
+postfix, dovecot-imapd, roundcube, spamassassin, bind9, samba, haproxy +
+libapache2-mod-security2, WordPress, and GitLab CE. The intentionally vulnerable apps
+(DVWA, OWASP Juice Shop, `vulnerable-web`) are stage **P**, from depot Docker images.
+
+**Blue / SOC**
+
+| Tool | Source |
+|---|---|
+| Security Onion 2.4 | ISO (its own appliance) |
+| OpenSearch + Dashboards, Logstash | vendor apt repo mirrored |
+| Zeek | OBS repo mirrored |
+| Suricata | OISF PPA mirrored |
+| Arkime, EveBox | vendor .deb |
+| Stenographer | build from source → .deb in depot |
+| Velociraptor server | gh |
+| TheHive 5 + Cortex | StrangeBee packages (the community licence has limits; check user count) |
+| MISP | official install script, pre-staged |
+| Greenbone Community | Docker Compose, images mirrored. Feed sync needs egress, so sync on TN-BUILD01 |
+| Wireshark, tshark, tcpdump, ngrep | apt |
+| Volatility 3, Plaso, YARA, sigma-cli, Chainsaw | pip / gh |
+| Autopsy, The Sleuth Kit | SIFT / apt |
+| SIFT | `cast` installer (template 13) |
+| REMnux | `remnux` installer (template 12) |
+| Cowrie, Dionaea, Elasticpot | T-Pot or Docker images |
+| xRDP + XFCE (for blue analyst desktops) | apt |
+
+**Red (Kali)**
+
+| Tool | Source | Notes |
+|---|---|---|
+| kali-linux-default metapackage | Kali repo mirrored | Metasploit, Nmap, Burp CE, Responder, Hydra, John, Hashcat, SQLmap… |
+| BloodHound CE + SharpHound | Docker images | |
+| Impacket, NetExec | apt / pipx | NetExec (`netexec`) replaces the deprecated CrackMapExec |
+| Certipy, Evil-WinRM, Kerbrute | apt / gh | AD CS and AD attacks |
+| Sliver, Mythic, Empire (+ Starkiller) | gh / Docker | Open-source C2 |
+| Cobalt Strike | vendor | **Licensed and export-controlled.** Both options are available (§8): Cobalt Strike on `c2-server-cs` in prod, Sliver/Mythic on `c2-server` everywhere. Restrict who can deploy the CS variant |
+| Burp Suite Pro | vendor | Licence; CE is in Kali |
+| GoPhish | gh | |
+| Chisel, Ligolo-ng, proxychains4, socat | gh / apt | Pivoting |
+| SecLists, wordlists | depot tarball | Ansible currently pulls SecLists from GitHub (§7) |
+
+**OT**: OpenPLC runtime (PLCs), FUXA or ScadaBR (HMI, on win10-ltsc or Linux), pymodbus
+and ModbusPal (field-device simulation).
+
+**Cloud**: LocalStack, Azurite, k3s, helm, kubectl, Harbor, Trivy, GitLab CE +
+gitlab-runner, Jenkins, Argo CD, SonarQube, Falco + falcosidekick, Prowler, ScoutSuite,
+Steampipe, Terraform, Consul, AWS CLI v2, Azure CLI, Apache Guacamole. These are mostly
+Docker/Helm, so every image and chart must be in the depot registry.
+
+---
+
+## 6. Ninite vs Chocolatey vs winget
+
+Ninite works as a convenience for the template build only. It should not be the
+deployment mechanism:
+
+| | Ninite (free) | Ninite Pro | Chocolatey + internal feed | winget |
+|---|---|---|---|---|
+| Works in a no-egress range | No. Downloads live | Yes, with its offline cache | **Yes**, from the TN-DEPOT01 feed | Partly (needs a private REST source) |
+| Unattended / scripted | Semi | Yes | Yes (Ansible `win_chocolatey` **already used**) | Yes |
+| Catalogue covers our list | Only common apps: browsers, 7-Zip, Notepad++, VLC, PuTTY, WinSCP, VS Code, Python, runtimes | same | Almost everything in §5.2 | Most |
+| Version pinning | No (always latest) | Limited | Yes | Yes |
+| Licence | Home use only. Business use needs Pro | Paid per machine | Free (open source). Business edition optional | Free |
+
+**Recommendation:** standardize on **Chocolatey with an internal feed on TN-DEPOT01**, with
+pinned versions. The repo already uses it (`infra/ansible/inventory/group_vars/workstations.yml`).
+Use Packer for stage **T** on TN-BUILD01, where egress is allowed, and Ansible for stage
+**P**, pointed only at the depot. Office, Exchange, SharePoint, SQL and MECM are outside
+Ninite and Chocolatey. Keep their vendor media plus offline prerequisites on the depot share.
+
+Linux equivalent: an apt/dnf mirror or proxy (aptly or Nexus apt proxy) on TN-DEPOT01, with
+`sources.list` baked into the template so it points there.
+
+---
+
+## 7. Problems found while building this list
+
+These are repo issues the build team will hit. They are listed here and not fixed.
+
+1. **Post-deploy installs assume internet.** `infra/ansible/roles/workstation/tasks/main.yml`
+   and `roles/domain_controller/tasks/main.yml` download Sysmon from
+   `download.sysinternals.com`; `roles/attacker/tasks/main.yml` pulls SecLists from GitHub;
+   and Chocolatey defaults to the community feed. All of these fail in a no-egress range.
+   Repoint them at the depot.
+2. **Invalid CIDRs** in `content/ranges/medium-enterprise/template.yaml`: `10.10.300.0/24` and
+   `10.10.400.0/24` (an octet cannot exceed 255). The same scheme appears in the IPs
+   `10.10.300.x` and `10.10.400.x`. **Fixed (2026-10-03):** now `10.10.30.0/24` (VLAN 300) and
+   `10.10.40.0/24` (VLAN 400); VLAN ids are unchanged logical labels. `tests/api/test_range_templates.py`
+   rejects any unparseable address or a node IP outside its VLAN.
+3. **Ubuntu version mismatch.** The catalogue says `ubuntu-lts` = 24.04; every range YAML and
+   `infra/proxmox|hyperv/packer` said `ubuntu-2204`. **Fixed**: renamed to `ubuntu-2404` / 24.04.5 (§8).
+4. **Templates referenced but not catalogued:** `win10-ltsc`, `vyos-1.4`; `c2-server` is used
+   by three ranges but is `enabled=no`.
+5. **Security Onion template is undersized** (4 GB RAM / 60 GB). It will fail the SO 2.4
+   installer's checks.
+6. **Windows 11 template** is 40 GB, below Microsoft's 64 GB minimum, and needs a vTPM (vCenter
+   key provider) or a documented TPM-check bypass for lab use.
+7. **red-vs-blue `exch01` disk is 48 GB.** This is too small for Exchange (install + logs +
+   a mailbox database). Use ≥150 GB. **Fixed (2026-10-03):** 4 vCPU / 16 GB / 150 GB.
+8. **Exchange 2019 and SharePoint 2019 reached end of support on 14 Oct 2025.** That is fine
+   for a deliberately vulnerable range. **Decided: build both 2019 and SE** (§8). The current
+   versions are Exchange SE and SharePoint SE. Also, **SharePoint 2019 is not supported on
+   Windows Server 2022** (large-enterprise `sp01` was `windows-server-2022`). Use srv2019, or
+   SharePoint SE. **Fixed (2026-10-03):** `sp01` is `windows-server-2019` (srv2019, the `sp2019`
+   role snapshot).
+9. **CrackMapExec** (red-team YAML) is unmaintained. Its successor is NetExec. **Fixed
+   (2026-10-03):** the red-team Kali nodes and the Ansible attacker role install `netexec`.
+10. `small-enterprise/template.yaml` uses a different schema (`assets`/`count`) with no specs.
+    `scripts/range-capacity.py` counts it at the renderer defaults (2 vCPU / 4 GB / 60 GB per VM).
+
+## 8. Decisions
+
+### Decided (2026-09-27)
+
+| Topic | Decision | Build impact |
+|---|---|---|
+| Activation | KMS in **prod**; test probably has none | Test: evaluation media, no keys. Prod: default KMS client keys (GVLK), activate against TN-KMS01 at deploy. No keys in any template |
+| Licences | All held (Office LTSC, Exchange, SharePoint, SQL, MECM, etc.). Applied in prod | Test builds run on trial/eval. Prod swaps in keys at role-snapshot build |
+| Exchange / SharePoint | **Both** versions: 2019 **and** Subscription Edition | Four role snapshots: `exch2019` (srv2022), `exchSE` (srv2022), `sp2019` (**srv2019**), `spSE` (srv2022). 2019 = vulnerable/legacy scenarios, SE = current-estate scenarios |
+| `ubuntu-lts` | **Ubuntu 24.04 LTS** | Standard support runs to 2029 (22.04 ends Apr 2027), and it matches `vm_catalogue.csv`. Renamed `ubuntu-2204` → `ubuntu-2404` across the repo (**done**, see below) |
+| Management VMs | TN-DEPOT01 and TN-BUILD01 are **separate VMs**, not folded into TN-MGMT01 | TN-BUILD01 has internet egress and TN-DEPOT01 is reachable from every range. Keeping both off TN-MGMT01 means a range, or anything inside one, never gets a path to the platform (Keycloak, OpenSearch holding CAF material) or to the internet |
+| KMS for ranges | One **dedicated** KMS host, **TN-KMS01**, in the management plane. Ranges reach it on TCP 1688 only | A KMS clone per range does not work: KMS will not activate clients until it has seen 25 client or 5 server machines, which most ranges never reach. Each KMS host also uses up one of the limited host activations on the KMS host key. A shared host sees every range and clears that count. It is kept apart from the corporate prod KMS and from any DC, so red-team traffic can only ever touch a hardened 1688 listener. Firewall: allow range → TN-KMS01:1688, deny everything else |
+| C2 | **Both**: `c2-server` (Sliver + Mythic, open source) and `c2-server-cs` (Cobalt Strike, licensed) | CS installed from licensed media at the role-snapshot stage in prod only; key never in a template; deploy restricted to instructor roles (export-controlled) |
+
+**Ubuntu rename — done.** `ubuntu-2404` / `ubuntu-24.04` are the current names in the range
+YAMLs, the worker and scenario-engine renderers, the API topology stencil, the Range
+Designer, the Packer templates (`infra/{vsphere,proxmox,hyperv}/packer/ubuntu-2404.pkr.hcl`,
+ISO 24.04.5, with an autoinstall seed in `infra/proxmox/packer/http/ubuntu/`), the Terraform
+defaults and `.github/workflows/packer-build.yml`. `ubuntu-2204`, `ubuntu-22.04` and
+`ubuntu2204` are **deprecated aliases**. They still resolve to `ubuntu-lts`, through the
+catalogue's `os_aliases_in_ranges` and a fallback in the resolvers, so stored ranges and
+registries imported before the rename keep working (`tests/api/test_os_aliases.py`).
+Re-import the catalogue (`POST /golden-images/import-catalogue`) to register the new aliases.
+Rebuild the image to get `ubuntu-2404-cloud`; until then, existing `ubuntu-2204-cloud`
+templates are still what the registry's `template_name` points at.
+
+### Still open
+
+- Nothing blocking the build. Enabling `c2-server` / `c2-server-cs` in the catalogue still
+  needs the instructor/Standards sign-off recorded in `vm_catalogue.csv`.
+
+### Lab deviations (2026-10-03, vSphere lab bring-up)
+
+These came out of fitting this sheet to the real lab media and hardware
+(`docs/deployment/vm-build-guide.md`). Each one needs either a decision or nothing at all.
+
+| Topic | Sheet says | Lab reality | Status |
+|---|---|---|---|
+| KMS / activation | Prod activates against TN-KMS01; no keys in any template | **KMS paused** for future integration and testing. The lab's Server 2022/2025 and Win11 ISOs are retail/VL media, which need an edition key at setup, so the Autounattend uses Microsoft's **public** GVLK. Templates run unactivated | Deferred: revisit with TN-KMS01 |
+| Media versions | Exchange 2019 CU15 + SE; Office LTSC 2024; Ubuntu 24.04.5 | Datastore has Exchange 2016, Office Pro Plus 2021, Ubuntu 24.04.4 | Open: obtain the decided media or accept these |
+| Windows media | Enterprise eval (Win10/11, Server) | Win11 is consumer media (Pro edition); Server 2022/2025 are full media; no Win10, Server 2019 or 2016 ISOs on site | Upload the missing ISOs |
+| Build order | srv2022 → win10 → ubuntu → pfsense → SO → kali → win11 → srv2019 | ubuntu-lts first (`tmpl-ubuntu-2404` already exists), win11 moved up (no Win10 ISO), pfSense and SO after their ISOs arrive | Accepted for bring-up |
+| Build host | TN-BUILD01 (the only host with egress) | The deployment repo installed Packer on TN-MGMT01. **Do not use it.** Stand up TN-BUILD01 on `dPG-TN-BUILD` first (runbook §4.1a) | Accepted |
+| Extra templates | — | `srv2025`, `debian13`, `parrot` (media on site), `vyos` | Added to the Packer library |

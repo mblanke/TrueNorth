@@ -1,0 +1,79 @@
+---
+# Reference data and the bootstrap administrator.
+#
+# app/seed.py's four seeders already run inside the API lifespan on every start
+# — but inside a try/except that only WARNS (main.py). A seed failure is
+# therefore invisible unless something checks, which is what this role does.
+#
+# scripts/seed_data.py is a different thing entirely: it creates demo fiction
+# ("ACME Corp", "Wayne Enterprises"). That has no place in a range that will
+# hold CAF curriculum, so it is opt-in.
+
+- name: Seed — verify reference data landed
+  ansible.builtin.uri:
+    url: "http://localhost:8081/{{ item.path }}"
+    headers:
+      Host: "{{ tn_domain_fqdn }}"
+    status_code: [200, 401, 403]
+    timeout: 15
+  register: tn_seed_checks
+  loop:
+    - { path: "directory/nations", what: "nations" }
+    - { path: "auth-zones", what: "auth zones" }
+  loop_control:
+    label: "{{ item.what }}"
+  failed_when: false
+
+- name: Seed — report reference data
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.item.what }}: HTTP {{ item.status | default('unreachable') }}
+      {{ '(auth required — reachable, contents unverified)' if item.status | default(0) in [401, 403] else '' }}
+  loop: "{{ tn_seed_checks.results }}"
+  loop_control:
+    label: "{{ item.item.what }}"
+
+# ── The chicken and egg ───────────────────────────────────────────────
+# Only an approver can create a trainee, so somebody has to be an admin first.
+# _seed_dev_data's hardcoded admin@truenorth.local must NOT exist in production
+# (SEED_DEV_DATA=false switches it off), which leaves exactly this gap.
+- name: Seed — a bootstrap administrator must be nominated
+  ansible.builtin.assert:
+    that: tn_bootstrap_admin_upn | length > 0
+    fail_msg: |
+      tn_bootstrap_admin_upn is empty.
+
+      Registration requires an approver, and production has no seeded admin
+      (SEED_DEV_DATA=false, deliberately). Without this the install finishes
+      with an approval queue nobody can drain, and the first real trainee is
+      stuck at /registration-pending forever.
+
+      Set it to the UPN of a named AD account, e.g.:
+        tn_bootstrap_admin_upn: "maj.smith@corp.tnrange.lab"
+
+- name: Seed — create the tenant and bootstrap admin
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      run --rm --no-deps --entrypoint ""
+      -e TN_TENANT_NAME={{ tn_tenant_name | quote }}
+      -e TN_TENANT_SLUG={{ tn_tenant_slug }}
+      -e TN_BOOTSTRAP_ADMIN_UPN={{ tn_bootstrap_admin_upn }}
+      -e KEYCLOAK_ADMIN_USER={{ vault_keycloak_admin_user | default('admin') }}
+      -e KEYCLOAK_ADMIN_PASSWORD={{ vault_keycloak_admin_password | quote }}
+      api python -m app.bootstrap_admin
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_bootstrap
+  changed_when: "'created' in tn_bootstrap.stdout"
+  no_log: true
+
+- name: Seed — report bootstrap result
+  ansible.builtin.debug:
+    msg: "{{ tn_bootstrap.stdout_lines | default(['(no output)']) }}"
+
+- name: Seed — optional demo content
+  ansible.builtin.debug:
+    msg: >-
+      Demo data NOT seeded (tn_seed_demo_data=false). scripts/seed_data.py
+      creates fictional tenants; enable it only for a throwaway demo.
+  when: not (tn_seed_demo_data | bool)

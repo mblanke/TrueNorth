@@ -1,0 +1,127 @@
+# Deploy-time software for range VMs.
+#
+# A Range Designer node's `services` list names software; this file says how to install
+# each name on each OS family. The vSphere provisioner installs it inside the guest with
+# VMware guest operations after the VM is customized and booted (no network path from the
+# worker into the range is needed). Packages come from the depot (TN-DEPOT01), which a
+# range reaches only through its pfSense WAN uplink:
+#   windows -> Chocolatey from the depot feed (TN_DEPOT_CHOCO_FEED)
+#   linux   -> apt or dnf through the depot proxy (TN_DEPOT_APT_PROXY)
+# See docs/deployment/vmware-site-runbook.md, "Per-VM software at deploy time".
+#
+# Entry format (names and aliases are matched case-insensitively):
+#   <name>:
+#     aliases: [other, spellings]
+#     windows: {choco: <chocolatey id>, version: "<optional pinned version>"}
+#     linux:   {apt: [packages], dnf: [packages]}
+# An entry without a block for the VM's OS family is skipped with a warning.
+# Every package here must be mirrored in the depot, or its install fails (the range is
+# then marked partial, not failed). Sources: docs/vm-build-sheet.md §5.
+
+version: 1
+
+# Names that describe what a node does rather than software to install. They stay in the
+# node's `services` list (scenarios and checks read them) and are skipped silently.
+roles:
+  - ad
+  - ad-ds
+  - adcs
+  - dhcp
+  - dns
+  - exchange
+  - file
+  - ftp
+  - http
+  - https
+  - iis
+  - kerberos
+  - ldap
+  - mail
+  - print
+  - rdp
+  - smb
+  - smtp
+  - sql
+  - ssh
+  - web
+  - winrm
+  - wsus
+
+software:
+  # --- Windows desktop / analyst tools (build sheet §5.1, §5.2) -----------------
+  7zip:
+    aliases: [7-zip]
+    windows: {choco: 7zip}
+    linux: {apt: [p7zip-full], dnf: [p7zip]}
+  googlechrome:
+    aliases: [chrome, google-chrome]
+    windows: {choco: googlechrome}
+  firefoxesr:
+    aliases: [firefox, firefox-esr]
+    windows: {choco: firefoxesr}
+    # Debian ships firefox-esr; Ubuntu's firefox is a snap, so mirror Mozilla's apt repo.
+    linux: {apt: [firefox-esr], dnf: [firefox]}
+  notepadplusplus:
+    aliases: [notepad++, npp]
+    windows: {choco: notepadplusplus}
+  vscode:
+    aliases: [code, vs-code, visualstudiocode]
+    windows: {choco: vscode}
+    # Needs Microsoft's apt/yum repo mirrored in the depot.
+    linux: {apt: [code], dnf: [code]}
+  git:
+    windows: {choco: git}
+    linux: {apt: [git], dnf: [git]}
+  python:
+    aliases: [python3]
+    windows: {choco: python}
+    linux: {apt: [python3, python3-pip], dnf: [python3, python3-pip]}
+  wireshark:
+    windows: {choco: wireshark}  # capture also needs Npcap OEM (not silent-installable free)
+    linux: {apt: [wireshark, tshark], dnf: [wireshark-cli]}
+  sysinternals:
+    windows: {choco: sysinternals}
+  putty:
+    windows: {choco: putty}
+    linux: {apt: [putty-tools], dnf: [putty]}
+  winscp:
+    windows: {choco: winscp}
+  adobereader:
+    aliases: [acrobat, acrobat-reader, adobe-reader]
+    windows: {choco: adobereader}
+  vlc:
+    windows: {choco: vlc}
+    linux: {apt: [vlc], dnf: [vlc]}
+  powershell-core:
+    aliases: [pwsh, powershell7]
+    windows: {choco: powershell-core}
+  vcredist140:
+    aliases: [vcredist]
+    windows: {choco: vcredist140}
+
+  # --- Linux victim / infrastructure services (build sheet §5.3) ------------------
+  nginx:
+    linux: {apt: [nginx], dnf: [nginx]}
+  apache2:
+    aliases: [apache, httpd]
+    linux: {apt: [apache2], dnf: [httpd]}
+  mariadb-server:
+    aliases: [mariadb]
+    linux: {apt: [mariadb-server], dnf: [mariadb-server]}
+  postgresql:
+    aliases: [postgres]
+    linux: {apt: [postgresql], dnf: [postgresql-server]}
+  redis:
+    aliases: [redis-server]
+    linux: {apt: [redis-server], dnf: [redis]}
+  bind9:
+    aliases: [bind, named]
+    linux: {apt: [bind9, bind9-utils], dnf: [bind, bind-utils]}
+  postfix:
+    linux: {apt: [postfix], dnf: [postfix]}
+  tcpdump:
+    linux: {apt: [tcpdump], dnf: [tcpdump]}
+  samba:
+    linux: {apt: [samba], dnf: [samba]}
+  haproxy:
+    linux: {apt: [haproxy], dnf: [haproxy]}

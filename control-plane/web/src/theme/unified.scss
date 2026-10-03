@@ -1,0 +1,47 @@
+/* Shared red-and-white product language, including dialogs and lazy modules. */
+body.theme-great-white-north {
+  --accent: #bd1631;
+  --accent-hover: #96112a;
+  --accent-muted: #fcecef;
+  --bg-primary: #f7f8fa;
+  --bg-secondary: #f0f2f4;
+  --bg-surface: #ffffff;
+  --bg-card: #ffffff;
+  --text-muted: #5f6975;
+  --font-display: var(--font-body);
+  --glass-bg: #ffffff;
+  --glass-toolbar: #ffffff;
+  --glass-border: #d8dee5;
+  --glow-accent: none;
+  --gradient-accent: linear-gradient(#bd1631, #bd1631);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+
+  .tn-ambient { display: none; }
+  mat-card, .mat-mdc-card, .app-toolbar { backdrop-filter: none !important; }
+  .mat-mdc-card.is-lifted { box-shadow: var(--shadow-1) !important; }
+  .page-header { align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+  .page-icon { color: var(--accent); }
+  .mat-mdc-header-cell { font-size: 12px; text-transform: none; letter-spacing: 0; }
+  .status-chip { font-size: 12px; text-transform: none; letter-spacing: 0; box-shadow: none; }
+  .status-chip::before { animation: none !important; }
+  .status-chip.running, .status-chip.active {
+    color: var(--success); background: var(--accent-soft); border-color: var(--success);
+  }
+  .mat-mdc-unelevated-button.mat-primary {
+    --mdc-filled-button-container-color: var(--accent);
+    --mdc-filled-button-label-text-color: #ffffff;
+  }
+  .mat-mdc-raised-button:disabled, .mat-mdc-unelevated-button:disabled {
+    background: var(--bg-secondary) !important; color: var(--text-muted) !important;
+  }
+  .mat-mdc-tab-header, .mat-mdc-paginator { background: var(--bg-card) !important; }
+  .side-nav .mat-expansion-panel-header-title { font-size: 11px; letter-spacing: .6px; }
+  .theme-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+}
+@media (max-width: 720px) {
+  .page-container { padding: 16px; }
+  .card-grid { grid-template-columns: minmax(0, 1fr); }
+  .form-row mat-form-field { min-width: 0; flex-basis: 100%; }
+}

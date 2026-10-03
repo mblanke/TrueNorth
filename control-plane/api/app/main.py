@@ -17,7 +17,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -48,8 +48,12 @@ async def lifespan(app: FastAPI):
     ``/admin/startup`` in production bootstrap scripts.
     """
     logger.info("Starting TrueNorth Range API v%s", APP_VERSION)
-    Base.metadata.create_all(bind=engine)
-    _seed_dev_data()
+    # Production sets both false (compose.prod.yml, the installer): Alembic owns the
+    # schema there, and the hardcoded dev admin must not exist. Until 2026-09-27
+    # neither flag was read, so both ran in production regardless of the setting.
+    if _env_flag("DB_AUTO_CREATE"):
+        Base.metadata.create_all(bind=engine)
+    _seed_dev_data(dev_account=_env_flag("SEED_DEV_DATA"))
 
     yield
 
@@ -65,15 +69,34 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down TrueNorth Range API")
 
 
-def _seed_dev_data() -> None:
-    """Seed development data if DB is empty."""
+def _env_flag(name: str) -> bool:
+    """On unless set to a false-ish value, so development keeps its defaults."""
+    return os.getenv(name, "true").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _seed_dev_data(dev_account: bool = True) -> None:
+    """Seed reference data, and with ``dev_account`` the dev tenant and admin if DB is empty.
+
+    The reference seeders run either way; the installer relies on them. Only the
+    hardcoded admin@truenorth.local is development-only: in production the first
+    administrator comes from app.bootstrap_admin.
+    """
     from .db import SessionLocal
 
     db = SessionLocal()
     try:
         # Use deterministic UUIDs that match the AUTH_DISABLED dev stub in auth.py
         _dev_uuid = "00000000-0000-0000-0000-000000000001"
-        if db.query(Tenant).count() == 0:
+        if not dev_account and db.query(User).filter(User.email == "admin@truenorth.local").first():
+            # Starts before SEED_DEV_DATA was honoured created this account wherever the
+            # tenants table was empty, production included. Say so rather than delete a
+            # user row other tables may reference.
+            logger.warning(
+                "SEED_DEV_DATA is off but the development admin admin@truenorth.local exists "
+                "(id %s). Deactivate or remove it: it is not a real person.",
+                _dev_uuid,
+            )
+        if dev_account and db.query(Tenant).count() == 0:
             tenant = Tenant(id=_dev_uuid, name="Default Org", slug="default")
             db.add(tenant)
             db.flush()
@@ -167,36 +190,47 @@ from .routers import (
     ad_sync_router,
     adaptive_learning_router,
     admin_router,
+    ai_authoring_router,
     ai_config_router,
     auth_zones_router,
     certifications_router,
+    collective_exercises_router,
     competency_router,
     courses_router,
     curriculum_router,
     detection_rules_router,
     directory_router,
-    golden_images_router,
     exercise_forge_router,
     exercises_router,
-    collective_exercises_router,
+    golden_images_router,
     hypervisors_router,
+    injectors_router,
     integrations_router,
     kit_router,
     learning_paths_router,
     lti_router,
     network_devices_router,
+    onboarding_router,
     ops_center_router,
     proxmox_router,
     qsp_router,
     quizzes_router,
     ranges_router,
+    registration_router,
     scenarios_router,
     scheduling_router,
+    software_catalogue_router,
     storage_router,
     templates_router,
     threat_intel_router,
     transcript_router,
 )
+
+# Identity intake. Registration is mounted first because /auth/me is the one
+# endpoint reachable without a users row — it is how the SPA learns whether the
+# caller needs to register, is awaiting approval, or is a full user.
+app.include_router(registration_router)
+app.include_router(onboarding_router)
 
 # Core routers
 app.include_router(ranges_router)
@@ -204,6 +238,8 @@ app.include_router(exercises_router)
 app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)
+app.include_router(injectors_router)
+app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)
 app.include_router(scheduling_router)
@@ -225,6 +261,8 @@ app.include_router(auth_zones_router)
 app.include_router(storage_router)
 app.include_router(network_devices_router)
 app.include_router(kit_router)
+# Deploy-time software names for the Range Designer's services autocomplete
+app.include_router(software_catalogue_router)
 # Threat Intelligence
 app.include_router(threat_intel_router)
 app.include_router(detection_rules_router)

@@ -1,0 +1,111 @@
+---
+# TN-DEPOT01 — Nexus (Chocolatey, PyPI, Docker, raw installers) + apt-cacher-ng (apt/dnf).
+#
+# Why two products. The worker installs range software inside the guest
+# (control-plane/worker/worker/provisioners/vsphere_guest.py):
+#   Windows: choco install <id> --source <TN_DEPOT_CHOCO_FEED>       -> a NuGet v2 feed
+#   Linux:   apt-get -o Acquire::http::Proxy=<TN_DEPOT_APT_PROXY> ...
+#            dnf --setopt=proxy=<TN_DEPOT_APT_PROXY> install ...       -> an HTTP FORWARD proxy
+# The guest keeps its stock sources (archive.ubuntu.com, dl.rockylinux.org) and sends the
+# full upstream URL to the proxy. A Nexus apt/yum proxy repository is NOT a forward proxy
+# (it needs sources.list rewritten to http://depot:8081/repository/<repo>/), so it would
+# not work with that code. apt-cacher-ng is a caching forward proxy for both apt and dnf.
+
+tn_depot_data_dir: /srv/depot
+# Refuse to put Nexus/apt caches on the OS disk (deploy-mgmt-vm.sh mounts the data disk here).
+tn_depot_require_data_mount: true
+
+# ── Upstream state ────────────────────────────────────────────────────
+# false (the normal state): apt-cacher-ng runs with Offlinemode and every Nexus proxy
+# repository is "blocked": both serve only what is cached and never fetch upstream.
+# prefetch.yml flips this to true for the prefetch window, then back.
+tn_depot_upstream_online: false
+
+# ── apt-cacher-ng ─────────────────────────────────────────────────────
+tn_depot_acng_dir: "{{ tn_depot_data_dir }}/apt-cacher-ng"
+
+# ── Nexus ─────────────────────────────────────────────────────────────
+# 3.70.x is the last Nexus Repository OSS line. 3.77+ is "Community Edition": free, but it
+# shows an EULA that must be accepted and caps usage (components and requests per day).
+# Moving to CE is a human decision: set the tag, read the EULA, then set
+# tn_depot_nexus_accept_eula: true.
+tn_depot_nexus_image: "sonatype/nexus3:3.70.4"
+tn_depot_nexus_accept_eula: false
+tn_depot_nexus_data: "{{ tn_depot_data_dir }}/nexus-data"
+tn_depot_nexus_jvm: "-Xms4g -Xmx4g -XX:MaxDirectMemorySize=4g -Djava.util.prefs.userRoot=/nexus-data/javaprefs"
+tn_depot_nexus_docker_proxy_port: 8082
+tn_depot_nexus_docker_hosted_port: 8083
+tn_depot_nexus_api: "http://127.0.0.1:{{ tn_depot_nexus_port }}/service/rest"
+tn_depot_nexus_blobstore: default
+
+tn_depot_choco_upstream: "https://community.chocolatey.org/api/v2/"
+tn_depot_pypi_upstream: "https://pypi.org/"
+tn_depot_docker_upstream: "https://registry-1.docker.io"
+
+tn_depot_prefetch_user: tn-prefetch
+tn_depot_prefetch_privileges:
+  - nx-component-upload
+  - nx-search-read
+  - nx-repository-view-nuget-chocolatey-hosted-*
+  - nx-repository-view-nuget-chocolatey-proxy-read
+  - nx-repository-view-nuget-chocolatey-proxy-browse
+  - nx-repository-view-raw-installers-*
+  - nx-repository-view-docker-docker-hosted-*
+
+# Every repository body = common + (proxy common) + the entry's own body.
+tn_depot_repo_common:
+  online: true
+  storage: { blobStoreName: "{{ tn_depot_nexus_blobstore }}", strictContentTypeValidation: true }
+tn_depot_proxy_common:
+  negativeCache: { enabled: true, timeToLive: 60 }
+  # autoBlock off: blocking is ours to decide (tn_depot_upstream_online), not Nexus's.
+  httpClient: { blocked: "{{ not (tn_depot_upstream_online | bool) }}", autoBlock: false }
+
+# Repositories. `proxy: true` entries are blocked/unblocked with tn_depot_upstream_online.
+# The group "chocolatey" lists the hosted repo FIRST: prefetch.yml uploads every catalogue
+# package (and its dependencies) there, so offline queries are answered from local data
+# and never depend on the proxy's query cache.
+tn_depot_nexus_repos:
+  - name: chocolatey-hosted
+    format: nuget
+    type: hosted
+    body:
+      storage: { writePolicy: ALLOW_ONCE }
+  - name: chocolatey-proxy
+    format: nuget
+    type: proxy
+    proxy: true
+    body:
+      proxy: { remoteUrl: "{{ tn_depot_choco_upstream }}", contentMaxAge: -1, metadataMaxAge: 1440 }
+      nugetProxy: { nugetVersion: V2, queryCacheItemMaxAge: 3600 }
+  - name: chocolatey
+    format: nuget
+    type: group
+    body:
+      group: { memberNames: [chocolatey-hosted, chocolatey-proxy] }
+  - name: pypi-proxy
+    format: pypi
+    type: proxy
+    proxy: true
+    body:
+      proxy: { remoteUrl: "{{ tn_depot_pypi_upstream }}", contentMaxAge: 1440, metadataMaxAge: 1440 }
+  - name: docker-proxy
+    format: docker
+    type: proxy
+    proxy: true
+    body:
+      proxy: { remoteUrl: "{{ tn_depot_docker_upstream }}", contentMaxAge: 1440, metadataMaxAge: 1440 }
+      docker: { v1Enabled: false, forceBasicAuth: false, httpPort: "{{ tn_depot_nexus_docker_proxy_port }}" }
+      dockerProxy: { indexType: HUB }
+  - name: docker-hosted
+    format: docker
+    type: hosted
+    body:
+      storage: { writePolicy: ALLOW }
+      docker: { v1Enabled: false, forceBasicAuth: false, httpPort: "{{ tn_depot_nexus_docker_hosted_port }}" }
+  # Vendor media and offline prerequisites (build sheet §6): Office, Exchange, SQL, ...
+  - name: installers
+    format: raw
+    type: hosted
+    body:
+      storage: { writePolicy: ALLOW }

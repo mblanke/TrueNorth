@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# TrueNorth depot - apt-cacher-ng as the range's apt/dnf forward proxy
+# (TN_DEPOT_APT_PROXY={{ tn_depot_apt_proxy_url }}). Read after the package's own
+# acng.conf and zz_debconf.conf, so these values win.
+
+Port: {{ tn_depot_acng_port }}
+BindAddress: 0.0.0.0
+CacheDir: {{ tn_depot_acng_dir }}
+
+# 1 outside a prefetch window: serve only what is cached, never contact upstream. This
+# is also an egress control - with it on, a range cannot use the depot to fetch anything
+# new. prefetch.yml sets 0 for the window, then 1 again.
+Offlinemode: {{ 0 if (tn_depot_upstream_online | bool) else 1 }}
+
+# No CONNECT tunnels, ever. A tunnel is an opaque TCP path to anywhere: internet egress
+# for a range during a window. HTTPS repositories must be remapped to HTTP backends
+# instead (apt-cacher-ng's "http://HTTPS///host/path" form) and baked into the template.
+PassThroughPattern: ^$
+
+# RPM repositories (Rocky through dnf --setopt=proxy=). repomd.xml is the volatile index;
+# the hashed repodata files and packages it names are immutable.
+VfilePatternEx: (^|/)repodata/repomd\.xml(\.asc|\.key)?$
+PfilePatternEx: (^|/)repodata/[0-9a-f]+-[^/]+\.(xml|sqlite)(\.gz|\.bz2|\.xz|\.zst)?$|\.rpm$
+
+# Keep packages that newer indexes no longer list, so a range built from an older
+# template still finds what it asks for.
+ExThreshold: 30

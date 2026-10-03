@@ -2,6 +2,11 @@
 
 These skill files define repeatable behaviors for agents and humans.
 
+For the 15 task-specific skills and specialist roles, start at
+[the model toolkit](agent-toolkit.md). Their canonical instructions live in
+`SKILLS/tn-*/SKILL.md`, with discovery links for Claude Code and Codex.
+Select relevant task skills rather than loading the complete catalogue.
+
 Agents must follow them in this order:
 1) SKILLS/00-operating-model.md
 2) SKILLS/05-agent-taxonomy.md

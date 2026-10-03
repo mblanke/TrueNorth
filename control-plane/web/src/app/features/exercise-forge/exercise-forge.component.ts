@@ -1,7 +1,7 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -14,8 +14,11 @@ import { MatSliderModule } from '@angular/material/slider';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
-import { ApiService } from '@core/services/api.service';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { ApiService, ForgeHistoryItem } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { Range as RangeModel } from '@core/models';
+import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
 interface ForgePreset {
   name: string;
@@ -67,10 +70,10 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
   selector: 'tn-exercise-forge',
   standalone: true,
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
+    CommonModule, FormsModule, RouterLink, MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatChipsModule,
     MatStepperModule, MatSliderModule, MatProgressBarModule, MatTooltipModule,
-    MatDividerModule,
+    MatDividerModule, MatExpansionModule, EmptyStateComponent,
   ],
   template: `
     <div class="page-container">
@@ -281,6 +284,22 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
             </div>
 
             <mat-form-field appearance="outline" class="full-width">
+              <mat-label>Range (optional)</mat-label>
+              <mat-select panelClass="tn-select-panel" [(ngModel)]="config.range_id">
+                <mat-option [value]="null">Tenant default</mat-option>
+                @for (r of ranges(); track r.id) {
+                  <mat-option [value]="r.id">
+                    <span class="range-option">
+                      <span>{{ r.name }}</span>
+                      <span class="status-chip {{ r.state }}">{{ r.state }}</span>
+                    </span>
+                  </mat-option>
+                }
+              </mat-select>
+              <mat-hint>Attach the forged exercise to an existing range.</mat-hint>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="full-width">
               <mat-label>Focus Areas</mat-label>
               <mat-select panelClass="tn-select-panel" [(ngModel)]="config.focus_areas" multiple>
                 <mat-option value="detection">Detection</mat-option>
@@ -398,6 +417,17 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
             }
 
             <div class="step-actions">
+              @if (result(); as r) {
+                <a mat-raised-button color="primary"
+                   [routerLink]="['/exercises', r.exercise_id]">
+                  <mat-icon>play_circle</mat-icon> Open Exercise
+                </a>
+                <a mat-stroked-button
+                   routerLink="/authoring/scenarios"
+                   [queryParams]="{ scenario: r.scenario_id }">
+                  <mat-icon>edit_document</mat-icon> Open in Scenario Studio
+                </a>
+              }
               <button mat-stroked-button (click)="reset()">
                 <mat-icon>refresh</mat-icon> Forge Another
               </button>
@@ -405,35 +435,90 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
           </mat-card-content>
         </mat-card>
       }
+
+      <!-- Forge history -->
+      <mat-accordion class="history-panel mt-3">
+        <mat-expansion-panel (opened)="loadHistory()">
+          <mat-expansion-panel-header>
+            <mat-panel-title>
+              <mat-icon class="history-icon">history</mat-icon> Forge History
+            </mat-panel-title>
+            <mat-panel-description>
+              @if (historyTotal() > 0) { {{ historyTotal() }} forged exercises }
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+
+          @if (historyLoading()) {
+            <div class="tn-skeleton-group" aria-busy="true">
+              <div class="tn-skeleton tn-skeleton-row"></div>
+              <div class="tn-skeleton tn-skeleton-row"></div>
+              <div class="tn-skeleton tn-skeleton-row"></div>
+            </div>
+          } @else if (history().length === 0) {
+            <tn-empty-state
+              icon="history"
+              title="Nothing forged yet"
+              message="Generated exercises appear here with their source and MITRE coverage."
+            />
+          } @else {
+            <div class="history-list">
+              @for (h of history(); track h.id) {
+                <div class="history-row">
+                  <div class="history-main">
+                    <a class="history-name" [routerLink]="['/exercises', h.exercise_id]">{{ h.exercise_name }}</a>
+                    <span class="history-meta">
+                      {{ h.created_at ? (h.created_at | date:'medium') : 'unknown date' }}
+                      · {{ h.source }} · {{ h.difficulty }} · {{ h.model_used }}
+                    </span>
+                    @if (h.mitre_techniques.length) {
+                      <div class="history-chips">
+                        @for (t of h.mitre_techniques; track t) {
+                          <span class="status-chip sev-info">{{ t }}</span>
+                        }
+                      </div>
+                    }
+                  </div>
+                  <a mat-stroked-button
+                     routerLink="/authoring/scenarios"
+                     [queryParams]="{ scenario: h.scenario_id }">Scenario</a>
+                </div>
+              }
+            </div>
+          }
+        </mat-expansion-panel>
+      </mat-accordion>
     </div>
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; }
     .header-left { display: flex; align-items: center; gap: 16px; }
-    .page-icon { font-size: 36px; width: 36px; height: 36px; color: var(--mat-sys-primary); }
-    .subtitle { margin: 0; color: var(--mat-sys-on-surface-variant); }
+    /* Token note: this file used to reference Material 3 --mat-sys-* variables,
+       which the M2 theme never emits — the wizard rendered on transparent
+       backgrounds. Everything below is on the app's own token vocabulary. */
+    .page-icon { font-size: 36px; width: 36px; height: 36px; color: var(--accent); }
     h1 { margin: 0; }
     .full-width { width: 100%; }
     .mt-1 { margin-top: 8px; }
     .mt-2 { margin-top: 16px; }
     .my-2 { margin: 16px 0; }
     .flex-grow { flex: 1; }
-    .hint { color: var(--mat-sys-on-surface-variant); margin-bottom: 16px; }
+    .hint { color: var(--text-secondary); margin-bottom: 16px; }
 
     .step-bar { display: flex; align-items: center; margin: 24px 0; gap: 0; }
     .step-item { display: flex; align-items: center; gap: 8px; cursor: default; }
     .step-item.clickable { cursor: pointer; }
     .step-circle {
       width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
-      justify-content: center; background: var(--mat-sys-surface-variant);
-      color: var(--mat-sys-on-surface-variant); font-weight: 500; font-size: 14px;
+      justify-content: center; background: var(--bg-surface);
+      color: var(--text-secondary); font-weight: 500; font-size: 14px;
+      border: 1px solid var(--border);
     }
-    .step-item.active .step-circle { background: var(--mat-sys-primary); color: var(--mat-sys-on-primary); }
-    .step-item.completed .step-circle { background: var(--mat-sys-tertiary); color: var(--mat-sys-on-tertiary); }
+    .step-item.active .step-circle { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); }
+    .step-item.completed .step-circle { background: var(--success); color: var(--text-on-accent); border-color: var(--success); }
     .step-item.completed .step-circle mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .step-label { font-size: 13px; white-space: nowrap; }
-    .step-connector { flex: 1; height: 2px; background: var(--mat-sys-outline-variant); margin: 0 8px; min-width: 24px; }
-    .step-connector.active { background: var(--mat-sys-tertiary); }
+    .step-connector { flex: 1; height: 2px; background: var(--border); margin: 0 8px; min-width: 24px; }
+    .step-connector.active { background: var(--success); }
 
     .source-toggle { display: flex; gap: 12px; }
     .indicator-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 4px; }
@@ -441,12 +526,12 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
 
     .presets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
     .preset-card {
-      display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 12px;
-      border: 1px solid var(--mat-sys-outline-variant); cursor: pointer; transition: all 0.2s;
+      display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: var(--radius-md);
+      border: 1px solid var(--border); cursor: pointer; transition: all 0.2s;
     }
-    .preset-card:hover { border-color: var(--mat-sys-primary); }
-    .preset-card.selected { border-color: var(--mat-sys-primary); background: var(--mat-sys-primary-container); }
-    .preset-meta { font-size: 12px; color: var(--mat-sys-on-surface-variant); }
+    .preset-card:hover { border-color: var(--accent); }
+    .preset-card.selected { border-color: var(--accent); background: var(--accent-muted); }
+    .preset-meta { font-size: 12px; color: var(--text-secondary); }
     .preset-desc { font-size: 13px; }
 
     .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
@@ -455,17 +540,35 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
     .preview-meta { margin-bottom: 16px; }
 
     .yaml-preview {
-      background: var(--mat-sys-surface-container); color: var(--mat-sys-on-surface);
-      padding: 16px; border-radius: 8px; overflow-x: auto; font-family: 'JetBrains Mono', monospace;
+      background: var(--bg-surface); color: var(--text-primary);
+      border: 1px solid var(--border);
+      padding: 16px; border-radius: var(--radius-sm); overflow-x: auto; font-family: var(--font-mono);
       font-size: 13px; line-height: 1.5; max-height: 500px; overflow-y: auto;
       white-space: pre-wrap; word-break: break-word;
     }
 
     .result-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-    .result-icon { font-size: 40px; width: 40px; height: 40px; color: var(--mat-sys-tertiary); }
+    .result-icon { font-size: 40px; width: 40px; height: 40px; color: var(--success); }
     .result-details { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
     .detail-row { display: flex; gap: 12px; }
-    .detail-row .label { font-weight: 500; min-width: 140px; color: var(--mat-sys-on-surface-variant); }
+    .detail-row .label { font-weight: 500; min-width: 140px; color: var(--text-secondary); }
+
+    .range-option { display: inline-flex; align-items: center; gap: 8px; }
+
+    .mt-3 { margin-top: 24px; }
+    .history-panel { display: block; }
+    .history-icon { margin-right: 8px; vertical-align: middle; color: var(--text-secondary); }
+    .history-list { display: flex; flex-direction: column; }
+    .history-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .history-row:last-child { border-bottom: none; }
+    .history-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .history-name { font-weight: 500; color: var(--accent); text-decoration: none; }
+    .history-name:hover { text-decoration: underline; }
+    .history-meta { font-size: 12px; color: var(--text-secondary); }
+    .history-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
   `],
 })
 export class ExerciseForgeComponent implements OnInit {
@@ -483,6 +586,11 @@ export class ExerciseForgeComponent implements OnInit {
   result = signal<ForgeResult | null>(null);
   previewing = signal(false);
   generating = signal(false);
+  ranges = signal<RangeModel[]>([]);
+  history = signal<ForgeHistoryItem[]>([]);
+  historyTotal = signal(0);
+  historyLoading = signal(false);
+  private historyLoaded = false;
 
   sourceMode: 'feed' | 'manual' | 'curriculum' = 'feed';
   feedId: string | null = null;
@@ -499,6 +607,7 @@ export class ExerciseForgeComponent implements OnInit {
     duration_minutes: 60,
     objective_count: 4,
     range_template: 'small-enterprise',
+    range_id: null as string | null,
     focus_areas: [] as string[],
     name_override: '',
   };
@@ -520,6 +629,10 @@ export class ExerciseForgeComponent implements OnInit {
     });
     this.api.listCurricula().subscribe({
       next: c => this.curricula.set(c),
+      error: () => {},
+    });
+    this.api.listRanges().subscribe({
+      next: r => this.ranges.set(r),
       error: () => {},
     });
     // Deep link from Curriculum Forge: /exercise-forge?curriculum=<id>
@@ -583,6 +696,10 @@ export class ExerciseForgeComponent implements OnInit {
     if (this.config.name_override?.trim()) {
       payload['name_override'] = this.config.name_override.trim();
     }
+    // The backend 404s on a range outside the tenant, so only send a real pick.
+    if (this.config.range_id) {
+      payload['range_id'] = this.config.range_id;
+    }
     if (this.sourceMode === 'feed' && this.feedId) {
       payload['feed_id'] = this.feedId;
     } else if (this.sourceMode === 'curriculum') {
@@ -617,10 +734,31 @@ export class ExerciseForgeComponent implements OnInit {
         this.generating.set(false);
         this.currentStep.set('result');
         this.notify.success('Exercise forged successfully!');
+        this.historyLoaded = false;
+        if (this.history().length) this.loadHistory(true);
       },
       error: err => {
         this.generating.set(false);
         this.notify.error(err?.error?.detail || 'Exercise generation failed');
+      },
+    });
+  }
+
+  /** Fetch on first panel open; the panel is collapsed by default so this is lazy. */
+  loadHistory(force = false): void {
+    if (this.historyLoaded && !force) return;
+    this.historyLoaded = true;
+    this.historyLoading.set(true);
+    this.api.getForgeHistory(25, 0).subscribe({
+      next: res => {
+        this.history.set(res.items ?? []);
+        this.historyTotal.set(res.total ?? 0);
+        this.historyLoading.set(false);
+      },
+      error: () => {
+        this.historyLoading.set(false);
+        this.historyLoaded = false;
+        this.notify.error('Failed to load forge history');
       },
     });
   }
@@ -637,6 +775,7 @@ export class ExerciseForgeComponent implements OnInit {
       duration_minutes: 60,
       objective_count: 4,
       range_template: 'small-enterprise',
+      range_id: null,
       focus_areas: [],
       name_override: '',
     };

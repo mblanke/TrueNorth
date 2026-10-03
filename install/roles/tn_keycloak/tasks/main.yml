@@ -1,0 +1,267 @@
+---
+# Keycloak realm, AD federation, and the claim contract.
+#
+# THIS ROLE IS THE JOIN BETWEEN THE TWO HALVES OF THIS WORK. The registration
+# flow reads AD identity out of the access token. If the mappers below are
+# missing, the token carries no `groups` claim, `identity.suggest_role()` has
+# nothing to read, every registration arrives with no suggestion, and group-based
+# eligibility silently permits everyone. The API is not broken in any way you
+# can see — it just quietly loses half its input.
+#
+# The Admin REST API is used rather than infra/keycloak/setup-realm.sh, which
+# invokes ${KEYCLOAK_HOME}/bin/kcadm.sh — a path that only exists INSIDE the
+# container — and which is not idempotent for the partial updates needed here.
+
+- name: Keycloak — obtain an admin token
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ vault_keycloak_admin_user | default('admin') }}"
+      password: "{{ vault_keycloak_admin_password }}"
+    status_code: 200
+  register: tn_kc_token
+  retries: 10
+  delay: 6
+  until: tn_kc_token.status == 200
+  no_log: true
+
+- name: Keycloak — set the auth header
+  ansible.builtin.set_fact:
+    tn_kc_headers:
+      Authorization: "Bearer {{ tn_kc_token.json.access_token }}"
+      Content-Type: application/json
+  no_log: true
+
+# ── Realm ─────────────────────────────────────────────────────────────
+- name: Keycloak — does the realm exist?
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: [200, 404]
+  register: tn_kc_realm
+
+- name: Keycloak — import the realm definition
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ lookup('file', tn_app_dir + '/infra/keycloak/realm-truenorth.json') }}"
+    body_format: json
+    status_code: [201, 409]
+  when: tn_kc_realm.status == 404
+
+# Only the fields we own are updated on re-run. A full PUT of the realm file
+# would wipe the federation component created below, every time.
+- name: Keycloak — update realm redirect/origin settings
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body:
+      realm: "{{ tn_keycloak_realm }}"
+      enabled: true
+      sslRequired: external
+    body_format: json
+    status_code: [204]
+
+# ── LDAP user federation ──────────────────────────────────────────────
+- name: Keycloak — look for an existing AD federation component
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}?type={{ tn_kc_provider_type }}&name=corp-ad"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_ldap_existing
+
+- name: Keycloak — create the AD federation component
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ tn_kc_ldap_body }}"
+    body_format: json
+    status_code: [201]
+  when: tn_kc_ldap_existing.json | length == 0
+  register: tn_kc_ldap_created
+  no_log: true
+
+- name: Keycloak — re-read the federation component
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}?type={{ tn_kc_provider_type }}&name=corp-ad"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_ldap
+
+- name: Keycloak — capture the component id
+  ansible.builtin.set_fact:
+    tn_keycloak_ldap_component_id: "{{ tn_kc_ldap.json[0].id }}"
+
+- name: Keycloak — update the federation component in place
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}/{{ tn_keycloak_ldap_component_id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ tn_kc_ldap_body | combine({'id': tn_keycloak_ldap_component_id}) }}"
+    body_format: json
+    status_code: [204]
+  no_log: true
+
+# ── Sub-mappers on the federation component ───────────────────────────
+# These are what populate User.ad_object_guid and .ad_distinguished_name at
+# registration. Without them those columns stay NULL and re-linking an account
+# after an AD rename degrades to matching on email.
+- name: Keycloak — existing LDAP sub-mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}?parent={{ tn_keycloak_ldap_component_id }}&type={{ tn_kc_mapper_type }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_mappers
+
+- name: Keycloak — create LDAP sub-mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_components_url }}"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ item }}"
+    body_format: json
+    status_code: [201, 409]
+  loop: "{{ tn_kc_ldap_mappers }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in (tn_kc_mappers.json | map(attribute='name') | list)
+
+# ── The claim contract ────────────────────────────────────────────────
+# Attached to a dedicated client scope rather than duplicated per client, so
+# `truenorth-web` and `truenorth-api` cannot drift apart.
+- name: Keycloak — existing client scopes
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/client-scopes"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_scopes
+
+- name: Keycloak — create the truenorth-identity client scope
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/client-scopes"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body:
+      name: truenorth-identity
+      protocol: openid-connect
+      description: >-
+        AD identity claims TrueNorth registration depends on: groups,
+        ad_object_guid, ad_distinguished_name.
+      attributes:
+        include.in.token.scope: "true"
+        display.on.consent.screen: "false"
+      protocolMappers: "{{ tn_kc_protocol_mappers }}"
+    body_format: json
+    status_code: [201, 409]
+  when: "'truenorth-identity' not in (tn_kc_scopes.json | map(attribute='name') | list)"
+
+- name: Keycloak — re-read client scopes
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/client-scopes"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_scopes2
+
+- name: Keycloak — resolve the identity scope id
+  ansible.builtin.set_fact:
+    tn_kc_scope_id: >-
+      {{ (tn_kc_scopes2.json | selectattr('name', 'equalto', 'truenorth-identity') | first).id }}
+
+- name: Keycloak — resolve client ids
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/clients?clientId={{ item }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_clients
+  loop:
+    - "{{ tn_keycloak_web_client }}"
+    - "{{ tn_keycloak_api_client }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Keycloak — attach the identity scope as a default scope
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ item.json[0].id }}/default-client-scopes/{{ tn_kc_scope_id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    status_code: [204, 409]
+  loop: "{{ tn_kc_clients.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.json | length > 0
+
+# ── Sync, then prove it worked ────────────────────────────────────────
+- name: Keycloak — trigger a full AD sync
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/user-storage/{{ tn_keycloak_ldap_component_id }}/sync?action=triggerFullSync"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    status_code: [200]
+  register: tn_kc_sync
+
+- name: Keycloak — report sync result
+  ansible.builtin.debug:
+    msg: "AD sync: {{ tn_kc_sync.json | default({}) }}"
+
+- name: Keycloak — count federated users
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/users/count"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_user_count
+
+# A federation that imports zero users is the classic silent failure: every
+# object is configured, the bind works, and the search base is wrong.
+- name: Keycloak — assert the federation actually imported users
+  ansible.builtin.assert:
+    that: (tn_kc_user_count.json | int) > 0
+    fail_msg: >-
+      AD federation is configured but imported 0 users. Check
+      tn_ldap_users_dn ({{ tn_ldap_users_dn }}) — a search base that matches no
+      objects looks exactly like a working configuration until someone tries to
+      log in.
+    success_msg: "{{ tn_kc_user_count.json }} users federated from {{ tn_domain }}"
+
+- name: Keycloak — check the expected AD groups arrived
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/groups"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_groups
+
+- name: Keycloak — report group mapping coverage
+  vars:
+    _found: "{{ tn_kc_groups.json | map(attribute='name') | list }}"
+    _missing: "{{ tn_ad_groups | difference(_found) }}"
+  ansible.builtin.debug:
+    msg: >-
+      {{ (_found | length) }} groups visible.
+      {{ 'All expected TN-* groups present.' if (_missing | length) == 0
+         else 'MISSING: ' ~ (_missing | join(', ')) ~
+              ' — role suggestion will be blank for those cohorts.' }}
+
+# The API needs this to drive /ad-sync. Written back into the env file so a
+# later `docker compose up` picks it up.
+- name: Keycloak — persist the component id into the environment
+  ansible.builtin.lineinfile:
+    path: "{{ tn_env_file }}"
+    regexp: "^KEYCLOAK_LDAP_COMPONENT_ID="
+    line: "KEYCLOAK_LDAP_COMPONENT_ID={{ tn_keycloak_ldap_component_id }}"
+    mode: "0600"
+
+- name: Keycloak — restart the API so it picks up the component id
+  community.docker.docker_compose_v2:
+    project_src: "{{ tn_app_dir }}/infra/platform/docker"
+    files: [compose.prod.yml]
+    env_files: ["{{ tn_env_file }}"]
+    services: [api]
+    state: restarted
+    wait: true
+    wait_timeout: 300

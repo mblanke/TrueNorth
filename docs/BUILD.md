@@ -362,8 +362,8 @@ infra/packer/
 |   +-- scripts/
 |       +-- install-sysmon.ps1
 |       +-- install-office.ps1
-+-- ubuntu-2204/
-|   +-- ubuntu-2204.pkr.hcl
++-- ubuntu-2404/
+|   +-- ubuntu-2404.pkr.hcl
 |   +-- scripts/
 |       +-- install-zeek.sh
 |       +-- install-auditd.sh
@@ -415,7 +415,7 @@ on:
         options:
           - windows-server-2022
           - windows-11
-          - ubuntu-2204
+          - ubuntu-2404
           - kali-2024
           - pfsense-27
           - all
@@ -722,7 +722,7 @@ Stored in Proxmox template storage with naming convention:
 truenorth-{os}-{version}-{build-date}
 # Examples:
 truenorth-win2022-1.5.0-20260115
-truenorth-ubuntu2204-1.5.0-20260115
+truenorth-ubuntu2404-1.5.0-20260115
 truenorth-kali2024-1.5.0-20260115
 ```
 

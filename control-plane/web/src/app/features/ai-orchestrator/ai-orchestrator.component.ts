@@ -15,7 +15,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatBadgeModule } from '@angular/material/badge';
 import { HttpClient } from '@angular/common/http';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { EnterStaggerDirective } from '../../shared/motion';
+import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
 interface AIBackend {
   id: string;
@@ -90,7 +90,7 @@ interface AIFleetSummary {
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatTooltipModule, MatProgressBarModule,
-    MatBadgeModule, EnterStaggerDirective,
+    MatBadgeModule, EnterStaggerDirective, CountUpDirective, HoverLiftDirective,
   ],
   template: `
     <div class="page-container">
@@ -112,27 +112,27 @@ interface AIFleetSummary {
         <div class="summary-row" tnEnterStagger>
           <mat-card class="stat-card">
             <mat-icon>hub</mat-icon>
-            <div class="stat-value">{{ summary.total_backends }}</div>
+            <div class="stat-value" [tnCountUp]="summary.total_backends"></div>
             <div class="stat-label">Backends</div>
           </mat-card>
           <mat-card class="stat-card">
             <mat-icon>developer_board</mat-icon>
-            <div class="stat-value">{{ summary.total_nodes }}</div>
+            <div class="stat-value" [tnCountUp]="summary.total_nodes"></div>
             <div class="stat-label">GPU Nodes</div>
           </mat-card>
           <mat-card class="stat-card">
             <mat-icon>memory</mat-icon>
-            <div class="stat-value">{{ summary.total_gpu_vram_gb | number:'1.0-0' }} GB</div>
+            <div class="stat-value"><span [tnCountUp]="summary.total_gpu_vram_gb"></span> GB</div>
             <div class="stat-label">Total VRAM</div>
           </mat-card>
           <mat-card class="stat-card">
             <mat-icon>trending_up</mat-icon>
-            <div class="stat-value">{{ summary.active_requests }}</div>
+            <div class="stat-value" [tnCountUp]="summary.active_requests"></div>
             <div class="stat-label">Active Requests</div>
           </mat-card>
           <mat-card class="stat-card">
             <mat-icon>alt_route</mat-icon>
-            <div class="stat-value">{{ summary.model_routes }}</div>
+            <div class="stat-value" [tnCountUp]="summary.model_routes"></div>
             <div class="stat-label">Model Routes</div>
           </mat-card>
         </div>
@@ -251,7 +251,7 @@ interface AIFleetSummary {
             @if (discoveredNodes.length > 0) {
               <div class="fleet-grid">
                 @for (node of discoveredNodes; track node.node_name) {
-                  <mat-card class="node-card" [class.node-offline]="!node.online">
+                  <mat-card class="node-card" tnHoverLift [class.node-offline]="!node.online">
                     <mat-card-header>
                       <mat-icon mat-card-avatar [class]="node.online ? 'status-online' : 'status-offline'">
                         {{ node.online ? 'dns' : 'cloud_off' }}
@@ -457,7 +457,6 @@ interface AIFleetSummary {
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     .header-left { display: flex; align-items: center; gap: 16px; }
     h1 { margin: 0; font-size: 24px; color: var(--text-primary); }
-    .subtitle { margin: 4px 0 0; color: var(--text-secondary); font-size: 14px; }
     .summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
     .stat-card { padding: 20px; text-align: center; background: var(--bg-card); border: 1px solid var(--border); }
     .add-form-card { margin: 16px 0; background: var(--bg-card); border: 1px solid var(--accent); }
@@ -469,40 +468,40 @@ interface AIFleetSummary {
     .toolbar-spacer { flex: 1; }
     .form-row { display: flex; gap: 16px; margin-bottom: 8px; }
     .form-row mat-form-field { flex: 1; }
-    .status-online { color: #4caf50; }
-    .status-offline { color: #f44336; }
-    .text-green { color: #4caf50; }
-    .text-red { color: #f44336; }
-    .primary-badge { color: #ffc107; font-size: 16px; width: 16px; height: 16px; vertical-align: middle; margin-left: 4px; }
+    .status-online { color: var(--success); }
+    .status-offline { color: var(--alert); }
+    .text-green { color: var(--success); }
+    .text-red { color: var(--alert); }
+    .primary-badge { color: var(--warning); font-size: 16px; width: 16px; height: 16px; vertical-align: middle; margin-left: 4px; }
     .playground mat-card { margin-top: 16px; background: var(--bg-card); }
     .result-card { margin-top: 16px; background: var(--bg-primary); }
     .result-meta { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 12px; color: var(--text-secondary); font-size: 13px; }
     .result-text { white-space: pre-wrap; color: var(--text-primary); font-size: 13px; margin: 0; }
-    .result-error { color: #f44336; margin-top: 8px; font-size: 13px; }
+    .result-error { color: var(--alert); margin-top: 8px; font-size: 13px; }
     .empty-state { text-align: center; padding: 40px; color: var(--text-secondary); }
     table th, table td { color: var(--text-primary) !important; }
-    code { color: var(--accent); background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 3px; }
-    .tab-badge { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 8px; font-size: 11px; margin-left: 8px; }
+    code { color: var(--accent); background: var(--bg-surface); border: 1px solid var(--border); padding: 2px 6px; border-radius: var(--radius-sm); font-family: var(--font-mono); }
+    .tab-badge { background: var(--accent); color: var(--text-on-accent); border-radius: 10px; padding: 1px 8px; font-size: 11px; margin-left: 8px; }
 
     /* Fleet Nodes */
     .scan-progress { margin-bottom: 16px; }
     .fleet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 20px; }
     .node-card { background: var(--bg-card); border: 1px solid var(--border); transition: border-color 0.2s; }
     .node-card:hover { border-color: var(--accent); }
-    .node-offline { opacity: 0.65; border-color: #f44336; }
+    .node-offline { opacity: 0.65; border-color: var(--alert); }
     .node-meta { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
     .meta-row { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
     .meta-row mat-icon { font-size: 18px; width: 18px; height: 18px; color: var(--text-secondary); }
     .models-section { margin-top: 16px; }
     .models-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--text-primary); font-size: 14px; }
     .model-list { display: flex; flex-direction: column; gap: 6px; max-height: 400px; overflow-y: auto; }
-    .model-chip { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
-    .model-chip:hover { background: rgba(255,255,255,0.08); }
-    .model-running { border-color: #4caf50; background: rgba(76,175,80,0.08); }
+    .model-chip { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; background: var(--bg-surface); border: 1px solid var(--border); font-size: 13px; }
+    .model-chip:hover { background: var(--accent-muted); }
+    .model-running { border-color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
     .model-name { font-weight: 500; color: var(--text-primary); min-width: 200px; }
     .model-meta { color: var(--text-secondary); font-size: 12px; flex: 1; }
     .model-size { color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
-    .running-icon { color: #4caf50; font-size: 16px; width: 16px; height: 16px; }
+    .running-icon { color: var(--success); font-size: 16px; width: 16px; height: 16px; }
     .empty-models { color: var(--text-secondary); font-size: 13px; padding: 8px 0; }
     .empty-fleet { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
     .empty-fleet mat-icon { font-size: 64px; width: 64px; height: 64px; margin-bottom: 16px; opacity: 0.4; }

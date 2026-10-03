@@ -13,17 +13,21 @@ gateway `.1` on pfSense, mirror/SPAN to a monitoring VLAN. VLAN‑per‑segment,
 
 | Range | VMs | Base | VLANs (id → name → CIDR) | Egress |
 |---|---|---|---|---|
-| soc-training | 25 | 10.60 | 200 attacker_infra .200.0/24 · 201 victim_network .201.0/24 · 202 soc_tools .202.0/24 · 203 network_monitoring .203.0/24 · 204 management .204.0/24 | deny (mirror all→203) |
-| medium-enterprise | ~? | 10.10 | 100 corporate .100.0/24 · 200 servers .200.0/24 · 300 dmz .300.0/24 · 400 management .400.0/24 | deny |
-| large-enterprise | 54 | 10.50 | 100 dmz · 101 corporate_lan · 102 server_vlan · 103 security_vlan · 104 ot_scada · 105 management · 106 ad_forest_b · 107 cloud_hybrid (all .10x.0/24) | deny |
-| red-team | 30 | 10.70 | 300 target_corp .0.0/24 · 301 target_dmz .1.0/24 · 302 target_db .2.0/24 · 303 attacker_infra .3.0/24 · 304 pivot_network .4.0/24 | controlled (C2 lanes) |
+| soc-training | 23 | 10.60 | 200 attacker_infra .200.0/24 · 201 victim_network .201.0/24 · 202 soc_tools .202.0/24 · 203 network_monitoring .203.0/24 · 204 management .204.0/24 | deny (mirror all→203) |
+| medium-enterprise | 8 | 10.10 | 100 corporate .100.0/24 · 200 servers .200.0/24 · 300 dmz .30.0/24 · 400 management .40.0/24 | deny |
+| large-enterprise | 50 | 10.50 | 100 dmz · 101 corporate_lan · 102 server_vlan · 103 security_vlan · 104 ot_scada · 105 management · 106 ad_forest_b · 107 cloud_hybrid (all .10x.0/24) | deny |
+| red-team | 28 | 10.70 | 300 target_corp .0.0/24 · 301 target_dmz .1.0/24 · 302 target_db .2.0/24 · 303 attacker_infra .3.0/24 · 304 pivot_network .4.0/24 | controlled (C2 lanes) |
 | red-vs-blue | 40 | mixed | 100 management 10.0.0.0/24 · 200 corporate_lan 10.10.0.0/24 · 300 dmz 10.20.0.0/24 · 400 server_vlan 10.30.0.0/24 · 500 blue_team 10.40.0.0/24 · 666 red_team 10.66.0.0/24 | controlled |
-| cloud-security | 20 | 10.80 | 400 cloud_sim .0.0/24 · 401 container_cluster .1.0/24 · 402 cicd_pipeline .2.0/24 · 403 monitoring .3.0/24 · 404 management .4.0/24 | deny |
+| cloud-security | 16 | 10.80 | 400 cloud_sim .0.0/24 · 401 container_cluster .1.0/24 · 402 cicd_pipeline .2.0/24 · 403 monitoring .3.0/24 · 404 management .4.0/24 | deny |
 | small-enterprise | ~? | — | uses abstract `assets:` + `policies:{egress,east_west}` schema, no explicit VLANs | policy‑driven |
 
-**Note — VLAN 300 CIDRs:** `medium-enterprise` and `red-team` write `10.10.300.0/24` / `10.70.x`
-style third octets; `300` is a VLAN id, not a valid octet — the CIDR third octet must stay ≤255.
-Treat VLAN id and subnet octet independently when generating Terraform (id → 802.1Q tag; octet → address plan).
+**Note — VLAN ids vs octets (fixed 2026-10-03):** `medium-enterprise` used the VLAN id as the third
+octet (`10.10.300.0/24`, `10.10.400.0/24`), which is not a valid address. It is now
+`10.10.30.0/24` (VLAN 300, dmz) and `10.10.40.0/24` (VLAN 400, management); `red-team` was already
+valid (`10.70.0-4.0/24`). VLAN ids in the templates are logical labels: the provisioner maps them to
+physical VLANs from the range pool (100–199 on the lab). Treat VLAN id and subnet octet independently
+(id → 802.1Q tag; octet → address plan). `tests/api/test_range_templates.py` fails on any CIDR or IP
+that does not parse, or a node IP outside its VLAN's subnet.
 
 ### B. Per‑PO scenario ranges (`truenorth-content-pack/.../scenarios/<PO>/range.tf`)
 Minimal, single isolated segment for one assessed PO. Convention (from `PO_009_EXAMPLE` / `PO_007`):

@@ -125,6 +125,10 @@ async def create_rule(
         if data.get(field) is not None:
             data[field] = json.dumps(data[field])
 
+    # The author is whoever is signed in, never what the body claims. Passing both
+    # raised "got multiple values for keyword argument 'author'", so every create
+    # 500'd — including every save from the detection editor.
+    data.pop("author", None)
     rule = DetectionRule(**data, tenant_id=user.tenant_id, author=user.display_name)
     db.add(rule)
     db.flush()

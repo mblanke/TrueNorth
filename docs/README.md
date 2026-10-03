@@ -184,6 +184,9 @@ Core_Docs/
 | [Architecture](architecture.md) | System design, C4 diagrams, data flow, technology decisions |
 | [API Reference](api.md) | All 42+ endpoints, authentication, WebSocket protocol |
 | [Deployment Guide](deployment.md) | Docker, Kubernetes, production setup, monitoring |
+| [Installer](../install/README.md) | Ansible package that installs the platform onto a vSphere lab |
+| [Identity](identity.md) | AD federation, the token claim contract, guards, account creation |
+| [Onboarding](onboarding.md) | Trainee journey and the instructor approval runbook |
 | [Development Guide](development.md) | Local setup, testing, code style, adding components |
 | [Scenario Authoring](scenarios.md) | YAML schema, injectors, validators, content creation |
 | [Operations Guide](operations.md) | Day-to-day ops, monitoring, backup, disaster recovery |
