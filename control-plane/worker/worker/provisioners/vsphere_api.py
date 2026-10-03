@@ -123,6 +123,23 @@ def _names(csv: str) -> set[str]:
     return {n.strip() for n in (csv or "").split(",") if n.strip()}
 
 
+def _wait_task(task, si, timeout: float) -> None:
+    """WaitForTask on a property collector of its own.
+
+    The session's collector (``si.content.propertyCollector``, pyVim's default) hands each
+    update to whichever WaitForUpdates call collects it first. Builds wait from several
+    threads at once (one per VM), so on a shared collector one thread takes another's
+    task completion and that thread then waits for an update that never comes; pyVim
+    checks ``maxWaitTime`` only between updates, so it waits forever. Found against vcsim.
+    """
+    pc = si.content.propertyCollector.CreatePropertyCollector()
+    try:
+        WaitForTask(task, si=si, pc=pc, maxWaitTime=timeout)
+    finally:
+        with contextlib.suppress(Exception):
+            pc.DestroyPropertyCollector()
+
+
 def _named_snapshots(vm, name: str) -> list:
     """Every snapshot of ``vm`` called ``name``, oldest first, from the whole tree."""
     found = []
@@ -409,7 +426,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     # Bounded, and well inside Celery's one-hour visibility timeout: a
                     # task stuck in vCenter must not hold the worker until the broker
                     # redelivers the job to a second worker.
-                    WaitForTask(task, si=si, maxWaitTime=self._snapshot_timeout)
+                    _wait_task(task, si, self._snapshot_timeout)
                 except Exception as exc:
                     failed.setdefault(vm_id, getattr(exc, "msg", None) or str(exc))
         return failed, submitted
@@ -490,7 +507,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
     # ------------------------------------------------------------------ #
 
     def _wait(self, task, si) -> None:
-        WaitForTask(task, si=si, maxWaitTime=self._snapshot_timeout)
+        _wait_task(task, si, self._snapshot_timeout)
 
     @staticmethod
     def _vm(si, vm_id: str):
@@ -600,20 +617,41 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 f"template {vm_def['template_name']!r} is neither a Content Library item nor an inventory VM template"
             )
         host, datastore = vm_def["_placement"]
+        config = infra.hardware_spec(vm_def, template.config.hardware.device, vm_def["_refs"])
+        self._drop_ovf_env(config, vm_def, template)
         spec = vim.vm.CloneSpec(
             location=vim.vm.RelocateSpec(pool=site["pool"], datastore=datastore, host=host.ref if host else None),
             powerOn=False,
             template=False,
-            config=infra.hardware_spec(vm_def, template.config.hardware.device, vm_def["_refs"]),
+            config=config,
         )
         logger.info("Cloning %r from template %r", vm_def["name"], vm_def["template_name"])
         task = template.CloneVM_Task(folder=site["folder"], name=vm_def["name"], spec=spec)
         self._wait(task, si)
         return task.info.result
 
+    @staticmethod
+    def _drop_ovf_env(spec, vm_def: dict, source) -> None:
+        """Drop the OVF/vApp config from a Linux VM built from ``source``.
+
+        tmpl-ubuntu-2404 comes from Ubuntu's cloud-image OVA: a vApp ProductSection with
+        the com.vmware.guestInfo transport. vCenter then publishes guestinfo.ovfEnv at
+        power-on, cloud-init's OVF datasource sorts ahead of VMware's, and the VM boots
+        with the OVA's empty defaults, ignoring the static IPs in guestinfo.metadata.
+        Same as scripts/lab/vim_helper.py vapp-off for the management VMs. Only while
+        the VM is powered off (clone spec, or the reconfigure before first power-on).
+        """
+        if infra.os_family(vm_def) == "linux" and getattr(source.config, "vAppConfig", None) is not None:
+            spec.vAppConfigRemoved = True
+
     def _reconfigure_sync(self, si, vm, vm_def: dict) -> None:
-        """CPU, memory and NICs of an OVF-deployed VM."""
-        self._wait(vm.ReconfigVM_Task(spec=infra.hardware_spec(vm_def, vm.config.hardware.device, vm_def["_refs"])), si)
+        """CPU, memory and NICs of an OVF-deployed VM, and (Linux) no OVF environment.
+
+        A VM deployed from the cloud-image OVA's library item carries the OVA's vApp
+        ProductSection just as an inventory clone of it does (see _drop_ovf_env)."""
+        spec = infra.hardware_spec(vm_def, vm.config.hardware.device, vm_def["_refs"])
+        self._drop_ovf_env(spec, vm_def, vm)
+        self._wait(vm.ReconfigVM_Task(spec=spec), si)
 
     def _customize_sync(self, si, vm, vm_def: dict) -> None:
         """Hostname and static IPs, applied while the VM is still powered off.

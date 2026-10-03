@@ -277,34 +277,107 @@ def test_classic_eval_iso_names():
 
 
 # ── capacity ─────────────────────────────────────────────────────────────────
+# Arithmetic tests use synthetic sizes so they survive template right-sizing; the real
+# sizes are checked against scripts/range-capacity.py, their single source.
+
+SIZES = [
+    {"name": "unit-20", "vms": 8, "vcpu": 20, "ram_gb": 44.0, "disk_tb": 1.0},
+    {"name": "huge", "vms": 50, "vcpu": 142, "ram_gb": 375.0, "disk_tb": 7.4},
+    {"name": "unsized", "vms": 0, "vcpu": None, "ram_gb": None, "disk_tb": None},
+]
+
+
+def _row(c: dict, name: str) -> dict:
+    return next(r for r in c["ranges"] if r["name"] == name)
+
 
 def test_capacity_excludes_vcsa_host_and_is_cpu_bound(lab):
-    a = vd.analyse(lab)
+    a = vd.analyse(lab, range_sizes=SIZES)
     c = a["capacity"]
     assert c["excluded_host"] == "esx01.truenorth.lab"
     assert c["range_hosts"] == ["esx02.truenorth.lab", "esx03.truenorth.lab", "esx04.truenorth.lab"]
     assert c["physical_cores"] == 32 and c["logical_cpus"] == 64
-    # 3 hosts x 8 cores x 4 = 96 vCPU, minus 34 vCPU of management VMs.
-    assert c["range_vcpu"] == 96 - 34
-    medium = next(r for r in c["ranges"] if r["name"] == "medium-enterprise")
-    assert medium["limit"] == "CPU"
-    # spread (local storage + vDS) pools the three range hosts: 62 // 20 = 3.
-    assert medium["concurrent"] == medium["pooled"] == 3
-    assert medium["per_host"] == 2  # reported for reference
-    assert medium["one_host_down"] == 1  # lose esx04 (26 vCPU): 36 // 20
-    large = next(r for r in c["ranges"] if r["name"] == "large-enterprise")
-    assert large["per_host"] == 0  # 142 vCPU never fits on one 32-vCPU host
-    assert large["concurrent"] == 0  # nor in 62 pooled vCPU
+    # Admission rule: 3 hosts x 16 threads x 4 = 192 vCPU, minus the 34 vCPU management reserve.
+    assert c["range_vcpu"] == 192 - 34
+    assert c["range_ram_gb"] == 3 * 512 - 128
+    unit = _row(c, "unit-20")
+    assert unit["limit"] == "CPU"
+    # spread (local storage + vDS) pools the three range hosts: 158 // 20 = 7.
+    assert unit["concurrent"] == unit["pooled"] == 7
+    assert unit["per_host"] == 6  # reference: 48/52/58 vCPU left per host after management VMs
+    assert unit["one_host_down"] == 4  # lose one 64-vCPU host: 94 // 20
+    huge = _row(c, "huge")
+    assert huge["pooled"] == 1 and huge["per_host"] == 0 and huge["one_host_down"] == 0
+    assert _row(c, "unsized")["concurrent"] is None
     md = vd.render_markdown(lab, a)
     assert "excluded from range placement" in md
     assert "`spread` placement" in md
+    assert "CPU ready" in md and "4 vCPU per thread" in md
 
 
 def test_per_range_host_capacity_is_packed(lab):
     lab["licenses"] = [{"name": "VMware vSphere 8 Standard", "edition_key": "esx.standard.cpuPackage"}]
     lab["dvswitches"] = []
-    medium = next(r for r in vd.analyse(lab)["capacity"]["ranges"] if r["name"] == "medium-enterprise")
-    assert medium["concurrent"] == medium["per_host"] == 2
+    unit = _row(vd.analyse(lab, range_sizes=SIZES)["capacity"], "unit-20")
+    assert unit["concurrent"] == unit["per_host"] == 6
+
+
+def test_vcpu_per_thread_scales_the_pool(lab):
+    c = vd.analyse(lab, range_sizes=SIZES, vcpu_per_thread=2)["capacity"]
+    assert c["range_vcpu"] == 3 * 16 * 2 - 34
+    assert _row(c, "unit-20")["concurrent"] == (96 - 34) // 20
+
+
+@pytest.mark.parametrize("vpt", [4, 2, 1.5])
+def test_concurrent_matches_range_capacity_script(lab, vpt):
+    """Discovery and scripts/range-capacity.py must give identical concurrent numbers."""
+    rc = _range_capacity_module()
+    rc_lab = rc.Lab(hosts=3, threads_per_host=16, vcpu_per_thread=vpt, ram_per_host_gb=512)
+    expected = {r.range: r.max_concurrent for r in rc.report(rc.load(), rc_lab)}
+    c = vd.analyse(lab, vcpu_per_thread=vpt)["capacity"]
+    assert c["range_vcpu"] == rc_lab.vcpu_available
+    assert c["range_ram_gb"] == rc_lab.ram_available_gb
+    got = {r["name"]: r["concurrent"] for r in c["ranges"]}
+    assert got == expected
+
+
+def _range_capacity_module():
+    import sys
+
+    spec = importlib.util.spec_from_file_location("range_capacity_t", ROOT / "scripts" / "range-capacity.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_range_sizes_come_from_the_templates():
+    sizes, source = vd.load_range_sizes()
+    assert source == "content/ranges/*/template.yaml"
+    rc = _range_capacity_module()
+    expected = {name: rc.range_totals(tpl, name) for name, tpl in rc.load()}
+    assert {s["name"] for s in sizes} == set(expected)
+    for s in sizes:
+        t = expected[s["name"]]
+        assert (s["vms"], s["vcpu"], s["ram_gb"]) == (t.vms, t.vcpu, t.ram_gb)
+        assert s["disk_tb"] == round(t.disk_gb / 1024, 2)
+
+
+def test_default_capacity_uses_template_sizes(lab):
+    c = vd.analyse(lab)["capacity"]
+    assert c["range_sizes_source"] == "content/ranges/*/template.yaml"
+    for r in c["ranges"]:
+        if r["vcpu"] and r["ram_gb"]:
+            assert r["pooled"] == int(min(c["range_vcpu"] // r["vcpu"], c["range_ram_gb"] // r["ram_gb"]))
+            assert r["concurrent"] == r["pooled"]  # lab is spread
+            assert r["one_host_down"] <= r["pooled"]
+
+
+def test_range_sizes_fall_back_without_the_script(tmp_path):
+    sizes, source = vd.load_range_sizes(tmp_path / "missing.py")
+    assert source.startswith("built-in fallback")
+    assert sizes == vd.RANGE_SIZES_FALLBACK
+    assert {s["name"] for s in sizes} == {p.parent.name for p in (ROOT / "content" / "ranges").glob("*/template.yaml")}
 
 
 def test_capacity_without_vcsa_vm_assumes_first_host(lab):

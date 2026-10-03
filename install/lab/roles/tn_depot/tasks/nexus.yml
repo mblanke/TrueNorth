@@ -1,0 +1,259 @@
+---
+# Nexus through its REST API, idempotently: admin password, EULA gate, realms, anonymous
+# read, repositories, and the upload-only prefetch user. Secrets are no_log throughout.
+
+- name: Nexus — the vault admin password is set
+  ansible.builtin.assert:
+    that:
+      - vault_nexus_admin_password is defined
+      - vault_nexus_admin_password not in ['', 'CHANGE_ME']
+      - vault_nexus_prefetch_password is defined
+      - vault_nexus_prefetch_password not in ['', 'CHANGE_ME']
+    fail_msg: "Fill vault_nexus_admin_password and vault_nexus_prefetch_password in inventory/group_vars/all/vault.yml"
+    quiet: true
+
+- name: Nexus — does the vault admin password work
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/status/check"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 401]
+  register: tn_nexus_admin
+  no_log: true
+
+- name: Nexus — first boot, switch admin to the vault password
+  when: tn_nexus_admin.status == 401
+  block:
+    - name: Nexus — generated admin.password
+      ansible.builtin.slurp:
+        src: "{{ tn_depot_nexus_data }}/admin.password"
+      register: tn_nexus_initial
+      become: true
+      no_log: true
+
+    - name: Nexus — change the admin password
+      ansible.builtin.uri:
+        url: "{{ tn_depot_nexus_api }}/v1/security/users/admin/change-password"
+        method: PUT
+        user: admin
+        password: "{{ tn_nexus_initial.content | b64decode | trim }}"
+        force_basic_auth: true
+        headers: { Content-Type: text/plain }
+        body: "{{ vault_nexus_admin_password }}"
+        status_code: [204]
+      no_log: true
+      changed_when: true
+  rescue:
+    - name: Nexus — admin password unknown
+      ansible.builtin.fail:
+        msg: >-
+          The vault admin password is rejected and {{ tn_depot_nexus_data }}/admin.password is
+          gone or wrong: someone changed the password by hand. Set vault_nexus_admin_password to
+          the current value, or reset admin per Sonatype's "recover admin password" procedure.
+
+- name: Nexus — EULA (Community Edition 3.77+ only; OSS 3.70 has none)
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/system/eula"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: tn_nexus_eula
+  no_log: true
+
+- name: Nexus — EULA must be accepted by a human
+  ansible.builtin.fail:
+    msg: >-
+      {{ tn_depot_nexus_image }} requires its EULA to be accepted. Read it (Nexus UI), then
+      set tn_depot_nexus_accept_eula: true and re-run. This playbook does not accept
+      licence terms on anyone's behalf.
+  when:
+    - tn_nexus_eula.status == 200
+    - not (tn_nexus_eula.json.accepted | default(false))
+    - not (tn_depot_nexus_accept_eula | bool)
+
+- name: Nexus — accept the EULA (tn_depot_nexus_accept_eula is true)
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/system/eula"
+    method: POST
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: { accepted: true, disclaimer: "{{ tn_nexus_eula.json.disclaimer | default('') }}" }
+    status_code: [200, 204]
+  when:
+    - tn_nexus_eula.status == 200
+    - not (tn_nexus_eula.json.accepted | default(false))
+    - tn_depot_nexus_accept_eula | bool
+  no_log: true
+  changed_when: true
+
+# ── Realms and anonymous read ─────────────────────────────────────────
+- name: Nexus — active realms
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/realms/active"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+  register: tn_nexus_realms
+  no_log: true
+
+- name: Nexus — enable the NuGet API-key and Docker bearer-token realms
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/realms/active"
+    method: PUT
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: "{{ tn_nexus_realms.json + (['NuGetApiKey', 'DockerToken'] | difference(tn_nexus_realms.json)) }}"
+    status_code: [204]
+  when: (['NuGetApiKey', 'DockerToken'] | difference(tn_nexus_realms.json)) | length > 0
+  no_log: true
+  changed_when: true
+
+- name: Nexus — anonymous access
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/anonymous"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+  register: tn_nexus_anon
+  no_log: true
+
+# Range guests read the feed without credentials. The built-in anonymous role is
+# read/browse only; uploads need tn-prefetch or admin.
+- name: Nexus — enable anonymous read
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/anonymous"
+    method: PUT
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: "{{ tn_nexus_anon.json | combine({'enabled': true}) }}"
+    status_code: [200]
+  when: not tn_nexus_anon.json.enabled
+  no_log: true
+  changed_when: true
+
+# ── Repositories ──────────────────────────────────────────────────────
+- name: Nexus — existing repositories
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/repositories"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+  register: tn_nexus_repos_now
+  no_log: true
+
+# Created once. Existing repositories are left as they are, except the proxies' blocked
+# flag, which upstream.yml converges.
+- name: Nexus — create missing repositories
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/repositories/{{ item.format }}/{{ item.type }}"
+    method: POST
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body: >-
+      {{ tn_depot_repo_common | combine({'name': item.name})
+         | combine(tn_depot_proxy_common if (item.proxy | default(false)) else {}, recursive=True)
+         | combine(item.body, recursive=True) }}
+    status_code: [201]
+  loop: "{{ tn_depot_nexus_repos }}"
+  loop_control: { label: "{{ item.format }}/{{ item.type }} {{ item.name }}" }
+  when: item.name not in (tn_nexus_repos_now.json | map(attribute='name') | list)
+  changed_when: true
+
+- name: Nexus — proxies blocked or not, per tn_depot_upstream_online
+  ansible.builtin.include_tasks: upstream.yml
+
+# ── Upload-only user for TN-BUILD01 ───────────────────────────────────
+- name: Nexus — tn-prefetch role exists
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/roles/{{ tn_depot_prefetch_user }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: tn_nexus_role
+  no_log: true
+
+- name: Nexus — tn-prefetch role
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/roles{{ '' if tn_nexus_role.status == 404 else '/' ~ tn_depot_prefetch_user }}"
+    method: "{{ 'POST' if tn_nexus_role.status == 404 else 'PUT' }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      id: "{{ tn_depot_prefetch_user }}"
+      name: "{{ tn_depot_prefetch_user }}"
+      description: "TN-BUILD01 uploads to chocolatey-hosted, installers, docker-hosted"
+      privileges: "{{ tn_depot_prefetch_privileges }}"
+      roles: []
+    status_code: [200, 204]
+  when: >-
+    tn_nexus_role.status == 404 or
+    (tn_nexus_role.json.privileges | sort) != (tn_depot_prefetch_privileges | sort)
+  no_log: true
+  changed_when: true
+
+- name: Nexus — tn-prefetch user exists
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/users?userId={{ tn_depot_prefetch_user }}"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+  register: tn_nexus_user
+  no_log: true
+
+- name: Nexus — create tn-prefetch user
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/users"
+    method: POST
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      userId: "{{ tn_depot_prefetch_user }}"
+      firstName: TrueNorth
+      lastName: Prefetch
+      emailAddress: "{{ tn_depot_prefetch_user }}@depot.invalid"
+      password: "{{ vault_nexus_prefetch_password }}"
+      status: active
+      roles: ["{{ tn_depot_prefetch_user }}"]
+    status_code: [200]
+  when: tn_nexus_user.json | selectattr('userId', 'equalto', tn_depot_prefetch_user) | list | length == 0
+  no_log: true
+  changed_when: true
+
+- name: Nexus — does the tn-prefetch vault password work
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/search?repository=chocolatey-hosted&name=tn-probe"
+    user: "{{ tn_depot_prefetch_user }}"
+    password: "{{ vault_nexus_prefetch_password }}"
+    force_basic_auth: true
+    status_code: [200, 401]
+  register: tn_nexus_prefetch_auth
+  no_log: true
+
+- name: Nexus — set the tn-prefetch password from the vault
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/security/users/{{ tn_depot_prefetch_user }}/change-password"
+    method: PUT
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    headers: { Content-Type: text/plain }
+    body: "{{ vault_nexus_prefetch_password }}"
+    status_code: [204]
+  when: tn_nexus_prefetch_auth.status == 401
+  no_log: true
+  changed_when: true

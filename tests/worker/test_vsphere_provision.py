@@ -296,12 +296,16 @@ class FakeVCenter:
             }[kind]
             return SimpleNamespace(view=objs, Destroy=lambda: None)
 
+        collector = SimpleNamespace(CreatePropertyCollector=lambda: SimpleNamespace(
+            DestroyPropertyCollector=lambda: None))
         return SimpleNamespace(_stub=object(), content=SimpleNamespace(
-            rootFolder=object(), viewManager=SimpleNamespace(CreateContainerView=view),
+            rootFolder=object(), viewManager=SimpleNamespace(CreateContainerView=view), propertyCollector=collector,
             guestOperationsManager=self.guest_ops))
 
-    def wait(self, task, si=None, maxWaitTime=None):  # noqa: N803 -- pyVim's keyword
+    def wait(self, task, si=None, pc=None, maxWaitTime=None):  # noqa: N803 -- pyVim's keyword
         assert maxWaitTime, "an unbounded wait can outlive Celery's visibility timeout"
+        # Concurrent waits on the session's one collector steal each other's updates (vcsim hung).
+        assert pc is not None, "wait on a private property collector"
         self.waited.append(task.label)
         if task.fail:
             raise RuntimeError(task.fail)
@@ -542,6 +546,24 @@ class TestProvisionClone:
         assert {n["portgroup"] for n in result.networks if "portgroup" in n} == {
             f"tn-{R8}-v100", f"tn-{R8}-v101", f"tn-{R8}-v102"}
 
+    def test_linux_clones_drop_the_cloud_image_ova_vapp_config(self, vc):
+        """tmpl-ubuntu-2404 came from Ubuntu's cloud-image OVA: its vApp ProductSection makes
+        cloud-init take the OVF datasource and ignore the guestinfo static IPs."""
+        for tmpl in vc.templates.values():
+            tmpl.config.vAppConfig = vim.vApp.VmConfigInfo()
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        assert result.status == "ok", result.errors
+        removed = {name: spec.config.vAppConfigRemoved
+                   for tmpl in vc.templates.values() for _, name, spec in tmpl.clone_specs}
+        assert removed == {f"{R8}-web01": True, f"{R8}-sensor": True,  # Linux: cloud-init
+                           f"{R8}-fw": None, f"{R8}-dc01": None}  # appliance, Sysprep: left alone
+
+    def test_template_without_vapp_config_is_cloned_as_is(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {}))
+        assert result.status == "ok", result.errors
+        assert all(spec.config.vAppConfigRemoved is None
+                   for tmpl in vc.templates.values() for _, _, spec in tmpl.clone_specs)
+
     def test_unknown_template_is_a_clear_error(self, vc):
         prov = _prov(vc)
         tpl = _rendered({**TEMPLATE, "nodes": [{"id": "x", "os": "nonexistent", "vlan": "victim_network"}]})
@@ -618,6 +640,24 @@ class TestProvisionOvf:
         hw, meta = vm.reconfig_specs
         assert _backing_keys(hw) == [pg.key] and hw.numCPUs == 2
         assert {o.key for o in meta.extraConfig} >= {"guestinfo.metadata", "guestinfo.userdata"}
+
+    def test_ovf_deployed_linux_vm_drops_the_ova_vapp_config(self, vc, monkeypatch):
+        """A VM deployed from the cloud-image OVA's library item carries its ProductSection too."""
+        monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
+        vc.library = {"name": "TrueNorth-Templates", "items": {"tmpl-ubuntu-2404": "item-ubuntu"}}
+
+        def handler(request):
+            resp = vc.handler(request)
+            if request.url.query.decode() == "action=deploy":
+                vc.vms[resp.json()["resource_id"]["id"]].config.vAppConfig = vim.vApp.VmConfigInfo()
+            return resp
+
+        prov = _prov(vc)
+        prov._transport = httpx.MockTransport(handler)
+        result = _run(prov.provision(RANGE_ID, _rendered({**TEMPLATE, "nodes": [TEMPLATE["nodes"][1]]}), {}))
+        assert result.status == "ok", result.errors
+        hw, _meta = vc.vms[result.vms[0]["vm_id"]].reconfig_specs
+        assert hw.vAppConfigRemoved is True  # in the reconfigure before the first power-on
 
     def test_template_missing_from_the_library_falls_back_to_clone(self, vc, monkeypatch):
         monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")

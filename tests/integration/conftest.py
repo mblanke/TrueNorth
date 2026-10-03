@@ -38,8 +38,14 @@ def _reachable(url: str) -> bool:
     return True
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "vcsim: runs against govmomi's vCenter simulator, not the API stack")
+
+
 def pytest_collection_modifyitems(config, items):
-    """Skip the suite only when the services it needs are not up."""
+    """Skip the suite only when the services it needs are not up.
+
+    `vcsim` tests need no API (they start their own simulator and gate themselves)."""
     api_url = os.getenv("API_BASE_URL", DEFAULT_API_URL)
     if _reachable(api_url):
         return
@@ -47,7 +53,7 @@ def pytest_collection_modifyitems(config, items):
         reason=f"no API at {api_url} — start the stack or set API_BASE_URL"
     )
     for item in items:
-        if "integration" in item.keywords:
+        if "integration" in item.keywords and not item.get_closest_marker("vcsim"):
             item.add_marker(skip)
 
 

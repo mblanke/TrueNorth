@@ -12,7 +12,8 @@ The spec for what is collected is truenorth-ai-vsphere-pack/truenorth-vsphere-di
 Usage:
     VSPHERE_PASSWORD=... .venv/bin/python scripts/vsphere-discover.py \\
         --host vcenter.lab.local --user administrator@vsphere.local --insecure \\
-        [--range-vlans 100-199] [--iso-path "[esx01-local] ISO"] [--baseline old/vsphere-inventory.json]
+        [--range-vlans 100-199] [--iso-path "[esx01-local] ISO"] [--baseline old/vsphere-inventory.json] \\
+        [--vcpu-per-thread 4]   # default: $VSPHERE_MAX_VCPU_PER_THREAD, else 4
 
 Structure (logic lives in pure functions so it is testable with plain dicts):
     collect(si, rest) -> dict           thin: reads pyVmomi objects into plain data
@@ -56,9 +57,11 @@ GIB = 1024**3
 TIB = 1024**4
 EXPECTED_HOSTS = 4
 
-# Planning assumptions (docs/vm-build-sheet.md section 1 and section 4).
-VCPU_OVERCOMMIT = 4  # vCPU per physical core
-ESXI_OVERHEAD_GB = 4  # per host
+# Capacity model = the provisioner's admission rule: powered-on vCPUs <= hardware threads x
+# VSPHERE_MAX_VCPU_PER_THREAD (default 4), RAM 1:1, minus the management-VM reserve. The
+# reserve and range sizes come from scripts/range-capacity.py so both scripts agree.
+DEFAULT_VCPU_PER_THREAD = 4.0
+MGMT_RESERVE_FALLBACK = {"vcpu": 34, "ram_gb": 128}  # range-capacity.py Lab() defaults
 VCENTER_RESERVE = {"name": "vCenter (VCSA)", "vcpu": 8, "ram_gb": 32, "disk_gb": 600}
 MGMT_VMS = [
     {"name": "TN-MGMT01", "vcpu": 16, "ram_gb": 96, "disk_gb": 600},
@@ -67,16 +70,71 @@ MGMT_VMS = [
     {"name": "TN-BUILD01", "vcpu": 8, "ram_gb": 16, "disk_gb": 200},
     {"name": "TN-KMS01", "vcpu": 2, "ram_gb": 4, "disk_gb": 60},
 ]
-# Per-range ceilings, one instance (vm-build-sheet section 4). None = not specified yet.
-RANGE_SIZES = [
-    {"name": "small-enterprise", "vms": 5, "vcpu": None, "ram_gb": None, "disk_tb": None},
-    {"name": "medium-enterprise", "vms": 8, "vcpu": 20, "ram_gb": 44, "disk_tb": 1.0},
-    {"name": "cloud-security", "vms": 16, "vcpu": 52, "ram_gb": 126, "disk_tb": 1.7},
-    {"name": "soc-training", "vms": 23, "vcpu": 69, "ram_gb": 157, "disk_tb": 3.9},
-    {"name": "red-team", "vms": 28, "vcpu": 67, "ram_gb": 149, "disk_tb": 2.1},
-    {"name": "red-vs-blue", "vms": 40, "vcpu": 80, "ram_gb": 160, "disk_tb": 1.1},
-    {"name": "large-enterprise", "vms": 50, "vcpu": 142, "ram_gb": 375, "disk_tb": 7.4},
+# Per-range size, one instance. The live source is content/ranges/*/template.yaml, summed by
+# scripts/range-capacity.py (see load_range_sizes). This constant is only the fallback for a
+# checkout without content/ranges or without PyYAML; it is a snapshot of that script's output
+# after the 2026-10 right-sizing.
+RANGE_SIZES_FALLBACK = [
+    {"name": "small-enterprise", "vms": 5, "vcpu": 10, "ram_gb": 20.0, "disk_tb": 0.29},
+    {"name": "medium-enterprise", "vms": 8, "vcpu": 16, "ram_gb": 44.0, "disk_tb": 1.02},
+    {"name": "cloud-security", "vms": 16, "vcpu": 38, "ram_gb": 126.0, "disk_tb": 1.7},
+    {"name": "soc-training", "vms": 23, "vcpu": 48, "ram_gb": 157.0, "disk_tb": 3.84},
+    {"name": "red-team", "vms": 28, "vcpu": 48, "ram_gb": 153.0, "disk_tb": 2.08},
+    {"name": "red-vs-blue", "vms": 40, "vcpu": 64, "ram_gb": 162.0, "disk_tb": 1.32},
+    {"name": "large-enterprise", "vms": 50, "vcpu": 106, "ram_gb": 375.0, "disk_tb": 7.23},
 ]
+RANGE_CAPACITY_SCRIPT = Path(__file__).resolve().parent / "range-capacity.py"
+
+
+def _range_capacity_module(script: Path = RANGE_CAPACITY_SCRIPT) -> Any:
+    """Import scripts/range-capacity.py (dash in the name, so via importlib). Raises on failure."""
+    import importlib.util
+
+    name = "range_capacity" if script == RANGE_CAPACITY_SCRIPT else f"range_capacity_{abs(hash(str(script)))}"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, script)
+    if spec is None or spec.loader is None or not Path(script).is_file():
+        raise FileNotFoundError(script)
+    rc = importlib.util.module_from_spec(spec)
+    # @dataclass resolves annotations through sys.modules[cls.__module__].
+    sys.modules[name] = rc
+    try:
+        spec.loader.exec_module(rc)
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    return rc
+
+
+def load_mgmt_reserve(script: Path = RANGE_CAPACITY_SCRIPT) -> tuple[dict[str, float], str]:
+    """Management-VM reserve (vCPU, RAM GB) as range-capacity.py models it."""
+    try:
+        lab = _range_capacity_module(script).Lab()
+        return {"vcpu": lab.mgmt_vcpu, "ram_gb": lab.mgmt_ram_gb}, "scripts/range-capacity.py"
+    except Exception as exc:  # noqa: BLE001
+        return dict(MGMT_RESERVE_FALLBACK), f"built-in fallback ({type(exc).__name__})"
+
+
+def load_range_sizes(script: Path = RANGE_CAPACITY_SCRIPT) -> tuple[list[dict[str, Any]], str]:
+    """Range sizes summed from content/ranges/*/template.yaml by scripts/range-capacity.py.
+
+    Returns (sizes, source). Falls back to RANGE_SIZES_FALLBACK when the script, PyYAML or
+    the templates are missing, so discovery still runs from a bare checkout.
+    """
+    try:
+        rc = _range_capacity_module(script)
+        templates = rc.load()
+        if not templates:
+            raise FileNotFoundError(rc.RANGES_DIR)
+        sizes = []
+        for name, tpl in templates:
+            t = rc.range_totals(tpl, name)
+            sizes.append({"name": t.range, "vms": t.vms, "vcpu": t.vcpu or None,
+                          "ram_gb": t.ram_gb or None, "disk_tb": round(t.disk_gb / 1024, 2) or None})
+        return sorted(sizes, key=lambda r: (r["vcpu"] or 0, r["name"])), "content/ranges/*/template.yaml"
+    except Exception as exc:  # noqa: BLE001 - any failure means "use the snapshot"
+        return [dict(r) for r in RANGE_SIZES_FALLBACK], f"built-in fallback ({type(exc).__name__})"
 
 VLAN_POOL_SIZE = 100
 VLAN_POOL_MIN = 900
@@ -718,39 +776,49 @@ def match_isos(isos: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def analyse_capacity(inv: dict[str, Any], placement: str | None) -> dict[str, Any]:
-    """Range capacity.
+def analyse_capacity(inv: dict[str, Any], placement: str | None,
+                     range_sizes: list[dict[str, Any]] | None = None, sizes_source: str = "",
+                     vcpu_per_thread: float = DEFAULT_VCPU_PER_THREAD,
+                     mgmt_reserve: dict[str, float] | None = None, reserve_source: str = "") -> dict[str, Any]:
+    """Range capacity, on the provisioner's admission rule (same model as range-capacity.py).
 
     The vCenter (VCSA) host is excluded from range placement altogether: it carries the
-    VCSA and vCLS, and losing it to a noisy range takes the control plane down. The
-    management VMs (vm-build-sheet section 1) are then placed greedily on the remaining
-    hosts, most free RAM first, the same rule the lab used for TN-MGMT01/TN-DC01.
-    vCPU capacity is physical cores x VCPU_OVERCOMMIT; RAM is 1:1.
+    VCSA and vCLS, and losing it to a noisy range takes the control plane down.
+    Pool = sum(threads x vcpu_per_thread) over the range hosts minus the management vCPU
+    reserve; RAM is 1:1 minus the management RAM reserve. `range_sizes` and `mgmt_reserve`
+    default to what scripts/range-capacity.py uses. For the per-host packed reference
+    figure, the management VMs (vm-build-sheet section 1, scaled to the reserve) are placed
+    greedily on the range hosts, most free RAM first.
     """
     hosts = _usable_hosts(inv)
     if not hosts:
         return {"known": False}
+    if range_sizes is None:
+        range_sizes, sizes_source = load_range_sizes()
+    if mgmt_reserve is None:
+        mgmt_reserve, reserve_source = load_mgmt_reserve()
     names = sorted(h["name"] for h in hosts)
     vc_host = inv.get("vms", {}).get("vcenter_vm_host")
     excluded = vc_host if vc_host in names and len(names) > 1 else None
     if vc_host is None and len(names) > 1:
         excluded = names[0]  # VCSA not found by name: assume the first host (esx01) carries it
     range_hosts = [h for h in hosts if h["name"] != excluded]
-    res_vcpu = sum(r["vcpu"] for r in MGMT_VMS)
-    res_ram = sum(r["ram_gb"] for r in MGMT_VMS)
+    res_vcpu = mgmt_reserve["vcpu"]
+    res_ram = mgmt_reserve["ram_gb"]
     res_disk_tb = sum(r["disk_gb"] for r in [VCENTER_RESERVE, *MGMT_VMS]) / 1024
 
-    per_host = []
-    for h in sorted(range_hosts, key=lambda h: h["name"]):
-        per_host.append({"name": h["name"], "vcpu": (h.get("cores") or 0) * VCPU_OVERCOMMIT,
-                         "ram_gb": (h.get("memory_bytes") or 0) / GIB - ESXI_OVERHEAD_GB, "mgmt_vms": []})
+    raw = [{"name": h["name"], "vcpu": (h.get("threads") or 0) * vcpu_per_thread,
+            "ram_gb": (h.get("memory_bytes") or 0) / GIB} for h in sorted(range_hosts, key=lambda h: h["name"])]
+    vcpu_scale = res_vcpu / (sum(v["vcpu"] for v in MGMT_VMS) or 1)
+    ram_scale = res_ram / (sum(v["ram_gb"] for v in MGMT_VMS) or 1)
+    per_host = [{**h, "mgmt_vms": []} for h in raw]
     for vm in sorted(MGMT_VMS, key=lambda v: -v["ram_gb"]):
         target = max(per_host, key=lambda h: (h["ram_gb"], -len(h["mgmt_vms"])))
-        target["vcpu"] -= vm["vcpu"]
-        target["ram_gb"] -= vm["ram_gb"]
+        target["vcpu"] -= vm["vcpu"] * vcpu_scale
+        target["ram_gb"] -= vm["ram_gb"] * ram_scale
         target["mgmt_vms"].append(vm["name"])
     for h in per_host:
-        h["vcpu"] = max(h["vcpu"], 0)
+        h["vcpu"] = int(max(h["vcpu"], 0))
         h["ram_gb"] = round(max(h["ram_gb"], 0.0), 1)
 
     seen: set[str] = set()
@@ -765,32 +833,32 @@ def analyse_capacity(inv: dict[str, Any], placement: str | None) -> dict[str, An
         if range_names & set(d.get("hosts", [])):
             range_free += d.get("free_bytes") or 0
 
-    pool_vcpu = sum(h["vcpu"] for h in per_host)
-    pool_ram = sum(h["ram_gb"] for h in per_host)
+    # Same arithmetic as range-capacity.py Lab.vcpu_available / ram_available_gb.
+    pool_vcpu = max(int(sum(h["vcpu"] for h in raw)) - res_vcpu, 0)
+    pool_ram = max(sum(h["ram_gb"] for h in raw) - res_ram, 0.0)
+    biggest = max(raw, key=lambda h: (h["vcpu"], h["ram_gb"])) if raw else {"vcpu": 0, "ram_gb": 0}
     # Range storage: free space on datastores a range host can reach, minus management disks
     # (the VCSA disk sits on the excluded host's datastore, so only the management VMs count).
     mgmt_disk_tb = sum(r["disk_gb"] for r in MGMT_VMS) / 1024
     storage_avail_tb = max(range_free / TIB - mgmt_disk_tb, 0)
 
     def fit(vcpu: float, ram: float, r: dict[str, Any]) -> int:
-        return int(max(min(vcpu // r["vcpu"], ram // r["ram_gb"]), 0))
+        # range-capacity.py assess(): min(vcpu_available // vcpu, int(ram_available // ram_gb))
+        return int(max(min(int(vcpu) // r["vcpu"], int(ram // r["ram_gb"])), 0))
 
     ranges = []
-    for r in RANGE_SIZES:
-        if not r["vcpu"] or not r["ram_gb"]:
+    for r in range_sizes:
+        if not r.get("vcpu") or not r.get("ram_gb"):
             ranges.append({**r, "pooled": None, "per_host": None, "one_host_down": None,
                            "concurrent": None, "storage_bound": None, "limit": None})
             continue
         pooled = fit(pool_vcpu, pool_ram, r)
         per = [fit(h["vcpu"], h["ram_gb"], r) for h in per_host]
         packed = sum(per)
-        # One range host down: lose the host that contributes most.
+        # One range host down: lose the biggest range host; the management reserve stays.
         pooled_mode = placement in ("cluster", "spread")
-        if pooled_mode:
-            worst = max(per_host, key=lambda h: (h["vcpu"], h["ram_gb"]))
-            down = fit(pool_vcpu - worst["vcpu"], pool_ram - worst["ram_gb"], r)
-        else:
-            down = packed - max(per)
+        down = (fit(pool_vcpu - biggest["vcpu"], pool_ram - biggest["ram_gb"], r) if pooled_mode
+                else packed - max(per))
         cpu_limited = pool_vcpu / r["vcpu"] <= pool_ram / r["ram_gb"]
         ranges.append({
             **r,
@@ -798,7 +866,7 @@ def analyse_capacity(inv: dict[str, Any], placement: str | None) -> dict[str, An
             "per_host": packed,
             "one_host_down": max(down, 0),
             "concurrent": pooled if pooled_mode else packed,
-            "storage_bound": int(storage_avail_tb // r["disk_tb"]),
+            "storage_bound": int(storage_avail_tb // r["disk_tb"]) if r.get("disk_tb") else None,
             "limit": "CPU" if cpu_limited else "RAM",
         })
     return {
@@ -816,13 +884,18 @@ def analyse_capacity(inv: dict[str, Any], placement: str | None) -> dict[str, An
         if excluded else None,
         "range_hosts": [h["name"] for h in per_host],
         "reserve": {"vcpu": res_vcpu, "ram_gb": res_ram, "disk_tb": round(res_disk_tb, 2),
-                    "items": MGMT_VMS, "esxi_overhead_gb_per_host": ESXI_OVERHEAD_GB},
-        "overcommit": f"{VCPU_OVERCOMMIT}:1 vCPU per physical core, 1:1 RAM",
+                    "items": MGMT_VMS, "source": reserve_source or "caller-supplied"},
+        "vcpu_per_thread": vcpu_per_thread,
+        "overcommit": (f"{vcpu_per_thread:g} vCPU per hardware thread"
+                       + (f" ({vcpu_per_thread * hosts[0]['threads'] / hosts[0]['cores']:g} per core)"
+                          if hosts[0].get("cores") and hosts[0].get("threads") else "")
+                       + ", 1:1 RAM (VSPHERE_MAX_VCPU_PER_THREAD)"),
         "range_vcpu": pool_vcpu,
         "range_ram_gb": round(pool_ram, 1),
         "range_storage_tb": round(storage_avail_tb, 2),
         "per_host": per_host,
         "ranges": ranges,
+        "range_sizes_source": sizes_source or "caller-supplied",
     }
 
 
@@ -960,13 +1033,15 @@ def diff_inventory(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
 
 
 def analyse(inv: dict[str, Any], range_vlans: str | None = None,
-            baseline: dict[str, Any] | None = None) -> dict[str, Any]:
+            baseline: dict[str, Any] | None = None,
+            range_sizes: list[dict[str, Any]] | None = None,
+            vcpu_per_thread: float = DEFAULT_VCPU_PER_THREAD) -> dict[str, Any]:
     switch = analyse_switch(inv)
     storage = analyse_storage(inv, switch["mode"])
     vtpm = analyse_vtpm(inv)
     vlan = analyse_vlans(inv, range_vlans)
     iso = match_isos(inv.get("isos", []))
-    capacity = analyse_capacity(inv, storage["placement"])
+    capacity = analyse_capacity(inv, storage["placement"], range_sizes, vcpu_per_thread=vcpu_per_thread)
     result: dict[str, Any] = {"storage": storage, "switch": switch, "vtpm": vtpm, "vlan": vlan,
                               "iso": iso, "capacity": capacity}
     env: dict[str, str] = {"VSPHERE_RANGE_SWITCH_MODE": switch["mode"]}
@@ -1191,14 +1266,19 @@ def render_markdown(inv: dict[str, Any], a: dict[str, Any]) -> str:
             ["Free storage", f"{c['storage_free_tb']} TB"],
             ["Excluded from ranges", c.get("excluded_host") or "none"],
             ["Range hosts", ", ".join(c["range_hosts"])],
-            ["Management VMs", f"{c['reserve']['vcpu']} vCPU / {c['reserve']['ram_gb']} GB RAM "
-                               f"(+ VCSA on the excluded host); {c['reserve']['disk_tb']} TB disk"],
-            ["ESXi overhead", f"{ESXI_OVERHEAD_GB} GB RAM per host"],
-            ["Overcommit", c["overcommit"]],
+            ["Management reserve", f"{c['reserve']['vcpu']} vCPU / {c['reserve']['ram_gb']} GB RAM "
+                                   f"(+ VCSA on the excluded host); {c['reserve']['disk_tb']} TB disk; "
+                                   f"from {c['reserve']['source']}"],
+            ["Admission rule", c["overcommit"]],
             ["Left for ranges", f"{c['range_vcpu']} vCPU / {c['range_ram_gb']:,.0f} GB RAM / {c['range_storage_tb']} TB"],
         ]))
         if c.get("excluded_reason"):
             w(f"\n**Note:** {c['excluded_reason']}.")
+        w(f"\n**CPU overcommit:** {c['vcpu_per_thread']:g} vCPU per thread "
+          f"({c['vcpu_per_thread'] * 2:g} per hyper-threaded core) assumes exercise VMs are mostly idle. Watch "
+          "CPU ready time (`%RDY` in esxtop, or the VM *Readiness* metric in vCenter): sustained ready above "
+          "~5% per vCPU means ranges are CPU-starved; lower `VSPHERE_MAX_VCPU_PER_THREAD` if it persists. "
+          "Concurrent figures below match `scripts/range-capacity.py` for the same lab.")
         w("\n" + _table(["Range host", "Management VMs placed", "vCPU left", "RAM left"],
                         [[h["name"], ", ".join(h["mgmt_vms"]), h["vcpu"], f"{h['ram_gb']:,.0f} GB"]
                          for h in c["per_host"]], "llrr"))
@@ -1210,11 +1290,11 @@ def render_markdown(inv: dict[str, Any], a: dict[str, Any]) -> str:
         w(f"\n**Concurrent Ranges** uses the `{mode}` placement — {how}. Limit shows whether CPU or RAM runs "
           "out first. *Per-host packed* is what fits if each range had to stay on one host (shown for "
           "reference). Storage-bound is against free space at the thin-provisioned ceiling, so it "
-          "understates what instant clones allow.\n")
+          f"understates what instant clones allow. Range sizes from: {c.get('range_sizes_source')}.\n")
         w(_table(["Range Size", "VMs", "vCPU", "RAM", "Storage", "Concurrent Ranges", "Limit", "Pooled",
                   "Per-host packed", "1 host down", "Storage-bound"],
-                 [[r["name"], r["vms"], r["vcpu"], f"{r['ram_gb']} GB" if r["ram_gb"] else None,
-                   f"{r['disk_tb']} TB" if r["disk_tb"] else None, r.get("concurrent"), r.get("limit"), r["pooled"],
+                 [[r["name"], r["vms"], r.get("vcpu"), f"{r['ram_gb']} GB" if r.get("ram_gb") else None,
+                   f"{r['disk_tb']} TB" if r.get("disk_tb") else None, r.get("concurrent"), r.get("limit"), r["pooled"],
                    r["per_host"], r["one_host_down"], r["storage_bound"]] for r in c["ranges"]], "lrrrrrlrrrr"))
 
     if a.get("diff"):
@@ -1252,7 +1332,18 @@ def main(argv: list[str] | None = None) -> int:
                         "VSPHERE_VLAN_POOL when no in-use VLAN falls inside it; otherwise a free block is searched")
     p.add_argument("--baseline", default=None, metavar="JSON",
                    help="previous vsphere-inventory.json; adds a 'changes since baseline' section")
+    p.add_argument("--vcpu-per-thread", type=float, default=None, metavar="N",
+                   help="provisioner admission ratio (default: $VSPHERE_MAX_VCPU_PER_THREAD, else 4)")
     args = p.parse_args(argv)
+    vcpu_per_thread = args.vcpu_per_thread
+    if vcpu_per_thread is None:
+        env = os.environ.get("VSPHERE_MAX_VCPU_PER_THREAD")
+        try:
+            vcpu_per_thread = float(env) if env else DEFAULT_VCPU_PER_THREAD
+        except ValueError:
+            p.error(f"VSPHERE_MAX_VCPU_PER_THREAD must be a number, got {env!r}")
+    if vcpu_per_thread <= 0:
+        p.error("--vcpu-per-thread must be > 0")
     if args.range_vlans:
         try:
             parse_vlan_range(args.range_vlans)
@@ -1276,7 +1367,7 @@ def main(argv: list[str] | None = None) -> int:
     del password
     inv["vcenter"]["host"] = args.host
 
-    analysis = analyse(inv, range_vlans=args.range_vlans, baseline=baseline)
+    analysis = analyse(inv, range_vlans=args.range_vlans, baseline=baseline, vcpu_per_thread=vcpu_per_thread)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "vsphere-inventory.json").write_text(json.dumps({"inventory": inv, "analysis": analysis},

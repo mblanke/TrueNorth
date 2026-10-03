@@ -114,13 +114,16 @@ def vsphere(monkeypatch):
     vms: dict[str, FakeVM] = {}
     waited: list[str] = []
 
-    def wait(task, si=None, maxWaitTime=None):  # noqa: N803 -- pyVim's keyword name
+    def wait(task, si=None, pc=None, maxWaitTime=None):  # noqa: N803 -- pyVim's keyword name
         assert maxWaitTime, "an unbounded wait can outlive Celery's visibility timeout"
+        assert pc is not None, "waits on the session's shared collector deadlock across threads"
         waited.append(task.label)
         if task.fail:
             raise RuntimeError(task.fail)
 
-    connect = MagicMock(return_value=SimpleNamespace(_stub=object()))
+    collector = SimpleNamespace(CreatePropertyCollector=lambda: SimpleNamespace(DestroyPropertyCollector=lambda: None))
+    connect = MagicMock(return_value=SimpleNamespace(_stub=object(), content=SimpleNamespace(
+        propertyCollector=collector)))
     monkeypatch.setattr(mod, "SmartConnect", connect)
     monkeypatch.setattr(mod, "Disconnect", MagicMock())
     monkeypatch.setattr(mod, "WaitForTask", wait)

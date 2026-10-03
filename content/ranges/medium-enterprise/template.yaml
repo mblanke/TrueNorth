@@ -17,10 +17,10 @@ network:
       cidr: "10.10.200.0/24"
     - id: 300
       name: dmz
-      cidr: "10.10.300.0/24"
+      cidr: "10.10.30.0/24"
     - id: 400
       name: management
-      cidr: "10.10.400.0/24"
+      cidr: "10.10.40.0/24"
 
 nodes:
   - id: dc01
@@ -29,7 +29,7 @@ nodes:
     os: windows-server-2022
     vlan: servers
     ip: "10.10.200.10"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
     services: [active_directory, dns, dhcp]
 
   - id: fs01
@@ -46,8 +46,8 @@ nodes:
     role: web_server
     os: ubuntu-2404
     vlan: dmz
-    ip: "10.10.300.10"
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
+    ip: "10.10.30.10"
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 40 }
     services: [nginx, php]
 
   - id: mail01
@@ -55,8 +55,8 @@ nodes:
     role: mail_server
     os: ubuntu-2404
     vlan: dmz
-    ip: "10.10.300.20"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    ip: "10.10.30.20"
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 60 }
     services: [postfix, dovecot]
 
   - id: ws01
@@ -65,7 +65,7 @@ nodes:
     os: windows-11
     vlan: corporate
     ip: "10.10.100.10"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
 
   - id: ws02
     name: Workstation 2
@@ -73,14 +73,14 @@ nodes:
     os: windows-11
     vlan: corporate
     ip: "10.10.100.11"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
 
   - id: siem01
     name: SIEM
     role: siem
     os: ubuntu-2404
     vlan: management
-    ip: "10.10.400.10"
+    ip: "10.10.40.10"
     specs: { cores: 4, memory_mb: 16384, disk_gb: 500 }
     services: [opensearch, filebeat]
 
@@ -89,5 +89,5 @@ nodes:
     role: firewall
     os: pfsense
     vlan: management
-    ip: "10.10.400.1"
+    ip: "10.10.40.1"
     specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }

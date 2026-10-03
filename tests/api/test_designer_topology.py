@@ -36,11 +36,6 @@ def _rendered(tpl: dict) -> dict:
     return {"vms": out["vm_definitions"], "networks": out["network_definitions"], "vlan_map": out["vlan_map"]}
 
 
-def _invalid_cidr_warnings_only(warnings: list[str]) -> bool:
-    # medium-enterprise ships 10.10.300.0/24 (docs/vm-build-sheet.md §7): flagged, kept as written.
-    return all("is not valid" in w for w in warnings)
-
-
 def _make_po(db_session) -> uuid.UUID:
     """A real qualification + PO, built like tests/api/test_qsp_curriculum_map.py does."""
     from app.models import PerformanceObjective, POTier, Qualification
@@ -73,7 +68,9 @@ def test_template_diagram_template_round_trip_preserves_what_provisioning_reads(
     original = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
     diagram = rt.build_template_diagram(path.read_text(encoding="utf-8-sig"))
     back = rt.diagram_to_template(diagram, original.get("name", "x"))
-    assert _invalid_cidr_warnings_only(back["warnings"]), back["warnings"]
+    # Every shipped template is a valid address plan (tests/api/test_range_templates.py), so
+    # the round trip has nothing to flag. medium-enterprise's 10.10.300.0/24 used to be.
+    assert back["warnings"] == []
     assert _rendered(back["template"]) == _rendered(original)
     # Not just what the worker reads today: every authored key survives, in order.
     assert back["template"]["nodes"] == [{**n, "os": canonical_os(n["os"])} for n in original["nodes"]]

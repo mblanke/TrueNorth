@@ -1,0 +1,14 @@
+---
+# TN-DEPOT01: Nexus (Chocolatey feed, PyPI, Docker, raw installers) + apt-cacher-ng.
+#
+#   ../../scripts/lab/depot-uplink.sh on --apply      # first run only: packages + image
+#   ansible-playbook depot.yml --ask-vault-pass
+#
+# Leaves the caches OFFLINE (tn_depot_upstream_online: false) unless told otherwise.
+# Reached through TN-BUILD01 (see inventory/hosts.yml).
+- name: "TN-DEPOT01 — software depot"
+  hosts: depot
+  gather_facts: true
+  roles:
+    - role: tn_depot
+      tags: [depot]

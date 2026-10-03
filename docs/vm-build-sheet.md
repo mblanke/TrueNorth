@@ -72,11 +72,11 @@ range resizes the clone at deploy time (see §3). Build hours and golden size co
 | 8 | `detonation-host` | Win10 derived | per parent | 12 | 35 | **no** | Sterile malware detonation | No sensor, no egress ever, snapshot-revert after each use |
 | 9 | `ubuntu-lts` | Ubuntu Server 24.04 LTS | 2 / 4 GB / 15 GB | 8 | 15 | yes | Web/app/DB victim, and base for most Linux roles | **Decided: 24.04.5.** Renamed repo-wide to `ubuntu-2404`; `ubuntu-2204` is a deprecated alias that still resolves here (§8) |
 | 10 | `rocky` | Rocky Linux 9 | 2 / 4 GB / 15 GB | 8 | 15 | yes | Enterprise Linux victim | |
-| 11 | `kali` | Kali 2024.x installer | 2 / 4 GB / 30 GB | 10 | 30 | no | Attacker / analyst workstation | Ranges deploy it at 4 vCPU / 8 GB / 120 GB |
+| 11 | `kali` | Kali 2024.x installer | 2 / 4 GB / 30 GB | 10 | 30 | no | Attacker / analyst workstation | Ranges deploy it at 2 vCPU / 8 GB / 120 GB (right-sized 2026-10-03, §4) |
 | 12 | `remnux` | Ubuntu + REMnux installer | per ubuntu-lts | 10 | 25 | no | Malware analysis | Packer marked `todo(vsphere)` |
 | 13 | `sift` | Ubuntu + SIFT (cast) | per ubuntu-lts | 10 | 30 | no | DFIR/forensics workstation | Packer marked `todo(vsphere)` |
 | 14 | `securityonion` | Security Onion 2.4 ISO | 2 / 4 GB / 60 GB | 16 | 60 | n/a | Sensor + telemetry | **Undersized.** SO 2.4 minimums are about 4+ vCPU, 16–24 GB RAM and 200 GB+ disk. Build at 4 / 16 GB / 200 GB and check against current SO docs |
-| 15 | `pfsense` | pfSense CE 2.7 | 2 / 4 GB / 4 GB | 6 | 4 | n/a | Range gateway/firewall | Ranges deploy at 2 / 2 GB / 8–20 GB. Build the disk at 20 GB |
+| 15 | `pfsense` | pfSense CE 2.7 | 2 / 4 GB / 4 GB | 6 | 4 | n/a | Range gateway/firewall | Ranges deploy at 1–2 / 2–4 GB / 8–40 GB. Build the disk at 20 GB |
 | 16 | `svc-emulators` | ubuntu-lts derived | per parent | 12 | 20 | yes | Internet-service emulation (DNS/NTP/mail/web) | |
 | 17 | `ca-host` | ubuntu-lts derived | per parent | 8 | 10 | yes | Certificate authority (step-ca / OpenSSL) | Linux CA. AD CS is a Windows role snapshot |
 | 18 | `usersim` | ubuntu-lts derived | per parent | 20 | 15 | no | Noise floor / benign traffic | Suggest CMU SEI **GHOSTS** (server here, clients on Windows) |
@@ -101,30 +101,32 @@ Build order: `srv2022` → `win10-22h2` → `ubuntu-lts` → `pfsense` → `secu
 ## 3. Role builds (what gets deployed per range)
 
 Deploy spec = the largest spec any range template asks for. Stage: **T**/**R**/**P** as in §0.
+vCPU counts were right-sized on 2026-10-03 to fit the 4-host lab (§4); RAM was kept, since the
+lab has 512 GB per host and CPU is the bottleneck.
 
 ### Windows servers
 
 | Role | Template | vCPU / RAM / Disk | Ranges | Stage | Key installs |
 |---|---|---|---|:-:|---|
-| Domain controller | srv2022 (one on srv2019 in red-team) | 4 / 8 GB / 100 GB | all | R | AD DS, DNS, DHCP, GPMC, RSAT |
+| Domain controller | srv2022 (one on srv2019 in red-team) | 2 / 8 GB / 100 GB | all | R | AD DS, DNS, DHCP, GPMC, RSAT |
 | File server | srv2022 | 2 / 8 GB / 500 GB | all | R | File Server, DFS-N/R, VSS |
 | Exchange | srv2022 | 4 / 16 GB / 200 GB | large-ent, red-vs-blue | R | **Two snapshots:** Exchange 2019 CU15 and Exchange SE (both on srv2022). OWA, SMTP/IMAP |
 | SharePoint | srv2019 (2019) / srv2022 (SE) | 4 / 16 GB / 200 GB | large-ent | R | **Two snapshots:** SharePoint 2019 on srv2019 and SharePoint SE on srv2022. IIS, SQL backend |
-| SQL | srv2022 | 8 / 32 GB / 500 GB | large-ent, red-team | R | SQL Server 2022, SSRS, SSMS |
-| PKI | srv2022 | 2 / 4 GB / 60 GB | large-ent, red-team, red-vs-blue | R | AD CS Enterprise CA, OCSP, Web Enrollment |
+| SQL | srv2022 | 4 / 32 GB / 500 GB | large-ent, red-team | R | SQL Server 2022, SSRS, SSMS |
+| PKI | srv2022 | 1–2 / 4 GB / 40–60 GB | large-ent, red-team, red-vs-blue | R | AD CS Enterprise CA, OCSP, Web Enrollment |
 | WSUS | srv2022 | 2 / 8 GB / 300 GB | large-ent | R | WSUS role |
 | MECM/SCCM | srv2022 | 4 / 16 GB / 200 GB | large-ent | R | MECM current branch, ADK + WinPE, SQL (local) |
 | Print | srv2022 | 2 / 4 GB / 60 GB | large-ent | R | Print Server role |
-| ERP/app | srv2022 | 4 / 16 GB / 200 GB | large-ent | R | IIS, .NET runtimes, sample app |
+| ERP/app | srv2022 | 2 / 16 GB / 200 GB | large-ent | R | IIS, .NET runtimes, sample app |
 | Hybrid identity sim | srv2022 | 2 / 4 GB / 60 GB | large-ent | R | Entra Connect (simulated, no tenant) |
 | Windows jump | srv2022 | 2 / 4 GB / 60 GB | large-ent, red-team | T+P | RDS/RDP, OpenSSH, RSAT |
-| Historian | srv2019 | 4 / 8 GB / 500 GB | large-ent | R | Historian simulator (not OSIsoft PI, which is licensed) |
+| Historian | srv2019 | 2 / 8 GB / 500 GB | large-ent | R | Historian simulator (not OSIsoft PI, which is licensed) |
 
 ### Windows clients
 
 | Role | Template | vCPU / RAM / Disk | Ranges | Stage |
 |---|---|---|---|:-:|
-| User workstation | win11-24h2 | 2 / 4 GB / 60 GB (power users 4 / 16 GB / 120 GB) | all | T + P (domain join) |
+| User workstation | win11-24h2 | 2 / 4 GB / 64 GB (power users 2 / 16 GB / 120 GB) | all | T + P (domain join) |
 | HMI / engineering WS | win10-ltsc | 2 / 4–8 GB / 60–120 GB | large-ent | T + P |
 | Analyst seat (Windows) | win10-22h2 | 4 / 16 GB / 120 GB | PO scenarios | T |
 
@@ -133,54 +135,54 @@ Deploy spec = the largest spec any range template asks for. Stage: **T**/**R**/*
 | Role | Template | vCPU / RAM / Disk | Stage | Key installs |
 |---|---|---|:-:|---|
 | Web | ubuntu-lts | 2 / 4 GB / 40 GB | T+P | nginx or Apache, PHP-FPM, Tomcat, TLS |
-| Mail | ubuntu-lts | 2 / 4 GB / 60 GB | T+P | Postfix, Dovecot, Roundcube, SpamAssassin |
+| Mail | ubuntu-lts | 1 / 4 GB / 60 GB | T+P | Postfix, Dovecot, Roundcube, SpamAssassin |
 | DNS | ubuntu-lts | 1 / 2 GB / 20 GB | T | BIND9 |
 | DB | ubuntu-lts | 2 / 8 GB / 100 GB | T | MySQL 8, PostgreSQL |
-| Cache | ubuntu-lts | 2 / 4 GB / 20 GB | T | Redis |
+| Cache | ubuntu-lts | 1 / 4 GB / 20 GB | T | Redis |
 | GitLab / app | ubuntu-lts | 4 / 8 GB / 200 GB | T | GitLab CE, Docker |
-| Reverse proxy | ubuntu-lts | 2 / 2 GB / 16 GB | T | HAProxy, ModSecurity |
-| Backup | ubuntu-lts | 2 / 2 GB / 32 GB | T | rsync, (Veeam agent — licensed) |
+| Reverse proxy | ubuntu-lts | 1 / 2 GB / 16 GB | T | HAProxy, ModSecurity |
+| Backup | ubuntu-lts | 1 / 2 GB / 32 GB | T | rsync, (Veeam agent — licensed) |
 | Log relay / syslog | ubuntu-lts | 2 / 4 GB / 500 GB | T | rsyslog, Logstash, Filebeat |
-| NTP | ubuntu-lts | 1 / 1 GB / 10 GB | T | chrony |
+| NTP | ubuntu-lts | 1 / 1 GB / 16 GB | T | chrony |
 | Linux jump | ubuntu-lts | 2 / 4 GB / 40 GB | T | Apache Guacamole, SSH, proxychains |
-| Firewall / VPN | pfsense | 2–4 / 2–4 GB / 20 GB | T+P | OpenVPN, IPsec, WireGuard, Snort/Suricata pkg |
+| Firewall / VPN | pfsense | 1–2 / 2–4 GB / 8–40 GB | T+P | OpenVPN, IPsec, WireGuard, Snort/Suricata pkg |
 | Router | vyos | 1 / 2 GB / 4 GB | T+P | OSPF/BGP |
 
 ### Blue / SOC
 
 | Role | Template | vCPU / RAM / Disk | Key installs |
 |---|---|---|---|
-| SIEM | ubuntu-lts | 8 / 32 GB / 500–1000 GB | OpenSearch + Dashboards, Logstash, Sigma rules |
-| Security Onion | securityonion | 8 / 16 GB / 500 GB | Zeek, Suricata, Strelka, Elastic |
-| IDS / NIDS | ubuntu-lts | 4 / 8 GB / 200 GB | Suricata, Zeek, EveBox, Arkime |
+| SIEM | ubuntu-lts | 4 / 16–32 GB / 500 GB (large-ent: 8 / 32 GB / 1000 GB) | OpenSearch + Dashboards, Logstash, Sigma rules |
+| Security Onion | securityonion | 4 / 16 GB / 500 GB (SO 2.4 minimum) | Zeek, Suricata, Strelka, Elastic |
+| IDS / NIDS | ubuntu-lts | 2 / 8 GB / 200 GB | Suricata, Zeek, EveBox, Arkime |
 | PCAP | ubuntu-lts | 2 / 4 GB / 1000 GB | Stenographer, Arkime |
-| EDR server | ubuntu-lts | 4 / 8 GB / 200 GB | Velociraptor server |
-| SOAR | ubuntu-lts | 4 / 8 GB / 100 GB | TheHive 5, Cortex |
+| EDR server | ubuntu-lts | 2 / 8 GB / 200 GB | Velociraptor server |
+| SOAR | ubuntu-lts | 2 / 8 GB / 100 GB | TheHive 5, Cortex |
 | Threat intel | ubuntu-lts | 2 / 4 GB / 60 GB | MISP |
-| Vuln scanner | ubuntu-lts | 4 / 8 GB / 100 GB | Greenbone Community (OpenVAS) |
+| Vuln scanner | ubuntu-lts | 2 / 8 GB / 100 GB | Greenbone Community (OpenVAS) |
 | DFIR workstation | sift | 4 / 16 GB / 200 GB | Autopsy, Volatility 3, Plaso, YARA |
 | Blue analyst (Linux) | ubuntu-lts | 2 / 4 GB / 32 GB | Wireshark, Zeek, Velociraptor client, xRDP |
 | Honeypot | ubuntu-lts | 1 / 2 GB / 16 GB | Cowrie, Dionaea, Elasticpot (T-Pot) |
-| Traffic gen | usersim | 2 / 2 GB / 8 GB | tcpreplay, Scapy, GHOSTS |
-| Scoreboard | ubuntu-lts | 2 / 4 GB / 32 GB | TrueNorth scoring engine |
+| Traffic gen | usersim | 1 / 2 GB / 16 GB | tcpreplay, Scapy, GHOSTS |
+| Scoreboard | ubuntu-lts | 1 / 4 GB / 32 GB | TrueNorth scoring engine |
 
 ### Red
 
 | Role | Template | vCPU / RAM / Disk | Key installs |
 |---|---|---|---|
-| Attack platform / operator | kali | 4 / 8 GB / 120 GB | see §5.3 |
-| C2 teamserver (open source) | c2-server | 4 / 8 GB / 60–100 GB | Sliver, Mythic, Empire, Metasploit |
-| C2 teamserver (Cobalt Strike) | c2-server-cs | 4 / 8 GB / 60–100 GB | Cobalt Strike (licensed, prod only) |
+| Attack platform / operator | kali | 2 / 8 GB / 120 GB | see §5.3 |
+| C2 teamserver (open source) | c2-server | 2 / 8 GB / 60–100 GB | Sliver, Mythic, Empire, Metasploit |
+| C2 teamserver (Cobalt Strike) | c2-server-cs | 2 / 8 GB / 60–100 GB | Cobalt Strike (licensed, prod only) |
 | Redirector | ubuntu-lts | 1 / 1 GB / 20 GB | nginx, socat, iptables |
-| Payload / staging | ubuntu-lts | 2 / 2 GB / 40–100 GB | nginx, SFTP, DNS-exfil listener |
-| Phishing | ubuntu-lts | 2 / 4 GB / 40 GB | GoPhish, Postfix, nginx |
+| Payload / staging | ubuntu-lts | 1 / 2 GB / 40–100 GB | nginx, SFTP, DNS-exfil listener |
+| Phishing | ubuntu-lts | 1 / 4 GB / 40 GB | GoPhish, Postfix, nginx |
 
 ### OT (large-enterprise)
 
 | Role | Template | vCPU / RAM / Disk | Key installs |
 |---|---|---|---|
-| PLC | ubuntu-lts | 1 / 1 GB / 10 GB | OpenPLC runtime, Modbus TCP |
-| OT firewall | pfsense | 2 / 2 GB / 20 GB | — |
+| PLC | ubuntu-lts | 1 / 1 GB / 16 GB | OpenPLC runtime, Modbus TCP |
+| OT firewall | pfsense | 1 / 2 GB / 20 GB | — |
 
 ### Cloud-security range
 
@@ -189,29 +191,47 @@ pre-loaded into the depot registry.
 
 | Role | vCPU / RAM / Disk | Key installs |
 |---|---|---|
-| AWS sim | 4 / 16 GB / 100 GB | LocalStack |
-| Azure sim | 4 / 8 GB / 60 GB | Azurite (+ mocks) |
+| AWS sim | 2 / 16 GB / 100 GB | LocalStack |
+| Azure sim | 2 / 8 GB / 60 GB | Azurite (+ mocks) |
 | k3s master + 2 workers | 4 / 8 GB / 100 GB each | k3s, helm, kubectl, containerd |
 | Registry | 2 / 4 GB / 200 GB | Harbor, Trivy |
-| GitLab / Jenkins / ArgoCD / SonarQube | 2–4 / 4–8 GB / 40–200 GB | as named |
-| Falco / Prowler | 2 / 4 GB / 40 GB | Falco, falcosidekick, Prowler, ScoutSuite, Steampipe |
-| IaC | 2 / 4 GB / 40 GB | Terraform, Consul |
+| GitLab / Jenkins / ArgoCD / SonarQube | 4 / 2 / 1 / 2 vCPU, 4–8 GB / 40–200 GB | as named |
+| Falco / Prowler | 1 / 4 GB / 40 GB | Falco, falcosidekick, Prowler, ScoutSuite, Steampipe |
+| IaC | 1 / 4 GB / 40 GB | Terraform, Consul |
 
 ---
 
 ## 4. Capacity per range (one instance)
 
-Summed from `content/ranges/*/template.yaml`:
+Summed from `content/ranges/*/template.yaml` by `scripts/range-capacity.py` (run it after
+any template change; `tests/scripts/test_range_capacity.py` holds the targets below and
+`tests/api/test_range_templates.py` holds each template's `resource_totals` equal to its
+nodes). Right-sized on 2026-10-03 for the 4-host vSphere lab:
 
-| Range | VMs | vCPU | RAM | Disk (thin, provisioned) |
-|---|---:|---:|---:|---:|
-| small-enterprise | 5 (jump, DC, 3 users) | — | — | — (YAML has no specs yet) |
-| medium-enterprise | 8 | 20 | 44 GB | 1.0 TB |
-| cloud-security | 16 | 52 | 126 GB | 1.7 TB |
-| soc-training | 23 | 69 | 157 GB | 3.9 TB |
-| red-team | 28 | 67 | 149 GB | 2.1 TB |
-| red-vs-blue | 40 | 80 | 160 GB | 1.1 TB |
-| large-enterprise | 50 | 142 | 375 GB | 7.4 TB |
+| Range | VMs | vCPU (was) | RAM | Disk (thin, provisioned) | Target |
+|---|---:|---:|---:|---:|---:|
+| small-enterprise | 5 (jump, DC, 3 users) | 10 | 20 GB | 0.3 TB | — (`assets:` schema, no specs: renderer defaults 2 / 4 GB / 60 GB) |
+| medium-enterprise | 8 | **16** (20) | 44 GB | 1.0 TB | ≤ 16 |
+| cloud-security | 16 | **38** (52) | 126 GB | 1.7 TB | ≤ 40 |
+| soc-training | 23 | **48** (69) | 157 GB | 3.9 TB | ≤ 48 |
+| red-team | 28 | **48** (67) | 153 GB | 2.1 TB | ≤ 48 |
+| red-vs-blue | 40 | **64** (80) | 162 GB | 1.4 TB | ≤ 64 |
+| large-enterprise | 50 | **106** (142) | 375 GB | 7.4 TB | as low as reasonable |
+
+What changed: vCPU only, by role. User workstations, DCs, file servers, PKI, Linux jump
+hosts and blue/red seats are 2; DNS, NTP, redirectors, PLCs, mail/web/reverse proxies, light
+Linux services and most pfSense instances are 1. SIEMs are 4 (large-enterprise keeps 8),
+Security Onion 4 / 16 GB (the SO 2.4 minimum), SQL 4, Exchange/SharePoint/MECM 4 / 16 GB,
+k3s nodes and GitLab 4. RAM was not cut: CPU is the lab's bottleneck, not RAM. Floors were
+raised where the template was below a minimum: Windows 11 disks 60 → 64 GB (32 → 64 GB in
+red-vs-blue), red-vs-blue `exch01` 2 → 4 vCPU and 48 → 150 GB, `ca01` 16 → 40 GB (below the
+35 GB srv2022 golden image), red-team GitLab host 4 → 8 GB RAM, and Ubuntu disks under the
+15 GB golden image (PLCs, NTP, traffic generator) to 16 GB. Roles and topology are unchanged.
+
+Fit on the lab (esx02–04: 3 × 16 threads × 4 vCPU/thread = 192 vCPU, minus ~34 for the
+management VMs = 158; 1.4 TB RAM after management): every range fits at least once; see the
+runbook §8 for concurrency. Large-enterprise's 7.4 TB is provisioned, not used: it only fits
+the ~5 TB of range-host datastores because disks are thin.
 
 Instant clones share the parent's disk and memory pages, so real consumption is well below
 these numbers. Treat them as the ceiling per concurrent range when sizing the R6625 hosts
@@ -340,7 +360,7 @@ libapache2-mod-security2, WordPress, and GitLab CE. The intentionally vulnerable
 |---|---|---|
 | kali-linux-default metapackage | Kali repo mirrored | Metasploit, Nmap, Burp CE, Responder, Hydra, John, Hashcat, SQLmap… |
 | BloodHound CE + SharpHound | Docker images | |
-| Impacket, NetExec | apt / pipx | NetExec replaces the deprecated CrackMapExec that the YAML names |
+| Impacket, NetExec | apt / pipx | NetExec (`netexec`) replaces the deprecated CrackMapExec |
 | Certipy, Evil-WinRM, Kerbrute | apt / gh | AD CS and AD attacks |
 | Sliver, Mythic, Empire (+ Starkiller) | gh / Docker | Open-source C2 |
 | Cobalt Strike | vendor | **Licensed and export-controlled.** Both options are available (§8): Cobalt Strike on `c2-server-cs` in prod, Sliver/Mythic on `c2-server` everywhere. Restrict who can deploy the CS variant |
@@ -394,7 +414,9 @@ These are repo issues the build team will hit. They are listed here and not fixe
    Repoint them at the depot.
 2. **Invalid CIDRs** in `content/ranges/medium-enterprise/template.yaml`: `10.10.300.0/24` and
    `10.10.400.0/24` (an octet cannot exceed 255). The same scheme appears in the IPs
-   `10.10.300.x` and `10.10.400.x`.
+   `10.10.300.x` and `10.10.400.x`. **Fixed (2026-10-03):** now `10.10.30.0/24` (VLAN 300) and
+   `10.10.40.0/24` (VLAN 400); VLAN ids are unchanged logical labels. `tests/api/test_range_templates.py`
+   rejects any unparseable address or a node IP outside its VLAN.
 3. **Ubuntu version mismatch.** The catalogue says `ubuntu-lts` = 24.04; every range YAML and
    `infra/proxmox|hyperv/packer` said `ubuntu-2204`. **Fixed**: renamed to `ubuntu-2404` / 24.04.5 (§8).
 4. **Templates referenced but not catalogued:** `win10-ltsc`, `vyos-1.4`; `c2-server` is used
@@ -404,15 +426,17 @@ These are repo issues the build team will hit. They are listed here and not fixe
 6. **Windows 11 template** is 40 GB, below Microsoft's 64 GB minimum, and needs a vTPM (vCenter
    key provider) or a documented TPM-check bypass for lab use.
 7. **red-vs-blue `exch01` disk is 48 GB.** This is too small for Exchange (install + logs +
-   a mailbox database). Use ≥150 GB.
+   a mailbox database). Use ≥150 GB. **Fixed (2026-10-03):** 4 vCPU / 16 GB / 150 GB.
 8. **Exchange 2019 and SharePoint 2019 reached end of support on 14 Oct 2025.** That is fine
    for a deliberately vulnerable range. **Decided: build both 2019 and SE** (§8). The current
    versions are Exchange SE and SharePoint SE. Also, **SharePoint 2019 is not supported on
-   Windows Server 2022** (large-enterprise `sp01` is `windows-server-2022`). Use srv2019, or
-   SharePoint SE.
-9. **CrackMapExec** (red-team YAML) is unmaintained. Its successor is NetExec.
-10. `small-enterprise/template.yaml` uses a different schema (`assets`/`count`) with no specs,
-    so capacity cannot be computed for it.
+   Windows Server 2022** (large-enterprise `sp01` was `windows-server-2022`). Use srv2019, or
+   SharePoint SE. **Fixed (2026-10-03):** `sp01` is `windows-server-2019` (srv2019, the `sp2019`
+   role snapshot).
+9. **CrackMapExec** (red-team YAML) is unmaintained. Its successor is NetExec. **Fixed
+   (2026-10-03):** the red-team Kali nodes and the Ansible attacker role install `netexec`.
+10. `small-enterprise/template.yaml` uses a different schema (`assets`/`count`) with no specs.
+    `scripts/range-capacity.py` counts it at the renderer defaults (2 vCPU / 4 GB / 60 GB per VM).
 
 ## 8. Decisions
 

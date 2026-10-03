@@ -2,14 +2,14 @@ id: red-team
 name: Red Team Operations Environment
 version: "1.0"
 description: |
-  A red team operations environment with 30 VMs featuring a full target
+  A red team operations environment with 28 VMs featuring a full target
   organization (Active Directory, web applications, database tier), attacker
   infrastructure (Kali, Cobalt Strike teamserver, redirectors), and pivot
   networks (VPN concentrator, jump hosts). Built for offensive security
   training and adversary simulation exercises.
 author: TrueNorth Range
 difficulty: advanced
-vm_count: 30
+vm_count: 28
 
 network:
   vlans:
@@ -68,7 +68,7 @@ nodes:
     os: ubuntu-2404
     vlan: target_dmz
     ip: "10.70.1.10"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 40 }
     services: [nginx, wordpress]
     vulnerabilities:
       - cve: "CVE-2023-XXXX"
@@ -97,7 +97,7 @@ nodes:
     os: ubuntu-2404
     vlan: target_dmz
     ip: "10.70.1.20"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 60 }
     services: [postfix, dovecot, roundcube]
     vulnerabilities:
       - type: open_relay_misconfiguration
@@ -109,7 +109,7 @@ nodes:
     os: pfsense
     vlan: target_dmz
     ip: "10.70.1.30"
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 20 }
     services: [openvpn]
     vulnerabilities:
       - type: weak_credentials
@@ -134,7 +134,7 @@ nodes:
     os: windows-server-2022
     vlan: target_corp
     ip: "10.70.0.10"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
     services: [active_directory, dns, dhcp, gpo]
     ad_domain: targetcorp.local
     vulnerabilities:
@@ -149,7 +149,7 @@ nodes:
     os: windows-server-2019
     vlan: target_corp
     ip: "10.70.0.11"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
     services: [active_directory, dns]
     ad_domain: targetcorp.local
 
@@ -196,7 +196,7 @@ nodes:
     os: windows-11
     vlan: target_corp
     ip: "10.70.0.101"
-    specs: { cores: 4, memory_mb: 16384, disk_gb: 120 }
+    specs: { cores: 2, memory_mb: 16384, disk_gb: 120 }
     user_profile: developer
     vulnerabilities:
       - type: stored_ssh_keys
@@ -208,7 +208,7 @@ nodes:
     os: windows-11
     vlan: target_corp
     ip: "10.70.0.102"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     user_profile: finance_user
 
   - id: t-ws04
@@ -217,7 +217,7 @@ nodes:
     os: windows-11
     vlan: target_corp
     ip: "10.70.0.103"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     user_profile: hr_user
 
   - id: t-ws05
@@ -235,7 +235,7 @@ nodes:
     os: ubuntu-2404
     vlan: target_corp
     ip: "10.70.0.50"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 60 }
     services: [gitlab_ce, docker]
     vulnerabilities:
       - type: sudo_misconfiguration
@@ -276,7 +276,7 @@ nodes:
     os: ubuntu-2404
     vlan: target_db
     ip: "10.70.2.30"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 20 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 20 }
     services: [redis]
     vulnerabilities:
       - type: no_auth_required
@@ -291,8 +291,8 @@ nodes:
     os: kali-2024
     vlan: attacker_infra
     ip: "10.70.3.10"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 120 }
-    services: [metasploit, burpsuite, bloodhound, impacket, crackmapexec]
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 120 }
+    services: [metasploit, burpsuite, bloodhound, impacket, netexec]
 
   - id: a-kali02
     name: Kali Attack Box 2
@@ -300,8 +300,8 @@ nodes:
     os: kali-2024
     vlan: attacker_infra
     ip: "10.70.3.11"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 120 }
-    services: [metasploit, burpsuite, bloodhound, impacket, crackmapexec]
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 120 }
+    services: [metasploit, burpsuite, bloodhound, impacket, netexec]
 
   - id: a-teamserver
     name: Cobalt Strike Teamserver
@@ -309,7 +309,7 @@ nodes:
     os: ubuntu-2404
     vlan: attacker_infra
     ip: "10.70.3.20"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 60 }
     services: [cobalt_strike_sim, sliver]
 
   - id: a-redir01
@@ -336,7 +336,7 @@ nodes:
     os: ubuntu-2404
     vlan: attacker_infra
     ip: "10.70.3.40"
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 40 }
     services: [nginx, python_http_server]
 
   # --- Pivot Network (VLAN 304) ---
@@ -346,7 +346,7 @@ nodes:
     os: pfsense
     vlan: pivot_network
     ip: "10.70.4.10"
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 20 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 20 }
     services: [openvpn, wireguard]
     note: "Dual-homed between attacker and target networks"
 
@@ -356,7 +356,7 @@ nodes:
     os: ubuntu-2404
     vlan: pivot_network
     ip: "10.70.4.20"
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 40 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 40 }
     services: [ssh, proxychains, chisel]
 
   - id: p-jump02
@@ -388,8 +388,8 @@ nodes:
       - vlan: pivot_network
         ip: "10.70.4.1"
 
-resource_totals:
-  total_vms: 30
-  total_cores: 72
-  total_memory_gb: 178
-  total_disk_gb: 2160
+resource_totals:  # summed from nodes by scripts/range-capacity.py (tests hold them equal)
+  total_vms: 28
+  total_cores: 48
+  total_memory_gb: 153
+  total_disk_gb: 2128

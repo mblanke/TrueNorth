@@ -138,23 +138,44 @@ on their own port groups, so that neither a range nor a build VM ever gets a pat
 TN-MGMT01 (Keycloak, and OpenSearch with CAF material) or to the internet.
 
 **Proposed VLANs.** Confirm they are free (discovery lists the VLANs in use), then create
-them on UniFi and as port groups on `vDS-10G`:
+them on UniFi and as port groups on `vDS-10G`. `scripts/lab/create-portgroups.sh` creates
+the port groups (it refuses if either VLAN is already in use, and sets promiscuous / MAC
+changes / forged transmits to reject) and prints the UniFi checklist; UniFi stays manual.
 
 | Port group | VLAN | Subnet | Gateway / DHCP | Allowed | Denied |
 |---|---:|---|---|---|---|
-| `dPG-TN-BUILD` | 31 | 10.30.31.0/24 | UniFi .1, DHCP .100–.200 (build VMs) | → internet; → vCenter 192.168.1.10:443 and ESXi hosts :443/:902 (Packer uploads, ISO mounts); → TN-DEPOT01 (to push mirrors) | → 10.30.30.0/24 (mgmt) |
-| `dPG-TN-SVC` | 32 | 10.30.32.0/24 | UniFi .1, no DHCP | inbound from range pfSense WANs to TN-DEPOT01 (80/443/8081) only | → internet, → mgmt, → 192.168.1.0/24 |
+| `dPG-TN-BUILD` | 31 | 10.30.31.0/24 | UniFi .1, DHCP .100–.200 (build VMs) | → internet; → vCenter 192.168.1.10:443 and ESXi hosts :443/:902 (Packer uploads, ISO mounts); TN-BUILD01 → 10.30.32.10 tcp/22, 8081, 3142 (Ansible, Nexus API, prefetch); control box → 10.30.31.10 tcp/22 | → 10.30.30.0/24 (mgmt) |
+| `dPG-TN-SVC` | 32 | 10.30.32.0/24 | UniFi .1, no DHCP | range pfSense WANs → TN-DEPOT01 tcp/8081, 3142 (same L2) | new connections → internet, mgmt, 192.168.1.0/24, 10.30.31.0/24 |
 
 | VM | Port group | IP | Spec | Built from |
 |---|---|---|---|---|
-| TN-BUILD01 | `dPG-TN-BUILD` | 10.30.31.10 | 8 vCPU / 16 GB / 200 GB | clone of `tmpl-ubuntu-2404`, then install Packer, govc and Ansible |
-| TN-DEPOT01 | `dPG-TN-SVC` | 10.30.32.10 | 4 vCPU / 16 GB / 100 GB + 1–2 TB | clone of `tmpl-ubuntu-2404`, then install Nexus OSS (Chocolatey feed, apt proxy, PyPI, Docker registry) and an ISO/installer share |
+| TN-BUILD01 | `dPG-TN-BUILD` | 10.30.31.10 | 8 vCPU / 16 GB / 200 GB | clone of `tmpl-ubuntu-2404`, then Packer, govc, Ansible, ISO tools (`install/lab/build.yml`) |
+| TN-DEPOT01 | `dPG-TN-SVC` (NIC 0) | 10.30.32.10 | 4 vCPU / 16 GB / 100 GB + 1–2 TB at `/srv/depot` | clone of `tmpl-ubuntu-2404`, then Nexus OSS (Chocolatey feed, PyPI, Docker, raw `installers`) and apt-cacher-ng (`install/lab/depot.yml`) |
+| | `dPG-TN-BUILD` (NIC 1, **disconnected**) | 10.30.31.11 | | the depot's only path upstream; connected for an install/prefetch window only |
 
 Place them on esx02–04 (the most free RAM), each on that host's own datastore.
+`scripts/lab/deploy-mgmt-vm.sh` does that (never esx01) and sets the static IPs, hostname
+and the `tnadmin` SSH key through cloud-init `guestinfo`. The full order of operations,
+with exact commands, is in [`install/lab/README.md`](../../install/lab/README.md):
+port groups → VMs → `build.yml` → uplink on → `depot.yml` → `prefetch.yml` → uplink off →
+set the `tn_depot_*` values below.
+
+**Who fetches upstream: the depot.** A Nexus proxy repository and apt-cacher-ng make the
+outbound request themselves; TN-BUILD01 having internet does not help them. Since
+`dPG-TN-SVC` has no internet, TN-DEPOT01 gets a second NIC on `dPG-TN-BUILD` that is
+connected only for a window (`scripts/lab/depot-uplink.sh on|off --apply`; `on` refuses
+while range VMs exist unless `--force`). Outside the window two independent controls hold:
+the NIC is disconnected in vCenter, and the caches are offline (apt-cacher-ng
+`Offlinemode`, Nexus proxies `blocked`; `prefetch.yml` flips both and always flips them
+back). Replies from 10.30.32.10 are policy-routed out NIC 0, so the uplink never carries
+range traffic. Chocolatey packages are also **uploaded into `chocolatey-hosted`** by
+TN-BUILD01 during prefetch, so the offline feed answers from local metadata. A
+hosted-only depot (filled by pushes, never online) was rejected because the worker uses
+the depot as an apt/dnf **forward proxy**, which only a caching proxy can serve.
 
 **Run Packer from TN-BUILD01, not TN-MGMT01**, even though the deployment repo installed
-Packer on TN-MGMT01. TN-BUILD01 fills TN-DEPOT01's mirrors. Range post-deploy installs point
-at `http://10.30.32.10` and nowhere else.
+Packer on TN-MGMT01. TN-BUILD01 drives the depot's prefetch. Range post-deploy installs point
+at `10.30.32.10` (8081 Nexus, 3142 apt-cacher-ng) and nowhere else.
 
 > **KMS (TN-KMS01) is paused** and will come with future integration and testing.
 > Templates and clones run unactivated until then. See §8 of the build sheet.
@@ -173,7 +194,7 @@ uplink (in `group_vars/all/main.yml`, or the `.env.production` keys in brackets)
 | `tn_vsphere_range_uplink_prefix` (`VSPHERE_RANGE_UPLINK_PREFIX`) | `24` | WAN prefix length |
 | `tn_depot_url` (`TN_DEPOT_URL`) | `http://10.30.32.10` | The depot as range guests reach it. Empty = no deploy-time installs |
 | `tn_depot_choco_feed` (`TN_DEPOT_CHOCO_FEED`) | empty → `http://10.30.32.10:8081/repository/chocolatey/` | Nexus Chocolatey (NuGet) feed |
-| `tn_depot_apt_proxy` (`TN_DEPOT_APT_PROXY`) | empty → `TN_DEPOT_URL` | HTTP **forward** proxy for apt/dnf (e.g. apt-cacher-ng). If it listens on another port (apt-cacher-ng: 3142), set it here and add the port to the pfSense rule below |
+| `tn_depot_apt_proxy` (`TN_DEPOT_APT_PROXY`) | **`http://10.30.32.10:3142`** | HTTP **forward** proxy for apt/dnf: apt-cacher-ng on the depot. **Set it**: empty falls back to `TN_DEPOT_URL` (port 80), where nothing listens. Guests keep their stock sources; the Rocky template must use the `http://dl.rockylinux.org` `baseurl` (an HTTPS mirrorlist can only be tunnelled, and the depot refuses tunnels) |
 | `tn_software_install_timeout` (`TN_SOFTWARE_INSTALL_TIMEOUT`) | `1800` | Seconds per VM for all of its installs |
 | `tn_vsphere_provision_budget` (`VSPHERE_PROVISION_BUDGET`) | `3300` | No new provisioning work after this many seconds (Celery redelivers after 3600) |
 
@@ -193,8 +214,8 @@ pfSense template must provide:
   address and every install fails (the range is still built; it is marked partial).
 - Outbound NAT on WAN (the automatic default is fine).
 - WAN egress rules, in this order: **allow** each LAN/zone net → `10.30.32.10` TCP
-  `80, 443, 8081` (plus the apt proxy port if it is not one of those); **block** everything
-  else outbound on WAN; **block** all inbound on WAN (the default).
+  `8081, 3142` (Nexus feed, apt-cacher-ng); **block** everything else outbound on WAN;
+  **block** all inbound on WAN (the default).
 - The UniFi side of VLAN 32 (§ table above) still denies `dPG-TN-SVC` → internet, mgmt
   and 192.168.1.0/24. Both layers are needed: the UniFi rule protects the platform if a
   student reconfigures pfSense.
@@ -326,7 +347,7 @@ Register each image after it builds. `build.sh` does this automatically when
 
 Use soc-training, or a small PO range. Check:
 - [ ] `curl https://1.1.1.1` from a range VM **fails** (no egress)
-- [ ] with the uplink on: a range VM reaches `http://10.30.32.10` (80/443/8081) and
+- [ ] with the uplink on: a range VM reaches TN-DEPOT01 on tcp/8081 (Nexus) and tcp/3142 (apt-cacher-ng) and
       nothing else on 10.30.32.0/24; the software in its `services` is installed and
       `provisioner_output.vms[].software` says `ok`
 - [ ] a range VM cannot reach 10.30.30.0/24, 192.168.1.0/24 or vCenter
@@ -343,22 +364,29 @@ Use soc-training, or a small PO range. Check:
 The range hosts are esx02–04: 24 physical cores, 48 threads, about 1.5 TB of RAM and
 about 4.9 TB of thin-provisioned storage. **CPU is the bottleneck, not RAM.** How many
 ranges fit depends entirely on how far you overcommit vCPUs. Range sizes are from
-`vm-build-sheet.md` §4. The management VMs (TN-MGMT01 and the others) use about 34 of the
-vCPUs below.
+`vm-build-sheet.md` §4, after the 2026-10-03 right-sizing (old vCPU in brackets). The
+management VMs (TN-MGMT01 and the others) use about 34 of the vCPUs below. Recompute after
+any template change with `.venv/bin/python scripts/range-capacity.py` (add
+`--vcpu-per-thread 2` for the 4-per-core column).
 
-| Range | vCPU | RAM | Fits at 4 vCPU/core (96 vCPU, ~62 after mgmt VMs; discovery's conservative figure) | Fits at 4 vCPU/thread (192 vCPU; the provisioner default `VSPHERE_MAX_VCPU_PER_THREAD=4`) |
+| Range | vCPU | RAM | Fits at 4 vCPU/core (96 vCPU, ~62 after mgmt VMs; discovery's conservative figure) | Fits at 4 vCPU/thread (192 vCPU, 158 after mgmt VMs; the provisioner default `VSPHERE_MAX_VCPU_PER_THREAD=4`) |
 |---|---:|---:|---|---|
-| medium-enterprise | 20 | 44 GB | 3 | ~7 |
-| cloud-security | 52 | 126 GB | 1 | 3 |
-| soc-training | 69 | 157 GB | 0 | 2 |
-| red-team | 67 | 149 GB | 0 | 2 |
-| red-vs-blue | 80 | 160 GB | 0 | 1–2 |
-| large-enterprise | 142 | 375 GB | 0 | 1 (disk: 7.4 TB provisioned; only fits thin) |
+| medium-enterprise | 16 (20) | 44 GB | 3 | 9 |
+| cloud-security | 38 (52) | 126 GB | 1 | 4 |
+| soc-training | 48 (69) | 157 GB | 1 | 3 |
+| red-team | 48 (67) | 153 GB | 1 | 3 |
+| red-vs-blue | 64 (80) | 162 GB | 0 | 2 |
+| large-enterprise | 106 (142) | 375 GB | 0 | 1 (disk: 7.4 TB provisioned; only fits thin) |
 
-Exercise VMs mostly sit idle, so 4 vCPU per thread (16 per core) is workable for training.
-Watch CPU ready time in vCenter: above about 10%, students will feel it. To run larger
-ranges, the next steps are linked clones (not built yet) and right-sizing VMs in the range
-templates. Many of them ask for 4–8 vCPU where 2 would do.
+Counts are per range type on an otherwise empty lab; mixed ranges share the same 158 vCPU
+(for example one soc-training + one red-team + one cloud-security = 134). The provisioner
+places per host (64 vCPU each at 4/thread, less the management VMs on that host), so a
+range larger than one host's headroom is split across hosts.
+
+Exercise VMs mostly sit idle, so 4 vCPU per thread (8 per hyper-threaded core) is workable for training.
+Watch CPU ready time in vCenter: above about 10%, students will feel it. To run more or
+larger ranges, the next step is linked clones (not built yet). The templates have already
+been right-sized (`vm-build-sheet.md` §4); RAM was left alone because it is not the limit.
 
 ---
 
