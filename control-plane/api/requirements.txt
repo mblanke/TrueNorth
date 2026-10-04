@@ -22,7 +22,8 @@ html2text==2024.2.26
 python-multipart==0.0.9
 aiosmtplib>=2.0
 proxmoxer>=2.0
-requests>=2.28
+requests>=2.34.2
+urllib3>=2.6.3,<3
 opentelemetry-api==1.25.0
 opentelemetry-sdk==1.25.0
 opentelemetry-instrumentation-fastapi==0.46b0
