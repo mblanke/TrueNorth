@@ -207,59 +207,24 @@
             "title": "Api Key"
           },
           "base_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Url"
+            "title": "Base Url",
+            "type": "string"
           },
           "is_active": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Active"
+            "title": "Is Active",
+            "type": "boolean"
           },
           "is_primary": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Primary"
+            "title": "Is Primary",
+            "type": "boolean"
           },
           "max_concurrent": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Concurrent"
+            "title": "Max Concurrent",
+            "type": "integer"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "notes": {
             "anyOf": [
@@ -273,15 +238,8 @@
             "title": "Notes"
           },
           "timeout_seconds": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timeout Seconds"
+            "title": "Timeout Seconds",
+            "type": "integer"
           }
         },
         "title": "AIBackendConfigUpdate",
@@ -518,49 +476,21 @@
       "AIModelRouteUpdate": {
         "properties": {
           "backend_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Backend Id"
+            "format": "uuid",
+            "title": "Backend Id",
+            "type": "string"
           },
           "is_active": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Active"
+            "title": "Is Active",
+            "type": "boolean"
           },
           "model_pattern": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Pattern"
+            "title": "Model Pattern",
+            "type": "string"
           },
           "priority": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Priority"
+            "title": "Priority",
+            "type": "integer"
           },
           "tags": {
             "anyOf": [
@@ -2554,98 +2484,42 @@
       "CourseUpdate": {
         "properties": {
           "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
+            "title": "Description",
+            "type": "string"
           },
           "difficulty": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Difficulty"
+            "title": "Difficulty",
+            "type": "string"
           },
           "duration_hours": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Hours"
+            "title": "Duration Hours",
+            "type": "integer"
           },
           "is_published": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Published"
+            "title": "Is Published",
+            "type": "boolean"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "nice_work_roles": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Nice Work Roles"
+            "items": {
+              "type": "string"
+            },
+            "title": "Nice Work Roles",
+            "type": "array"
           },
           "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags"
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
           },
           "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version"
+            "title": "Version",
+            "type": "string"
           }
         },
         "title": "CourseUpdate",
@@ -3178,16 +3052,9 @@
             "title": "Description"
           },
           "detection_yaml": {
-            "anyOf": [
-              {
-                "minLength": 10,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Detection Yaml"
+            "minLength": 10,
+            "title": "Detection Yaml",
+            "type": "string"
           },
           "false_positives": {
             "anyOf": [
@@ -3204,27 +3071,13 @@
             "title": "False Positives"
           },
           "is_enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Enabled"
+            "title": "Is Enabled",
+            "type": "boolean"
           },
           "level": {
-            "anyOf": [
-              {
-                "pattern": "^(informational|low|medium|high|critical)$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Level"
+            "pattern": "^(informational|low|medium|high|critical)$",
+            "title": "Level",
+            "type": "string"
           },
           "logsource_category": {
             "anyOf": [
@@ -3274,16 +3127,9 @@
             "title": "Mitre Attack Ids"
           },
           "status": {
-            "anyOf": [
-              {
-                "pattern": "^(draft|testing|stable|deprecated)$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
+            "pattern": "^(draft|testing|stable|deprecated)$",
+            "title": "Status",
+            "type": "string"
           },
           "tags": {
             "anyOf": [
@@ -3300,17 +3146,10 @@
             "title": "Tags"
           },
           "title": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
           }
         },
         "title": "DetectionRuleUpdate",
@@ -3774,26 +3613,12 @@
       "ExerciseUpdate": {
         "properties": {
           "max_score": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Score"
+            "title": "Max Score",
+            "type": "integer"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           }
         },
         "title": "ExerciseUpdate",
@@ -4144,38 +3969,17 @@
       "ExternalPlatformUpdate": {
         "properties": {
           "auth_type": {
-            "anyOf": [
-              {
-                "pattern": "^(lti13|oauth2|api_key|saml)$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Auth Type"
+            "pattern": "^(lti13|oauth2|api_key|saml)$",
+            "title": "Auth Type",
+            "type": "string"
           },
           "base_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Url"
+            "title": "Base Url",
+            "type": "string"
           },
           "is_active": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Active"
+            "title": "Is Active",
+            "type": "boolean"
           },
           "lti_auth_login_url": {
             "anyOf": [
@@ -4244,15 +4048,8 @@
             "title": "Lti Token Url"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           }
         },
         "title": "ExternalPlatformUpdate",
@@ -5037,48 +4834,20 @@
             "title": "Datacenter"
           },
           "host": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Host"
+            "title": "Host",
+            "type": "string"
           },
           "is_active": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Active"
+            "title": "Is Active",
+            "type": "boolean"
           },
           "is_primary": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Primary"
+            "title": "Is Primary",
+            "type": "boolean"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "notes": {
             "anyOf": [
@@ -5103,37 +4872,16 @@
             "title": "Password"
           },
           "port": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Port"
+            "title": "Port",
+            "type": "integer"
           },
           "username": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Username"
+            "title": "Username",
+            "type": "string"
           },
           "verify_ssl": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Verify Ssl"
+            "title": "Verify Ssl",
+            "type": "boolean"
           }
         },
         "title": "HypervisorConnectionUpdate",
@@ -5782,136 +5530,52 @@
       "MeslEventPatch": {
         "properties": {
           "attack_technique": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attack Technique"
+            "title": "Attack Technique",
+            "type": "string"
           },
           "delivery_method": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Delivery Method"
+            "title": "Delivery Method",
+            "type": "string"
           },
           "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
+            "title": "Description",
+            "type": "string"
           },
           "expected_action": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Action"
+            "title": "Expected Action",
+            "type": "string"
           },
           "from_cell": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "From Cell"
+            "title": "From Cell",
+            "type": "string"
           },
           "moe": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Moe"
+            "title": "Moe",
+            "type": "string"
           },
           "objective_ref": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Objective Ref"
+            "title": "Objective Ref",
+            "type": "string"
           },
           "phase": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Phase"
+            "title": "Phase",
+            "type": "string"
           },
           "scenario_time": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scenario Time"
+            "title": "Scenario Time",
+            "type": "string"
           },
           "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
+            "title": "Status",
+            "type": "string"
           },
           "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
+            "title": "Title",
+            "type": "string"
           },
           "to_participant": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "To Participant"
+            "title": "To Participant",
+            "type": "string"
           }
         },
         "title": "MeslEventPatch",
@@ -6213,48 +5877,20 @@
             "title": "Firmware Version"
           },
           "is_active": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Active"
+            "title": "Is Active",
+            "type": "boolean"
           },
           "management_ip": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Management Ip"
+            "title": "Management Ip",
+            "type": "string"
           },
           "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
+            "title": "Model",
+            "type": "string"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "notes": {
             "anyOf": [
@@ -6268,37 +5904,16 @@
             "title": "Notes"
           },
           "port_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Port Count"
+            "title": "Port Count",
+            "type": "integer"
           },
           "role": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Role"
+            "title": "Role",
+            "type": "string"
           },
           "vendor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vendor"
+            "title": "Vendor",
+            "type": "string"
           }
         },
         "title": "NetworkDeviceUpdate",
@@ -6525,26 +6140,12 @@
       "OUUpdate": {
         "properties": {
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "ou_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ou Type"
+            "title": "Ou Type",
+            "type": "string"
           },
           "parent_id": {
             "anyOf": [
@@ -6559,15 +6160,8 @@
             "title": "Parent Id"
           },
           "slug": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Slug"
+            "title": "Slug",
+            "type": "string"
           }
         },
         "title": "OUUpdate",
@@ -7929,26 +7523,12 @@
       "RangeUpdate": {
         "properties": {
           "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
+            "title": "Description",
+            "type": "string"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           }
         },
         "title": "RangeUpdate",
@@ -9008,37 +8588,16 @@
             "title": "Description"
           },
           "group_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Type"
+            "title": "Group Type",
+            "type": "string"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "slug": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Slug"
+            "title": "Slug",
+            "type": "string"
           }
         },
         "title": "SecurityGroupUpdate",
@@ -9449,48 +9008,20 @@
       "StorageApplianceUpdate": {
         "properties": {
           "is_active": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Active"
+            "title": "Is Active",
+            "type": "boolean"
           },
           "management_ip": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Management Ip"
+            "title": "Management Ip",
+            "type": "string"
           },
           "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
+            "title": "Model",
+            "type": "string"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "notes": {
             "anyOf": [
@@ -9504,48 +9035,20 @@
             "title": "Notes"
           },
           "protocol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Protocol"
+            "title": "Protocol",
+            "type": "string"
           },
           "raw_capacity_tb": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Raw Capacity Tb"
+            "title": "Raw Capacity Tb",
+            "type": "number"
           },
           "usable_capacity_tb": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Usable Capacity Tb"
+            "title": "Usable Capacity Tb",
+            "type": "number"
           },
           "vendor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vendor"
+            "title": "Vendor",
+            "type": "string"
           }
         },
         "title": "StorageApplianceUpdate",
@@ -9933,15 +9436,8 @@
             "title": "Max Members"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "title": "Name",
+            "type": "string"
           },
           "team_type": {
             "anyOf": [
@@ -10499,41 +9995,20 @@
             "title": "Collection Id"
           },
           "is_enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Enabled"
+            "title": "Is Enabled",
+            "type": "boolean"
           },
           "name": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
           },
           "poll_interval_minutes": {
-            "anyOf": [
-              {
-                "maximum": 10080.0,
-                "minimum": 5.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Poll Interval Minutes"
+            "maximum": 10080.0,
+            "minimum": 5.0,
+            "title": "Poll Interval Minutes",
+            "type": "integer"
           },
           "url": {
             "anyOf": [

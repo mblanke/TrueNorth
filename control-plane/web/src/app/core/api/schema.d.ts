@@ -5137,19 +5137,19 @@ export interface components {
             /** Api Key */
             api_key?: string | null;
             /** Base Url */
-            base_url?: string | null;
+            base_url?: string;
             /** Is Active */
-            is_active?: boolean | null;
+            is_active?: boolean;
             /** Is Primary */
-            is_primary?: boolean | null;
+            is_primary?: boolean;
             /** Max Concurrent */
-            max_concurrent?: number | null;
+            max_concurrent?: number;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Notes */
             notes?: string | null;
             /** Timeout Seconds */
-            timeout_seconds?: number | null;
+            timeout_seconds?: number;
         };
         /** AIFleetNodeOut */
         AIFleetNodeOut: {
@@ -5269,14 +5269,17 @@ export interface components {
         };
         /** AIModelRouteUpdate */
         AIModelRouteUpdate: {
-            /** Backend Id */
-            backend_id?: string | null;
+            /**
+             * Backend Id
+             * Format: uuid
+             */
+            backend_id?: string;
             /** Is Active */
-            is_active?: boolean | null;
+            is_active?: boolean;
             /** Model Pattern */
-            model_pattern?: string | null;
+            model_pattern?: string;
             /** Priority */
-            priority?: number | null;
+            priority?: number;
             /** Tags */
             tags?: string | null;
         };
@@ -6208,21 +6211,21 @@ export interface components {
         /** CourseUpdate */
         CourseUpdate: {
             /** Description */
-            description?: string | null;
+            description?: string;
             /** Difficulty */
-            difficulty?: string | null;
+            difficulty?: string;
             /** Duration Hours */
-            duration_hours?: number | null;
+            duration_hours?: number;
             /** Is Published */
-            is_published?: boolean | null;
+            is_published?: boolean;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Nice Work Roles */
-            nice_work_roles?: string[] | null;
+            nice_work_roles?: string[];
             /** Tags */
-            tags?: string[] | null;
+            tags?: string[];
             /** Version */
-            version?: string | null;
+            version?: string;
         };
         /** CurriculumDocOut */
         CurriculumDocOut: {
@@ -6428,13 +6431,13 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Detection Yaml */
-            detection_yaml?: string | null;
+            detection_yaml?: string;
             /** False Positives */
             false_positives?: string[] | null;
             /** Is Enabled */
-            is_enabled?: boolean | null;
+            is_enabled?: boolean;
             /** Level */
-            level?: string | null;
+            level?: string;
             /** Logsource Category */
             logsource_category?: string | null;
             /** Logsource Product */
@@ -6444,11 +6447,11 @@ export interface components {
             /** Mitre Attack Ids */
             mitre_attack_ids?: string[] | null;
             /** Status */
-            status?: string | null;
+            status?: string;
             /** Tags */
             tags?: string[] | null;
             /** Title */
-            title?: string | null;
+            title?: string;
         };
         /** DiagramIn */
         DiagramIn: {
@@ -6662,9 +6665,9 @@ export interface components {
         /** ExerciseUpdate */
         ExerciseUpdate: {
             /** Max Score */
-            max_score?: number | null;
+            max_score?: number;
             /** Name */
-            name?: string | null;
+            name?: string;
         };
         /** ExternalActivityOut */
         ExternalActivityOut: {
@@ -6774,11 +6777,11 @@ export interface components {
         /** ExternalPlatformUpdate */
         ExternalPlatformUpdate: {
             /** Auth Type */
-            auth_type?: string | null;
+            auth_type?: string;
             /** Base Url */
-            base_url?: string | null;
+            base_url?: string;
             /** Is Active */
-            is_active?: boolean | null;
+            is_active?: boolean;
             /** Lti Auth Login Url */
             lti_auth_login_url?: string | null;
             /** Lti Client Id */
@@ -6792,7 +6795,7 @@ export interface components {
             /** Lti Token Url */
             lti_token_url?: string | null;
             /** Name */
-            name?: string | null;
+            name?: string;
         };
         /** FleetNodeCreateIn */
         FleetNodeCreateIn: {
@@ -7107,23 +7110,23 @@ export interface components {
             /** Datacenter */
             datacenter?: string | null;
             /** Host */
-            host?: string | null;
+            host?: string;
             /** Is Active */
-            is_active?: boolean | null;
+            is_active?: boolean;
             /** Is Primary */
-            is_primary?: boolean | null;
+            is_primary?: boolean;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Notes */
             notes?: string | null;
             /** Password */
             password?: string | null;
             /** Port */
-            port?: number | null;
+            port?: number;
             /** Username */
-            username?: string | null;
+            username?: string;
             /** Verify Ssl */
-            verify_ssl?: boolean | null;
+            verify_ssl?: boolean;
         };
         /** HypervisorNodeOut */
         HypervisorNodeOut: {
@@ -7403,29 +7406,29 @@ export interface components {
         /** MeslEventPatch */
         MeslEventPatch: {
             /** Attack Technique */
-            attack_technique?: string | null;
+            attack_technique?: string;
             /** Delivery Method */
-            delivery_method?: string | null;
+            delivery_method?: string;
             /** Description */
-            description?: string | null;
+            description?: string;
             /** Expected Action */
-            expected_action?: string | null;
+            expected_action?: string;
             /** From Cell */
-            from_cell?: string | null;
+            from_cell?: string;
             /** Moe */
-            moe?: string | null;
+            moe?: string;
             /** Objective Ref */
-            objective_ref?: string | null;
+            objective_ref?: string;
             /** Phase */
-            phase?: string | null;
+            phase?: string;
             /** Scenario Time */
-            scenario_time?: string | null;
+            scenario_time?: string;
             /** Status */
-            status?: string | null;
+            status?: string;
             /** Title */
-            title?: string | null;
+            title?: string;
             /** To Participant */
-            to_participant?: string | null;
+            to_participant?: string;
         };
         /** MeslGenerateReq */
         MeslGenerateReq: {
@@ -7559,21 +7562,21 @@ export interface components {
             /** Firmware Version */
             firmware_version?: string | null;
             /** Is Active */
-            is_active?: boolean | null;
+            is_active?: boolean;
             /** Management Ip */
-            management_ip?: string | null;
+            management_ip?: string;
             /** Model */
-            model?: string | null;
+            model?: string;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Notes */
             notes?: string | null;
             /** Port Count */
-            port_count?: number | null;
+            port_count?: number;
             /** Role */
-            role?: string | null;
+            role?: string;
             /** Vendor */
-            vendor?: string | null;
+            vendor?: string;
         };
         /** NetworkSummaryOut */
         NetworkSummaryOut: {
@@ -7661,13 +7664,13 @@ export interface components {
         /** OUUpdate */
         OUUpdate: {
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Ou Type */
-            ou_type?: string | null;
+            ou_type?: string;
             /** Parent Id */
             parent_id?: string | null;
             /** Slug */
-            slug?: string | null;
+            slug?: string;
         };
         /** ObjectiveOut */
         ObjectiveOut: {
@@ -8229,9 +8232,9 @@ export interface components {
         /** RangeUpdate */
         RangeUpdate: {
             /** Description */
-            description?: string | null;
+            description?: string;
             /** Name */
-            name?: string | null;
+            name?: string;
         };
         /**
          * RegistrationApproveIn
@@ -8585,11 +8588,11 @@ export interface components {
             /** Description */
             description?: string | null;
             /** Group Type */
-            group_type?: string | null;
+            group_type?: string;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Slug */
-            slug?: string | null;
+            slug?: string;
         };
         /** SharedCommandIn */
         SharedCommandIn: {
@@ -8796,23 +8799,23 @@ export interface components {
         /** StorageApplianceUpdate */
         StorageApplianceUpdate: {
             /** Is Active */
-            is_active?: boolean | null;
+            is_active?: boolean;
             /** Management Ip */
-            management_ip?: string | null;
+            management_ip?: string;
             /** Model */
-            model?: string | null;
+            model?: string;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Notes */
             notes?: string | null;
             /** Protocol */
-            protocol?: string | null;
+            protocol?: string;
             /** Raw Capacity Tb */
-            raw_capacity_tb?: number | null;
+            raw_capacity_tb?: number;
             /** Usable Capacity Tb */
-            usable_capacity_tb?: number | null;
+            usable_capacity_tb?: number;
             /** Vendor */
-            vendor?: string | null;
+            vendor?: string;
         };
         /** StorageSummaryOut */
         StorageSummaryOut: {
@@ -8961,7 +8964,7 @@ export interface components {
             /** Max Members */
             max_members?: number | null;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Team Type */
             team_type?: string | null;
         };
@@ -9179,11 +9182,11 @@ export interface components {
             /** Collection Id */
             collection_id?: string | null;
             /** Is Enabled */
-            is_enabled?: boolean | null;
+            is_enabled?: boolean;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Poll Interval Minutes */
-            poll_interval_minutes?: number | null;
+            poll_interval_minutes?: number;
             /** Url */
             url?: string | null;
         };
