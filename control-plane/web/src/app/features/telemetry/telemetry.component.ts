@@ -19,6 +19,12 @@ import { ThemeService } from '@core/services/theme.service';
 import { tnChartColors, tnCartesianBase } from '../../shared/charts/echarts-theme';
 import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
 
+/** The pipeline writes both fields; other shippers indexing into OpenSearch write only @timestamp. */
+export function telemetryEventTime(e: TelemetryEvent): string {
+  const t = e.timestamp ?? e['@timestamp'];
+  return t ? String(t) : '';
+}
+
 @Component({
   selector: 'tn-telemetry',
   imports: [
@@ -90,7 +96,7 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
         </div>
 
         <table mat-table [dataSource]="events()" class="mt-2 full-width">
-          <ng-container matColumnDef="timestamp"><th mat-header-cell *matHeaderCellDef>Time</th><td mat-cell *matCellDef="let e">{{ e.timestamp }}</td></ng-container>
+          <ng-container matColumnDef="timestamp"><th mat-header-cell *matHeaderCellDef>Time</th><td mat-cell *matCellDef="let e">{{ eventTime(e) }}</td></ng-container>
           <ng-container matColumnDef="event_type"><th mat-header-cell *matHeaderCellDef>Type</th><td mat-cell *matCellDef="let e">{{ e.event_type }}</td></ng-container>
           <ng-container matColumnDef="hostname"><th mat-header-cell *matHeaderCellDef>Host</th><td mat-cell *matCellDef="let e">{{ e.hostname || '—' }}</td></ng-container>
           <ng-container matColumnDef="source_ip"><th mat-header-cell *matHeaderCellDef>Src IP</th><td mat-cell *matCellDef="let e">{{ e.source_ip || '—' }}</td></ng-container>
@@ -187,6 +193,8 @@ export class TelemetryComponent implements OnInit, OnDestroy {
     });
   }
 
+  readonly eventTime = telemetryEventTime;
+
   private buildCharts(events: TelemetryEvent[]): void {
     const c = tnChartColors();
     const base = tnCartesianBase(c);
@@ -194,7 +202,8 @@ export class TelemetryComponent implements OnInit, OnDestroy {
     // Time buckets (per minute).
     const buckets = new Map<string, number>();
     for (const e of events) {
-      const ts = e.timestamp ? String(e.timestamp).slice(0, 16) : 'unknown';
+      const t = this.eventTime(e);
+      const ts = t ? t.slice(0, 16) : 'unknown';
       buckets.set(ts, (buckets.get(ts) ?? 0) + 1);
     }
     const times = [...buckets.keys()].sort();
