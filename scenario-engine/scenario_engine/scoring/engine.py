@@ -13,7 +13,20 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from ..event_stores import BaseEventStore
+
 logger = logging.getLogger(__name__)
+
+
+# Scenario content says ``validator: opensearch_query``; objective rows may carry the
+# ``validate.`` prefix. Both name a ScoringValidator method.
+_VALIDATOR_METHODS = {"manual_ack": "manual"}
+
+
+def validation_method(validator: str) -> str:
+    """The ScoringValidator method for a scenario/objective-row validator name."""
+    name = (validator or "manual").removeprefix("validate.")
+    return _VALIDATOR_METHODS.get(name, name)
 
 
 # ── Data classes ────────────────────────────────────────────
@@ -93,9 +106,12 @@ class ScoringEngine:
     objectives:
         List of objective definitions (dicts).
     opensearch_url:
-        Optional OpenSearch endpoint for query-based validation.
+        Optional OpenSearch endpoint for query-based validation (shorthand for an
+        ``OpenSearchEventStore``).
     start_time:
         Exercise start timestamp; defaults to *now*.
+    event_store:
+        Store that query objectives run against (``scenario_engine.event_stores``).
     """
 
     def __init__(
@@ -104,10 +120,12 @@ class ScoringEngine:
         objectives: list[dict[str, Any]],
         opensearch_url: str | None = None,
         start_time: datetime | None = None,
+        event_store: BaseEventStore | None = None,
     ) -> None:
         self.exercise_id = exercise_id
         self.objectives: dict[str, Objective] = {obj["id"]: Objective.from_dict(obj) for obj in objectives}
         self.opensearch_url = opensearch_url
+        self.event_store = event_store
         self.start_time = start_time or datetime.now(UTC)
         self.total_score: int = 0
         self.max_score: int = sum(obj.max_points for obj in self.objectives.values())
@@ -183,6 +201,7 @@ class ScoringEngine:
             method=obj.validation_method,
             config=obj.validation_config,
             opensearch_url=self.opensearch_url,
+            event_store=self.event_store,
         )
 
         # Score

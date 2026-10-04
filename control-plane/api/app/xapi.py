@@ -111,6 +111,31 @@ def exercise_launched(user_email: str, user_name: str, exercise_id: str, exercis
     )
 
 
+PASS_THRESHOLD = 0.7
+
+
+def exercise_result(score: int | None, max_score: int | None) -> dict:
+    """xAPI ``result`` for a completed exercise, valid under xAPI 1.0.3.
+
+    The spec requires ``min <= raw <= max`` and ``-1 <= scaled <= 1``.
+
+    * With a positive ``max_score``, ``raw`` is clamped to ``[0, max_score]``: points
+      achieved beyond the exercise maximum count as full marks, never as more than 100%.
+    * With no ``max_score`` (None or <= 0) nothing is scoreable, so ``max``, ``scaled``
+      and ``success`` are omitted rather than invented. The statement then records
+      completion only; an empty exercise is neither passed nor failed.
+    """
+    raw = max(score or 0, 0)
+    if not max_score or max_score <= 0:
+        return {"score": {"raw": raw, "min": 0}, "completion": True}
+    raw = min(raw, max_score)
+    return {
+        "score": {"raw": raw, "min": 0, "max": max_score, "scaled": raw / max_score},
+        "completion": True,
+        "success": raw >= max_score * PASS_THRESHOLD,
+    }
+
+
 def exercise_completed(
     user_email: str, user_name: str, exercise_id: str, exercise_name: str, score: int, max_score: int
 ) -> dict:
@@ -121,11 +146,7 @@ def exercise_completed(
         "exercise",
         exercise_id,
         exercise_name,
-        result={
-            "score": {"raw": score, "max": max_score, "scaled": score / max(max_score, 1)},
-            "completion": True,
-            "success": score >= max_score * 0.7,
-        },
+        result=exercise_result(score, max_score),
     )
 
 
