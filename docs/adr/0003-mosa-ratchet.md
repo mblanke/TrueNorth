@@ -27,10 +27,23 @@ Raise a baseline only with a new ADR explaining why.
 ## Decision: supply-chain evidence
 - CI job `supply-chain` produces a CycloneDX SBOM (`sbom.cdx.json`) and pip-audit and
   npm audit reports as build artifacts.
-- The audits are **report-only** for now. The 2026-10-03 baseline was 81 Python
-  advisories in 10 packages (notably `python-jose`, `starlette`/FastAPI,
-  `python-multipart`, `pypdf`, `urllib3`) and 14 npm advisories. Make the job blocking
-  once those upgrades land.
+- The audits are **blocking**. Any known advisory fails the build. pip-audit covers
+  every Python service's pins (api, worker, ai-orchestrator, telemetry-pipeline,
+  scenario-engine) and npm audit covers the web app's production dependencies. Both
+  always run and the reports always upload, so a failing build carries its evidence.
+- The 2026-10-03 baseline (81 Python advisories in 10 packages, 14 npm) was cleared
+  before the job was made blocking, one package group per commit:
+  - pypdf 6, jinja2 3.1.6, python-dotenv 1.2, requests 2.34 with urllib3 2.x
+    (opensearch-py 2.8 lifts its urllib3<2 pin), and OpenTelemetry 1.45 (protobuf 7).
+  - FastAPI 0.142 / Starlette 1.7 / python-multipart 0.0.32.
+  - python-jose was replaced, not bumped, by PyJWT behind `app/jwks.py`, which also
+    removed ecdsa (no fix exists). Real-signature tests (`test_token_validation.py`)
+    pin alg/kid/exp/aud/iss behaviour.
+  - Angular 17 -> 21 (the advisories cover every release up to 19.2.25, the last
+    19.x), echarts 6.1, and jointjs replaced by @joint/core 4 (drops lodash).
+- When a new advisory lands, fix it in the same way: upgrade, or replace an abandoned
+  package. Do not add an ignore without an ADR that names the advisory, why it does
+  not apply, and when it will be revisited.
 - Third-party container images are pinned to a tag. Never use `:latest`.
 
 ## Decision: licensing and data rights

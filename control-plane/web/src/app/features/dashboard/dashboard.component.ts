@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnInit, signal, ChangeDetectorRef } from '@angular/core';
+import { Component, ElementRef, OnInit, signal, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import gsap from 'gsap';
@@ -66,7 +66,6 @@ interface DeploymentProfile {
 
 @Component({
   selector: 'tn-dashboard',
-  standalone: true,
   imports: [
     CommonModule, RouterModule, FormsModule, MatCardModule, MatIconModule,
     MatButtonModule, MatChipsModule, MatProgressBarModule, MatTooltipModule,
@@ -662,6 +661,13 @@ interface DeploymentProfile {
   `],
 })
 export class DashboardComponent implements OnInit {
+  private api = inject(ApiService);
+  private directory = inject(DirectoryApiService);
+  private snack = inject(MatSnackBar);
+  private cdr = inject(ChangeDetectorRef);
+  private motion = inject(MotionService);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+
   health = signal<HealthResponse | null>(null);
   ranges = signal<RangeSummary[]>([]);
   exercises = signal<ExerciseSummary[]>([]);
@@ -699,15 +705,6 @@ export class DashboardComponent implements OnInit {
     { name: 'ICS / SCADA', icon: 'precision_manufacturing', vm_count: 20, vcpu_per_vm: 2, ram_mb_per_vm: 2048, disk_gb_per_vm: 30 },
     { name: 'Cloud Range (Multi-Tenant)', icon: 'cloud', vm_count: 200, vcpu_per_vm: 2, ram_mb_per_vm: 4096, disk_gb_per_vm: 60 },
   ];
-
-  constructor(
-    private api: ApiService,
-    private directory: DirectoryApiService,
-    private snack: MatSnackBar,
-    private cdr: ChangeDetectorRef,
-    private motion: MotionService,
-    private host: ElementRef<HTMLElement>,
-  ) {}
 
   ngOnInit(): void {
     // Core data

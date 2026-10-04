@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -35,7 +35,6 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
 
 @Component({
   selector: 'tn-infrastructure',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatDialogModule,
@@ -54,82 +53,94 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
           </div>
         </div>
       </div>
-
+    
       <mat-tab-group animationDuration="200ms" color="primary">
         <!-- ═══════════════ OVERVIEW TAB ═══════════════ -->
         <mat-tab>
           <ng-template mat-tab-label><mat-icon class="tab-icon">dashboard</mat-icon> Overview</ng-template>
-
+    
           <!-- Summary cards -->
-          <div class="summary-row" *ngIf="hvSummary">
-            <mat-card class="stat-card">
-              <mat-icon>link</mat-icon>
-              <div class="stat-value" [tnCountUp]="hvSummary.total_connections"></div>
-              <div class="stat-label">Connections</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>computer</mat-icon>
-              <div class="stat-value" [tnCountUp]="hvSummary.total_nodes"></div>
-              <div class="stat-label">Nodes</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>memory</mat-icon>
-              <div class="stat-value" [tnCountUp]="hvSummary.total_cpu"></div>
-              <div class="stat-label">vCPUs</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>dynamic_form</mat-icon>
-              <div class="stat-value">{{ hvSummary.total_memory_gb | number:'1.0-0' }} GB</div>
-              <div class="stat-label">RAM</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>storage</mat-icon>
-              <div class="stat-value">{{ hvSummary.total_storage_gb | number:'1.0-0' }} GB</div>
-              <div class="stat-label">Disk</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>cloud</mat-icon>
-              <div class="stat-value" [tnCountUp]="hvSummary.total_vms"></div>
-              <div class="stat-label">VMs</div>
-            </mat-card>
-          </div>
-
-          <mat-card class="notice-card" *ngIf="hvSummary && connections.length > 0 && hvSummary.total_nodes === 0">
-            <mat-card-content>
-              <div class="notice-content">
-                <mat-icon>info</mat-icon>
-                <div>
-                  <strong>Connections are configured, but no compute nodes are discovered yet.</strong>
-                  <p>Click <em>Discover Nodes</em> on a connection, or use <em>Discover All Nodes</em> in the Compute tab to populate node, CPU, memory, storage, and VM metrics.</p>
+          @if (hvSummary) {
+            <div class="summary-row">
+              <mat-card class="stat-card">
+                <mat-icon>link</mat-icon>
+                <div class="stat-value" [tnCountUp]="hvSummary.total_connections"></div>
+                <div class="stat-label">Connections</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>computer</mat-icon>
+                <div class="stat-value" [tnCountUp]="hvSummary.total_nodes"></div>
+                <div class="stat-label">Nodes</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>memory</mat-icon>
+                <div class="stat-value" [tnCountUp]="hvSummary.total_cpu"></div>
+                <div class="stat-label">vCPUs</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>dynamic_form</mat-icon>
+                <div class="stat-value">{{ hvSummary.total_memory_gb | number:'1.0-0' }} GB</div>
+                <div class="stat-label">RAM</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>storage</mat-icon>
+                <div class="stat-value">{{ hvSummary.total_storage_gb | number:'1.0-0' }} GB</div>
+                <div class="stat-label">Disk</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>cloud</mat-icon>
+                <div class="stat-value" [tnCountUp]="hvSummary.total_vms"></div>
+                <div class="stat-label">VMs</div>
+              </mat-card>
+            </div>
+          }
+    
+          @if (hvSummary && connections.length > 0 && hvSummary.total_nodes === 0) {
+            <mat-card class="notice-card">
+              <mat-card-content>
+                <div class="notice-content">
+                  <mat-icon>info</mat-icon>
+                  <div>
+                    <strong>Connections are configured, but no compute nodes are discovered yet.</strong>
+                    <p>Click <em>Discover Nodes</em> on a connection, or use <em>Discover All Nodes</em> in the Compute tab to populate node, CPU, memory, storage, and VM metrics.</p>
+                  </div>
                 </div>
-              </div>
-            </mat-card-content>
-          </mat-card>
-
+              </mat-card-content>
+            </mat-card>
+          }
+    
           <!-- Quick counts for storage & network -->
-          <div class="summary-row" *ngIf="storageSummary || networkSummary">
-            <mat-card class="stat-card" *ngIf="storageSummary">
-              <mat-icon>inventory_2</mat-icon>
-              <div class="stat-value" [tnCountUp]="storageSummary.total_appliances"></div>
-              <div class="stat-label">Storage Appliances</div>
-            </mat-card>
-            <mat-card class="stat-card" *ngIf="storageSummary">
-              <mat-icon>disc_full</mat-icon>
-              <div class="stat-value">{{ storageSummary.total_usable_tb | number:'1.1-1' }} TB</div>
-              <div class="stat-label">Usable Storage</div>
-            </mat-card>
-            <mat-card class="stat-card" *ngIf="networkSummary">
-              <mat-icon>router</mat-icon>
-              <div class="stat-value" [tnCountUp]="networkSummary.total_devices"></div>
-              <div class="stat-label">Network Devices</div>
-            </mat-card>
-          </div>
+          @if (storageSummary || networkSummary) {
+            <div class="summary-row">
+              @if (storageSummary) {
+                <mat-card class="stat-card">
+                  <mat-icon>inventory_2</mat-icon>
+                  <div class="stat-value" [tnCountUp]="storageSummary.total_appliances"></div>
+                  <div class="stat-label">Storage Appliances</div>
+                </mat-card>
+              }
+              @if (storageSummary) {
+                <mat-card class="stat-card">
+                  <mat-icon>disc_full</mat-icon>
+                  <div class="stat-value">{{ storageSummary.total_usable_tb | number:'1.1-1' }} TB</div>
+                  <div class="stat-label">Usable Storage</div>
+                </mat-card>
+              }
+              @if (networkSummary) {
+                <mat-card class="stat-card">
+                  <mat-icon>router</mat-icon>
+                  <div class="stat-value" [tnCountUp]="networkSummary.total_devices"></div>
+                  <div class="stat-label">Network Devices</div>
+                </mat-card>
+              }
+            </div>
+          }
         </mat-tab>
-
+    
         <!-- ═══════════════ COMPUTE TAB ═══════════════ -->
         <mat-tab>
           <ng-template mat-tab-label><mat-icon class="tab-icon">computer</mat-icon> Compute</ng-template>
-
+    
           <div class="tab-actions">
             <button mat-raised-button color="primary" (click)="cancelConnectionEdit(); showAddConn = !showAddConn">
               <mat-icon>add</mat-icon> Add Connection
@@ -139,56 +150,58 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
               {{ discoveringAll ? 'Discovering...' : 'Discover All Nodes' }}
             </button>
           </div>
-
+    
           <!-- Add Connection Form -->
-          <mat-card *ngIf="showAddConn || editingConnectionId" class="add-form-card">
-            <mat-card-header><mat-card-title>{{ editingConnectionId ? 'Edit Hypervisor Connection' : 'New Hypervisor Connection' }}</mat-card-title></mat-card-header>
-            <mat-card-content>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Name</mat-label>
-                  <input matInput [(ngModel)]="newConn.name" placeholder="Range vCenter">
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Type</mat-label>
-                  <mat-select [(ngModel)]="newConn.hypervisor_type" (selectionChange)="onTypeChange()" panelClass="tn-select-panel">
-                    <mat-option value="vsphere">VMware vSphere (vCenter)</mat-option>
-                    <mat-option value="proxmox">Proxmox VE</mat-option>
-                    <mat-option value="hyperv">Microsoft Hyper-V</mat-option>
-                  </mat-select>
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Host</mat-label>
-                  <input matInput [(ngModel)]="newConn.host" [placeholder]="newConn.hypervisor_type === 'vsphere' ? 'vcsa.example.local' : '192.168.1.85'">
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Port</mat-label>
-                  <input matInput type="number" [(ngModel)]="newConn.port">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Username</mat-label>
-                  <input matInput [(ngModel)]="newConn.username" [placeholder]="usernameHint()">
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Password / Token</mat-label>
-                  <input matInput type="password" [(ngModel)]="newConn.password">
-                </mat-form-field>
-              </div>
-            </mat-card-content>
-            <mat-card-actions>
-              <button mat-raised-button color="primary"
-                (click)="editingConnectionId ? updateConnection() : createConnection()"
-                [disabled]="connectionSaving">
-                {{ editingConnectionId ? (connectionSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
-              </button>
-              <button mat-button (click)="editingConnectionId ? cancelConnectionEdit() : (showAddConn = false)">Cancel</button>
-            </mat-card-actions>
-          </mat-card>
-
+          @if (showAddConn || editingConnectionId) {
+            <mat-card class="add-form-card">
+              <mat-card-header><mat-card-title>{{ editingConnectionId ? 'Edit Hypervisor Connection' : 'New Hypervisor Connection' }}</mat-card-title></mat-card-header>
+              <mat-card-content>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Name</mat-label>
+                    <input matInput [(ngModel)]="newConn.name" placeholder="Range vCenter">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Type</mat-label>
+                    <mat-select [(ngModel)]="newConn.hypervisor_type" (selectionChange)="onTypeChange()" panelClass="tn-select-panel">
+                      <mat-option value="vsphere">VMware vSphere (vCenter)</mat-option>
+                      <mat-option value="proxmox">Proxmox VE</mat-option>
+                      <mat-option value="hyperv">Microsoft Hyper-V</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Host</mat-label>
+                    <input matInput [(ngModel)]="newConn.host" [placeholder]="newConn.hypervisor_type === 'vsphere' ? 'vcsa.example.local' : '192.168.1.85'">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Port</mat-label>
+                    <input matInput type="number" [(ngModel)]="newConn.port">
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Username</mat-label>
+                    <input matInput [(ngModel)]="newConn.username" [placeholder]="usernameHint()">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Password / Token</mat-label>
+                    <input matInput type="password" [(ngModel)]="newConn.password">
+                  </mat-form-field>
+                </div>
+              </mat-card-content>
+              <mat-card-actions>
+                <button mat-raised-button color="primary"
+                  (click)="editingConnectionId ? updateConnection() : createConnection()"
+                  [disabled]="connectionSaving">
+                  {{ editingConnectionId ? (connectionSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
+                </button>
+                <button mat-button (click)="editingConnectionId ? cancelConnectionEdit() : (showAddConn = false)">Cancel</button>
+              </mat-card-actions>
+            </mat-card>
+          }
+    
           <!-- Connections table -->
           <mat-card>
             <mat-card-header><mat-card-title>Hypervisor Connections</mat-card-title></mat-card-header>
@@ -207,7 +220,9 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
                     <th mat-header-cell *matHeaderCellDef>Name</th>
                     <td mat-cell *matCellDef="let c">
                       {{ c.name }}
-                      <mat-icon *ngIf="c.is_primary" class="primary-badge" matTooltip="Primary">star</mat-icon>
+                      @if (c.is_primary) {
+                        <mat-icon class="primary-badge" matTooltip="Primary">star</mat-icon>
+                      }
                     </td>
                   </ng-container>
                   <ng-container matColumnDef="type">
@@ -234,187 +249,213 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
                   <tr mat-row *matRowDef="let row; columns: connCols;"></tr>
                 </table>
               </div>
-              <tn-empty-state *ngIf="connections.length === 0" icon="cloud"
-                title="No hypervisor connections"
-                message="Add your vCenter to start discovering ESXi hosts." />
+              @if (connections.length === 0) {
+                <tn-empty-state icon="cloud"
+                  title="No hypervisor connections"
+                  message="Add your vCenter to start discovering ESXi hosts." />
+              }
             </mat-card-content>
           </mat-card>
-
+    
           <!-- Compute Nodes -->
-          <mat-card *ngIf="allNodes.length" style="margin-top:16px">
-            <mat-card-header><mat-card-title>Compute Nodes</mat-card-title></mat-card-header>
-            <mat-card-content>
-              <div class="table-wrap">
-                <table mat-table [dataSource]="allNodes" class="full-width">
-                  <ng-container matColumnDef="status">
-                    <th mat-header-cell *matHeaderCellDef></th>
-                    <td mat-cell *matCellDef="let n">
-                      <mat-icon [class]="n.status === 'online' ? 'status-online' : 'status-offline'">
-                        {{ n.status === 'online' ? 'check_circle' : 'cancel' }}
-                      </mat-icon>
-                    </td>
-                  </ng-container>
-                  <ng-container matColumnDef="node_name">
-                    <th mat-header-cell *matHeaderCellDef>Node</th>
-                    <td mat-cell *matCellDef="let n">{{ n.node_name }}</td>
-                  </ng-container>
-                  <ng-container matColumnDef="ip">
-                    <th mat-header-cell *matHeaderCellDef>IP</th>
-                    <td mat-cell *matCellDef="let n">{{ n.ip_address || '—' }}</td>
-                  </ng-container>
-                  <ng-container matColumnDef="cpu">
-                    <th mat-header-cell *matHeaderCellDef>CPU</th>
-                    <td mat-cell *matCellDef="let n">
-                      <span *ngIf="n.cpu_total === null" class="not-reported">Not reported</span>
-                      <span *ngIf="n.cpu_total !== null" class="cap-cell">
-                        <span>{{ n.cpu_total }} cores {{ n.cpu_used !== null ? '(' + (n.cpu_used | number:'1.0-0') + '%)' : '' }}</span>
-                        <span *ngIf="n.cpu_used !== null" class="tn-gauge-bg cap-gauge" aria-hidden="true">
-                          <span class="tn-gauge-fill"
-                            [class.warn]="n.cpu_used >= 75 && n.cpu_used < 90"
-                            [class.crit]="n.cpu_used >= 90"
-                            [style.width.%]="n.cpu_used"></span>
-                        </span>
-                      </span>
-                    </td>
-                  </ng-container>
-                  <ng-container matColumnDef="memory">
-                    <th mat-header-cell *matHeaderCellDef>Memory</th>
-                    <td mat-cell *matCellDef="let n">
-                      <span *ngIf="n.memory_total_gb === null" class="not-reported">Not reported</span>
-                      <span *ngIf="n.memory_total_gb !== null" class="cap-cell">
-                        <span>{{ n.memory_used_gb | number:'1.1-1' }} / {{ n.memory_total_gb | number:'1.1-1' }} GB</span>
-                        <span *ngIf="n.memory_total_gb" class="tn-gauge-bg cap-gauge" aria-hidden="true">
-                          <span class="tn-gauge-fill"
-                            [class.warn]="usagePct(n.memory_used_gb, n.memory_total_gb) >= 75 && usagePct(n.memory_used_gb, n.memory_total_gb) < 90"
-                            [class.crit]="usagePct(n.memory_used_gb, n.memory_total_gb) >= 90"
-                            [style.width.%]="usagePct(n.memory_used_gb, n.memory_total_gb)"></span>
-                        </span>
-                      </span>
-                    </td>
-                  </ng-container>
-                  <ng-container matColumnDef="storage">
-                    <th mat-header-cell *matHeaderCellDef>Storage</th>
-                    <td mat-cell *matCellDef="let n">
-                      <span *ngIf="n.storage_total_gb === null" class="not-reported">Not reported</span>
-                      <span *ngIf="n.storage_total_gb !== null" class="cap-cell">
-                        <span>{{ n.storage_used_gb | number:'1.0-0' }} / {{ n.storage_total_gb | number:'1.0-0' }} GB</span>
-                        <span *ngIf="n.storage_total_gb" class="tn-gauge-bg cap-gauge" aria-hidden="true">
-                          <span class="tn-gauge-fill"
-                            [class.warn]="usagePct(n.storage_used_gb, n.storage_total_gb) >= 75 && usagePct(n.storage_used_gb, n.storage_total_gb) < 90"
-                            [class.crit]="usagePct(n.storage_used_gb, n.storage_total_gb) >= 90"
-                            [style.width.%]="usagePct(n.storage_used_gb, n.storage_total_gb)"></span>
-                        </span>
-                      </span>
-                    </td>
-                  </ng-container>
-                  <ng-container matColumnDef="vms">
-                    <th mat-header-cell *matHeaderCellDef>VMs</th>
-                    <td mat-cell *matCellDef="let n">{{ n.vm_count }}</td>
-                  </ng-container>
-                  <tr mat-header-row *matHeaderRowDef="nodeCols"></tr>
-                  <tr mat-row *matRowDef="let row; columns: nodeCols;"></tr>
-                </table>
-              </div>
-            </mat-card-content>
-          </mat-card>
+          @if (allNodes.length) {
+            <mat-card style="margin-top:16px">
+              <mat-card-header><mat-card-title>Compute Nodes</mat-card-title></mat-card-header>
+              <mat-card-content>
+                <div class="table-wrap">
+                  <table mat-table [dataSource]="allNodes" class="full-width">
+                    <ng-container matColumnDef="status">
+                      <th mat-header-cell *matHeaderCellDef></th>
+                      <td mat-cell *matCellDef="let n">
+                        <mat-icon [class]="n.status === 'online' ? 'status-online' : 'status-offline'">
+                          {{ n.status === 'online' ? 'check_circle' : 'cancel' }}
+                        </mat-icon>
+                      </td>
+                    </ng-container>
+                    <ng-container matColumnDef="node_name">
+                      <th mat-header-cell *matHeaderCellDef>Node</th>
+                      <td mat-cell *matCellDef="let n">{{ n.node_name }}</td>
+                    </ng-container>
+                    <ng-container matColumnDef="ip">
+                      <th mat-header-cell *matHeaderCellDef>IP</th>
+                      <td mat-cell *matCellDef="let n">{{ n.ip_address || '—' }}</td>
+                    </ng-container>
+                    <ng-container matColumnDef="cpu">
+                      <th mat-header-cell *matHeaderCellDef>CPU</th>
+                      <td mat-cell *matCellDef="let n">
+                        @if (n.cpu_total === null) {
+                          <span class="not-reported">Not reported</span>
+                        }
+                        @if (n.cpu_total !== null) {
+                          <span class="cap-cell">
+                            <span>{{ n.cpu_total }} cores {{ n.cpu_used !== null ? '(' + (n.cpu_used | number:'1.0-0') + '%)' : '' }}</span>
+                            @if (n.cpu_used !== null) {
+                              <span class="tn-gauge-bg cap-gauge" aria-hidden="true">
+                                <span class="tn-gauge-fill"
+                                  [class.warn]="n.cpu_used >= 75 && n.cpu_used < 90"
+                                  [class.crit]="n.cpu_used >= 90"
+                                [style.width.%]="n.cpu_used"></span>
+                              </span>
+                            }
+                          </span>
+                        }
+                      </td>
+                    </ng-container>
+                    <ng-container matColumnDef="memory">
+                      <th mat-header-cell *matHeaderCellDef>Memory</th>
+                      <td mat-cell *matCellDef="let n">
+                        @if (n.memory_total_gb === null) {
+                          <span class="not-reported">Not reported</span>
+                        }
+                        @if (n.memory_total_gb !== null) {
+                          <span class="cap-cell">
+                            <span>{{ n.memory_used_gb | number:'1.1-1' }} / {{ n.memory_total_gb | number:'1.1-1' }} GB</span>
+                            @if (n.memory_total_gb) {
+                              <span class="tn-gauge-bg cap-gauge" aria-hidden="true">
+                                <span class="tn-gauge-fill"
+                                  [class.warn]="usagePct(n.memory_used_gb, n.memory_total_gb) >= 75 && usagePct(n.memory_used_gb, n.memory_total_gb) < 90"
+                                  [class.crit]="usagePct(n.memory_used_gb, n.memory_total_gb) >= 90"
+                                [style.width.%]="usagePct(n.memory_used_gb, n.memory_total_gb)"></span>
+                              </span>
+                            }
+                          </span>
+                        }
+                      </td>
+                    </ng-container>
+                    <ng-container matColumnDef="storage">
+                      <th mat-header-cell *matHeaderCellDef>Storage</th>
+                      <td mat-cell *matCellDef="let n">
+                        @if (n.storage_total_gb === null) {
+                          <span class="not-reported">Not reported</span>
+                        }
+                        @if (n.storage_total_gb !== null) {
+                          <span class="cap-cell">
+                            <span>{{ n.storage_used_gb | number:'1.0-0' }} / {{ n.storage_total_gb | number:'1.0-0' }} GB</span>
+                            @if (n.storage_total_gb) {
+                              <span class="tn-gauge-bg cap-gauge" aria-hidden="true">
+                                <span class="tn-gauge-fill"
+                                  [class.warn]="usagePct(n.storage_used_gb, n.storage_total_gb) >= 75 && usagePct(n.storage_used_gb, n.storage_total_gb) < 90"
+                                  [class.crit]="usagePct(n.storage_used_gb, n.storage_total_gb) >= 90"
+                                [style.width.%]="usagePct(n.storage_used_gb, n.storage_total_gb)"></span>
+                              </span>
+                            }
+                          </span>
+                        }
+                      </td>
+                    </ng-container>
+                    <ng-container matColumnDef="vms">
+                      <th mat-header-cell *matHeaderCellDef>VMs</th>
+                      <td mat-cell *matCellDef="let n">{{ n.vm_count }}</td>
+                    </ng-container>
+                    <tr mat-header-row *matHeaderRowDef="nodeCols"></tr>
+                    <tr mat-row *matRowDef="let row; columns: nodeCols;"></tr>
+                  </table>
+                </div>
+              </mat-card-content>
+            </mat-card>
+          }
         </mat-tab>
-
+    
         <!-- ═══════════════ STORAGE TAB ═══════════════ -->
         <mat-tab>
           <ng-template mat-tab-label><mat-icon class="tab-icon">inventory_2</mat-icon> Storage</ng-template>
-
+    
           <div class="tab-actions">
             <button mat-raised-button color="primary" (click)="cancelApplianceEdit(); showAddStorage = !showAddStorage">
               <mat-icon>add</mat-icon> Add Appliance
             </button>
           </div>
-
+    
           <!-- Add Appliance Form -->
-          <mat-card *ngIf="showAddStorage || editingApplianceId" class="add-form-card">
-            <mat-card-header><mat-card-title>{{ editingApplianceId ? 'Edit Storage Appliance' : 'New Storage Appliance' }}</mat-card-title></mat-card-header>
-            <mat-card-content>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Name</mat-label>
-                  <input matInput [(ngModel)]="newAppliance.name" placeholder="NetApp AFF A250">
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Vendor</mat-label>
-                  <input matInput [(ngModel)]="newAppliance.vendor" placeholder="NetApp">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Model</mat-label>
-                  <input matInput [(ngModel)]="newAppliance.model" placeholder="AFF A250">
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Management IP</mat-label>
-                  <input matInput [(ngModel)]="newAppliance.management_ip" placeholder="10.0.60.10">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Protocol</mat-label>
-                  <mat-select [(ngModel)]="newAppliance.protocol" panelClass="tn-select-panel">
-                    <mat-option value="nfs">NFS</mat-option>
-                    <mat-option value="iscsi">iSCSI</mat-option>
-                    <mat-option value="fc">Fibre Channel</mat-option>
-                    <mat-option value="nvme_of">NVMe-oF</mat-option>
-                    <mat-option value="smb">SMB</mat-option>
-                  </mat-select>
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Raw Capacity (TB)</mat-label>
-                  <input matInput type="number" [(ngModel)]="newAppliance.raw_capacity_tb">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Usable Capacity (TB)</mat-label>
-                  <input matInput type="number" [(ngModel)]="newAppliance.usable_capacity_tb">
-                </mat-form-field>
-              </div>
-            </mat-card-content>
-            <mat-card-actions>
-              <button mat-raised-button color="primary"
-                (click)="editingApplianceId ? updateAppliance() : createAppliance()"
-                [disabled]="applianceSaving">
-                {{ editingApplianceId ? (applianceSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
-              </button>
-              <button mat-button (click)="editingApplianceId ? cancelApplianceEdit() : (showAddStorage = false)">Cancel</button>
-            </mat-card-actions>
-          </mat-card>
-
+          @if (showAddStorage || editingApplianceId) {
+            <mat-card class="add-form-card">
+              <mat-card-header><mat-card-title>{{ editingApplianceId ? 'Edit Storage Appliance' : 'New Storage Appliance' }}</mat-card-title></mat-card-header>
+              <mat-card-content>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Name</mat-label>
+                    <input matInput [(ngModel)]="newAppliance.name" placeholder="NetApp AFF A250">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Vendor</mat-label>
+                    <input matInput [(ngModel)]="newAppliance.vendor" placeholder="NetApp">
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Model</mat-label>
+                    <input matInput [(ngModel)]="newAppliance.model" placeholder="AFF A250">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Management IP</mat-label>
+                    <input matInput [(ngModel)]="newAppliance.management_ip" placeholder="10.0.60.10">
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Protocol</mat-label>
+                    <mat-select [(ngModel)]="newAppliance.protocol" panelClass="tn-select-panel">
+                      <mat-option value="nfs">NFS</mat-option>
+                      <mat-option value="iscsi">iSCSI</mat-option>
+                      <mat-option value="fc">Fibre Channel</mat-option>
+                      <mat-option value="nvme_of">NVMe-oF</mat-option>
+                      <mat-option value="smb">SMB</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Raw Capacity (TB)</mat-label>
+                    <input matInput type="number" [(ngModel)]="newAppliance.raw_capacity_tb">
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Usable Capacity (TB)</mat-label>
+                    <input matInput type="number" [(ngModel)]="newAppliance.usable_capacity_tb">
+                  </mat-form-field>
+                </div>
+              </mat-card-content>
+              <mat-card-actions>
+                <button mat-raised-button color="primary"
+                  (click)="editingApplianceId ? updateAppliance() : createAppliance()"
+                  [disabled]="applianceSaving">
+                  {{ editingApplianceId ? (applianceSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
+                </button>
+                <button mat-button (click)="editingApplianceId ? cancelApplianceEdit() : (showAddStorage = false)">Cancel</button>
+              </mat-card-actions>
+            </mat-card>
+          }
+    
           <!-- Summary -->
-          <div class="summary-row" *ngIf="storageSummary">
-            <mat-card class="stat-card">
-              <mat-icon>inventory_2</mat-icon>
-              <div class="stat-value" [tnCountUp]="storageSummary.total_appliances"></div>
-              <div class="stat-label">Appliances</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>check_circle</mat-icon>
-              <div class="stat-value" [tnCountUp]="storageSummary.active_appliances"></div>
-              <div class="stat-label">Active</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>disc_full</mat-icon>
-              <div class="stat-value">{{ storageSummary.total_raw_tb | number:'1.1-1' }} TB</div>
-              <div class="stat-label">Raw</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>storage</mat-icon>
-              <div class="stat-value">{{ storageSummary.total_usable_tb | number:'1.1-1' }} TB</div>
-              <div class="stat-label">Usable</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>topic</mat-icon>
-              <div class="stat-value" [tnCountUp]="storageSummary.total_volumes"></div>
-              <div class="stat-label">Volumes</div>
-            </mat-card>
-          </div>
-
+          @if (storageSummary) {
+            <div class="summary-row">
+              <mat-card class="stat-card">
+                <mat-icon>inventory_2</mat-icon>
+                <div class="stat-value" [tnCountUp]="storageSummary.total_appliances"></div>
+                <div class="stat-label">Appliances</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>check_circle</mat-icon>
+                <div class="stat-value" [tnCountUp]="storageSummary.active_appliances"></div>
+                <div class="stat-label">Active</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>disc_full</mat-icon>
+                <div class="stat-value">{{ storageSummary.total_raw_tb | number:'1.1-1' }} TB</div>
+                <div class="stat-label">Raw</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>storage</mat-icon>
+                <div class="stat-value">{{ storageSummary.total_usable_tb | number:'1.1-1' }} TB</div>
+                <div class="stat-label">Usable</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>topic</mat-icon>
+                <div class="stat-value" [tnCountUp]="storageSummary.total_volumes"></div>
+                <div class="stat-label">Volumes</div>
+              </mat-card>
+            </div>
+          }
+    
           <!-- Appliances Table -->
           <mat-card>
             <mat-card-header><mat-card-title>Storage Appliances</mat-card-title></mat-card-header>
@@ -466,95 +507,101 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
                   <tr mat-row *matRowDef="let row; columns: applianceCols;"></tr>
                 </table>
               </div>
-              <tn-empty-state *ngIf="appliances.length === 0" icon="storage"
-                title="No storage appliances"
-                message="Register an appliance to track capacity, protocols and volumes." />
+              @if (appliances.length === 0) {
+                <tn-empty-state icon="storage"
+                  title="No storage appliances"
+                  message="Register an appliance to track capacity, protocols and volumes." />
+              }
             </mat-card-content>
           </mat-card>
         </mat-tab>
-
+    
         <!-- ═══════════════ NETWORK TAB ═══════════════ -->
         <mat-tab>
           <ng-template mat-tab-label><mat-icon class="tab-icon">router</mat-icon> Network</ng-template>
-
+    
           <div class="tab-actions">
             <button mat-raised-button color="primary" (click)="cancelDeviceEdit(); showAddNetwork = !showAddNetwork">
               <mat-icon>add</mat-icon> Add Device
             </button>
           </div>
-
+    
           <!-- Add Network Device Form -->
-          <mat-card *ngIf="showAddNetwork || editingDeviceId" class="add-form-card">
-            <mat-card-header><mat-card-title>{{ editingDeviceId ? 'Edit Network Device' : 'New Network Device' }}</mat-card-title></mat-card-header>
-            <mat-card-content>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Name</mat-label>
-                  <input matInput [(ngModel)]="newNetDev.name" placeholder="TOR-SW-01">
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Vendor</mat-label>
-                  <input matInput [(ngModel)]="newNetDev.vendor" placeholder="Arista">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Model</mat-label>
-                  <input matInput [(ngModel)]="newNetDev.model" placeholder="7050SX3-48YC12">
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Management IP</mat-label>
-                  <input matInput [(ngModel)]="newNetDev.management_ip" placeholder="10.0.60.1">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Role</mat-label>
-                  <mat-select [(ngModel)]="newNetDev.role" panelClass="tn-select-panel">
-                    <mat-option value="tor">Top-of-Rack</mat-option>
-                    <mat-option value="spine">Spine</mat-option>
-                    <mat-option value="leaf">Leaf</mat-option>
-                    <mat-option value="firewall">Firewall</mat-option>
-                    <mat-option value="router">Router</mat-option>
-                    <mat-option value="oob">Out-of-Band</mat-option>
-                  </mat-select>
-                </mat-form-field>
-                <mat-form-field appearance="outline">
-                  <mat-label>Port Count</mat-label>
-                  <input matInput type="number" [(ngModel)]="newNetDev.port_count">
-                </mat-form-field>
-              </div>
-              <div class="form-row">
-                <mat-form-field appearance="outline">
-                  <mat-label>Firmware Version</mat-label>
-                  <input matInput [(ngModel)]="newNetDev.firmware_version" placeholder="4.32.1F">
-                </mat-form-field>
-              </div>
-            </mat-card-content>
-            <mat-card-actions>
-              <button mat-raised-button color="primary"
-                (click)="editingDeviceId ? updateDevice() : createNetDevice()"
-                [disabled]="deviceSaving">
-                {{ editingDeviceId ? (deviceSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
-              </button>
-              <button mat-button (click)="editingDeviceId ? cancelDeviceEdit() : (showAddNetwork = false)">Cancel</button>
-            </mat-card-actions>
-          </mat-card>
-
+          @if (showAddNetwork || editingDeviceId) {
+            <mat-card class="add-form-card">
+              <mat-card-header><mat-card-title>{{ editingDeviceId ? 'Edit Network Device' : 'New Network Device' }}</mat-card-title></mat-card-header>
+              <mat-card-content>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Name</mat-label>
+                    <input matInput [(ngModel)]="newNetDev.name" placeholder="TOR-SW-01">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Vendor</mat-label>
+                    <input matInput [(ngModel)]="newNetDev.vendor" placeholder="Arista">
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Model</mat-label>
+                    <input matInput [(ngModel)]="newNetDev.model" placeholder="7050SX3-48YC12">
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Management IP</mat-label>
+                    <input matInput [(ngModel)]="newNetDev.management_ip" placeholder="10.0.60.1">
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Role</mat-label>
+                    <mat-select [(ngModel)]="newNetDev.role" panelClass="tn-select-panel">
+                      <mat-option value="tor">Top-of-Rack</mat-option>
+                      <mat-option value="spine">Spine</mat-option>
+                      <mat-option value="leaf">Leaf</mat-option>
+                      <mat-option value="firewall">Firewall</mat-option>
+                      <mat-option value="router">Router</mat-option>
+                      <mat-option value="oob">Out-of-Band</mat-option>
+                    </mat-select>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
+                    <mat-label>Port Count</mat-label>
+                    <input matInput type="number" [(ngModel)]="newNetDev.port_count">
+                  </mat-form-field>
+                </div>
+                <div class="form-row">
+                  <mat-form-field appearance="outline">
+                    <mat-label>Firmware Version</mat-label>
+                    <input matInput [(ngModel)]="newNetDev.firmware_version" placeholder="4.32.1F">
+                  </mat-form-field>
+                </div>
+              </mat-card-content>
+              <mat-card-actions>
+                <button mat-raised-button color="primary"
+                  (click)="editingDeviceId ? updateDevice() : createNetDevice()"
+                  [disabled]="deviceSaving">
+                  {{ editingDeviceId ? (deviceSaving ? 'Saving...' : 'Save Changes') : 'Save' }}
+                </button>
+                <button mat-button (click)="editingDeviceId ? cancelDeviceEdit() : (showAddNetwork = false)">Cancel</button>
+              </mat-card-actions>
+            </mat-card>
+          }
+    
           <!-- Network Summary -->
-          <div class="summary-row" *ngIf="networkSummary">
-            <mat-card class="stat-card">
-              <mat-icon>router</mat-icon>
-              <div class="stat-value" [tnCountUp]="networkSummary.total_devices"></div>
-              <div class="stat-label">Devices</div>
-            </mat-card>
-            <mat-card class="stat-card">
-              <mat-icon>check_circle</mat-icon>
-              <div class="stat-value" [tnCountUp]="networkSummary.active_devices"></div>
-              <div class="stat-label">Active</div>
-            </mat-card>
-          </div>
-
+          @if (networkSummary) {
+            <div class="summary-row">
+              <mat-card class="stat-card">
+                <mat-icon>router</mat-icon>
+                <div class="stat-value" [tnCountUp]="networkSummary.total_devices"></div>
+                <div class="stat-label">Devices</div>
+              </mat-card>
+              <mat-card class="stat-card">
+                <mat-icon>check_circle</mat-icon>
+                <div class="stat-value" [tnCountUp]="networkSummary.active_devices"></div>
+                <div class="stat-label">Active</div>
+              </mat-card>
+            </div>
+          }
+    
           <!-- Network Devices Table -->
           <mat-card>
             <mat-card-header><mat-card-title>Network Devices</mat-card-title></mat-card-header>
@@ -610,15 +657,17 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
                   <tr mat-row *matRowDef="let row; columns: netCols;"></tr>
                 </table>
               </div>
-              <tn-empty-state *ngIf="netDevices.length === 0" icon="router"
-                title="No network devices"
-                message="Add switches, routers and firewalls to inventory the range fabric." />
+              @if (netDevices.length === 0) {
+                <tn-empty-state icon="router"
+                  title="No network devices"
+                  message="Add switches, routers and firewalls to inventory the range fabric." />
+              }
             </mat-card-content>
           </mat-card>
         </mat-tab>
       </mat-tab-group>
     </div>
-  `,
+    `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     .header-left { display: flex; align-items: center; gap: 16px; }
@@ -646,6 +695,9 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
   `],
 })
 export class InfrastructureComponent implements OnInit {
+  private infra = inject(InfrastructureApiService);
+  private snack = inject(MatSnackBar);
+
   /* ── Compute state ─────────────────────────────────────────── */
   connections: HypervisorConnection[] = [];
   allNodes: HypervisorNode[] = [];
@@ -707,8 +759,6 @@ export class InfrastructureComponent implements OnInit {
     name: '', vendor: '', model: '', management_ip: '',
     role: 'tor' as NetworkDeviceRole, port_count: 48, firmware_version: '',
   };
-
-  constructor(private infra: InfrastructureApiService, private snack: MatSnackBar) {}
 
   /** Percent used, clamped to 0-100. Returns 0 when the total is missing or zero. */
   usagePct(used: number | null, total: number | null): number {

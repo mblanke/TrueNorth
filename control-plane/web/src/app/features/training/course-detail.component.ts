@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatExpansionModule } from '@angular/material/expansion';
@@ -68,8 +67,7 @@ interface Section {
  */
 @Component({
   selector: 'tn-course-detail',
-  standalone: true,
-  imports: [CommonModule, RouterLink, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule],
+  imports: [RouterLink, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="cd tn-quiet">

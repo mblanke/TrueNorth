@@ -1,16 +1,4 @@
-import {
-  Component,
-  OnDestroy,
-  ElementRef,
-  ViewChild,
-  AfterViewInit,
-  HostListener,
-  Inject,
-  signal,
-  ChangeDetectorRef,
-  ViewEncapsulation,
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnDestroy, ElementRef, ViewChild, AfterViewInit, HostListener, signal, ChangeDetectorRef, ViewEncapsulation, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -31,9 +19,10 @@ import {
 } from '@angular/material/dialog';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Observable } from 'rxjs';
-import * as joint from 'jointjs';
+import * as joint from '@joint/core';
 import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
+import { upgradeDiagramJson } from './diagram-compat';
 import { ApiService } from '@core/services/api.service';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { RangeSummary, TemplateSummary } from '@core/models';
@@ -122,14 +111,14 @@ function createNodeShape(
           attrs: {
             circle: { fill: color, stroke: 'var(--border)', strokeWidth: 1, r: 5, magnet: true },
           },
-          label: { position: 'outside' },
+          label: { position: { name: 'outside' } },
         },
         out: {
           position: 'right',
           attrs: {
             circle: { fill: color, stroke: 'var(--border)', strokeWidth: 1, r: 5, magnet: true },
           },
-          label: { position: 'outside' },
+          label: { position: { name: 'outside' } },
         },
       },
       items: [
@@ -193,7 +182,6 @@ export interface TextPromptData {
  */
 @Component({
   selector: 'tn-text-prompt-dialog',
-  standalone: true,
   imports: [FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule],
   template: `
     <h2 mat-dialog-title>{{ data.title }}</h2>
@@ -215,12 +203,14 @@ export interface TextPromptData {
   `],
 })
 export class TextPromptDialogComponent {
+  dialogRef = inject<MatDialogRef<TextPromptDialogComponent, string | undefined>>(MatDialogRef);
+  data = inject<TextPromptData>(MAT_DIALOG_DATA);
+
   value: string;
 
-  constructor(
-    public dialogRef: MatDialogRef<TextPromptDialogComponent, string | undefined>,
-    @Inject(MAT_DIALOG_DATA) public data: TextPromptData,
-  ) {
+  constructor() {
+    const data = this.data;
+
     this.value = data.value ?? '';
   }
 
@@ -233,15 +223,26 @@ export class TextPromptDialogComponent {
 
 @Component({
   selector: 'tn-range-designer',
-  standalone: true,
   encapsulation: ViewEncapsulation.None,
   imports: [
-    CommonModule, FormsModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule,
-    MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatTooltipModule,
-    MatSliderModule, MatDividerModule, MatSnackBarModule, MatDialogModule, FilterCategoryPipe,
+    FormsModule,
+    RouterModule,
+    MatCardModule,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule,
+    MatCheckboxModule,
+    MatTooltipModule,
+    MatSliderModule,
+    MatDividerModule,
+    MatSnackBarModule,
+    MatDialogModule,
+    FilterCategoryPipe,
     RangeNotesComponent,
-    EmptyStateComponent,
-  ],
+    EmptyStateComponent
+],
   template: `
     <div class="designer-layout">
       <!-- LEFT: STENCIL PALETTE -->
@@ -802,11 +803,11 @@ export class TextPromptDialogComponent {
       color: var(--text-secondary);
     }
     :host ::ng-deep .service-cb .mdc-checkbox {
-      --mdc-checkbox-selected-checkmark-color: var(--text-on-accent);
-      --mdc-checkbox-selected-icon-color: var(--accent);
-      --mdc-checkbox-selected-hover-icon-color: var(--accent-hover);
-      --mdc-checkbox-unselected-icon-color: var(--border-light);
-      --mdc-checkbox-unselected-hover-icon-color: var(--text-muted);
+      --mat-checkbox-selected-checkmark-color: var(--text-on-accent);
+      --mat-checkbox-selected-icon-color: var(--accent);
+      --mat-checkbox-selected-hover-icon-color: var(--accent-hover);
+      --mat-checkbox-unselected-icon-color: var(--border-light);
+      --mat-checkbox-unselected-hover-icon-color: var(--text-muted);
     }
     :host ::ng-deep .service-cb .mdc-checkbox__background {
       border-radius: 3px;
@@ -859,6 +860,13 @@ export class TextPromptDialogComponent {
   `],
 })
 export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
+  private cdr = inject(ChangeDetectorRef);
+  private snack = inject(MatSnackBar);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private api = inject(ApiService);
+  private dialog = inject(MatDialog);
+
   @ViewChild('canvas', { static: true }) canvasEl!: ElementRef<HTMLDivElement>;
   @ViewChild('yamlInput', { static: true }) yamlInputEl!: ElementRef<HTMLTextAreaElement>;
 
@@ -958,15 +966,6 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     { id: 'ca', label: 'Certificate Authority' },
   ];
 
-  constructor(
-    private cdr: ChangeDetectorRef,
-    private snack: MatSnackBar,
-    private route: ActivatedRoute,
-    private router: Router,
-    private api: ApiService,
-    private dialog: MatDialog,
-  ) {}
-
   ngAfterViewInit(): void {
     this.initGraph();
     this.initPaper();
@@ -999,7 +998,9 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
 
   /* --- Graph + Paper init --- */
   private initGraph(): void {
-    this.graph = new joint.dia.Graph();
+    // @joint/core has no global `joint`, so the shape namespace must be passed for
+    // fromJSON() to rebuild saved diagrams (cell types like "standard.Rectangle").
+    this.graph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
     (this.graph as any).on('add remove', () => this.updateCounts());
   }
 
@@ -1008,6 +1009,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     this.paper = new joint.dia.Paper({
       el,
       model: this.graph,
+      cellViewNamespace: joint.shapes,
       width: '100%',
       height: '100%',
       gridSize: GRID,
@@ -1606,7 +1608,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
         // arrive on the stack as something to undo, nor mark the range dirty.
         this.suppressHistory = true;
         try {
-          this.graph.fromJSON(diagram);
+          this.graph.fromJSON(upgradeDiagramJson(diagram));
         } catch {
           this.snack.open('Saved diagram was corrupted — starting blank', 'Dismiss', { duration: 4000, panelClass: 'snack-error' });
           return;
@@ -1730,7 +1732,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
         if (diagram && diagram.cells && diagram.cells.length) {
           this.suppressHistory = true;
           try {
-            this.graph.fromJSON(diagram);
+            this.graph.fromJSON(upgradeDiagramJson(diagram));
           } catch {
             this.snack.open('Template preview was unusable — starting blank', '', { duration: 3000 });
           } finally {

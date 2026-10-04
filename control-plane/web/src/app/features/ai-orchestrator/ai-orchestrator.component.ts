@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -36,7 +36,6 @@ interface _AIFleetNode {
 
 @Component({
   selector: 'tn-ai-orchestrator',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,
@@ -462,6 +461,9 @@ interface _AIFleetNode {
   `],
 })
 export class AiOrchestratorComponent implements OnInit {
+  private aiConfig = inject(AiConfigApiService);
+  private snack = inject(MatSnackBar);
+
   backends: AIBackend[] = [];
   routes: AIModelRoute[] = [];
   summary: AIFleetSummary | null = null;
@@ -488,8 +490,6 @@ export class AiOrchestratorComponent implements OnInit {
   };
 
   newRoute = { model_pattern: '', backend_id: '', priority: 0, tags: '' };
-
-  constructor(private aiConfig: AiConfigApiService, private snack: MatSnackBar) {}
 
   ngOnInit(): void {
     this.loadBackends();

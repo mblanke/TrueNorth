@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { KeycloakService } from 'keycloak-angular';
+import Keycloak from 'keycloak-js';
+import { freshToken } from '../auth/keycloak-init';
 import { ReplaySubject, firstValueFrom } from 'rxjs';
 import { environment } from '@env/environment';
 
@@ -53,7 +54,7 @@ export interface AuthMe {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly keycloak = inject(KeycloakService);
+  private readonly keycloak = inject(Keycloak);
   private readonly http = inject(HttpClient);
 
   private userSignal = signal<CurrentUser | null>(null);
@@ -118,7 +119,7 @@ export class AuthService {
       return this.meSignal();
     }
 
-    if (!(await this.keycloak.isLoggedIn())) {
+    if (!this.keycloak.authenticated) {
       this.userSignal.set(null);
       this.stateSignal.set(null);
       this.finishBootstrap();
@@ -131,7 +132,7 @@ export class AuthService {
       this.stateSignal.set(me.status);
       if (me.status === 'registered' && me.user) {
         this.userSignal.set({
-          sub: this.keycloak.getKeycloakInstance().subject ?? '',
+          sub: this.keycloak.subject ?? '',
           id: String(me.user['id']),
           email: String(me.user['email'] ?? ''),
           display_name: String(me.user['display_name'] ?? ''),
@@ -173,11 +174,11 @@ export class AuthService {
     if (environment.authDisabled) {
       return;
     }
-    void this.keycloak.logout(window.location.origin);
+    void this.keycloak.logout({ redirectUri: window.location.origin });
   }
 
   getToken(): Promise<string> {
-    return environment.authDisabled ? Promise.resolve('') : this.keycloak.getToken();
+    return environment.authDisabled ? Promise.resolve('') : freshToken(this.keycloak);
   }
 
   /** Test seam and dev-mode helper. */

@@ -1,5 +1,4 @@
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -37,7 +36,7 @@ interface ScenarioDetail {
   environment: string;
   duration_min: number;
   timeline: TimelineStep[];
-  noise_floor: { id: string; description: string }[];
+  noise_floor: { id: string; description: string }[] | null; // null when the YAML key is present but empty
   objectives: ObjectiveRow[];
 }
 
@@ -57,128 +56,134 @@ const NODE_ICON: Record<string, string> = {
 
 @Component({
   selector: 'tn-exercise-detail',
-  standalone: true,
   imports: [
-    CommonModule, RouterLink, MatCardModule, MatChipsModule, MatIconModule,
-    MatButtonModule, MatProgressBarModule, MatSnackBarModule, RangeNotesComponent,
-  ],
+    RouterLink,
+    MatCardModule,
+    MatChipsModule,
+    MatIconModule,
+    MatButtonModule,
+    MatProgressBarModule,
+    MatSnackBarModule,
+    RangeNotesComponent
+],
   template: `
-    <div class="xd" *ngIf="detail as d">
-      <header class="xd-head">
-        <div>
-          <a routerLink="/learning/career-path" class="back"><mat-icon>arrow_back</mat-icon> Career path</a>
-          <div class="kicker">Individual Assessment</div>
-          <h2>{{ d.exercise_name }}</h2>
-          <div class="meta">
-            <span class="chip" [class.done]="d.state==='completed'" [class.run]="d.state==='running'">{{ d.state }}</span>
-            <span class="muted">{{ d.environment }} · {{ fmtDuration(d.duration_min) }} · {{ d.po_id }}</span>
-            <span class="chip warn" *ngIf="d.duration_min >= 480"
-                  title="Unusually long assessment (8h+) — verify the duration is intentional">⚠ long</span>
-          </div>
-        </div>
-        <div class="run-box">
-          <button mat-flat-button color="primary" (click)="run()" [disabled]="running || d.state==='running'">
-            <mat-icon>{{ d.state === 'completed' ? 'replay' : 'play_arrow' }}</mat-icon>
-            {{ d.state === 'running' ? 'Running…' : 'Provision & Run (simulated)' }}
-          </button>
-          @if (d.state === 'completed') {
-            <button mat-stroked-button (click)="genAar()"><mat-icon>description</mat-icon> Generate AAR</button>
-          }
-        </div>
-      </header>
-
-      <div class="score">
-        <div class="score-line">
-          <span>Score</span><strong>{{ d.total_score }} / {{ d.max_score || 100 }}</strong>
-        </div>
-        <mat-progress-bar mode="determinate" [value]="d.max_score ? (d.total_score / d.max_score) * 100 : 0" />
-      </div>
-
-      <div class="grid">
-        <!-- Objectives -->
-        <mat-card class="panel">
-          <h3><mat-icon>flag</mat-icon> Objectives</h3>
-          @for (o of d.objectives; track o.ref_id) {
-            <div class="obj" [class.ok]="o.achieved">
-              <mat-icon>{{ o.achieved ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
-              <span class="obj-ref">{{ o.ref_id }}</span>
-              <span class="obj-type">{{ o.type }}</span>
-              <span class="spacer"></span>
-              <span class="pts">{{ o.points }} pts</span>
+    @if (detail; as d) {
+      <div class="xd">
+        <header class="xd-head">
+          <div>
+            <a routerLink="/learning/career-path" class="back"><mat-icon>arrow_back</mat-icon> Career path</a>
+            <div class="kicker">Individual Assessment</div>
+            <h2>{{ d.exercise_name }}</h2>
+            <div class="meta">
+              <span class="chip" [class.done]="d.state==='completed'" [class.run]="d.state==='running'">{{ d.state }}</span>
+              <span class="muted">{{ d.environment }} · {{ fmtDuration(d.duration_min) }} · {{ d.po_id }}</span>
+              @if (d.duration_min >= 480) {
+                <span class="chip warn"
+                title="Unusually long assessment (8h+) — verify the duration is intentional">⚠ long</span>
+              }
             </div>
-          }
-        </mat-card>
-
-        <!-- Timeline -->
-        <mat-card class="panel">
-          <h3><mat-icon>timeline</mat-icon> Attack Timeline</h3>
-          @if (d.timeline.length) {
-            <div class="tl">
-              @for (s of d.timeline; track s.t) {
-                <div class="tl-step">
-                  <span class="tl-t">{{ s.t }}</span>
-                  <span class="tl-tech" *ngIf="s.attack_technique">{{ s.attack_technique }}</span>
-                  <div class="tl-body">
-                    <div class="tl-ce">{{ s.critical_event || s.action }}</div>
-                    <div class="muted small">{{ s.description }}</div>
+          </div>
+          <div class="run-box">
+            <button mat-flat-button color="primary" (click)="run()" [disabled]="running || d.state==='running'">
+              <mat-icon>{{ d.state === 'completed' ? 'replay' : 'play_arrow' }}</mat-icon>
+              {{ d.state === 'running' ? 'Running…' : 'Provision & Run (simulated)' }}
+            </button>
+            @if (d.state === 'completed') {
+              <button mat-stroked-button (click)="genAar()"><mat-icon>description</mat-icon> Generate AAR</button>
+            }
+          </div>
+        </header>
+        <div class="score">
+          <div class="score-line">
+            <span>Score</span><strong>{{ d.total_score }} / {{ d.max_score || 100 }}</strong>
+          </div>
+          <mat-progress-bar mode="determinate" [value]="d.max_score ? (d.total_score / d.max_score) * 100 : 0" />
+        </div>
+        <div class="grid">
+          <!-- Objectives -->
+          <mat-card class="panel">
+            <h3><mat-icon>flag</mat-icon> Objectives</h3>
+            @for (o of d.objectives; track o.ref_id) {
+              <div class="obj" [class.ok]="o.achieved">
+                <mat-icon>{{ o.achieved ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                <span class="obj-ref">{{ o.ref_id }}</span>
+                <span class="obj-type">{{ o.type }}</span>
+                <span class="spacer"></span>
+                <span class="pts">{{ o.points }} pts</span>
+              </div>
+            }
+          </mat-card>
+          <!-- Timeline -->
+          <mat-card class="panel">
+            <h3><mat-icon>timeline</mat-icon> Attack Timeline</h3>
+            @if (d.timeline.length) {
+              <div class="tl">
+                @for (s of d.timeline; track s.t) {
+                  <div class="tl-step">
+                    <span class="tl-t">{{ s.t }}</span>
+                    @if (s.attack_technique) {
+                      <span class="tl-tech">{{ s.attack_technique }}</span>
+                    }
+                    <div class="tl-body">
+                      <div class="tl-ce">{{ s.critical_event || s.action }}</div>
+                      <div class="muted small">{{ s.description }}</div>
+                    </div>
                   </div>
-                </div>
-              }
-            </div>
-          } @else {
-            <p class="muted">No timeline defined.</p>
-          }
-          @if (d.noise_floor?.length) {
-            <div class="nf">
-              <div class="nf-h">Noise floor (benign lookalikes)</div>
-              @for (n of d.noise_floor; track n.id) {
-                <div class="muted small">• {{ n.description }}</div>
-              }
-            </div>
-          }
-        </mat-card>
-
-        <!-- Range -->
-        <mat-card class="panel range-panel">
-          <h3><mat-icon>dns</mat-icon> Range Topology</h3>
-          <p class="muted">{{ rangeName || 'Assessment range' }} <span *ngIf="rangeState">· {{ rangeState }}</span> · simulated (mock)</p>
-
-          @if (svgNodes.length) {
-            <div class="topo">
-              <svg [attr.viewBox]="viewBox" preserveAspectRatio="xMidYMid meet" class="topo-svg">
-                @for (z of svgZones; track z.label) {
-                  <rect [attr.x]="z.x" [attr.y]="z.y" [attr.width]="z.w" [attr.height]="z.h" rx="12"
-                        [attr.fill]="z.color + '12'" [attr.stroke]="z.color" stroke-width="1.5" stroke-dasharray="9 6" />
-                  <text [attr.x]="z.x + 14" [attr.y]="z.y + 25" [attr.fill]="z.color" font-size="15" font-weight="700">{{ z.label }}</text>
-                  <text [attr.x]="z.x + 14" [attr.y]="z.y + 43" [attr.fill]="z.color" font-size="12" opacity="0.8">{{ z.cidr }}</text>
                 }
-                @for (n of svgNodes; track n.label) {
-                  <rect class="node-box" [attr.x]="n.x" [attr.y]="n.y" width="150" height="54" rx="9" [attr.stroke]="n.color" stroke-width="1.5" />
-                  <rect [attr.x]="n.x" [attr.y]="n.y" width="6" height="54" rx="3" [attr.fill]="n.color" />
-                  <text class="node-title" [attr.x]="n.x + 16" [attr.y]="n.y + 22" font-size="13" font-weight="600">{{ iconFor(n.type) }} {{ n.label }}</text>
-                  <text class="node-sub" [attr.x]="n.x + 16" [attr.y]="n.y + 40" font-size="11">{{ n.ip }} · {{ n.type }}</text>
+              </div>
+            } @else {
+              <p class="muted">No timeline defined.</p>
+            }
+            @if (d.noise_floor?.length) {
+              <div class="nf">
+                <div class="nf-h">Noise floor (benign lookalikes)</div>
+                @for (n of d.noise_floor; track n.id) {
+                  <div class="muted small">• {{ n.description }}</div>
                 }
-              </svg>
+              </div>
+            }
+          </mat-card>
+          <!-- Range -->
+          <mat-card class="panel range-panel">
+            <h3><mat-icon>dns</mat-icon> Range Topology</h3>
+            <p class="muted">{{ rangeName || 'Assessment range' }} @if (rangeState) {
+              <span>· {{ rangeState }}</span>
+            } · simulated (mock)</p>
+            @if (svgNodes.length) {
+              <div class="topo">
+                <svg [attr.viewBox]="viewBox" preserveAspectRatio="xMidYMid meet" class="topo-svg">
+                  @for (z of svgZones; track z.label) {
+                    <rect [attr.x]="z.x" [attr.y]="z.y" [attr.width]="z.w" [attr.height]="z.h" rx="12"
+                      [attr.fill]="z.color + '12'" [attr.stroke]="z.color" stroke-width="1.5" stroke-dasharray="9 6" />
+                    <text [attr.x]="z.x + 14" [attr.y]="z.y + 25" [attr.fill]="z.color" font-size="15" font-weight="700">{{ z.label }}</text>
+                    <text [attr.x]="z.x + 14" [attr.y]="z.y + 43" [attr.fill]="z.color" font-size="12" opacity="0.8">{{ z.cidr }}</text>
+                  }
+                  @for (n of svgNodes; track n.label) {
+                    <rect class="node-box" [attr.x]="n.x" [attr.y]="n.y" width="150" height="54" rx="9" [attr.stroke]="n.color" stroke-width="1.5" />
+                    <rect [attr.x]="n.x" [attr.y]="n.y" width="6" height="54" rx="3" [attr.fill]="n.color" />
+                    <text class="node-title" [attr.x]="n.x + 16" [attr.y]="n.y + 22" font-size="13" font-weight="600">{{ iconFor(n.type) }} {{ n.label }}</text>
+                    <text class="node-sub" [attr.x]="n.x + 16" [attr.y]="n.y + 40" font-size="11">{{ n.ip }} · {{ n.type }}</text>
+                  }
+                </svg>
+              </div>
+            }
+            @if (d.range_id) {
+              <div class="range-notes">
+                <tn-range-notes [rangeId]="d.range_id" [description]="rangeDescription" [readOnly]="true" />
+              </div>
+            }
+            <div class="range-btns">
+              <a mat-stroked-button [routerLink]="['/topology-3d']" [queryParams]="{ range: d.range_id }">
+                <mat-icon>3d_rotation</mat-icon> Open 3D
+              </a>
+              <a mat-stroked-button [routerLink]="['/authoring/ranges/designer']" [queryParams]="{ range: d.range_id }">
+                <mat-icon>edit</mat-icon> Open in designer
+              </a>
             </div>
-          }
-
-          @if (d.range_id) {
-            <div class="range-notes">
-              <tn-range-notes [rangeId]="d.range_id" [description]="rangeDescription" [readOnly]="true" />
-            </div>
-          }
-
-          <div class="range-btns">
-            <a mat-stroked-button [routerLink]="['/topology-3d']" [queryParams]="{ range: d.range_id }">
-              <mat-icon>3d_rotation</mat-icon> Open 3D
-            </a>
-            <a mat-stroked-button [routerLink]="['/authoring/ranges/designer']" [queryParams]="{ range: d.range_id }">
-              <mat-icon>edit</mat-icon> Open in designer
-            </a>
-          </div>
-        </mat-card>
+          </mat-card>
+        </div>
       </div>
-    </div>
+    }
     @if (!detail && !error) {
       <div class="tn-skeleton-group loading" aria-busy="true">
         <div class="tn-skeleton tn-skeleton-text" style="width: 220px"></div>
@@ -193,7 +198,7 @@ const NODE_ICON: Record<string, string> = {
         <button mat-stroked-button (click)="retry()"><mat-icon>refresh</mat-icon> Retry</button>
       </div>
     }
-  `,
+    `,
   styles: [
     `
       .xd { padding: 4px 2px 24px; }

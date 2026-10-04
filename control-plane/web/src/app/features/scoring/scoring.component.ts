@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -17,7 +17,6 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
 
 @Component({
   selector: 'tn-scoring',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatSelectModule, MatFormFieldModule, MatInputModule, MatTableModule,
@@ -124,17 +123,15 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
   `],
 })
 export class ScoringComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+  private sanitizer = inject(DomSanitizer);
+
   exercises = signal<ExerciseSummary[]>([]);
   selectedExerciseId = '';
   selectedExercise = signal<Exercise | null>(null);
   objectives = signal<Objective[]>([]);
   aar = signal<AAR | null>(null);
-
-  constructor(
-    private api: ApiService,
-    private notify: NotificationService,
-    private sanitizer: DomSanitizer,
-  ) {}
 
   ngOnInit(): void { this.api.listExercises().subscribe(e => this.exercises.set(e)); }
 

@@ -8,7 +8,6 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -32,11 +31,13 @@ import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.compone
  */
 @Component({
   selector: 'tn-range-notes',
-  standalone: true,
   imports: [
-    CommonModule, FormsModule, MatButtonModule, MatDialogModule,
-    MatIconModule, MatTooltipModule,
-  ],
+    FormsModule,
+    MatButtonModule,
+    MatDialogModule,
+    MatIconModule,
+    MatTooltipModule
+],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="notes">

@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, signal } from '@angular/core';
+﻿import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
@@ -21,7 +21,6 @@ import { CountUpDirective } from '../../shared/motion';
 
 @Component({
   selector: 'tn-ranges',
-  standalone: true,
   imports: [
     CommonModule, MatCardModule, MatTableModule, MatButtonModule,
     MatIconModule, MatChipsModule, MatDialogModule, MatFormFieldModule,
@@ -228,6 +227,9 @@ import { CountUpDirective } from '../../shared/motion';
   `],
 })
 export class RangesComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+
   ranges = signal<RangeSummary[]>([]);
   templates = signal<TemplateSummary[]>([]);
   stats = signal<RangeStats | null>(null);
@@ -241,8 +243,6 @@ export class RangesComponent implements OnInit {
   displayedColumns = ['name', 'state', 'created', 'actions'];
   /** The range whose description panel is open, if any. */
   notesFor = signal<RangeSummary | null>(null);
-
-  constructor(private api: ApiService, private notify: NotificationService) {}
 
   ngOnInit(): void {
     this.loadRanges();

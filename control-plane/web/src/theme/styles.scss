@@ -1,11 +1,11 @@
 @use '@angular/material' as mat;
 
 /* ── Angular Material theme init (emits MDC CSS tokens) ── */
-$tn-primary: mat.define-palette(mat.$cyan-palette);
-$tn-accent:  mat.define-palette(mat.$teal-palette);
-$tn-warn:    mat.define-palette(mat.$red-palette);
+$tn-primary: mat.m2-define-palette(mat.$m2-cyan-palette);
+$tn-accent:  mat.m2-define-palette(mat.$m2-teal-palette);
+$tn-warn:    mat.m2-define-palette(mat.$m2-red-palette);
 
-$tn-theme: mat.define-dark-theme((
+$tn-theme: mat.m2-define-dark-theme((
   color: (
     primary: $tn-primary,
     accent:  $tn-accent,
@@ -13,13 +13,14 @@ $tn-theme: mat.define-dark-theme((
   ),
 ));
 
-@include mat.core();
+@include mat.elevation-classes();
+@include mat.app-background();
 @include mat.all-component-themes($tn-theme);
 
 /* Light Material color tokens, scoped to the Great White North theme */
-$tnl-primary: mat.define-palette(mat.$red-palette, 700, 500, 900);
-$tnl-accent:  mat.define-palette(mat.$blue-grey-palette, 600);
-$tn-light-theme: mat.define-light-theme((
+$tnl-primary: mat.m2-define-palette(mat.$m2-red-palette, 700, 500, 900);
+$tnl-accent:  mat.m2-define-palette(mat.$m2-blue-grey-palette, 600);
+$tn-light-theme: mat.m2-define-light-theme((
   color: (
     primary: $tnl-primary,
     accent:  $tnl-accent,
@@ -314,34 +315,34 @@ mat-card.is-lifted {
 ───────────────────────────────────────────────────────────── */
 .mat-mdc-form-field {
   /* Outlined text field tokens */
-  --mdc-outlined-text-field-outline-color:          var(--border);
-  --mdc-outlined-text-field-hover-outline-color:    var(--border-light);
-  --mdc-outlined-text-field-focus-outline-color:    var(--accent);
-  --mdc-outlined-text-field-disabled-outline-color: var(--border);
-  --mdc-outlined-text-field-error-outline-color:    var(--alert);
+  --mat-form-field-outlined-outline-color:          var(--border);
+  --mat-form-field-outlined-hover-outline-color:    var(--border-light);
+  --mat-form-field-outlined-focus-outline-color:    var(--accent);
+  --mat-form-field-outlined-disabled-outline-color: var(--border);
+  --mat-form-field-outlined-error-outline-color:    var(--alert);
 
-  --mdc-outlined-text-field-label-text-color:       var(--text-secondary);
-  --mdc-outlined-text-field-hover-label-text-color: var(--text-primary);
-  --mdc-outlined-text-field-focus-label-text-color: var(--accent);
-  --mdc-outlined-text-field-error-label-text-color: var(--alert);
+  --mat-form-field-outlined-label-text-color:       var(--text-secondary);
+  --mat-form-field-outlined-hover-label-text-color: var(--text-primary);
+  --mat-form-field-outlined-focus-label-text-color: var(--accent);
+  --mat-form-field-outlined-error-label-text-color: var(--alert);
 
-  --mdc-outlined-text-field-input-text-color:       var(--text-primary);
-  --mdc-outlined-text-field-disabled-input-text-color: var(--text-muted);
-  --mdc-outlined-text-field-caret-color:            var(--accent);
+  --mat-form-field-outlined-input-text-color:       var(--text-primary);
+  --mat-form-field-outlined-disabled-input-text-color: var(--text-muted);
+  --mat-form-field-outlined-caret-color:            var(--accent);
 
   /* Placeholder */
-  --mdc-outlined-text-field-input-text-placeholder-color: var(--text-muted);
+  --mat-form-field-outlined-input-text-placeholder-color: var(--text-muted);
 
   /* Container shape */
-  --mdc-outlined-text-field-container-shape: 6px;
+  --mat-form-field-outlined-container-shape: 6px;
 
   /* Filled text field tokens (used in some contexts) */
-  --mdc-filled-text-field-container-color:           var(--bg-input);
-  --mdc-filled-text-field-label-text-color:          var(--text-secondary);
-  --mdc-filled-text-field-focus-label-text-color:    var(--accent);
-  --mdc-filled-text-field-input-text-color:          var(--text-primary);
-  --mdc-filled-text-field-active-indicator-color:    var(--border);
-  --mdc-filled-text-field-focus-active-indicator-color: var(--accent);
+  --mat-form-field-filled-container-color:           var(--bg-input);
+  --mat-form-field-filled-label-text-color:          var(--text-secondary);
+  --mat-form-field-filled-focus-label-text-color:    var(--accent);
+  --mat-form-field-filled-input-text-color:          var(--text-primary);
+  --mat-form-field-filled-active-indicator-color:    var(--border);
+  --mat-form-field-filled-focus-active-indicator-color: var(--accent);
 
   /* Select trigger */
   --mat-select-trigger-text-color:     var(--text-primary);
@@ -630,10 +631,10 @@ button[mat-icon-button]:hover .mat-icon,
    SLIDE TOGGLE
 ───────────────────────────────────────────────────────────── */
 .mat-mdc-slide-toggle {
-  --mdc-switch-selected-track-color:           var(--accent) !important;
-  --mdc-switch-selected-handle-color:          var(--accent-hover) !important;
-  --mdc-switch-unselected-track-color:         var(--border) !important;
-  --mdc-switch-unselected-handle-color:        var(--text-muted) !important;
+  --mat-slide-toggle-selected-track-color:           var(--accent) !important;
+  --mat-slide-toggle-selected-handle-color:          var(--accent-hover) !important;
+  --mat-slide-toggle-unselected-track-color:         var(--border) !important;
+  --mat-slide-toggle-unselected-handle-color:        var(--text-muted) !important;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -758,8 +759,8 @@ button[mat-icon-button]:hover .mat-icon,
    PROGRESS BAR
 ───────────────────────────────────────────────────────────── */
 .mat-mdc-progress-bar {
-  --mdc-linear-progress-active-indicator-color: var(--accent);
-  --mdc-linear-progress-track-color: var(--border);
+  --mat-progress-bar-active-indicator-color: var(--accent);
+  --mat-progress-bar-track-color: var(--border);
   border-radius: 4px;
 }
 

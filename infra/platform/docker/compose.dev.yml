@@ -2,6 +2,10 @@
 # Scaled for 1,200 users / 70,000 VMs
 # Usage: docker compose -f compose.dev.yml up -d --build
 # Scale workers: docker compose -f compose.dev.yml up -d --scale worker-provision=4 --scale worker-scenario=2
+#
+# Backing services with dev credentials or no auth (Postgres, PgBouncer, Redis, MinIO,
+# OpenSearch Dashboards, the LRS, Flower) publish on loopback only. DEV_BIND=0.0.0.0
+# shares them on the LAN deliberately; Keycloak has its own KEYCLOAK_BIND.
 
 name: truenorth
 
@@ -17,7 +21,7 @@ services:
       # Tuned for 1200-user workload
       POSTGRES_INITDB_ARGS: "--data-checksums"
     ports:
-      - "5433:5432"
+      - "${DEV_BIND:-127.0.0.1}:5433:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
     command: >
@@ -61,7 +65,7 @@ services:
       LOG_DISCONNECTIONS: 0
       AUTH_TYPE: scram-sha-256
     ports:
-      - "6432:5432"
+      - "${DEV_BIND:-127.0.0.1}:6432:5432"
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,7 +80,7 @@ services:
         --save 60 1000
         --tcp-backlog 511
     ports:
-      - "6379:6379"
+      - "${DEV_BIND:-127.0.0.1}:6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -97,8 +101,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${DEV_BIND:-127.0.0.1}:9000:9000"
+      - "${DEV_BIND:-127.0.0.1}:9001:9001"
     volumes:
       - minio-data:/data
 
@@ -124,7 +128,7 @@ services:
       - OPENSEARCH_HOSTS=["http://opensearch:9200"]
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
     ports:
-      - "5601:5601"
+      - "${DEV_BIND:-127.0.0.1}:5601:5601"
     depends_on:
       - opensearch
 
@@ -132,7 +136,10 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     restart: unless-stopped
-    command: start-dev
+    # Imports the truenorth realm on first start; an existing realm is left alone.
+    command: start-dev --import-realm
+    volumes:
+      - ../../keycloak/realm-truenorth.json:/opt/keycloak/data/import/realm-truenorth.json:ro
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/forge
@@ -141,7 +148,9 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
     ports:
-      - "8180:8080"
+      # Loopback only: the imported realm carries dev users with weak passwords.
+      # The SPA reaches Keycloak at localhost:8180 anyway. KEYCLOAK_BIND=0.0.0.0 to share.
+      - "${KEYCLOAK_BIND:-127.0.0.1}:8180:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -166,7 +175,7 @@ services:
       LRSQL_API_KEY_DEFAULT: truenorth-lrs-key
       LRSQL_API_SECRET_DEFAULT: truenorth-lrs-secret
     ports:
-      - "8001:8080"
+      - "${DEV_BIND:-127.0.0.1}:8001:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -308,7 +317,7 @@ services:
     restart: unless-stopped
     command: celery -A worker.celery_app flower --port=5555 --broker_api=redis://redis:6379/0
     ports:
-      - "5555:5555"
+      - "${DEV_BIND:-127.0.0.1}:5555:5555"
     environment:
       REDIS_URL: redis://redis:6379/0
     depends_on:

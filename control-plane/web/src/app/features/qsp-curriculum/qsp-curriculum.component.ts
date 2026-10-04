@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -25,16 +24,14 @@ interface LearningPath {
  */
 @Component({
   selector: 'tn-qsp-curriculum',
-  standalone: true,
   imports: [
-    CommonModule,
     MatButtonModule,
     MatExpansionModule,
     MatIconModule,
     MatTooltipModule,
     CareerPathListComponent,
-    CareerMapComponent,
-  ],
+    CareerMapComponent
+],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="qc tn-quiet">

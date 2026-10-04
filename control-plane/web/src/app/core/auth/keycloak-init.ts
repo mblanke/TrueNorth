@@ -1,8 +1,10 @@
-import { KeycloakService } from 'keycloak-angular';
+import { EnvironmentProviders, inject, provideAppInitializer } from '@angular/core';
+import Keycloak from 'keycloak-js';
+import { provideKeycloak } from 'keycloak-angular';
 import { environment } from '@env/environment';
 
 /**
- * Keycloak bootstrap, run once via APP_INITIALIZER.
+ * Keycloak bootstrap via keycloak-angular's provideKeycloak().
  *
  * We use keycloak-angular rather than hand-rolling the OIDC flow. The previous
  * hand-rolled redirect in AuthService sent no `code_challenge`, while the realm
@@ -15,41 +17,59 @@ import { environment } from '@env/environment';
  * `check-sso` rather than `login-required`: the app must be able to render the
  * login page and the public registration route for an anonymous visitor. Route
  * guards decide what needs authentication.
+ *
+ * The bearer token is attached by AuthInterceptor (with the CSRF header), not by
+ * keycloak-angular's interceptor.
  */
-export function initializeKeycloak(keycloak: KeycloakService): () => Promise<boolean> {
-  return async () => {
-    if (environment.authDisabled) {
-      // Dev mode mirrors the API's AUTH_DISABLED short-circuit. Skipping init
-      // entirely keeps `npm start` working with no Keycloak running at all.
-      return true;
-    }
+export function provideTrueNorthKeycloak(): EnvironmentProviders {
+  return provideKeycloak({
+    config: {
+      url: environment.keycloak.url,
+      realm: environment.keycloak.realm,
+      clientId: environment.keycloak.clientId,
+    },
+    // Dev mode mirrors the API's AUTH_DISABLED short-circuit: without initOptions
+    // the instance exists (services inject it) but never contacts Keycloak, so
+    // `npm start` works with no Keycloak running at all.
+    initOptions: environment.authDisabled
+      ? undefined
+      : {
+          onLoad: 'check-sso',
+          silentCheckSsoRedirectUri: `${window.location.origin}/assets/silent-check-sso.html`,
+          pkceMethod: 'S256',
+          // The login-status iframe is blocked by third-party-cookie policies in
+          // current browsers and produces spurious logouts. Silent check-sso plus
+          // token refresh covers the same ground.
+          checkLoginIframe: false,
+        },
+    providers: [provideAppInitializer(installTokenRefresh)],
+  });
+}
 
-    const authenticated = await keycloak.init({
-      config: {
-        url: environment.keycloak.url,
-        realm: environment.keycloak.realm,
-        clientId: environment.keycloak.clientId,
-      },
-      initOptions: {
-        onLoad: 'check-sso',
-        silentCheckSsoRedirectUri: `${window.location.origin}/assets/silent-check-sso.html`,
-        pkceMethod: 'S256',
-        // The login-status iframe is blocked by third-party-cookie policies in
-        // current browsers and produces spurious logouts. Silent check-sso plus
-        // token refresh covers the same ground.
-        checkLoginIframe: false,
-      },
-      // The adapter must not attach a bearer token to static assets, and the
-      // API is reached through the same origin via nginx.
-      bearerExcludedUrls: ['/assets', '/silent-check-sso.html'],
-    });
-
-    // Refresh 30s before expiry rather than letting a request fail first.
-    const instance = keycloak.getKeycloakInstance();
-    instance.onTokenExpired = () => {
-      keycloak.updateToken(30).catch(() => keycloak.login());
-    };
-
-    return authenticated;
+/** Refresh when the access token expires rather than letting a request fail first. */
+function installTokenRefresh(): void {
+  if (environment.authDisabled) {
+    return;
+  }
+  const keycloak = inject(Keycloak);
+  keycloak.onTokenExpired = () => {
+    keycloak.updateToken(30).catch(() => keycloak.login());
   };
+}
+
+/**
+ * A current access token, refreshed if it expires within 10 s; '' when not signed
+ * in. This is what KeycloakService.getToken() did. A failed refresh still returns
+ * the old token, so the API answers 401 and the app can react.
+ */
+export async function freshToken(keycloak: Keycloak): Promise<string> {
+  if (!keycloak.authenticated) {
+    return '';
+  }
+  try {
+    await keycloak.updateToken(10);
+  } catch {
+    // fall through with whatever token we hold
+  }
+  return keycloak.token ?? '';
 }

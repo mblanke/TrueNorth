@@ -10,7 +10,6 @@ import { ChangeDetectionStrategy, Component, ViewEncapsulation } from '@angular/
  */
 @Component({
   selector: 'tn-quiet-styles',
-  standalone: true,
   template: '',
   styleUrls: ['../../theme/quiet.scss'],
   encapsulation: ViewEncapsulation.None,

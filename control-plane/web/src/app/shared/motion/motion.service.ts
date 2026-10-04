@@ -1,4 +1,4 @@
-import { Injectable, NgZone, signal, Signal } from '@angular/core';
+import { Injectable, NgZone, signal, Signal, inject } from '@angular/core';
 import gsap from 'gsap';
 
 export interface StaggerOptions {
@@ -21,10 +21,12 @@ export interface CountUpOptions {
  */
 @Injectable({ providedIn: 'root' })
 export class MotionService {
+  private zone = inject(NgZone);
+
   private readonly reducedMotionSignal = signal(false);
   readonly reducedMotion: Signal<boolean> = this.reducedMotionSignal.asReadonly();
 
-  constructor(private zone: NgZone) {
+  constructor() {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.reducedMotionSignal.set(mq.matches);
     mq.addEventListener('change', (e) => this.reducedMotionSignal.set(e.matches));

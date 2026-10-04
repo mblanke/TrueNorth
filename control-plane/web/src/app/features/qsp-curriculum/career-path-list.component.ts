@@ -42,7 +42,6 @@ export type PathRow =
  */
 @Component({
   selector: 'tn-career-path-list',
-  standalone: true,
   imports: [CommonModule, MatExpansionModule, MatTooltipModule, QualSummaryComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

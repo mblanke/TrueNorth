@@ -51,7 +51,6 @@ export function undeliveredObjectives(q: QualNode): PO[] {
  */
 @Component({
   selector: 'tn-qualification-detail',
-  standalone: true,
   imports: [CommonModule, RouterLink, MatExpansionModule, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

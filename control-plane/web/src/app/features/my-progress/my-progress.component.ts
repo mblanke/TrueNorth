@@ -12,7 +12,7 @@ import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { AuthService } from '@core/services/auth.service';
 import { ThemeService } from '@core/services/theme.service';
-import { NgxEchartsDirective, provideEcharts } from 'ngx-echarts';
+import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import type { EChartsOption } from 'echarts';
 import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
 import { EnterStaggerDirective } from '../../shared/motion';
@@ -72,14 +72,13 @@ interface AutoAssessment {
 
 @Component({
   selector: 'tn-my-progress',
-  standalone: true,
   imports: [
     CommonModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatProgressBarModule,
     MatChipsModule, MatTooltipModule, LottieIconComponent, EnterStaggerDirective,
     NgxEchartsDirective,
   ],
-  providers: [provideEcharts()],
+  providers: [provideEchartsCore({ echarts: () => import('echarts') })],
   template: `
     <div class="page-container">
       <div class="page-header">
@@ -354,6 +353,9 @@ interface AutoAssessment {
   `],
 })
 export class MyProgressComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+
   transcript = signal<Transcript | null>(null);
   progressSummary = signal<ProgressSummary | null>(null);
   recommendations = signal<Recommendation[]>([]);
@@ -373,7 +375,7 @@ export class MyProgressComponent implements OnInit {
   private lastAssertions: any[] | null = null;
   private readonly theme = inject(ThemeService);
 
-  constructor(private api: ApiService, private notify: NotificationService) {
+  constructor() {
     // Chart options snapshot CSS variables when built, so a theme switch must
     // rebuild them. Reading progressSummary() here also builds the trend chart
     // the first time the data lands.

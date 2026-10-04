@@ -1,13 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import {
-  HttpInterceptor,
-  HttpRequest,
-  HttpHandler,
-  HttpEvent,
-  HTTP_INTERCEPTORS,
-} from '@angular/common/http';
+import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { Observable, from, switchMap } from 'rxjs';
-import { KeycloakService } from 'keycloak-angular';
+import Keycloak from 'keycloak-js';
+import { freshToken } from '../auth/keycloak-init';
 import { environment } from '@env/environment';
 
 function getCookie(name: string): string | null {
@@ -17,7 +12,7 @@ function getCookie(name: string): string | null {
 
 @Injectable()
 export class AuthInterceptor implements HttpInterceptor {
-  private readonly keycloak = inject(KeycloakService);
+  private readonly keycloak = inject(Keycloak);
 
   intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
     // CSRF: double-submit cookie. app/middleware.py sets `truenorth_csrf` and
@@ -38,7 +33,7 @@ export class AuthInterceptor implements HttpInterceptor {
     // The token comes from the Keycloak adapter, which refreshes it as needed.
     // This previously read localStorage.getItem('access_token') — a key nothing
     // in the app ever wrote, so every authenticated request went out bare.
-    return from(this.keycloak.getToken()).pipe(
+    return from(freshToken(this.keycloak)).pipe(
       switchMap((token) => {
         const headers = { ...csrfHeaders };
         if (token) {

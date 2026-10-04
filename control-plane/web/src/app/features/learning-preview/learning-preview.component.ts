@@ -6,7 +6,6 @@ import { MatButtonModule } from '@angular/material/button';
 /** Isolated fictional previews: no application session or API access in the frames. */
 @Component({
   selector: 'tn-learning-preview',
-  standalone: true,
   imports: [RouterLink, MatButtonModule],
   template: `
     <section aria-label="LMS and mission readiness test workspace">

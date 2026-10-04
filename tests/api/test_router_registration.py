@@ -9,10 +9,17 @@ This test fails at the point of the deletion instead.
 
 import app.routers as routers_pkg
 from app.main import app
+from fastapi.routing import iter_route_contexts
+
+
+def _paths(routes) -> set[str]:
+    # FastAPI no longer flattens include_router into `.routes` (one wrapper per
+    # included router), so walk the effective routes, not the raw list.
+    return {c.path for c in iter_route_contexts(routes) if c.path}
 
 
 def _registered_paths() -> set[str]:
-    return {r.path for r in app.routes if hasattr(r, "path")}
+    return _paths(app.routes)
 
 
 def _router_objects() -> dict[str, object]:
@@ -31,7 +38,7 @@ def test_every_exported_router_is_registered():
     registered = _registered_paths()
     unregistered = []
     for name, router in _router_objects().items():
-        paths = {r.path for r in router.routes if hasattr(r, "path")}
+        paths = _paths(router.routes)
         if paths and not (paths & registered):
             unregistered.append(name)
     assert not unregistered, f"routers imported but never included in main.py: {sorted(unregistered)}"
@@ -50,5 +57,5 @@ def test_no_unauthenticated_static_docs_mount():
     Reverses the 2026-08-19 `/static-docs` StaticFiles mount, which exposed the
     whole docs directory (SimSpace PDF, DND runbook .docx/.xlsx) without auth.
     """
-    mounted = [r.path for r in app.routes if r.__class__.__name__ == "Mount"]
+    mounted = [c.path for c in iter_route_contexts(app.routes) if c.original_route.__class__.__name__ == "Mount"]
     assert not any("doc" in p.lower() for p in mounted), f"docs served statically: {mounted}"

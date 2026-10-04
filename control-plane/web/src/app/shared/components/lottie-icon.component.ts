@@ -1,5 +1,4 @@
-import { Component, Input, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, Input, OnInit, inject } from '@angular/core';
 import { LottieComponent, AnimationOptions } from 'ngx-lottie';
 
 import { MotionService } from '../motion';
@@ -13,8 +12,7 @@ import { MotionService } from '../motion';
  */
 @Component({
   selector: 'tn-lottie',
-  standalone: true,
-  imports: [CommonModule, LottieComponent],
+  imports: [LottieComponent],
   template: `
     <ng-lottie
       [options]="options"
@@ -25,13 +23,13 @@ import { MotionService } from '../motion';
   styles: [`:host { display: inline-block; line-height: 0; }`],
 })
 export class LottieIconComponent implements OnInit {
+  private motion = inject(MotionService);
+
   @Input({ required: true }) name!: string;
   @Input() size = 96;
   @Input() loop = true;
 
   options!: AnimationOptions;
-
-  constructor(private motion: MotionService) {}
 
   ngOnInit(): void {
     const reduced = this.motion.reducedMotion();

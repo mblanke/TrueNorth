@@ -1,5 +1,4 @@
-import { Component, OnDestroy, OnInit, effect, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnDestroy, OnInit, effect, signal, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -10,7 +9,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { NgxEchartsDirective, provideEcharts } from 'ngx-echarts';
+import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import type { EChartsOption } from 'echarts';
 import { Subscription, interval } from 'rxjs';
 
@@ -20,16 +19,30 @@ import { ThemeService } from '@core/services/theme.service';
 import { tnChartColors, tnCartesianBase } from '../../shared/charts/echarts-theme';
 import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
 
+/** The pipeline writes both fields; other shippers indexing into OpenSearch write only @timestamp. */
+export function telemetryEventTime(e: TelemetryEvent): string {
+  const t = e.timestamp ?? e['@timestamp'];
+  return t ? String(t) : '';
+}
+
 @Component({
   selector: 'tn-telemetry',
-  standalone: true,
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule,
-    MatIconModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatTableModule,
-    MatSlideToggleModule, MatTooltipModule, NgxEchartsDirective, LottieIconComponent,
-  ],
+    FormsModule,
+    MatCardModule,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule,
+    MatTableModule,
+    MatSlideToggleModule,
+    MatTooltipModule,
+    NgxEchartsDirective,
+    LottieIconComponent
+],
   // Component-level provider keeps echarts inside this route's lazy chunk.
-  providers: [provideEcharts()],
+  providers: [provideEchartsCore({ echarts: () => import('echarts') })],
   template: `
     <div class="page-container">
       <div class="page-header">
@@ -83,7 +96,7 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
         </div>
 
         <table mat-table [dataSource]="events()" class="mt-2 full-width">
-          <ng-container matColumnDef="timestamp"><th mat-header-cell *matHeaderCellDef>Time</th><td mat-cell *matCellDef="let e">{{ e.timestamp }}</td></ng-container>
+          <ng-container matColumnDef="timestamp"><th mat-header-cell *matHeaderCellDef>Time</th><td mat-cell *matCellDef="let e">{{ eventTime(e) }}</td></ng-container>
           <ng-container matColumnDef="event_type"><th mat-header-cell *matHeaderCellDef>Type</th><td mat-cell *matCellDef="let e">{{ e.event_type }}</td></ng-container>
           <ng-container matColumnDef="hostname"><th mat-header-cell *matHeaderCellDef>Host</th><td mat-cell *matCellDef="let e">{{ e.hostname || '—' }}</td></ng-container>
           <ng-container matColumnDef="source_ip"><th mat-header-cell *matHeaderCellDef>Src IP</th><td mat-cell *matCellDef="let e">{{ e.source_ip || '—' }}</td></ng-container>
@@ -128,6 +141,9 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
   `],
 })
 export class TelemetryComponent implements OnInit, OnDestroy {
+  private api = inject(ApiService);
+  private theme = inject(ThemeService);
+
   ranges = signal<RangeSummary[]>([]);
   events = signal<TelemetryEvent[]>([]);
   timelineOption = signal<EChartsOption>({});
@@ -142,7 +158,7 @@ export class TelemetryComponent implements OnInit, OnDestroy {
 
   private refreshSub?: Subscription;
 
-  constructor(private api: ApiService, private theme: ThemeService) {
+  constructor() {
     // Rebuild chart options whenever the theme accent changes.
     effect(() => {
       this.theme.activeTheme();
@@ -177,6 +193,8 @@ export class TelemetryComponent implements OnInit, OnDestroy {
     });
   }
 
+  readonly eventTime = telemetryEventTime;
+
   private buildCharts(events: TelemetryEvent[]): void {
     const c = tnChartColors();
     const base = tnCartesianBase(c);
@@ -184,7 +202,8 @@ export class TelemetryComponent implements OnInit, OnDestroy {
     // Time buckets (per minute).
     const buckets = new Map<string, number>();
     for (const e of events) {
-      const ts = e.timestamp ? String(e.timestamp).slice(0, 16) : 'unknown';
+      const t = this.eventTime(e);
+      const ts = t ? t.slice(0, 16) : 'unknown';
       buckets.set(ts, (buckets.get(ts) ?? 0) + 1);
     }
     const times = [...buckets.keys()].sort();

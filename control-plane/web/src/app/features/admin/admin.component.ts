@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, signal } from '@angular/core';
+﻿import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -28,7 +28,6 @@ interface AuditEntry {
 
 @Component({
   selector: 'tn-admin',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatTableModule,
@@ -244,6 +243,9 @@ interface AuditEntry {
     .selected-row { background: var(--accent-muted); }`],
 })
 export class AdminComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+
   health = signal<HealthResponse | null>(null);
   tenants = signal<Tenant[]>([]);
   auditLog = signal<AuditEntry[]>([]);
@@ -258,7 +260,6 @@ export class AdminComponent implements OnInit {
   tenantEditForm = { name: '', slug: '' };
   tenantSaving = false;
 
-  constructor(private api: ApiService, private notify: NotificationService) {}
 
   ngOnInit(): void {
     this.api.health().subscribe(h => this.health.set(h));
