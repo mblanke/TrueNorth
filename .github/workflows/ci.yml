@@ -59,9 +59,10 @@ jobs:
         run: python scripts/export_task_contracts.py --check
 
   # Supply chain evidence: SBOM (CycloneDX) + vulnerability reports, kept as artifacts.
-  # Report-only for now: on 2026-10-03 pip-audit found 81 advisories in 10 packages and
-  # npm audit 14, so a blocking job would fail every run until the upgrades land.
-  # Make it blocking (drop continue-on-error) once those are cleared. ADR 0003.
+  # Blocking: any known advisory in a Python service's pins or the web app's production
+  # dependencies fails the build. The 2026-10-03 baseline (81 Python, 14 npm) was cleared
+  # first. Both audits always run and the reports always upload, so a failure ships its
+  # evidence. ADR 0003.
   supply-chain:
     runs-on: ubuntu-latest
     steps:
@@ -80,16 +81,18 @@ jobs:
           output-file: sbom.cdx.json
           upload-artifact: false
       - name: pip-audit
-        continue-on-error: true
         run: |
           pip install pip-audit
           pip-audit -r control-plane/api/requirements.txt -r control-plane/worker/requirements.txt \
+            -r ai-orchestrator/requirements.txt -r telemetry-pipeline/requirements.txt \
+            -r scenario-engine/requirements.txt \
             -f json -o pip-audit.json
       - name: npm audit
-        continue-on-error: true
+        if: success() || failure()
         working-directory: control-plane/web
         run: npm audit --omit=dev --json > ../../npm-audit.json
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: supply-chain
           path: |
