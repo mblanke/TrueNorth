@@ -1,7 +1,7 @@
 import { Component, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -49,12 +49,13 @@ interface OpsStats {
   selector: 'tn-ops-center',
   standalone: true,
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
+    CommonModule, FormsModule, RouterLink, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatInputModule, MatFormFieldModule, MatSelectModule,
     MatChipsModule, MatListModule, MatBadgeModule, EnterStaggerDirective, CountUpDirective,
   ],
   template: `
     <div class="page-container">
+      <a class="back-link" routerLink="/ops-center/select">← Choose another exercise</a>
       <div class="page-header">
         <div class="header-left">
           <mat-icon class="page-icon">radar</mat-icon>
@@ -64,6 +65,7 @@ interface OpsStats {
           </div>
         </div>
         <div class="header-actions">
+          <a mat-stroked-button [routerLink]="['/exercises', exerciseId]">Exercise details</a>
           <button mat-stroked-button (click)="refreshAll()">
             <mat-icon>refresh</mat-icon> Refresh
           </button>
@@ -142,7 +144,7 @@ interface OpsStats {
                     </mat-select>
                   </mat-form-field>
                   <button mat-flat-button color="primary" (click)="submitAnnotation()" [disabled]="!newAnnotation.trim()">
-                    <mat-icon>send</mat-icon>
+                    <mat-icon>send</mat-icon> Add annotation
                   </button>
                 </div>
               </mat-card-content>
@@ -184,7 +186,7 @@ interface OpsStats {
                     <input matInput [(ngModel)]="commandHost" placeholder="e.g. DC01">
                   </mat-form-field>
                   <button mat-flat-button color="primary" (click)="submitCommand()" [disabled]="!newCommand.trim()">
-                    <mat-icon>send</mat-icon>
+                    <mat-icon>send</mat-icon> Share command
                   </button>
                 </div>
               </mat-card-content>
@@ -250,6 +252,8 @@ interface OpsStats {
   `,
   styles: [`
     .subtitle { margin-bottom: 16px; }
+    .back-link { display: inline-block; color: var(--text-muted); font-size: 12px; margin-bottom: 16px; text-underline-offset: 3px; }
+    .header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .stats-row { display: flex; gap: 16px; flex-wrap: wrap; }
     .stats-row mat-card { flex: 1; min-width: 120px; text-align: center; }
     .objectives-ring { --ring-size: 72px; --ring-width: 8px; margin: 4px auto; }
@@ -257,7 +261,9 @@ interface OpsStats {
     .tab-content { padding: 16px 0; }
     .mt-2 { margin-top: 16px; }
     .input-card { margin-bottom: 16px; }
-    .input-row { display: flex; gap: 12px; align-items: flex-start; }
+    .input-row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+    .input-row mat-form-field { min-width: 0; }
+    @media (max-width: 720px) { .input-row mat-form-field { flex: 1 1 100%; } }
     .flex-grow { flex: 1; }
     .full-width { width: 100%; }
     .command-card { margin-bottom: 8px; }

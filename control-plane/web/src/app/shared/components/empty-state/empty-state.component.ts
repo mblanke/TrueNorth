@@ -14,35 +14,42 @@ import { MatIconModule } from '@angular/material/icon';
   template: `
     <div class="wrap">
       <mat-icon aria-hidden="true">{{ icon }}</mat-icon>
-      <p class="title">{{ title }}</p>
+      <div class="copy"><p class="title">{{ title }}</p>
       @if (message) {
         <p class="message">{{ message }}</p>
       }
+      </div>
+      <div class="actions">
       <ng-content />
+      </div>
     </div>
   `,
   styles: [
     `
       :host { display: block; }
       .wrap {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr) auto;
         align-items: center;
-        gap: 4px;
-        padding: 48px 20px;
-        text-align: center;
+        gap: 16px;
+        padding: 24px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-card);
       }
       mat-icon {
-        font-size: 48px;
-        width: 48px;
-        height: 48px;
-        color: var(--text-muted);
-        opacity: 0.5;
-        margin-bottom: 8px;
+        font-size: 22px;
+        width: 22px;
+        height: 22px;
+        color: var(--accent);
+        padding: 7px;
+        border-radius: 6px;
+        background: var(--accent-muted);
       }
       .title { margin: 0; font-weight: 600; color: var(--text-primary); }
-      .message { margin: 0; font-size: 0.86rem; color: var(--text-secondary); max-width: 420px; }
-      .wrap > :last-child:not(.title):not(.message) { margin-top: 12px; }
+      .message { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-secondary); max-width: 520px; }
+      .actions:empty { display: none; }
+      @media (max-width: 720px) { .wrap { grid-template-columns: 36px minmax(0, 1fr); padding: 20px; } .actions { grid-column: 2; } }
     `,
   ],
 })
