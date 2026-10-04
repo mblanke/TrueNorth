@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -288,6 +288,9 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
   `],
 })
 export class CurriculumForgeComponent implements OnInit, OnDestroy {
+  private api = inject(ApiService);
+  private snack = inject(MatSnackBar);
+
   curricula = signal<any[]>([]);
   selected = signal<any | null>(null);
   quizzes = signal<any[]>([]);
@@ -308,8 +311,6 @@ export class CurriculumForgeComponent implements OnInit, OnDestroy {
   quizDifficulty = 'intermediate';
 
   private pollSub?: Subscription;
-
-  constructor(private api: ApiService, private snack: MatSnackBar) {}
 
   ngOnInit(): void {
     this.refresh();

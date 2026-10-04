@@ -1,15 +1,4 @@
-import {
-  Component,
-  OnDestroy,
-  ElementRef,
-  ViewChild,
-  AfterViewInit,
-  HostListener,
-  Inject,
-  signal,
-  ChangeDetectorRef,
-  ViewEncapsulation,
-} from '@angular/core';
+import { Component, OnDestroy, ElementRef, ViewChild, AfterViewInit, HostListener, signal, ChangeDetectorRef, ViewEncapsulation, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -215,12 +204,14 @@ export interface TextPromptData {
   `],
 })
 export class TextPromptDialogComponent {
+  dialogRef = inject<MatDialogRef<TextPromptDialogComponent, string | undefined>>(MatDialogRef);
+  data = inject<TextPromptData>(MAT_DIALOG_DATA);
+
   value: string;
 
-  constructor(
-    public dialogRef: MatDialogRef<TextPromptDialogComponent, string | undefined>,
-    @Inject(MAT_DIALOG_DATA) public data: TextPromptData,
-  ) {
+  constructor() {
+    const data = this.data;
+
     this.value = data.value ?? '';
   }
 
@@ -858,6 +849,13 @@ export class TextPromptDialogComponent {
   `],
 })
 export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
+  private cdr = inject(ChangeDetectorRef);
+  private snack = inject(MatSnackBar);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private api = inject(ApiService);
+  private dialog = inject(MatDialog);
+
   @ViewChild('canvas', { static: true }) canvasEl!: ElementRef<HTMLDivElement>;
   @ViewChild('yamlInput', { static: true }) yamlInputEl!: ElementRef<HTMLTextAreaElement>;
 
@@ -956,15 +954,6 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     { id: 'rds', label: 'Remote Desktop' },
     { id: 'ca', label: 'Certificate Authority' },
   ];
-
-  constructor(
-    private cdr: ChangeDetectorRef,
-    private snack: MatSnackBar,
-    private route: ActivatedRoute,
-    private router: Router,
-    private api: ApiService,
-    private dialog: MatDialog,
-  ) {}
 
   ngAfterViewInit(): void {
     this.initGraph();

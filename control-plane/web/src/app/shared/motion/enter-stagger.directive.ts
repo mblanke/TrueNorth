@@ -1,4 +1,4 @@
-import { AfterViewInit, Directive, ElementRef, Input, OnDestroy } from '@angular/core';
+import { AfterViewInit, Directive, ElementRef, Input, OnDestroy, inject } from '@angular/core';
 
 import { MotionService } from './motion.service';
 
@@ -18,16 +18,14 @@ import { MotionService } from './motion.service';
   selector: '[tnEnterStagger]',
 })
 export class EnterStaggerDirective implements AfterViewInit, OnDestroy {
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private motion = inject(MotionService);
+
   @Input() tnStaggerDelay = 0;
   @Input() tnStaggerY = 16;
 
   private readonly tweens: gsap.core.Tween[] = [];
   private observer?: MutationObserver;
-
-  constructor(
-    private host: ElementRef<HTMLElement>,
-    private motion: MotionService,
-  ) {}
 
   ngAfterViewInit(): void {
     this.reveal(Array.from(this.host.nativeElement.children), this.tnStaggerDelay);

@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, ViewChild, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, ViewChild, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -120,6 +120,11 @@ import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
   `],
 })
 export class Topology3dComponent implements OnInit, AfterViewInit, OnDestroy {
+  private api = inject(ApiService);
+  private route = inject(ActivatedRoute);
+  private motion = inject(MotionService);
+  private zone = inject(NgZone);
+
   @ViewChild('canvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
   ranges = signal<RangeSummary[]>([]);
@@ -132,13 +137,6 @@ export class Topology3dComponent implements OnInit, AfterViewInit, OnDestroy {
   private scene?: TopologyScene;
   private viewReady = false;
   private destroyed = false;
-
-  constructor(
-    private api: ApiService,
-    private route: ActivatedRoute,
-    private motion: MotionService,
-    private zone: NgZone,
-  ) {}
 
   ngOnInit(): void {
     this.selectedRangeId = this.route.snapshot.queryParamMap.get('range') ?? '';

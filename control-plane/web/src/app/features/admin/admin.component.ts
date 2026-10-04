@@ -248,6 +248,9 @@ interface AuditEntry {
     .selected-row { background: var(--accent-muted); }`],
 })
 export class AdminComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+
   health = signal<HealthResponse | null>(null);
   tenants = signal<Tenant[]>([]);
   auditLog = signal<AuditEntry[]>([]);
@@ -262,8 +265,6 @@ export class AdminComponent implements OnInit {
   tenantSaving = false;
 
   private readonly dialog = inject(MatDialog);
-
-  constructor(private api: ApiService, private notify: NotificationService) {}
 
   ngOnInit(): void {
     this.api.health().subscribe(h => this.health.set(h));

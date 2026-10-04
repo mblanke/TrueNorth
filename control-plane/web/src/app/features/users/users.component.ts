@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -630,6 +630,10 @@ type AuthZone = AuthZonePolicy;
   `],
 })
 export class UsersComponent implements OnInit {
+  private api = inject(ApiService);
+  private directory = inject(DirectoryApiService);
+  private snack = inject(MatSnackBar);
+
   users: UserFull[] = [];
   teams: TeamFull[] = [];
   nations: Nation[] = [];
@@ -688,12 +692,6 @@ export class UsersComponent implements OnInit {
   ouSaving = false;
   editingGroupId: string | null = null;
   groupSaving = false;
-
-  constructor(
-    private api: ApiService,
-    private directory: DirectoryApiService,
-    private snack: MatSnackBar,
-  ) {}
 
   emptyUser(): any {
     return {

@@ -31,9 +31,6 @@
             "style": "kebab-case"
           }
         ],
-        // Added to recommended in angular-eslint 20. Constructor injection is still
-        // supported; convert with `ng generate @angular/core:inject`, then drop this.
-        "@angular-eslint/prefer-inject": "off",
         "@typescript-eslint/no-explicit-any": "off",
         "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }]
       }

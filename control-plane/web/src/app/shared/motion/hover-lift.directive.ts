@@ -1,4 +1,4 @@
-import { Directive, ElementRef, OnDestroy, OnInit } from '@angular/core';
+import { Directive, ElementRef, OnDestroy, OnInit, inject } from '@angular/core';
 import gsap from 'gsap';
 
 import { MotionService } from './motion.service';
@@ -12,6 +12,9 @@ import { MotionService } from './motion.service';
   selector: '[tnHoverLift]',
 })
 export class HoverLiftDirective implements OnInit, OnDestroy {
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private motion = inject(MotionService);
+
   private enter = () => {
     this.host.nativeElement.classList.add('is-lifted');
     if (!this.motion.reducedMotion()) {
@@ -25,11 +28,6 @@ export class HoverLiftDirective implements OnInit, OnDestroy {
       gsap.to(this.host.nativeElement, { y: 0, duration: 0.3, ease: 'power2.out', clearProps: 'transform' });
     }
   };
-
-  constructor(
-    private host: ElementRef<HTMLElement>,
-    private motion: MotionService,
-  ) {}
 
   ngOnInit(): void {
     this.motion.runOutside(() => {

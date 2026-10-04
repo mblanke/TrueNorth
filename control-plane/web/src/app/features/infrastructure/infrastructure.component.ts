@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -645,6 +645,9 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
   `],
 })
 export class InfrastructureComponent implements OnInit {
+  private infra = inject(InfrastructureApiService);
+  private snack = inject(MatSnackBar);
+
   /* ── Compute state ─────────────────────────────────────────── */
   connections: HypervisorConnection[] = [];
   allNodes: HypervisorNode[] = [];
@@ -706,8 +709,6 @@ export class InfrastructureComponent implements OnInit {
     name: '', vendor: '', model: '', management_ip: '',
     role: 'tor' as NetworkDeviceRole, port_count: 48, firmware_version: '',
   };
-
-  constructor(private infra: InfrastructureApiService, private snack: MatSnackBar) {}
 
   /** Percent used, clamped to 0-100. Returns 0 when the total is missing or zero. */
   usagePct(used: number | null, total: number | null): number {

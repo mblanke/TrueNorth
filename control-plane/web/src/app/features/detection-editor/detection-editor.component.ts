@@ -1,4 +1,4 @@
-import { Component, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
@@ -124,11 +124,11 @@ falsepositives:
   `],
 })
 export class DetectionAiDialogComponent {
+  dialogRef = inject<MatDialogRef<DetectionAiDialogComponent, AiDraftRequest>>(MatDialogRef);
+
   technique = '';
   dataSource = 'sysmon';
   format = 'sigma';
-
-  constructor(public dialogRef: MatDialogRef<DetectionAiDialogComponent, AiDraftRequest>) {}
 
   isValidTechnique(): boolean {
     return MITRE_ID_PATTERN.test(this.technique.trim().toUpperCase());
@@ -540,6 +540,11 @@ export class DetectionAiDialogComponent {
   `],
 })
 export class DetectionEditorComponent implements OnInit, OnDestroy {
+  private api = inject(ApiService);
+  private assets = inject(StaticAssetsService);
+  private dialog = inject(MatDialog);
+  private snackBar = inject(MatSnackBar);
+
   /** Sigma levels map onto the shared severity chips; only one name differs. */
   levelClass(level: string): string {
     return level === 'informational' ? 'sev-info' : `sev-${level}`;
@@ -584,13 +589,6 @@ export class DetectionEditorComponent implements OnInit, OnDestroy {
 
   private searchInput = new Subject<string>();
   private destroyed = new Subject<void>();
-
-  constructor(
-    private api: ApiService,
-    private assets: StaticAssetsService,
-    private dialog: MatDialog,
-    private snackBar: MatSnackBar,
-  ) {}
 
   ngOnInit() {
     this.searchInput

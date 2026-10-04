@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, signal } from '@angular/core';
+﻿import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -186,6 +186,9 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
   `],
 })
 export class ExercisesComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+
   exercises = signal<ExerciseSummary[]>([]);
   ranges = signal<RangeSummary[]>([]);
   scenarios = signal<ScenarioSummary[]>([]);
@@ -196,8 +199,6 @@ export class ExercisesComponent implements OnInit {
   editingId: string | null = null;
   editForm = { name: '' };
   saving = false;
-
-  constructor(private api: ApiService, private notify: NotificationService) {}
 
   ngOnInit(): void {
     this.load();

@@ -56,6 +56,8 @@ type HeatmapData = CompetencyHeatmap;
   `],
 })
 export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
+  private api = inject(ApiService);
+
   @ViewChild('chartContainer') chartContainer!: ElementRef<HTMLDivElement>;
   @Input() tenantId?: string;
 
@@ -64,7 +66,7 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
   private lastData: HeatmapData | null = null;
   private readonly theme = inject(ThemeService);
 
-  constructor(private api: ApiService) {
+  constructor() {
     // ECharts snapshots CSS variables at option-build time, so a theme switch
     // must rebuild the option or the old palette sticks.
     effect(() => {

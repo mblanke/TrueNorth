@@ -76,11 +76,11 @@ import {
   `],
 })
 export class ScenarioDraftDialogComponent {
+  ref = inject<MatDialogRef<ScenarioDraftDialogComponent>>(MatDialogRef);
+
   objectivesText = '';
   difficulty = 'intermediate';
   durationMinutes = 60;
-
-  constructor(public ref: MatDialogRef<ScenarioDraftDialogComponent>) {}
 
   objectives(): string[] {
     return this.objectivesText.split('\n').map(o => o.trim()).filter(Boolean).slice(0, 10);

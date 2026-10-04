@@ -1,4 +1,4 @@
-import { Directive, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges } from '@angular/core';
+import { Directive, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, inject } from '@angular/core';
 
 import { MotionService } from './motion.service';
 
@@ -13,15 +13,13 @@ import { MotionService } from './motion.service';
   selector: '[tnCountUp]',
 })
 export class CountUpDirective implements OnChanges, OnDestroy {
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private motion = inject(MotionService);
+
   @Input({ required: true }) tnCountUp: number | null | undefined;
   @Input() tnCountUpFormat?: (n: number) => string;
 
   private tween?: gsap.core.Tween;
-
-  constructor(
-    private host: ElementRef<HTMLElement>,
-    private motion: MotionService,
-  ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (!('tnCountUp' in changes)) {

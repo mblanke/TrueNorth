@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -269,6 +269,10 @@ interface OpsStats {
   `],
 })
 export class OpsCenterComponent implements OnInit, OnDestroy {
+  private route = inject(ActivatedRoute);
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+
   exerciseId = '';
   annotations = signal<Annotation[]>([]);
   sharedCommands = signal<SharedCmd[]>([]);
@@ -283,12 +287,6 @@ export class OpsCenterComponent implements OnInit, OnDestroy {
   injectDescription = '';
 
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
-
-  constructor(
-    private route: ActivatedRoute,
-    private api: ApiService,
-    private notify: NotificationService,
-  ) {}
 
   ngOnInit() {
     this.exerciseId = this.route.snapshot.paramMap.get('exerciseId') || '';

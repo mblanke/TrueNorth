@@ -1,4 +1,4 @@
-import { Component, Inject, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -85,14 +85,14 @@ interface ObjectiveDraft {
   `],
 })
 export class CollectiveCreateDialogComponent {
+  ref = inject<MatDialogRef<CollectiveCreateDialogComponent>>(MatDialogRef);
+  data = inject<{
+    ranges: RangeModel[];
+}>(MAT_DIALOG_DATA);
+
   name = '';
   rangeId = '';
   objectives: ObjectiveDraft[] = [];
-
-  constructor(
-    public ref: MatDialogRef<CollectiveCreateDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: { ranges: RangeModel[] },
-  ) {}
 
   addObjective(): void {
     this.objectives.push({ ref: `O${this.objectives.length + 1}`, text: '', moe: '' });

@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -571,6 +571,10 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
   `],
 })
 export class ExerciseForgeComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+  private route = inject(ActivatedRoute);
+
   readonly steps: { key: WizardStep; label: string }[] = [
     { key: 'source', label: 'Source' },
     { key: 'configure', label: 'Configure' },
@@ -610,12 +614,6 @@ export class ExerciseForgeComponent implements OnInit {
     focus_areas: [] as string[],
     name_override: '',
   };
-
-  constructor(
-    private api: ApiService,
-    private notify: NotificationService,
-    private route: ActivatedRoute,
-  ) {}
 
   ngOnInit(): void {
     this.api.get<ThreatFeed[]>('/threat-intel/feeds').subscribe({

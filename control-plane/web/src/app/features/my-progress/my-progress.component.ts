@@ -353,6 +353,9 @@ interface AutoAssessment {
   `],
 })
 export class MyProgressComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+
   transcript = signal<Transcript | null>(null);
   progressSummary = signal<ProgressSummary | null>(null);
   recommendations = signal<Recommendation[]>([]);
@@ -372,7 +375,7 @@ export class MyProgressComponent implements OnInit {
   private lastAssertions: any[] | null = null;
   private readonly theme = inject(ThemeService);
 
-  constructor(private api: ApiService, private notify: NotificationService) {
+  constructor() {
     // Chart options snapshot CSS variables when built, so a theme switch must
     // rebuild them. Reading progressSummary() here also builds the trend chart
     // the first time the data lands.

@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, effect, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, effect, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -127,6 +127,9 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
   `],
 })
 export class TelemetryComponent implements OnInit, OnDestroy {
+  private api = inject(ApiService);
+  private theme = inject(ThemeService);
+
   ranges = signal<RangeSummary[]>([]);
   events = signal<TelemetryEvent[]>([]);
   timelineOption = signal<EChartsOption>({});
@@ -141,7 +144,7 @@ export class TelemetryComponent implements OnInit, OnDestroy {
 
   private refreshSub?: Subscription;
 
-  constructor(private api: ApiService, private theme: ThemeService) {
+  constructor() {
     // Rebuild chart options whenever the theme accent changes.
     effect(() => {
       this.theme.activeTheme();
