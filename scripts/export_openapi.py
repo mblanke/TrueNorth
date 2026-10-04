@@ -46,9 +46,7 @@ def main() -> int:
     if committed == spec:
         print(f"  {OUT.relative_to(ROOT)} matches the code")
         return 0
-    diff = difflib.unified_diff(
-        committed.splitlines(), spec.splitlines(), "committed", "code", lineterm="", n=2
-    )
+    diff = difflib.unified_diff(committed.splitlines(), spec.splitlines(), "committed", "code", lineterm="", n=2)
     for i, line in enumerate(diff):
         if i >= 80:
             print("  ... (diff truncated)")

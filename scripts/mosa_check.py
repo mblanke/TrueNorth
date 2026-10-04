@@ -64,10 +64,7 @@ def collect() -> dict[str, list[str] | int]:
     worker_sql = _hits(_py_files(WORKER), re.compile(r"\btext\("))
 
     sdk_files = [
-        f
-        for d in SDK_SCAN_DIRS
-        for f in _py_files(ROOT / d)
-        if not str(f.relative_to(ROOT)).startswith(ADAPTER_DIRS)
+        f for d in SDK_SCAN_DIRS for f in _py_files(ROOT / d) if not str(f.relative_to(ROOT)).startswith(ADAPTER_DIRS)
     ]
     vendor_sdk = _hits(sdk_files, VENDOR_SDK)
 
