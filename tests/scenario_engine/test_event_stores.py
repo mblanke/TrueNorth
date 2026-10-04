@@ -152,3 +152,23 @@ def _scenario_queries() -> list[tuple[str, str]]:
 def test_scenario_queries_are_plain_lucene_strings(ref, query):
     """Content stays portable: Lucene query_string, no engine-specific DSL embedded."""
     assert query.strip() and not query.lstrip().startswith("{")
+
+
+@respx.mock
+def test_opensearch_store_treats_a_missing_range_index_as_no_events():
+    # A range's index is created by its first ingested event; detection scoring starts earlier.
+    route = respx.post(f"{OS}/range-r1/_search").mock(return_value=httpx.Response(200, json={"hits": {"total": 0}}))
+    asyncio.run(OpenSearchEventStore(OS).search("range-r1", "a:b"))
+    assert route.calls.last.request.url.params["ignore_unavailable"] == "true"
+
+
+def test_event_store_from_env(monkeypatch):
+    from scenario_engine.event_stores import event_store_from_env
+
+    monkeypatch.delenv("EVENT_STORE", raising=False)
+    monkeypatch.setenv("OPENSEARCH_URL", OS + "/")
+    store = event_store_from_env()
+    assert isinstance(store, OpenSearchEventStore) and store.url == OS
+
+    monkeypatch.setenv("EVENT_STORE", "null")
+    assert isinstance(event_store_from_env(), NullEventStore)

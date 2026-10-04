@@ -24,6 +24,7 @@ from celery import Task, group
 from . import db_ops
 from .aar import build_report as build_aar_report
 from .celery_app import app
+from .detection import DetectionScorer, range_index
 from .provisioners import get_provisioner
 
 logger = logging.getLogger("truenorth.worker")
@@ -319,7 +320,7 @@ def ingest_telemetry_batch(self, range_id: str, events: list[dict]):
     import httpx
 
     os_url = os.getenv("OPENSEARCH_URL", "http://opensearch:9200")
-    index = f"range-{range_id}"
+    index = range_index(range_id)
 
     bulk_body = ""
     for event in events:
@@ -372,7 +373,7 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     try:
         timeline = scenario_definition.get("timeline", [])
         objectives = scenario_definition.get("objectives", [])
-        scenario_definition.get("inject_packs", [])
+        detections = None if backend == "mock" else DetectionScorer(exercise_id, _db_session)
 
         # â”€â”€ Update exercise state to running â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         with _db_session() as db:
@@ -392,13 +393,10 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
 
             logger.info(f"[scenario_v2] [{t}] event {idx + 1}/{total_events} action={action} params={params}")
 
-            if backend == "mock":
-                time.sleep(min(offset_seconds * 0.01, 1))
-            else:
-                # Production: dispatch to injector registry
-                # _dispatch_inject(action, params, range_context)
-                time.sleep(min(offset_seconds * 0.01, 2))
-
+            # Production: dispatch to injector registry (_dispatch_inject(action, params, range_context))
+            time.sleep(min(offset_seconds * 0.01, 1 if backend == "mock" else 2))
+            if detections:  # score the telemetry so far, so the scoreboard moves mid-run
+                detections.score()
             executed += 1
 
             # Publish progress
@@ -414,15 +412,13 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
             )
 
         # â”€â”€ Track objective completion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        completed_objectives = 0
-        for obj in objectives:
-            ref_id = obj.get("ref_id", "")
-            obj.get("validator", "manual")
-            if backend == "mock":
-                # Auto-complete objectives in mock mode
-                with _db_session() as db:
-                    db_ops.achieve_objective(db, exercise_id, ref_id)
-                completed_objectives += 1
+        if detections:  # final pass against the range's telemetry (worker/detection.py)
+            completed_objectives = detections.score()
+        else:  # mock: auto-complete every objective
+            with _db_session() as db:
+                for obj in objectives:
+                    db_ops.achieve_objective(db, exercise_id, obj.get("ref_id", ""))
+            completed_objectives = len(objectives)
 
         # â”€â”€ Mark exercise complete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         with _db_session() as db:

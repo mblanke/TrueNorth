@@ -19,7 +19,9 @@ class OpenSearchEventStore(BaseEventStore):
         dsl = {"query_string": {"query": query}} if isinstance(query, str) else query
         payload = {"query": dsl, "size": size, "track_total_hits": True}
         async with httpx.AsyncClient(verify=self.verify_ssl, timeout=self.timeout) as client:
-            resp = await client.post(f"{self.url}/{index}/_search", json=payload)
+            # A range's index does not exist until its first event is ingested; that is
+            # "no matches", not a store failure.
+            resp = await client.post(f"{self.url}/{index}/_search", params={"ignore_unavailable": "true"}, json=payload)
             resp.raise_for_status()
             data = resp.json()
         hits = data.get("hits", {})

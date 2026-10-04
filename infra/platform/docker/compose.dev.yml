@@ -246,6 +246,8 @@ services:
     build:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
+      additional_contexts:
+        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q provision,destroy -c 4 --loglevel=info -n provision@%h
     environment: &worker-env
@@ -275,6 +277,8 @@ services:
     build:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
+      additional_contexts:
+        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q scenario,default -c 8 --loglevel=info -n scenario@%h
     environment: *worker-env
@@ -293,6 +297,8 @@ services:
     build:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
+      additional_contexts:
+        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q telemetry -c 4 --loglevel=info -n telemetry@%h
     environment: *worker-env
@@ -305,6 +311,8 @@ services:
     build:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
+      additional_contexts:
+        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: unless-stopped
     command: celery -A worker.celery_app flower --port=5555 --broker_api=redis://redis:6379/0
     ports:
