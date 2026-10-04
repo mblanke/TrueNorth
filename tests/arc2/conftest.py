@@ -28,8 +28,8 @@ modules:
 """
 
 
-CATALOGUE = """programme,institution,dp_order,qsp_code,term_code,term_label,term_start,term_end,weeks,course_code,course_title,duration_hours,prerequisites,provenance,status
-cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-F,DP 1 Year 1 Fall,2026-09-01,2026-12-31,15,C101,Computer Architecture & Systems,,,unsourced,proposed
+CATALOGUE = """programme,institution,dp_order,qsp_code,term_code,term_label,term_start,term_end,weeks,course_code,course_title,duration_hours,provenance,status
+cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y1-F,DP 1 Year 1 Fall,2026-09-01,2026-12-31,15,C101,Computer Architecture & Systems,,unsourced,proposed
 """
 
 REFERENCES = """references:
@@ -156,8 +156,8 @@ objectives:
 """
 
 CATALOGUE_ROW = (
-    "programme,institution,dp_order,qsp_code,term_code,term_label,term_start,term_end,weeks,course_code,course_title,duration_hours,prerequisites,provenance,status\n"
-    "cyber-operator,Algonquin College,1,QSP-TODO,,,,,,ARC2-ADLM,Detecting AD Lateral Movement,8,,unsourced,proposed\n"
+    "programme,institution,dp_order,qsp_code,term_code,term_label,term_start,term_end,weeks,course_code,course_title,duration_hours,provenance,status\n"
+    "cyber-operator,Algonquin College,1,QSP-TODO,,,,,,ARC2-ADLM,Detecting AD Lateral Movement,8,unsourced,proposed\n"
 )
 
 

@@ -7,7 +7,7 @@ import { AuthService } from '@core/services/auth.service';
 import {
   ASK_LABEL, Message, RunDetail, RunSummary, authorTodo, canReply, pageRef, pollMs, primaryAction, runnerLooksIdle, shortTime, stageDots,
 } from '@core/arc2/studio';
-import { CourseStudioService } from './course-studio.service';
+import { CourseStudioService } from '@core/services/course-studio-api.service';
 
 type Tab = 'files' | 'outline' | 'quiz' | 'preview' | 'code' | 'lab' | 'validation';
 interface Draft { name: string }

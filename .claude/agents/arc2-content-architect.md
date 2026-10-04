@@ -64,13 +64,10 @@ All commands run from the repo root with the venv. `$RUN` = `build/arc2/<slug>`.
    `dp_order` byte-equal to `course`; `qsp_code` `QSP-TODO`; `duration_hours` = `int(course.duration_hours)`;
    `programme cyber-operator`, `provenance unsourced`, `status proposed`; `institution` `Algonquin College`
    (dp_order 1) or `Royal Military College` (2); `term_code` one of `DP1-Y1-F DP1-Y1-S DP1-Y2-F DP1-Y2-S
-   DP1-Y3-F DP1-Y3-S DP2-F DP2-S`; the other term fields may stay blank. `prerequisites` is a
-   proposal for curriculum review: `;`-separated `course_code`s that already exist in
-   `content/catalogue/cyber_operator_programme.csv` and that a student must finish first. Leave it
-   blank when you are not sure; semester order alone is not a prerequisite.
+   DP1-Y3-F DP1-Y3-S DP2-F DP2-S`; the other term fields may stay blank.
    ```
-   programme,institution,dp_order,qsp_code,term_code,term_label,term_start,term_end,weeks,course_code,course_title,duration_hours,prerequisites,provenance,status
-   cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-S,,,,,ARC2-ADLM,Detecting AD Lateral Movement,8,C204;C208,unsourced,proposed
+   programme,institution,dp_order,qsp_code,term_code,term_label,term_start,term_end,weeks,course_code,course_title,duration_hours,provenance,status
+   cyber-operator,Algonquin College,1,QSP-TODO,DP1-Y3-S,,,,,ARC2-ADLM,Detecting AD Lateral Movement,8,unsourced,proposed
    ```
 9. Write `01-blueprint/fragment.json` with exactly the four keys (plus `human_actions` if you stamp any).
    Self-check without writing the manifest:
