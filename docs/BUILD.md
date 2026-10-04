@@ -241,7 +241,7 @@ jobs:
 | Celery Worker | Python 3.12 | pip + Docker | `python:3.12-slim` | Container |
 | AI Orchestrator | Python 3.12 | pip + Docker | `python:3.12-slim` | Container |
 | Scenario Engine | Python 3.12 | pip + Docker | `python:3.12-slim` | Container |
-| Frontend | TypeScript | npm + Docker | `node:20-alpine` → `nginx:alpine` | Container |
+| Frontend | TypeScript | npm + Docker | `node:22-alpine` → `nginx:alpine` | Container |
 | Range Templates | HCL + Shell | Packer | Various OS ISOs | VM Images |
 | Infrastructure | HCL | Terraform | N/A | Cloud Resources |
 
@@ -293,7 +293,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 ```dockerfile
 # Stage 1: Build Angular
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
