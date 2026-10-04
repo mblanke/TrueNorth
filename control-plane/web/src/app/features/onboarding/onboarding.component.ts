@@ -2,7 +2,6 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
 import { MatStepperModule } from '@angular/material/stepper';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -12,20 +11,11 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatListModule } from '@angular/material/list';
-import { environment } from '@env/environment';
+import { DirectoryApiService } from '@core/services/directory-api.service';
+import { OnboardingState, RegistrationApiService } from '@core/services/registration-api.service';
 import { AuthService } from '@core/services/auth.service';
 import { TourService } from '../../shared/tour/tour.service';
 import { NotificationService } from '@core/services/notification.service';
-
-interface OnboardingState {
-  state: string;
-  steps_done: string[];
-  missing_profile_fields: string[];
-  qualification_id: string | null;
-  learning_path_id: string | null;
-  enrolled_course_count: number;
-  onboarded_at: string | null;
-}
 
 interface Nation {
   id: string;
@@ -233,7 +223,8 @@ interface ProfileForm {
   ],
 })
 export class OnboardingComponent implements OnInit {
-  private readonly http = inject(HttpClient);
+  private readonly directory = inject(DirectoryApiService);
+  private readonly registration = inject(RegistrationApiService);
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
   private readonly notify = inject(NotificationService);
@@ -256,20 +247,20 @@ export class OnboardingComponent implements OnInit {
   };
 
   ngOnInit(): void {
-    this.http.get<OnboardingState>(`${environment.apiUrl}/onboarding/state`).subscribe({
+    this.registration.onboardingState().subscribe({
       next: (s) => {
         this.state.set(s);
-        this.selectedQualification = s.qualification_id;
+        this.selectedQualification = s.qualification_id ?? null;
         this.loading.set(false);
       },
       error: () => this.loading.set(false),
     });
 
-    this.http.get<Nation[]>(`${environment.apiUrl}/directory/nations`).subscribe({
+    this.directory.nations().subscribe({
       next: (rows) => this.nations.set(rows ?? []),
       error: () => this.nations.set([]),
     });
-    this.http.get<Qualification[]>(`${environment.apiUrl}/qsp/qualifications`).subscribe({
+    this.directory.qualifications().subscribe({
       next: (rows) => this.qualifications.set(rows ?? []),
       error: () => this.qualifications.set([]),
     });
@@ -277,7 +268,7 @@ export class OnboardingComponent implements OnInit {
 
   saveProfile(stepper: { next: () => void }): void {
     this.busy.set(true);
-    this.http.post<OnboardingState>(`${environment.apiUrl}/onboarding/profile`, this.profile).subscribe({
+    this.registration.saveOnboardingProfile(this.profile).subscribe({
       next: (s) => {
         this.state.set(s);
         this.busy.set(false);
@@ -296,8 +287,8 @@ export class OnboardingComponent implements OnInit {
       return;
     }
     this.busy.set(true);
-    this.http
-      .post<OnboardingState>(`${environment.apiUrl}/onboarding/select-path`, {
+    this.registration
+      .selectOnboardingPath({
         qualification_id: this.selectedQualification,
       })
       .subscribe({
@@ -323,7 +314,7 @@ export class OnboardingComponent implements OnInit {
    */
   showMeAround(): void {
     this.busy.set(true);
-    this.http.post(`${environment.apiUrl}/onboarding/complete`, {}).subscribe({
+    this.registration.completeOnboarding().subscribe({
       next: async () => {
         await this.auth.bootstrap(true);
         this.busy.set(false);
@@ -363,7 +354,7 @@ export class OnboardingComponent implements OnInit {
 
   finish(): void {
     this.busy.set(true);
-    this.http.post(`${environment.apiUrl}/onboarding/complete`, {}).subscribe({
+    this.registration.completeOnboarding().subscribe({
       next: async () => {
         await this.auth.bootstrap(true);
         this.busy.set(false);
@@ -377,7 +368,7 @@ export class OnboardingComponent implements OnInit {
   }
 
   skip(): void {
-    this.http.post(`${environment.apiUrl}/onboarding/skip`, {}).subscribe({
+    this.registration.skipOnboarding().subscribe({
       next: async () => {
         await this.auth.bootstrap(true);
         void this.router.navigate(['/dashboard']);

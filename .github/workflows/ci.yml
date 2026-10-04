@@ -123,6 +123,9 @@ jobs:
           cache-dependency-path: control-plane/web/package-lock.json
       - run: npm ci
         working-directory: control-plane/web
+      - name: Generated API types match docs/interfaces/openapi.json
+        run: npm run check:api
+        working-directory: control-plane/web
       - run: npx ng build --configuration production
         working-directory: control-plane/web
 

@@ -1,7 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import {
+  ADSyncStatus, AuthZonePolicy, Coalition, Nation, OrganizationalUnit, SecurityGroup, TeamFull, UserFull,
+} from '@core/models';
+import { ApiService } from '@core/services/api.service';
+import { DirectoryApiService } from '@core/services/directory-api.service';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -19,42 +23,9 @@ import { MatDividerModule } from '@angular/material/divider';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ApprovalsPanelComponent } from './approvals-panel.component';
 
-interface Nation {
-  id: string; name: string; iso_alpha2: string; iso_alpha3: string;
-  flag_emoji: string; is_nato: boolean; is_fvey: boolean;
-}
-interface Coalition {
-  id: string; name: string; slug: string; description: string | null;
-}
-interface UserFull {
-  id: string; email: string; display_name: string; role: string;
-  first_name: string | null; last_name: string | null; rank: string | null;
-  service_branch: string | null; nation_id: string | null;
-  clearance_level: string; unit: string | null; callsign: string | null;
-  source: string;
-}
-interface TeamFull {
-  id: string; name: string; team_type: string; color_hex: string | null;
-  description: string | null; max_members: number | null; is_persistent: boolean;
-}
-interface OUTree {
-  id: string; name: string; slug: string; ou_type: string;
-  children: OUTree[];
-}
-interface SecurityGroup {
-  id: string; name: string; slug: string; group_type: string;
-  description: string | null; created_at: string;
-}
-interface ADSyncStatus {
-  connected: boolean; last_sync_at: string | null;
-  users_synced: number; groups_synced: number; errors: string[];
-}
-interface AuthZone {
-  id: string; zone_name: string; description: string | null;
-  allowed_methods: string; require_mfa: boolean;
-  session_timeout_minutes: number; max_failed_attempts: number;
-  clearance_required: string; is_active: boolean;
-}
+// Wire types are the contract's (core/models). OUTree is the OU tree node; AuthZone a policy.
+type OUTree = OrganizationalUnit;
+type AuthZone = AuthZonePolicy;
 
 @Component({
   selector: 'tn-users',
@@ -719,7 +690,11 @@ export class UsersComponent implements OnInit {
   editingGroupId: string | null = null;
   groupSaving = false;
 
-  constructor(private http: HttpClient, private snack: MatSnackBar) {}
+  constructor(
+    private api: ApiService,
+    private directory: DirectoryApiService,
+    private snack: MatSnackBar,
+  ) {}
 
   emptyUser(): any {
     return {
@@ -742,23 +717,23 @@ export class UsersComponent implements OnInit {
   ngOnInit(): void {
     this.loadUsers();
     this.loadTeams();
-    this.http.get<Nation[]>('/api/directory/nations').subscribe({ next: n => this.nations = n, error: () => {} });
-    this.http.get<Coalition[]>('/api/directory/coalitions').subscribe({ next: c => this.coalitions = c, error: () => {} });
-    this.http.get<OUTree[]>('/api/directory/ous/tree').subscribe({ next: t => this.ouTree = t, error: () => {} });
-    this.http.get<SecurityGroup[]>('/api/directory/groups').subscribe({ next: g => this.securityGroups = g, error: () => {} });
-    this.http.get<ADSyncStatus>('/api/ad-sync/status').subscribe({ next: s => this.adSyncStatus = s, error: () => {} });
-    this.http.get<AuthZone[]>('/api/auth-zones').subscribe({ next: z => this.authZones = z, error: () => {} });
+    this.directory.nations().subscribe({ next: n => this.nations = n, error: () => {} });
+    this.directory.coalitions().subscribe({ next: c => this.coalitions = c, error: () => {} });
+    this.directory.ouTree().subscribe({ next: t => this.ouTree = t, error: () => {} });
+    this.directory.securityGroups().subscribe({ next: g => this.securityGroups = g, error: () => {} });
+    this.directory.adSyncStatus().subscribe({ next: s => this.adSyncStatus = s, error: () => {} });
+    this.directory.authZones().subscribe({ next: z => this.authZones = z, error: () => {} });
   }
 
   loadUsers(): void {
-    this.http.get<any>('/api/users').subscribe({
+    this.api.listUsers().subscribe({
       next: (data: any) => { if (Array.isArray(data)) this.users = data; },
       error: () => {},
     });
   }
 
   loadTeams(): void {
-    this.http.get<any>('/api/teams').subscribe({
+    this.api.listTeams().subscribe({
       next: (data: any) => { if (Array.isArray(data)) this.teams = data; },
       error: () => {},
     });
@@ -766,7 +741,7 @@ export class UsersComponent implements OnInit {
 
   // -- User CRUD --
   createUser(): void {
-    this.http.post('/api/users', this.newUser).subscribe({
+    this.api.createUser(this.newUser).subscribe({
       next: () => {
         this.snack.open('User created', '', { duration: 2000, panelClass: 'snack-success' });
         this.newUser = this.emptyUser();
@@ -800,7 +775,7 @@ export class UsersComponent implements OnInit {
   updateUser(): void {
     if (!this.editingUserId) return;
     this.userSaving = true;
-    this.http.patch('/api/users/' + this.editingUserId, this.newUser).subscribe({
+    this.api.updateUser(this.editingUserId, this.newUser).subscribe({
       next: () => {
         this.userSaving = false;
         this.snack.open('User updated', '', { duration: 2000, panelClass: 'snack-success' });
@@ -822,7 +797,7 @@ export class UsersComponent implements OnInit {
 
   deleteUser(u: UserFull): void {
     if (!confirm('Delete user "' + u.display_name + '"? This cannot be undone.')) return;
-    this.http.delete('/api/users/' + u.id).subscribe({
+    this.api.deleteUser(u.id).subscribe({
       next: () => {
         this.snack.open('User deleted', '', { duration: 2000 });
         this.loadUsers();
@@ -835,7 +810,7 @@ export class UsersComponent implements OnInit {
 
   // -- Team CRUD --
   createTeam(): void {
-    this.http.post('/api/teams', this.newTeam).subscribe({
+    this.api.createTeam(this.newTeam).subscribe({
       next: () => {
         this.snack.open('Team created', '', { duration: 2000, panelClass: 'snack-success' });
         this.newTeam = { name: '', team_type: 'blue', description: '', max_members: 10, color_hex: '#2196F3' };
@@ -863,7 +838,7 @@ export class UsersComponent implements OnInit {
   updateTeam(): void {
     if (!this.editingTeamId) return;
     this.teamSaving = true;
-    this.http.patch('/api/teams/' + this.editingTeamId, this.newTeam).subscribe({
+    this.api.updateTeam(this.editingTeamId, this.newTeam).subscribe({
       next: () => {
         this.teamSaving = false;
         this.snack.open('Team updated', '', { duration: 2000, panelClass: 'snack-success' });
@@ -885,7 +860,7 @@ export class UsersComponent implements OnInit {
 
   deleteTeam(t: TeamFull): void {
     if (!confirm('Delete team "' + t.name + '"?')) return;
-    this.http.delete('/api/teams/' + t.id).subscribe({
+    this.api.deleteTeam(t.id).subscribe({
       next: () => {
         this.snack.open('Team deleted', '', { duration: 2000 });
         this.loadTeams();
@@ -898,12 +873,12 @@ export class UsersComponent implements OnInit {
 
   // -- OU CRUD --
   createOU(): void {
-    this.http.post('/api/directory/ous', this.newOU).subscribe({
+    this.directory.createOu(this.newOU).subscribe({
       next: () => {
         this.snack.open('OU created', '', { duration: 2000, panelClass: 'snack-success' });
         this.newOU = { name: '', slug: '', ou_type: 'department' };
         this.showOUForm = false;
-        this.http.get<OUTree[]>('/api/directory/ous/tree').subscribe({ next: t => this.ouTree = t, error: () => {} });
+        this.directory.ouTree().subscribe({ next: t => this.ouTree = t, error: () => {} });
       },
       error: (err: any) => {
         this.snack.open(err.error?.detail || 'Failed to create OU', 'OK', { duration: 5000 });
@@ -924,12 +899,12 @@ export class UsersComponent implements OnInit {
   updateOu(): void {
     if (!this.editingOuId) return;
     this.ouSaving = true;
-    this.http.patch('/api/directory/ous/' + this.editingOuId, this.newOU).subscribe({
+    this.directory.updateOu(this.editingOuId, this.newOU).subscribe({
       next: () => {
         this.ouSaving = false;
         this.snack.open('OU updated', '', { duration: 2000, panelClass: 'snack-success' });
         this.cancelOuEdit();
-        this.http.get<OUTree[]>('/api/directory/ous/tree').subscribe({ next: t => this.ouTree = t, error: () => {} });
+        this.directory.ouTree().subscribe({ next: t => this.ouTree = t, error: () => {} });
       },
       error: (err: any) => {
         this.ouSaving = false;
@@ -946,12 +921,12 @@ export class UsersComponent implements OnInit {
 
   // -- Security Group CRUD --
   createGroup(): void {
-    this.http.post('/api/directory/groups', this.newGroup).subscribe({
+    this.directory.createSecurityGroup(this.newGroup).subscribe({
       next: () => {
         this.snack.open('Security group created', '', { duration: 2000, panelClass: 'snack-success' });
         this.newGroup = { name: '', slug: '', group_type: 'access', description: '' };
         this.showGroupForm = false;
-        this.http.get<SecurityGroup[]>('/api/directory/groups').subscribe({ next: g => this.securityGroups = g, error: () => {} });
+        this.directory.securityGroups().subscribe({ next: g => this.securityGroups = g, error: () => {} });
       },
       error: (err: any) => {
         this.snack.open(err.error?.detail || 'Failed to create group', 'OK', { duration: 5000 });
@@ -973,12 +948,12 @@ export class UsersComponent implements OnInit {
   updateGroup(): void {
     if (!this.editingGroupId) return;
     this.groupSaving = true;
-    this.http.patch('/api/directory/groups/' + this.editingGroupId, this.newGroup).subscribe({
+    this.directory.updateSecurityGroup(this.editingGroupId, this.newGroup).subscribe({
       next: () => {
         this.groupSaving = false;
         this.snack.open('Security group updated', '', { duration: 2000, panelClass: 'snack-success' });
         this.cancelGroupEdit();
-        this.http.get<SecurityGroup[]>('/api/directory/groups').subscribe({ next: g => this.securityGroups = g, error: () => {} });
+        this.directory.securityGroups().subscribe({ next: g => this.securityGroups = g, error: () => {} });
       },
       error: (err: any) => {
         this.groupSaving = false;
@@ -1010,12 +985,12 @@ export class UsersComponent implements OnInit {
   updateZone(): void {
     if (!this.editingZoneId) return;
     this.zoneSaving = true;
-    this.http.patch('/api/auth-zones/' + this.editingZoneId, this.zoneForm).subscribe({
+    this.directory.updateAuthZone(this.editingZoneId, this.zoneForm).subscribe({
       next: () => {
         this.zoneSaving = false;
         this.snack.open('Auth zone updated', '', { duration: 2000, panelClass: 'snack-success' });
         this.cancelZoneEdit();
-        this.http.get<AuthZone[]>('/api/auth-zones').subscribe({ next: z => this.authZones = z, error: () => {} });
+        this.directory.authZones().subscribe({ next: z => this.authZones = z, error: () => {} });
       },
       error: (err: any) => {
         this.zoneSaving = false;
@@ -1032,7 +1007,7 @@ export class UsersComponent implements OnInit {
 
   // -- AD Sync --
   triggerSync(): void {
-    this.http.post<any>('/api/ad-sync/trigger', {}).subscribe({
+    this.directory.triggerAdSync().subscribe({
       next: (r: any) => {
         this.snack.open(r.message || 'Sync triggered', '', { duration: 3000, panelClass: 'snack-success' });
       },

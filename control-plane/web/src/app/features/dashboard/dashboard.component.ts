@@ -15,8 +15,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '@core/services/api.service';
-import { HttpClient } from '@angular/common/http';
-import { Range, Exercise, HealthResponse, HypervisorNode } from '@core/models';
+import { DirectoryApiService } from '@core/services/directory-api.service';
+import { RangeSummary, ExerciseSummary, HealthResponse, HypervisorNode } from '@core/models';
 import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective, MotionService } from '../../shared/motion';
 
 /** Percent of `used` in `total`, or null when the hypervisor doesn't report it. */
@@ -139,7 +139,7 @@ interface DeploymentProfile {
               <div class="gauge-row">
                 <div class="gauge">
                   <div class="gauge-label">CPU</div>
-                  @if (node.cpu_used !== null) {
+                  @if (node.cpu_used !== null && node.cpu_used !== undefined) {
                     <div class="tn-gauge-bg">
                       <div class="tn-gauge-fill" [style.width.%]="node.cpu_used"
                            [class.warn]="node.cpu_used > 70" [class.crit]="node.cpu_used > 90">
@@ -634,8 +634,8 @@ interface DeploymentProfile {
 })
 export class DashboardComponent implements OnInit {
   health = signal<HealthResponse | null>(null);
-  ranges = signal<Range[]>([]);
-  exercises = signal<Exercise[]>([]);
+  ranges = signal<RangeSummary[]>([]);
+  exercises = signal<ExerciseSummary[]>([]);
   rangeCount = signal(0);
   exerciseCount = signal(0);
 
@@ -673,7 +673,7 @@ export class DashboardComponent implements OnInit {
 
   constructor(
     private api: ApiService,
-    private http: HttpClient,
+    private directory: DirectoryApiService,
     private snack: MatSnackBar,
     private cdr: ChangeDetectorRef,
     private motion: MotionService,
@@ -709,11 +709,11 @@ export class DashboardComponent implements OnInit {
     this.loadEvents();
 
     // Personal dashboard data
-    this.http.get<any[]>('/api/directory/nations').subscribe({
+    this.directory.nations().subscribe({
       next: n => this.nationCount = n.length,
       error: () => {},
     });
-    this.http.get<any[]>('/api/directory/coalitions').subscribe({
+    this.directory.coalitions().subscribe({
       next: c => this.coalitionCount = c.length,
       error: () => {},
     });

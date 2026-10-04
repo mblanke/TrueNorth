@@ -6,6 +6,6 @@
   "lines_worker_tasks_py": 1585,
   "vendor_endpoint_outside_adapters": 2,
   "vendor_sdk_outside_adapters": 0,
-  "web_features_direct_httpclient": 11,
+  "web_features_direct_httpclient": 0,
   "worker_raw_sql": 35
 }

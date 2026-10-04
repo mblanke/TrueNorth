@@ -12,7 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService, CollectiveExercise } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { Range as RangeModel } from '@core/models';
+import { RangeSummary as RangeModel } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 

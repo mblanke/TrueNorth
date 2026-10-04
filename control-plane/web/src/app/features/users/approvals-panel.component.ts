@@ -1,7 +1,6 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,26 +13,8 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { environment } from '@env/environment';
+import { RegistrationApiService, RegistrationRequest } from '@core/services/registration-api.service';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
-
-interface RegistrationRequest {
-  id: string;
-  email: string;
-  display_name: string;
-  rank: string | null;
-  unit: string | null;
-  callsign: string | null;
-  ad_groups: string;
-  ad_distinguished_name: string | null;
-  requested_cohort: string | null;
-  justification: string | null;
-  suggested_role: string | null;
-  suggested_tenant_id: string | null;
-  status: string;
-  submitted_at: string | null;
-  decision_reason: string | null;
-}
 
 const ROLES = ['student', 'instructor', 'observer', 'range_ops', 'admin'];
 
@@ -305,7 +286,7 @@ const ROLES = ['student', 'instructor', 'observer', 'range_ops', 'admin'];
   ],
 })
 export class ApprovalsPanelComponent implements OnInit {
-  private readonly http = inject(HttpClient);
+  private readonly registration = inject(RegistrationApiService);
   private readonly snack = inject(MatSnackBar);
 
   readonly roles = ROLES;
@@ -347,8 +328,8 @@ export class ApprovalsPanelComponent implements OnInit {
     if (this.cohortFilter) {
       params.set('cohort', this.cohortFilter);
     }
-    this.http
-      .get<RegistrationRequest[]>(`${environment.apiUrl}/registration/requests?${params}`)
+    this.registration
+      .listRequests(params)
       .subscribe({
         next: (rows) => {
           this.requests.set(rows ?? []);
@@ -382,8 +363,8 @@ export class ApprovalsPanelComponent implements OnInit {
 
   approve(r: RegistrationRequest): void {
     this.busy.set(true);
-    this.http
-      .post(`${environment.apiUrl}/registration/requests/${r.id}/approve`, {
+    this.registration
+      .approve(r.id, {
         role: this.roleChoice[r.id] ?? 'student',
       })
       .subscribe({
@@ -405,8 +386,8 @@ export class ApprovalsPanelComponent implements OnInit {
       return;
     }
     this.busy.set(true);
-    this.http
-      .post(`${environment.apiUrl}/registration/requests/${r.id}/reject`, { reason })
+    this.registration
+      .reject(r.id, { reason })
       .subscribe({
         next: () => {
           this.busy.set(false);
@@ -421,11 +402,8 @@ export class ApprovalsPanelComponent implements OnInit {
 
   bulkApprove(): void {
     this.busy.set(true);
-    this.http
-      .post<{ approved: number; failed: number; results: { error: string | null }[] }>(
-        `${environment.apiUrl}/registration/requests/bulk-approve`,
-        { request_ids: this.selected(), role: this.bulkRole },
-      )
+    this.registration
+      .bulkApprove({ request_ids: this.selected(), role: this.bulkRole })
       .subscribe({
         next: (res) => {
           this.busy.set(false);

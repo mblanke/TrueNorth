@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { ApiService } from '@core/services/api.service';
-import { Exercise } from '@core/models';
+import { ExerciseSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
 @Component({
@@ -59,7 +59,7 @@ export class ExerciseSelectorComponent {
   readonly offset = signal(0);
   readonly loading = signal(true);
   readonly error = signal(false);
-  readonly exercises = signal<Exercise[]>([]);
+  readonly exercises = signal<ExerciseSummary[]>([]);
 
   constructor() { this.load(); }
 

@@ -1,16 +1,16 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { HttpClient } from '@angular/common/http';
 import { MatChipInputEvent } from '@angular/material/chips';
 import { of, throwError } from 'rxjs';
 import { DetectionEditorComponent } from './detection-editor.component';
 import { ApiService } from '@core/services/api.service';
+import { StaticAssetsService } from '@core/services/static-assets.service';
 
 describe('DetectionEditorComponent', () => {
   let component: DetectionEditorComponent;
   let fixture: ComponentFixture<DetectionEditorComponent>;
   let mockApi: jasmine.SpyObj<ApiService>;
-  let mockHttp: jasmine.SpyObj<HttpClient>;
+  let mockAssets: jasmine.SpyObj<StaticAssetsService>;
 
   const rule = {
     id: 'r-1',
@@ -44,20 +44,20 @@ describe('DetectionEditorComponent', () => {
   beforeEach(async () => {
     mockApi = jasmine.createSpyObj('ApiService',
       ['get', 'post', 'patch', 'delete', 'aiDetectionDraft']);
-    mockHttp = jasmine.createSpyObj('HttpClient', ['get']);
+    mockAssets = jasmine.createSpyObj('StaticAssetsService', ['json']);
 
     mockApi.get.and.returnValue(of([]));
     mockApi.post.and.returnValue(of({}));
     mockApi.patch.and.returnValue(of({}));
     mockApi.delete.and.returnValue(of(undefined));
     mockApi.aiDetectionDraft.and.returnValue(of({ output: 'title: drafted', model_used: 'local' }));
-    mockHttp.get.and.returnValue(of([{ id: 'T1059.001', name: 'PowerShell' }]));
+    mockAssets.json.and.returnValue(of([{ id: 'T1059.001', name: 'PowerShell' }]));
 
     await TestBed.configureTestingModule({
       imports: [DetectionEditorComponent, NoopAnimationsModule],
       providers: [
         { provide: ApiService, useValue: mockApi },
-        { provide: HttpClient, useValue: mockHttp },
+        { provide: StaticAssetsService, useValue: mockAssets },
       ],
     }).compileComponents();
 
@@ -76,10 +76,10 @@ describe('DetectionEditorComponent', () => {
 
   it('loads MITRE suggestions from the asset and tolerates failure', () => {
     fixture.detectChanges();
-    expect(mockHttp.get).toHaveBeenCalledWith('/assets/mitre-common.json');
+    expect(mockAssets.json).toHaveBeenCalledWith('/assets/mitre-common.json');
     expect(component.suggestions().length).toBe(1);
 
-    mockHttp.get.and.returnValue(throwError(() => new Error('404')));
+    mockAssets.json.and.returnValue(throwError(() => new Error('404')));
     const second = TestBed.createComponent(DetectionEditorComponent);
     second.detectChanges();
     expect(second.componentInstance.suggestions()).toEqual([]);

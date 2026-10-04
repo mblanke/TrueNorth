@@ -24,8 +24,9 @@ fails on OpenAPI drift. Decisions and reasons are in `docs/adr/`.
   `*_backends/`). Vendor SDKs (`proxmoxer`, `pyVmomi`, `opensearchpy`) are imported
   only there; no `if hypervisor_type == "..."` in routers. ADR 0001.
 - `docs/interfaces/openapi.json` is the published API contract. If you change an
-  endpoint or schema, run `.venv/bin/python scripts/export_openapi.py` and commit the
-  diff with the change. One handler per method; every route needs a unique
+  endpoint or schema, run `.venv/bin/python scripts/export_openapi.py`, then
+  `npm run gen:api` in `control-plane/web` (Angular types are generated from it), and
+  commit both with the change. One handler per method; every route needs a unique
   `operationId`. ADR 0002.
 - No new raw SQL in the worker. No new `HttpClient` in Angular `features/`; use the
   shared client. Put new code in per-section modules, not `models.py` / `schemas.py` /

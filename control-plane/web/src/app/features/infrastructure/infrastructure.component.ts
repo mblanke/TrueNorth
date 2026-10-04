@@ -16,62 +16,22 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { HttpClient } from '@angular/common/http';
+import {
+  HypervisorConnection, HypervisorNode, HypervisorSummary, HypervisorType,
+  NetworkDevice, NetworkDeviceRole, NetworkSummary, StorageAppliance, StorageProtocol, StorageSummary,
+} from '@core/models';
+import { InfrastructureApiService } from '@core/services/infrastructure-api.service';
 import { firstValueFrom } from 'rxjs';
 import { CountUpDirective } from '../../shared/motion';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
-/* ── Local interfaces (match backend schemas) ───────────────── */
-interface HypervisorConnection {
-  id: string; name: string; hypervisor_type: 'proxmox' | 'vsphere' | 'hyperv';
-  host: string; port: number; username: string; verify_ssl: boolean;
-  is_primary: boolean; is_active: boolean; datacenter: string | null;
-  notes: string | null; created_at: string;
-}
+/* ── Wire types come from the contract (core/models → core/api/schema.d.ts). The
+   narrow unions (HypervisorType, StorageProtocol, NetworkDeviceRole) are UI-side: the
+   contract types those fields as plain strings. ── */
 /** vCenter HTTPS, the Proxmox API, WinRM over HTTP. */
-const DEFAULT_PORT: Record<HypervisorConnection['hypervisor_type'], number> = {
+const DEFAULT_PORT: Record<HypervisorType, number> = {
   vsphere: 443, proxmox: 8006, hyperv: 5985,
 };
-interface HypervisorNode {
-  id: string; node_name: string; ip_address: string | null; status: string;
-  cpu_total: number | null; cpu_used: number | null;
-  memory_total_gb: number | null; memory_used_gb: number | null;
-  storage_total_gb: number | null; storage_used_gb: number | null;
-  vm_count: number;
-}
-interface HypervisorSummary {
-  total_connections: number; active_connections: number;
-  total_nodes: number; online_nodes: number; total_vms: number;
-  total_cpu: number; total_memory_gb: number; total_storage_gb: number;
-  by_type: Record<string, number>;
-}
-type StorageProtocol = 'nfs' | 'iscsi' | 'fc' | 'nvme_of' | 'smb';
-interface StorageAppliance {
-  id: string; name: string; vendor: string; model: string;
-  management_ip: string; protocol: StorageProtocol;
-  raw_capacity_tb: number; usable_capacity_tb: number;
-  is_active: boolean; notes: string | null; created_at: string;
-}
-interface _StorageVolume {
-  id: string; appliance_id: string; volume_name: string;
-  size_gb: number; used_gb: number; protocol: StorageProtocol;
-  mount_path: string | null; created_at: string;
-}
-interface StorageSummary {
-  total_appliances: number; active_appliances: number;
-  total_raw_tb: number; total_usable_tb: number; total_volumes: number;
-}
-type NetworkDeviceRole = 'tor' | 'spine' | 'leaf' | 'firewall' | 'router' | 'oob';
-interface NetworkDevice {
-  id: string; name: string; vendor: string; model: string;
-  role: NetworkDeviceRole; management_ip: string;
-  firmware_version: string | null; port_count: number;
-  is_active: boolean; notes: string | null; created_at: string;
-}
-interface NetworkSummary {
-  total_devices: number; active_devices: number;
-  by_role: Record<string, number>;
-}
 
 @Component({
   selector: 'tn-infrastructure',
@@ -697,7 +657,7 @@ export class InfrastructureComponent implements OnInit {
   connCols = ['status', 'name', 'type', 'host', 'actions'];
   nodeCols = ['status', 'node_name', 'ip', 'cpu', 'memory', 'storage', 'vms'];
   newConn: {
-    name: string; hypervisor_type: HypervisorConnection['hypervisor_type']; host: string;
+    name: string; hypervisor_type: HypervisorType; host: string;
     port: number; username: string; password: string; verify_ssl: boolean; is_primary: boolean;
   } = this.blankConnection();
 
@@ -748,7 +708,7 @@ export class InfrastructureComponent implements OnInit {
     role: 'tor' as NetworkDeviceRole, port_count: 48, firmware_version: '',
   };
 
-  constructor(private http: HttpClient, private snack: MatSnackBar) {}
+  constructor(private infra: InfrastructureApiService, private snack: MatSnackBar) {}
 
   /** Percent used, clamped to 0-100. Returns 0 when the total is missing or zero. */
   usagePct(used: number | null, total: number | null): number {
@@ -767,7 +727,7 @@ export class InfrastructureComponent implements OnInit {
 
   /* ── Compute helpers ───────────────────────────────────────── */
   loadConnections(): void {
-    this.http.get<HypervisorConnection[]>('/api/hypervisors/connections').subscribe({
+    this.infra.connections().subscribe({
       next: c => {
         this.connections = c;
         this.loadAllNodes();
@@ -787,7 +747,7 @@ export class InfrastructureComponent implements OnInit {
     if (pending === 0) { this.allNodes = []; return; }
 
     for (const c of this.connections) {
-      this.http.get<HypervisorNode[]>(`/api/hypervisors/connections/${c.id}/nodes`).subscribe({
+      this.infra.connectionNodes(c.id).subscribe({
         next: nodes => {
           for (const n of nodes) {
             // Keep the latest version seen (identical after backend dedup)
@@ -809,20 +769,20 @@ export class InfrastructureComponent implements OnInit {
   }
 
   loadHvSummary(): void {
-    this.http.get<HypervisorSummary>('/api/hypervisors/summary').subscribe({
+    this.infra.hypervisorSummary().subscribe({
       next: s => this.hvSummary = s,
       error: () => {},
     });
   }
   createConnection(): void {
-    this.http.post('/api/hypervisors/connections', this.newConn).subscribe({
+    this.infra.createConnection(this.newConn).subscribe({
       next: () => { this.showAddConn = false; this.loadConnections(); this.loadHvSummary(); },
       error: e => this.snack.open('Failed to create connection: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 }),
     });
   }
   testConnection(c: HypervisorConnection): void {
     this.snack.open('Testing ' + c.name + '...', '', { duration: 2000 });
-    this.http.post<any>(`/api/hypervisors/connections/${c.id}/test`, {}).subscribe({
+    this.infra.testConnection(c.id).subscribe({
       next: r => {
         this.snack.open(r.message, 'OK', { duration: 5000 });
         this.loadConnections();
@@ -832,7 +792,7 @@ export class InfrastructureComponent implements OnInit {
   }
   discoverNodes(c: HypervisorConnection): void {
     this.snack.open('Discovering nodes on ' + c.name + '...', '', { duration: 2000 });
-    this.http.post<any>(`/api/hypervisors/connections/${c.id}/discover`, {}).subscribe({
+    this.infra.discoverConnection(c.id).subscribe({
       next: r => {
         this.snack.open(r.message, 'OK', { duration: 5000 });
         this.loadConnections();
@@ -850,7 +810,7 @@ export class InfrastructureComponent implements OnInit {
 
     try {
       const results = await Promise.allSettled(
-        this.connections.map(c => firstValueFrom(this.http.post<any>(`/api/hypervisors/connections/${c.id}/discover`, {})))
+        this.connections.map(c => firstValueFrom(this.infra.discoverConnection(c.id)))
       );
 
       const success = results.filter(r => r.status === 'fulfilled').length;
@@ -868,14 +828,14 @@ export class InfrastructureComponent implements OnInit {
     }
   }
   setPrimary(c: HypervisorConnection): void {
-    this.http.post<any>(`/api/hypervisors/connections/${c.id}/set-primary`, {}).subscribe({
+    this.infra.setPrimaryConnection(c.id).subscribe({
       next: () => this.loadConnections(),
       error: () => this.snack.open('Failed to set primary', 'OK', { duration: 3000 }),
     });
   }
   deleteConnection(c: HypervisorConnection): void {
     if (!confirm(`Delete connection "${c.name}"?`)) return;
-    this.http.delete(`/api/hypervisors/connections/${c.id}`).subscribe({
+    this.infra.deleteConnection(c.id).subscribe({
       next: () => { this.loadConnections(); this.loadHvSummary(); },
       error: () => this.snack.open('Failed to delete', 'OK', { duration: 3000 }),
     });
@@ -884,14 +844,14 @@ export class InfrastructureComponent implements OnInit {
     this.showAddConn = false;
     this.editingConnectionId = c.id;
     this.newConn = {
-      name: c.name, hypervisor_type: c.hypervisor_type, host: c.host, port: c.port,
+      name: c.name, hypervisor_type: c.hypervisor_type as HypervisorType, host: c.host, port: c.port,
       username: c.username, password: '', verify_ssl: c.verify_ssl, is_primary: c.is_primary,
     };
   }
   updateConnection(): void {
     if (!this.editingConnectionId) return;
     this.connectionSaving = true;
-    this.http.patch(`/api/hypervisors/connections/${this.editingConnectionId}`, this.newConn).subscribe({
+    this.infra.updateConnection(this.editingConnectionId, this.newConn).subscribe({
       next: () => {
         this.cancelConnectionEdit();
         this.loadConnections();
@@ -912,26 +872,26 @@ export class InfrastructureComponent implements OnInit {
 
   /* ── Storage helpers ───────────────────────────────────────── */
   loadAppliances(): void {
-    this.http.get<StorageAppliance[]>('/api/storage/appliances').subscribe({
+    this.infra.appliances().subscribe({
       next: a => this.appliances = a,
       error: () => this.snack.open('Failed to load storage appliances', 'OK', { duration: 3000 }),
     });
   }
   loadStorageSummary(): void {
-    this.http.get<StorageSummary>('/api/storage/summary').subscribe({
+    this.infra.storageSummary().subscribe({
       next: s => this.storageSummary = s,
       error: () => {},
     });
   }
   createAppliance(): void {
-    this.http.post('/api/storage/appliances', this.newAppliance).subscribe({
+    this.infra.createAppliance(this.newAppliance).subscribe({
       next: () => { this.showAddStorage = false; this.loadAppliances(); this.loadStorageSummary(); },
       error: e => this.snack.open('Failed: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 }),
     });
   }
   deleteAppliance(a: StorageAppliance): void {
     if (!confirm(`Delete appliance "${a.name}"?`)) return;
-    this.http.delete(`/api/storage/appliances/${a.id}`).subscribe({
+    this.infra.deleteAppliance(a.id).subscribe({
       next: () => { this.loadAppliances(); this.loadStorageSummary(); },
       error: () => this.snack.open('Failed to delete', 'OK', { duration: 3000 }),
     });
@@ -941,13 +901,13 @@ export class InfrastructureComponent implements OnInit {
     this.editingApplianceId = a.id;
     this.newAppliance = {
       name: a.name, vendor: a.vendor, model: a.model, management_ip: a.management_ip,
-      protocol: a.protocol, raw_capacity_tb: a.raw_capacity_tb, usable_capacity_tb: a.usable_capacity_tb,
+      protocol: a.protocol as StorageProtocol, raw_capacity_tb: a.raw_capacity_tb, usable_capacity_tb: a.usable_capacity_tb,
     };
   }
   updateAppliance(): void {
     if (!this.editingApplianceId) return;
     this.applianceSaving = true;
-    this.http.patch(`/api/storage/appliances/${this.editingApplianceId}`, this.newAppliance).subscribe({
+    this.infra.updateAppliance(this.editingApplianceId, this.newAppliance).subscribe({
       next: () => {
         this.cancelApplianceEdit();
         this.loadAppliances();
@@ -971,26 +931,26 @@ export class InfrastructureComponent implements OnInit {
 
   /* ── Network helpers ───────────────────────────────────────── */
   loadNetDevices(): void {
-    this.http.get<NetworkDevice[]>('/api/network-devices/').subscribe({
+    this.infra.networkDevices().subscribe({
       next: d => this.netDevices = d,
       error: () => this.snack.open('Failed to load network devices', 'OK', { duration: 3000 }),
     });
   }
   loadNetSummary(): void {
-    this.http.get<NetworkSummary>('/api/network-devices/summary').subscribe({
+    this.infra.networkSummary().subscribe({
       next: s => this.networkSummary = s,
       error: () => {},
     });
   }
   createNetDevice(): void {
-    this.http.post('/api/network-devices/', this.newNetDev).subscribe({
+    this.infra.createNetworkDevice(this.newNetDev).subscribe({
       next: () => { this.showAddNetwork = false; this.loadNetDevices(); this.loadNetSummary(); },
       error: e => this.snack.open('Failed: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 }),
     });
   }
   deleteNetDevice(d: NetworkDevice): void {
     if (!confirm(`Delete device "${d.name}"?`)) return;
-    this.http.delete(`/api/network-devices/${d.id}`).subscribe({
+    this.infra.deleteNetworkDevice(d.id).subscribe({
       next: () => { this.loadNetDevices(); this.loadNetSummary(); },
       error: () => this.snack.open('Failed to delete', 'OK', { duration: 3000 }),
     });
@@ -1000,13 +960,13 @@ export class InfrastructureComponent implements OnInit {
     this.editingDeviceId = d.id;
     this.newNetDev = {
       name: d.name, vendor: d.vendor, model: d.model, management_ip: d.management_ip,
-      role: d.role, port_count: d.port_count, firmware_version: d.firmware_version || '',
+      role: d.role as NetworkDeviceRole, port_count: d.port_count, firmware_version: d.firmware_version || '',
     };
   }
   updateDevice(): void {
     if (!this.editingDeviceId) return;
     this.deviceSaving = true;
-    this.http.patch(`/api/network-devices/${this.editingDeviceId}`, this.newNetDev).subscribe({
+    this.infra.updateNetworkDevice(this.editingDeviceId, this.newNetDev).subscribe({
       next: () => {
         this.cancelDeviceEdit();
         this.loadNetDevices();

@@ -2,7 +2,7 @@ import {
   Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, effect, inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { ApiService, CompetencyHeatmap } from '@core/services/api.service';
 import { MatCardModule } from '@angular/material/card';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -21,11 +21,7 @@ const NICE_CATEGORIES = [
 
 const PROFICIENCY_LEVELS = ['Novice', 'Beginner', 'Intermediate', 'Advanced', 'Expert'];
 
-interface HeatmapData {
-  categories: string[];
-  work_roles: string[];
-  values: number[][]; // [categoryIdx, roleIdx, score 0-100]
-}
+type HeatmapData = CompetencyHeatmap;
 
 @Component({
   selector: 'tn-competency-heatmap',
@@ -69,7 +65,7 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
   private lastData: HeatmapData | null = null;
   private readonly theme = inject(ThemeService);
 
-  constructor(private http: HttpClient) {
+  constructor(private api: ApiService) {
     // ECharts snapshots CSS variables at option-build time, so a theme switch
     // must rebuild the option or the old palette sticks.
     effect(() => {
@@ -97,9 +93,7 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
     if (!this.chartInstance) return;
 
     // Fetch data from API or use sample data
-    this.http.get<HeatmapData>('/api/competency/heatmap', {
-      params: { view: this.viewMode },
-    }).subscribe({
+    this.api.getCompetencyHeatmap(this.viewMode).subscribe({
       next: data => this.updateChart(data),
       error: () => this.updateChart(this.sampleData()),
     });

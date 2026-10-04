@@ -1,12 +1,11 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { environment } from '@env/environment';
+import { RegistrationApiService } from '@core/services/registration-api.service';
 import { AuthService } from '@core/services/auth.service';
 
 /**
@@ -110,7 +109,7 @@ import { AuthService } from '@core/services/auth.service';
 export class RegistrationPendingComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  private readonly http = inject(HttpClient);
+  private readonly registration = inject(RegistrationApiService);
 
   rejected = signal(false);
   reason = signal<string | null>(null);
@@ -154,7 +153,7 @@ export class RegistrationPendingComponent implements OnInit, OnDestroy {
   }
 
   withdraw(): void {
-    this.http.delete(`${environment.apiUrl}/registration/mine`).subscribe({
+    this.registration.withdrawMine().subscribe({
       next: () => void this.router.navigate(['/register']),
       error: () => void this.refresh(),
     });

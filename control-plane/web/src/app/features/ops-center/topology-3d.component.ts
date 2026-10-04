@@ -10,7 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { ApiService } from '@core/services/api.service';
-import { Range } from '@core/models';
+import { RangeSummary } from '@core/models';
 import { MotionService } from '../../shared/motion';
 import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
 
@@ -123,7 +123,7 @@ import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
 export class Topology3dComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('canvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
-  ranges = signal<Range[]>([]);
+  ranges = signal<RangeSummary[]>([]);
   loading = signal(false);
   empty = signal(false);
   hover = signal<HoverInfo | null>(null);

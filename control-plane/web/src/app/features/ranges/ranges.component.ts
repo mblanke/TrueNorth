@@ -14,7 +14,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, RangeStats } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { Range, Template } from '@core/models';
+import { RangeSummary, TemplateSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { CountUpDirective } from '../../shared/motion';
@@ -228,8 +228,8 @@ import { CountUpDirective } from '../../shared/motion';
   `],
 })
 export class RangesComponent implements OnInit {
-  ranges = signal<Range[]>([]);
-  templates = signal<Template[]>([]);
+  ranges = signal<RangeSummary[]>([]);
+  templates = signal<TemplateSummary[]>([]);
   stats = signal<RangeStats | null>(null);
   loading = signal(true);
   showCreate = false;
@@ -240,7 +240,7 @@ export class RangesComponent implements OnInit {
   saving = false;
   displayedColumns = ['name', 'state', 'created', 'actions'];
   /** The range whose description panel is open, if any. */
-  notesFor = signal<Range | null>(null);
+  notesFor = signal<RangeSummary | null>(null);
 
   constructor(private api: ApiService, private notify: NotificationService) {}
 
@@ -264,7 +264,7 @@ export class RangesComponent implements OnInit {
     });
   }
 
-  toggleNotes(r: Range): void {
+  toggleNotes(r: RangeSummary): void {
     this.notesFor.set(this.notesFor()?.id === r.id ? null : r);
   }
 
@@ -282,7 +282,7 @@ export class RangesComponent implements OnInit {
     });
   }
 
-  startEdit(r: Range): void {
+  startEdit(r: RangeSummary): void {
     this.editingId = r.id;
     this.editForm.name = r.name;
   }

@@ -357,6 +357,10 @@ export class TemplateEditorDialogComponent {
   `],
 })
 export class ContentCatalogComponent implements OnInit {
+  // CONTRACT MISMATCH (MOSA slice 7): GET /templates returns TemplateListOut rows, which
+  // carry no `yaml`. This view reads t.yaml for the host badge, Validate and Edit, so those
+  // see undefined at runtime; Edit then saves `yaml: ''` over the stored template. Typed as
+  // Template[] by assertion below until the behaviour is fixed (fetch getTemplate(id)).
   readonly templates = signal<Template[]>([]);
   readonly loading = signal(true);
   readonly cards = computed<TemplateCard[]>(() =>
@@ -377,7 +381,7 @@ export class ContentCatalogComponent implements OnInit {
     this.loading.set(true);
     this.api.listTemplates().subscribe({
       next: t => {
-        this.templates.set(t ?? []);
+        this.templates.set((t ?? []) as Template[]);
         this.loading.set(false);
       },
       error: () => {
