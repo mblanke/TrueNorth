@@ -52,14 +52,6 @@ class TeamIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 
-class TeamOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: uuid.UUID
-    name: str
-    tenant_id: uuid.UUID | None = None
-    created_at: datetime
-
-
 # ── Templates ──────────────────────────────────────────────────────────
 class TemplateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -69,10 +61,10 @@ class TemplateIn(BaseModel):
 
 
 class TemplateUpdate(BaseModel):
-    name: str | None = None
-    version: str | None = None
-    yaml: str | None = None
-    is_public: bool | None = None
+    name: str = Field(default=None, min_length=1, max_length=255)  # omit to keep; ""/null: 422
+    version: str = Field(default=None, max_length=50)  # NOT NULL column
+    yaml: str = Field(default=None, min_length=1)  # never blank a stored template's yaml
+    is_public: bool = Field(default=None)
 
 
 class TemplateOut(BaseModel):
@@ -94,6 +86,7 @@ class TemplateListOut(BaseModel):
     version: str
     is_public: bool
     created_at: datetime
+    host_count: int | None = None  # declared hosts in the yaml; null if none or unparseable
 
 
 # ── Scenarios ──────────────────────────────────────────────────────────
@@ -105,10 +98,10 @@ class ScenarioIn(BaseModel):
 
 
 class ScenarioUpdate(BaseModel):
-    name: str | None = None
-    version: str | None = None
-    yaml: str | None = None
-    is_public: bool | None = None
+    name: str = Field(default=None, min_length=1, max_length=255)  # omit to keep; ""/null: 422
+    version: str = Field(default=None, max_length=50)
+    yaml: str = Field(default=None, min_length=1)  # never blank a stored scenario's yaml
+    is_public: bool = Field(default=None)
 
 
 class ScenarioOut(BaseModel):

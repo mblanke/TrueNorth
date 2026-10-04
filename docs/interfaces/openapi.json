@@ -8819,48 +8819,24 @@
       "ScenarioUpdate": {
         "properties": {
           "is_public": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Public"
+            "title": "Is Public",
+            "type": "boolean"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
           },
           "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version"
+            "maxLength": 50,
+            "title": "Version",
+            "type": "string"
           },
           "yaml": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Yaml"
+            "minLength": 1,
+            "title": "Yaml",
+            "type": "string"
           }
         },
         "title": "ScenarioUpdate",
@@ -10021,6 +9997,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "host_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host Count"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -10110,48 +10097,24 @@
       "TemplateUpdate": {
         "properties": {
           "is_public": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Public"
+            "title": "Is Public",
+            "type": "boolean"
           },
           "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
           },
           "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version"
+            "maxLength": 50,
+            "title": "Version",
+            "type": "string"
           },
           "yaml": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Yaml"
+            "minLength": 1,
+            "title": "Yaml",
+            "type": "string"
           }
         },
         "title": "TemplateUpdate",
@@ -25991,7 +25954,7 @@
     },
     "/templates": {
       "get": {
-        "description": "List templates visible to user (own-tenant + public).  **Permission: template:read**",
+        "description": "List templates visible to user (own-tenant + public).  **Permission: template:read**\n\nRows omit the yaml but carry its `host_count`, so the library needs no per-row fetch.",
         "operationId": "list_templates_templates_get",
         "parameters": [
           {

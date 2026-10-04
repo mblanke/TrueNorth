@@ -4669,6 +4669,8 @@ export interface paths {
         /**
          * List Templates
          * @description List templates visible to user (own-tenant + public).  **Permission: template:read**
+         *
+         *     Rows omit the yaml but carry its `host_count`, so the library needs no per-row fetch.
          */
         get: operations["list_templates_templates_get"];
         put?: never;
@@ -8514,13 +8516,13 @@ export interface components {
         /** ScenarioUpdate */
         ScenarioUpdate: {
             /** Is Public */
-            is_public?: boolean | null;
+            is_public?: boolean;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Version */
-            version?: string | null;
+            version?: string;
             /** Yaml */
-            yaml?: string | null;
+            yaml?: string;
         };
         /** SecurityGroupIn */
         SecurityGroupIn: {
@@ -8987,6 +8989,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Host Count */
+            host_count?: number | null;
             /**
              * Id
              * Format: uuid
@@ -9030,13 +9034,13 @@ export interface components {
         /** TemplateUpdate */
         TemplateUpdate: {
             /** Is Public */
-            is_public?: boolean | null;
+            is_public?: boolean;
             /** Name */
-            name?: string | null;
+            name?: string;
             /** Version */
-            version?: string | null;
+            version?: string;
             /** Yaml */
-            yaml?: string | null;
+            yaml?: string;
         };
         /** TenantIn */
         TenantIn: {

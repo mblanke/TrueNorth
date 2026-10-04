@@ -462,3 +462,22 @@ def test_state_change_between_check_and_write_is_409_and_writes_nothing(client, 
     res = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": _DIAGRAM})
     assert res.status_code == 409
     assert db_session.query(Template).count() == before
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("assets:\n  - role: dc\n  - role: ws\n    count: 3\n", 4),
+        ("nodes:\n  - name: a\n  - b\n  - name: c\n    count: 2\n", 4),
+        ("nodes: []\n", 0),
+        ("assets:\n  - role: x\n    count: lots\n", 1),
+        ("name: bare\n", None),
+        ("assets: 7\n", 0),
+        ("- not\n- a mapping\n", None),
+        ("a: [unclosed\n", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_count_template_hosts(text, expected):
+    assert rt.count_template_hosts(text) == expected

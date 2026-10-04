@@ -382,6 +382,33 @@ def build_template_diagram(template_yaml: str) -> dict:
     return {"cells": cells}
 
 
+def count_template_hosts(template_yaml: str | None) -> int | None:
+    """Hosts a template declares: each assets[] and nodes[] entry times its `count`.
+
+    None when the YAML does not parse or declares neither list, so a list view can
+    tell "no hosts declared" from "zero hosts". Never raises.
+    """
+    import yaml as pyyaml
+
+    try:
+        doc = pyyaml.safe_load(template_yaml or "")
+    except pyyaml.YAMLError:
+        return None
+    if not isinstance(doc, dict) or ("assets" not in doc and "nodes" not in doc):
+        return None
+    total = 0
+    entries = [e for key in ("assets", "nodes") if isinstance(doc.get(key), list) for e in doc[key]]
+    for entry in entries:
+        if isinstance(entry, str):
+            total += 1
+        elif isinstance(entry, dict):
+            try:
+                total += max(1, int(entry.get("count", 1) or 1))
+            except (TypeError, ValueError):
+                total += 1
+    return total
+
+
 # ── Designer diagram <-> provisionable template ─────────────────────────
 #
 # The Range Designer edits a JointJS graph (`Range.diagram_json`); the worker only

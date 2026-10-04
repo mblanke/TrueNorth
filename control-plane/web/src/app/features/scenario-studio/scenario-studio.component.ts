@@ -14,7 +14,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService, InjectorInfo, YamlValidation } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { Scenario, TemplateSummary } from '@core/models';
+import { ScenarioSummary, TemplateSummary } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { EnterStaggerDirective } from '../../shared/motion';
@@ -154,7 +154,7 @@ export class ScenarioDraftDialogComponent {
               <mat-card class="row tn-stagger-item">
                 <div class="row-main">
                   <span class="row-name">{{ s.name }}</span>
-                  <span class="row-meta">v{{ s.version }} · {{ s.updated_at | date:'short' }}</span>
+                  <span class="row-meta">v{{ s.version }} · created {{ s.created_at | date:'short' }}</span>
                 </div>
                 <span class="spacer"></span>
                 <button mat-stroked-button (click)="open(s.id)">
@@ -441,10 +441,7 @@ export class ScenarioStudioComponent implements OnInit {
   protected readonly objectiveTypes = OBJECTIVE_TYPES;
   protected readonly validators = COMMON_VALIDATORS;
 
-  // CONTRACT MISMATCH (MOSA slice 7): GET /scenarios returns ScenarioListOut rows with no
-  // `updated_at`, which the list renders, so that date is always blank. Asserted to
-  // Scenario[] below until the view is changed to show created_at or the API adds it.
-  protected readonly scenarios = signal<Scenario[]>([]);
+  protected readonly scenarios = signal<ScenarioSummary[]>([]);
   protected readonly templates = signal<TemplateSummary[]>([]);
   protected readonly injectors = signal<InjectorInfo[]>([]);
   protected readonly loading = signal(true);
@@ -472,7 +469,7 @@ export class ScenarioStudioComponent implements OnInit {
 
   private loadScenarios(): void {
     this.api.listScenarios().subscribe({
-      next: s => { this.scenarios.set(s as Scenario[]); this.loading.set(false); },
+      next: s => { this.scenarios.set(s); this.loading.set(false); },
       error: () => this.loading.set(false),
     });
   }
@@ -515,7 +512,7 @@ export class ScenarioStudioComponent implements OnInit {
     this.loadScenarios();
   }
 
-  protected confirmDelete(s: Scenario): void {
+  protected confirmDelete(s: ScenarioSummary): void {
     this.dialog
       .open(ConfirmDialogComponent, {
         data: { title: 'Delete Scenario', message: `Delete "${s.name}"? This cannot be undone.`, confirmText: 'Delete' },
