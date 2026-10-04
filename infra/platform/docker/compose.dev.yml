@@ -144,7 +144,9 @@ services:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
     ports:
-      - "8180:8080"
+      # Loopback only: the imported realm carries dev users with weak passwords.
+      # The SPA reaches Keycloak at localhost:8180 anyway. KEYCLOAK_BIND=0.0.0.0 to share.
+      - "${KEYCLOAK_BIND:-127.0.0.1}:8180:8080"
     depends_on:
       postgres:
         condition: service_healthy
