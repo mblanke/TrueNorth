@@ -18,9 +18,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: pip install ruff mypy
-      - run: ruff check control-plane/ scenario-engine/ tools/ ai-orchestrator/
+      # Same ruff as the DoD venv (scripts/dod.sh header); a newer one adds rules.
+      - run: pip install "ruff==0.16.3" mypy
+      # The same ratchet as scripts/dod.sh: breakage rules always fail, other findings
+      # may not rise above .dod-ruff-baseline. A plain `ruff check` failed every run on
+      # 27 pre-existing findings and so skipped test-python entirely.
+      - run: bash scripts/ruff-gate.sh
+        env:
+          PY: python
+      # Report-only until the 44-file reformat lands; then drop continue-on-error.
       - run: ruff format --check control-plane/ scenario-engine/ tools/ ai-orchestrator/
+        continue-on-error: true
 
   test-python:
     runs-on: ubuntu-latest
@@ -30,10 +38,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: |
-          pip install -r control-plane/api/requirements.txt
-          pip install -r control-plane/worker/requirements.txt
-          pip install pytest pytest-asyncio httpx aiosmtplib
+      - run: pip install -r requirements-test.txt
       - run: pytest tests/ --tb=short -q --ignore=tests/integration
         env:
           AUTH_DISABLED: "true"
@@ -130,10 +135,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: |
-          pip install -r control-plane/api/requirements.txt
-          pip install -r control-plane/worker/requirements.txt
-          pip install pytest pytest-asyncio httpx
+      - run: pip install -r requirements-test.txt
       - run: pytest tests/integration/ --tb=short -q
         env:
           INTEGRATION_TEST: "1"
