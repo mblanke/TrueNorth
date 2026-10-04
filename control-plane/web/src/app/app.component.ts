@@ -56,25 +56,24 @@ interface NavSection {
         <div class="tn-route-progress"></div>
       }
       <mat-sidenav-container class="app-container">
-        <mat-sidenav #sidenav mode="side" opened class="app-sidenav" [class.collapsed]="collapsed()">
+        <mat-sidenav #sidenav [mode]="mobile() ? 'over' : 'side'" [opened]="!mobile()"
+                     class="app-sidenav" [class.collapsed]="!mobile() && collapsed()">
 
           <div class="sidenav-header">
-            <mat-icon class="logo-icon">explore</mat-icon>
-            <span class="logo-text">TrueNorth</span>
+            <span class="logo-icon" aria-hidden="true">🇨🇦</span>
+            <span class="logo-text">True<span class="brand-accent">North</span></span>
           </div>
 
           <nav class="side-nav" #sideNavEl aria-label="TrueNorth workspaces">
             <span class="active-indicator" #indicator></span>
-            <mat-accordion multi displayMode="flat">
               @for (section of navSections; track section.name) {
-                <mat-expansion-panel [expanded]="true" hideToggle="false">
-                  <mat-expansion-panel-header>
-                    <mat-panel-title>{{ section.name }}</mat-panel-title>
-                  </mat-expansion-panel-header>
+                <section class="nav-group" [attr.aria-label]="section.name">
+                  <h2 class="nav-group-title">{{ section.name }}</h2>
                   <mat-nav-list dense>
                     @for (item of section.items; track item.route) {
                       <a mat-list-item
                          [routerLink]="item.route"
+                         (click)="mobile() && sidenav.close()"
                          [attr.data-tour]="item.route"
                          [attr.aria-label]="item.label"
                          ariaCurrentWhenActive="page"
@@ -87,25 +86,28 @@ interface NavSection {
                       </a>
                     }
                   </mat-nav-list>
-                </mat-expansion-panel>
+                </section>
               }
-            </mat-accordion>
           </nav>
+          @if (!collapsed()) {
+            <p class="workspace-note">One workspace.<br>One clear place for each task.</p>
+          }
 
         </mat-sidenav>
 
         <mat-sidenav-content>
           <mat-toolbar class="app-toolbar">
-            <button mat-icon-button (click)="toggleRail()" matTooltip="Toggle nav rail"
-                    aria-label="Toggle navigation" [attr.aria-expanded]="!collapsed()">
+            <button mat-icon-button (click)="mobile() ? sidenav.toggle() : toggleRail()" matTooltip="Toggle navigation"
+                    aria-label="Toggle navigation" [attr.aria-expanded]="mobile() ? sidenav.opened : !collapsed()">
               <mat-icon>{{ collapsed() ? 'menu_open' : 'menu' }}</mat-icon>
             </button>
-            <span class="toolbar-kicker">TRUENORTH <span class="kicker-sep">/</span> {{ workspaceTitle() }}</span>
+            <span class="toolbar-kicker">Workspace <span class="kicker-sep">/</span> <strong>{{ workspaceTitle() }}</strong></span>
 
             <span class="spacer"></span>
 
-            <div class="theme-picker">
-              <span class="theme-label">Theme</span>
+            <details class="appearance-menu">
+              <summary>Appearance</summary>
+              <div class="theme-picker">
               @for (t of themes; track t.id) {
                 <button
                   class="theme-btn"
@@ -118,7 +120,8 @@ interface NavSection {
                   <span class="swatch-half right" [style.background]="t.colorRight"></span>
                 </button>
               }
-            </div>
+              </div>
+            </details>
 
           </mat-toolbar>
 
@@ -137,7 +140,7 @@ interface NavSection {
 
     /* ── Sidenav rail ────────────────────────────────── */
     .app-sidenav {
-      width: 240px;
+      width: 210px;
       display: flex;
       flex-direction: column;
       background: var(--sidenav-bg) !important;
@@ -151,7 +154,7 @@ interface NavSection {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 16px 14px;
+      padding: 18px 22px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
       white-space: nowrap;
@@ -159,14 +162,19 @@ interface NavSection {
     .logo-icon {
       font-size: 28px; width: 28px; height: 28px; flex-shrink: 0;
       color: var(--accent);
-      filter: drop-shadow(0 0 8px var(--accent-muted));
+      line-height: 28px;
     }
     .logo-text {
       font-family: var(--font-display);
-      font-size: 16px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.3px;
+      font-size: 17px; font-weight: 600; color: var(--text-primary);
       transition: opacity 0.2s ease;
     }
     .collapsed .logo-text { opacity: 0; }
+    .brand-accent { color: var(--accent); }
+    .nav-group { margin: 0 10px 14px; }
+    .nav-group-title { margin: 14px 12px 4px; font-size: 10px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; color: var(--text-muted); }
+    .collapsed .nav-group-title { visibility: hidden; height: 4px; margin: 8px 0; }
+    .workspace-note { padding: 12px 22px; font-size: 12px; line-height: 1.6; color: var(--text-muted); }
 
     /* ── Nav sections ────────────────────────────────── */
     .side-nav {
@@ -200,8 +208,8 @@ interface NavSection {
       position: sticky;
       top: 0;
       z-index: 10;
-      height: 56px !important;
-      min-height: 56px !important;
+      height: 64px !important;
+      min-height: 64px !important;
       padding: 0 8px;
       background: var(--toolbar-bg) !important;
       border-bottom: 1px solid var(--glass-border);
@@ -216,16 +224,17 @@ interface NavSection {
     .toolbar-kicker {
       margin-left: 6px;
       font-family: var(--font-display);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 3px;
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0;
       color: var(--text-muted);
       user-select: none;
     }
-    .toolbar-kicker .kicker-sep { color: var(--accent); }
+    .toolbar-kicker .kicker-sep { color: var(--border); margin: 0 12px; }
+    .toolbar-kicker strong { color: var(--text-primary); font-weight: 600; }
 
     .app-content {
-      min-height: calc(100vh - 56px);
+      min-height: calc(100vh - 64px);
       background: transparent;
       position: relative;
       z-index: 1;
@@ -240,6 +249,7 @@ interface NavSection {
     /* ── Active nav link ─────────────────────────────── */
     a.active-link {
       background: var(--accent-muted) !important;
+      box-shadow: inset 3px 0 0 var(--accent);
     }
     a.active-link .mat-icon { color: var(--accent) !important; }
     a.active-link span       { color: var(--accent) !important; }
@@ -250,6 +260,9 @@ interface NavSection {
     .theme-picker {
       display: flex; align-items: center; gap: 8px; margin-right: 8px;
     }
+    .appearance-menu { position: relative; font: 12px var(--font-body); color: var(--text-muted); margin-right: 12px; }
+    .appearance-menu summary { cursor: pointer; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+    .appearance-menu .theme-picker { position: absolute; right: 0; top: 40px; z-index: 20; padding: 12px; margin: 0; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; }
     .theme-label {
       font-size: 11px; color: var(--text-muted); text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -299,6 +312,11 @@ export class AppComponent implements OnDestroy {
   @ViewChild('sideNavEl') sideNavRef?: ElementRef<HTMLElement>;
 
   collapsed = signal(false);
+  private readonly mobileQuery = window.matchMedia('(max-width: 720px)');
+  readonly mobile = signal(this.mobileQuery.matches);
+  private readonly onViewportChange = (event: MediaQueryListEvent) => {
+    this.zone.run(() => this.mobile.set(event.matches));
+  };
   navLoading = signal(false);
   isBareRoute = signal(false);
   workspaceTitle = signal('Overview');
@@ -334,7 +352,7 @@ export class AppComponent implements OnDestroy {
     },
     {
       name: 'Review',
-      items: [{ label: 'Scoring & debrief', icon: 'assessment', route: '/scoring' }],
+      items: [{ label: 'Scoring & AAR', icon: 'assessment', route: '/scoring' }],
     },
     {
       name: 'Admin',
@@ -352,6 +370,7 @@ export class AppComponent implements OnDestroy {
 
   constructor() {
     this.themes = this.theme.themes;
+    this.mobileQuery.addEventListener('change', this.onViewportChange);
     this.activeTheme = this.theme.activeTheme;
     this.isBareRoute.set(this.router.url.startsWith('/login'));
 
@@ -384,6 +403,7 @@ export class AppComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.mobileQuery.removeEventListener('change', this.onViewportChange);
     this.routerSub.unsubscribe();
   }
 

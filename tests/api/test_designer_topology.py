@@ -475,3 +475,46 @@ def test_generated_port_labels_use_the_joint_core_4_form():
     assert groups, "expected host cells with port groups"
     for group in groups:
         assert group["label"]["position"] == {"name": "outside"}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("assets:\n  - role: dc\n  - role: ws\n    count: 3\n", 4),
+        ("nodes:\n  - name: a\n  - b\n  - name: c\n    count: 2\n", 4),
+        ("nodes: []\n", 0),
+        ("assets:\n  - role: x\n    count: lots\n", 1),
+        # nodes win over assets, as in worker/render.py
+        ("assets:\n  - role: dc\n    count: 3\nnodes:\n  - id: kali\n", 1),
+        # drawn, not built: switch/cloud/zones without an OS
+        ("nodes:\n  - id: sw\n    type: switch\n  - id: z\n    type: dmz\n  - id: fw\n    type: switch\n    os: vyos\n", 1),
+        ("nodes:\n  - id: a\n    count: 0\n", 1),  # the worker reads `count or 1`
+        ("name: bare\n", None),
+        ("assets: 7\n", 0),
+        ("- not\n- a mapping\n", None),
+        ("a: [unclosed\n", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_count_template_hosts(text, expected):
+    assert rt.count_template_hosts(text) == expected
+
+
+_CONTENT_RANGES = sorted((Path(__file__).resolve().parents[2] / "content" / "ranges").glob("**/*.y*ml"))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "assets:\n  - role: dc\n  - role: ws\n    count: 3\n",
+        "assets:\n  - role: dc\nnodes:\n  - id: a\n    os: ubuntu-24.04\n  - id: b\n    count: 2\n",
+        "nodes:\n  - id: sw\n    type: switch\n  - id: c\n    type: cloud\n  - id: w\n    os: win11\n",
+        *[p.read_text() for p in _CONTENT_RANGES],
+    ],
+    ids=lambda t: t.splitlines()[0][:40] if t else "empty",
+)
+def test_host_count_matches_what_the_worker_builds(text):
+    doc = yaml.safe_load(text)
+    built = len(worker_render.render_topology(doc, "r-count", lambda a: a)["vm_definitions"])
+    assert rt.count_template_hosts(text) == built

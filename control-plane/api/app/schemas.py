@@ -52,14 +52,6 @@ class TeamIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 
-class TeamOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: uuid.UUID
-    name: str
-    tenant_id: uuid.UUID | None = None
-    created_at: datetime
-
-
 # ── Templates ──────────────────────────────────────────────────────────
 class TemplateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -69,10 +61,10 @@ class TemplateIn(BaseModel):
 
 
 class TemplateUpdate(BaseModel):
-    name: str | None = None
-    version: str | None = None
-    yaml: str | None = None
-    is_public: bool | None = None
+    name: str = Field(default=None, min_length=1, max_length=255)  # omit to keep; ""/null: 422
+    version: str = Field(default=None, max_length=50)  # NOT NULL column
+    yaml: str = Field(default=None, min_length=1)  # never blank a stored template's yaml
+    is_public: bool = Field(default=None)
 
 
 class TemplateOut(BaseModel):
@@ -94,6 +86,7 @@ class TemplateListOut(BaseModel):
     version: str
     is_public: bool
     created_at: datetime
+    host_count: int | None = None  # declared hosts in the yaml; null if none or unparseable
 
 
 # ── Scenarios ──────────────────────────────────────────────────────────
@@ -105,10 +98,10 @@ class ScenarioIn(BaseModel):
 
 
 class ScenarioUpdate(BaseModel):
-    name: str | None = None
-    version: str | None = None
-    yaml: str | None = None
-    is_public: bool | None = None
+    name: str = Field(default=None, min_length=1, max_length=255)  # omit to keep; ""/null: 422
+    version: str = Field(default=None, max_length=50)
+    yaml: str = Field(default=None, min_length=1)  # never blank a stored scenario's yaml
+    is_public: bool = Field(default=None)
 
 
 class ScenarioOut(BaseModel):
@@ -139,8 +132,8 @@ class RangeIn(BaseModel):
 
 
 class RangeUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
+    name: str = Field(default=None)
+    description: str = Field(default=None)
 
 
 class RangeOut(BaseModel):
@@ -207,8 +200,8 @@ class ExerciseIn(BaseModel):
 
 
 class ExerciseUpdate(BaseModel):
-    name: str | None = None
-    max_score: int | None = None
+    name: str = Field(default=None)
+    max_score: int = Field(default=None)
 
 
 class ExerciseOut(BaseModel):
@@ -356,14 +349,14 @@ class CourseIn(BaseModel):
 
 
 class CourseUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    version: str | None = None
-    difficulty: str | None = None
-    duration_hours: int | None = None
-    tags: list[str] | None = None
-    nice_work_roles: list[str] | None = None
-    is_published: bool | None = None
+    name: str = Field(default=None)
+    description: str = Field(default=None)
+    version: str = Field(default=None)
+    difficulty: str = Field(default=None)
+    duration_hours: int = Field(default=None)
+    tags: list[str] = Field(default=None)
+    nice_work_roles: list[str] = Field(default=None)
+    is_published: bool = Field(default=None)
 
 
 class CourseOut(BaseModel):
@@ -558,10 +551,10 @@ class ExternalPlatformIn(BaseModel):
 
 
 class ExternalPlatformUpdate(BaseModel):
-    name: str | None = None
-    base_url: str | None = None
-    auth_type: str | None = Field(default=None, pattern=r"^(lti13|oauth2|api_key|saml)$")
-    is_active: bool | None = None
+    name: str = Field(default=None)
+    base_url: str = Field(default=None)
+    auth_type: str = Field(default=None, pattern=r"^(lti13|oauth2|api_key|saml)$")
+    is_active: bool = Field(default=None)
     lti_client_id: str | None = None
     lti_deployment_id: str | None = None
     lti_issuer: str | None = None
@@ -649,15 +642,15 @@ class HypervisorConnectionIn(BaseModel):
 
 
 class HypervisorConnectionUpdate(BaseModel):
-    name: str | None = None
-    host: str | None = None
-    port: int | None = None
-    username: str | None = None
+    name: str = Field(default=None)
+    host: str = Field(default=None)
+    port: int = Field(default=None)
+    username: str = Field(default=None)
     password: str | None = None
     api_token: str | None = None
-    verify_ssl: bool | None = None
-    is_primary: bool | None = None
-    is_active: bool | None = None
+    verify_ssl: bool = Field(default=None)
+    is_primary: bool = Field(default=None)
+    is_active: bool = Field(default=None)
     datacenter: str | None = None
     notes: str | None = None
 
@@ -740,13 +733,13 @@ class AIBackendConfigIn(BaseModel):
 
 
 class AIBackendConfigUpdate(BaseModel):
-    name: str | None = None
-    base_url: str | None = None
+    name: str = Field(default=None)
+    base_url: str = Field(default=None)
     api_key: str | None = None
-    is_active: bool | None = None
-    is_primary: bool | None = None
-    max_concurrent: int | None = None
-    timeout_seconds: int | None = None
+    is_active: bool = Field(default=None)
+    is_primary: bool = Field(default=None)
+    max_concurrent: int = Field(default=None)
+    timeout_seconds: int = Field(default=None)
     notes: str | None = None
 
 
@@ -789,11 +782,11 @@ class AIModelRouteIn(BaseModel):
 
 
 class AIModelRouteUpdate(BaseModel):
-    model_pattern: str | None = None
-    backend_id: uuid.UUID | None = None
-    priority: int | None = None
+    model_pattern: str = Field(default=None)
+    backend_id: uuid.UUID = Field(default=None)
+    priority: int = Field(default=None)
     tags: str | None = None
-    is_active: bool | None = None
+    is_active: bool = Field(default=None)
 
 
 class AIModelRouteOut(BaseModel):
@@ -861,9 +854,9 @@ class OUIn(BaseModel):
 
 
 class OUUpdate(BaseModel):
-    name: str | None = None
-    slug: str | None = None
-    ou_type: str | None = None
+    name: str = Field(default=None)
+    slug: str = Field(default=None)
+    ou_type: str = Field(default=None)
     parent_id: uuid.UUID | None = None
 
 
@@ -901,9 +894,9 @@ class SecurityGroupIn(BaseModel):
 
 
 class SecurityGroupUpdate(BaseModel):
-    name: str | None = None
-    slug: str | None = None
-    group_type: str | None = None
+    name: str = Field(default=None)
+    slug: str = Field(default=None)
+    group_type: str = Field(default=None)
     description: str | None = None
 
 
@@ -1149,7 +1142,7 @@ class TeamFullIn(BaseModel):
 
 
 class TeamUpdate(BaseModel):
-    name: str | None = None
+    name: str = Field(default=None)
     description: str | None = None
     team_type: str | None = None
     color_hex: str | None = None
@@ -1228,14 +1221,14 @@ class StorageApplianceIn(BaseModel):
 
 
 class StorageApplianceUpdate(BaseModel):
-    name: str | None = None
-    vendor: str | None = None
-    model: str | None = None
-    management_ip: str | None = None
-    protocol: str | None = None
-    raw_capacity_tb: float | None = None
-    usable_capacity_tb: float | None = None
-    is_active: bool | None = None
+    name: str = Field(default=None)
+    vendor: str = Field(default=None)
+    model: str = Field(default=None)
+    management_ip: str = Field(default=None)
+    protocol: str = Field(default=None)
+    raw_capacity_tb: float = Field(default=None)
+    usable_capacity_tb: float = Field(default=None)
+    is_active: bool = Field(default=None)
     notes: str | None = None
 
 
@@ -1295,14 +1288,14 @@ class NetworkDeviceIn(BaseModel):
 
 
 class NetworkDeviceUpdate(BaseModel):
-    name: str | None = None
-    vendor: str | None = None
-    model: str | None = None
-    role: str | None = None
-    management_ip: str | None = None
+    name: str = Field(default=None)
+    vendor: str = Field(default=None)
+    model: str = Field(default=None)
+    role: str = Field(default=None)
+    management_ip: str = Field(default=None)
     firmware_version: str | None = None
-    port_count: int | None = None
-    is_active: bool | None = None
+    port_count: int = Field(default=None)
+    is_active: bool = Field(default=None)
     notes: str | None = None
 
 
@@ -1582,12 +1575,12 @@ class ThreatIntelFeedIn(BaseModel):
 
 
 class ThreatIntelFeedUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
+    name: str = Field(None, min_length=1, max_length=255)
     url: str | None = Field(None, max_length=2048)
     collection_id: str | None = None
     api_key_ref: str | None = None
-    poll_interval_minutes: int | None = Field(None, ge=5, le=10080)
-    is_enabled: bool | None = None
+    poll_interval_minutes: int = Field(None, ge=5, le=10080)
+    is_enabled: bool = Field(default=None)
 
 
 class ThreatIntelFeedOut(BaseModel):
@@ -1653,18 +1646,18 @@ class DetectionRuleIn(BaseModel):
 
 
 class DetectionRuleUpdate(BaseModel):
-    title: str | None = Field(None, min_length=1, max_length=500)
-    status: str | None = Field(None, pattern=r"^(draft|testing|stable|deprecated)$")
+    title: str = Field(None, min_length=1, max_length=500)
+    status: str = Field(None, pattern=r"^(draft|testing|stable|deprecated)$")
     description: str | None = None
-    level: str | None = Field(None, pattern=r"^(informational|low|medium|high|critical)$")
+    level: str = Field(None, pattern=r"^(informational|low|medium|high|critical)$")
     logsource_category: str | None = None
     logsource_product: str | None = None
     logsource_service: str | None = None
-    detection_yaml: str | None = Field(None, min_length=10)
+    detection_yaml: str = Field(None, min_length=10)
     mitre_attack_ids: list[str] | None = None
     false_positives: list[str] | None = None
     tags: list[str] | None = None
-    is_enabled: bool | None = None
+    is_enabled: bool = Field(default=None)
 
 
 class DetectionRuleOut(BaseModel):

@@ -138,9 +138,6 @@ export class ApiService {
   updateTenant(id: string, data: Partial<Tenant>): Observable<Tenant> {
     return this.http.put<Tenant>(`${this.base}/tenants/${id}`, data);
   }
-  deleteTenant(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/tenants/${id}`);
-  }
 
   // ── Templates ────────────────────────────────────────────
   listTemplates(limit = 50, offset = 0): Observable<TemplateSummary[]> {

@@ -127,13 +127,14 @@ def update_scenario(
     sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
     if sc.tenant_id and sc.tenant_id != uuid.UUID(user.tenant_id) and user.role != UserRole.admin:
         raise HTTPException(403, "Not authorized")
-    try:
-        parsed = pyyaml.safe_load(body.yaml)
-        if not isinstance(parsed, dict):
-            raise HTTPException(422, "Scenario YAML must be a mapping")
-    except pyyaml.YAMLError as e:
-        raise HTTPException(422, f"Invalid YAML: {e}") from e
     update_data = body.model_dump(exclude_unset=True)
+    if "yaml" in update_data:  # a rename or visibility change carries no yaml
+        try:
+            parsed = pyyaml.safe_load(body.yaml)
+            if not isinstance(parsed, dict):
+                raise HTTPException(422, "Scenario YAML must be a mapping")
+        except pyyaml.YAMLError as e:
+            raise HTTPException(422, f"Invalid YAML: {e}") from e
     for key, value in update_data.items():
         setattr(sc, key, value)
     db.commit()

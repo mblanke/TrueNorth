@@ -889,10 +889,9 @@ export class TrainingComponent implements OnInit {
 
   // ── Training Records ──
   loadUsers() {
-    this.api.get<any>('/admin/users').subscribe({
-      next: res => {
-        const list = Array.isArray(res) ? res : (res.items || []);
-        this.users.set(list.map((u: any) => ({ id: u.id, display_name: u.display_name, email: u.email })));
+    this.api.listUsers().subscribe({
+      next: list => {
+        this.users.set(list.map(u => ({ id: u.id, display_name: u.display_name, email: u.email })));
       },
       error: () => this.users.set([]),
     });

@@ -134,12 +134,21 @@ def list_templates(
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
-) -> list[Template]:
-    """List templates visible to user (own-tenant + public).  **Permission: template:read**"""
+) -> list[TemplateListOut]:
+    """List templates visible to user (own-tenant + public).  **Permission: template:read**
+
+    Rows omit the yaml but carry its `host_count`, so the library needs no per-row fetch.
+    """
     q = db.query(Template).filter(
         (Template.tenant_id == uuid.UUID(user.tenant_id)) | (Template.is_public == True)  # noqa: E712
     )
-    return q.order_by(Template.created_at.desc()).offset(offset).limit(limit).all()
+    rows = q.order_by(Template.created_at.desc()).offset(offset).limit(limit).all()
+    return [
+        TemplateListOut.model_validate(t).model_copy(
+            update={"host_count": range_topology.count_template_hosts(t.yaml)}
+        )
+        for t in rows
+    ]
 
 
 @router.get("/{template_id}", response_model=TemplateOut)

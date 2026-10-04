@@ -11,10 +11,11 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService, InjectorInfo, YamlValidation } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { Scenario, TemplateSummary } from '@core/models';
+import { Scenario, ScenarioSummary, TemplateSummary } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { EnterStaggerDirective } from '../../shared/motion';
@@ -25,6 +26,7 @@ import {
   ObjectiveType,
   emptyScenario,
   fromNormalized,
+  lostOnSave,
   normalizeTime,
   slug,
   timeToSeconds,
@@ -117,6 +119,7 @@ export class ScenarioDraftDialogComponent {
     MatInputModule,
     MatProgressSpinnerModule,
     MatSelectModule,
+    MatSlideToggleModule,
     MatTooltipModule,
     EmptyStateComponent,
     EnterStaggerDirective
@@ -162,7 +165,7 @@ export class ScenarioDraftDialogComponent {
               <mat-card class="row tn-stagger-item">
                 <div class="row-main">
                   <span class="row-name">{{ s.name }}</span>
-                  <span class="row-meta">v{{ s.version }} · {{ s.updated_at | date:'short' }}</span>
+                  <span class="row-meta">v{{ s.version }} · created {{ s.created_at | date:'short' }}</span>
                 </div>
                 <span class="spacer"></span>
                 <button mat-stroked-button (click)="open(s.id)">
@@ -193,14 +196,30 @@ export class ScenarioDraftDialogComponent {
                 {{ v.valid ? 'Valid' : v.errors.length + ' problems' }}
               </span>
             }
+            <mat-slide-toggle [checked]="isPublic()" (change)="setPublic($event.checked)"
+                              matTooltip="Visible to every tenant">
+              Public
+            </mat-slide-toggle>
             <button mat-stroked-button (click)="validate()" [disabled]="validating()">
               <mat-icon>fact_check</mat-icon> Validate
             </button>
-            <button mat-raised-button color="primary" (click)="save()" [disabled]="saving()">
+            <button mat-raised-button color="primary" (click)="save()" [disabled]="saving() || !!readOnly()">
               <mat-icon>save</mat-icon> Save
             </button>
           </div>
         </div>
+
+        @if (readOnly(); as reason) {
+          <mat-card class="problems">
+            <mat-card-content>
+              <p class="problems-title"><mat-icon>lock</mat-icon> Read-only</p>
+              <p class="problem">
+                {{ reason }} Saving from here would drop or rewrite that part of the stored YAML,
+                so Save is off. The Public toggle still works on its own.
+              </p>
+            </mat-card-content>
+          </mat-card>
+        }
 
         @if (validation(); as v) {
           @if (v.errors.length) {
@@ -449,10 +468,7 @@ export class ScenarioStudioComponent implements OnInit {
   protected readonly objectiveTypes = OBJECTIVE_TYPES;
   protected readonly validators = COMMON_VALIDATORS;
 
-  // CONTRACT MISMATCH (MOSA slice 7): GET /scenarios returns ScenarioListOut rows with no
-  // `updated_at`, which the list renders, so that date is always blank. Asserted to
-  // Scenario[] below until the view is changed to show created_at or the API adds it.
-  protected readonly scenarios = signal<Scenario[]>([]);
+  protected readonly scenarios = signal<ScenarioSummary[]>([]);
   protected readonly templates = signal<TemplateSummary[]>([]);
   protected readonly injectors = signal<InjectorInfo[]>([]);
   protected readonly loading = signal(true);
@@ -462,6 +478,11 @@ export class ScenarioStudioComponent implements OnInit {
   protected readonly editingId = signal<string | null>(null);
   protected readonly model = signal<ScenarioModel>(emptyScenario());
   protected readonly validation = signal<YamlValidation | null>(null);
+  /** Carried through Save so editing never flips a public scenario private. */
+  protected readonly isPublic = signal(false);
+  /** Why Save is refused: saving the editor's model would drop or rewrite stored YAML. */
+  protected readonly readOnly = signal<string | null>(null);
+  private openSeq = 0;
 
   protected readonly yaml = computed(() => toYaml(this.model()));
   protected readonly points = computed(() => totalPoints(this.model()));
@@ -480,7 +501,7 @@ export class ScenarioStudioComponent implements OnInit {
 
   private loadScenarios(): void {
     this.api.listScenarios().subscribe({
-      next: s => { this.scenarios.set(s as Scenario[]); this.loading.set(false); },
+      next: s => { this.scenarios.set(s); this.loading.set(false); },
       error: () => this.loading.set(false),
     });
   }
@@ -491,28 +512,56 @@ export class ScenarioStudioComponent implements OnInit {
     this.editingId.set(null);
     this.model.set(emptyScenario());
     this.validation.set(null);
+    this.openSeq++;
+    this.isPublic.set(false);
+    this.readOnly.set(null);
     this.editorOpen.set(true);
   }
 
   protected open(id: string): void {
+    // Only the latest Open may land: a slow earlier one must not put scenario A's
+    // model under scenario B's id, where Save would write A's YAML into B.
+    const seq = ++this.openSeq;
     this.api.getScenario(id).subscribe({
       next: sc => {
-        this.editingId.set(sc.id);
+        if (seq !== this.openSeq) return;
         // Parse server-side: the validate endpoint hands back the parsed
         // document, so the browser never needs a YAML parser.
         this.api.validateScenario(sc.yaml).subscribe({
           next: v => {
+            if (seq !== this.openSeq) return;
+            const lost = lostOnSave(v.normalized);
+            this.show(sc, v.normalized ? fromNormalized(v.normalized) : { ...emptyScenario(), name: sc.name },
+              !v.normalized ? 'The stored YAML does not parse, so the editor could not load it.'
+                : lost.length ? 'The editor has no field for: ' + lost.join(', ') + '.' : null);
             this.validation.set(v);
-            this.model.set(v.normalized ? fromNormalized(v.normalized) : { ...emptyScenario(), name: sc.name });
-            this.editorOpen.set(true);
           },
           error: () => {
-            this.model.set({ ...emptyScenario(), name: sc.name });
-            this.editorOpen.set(true);
+            if (seq !== this.openSeq) return;
+            this.show(sc, { ...emptyScenario(), name: sc.name }, 'The validator was unreachable, so the editor could not load the YAML.');
           },
         });
       },
       error: () => this.notify.error('Could not open that scenario'),
+    });
+  }
+
+  private show(sc: Scenario, model: ScenarioModel, readOnly: string | null): void {
+    this.editingId.set(sc.id);
+    this.isPublic.set(sc.is_public);
+    this.readOnly.set(readOnly);
+    this.model.set(model);
+    this.editorOpen.set(true);
+  }
+
+  /** In read-only mode the toggle still works: it saves visibility alone, never the YAML. */
+  protected setPublic(value: boolean): void {
+    this.isPublic.set(value);
+    const id = this.editingId();
+    if (!this.readOnly() || !id) return;
+    this.api.updateScenario(id, { is_public: value }).subscribe({
+      next: () => this.notify.success(value ? 'Scenario is now public' : 'Scenario is now private'),
+      error: () => { this.isPublic.set(!value); this.notify.error('Could not change visibility'); },
     });
   }
 
@@ -523,7 +572,7 @@ export class ScenarioStudioComponent implements OnInit {
     this.loadScenarios();
   }
 
-  protected confirmDelete(s: Scenario): void {
+  protected confirmDelete(s: ScenarioSummary): void {
     this.dialog
       .open(ConfirmDialogComponent, {
         data: { title: 'Delete Scenario', message: `Delete "${s.name}"? This cannot be undone.`, confirmText: 'Delete' },
@@ -628,12 +677,15 @@ export class ScenarioStudioComponent implements OnInit {
 
   protected save(): void {
     const model = this.model();
+    if (this.readOnly()) {
+      return;
+    }
     if (!model.name.trim()) {
       this.notify.error('Give the scenario a name first');
       return;
     }
     this.saving.set(true);
-    const body = { name: model.name, version: model.version || '1.0', yaml: this.yaml(), is_public: false };
+    const body = { name: model.name, version: model.version || '1.0', yaml: this.yaml(), is_public: this.isPublic() };
     const id = this.editingId();
     const call = id ? this.api.updateScenario(id, body) : this.api.createScenario(body);
     call.subscribe({
@@ -660,6 +712,9 @@ export class ScenarioStudioComponent implements OnInit {
               this.validation.set(v);
               this.model.set(fromNormalized(v.normalized));
               this.editingId.set(null);
+              this.isPublic.set(false);
+              this.openSeq++;  // a draft supersedes any Open still in flight
+              this.readOnly.set(null);  // a new scenario: nothing stored to lose
               this.editorOpen.set(true);
               if (!this.model().name) this.setField('name', `drafted-${slug(req.objectives[0] ?? 'scenario')}`);
             },

@@ -2,6 +2,7 @@ import {
   ScenarioModel,
   emptyScenario,
   fromNormalized,
+  lostOnSave,
   normalizeTime,
   slug,
   timeToSeconds,
@@ -134,6 +135,37 @@ describe('scenario-yaml.util', () => {
     it('sums objective points so an author can reach 100', () => {
       expect(totalPoints(sample())).toBe(100);
       expect(totalPoints(emptyScenario())).toBe(0);
+    });
+  });
+
+  describe('lostOnSave', () => {
+    it('finds nothing in a document the editor itself writes', () => {
+      // The parsed form of toYaml(sample()).
+      const doc = {
+        name: 'Quick Detection Drill', version: '1.0', description: 'Spot the beacon',
+        range_template: 'small-enterprise',
+        timeline: [{ t: '00:00:00', action: 'dns_spike', params: { domains: 'bad.example', count: '50' } }],
+        objectives: [{ id: 'obj-1', type: 'detection', validator: 'validate.opensearch_query', points: 60 }],
+      };
+      expect(lostOnSave(doc)).toEqual([]);
+      expect(lostOnSave(null)).toEqual([]);
+    });
+
+    it('lists what a save would drop or rewrite, as in the shipped content scenarios', () => {
+      const doc = {
+        name: 'APT', scoring: { total: 100 }, mitre_attack: ['T1566'], difficulty: 'hard',
+        timeline: [
+          { t: '00:05:00', action: 'phish', phase: 'initial-access', mitre: 'T1566', params: { count: 5 } },
+          { t: '00:10:00', action: 'beacon', params: { hosts: ['a', 'b'] } },
+        ],
+        objectives: [{ id: 'o1', type: 'hunt', validator: 'v', points: 10, description: 'find it' }],
+      };
+      expect(lostOnSave(doc)).toEqual([
+        'scoring', 'mitre_attack', 'difficulty',
+        'timeline[0].phase', 'timeline[0].mitre', 'timeline[0].params.count',
+        'timeline[1].params.hosts',
+        'objectives[0].description', 'objectives[0].type',
+      ]);
     });
   });
 });

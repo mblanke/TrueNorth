@@ -2,7 +2,6 @@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -14,7 +13,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Tenant, HealthResponse } from '@core/models';
-import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
@@ -31,7 +29,7 @@ interface AuditEntry {
 @Component({
   selector: 'tn-admin',
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatDialogModule, MatButtonModule,
+    CommonModule, FormsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatTableModule,
     MatTabsModule, MatChipsModule, MatTooltipModule,
     EmptyStateComponent, EnterStaggerDirective, HoverLiftDirective,
@@ -143,9 +141,6 @@ interface AuditEntry {
                 <td mat-cell *matCellDef="let t">
                   <button mat-icon-button matTooltip="Edit" (click)="startEditTenant(t)">
                     <mat-icon>edit</mat-icon>
-                  </button>
-                  <button mat-icon-button matTooltip="Delete" color="warn" (click)="confirmDeleteTenant(t)">
-                    <mat-icon>delete</mat-icon>
                   </button>
                 </td>
               </ng-container>
@@ -259,12 +254,12 @@ export class AdminComponent implements OnInit {
   tenantColumns = ['name', 'slug', 'id', 'actions'];
   auditColumns = ['timestamp', 'action', 'resource_type', 'resource_id', 'user_id', 'detail'];
 
-  // ── Tenant edit / delete state ─────────────────────────
+  // ── Tenant edit state ──────────────────────────────────
+  // No delete: the API serves no DELETE /tenants/{id}.
   editingTenantId: string | null = null;
   tenantEditForm = { name: '', slug: '' };
   tenantSaving = false;
 
-  private readonly dialog = inject(MatDialog);
 
   ngOnInit(): void {
     this.api.health().subscribe(h => this.health.set(h));
@@ -318,32 +313,5 @@ export class AdminComponent implements OnInit {
     this.editingTenantId = null;
     this.tenantSaving = false;
     this.tenantEditForm = { name: '', slug: '' };
-  }
-
-  // ── Tenant Delete ──────────────────────────────────────
-  confirmDeleteTenant(t: Tenant): void {
-    this.dialog
-      .open(ConfirmDialogComponent, {
-        data: {
-          title: 'Delete Tenant',
-          message: `Delete "${t.name}"? This action cannot be undone.`,
-          confirmText: 'Delete',
-        },
-      })
-      .afterClosed()
-      .subscribe(ok => { if (ok) this.doDeleteTenant(t); });
-  }
-
-  private doDeleteTenant(t: Tenant): void {
-    this.tenantSaving = true;
-    this.api.deleteTenant(t.id).subscribe({
-      next: () => {
-        this.notify.success('Tenant deleted');
-        this.tenantSaving = false;
-        if (this.editingTenantId === t.id) this.cancelTenantEdit();
-        this.loadTenants();
-      },
-      error: () => { this.notify.error('Delete failed'); this.tenantSaving = false; },
-    });
   }
 }

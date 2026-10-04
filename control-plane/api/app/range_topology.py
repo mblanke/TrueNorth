@@ -382,6 +382,38 @@ def build_template_diagram(template_yaml: str) -> dict:
     return {"cells": cells}
 
 
+def count_template_hosts(template_yaml: str | None) -> int | None:
+    """VMs a template provisions, counted the way the worker builds them.
+
+    Mirrors worker/render.py (`_extract_nodes` + `render_topology`; the API may not
+    import the worker): `nodes` when non-empty, else `assets`; each entry times its
+    `count`; switch/cloud/zone entries without an OS are drawn, not built. None when
+    the YAML does not parse or declares neither list, so a list view can tell "no
+    hosts declared" from "zero hosts". Never raises.
+    """
+    import yaml as pyyaml
+
+    try:
+        doc = pyyaml.safe_load(template_yaml or "")
+    except pyyaml.YAMLError:
+        return None
+    if not isinstance(doc, dict) or ("assets" not in doc and "nodes" not in doc):
+        return None
+    entries = doc.get("nodes") or doc.get("assets") or []
+    total = 0
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, str):
+            total += 1
+        elif isinstance(entry, dict):
+            if not entry.get("os") and not entry.get("os_template") and str(entry.get("type", "")) in _NON_VM_TYPES:
+                continue
+            try:
+                total += max(0, int(entry.get("count", 1) or 1))
+            except (TypeError, ValueError):
+                total += 1
+    return total
+
+
 # ── Designer diagram <-> provisionable template ─────────────────────────
 #
 # The Range Designer edits a JointJS graph (`Range.diagram_json`); the worker only

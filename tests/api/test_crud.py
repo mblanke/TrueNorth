@@ -103,6 +103,26 @@ class TestTemplates:
         assert resp.status_code == 200
         assert resp.json()["name"] == "Updated"
 
+    def test_update_template_refuses_empty_yaml(self, client):
+        create_resp = client.post(
+            "/templates",
+            json={"name": "Keep", "version": "1.0", "yaml": "id: keep\nnodes: []", "is_public": False},
+        )
+        tid = create_resp.json()["id"]
+        bodies = ({"name": "Keep", "yaml": ""}, {"yaml": None}, {"name": ""}, {"is_public": None}, {"version": None})
+        for body in bodies:
+            assert client.put(f"/templates/{tid}", json=body).status_code == 422, body
+        assert client.get(f"/templates/{tid}").json()["yaml"] == "id: keep\nnodes: []"
+
+    def test_list_rows_carry_host_count_not_yaml(self, client):
+        yaml = "name: hc\nassets:\n  - role: dc\n  - role: ws\n    count: 3\n  - role: kali\n"
+        tid = client.post("/templates", json={"name": "HostCount", "yaml": yaml}).json()["id"]
+        bare = client.post("/templates", json={"name": "Bare", "yaml": "name: bare\n"}).json()["id"]
+        rows = {r["id"]: r for r in client.get("/templates").json()}
+        assert rows[tid]["host_count"] == 5
+        assert rows[bare]["host_count"] is None
+        assert "yaml" not in rows[tid]
+
     def test_delete_template(self, client):
         create_resp = client.post(
             "/templates",
@@ -143,6 +163,15 @@ class TestScenarios:
     def test_get_scenario_not_found(self, client):
         resp = client.get(f"/scenarios/{uuid.uuid4()}")
         assert resp.status_code == 404
+
+    def test_update_scenario_refuses_empty_yaml(self, client):
+        payload = {"name": "Keep", "version": "1.0", "yaml": "id: keep\ntimeline: []", "is_public": False}
+        sid = client.post("/scenarios", json=payload).json()["id"]
+        bodies = ({"name": "Keep", "yaml": ""}, {"yaml": None}, {"name": ""}, {"is_public": None}, {"version": None})
+        for body in bodies:
+            assert client.put(f"/scenarios/{sid}", json=body).status_code == 422, body
+        assert client.get(f"/scenarios/{sid}").json()["yaml"] == "id: keep\ntimeline: []"
+        assert client.put(f"/scenarios/{sid}", json={"name": "Renamed"}).json()["name"] == "Renamed"
 
 
 class TestRanges:
