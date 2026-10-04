@@ -66,7 +66,6 @@ interface DeploymentProfile {
 
 @Component({
   selector: 'tn-dashboard',
-  standalone: true,
   imports: [
     CommonModule, RouterModule, FormsModule, MatCardModule, MatIconModule,
     MatButtonModule, MatChipsModule, MatProgressBarModule, MatTooltipModule,

@@ -10,7 +10,6 @@ import { MotionService } from './motion.service';
  */
 @Directive({
   selector: '[tnHoverLift]',
-  standalone: true,
 })
 export class HoverLiftDirective implements OnInit, OnDestroy {
   private enter = () => {

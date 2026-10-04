@@ -27,7 +27,6 @@ interface ExternalPlatform {
 
 @Component({
   selector: 'tn-integrations',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatFormFieldModule, MatInputModule,

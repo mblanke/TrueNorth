@@ -48,7 +48,6 @@ interface ProfileForm {
  */
 @Component({
   selector: 'tn-onboarding',
-  standalone: true,
   imports: [
     CommonModule,
     FormsModule,

@@ -8,7 +8,6 @@ import { MatIconModule } from '@angular/material/icon';
  */
 @Component({
   selector: 'tn-empty-state',
-  standalone: true,
   imports: [MatIconModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

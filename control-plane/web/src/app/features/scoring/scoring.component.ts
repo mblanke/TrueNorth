@@ -17,7 +17,6 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
 
 @Component({
   selector: 'tn-scoring',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatSelectModule, MatFormFieldModule, MatInputModule, MatTableModule,

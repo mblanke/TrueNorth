@@ -25,7 +25,6 @@ interface LearningPath {
  */
 @Component({
   selector: 'tn-qsp-curriculum',
-  standalone: true,
   imports: [
     CommonModule,
     MatButtonModule,

@@ -30,7 +30,6 @@ interface AuditEntry {
 
 @Component({
   selector: 'tn-admin',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatDialogModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatTableModule,

@@ -25,7 +25,6 @@ type HeatmapData = CompetencyHeatmap;
 
 @Component({
   selector: 'tn-competency-heatmap',
-  standalone: true,
   imports: [CommonModule, MatCardModule, MatSelectModule, MatFormFieldModule, FormsModule],
   template: `
     <mat-card>

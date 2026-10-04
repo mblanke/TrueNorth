@@ -58,7 +58,6 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
  */
 @Component({
   selector: 'tn-course-catalogue',
-  standalone: true,
   imports: [
     CommonModule,
     RouterLink,

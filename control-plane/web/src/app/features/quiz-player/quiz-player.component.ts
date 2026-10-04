@@ -14,7 +14,6 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
 
 @Component({
   selector: 'tn-quiz-player',
-  standalone: true,
   imports: [
     CommonModule, RouterModule, MatButtonModule, MatCardModule,
     MatIconModule, MatProgressBarModule, MatSnackBarModule,

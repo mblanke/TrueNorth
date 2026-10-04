@@ -18,7 +18,6 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
 @Component({
   selector: 'tn-curriculum-forge',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, RouterModule, MatButtonModule, MatCardModule,
     MatFormFieldModule, MatIconModule, MatInputModule, MatProgressBarModule,

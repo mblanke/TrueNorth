@@ -5,7 +5,6 @@ import { EnterStaggerDirective } from './enter-stagger.directive';
 
 /** A list that is empty on first render and filled later, like every API-backed list. */
 @Component({
-  standalone: true,
   imports: [EnterStaggerDirective],
   template: `
     <div class="list" tnEnterStagger>

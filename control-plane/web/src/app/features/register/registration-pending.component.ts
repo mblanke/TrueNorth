@@ -16,7 +16,6 @@ import { AuthService } from '@core/services/auth.service';
  */
 @Component({
   selector: 'tn-registration-pending',
-  standalone: true,
   imports: [CommonModule, MatCardModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   template: `
     <div class="shell">

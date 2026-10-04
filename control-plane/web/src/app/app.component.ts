@@ -36,7 +36,6 @@ interface NavSection {
 
 @Component({
   selector: 'tn-root',
-  standalone: true,
   imports: [
     CommonModule,
     RouterModule,

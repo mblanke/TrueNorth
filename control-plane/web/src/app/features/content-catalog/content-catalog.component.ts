@@ -96,7 +96,6 @@ export function countTemplateHosts(yaml: string | undefined | null): number | nu
  */
 @Component({
   selector: 'tn-template-editor-dialog',
-  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     FormsModule, MatButtonModule, MatDialogModule, MatFormFieldModule,
@@ -235,7 +234,6 @@ export class TemplateEditorDialogComponent {
  */
 @Component({
   selector: 'tn-content-catalog',
-  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink, MatButtonModule, MatCardModule,

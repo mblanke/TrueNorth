@@ -13,7 +13,6 @@ import { MotionService } from '../motion';
  */
 @Component({
   selector: 'tn-lottie',
-  standalone: true,
   imports: [CommonModule, LottieComponent],
   template: `
     <ng-lottie

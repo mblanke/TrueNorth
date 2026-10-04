@@ -11,7 +11,6 @@ export interface ConfirmDialogData {
 
 @Component({
   selector: 'tn-confirm-dialog',
-  standalone: true,
   imports: [MatDialogModule, MatButtonModule],
   template: `
     <h2 mat-dialog-title>{{ data.title }}</h2>

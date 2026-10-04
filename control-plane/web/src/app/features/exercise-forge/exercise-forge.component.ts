@@ -68,7 +68,6 @@ type WizardStep = 'source' | 'configure' | 'preview' | 'result';
 
 @Component({
   selector: 'tn-exercise-forge',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, RouterLink, MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatChipsModule,

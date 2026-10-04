@@ -123,7 +123,6 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
 
 @Component({
   selector: 'tn-training',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, ReactiveFormsModule,
     MatCardModule, MatButtonModule, MatIconModule, MatTabsModule,

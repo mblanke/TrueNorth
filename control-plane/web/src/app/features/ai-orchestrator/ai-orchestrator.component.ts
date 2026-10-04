@@ -36,7 +36,6 @@ interface _AIFleetNode {
 
 @Component({
   selector: 'tn-ai-orchestrator',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,

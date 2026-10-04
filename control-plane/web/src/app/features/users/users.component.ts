@@ -29,7 +29,6 @@ type AuthZone = AuthZonePolicy;
 
 @Component({
   selector: 'tn-users',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,

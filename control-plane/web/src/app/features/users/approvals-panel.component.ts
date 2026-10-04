@@ -29,7 +29,6 @@ const ROLES = ['student', 'instructor', 'observer', 'range_ops', 'admin'];
  */
 @Component({
   selector: 'tn-approvals-panel',
-  standalone: true,
   imports: [
     CommonModule,
     FormsModule,

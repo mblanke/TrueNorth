@@ -57,7 +57,6 @@ const NODE_ICON: Record<string, string> = {
 
 @Component({
   selector: 'tn-exercise-detail',
-  standalone: true,
   imports: [
     CommonModule, RouterLink, MatCardModule, MatChipsModule, MatIconModule,
     MatButtonModule, MatProgressBarModule, MatSnackBarModule, RangeNotesComponent,

@@ -82,7 +82,6 @@ const STATE_LABEL: Record<NodeState, string> = {
  */
 @Component({
   selector: 'tn-career-map',
-  standalone: true,
   imports: [CommonModule, RouterLink, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

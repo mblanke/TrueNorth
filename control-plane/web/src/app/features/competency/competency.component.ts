@@ -52,7 +52,6 @@ interface SkillGap {
 
 @Component({
   selector: 'tn-competency',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatSelectModule, MatFormFieldModule, MatProgressBarModule,

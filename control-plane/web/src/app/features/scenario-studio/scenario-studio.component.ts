@@ -35,7 +35,6 @@ import {
 /** Objectives → a drafted scenario, via the orchestrator. */
 @Component({
   selector: 'tn-scenario-draft-dialog',
-  standalone: true,
   imports: [
     FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
     MatInputModule, MatSelectModule,
@@ -106,7 +105,6 @@ export class ScenarioDraftDialogComponent {
  */
 @Component({
   selector: 'tn-scenario-studio',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, RouterLink, MatButtonModule, MatCardModule, MatChipsModule,
     MatDialogModule, MatFormFieldModule, MatIconModule, MatInputModule,

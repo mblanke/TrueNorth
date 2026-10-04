@@ -25,7 +25,6 @@ interface HubTab {
  */
 @Component({
   selector: 'tn-hub-shell',
-  standalone: true,
   imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MatTabsModule, QuietStylesComponent],
   template: `
     <tn-quiet-styles />

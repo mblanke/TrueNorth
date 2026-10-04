@@ -68,7 +68,6 @@ interface Section {
  */
 @Component({
   selector: 'tn-course-detail',
-  standalone: true,
   imports: [CommonModule, RouterLink, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

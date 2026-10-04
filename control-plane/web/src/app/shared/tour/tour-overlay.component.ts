@@ -30,12 +30,13 @@ interface Box {
  */
 @Component({
   selector: 'tn-tour-overlay',
-  standalone: true,
   imports: [CommonModule, MatButtonModule, MatIconModule],
   template: `
     @if (tour.active() && box(); as b) {
       <div class="tour-root" role="dialog" aria-modal="true" [attr.aria-label]="step()?.title">
-        <svg class="tour-scrim" (click)="tour.finish()">
+        <!-- Backdrop click is the pointer twin of document:keydown.escape (onEscape); a scrim must not take focus. -->
+        <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+        <svg class="tour-scrim" aria-hidden="true" (click)="tour.finish()">
           <defs>
             <mask id="tn-tour-mask">
               <rect width="100%" height="100%" fill="white" />

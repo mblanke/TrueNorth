@@ -11,7 +11,6 @@ import { AuroraScene } from './aurora-scene';
 
 @Component({
   selector: 'tn-login',
-  standalone: true,
   imports: [CommonModule, MatButtonModule, MatIconModule],
   template: `
     <div class="hero" #hero>

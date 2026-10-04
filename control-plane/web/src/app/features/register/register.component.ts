@@ -51,7 +51,6 @@ interface RegistrationForm {
  */
 @Component({
   selector: 'tn-register',
-  standalone: true,
   imports: [
     CommonModule,
     FormsModule,

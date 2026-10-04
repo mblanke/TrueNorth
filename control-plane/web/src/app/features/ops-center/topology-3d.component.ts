@@ -16,7 +16,6 @@ import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
 
 @Component({
   selector: 'tn-topology-3d',
-  standalone: true,
   imports: [
     CommonModule, RouterModule, FormsModule, MatButtonModule, MatCardModule,
     MatFormFieldModule, MatIconModule, MatSelectModule, MatTooltipModule,

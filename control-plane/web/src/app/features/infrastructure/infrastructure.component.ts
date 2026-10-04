@@ -35,7 +35,6 @@ const DEFAULT_PORT: Record<HypervisorType, number> = {
 
 @Component({
   selector: 'tn-infrastructure',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatDialogModule,

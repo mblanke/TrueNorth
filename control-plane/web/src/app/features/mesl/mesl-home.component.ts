@@ -25,7 +25,6 @@ interface ObjectiveDraft {
 /** Create a collective exercise, with its first objectives inline. */
 @Component({
   selector: 'tn-collective-create-dialog',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
     MatIconModule, MatInputModule, MatSelectModule,
@@ -115,7 +114,6 @@ export class CollectiveCreateDialogComponent {
  */
 @Component({
   selector: 'tn-mesl-home',
-  standalone: true,
   imports: [
     CommonModule, RouterLink, MatButtonModule, MatCardModule, MatDialogModule,
     MatIconModule, MatTooltipModule,

@@ -11,7 +11,6 @@ import { MotionService } from './motion.service';
  */
 @Directive({
   selector: '[tnCountUp]',
-  standalone: true,
 })
 export class CountUpDirective implements OnChanges, OnDestroy {
   @Input({ required: true }) tnCountUp: number | null | undefined;

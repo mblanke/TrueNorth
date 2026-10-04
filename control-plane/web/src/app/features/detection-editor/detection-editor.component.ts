@@ -81,7 +81,6 @@ falsepositives:
 
 @Component({
   selector: 'tn-detection-ai-dialog',
-  standalone: true,
   imports: [
     FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
     MatInputModule, MatSelectModule,
@@ -147,7 +146,6 @@ export class DetectionAiDialogComponent {
 
 @Component({
   selector: 'tn-detection-editor',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatChipsModule,

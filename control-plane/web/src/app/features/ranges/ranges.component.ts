@@ -21,7 +21,6 @@ import { CountUpDirective } from '../../shared/motion';
 
 @Component({
   selector: 'tn-ranges',
-  standalone: true,
   imports: [
     CommonModule, MatCardModule, MatTableModule, MatButtonModule,
     MatIconModule, MatChipsModule, MatDialogModule, MatFormFieldModule,

@@ -32,7 +32,6 @@ import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.compone
  */
 @Component({
   selector: 'tn-range-notes',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatDialogModule,
     MatIconModule, MatTooltipModule,

@@ -16,7 +16,6 @@ import { MotionService } from './motion.service';
  */
 @Directive({
   selector: '[tnEnterStagger]',
-  standalone: true,
 })
 export class EnterStaggerDirective implements AfterViewInit, OnDestroy {
   @Input() tnStaggerDelay = 0;

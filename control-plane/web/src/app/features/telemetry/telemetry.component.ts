@@ -10,7 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { NgxEchartsDirective, provideEcharts } from 'ngx-echarts';
+import { NgxEchartsDirective, provideEchartsCore } from 'ngx-echarts';
 import type { EChartsOption } from 'echarts';
 import { Subscription, interval } from 'rxjs';
 
@@ -22,14 +22,13 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
 
 @Component({
   selector: 'tn-telemetry',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatTableModule,
     MatSlideToggleModule, MatTooltipModule, NgxEchartsDirective, LottieIconComponent,
   ],
   // Component-level provider keeps echarts inside this route's lazy chunk.
-  providers: [provideEcharts()],
+  providers: [provideEchartsCore({ echarts: () => import('echarts') })],
   template: `
     <div class="page-container">
       <div class="page-header">

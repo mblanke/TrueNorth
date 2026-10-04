@@ -47,7 +47,6 @@ interface OpsStats {
 
 @Component({
   selector: 'tn-ops-center',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatInputModule, MatFormFieldModule, MatSelectModule,

@@ -52,7 +52,6 @@ export function groupByPhase(events: MeslEvent[]): { phase: string; events: Mesl
 /** Edit one serial. */
 @Component({
   selector: 'tn-mesl-event-dialog',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
     MatInputModule, MatSelectModule,
@@ -152,7 +151,6 @@ export class MeslEventDialogComponent {
 /** Draft a MESL from the exercise objectives. */
 @Component({
   selector: 'tn-mesl-generate-dialog',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
     MatInputModule, MatIconModule,
@@ -211,7 +209,6 @@ export class MeslGenerateDialogComponent {
  */
 @Component({
   selector: 'tn-mesl-board',
-  standalone: true,
   imports: [
     CommonModule, RouterLink, MatButtonModule, MatCardModule, MatDialogModule,
     MatIconModule, MatTooltipModule, EmptyStateComponent, EnterStaggerDirective,

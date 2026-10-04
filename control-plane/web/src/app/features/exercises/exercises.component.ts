@@ -17,7 +17,6 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 
 @Component({
   selector: 'tn-exercises',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatTableModule,
     MatButtonModule, MatIconModule, MatFormFieldModule, MatInputModule,

@@ -193,7 +193,6 @@ export interface TextPromptData {
  */
 @Component({
   selector: 'tn-text-prompt-dialog',
-  standalone: true,
   imports: [FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule],
   template: `
     <h2 mat-dialog-title>{{ data.title }}</h2>
@@ -233,7 +232,6 @@ export class TextPromptDialogComponent {
 
 @Component({
   selector: 'tn-range-designer',
-  standalone: true,
   encapsulation: ViewEncapsulation.None,
   imports: [
     CommonModule, FormsModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule,
