@@ -1,7 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -108,7 +108,6 @@ export class ScenarioDraftDialogComponent {
   imports: [
     DatePipe,
     FormsModule,
-    RouterLink,
     MatButtonModule,
     MatCardModule,
     MatChipsModule,

@@ -21,6 +21,7 @@
             "outputPath": "dist/truenorth-range-web",
             "index": "src/index.html",
             "browser": "src/main.ts",
+            "allowedCommonJsDependencies": ["js-sha256", "lottie-web"],
             "polyfills": [
               "zone.js"
             ],

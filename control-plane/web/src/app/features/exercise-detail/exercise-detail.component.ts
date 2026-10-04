@@ -36,7 +36,7 @@ interface ScenarioDetail {
   environment: string;
   duration_min: number;
   timeline: TimelineStep[];
-  noise_floor: { id: string; description: string }[];
+  noise_floor: { id: string; description: string }[] | null; // null when the YAML key is present but empty
   objectives: ObjectiveRow[];
 }
 

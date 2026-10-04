@@ -323,10 +323,11 @@ export class DetectionAiDialogComponent {
               <button mat-stroked-button class="ai-button"
                       [disabled]="aiDrafting()" (click)="openAiDraft()">
                 @if (aiDrafting()) {
-                  <mat-spinner diameter="16"></mat-spinner> Drafting...
+                  <mat-spinner diameter="16"></mat-spinner>
                 } @else {
-                  <mat-icon>auto_awesome</mat-icon> Draft with AI
+                  <mat-icon>auto_awesome</mat-icon>
                 }
+                {{ aiDrafting() ? 'Drafting...' : 'Draft with AI' }}
               </button>
               <button mat-icon-button matTooltip="Validate YAML" (click)="validateYaml()">
                 <mat-icon>check_circle</mat-icon>
