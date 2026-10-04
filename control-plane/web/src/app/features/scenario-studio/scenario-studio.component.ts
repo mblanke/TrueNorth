@@ -11,6 +11,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService, InjectorInfo, YamlValidation } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
@@ -110,7 +111,7 @@ export class ScenarioDraftDialogComponent {
   imports: [
     CommonModule, FormsModule, RouterLink, MatButtonModule, MatCardModule, MatChipsModule,
     MatDialogModule, MatFormFieldModule, MatIconModule, MatInputModule,
-    MatProgressSpinnerModule, MatSelectModule, MatTooltipModule,
+    MatProgressSpinnerModule, MatSelectModule, MatSlideToggleModule, MatTooltipModule,
     EmptyStateComponent, EnterStaggerDirective,
   ],
   template: `
@@ -185,14 +186,30 @@ export class ScenarioDraftDialogComponent {
                 {{ v.valid ? 'Valid' : v.errors.length + ' problems' }}
               </span>
             }
+            <mat-slide-toggle [checked]="isPublic()" (change)="isPublic.set($event.checked)"
+                              matTooltip="Visible to every tenant">
+              Public
+            </mat-slide-toggle>
             <button mat-stroked-button (click)="validate()" [disabled]="validating()">
               <mat-icon>fact_check</mat-icon> Validate
             </button>
-            <button mat-raised-button color="primary" (click)="save()" [disabled]="saving()">
+            <button mat-raised-button color="primary" (click)="save()" [disabled]="saving() || unloadable()">
               <mat-icon>save</mat-icon> Save
             </button>
           </div>
         </div>
+
+        @if (unloadable()) {
+          <mat-card class="problems">
+            <mat-card-content>
+              <p class="problems-title"><mat-icon>lock</mat-icon> Read-only</p>
+              <p class="problem">
+                The editor could not load this scenario's YAML, so saving would replace it with
+                what you see here. Fix the stored YAML first, or start a new scenario.
+              </p>
+            </mat-card-content>
+          </mat-card>
+        }
 
         @if (validation(); as v) {
           @if (v.errors.length) {
@@ -451,6 +468,10 @@ export class ScenarioStudioComponent implements OnInit {
   protected readonly editingId = signal<string | null>(null);
   protected readonly model = signal<ScenarioModel>(emptyScenario());
   protected readonly validation = signal<YamlValidation | null>(null);
+  /** Carried through Save so editing never flips a public scenario private. */
+  protected readonly isPublic = signal(false);
+  /** The stored YAML could not be parsed into the model: saving would overwrite it. */
+  protected readonly unloadable = signal(false);
 
   protected readonly yaml = computed(() => toYaml(this.model()));
   protected readonly points = computed(() => totalPoints(this.model()));
@@ -480,6 +501,8 @@ export class ScenarioStudioComponent implements OnInit {
     this.editingId.set(null);
     this.model.set(emptyScenario());
     this.validation.set(null);
+    this.isPublic.set(false);
+    this.unloadable.set(false);
     this.editorOpen.set(true);
   }
 
@@ -487,15 +510,18 @@ export class ScenarioStudioComponent implements OnInit {
     this.api.getScenario(id).subscribe({
       next: sc => {
         this.editingId.set(sc.id);
+        this.isPublic.set(sc.is_public);
         // Parse server-side: the validate endpoint hands back the parsed
         // document, so the browser never needs a YAML parser.
         this.api.validateScenario(sc.yaml).subscribe({
           next: v => {
             this.validation.set(v);
+            this.unloadable.set(!v.normalized);
             this.model.set(v.normalized ? fromNormalized(v.normalized) : { ...emptyScenario(), name: sc.name });
             this.editorOpen.set(true);
           },
           error: () => {
+            this.unloadable.set(true);
             this.model.set({ ...emptyScenario(), name: sc.name });
             this.editorOpen.set(true);
           },
@@ -617,12 +643,15 @@ export class ScenarioStudioComponent implements OnInit {
 
   protected save(): void {
     const model = this.model();
+    if (this.unloadable()) {
+      return;
+    }
     if (!model.name.trim()) {
       this.notify.error('Give the scenario a name first');
       return;
     }
     this.saving.set(true);
-    const body = { name: model.name, version: model.version || '1.0', yaml: this.yaml(), is_public: false };
+    const body = { name: model.name, version: model.version || '1.0', yaml: this.yaml(), is_public: this.isPublic() };
     const id = this.editingId();
     const call = id ? this.api.updateScenario(id, body) : this.api.createScenario(body);
     call.subscribe({
@@ -649,6 +678,8 @@ export class ScenarioStudioComponent implements OnInit {
               this.validation.set(v);
               this.model.set(fromNormalized(v.normalized));
               this.editingId.set(null);
+              this.isPublic.set(false);
+              this.unloadable.set(false);
               this.editorOpen.set(true);
               if (!this.model().name) this.setField('name', `drafted-${slug(req.objectives[0] ?? 'scenario')}`);
             },
