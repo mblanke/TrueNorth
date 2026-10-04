@@ -183,16 +183,39 @@ def start_exercise(db, exercise_id: str) -> None:
     )
 
 
-def achieve_objective(db, exercise_id: str, ref_id: str) -> None:
+def exercise_range_and_yaml(db, exercise_id: str):
+    """(range_id, scenario yaml or None), or None when the exercise is missing."""
+    stmt = (
+        sa.select(exercises.c.range_id, scenarios.c.yaml)
+        .select_from(exercises.outerjoin(scenarios, exercises.c.scenario_id == scenarios.c.id))
+        .where(exercises.c.id == exercise_id)
+    )
+    return db.execute(stmt).first()
+
+
+def objectives_to_score(db, exercise_id: str) -> list:
+    """(ref_id, validator, validator_params, points, achieved) for each of the exercise's objectives."""
+    o = objectives
+    stmt = sa.select(o.c.ref_id, o.c.validator, o.c.validator_params, o.c.points, o.c.achieved)
+    return db.execute(stmt.where(o.c.exercise_id == exercise_id)).fetchall()
+
+
+def achieve_objective(db, exercise_id: str, ref_id: str, evidence: str | None = None) -> None:
+    """Mark an objective achieved, once: an already-achieved row keeps its time and evidence."""
+    values: dict[str, Any] = {"achieved": True, "achieved_at": _now(), "updated_at": _now()}
+    if evidence is not None:
+        values["evidence"] = evidence
     db.execute(
         sa.update(objectives)
-        .where(objectives.c.exercise_id == exercise_id, objectives.c.ref_id == ref_id)
-        .values(achieved=True, achieved_at=_now())
+        .where(
+            objectives.c.exercise_id == exercise_id, objectives.c.ref_id == ref_id, objectives.c.achieved == sa.false()
+        )
+        .values(**values)
     )
 
 
-def complete_exercise(db, exercise_id: str) -> None:
-    """Mark complete and total the score from its objectives (achieved points / all points)."""
+def _score_values(exercise_id: str) -> dict[str, Any]:
+    """total_score / max_score from the exercise's objectives (achieved points / all points)."""
     o = objectives
 
     def _points(*extra):
@@ -200,16 +223,24 @@ def complete_exercise(db, exercise_id: str) -> None:
             sa.select(sa.func.sum(o.c.points)).where(o.c.exercise_id == exercise_id, *extra).scalar_subquery(), 0
         )
 
+    return {"total_score": _points(o.c.achieved == sa.true()), "max_score": _points()}
+
+
+def refresh_exercise_score(db, exercise_id: str) -> None:
+    """Re-total a running exercise's score, so the scoreboard moves as objectives are achieved."""
     db.execute(
         sa.update(exercises)
         .where(exercises.c.id == exercise_id)
-        .values(
-            state="completed",
-            completed_at=_now(),
-            updated_at=_now(),
-            total_score=_points(o.c.achieved == sa.true()),
-            max_score=_points(),
-        )
+        .values(updated_at=_now(), **_score_values(exercise_id))
+    )
+
+
+def complete_exercise(db, exercise_id: str) -> None:
+    """Mark complete and total the score from its objectives."""
+    db.execute(
+        sa.update(exercises)
+        .where(exercises.c.id == exercise_id)
+        .values(state="completed", completed_at=_now(), updated_at=_now(), **_score_values(exercise_id))
     )
 
 

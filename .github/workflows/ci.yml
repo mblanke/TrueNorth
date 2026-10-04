@@ -148,6 +148,7 @@ jobs:
             context: control-plane/api
           - name: worker
             context: control-plane/worker
+            build_contexts: scenario_engine=scenario-engine
           - name: web
             context: control-plane/web
           - name: scenario-engine
@@ -162,6 +163,7 @@ jobs:
       - uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.service.context }}
+          build-contexts: ${{ matrix.service.build_contexts }}
           push: false
           tags: truenorth-range/${{ matrix.service.name }}:${{ github.sha }}
           cache-from: type=gha

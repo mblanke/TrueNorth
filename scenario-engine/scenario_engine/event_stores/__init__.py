@@ -12,13 +12,21 @@ plus one registry line.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .base import BaseEventStore, EventHits
 from .null import NullEventStore
 from .opensearch import OpenSearchEventStore
 
-__all__ = ["BaseEventStore", "EventHits", "NullEventStore", "OpenSearchEventStore", "get_event_store"]
+__all__ = [
+    "BaseEventStore",
+    "EventHits",
+    "NullEventStore",
+    "OpenSearchEventStore",
+    "event_store_from_env",
+    "get_event_store",
+]
 
 _REGISTRY: dict[str, type[BaseEventStore]] = {
     "opensearch": OpenSearchEventStore,
@@ -32,3 +40,15 @@ def get_event_store(name: str = "opensearch", **kwargs: Any) -> BaseEventStore:
     if cls is None:
         raise ValueError(f"Unknown event store {name!r}; expected one of {sorted(_REGISTRY)}")
     return cls(**kwargs)
+
+
+def event_store_from_env() -> BaseEventStore:
+    """The store a service is deployed against: ``EVENT_STORE`` (default ``opensearch``).
+
+    OpenSearch is reached at ``OPENSEARCH_URL``. Services read the URL here, inside the
+    adapter, rather than building requests against it themselves.
+    """
+    name = os.getenv("EVENT_STORE", "opensearch")
+    if name == "opensearch":
+        return OpenSearchEventStore(os.getenv("OPENSEARCH_URL", "http://opensearch:9200"))
+    return get_event_store(name)

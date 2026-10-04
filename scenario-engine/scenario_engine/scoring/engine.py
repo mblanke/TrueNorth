@@ -18,6 +18,17 @@ from ..event_stores import BaseEventStore
 logger = logging.getLogger(__name__)
 
 
+# Scenario content says ``validator: opensearch_query``; objective rows may carry the
+# ``validate.`` prefix. Both name a ScoringValidator method.
+_VALIDATOR_METHODS = {"manual_ack": "manual"}
+
+
+def validation_method(validator: str) -> str:
+    """The ScoringValidator method for a scenario/objective-row validator name."""
+    name = (validator or "manual").removeprefix("validate.")
+    return _VALIDATOR_METHODS.get(name, name)
+
+
 # ── Data classes ────────────────────────────────────────────
 
 
