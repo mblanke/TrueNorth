@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { KeycloakService } from 'keycloak-angular';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import Keycloak from 'keycloak-js';
+import { freshToken } from '../auth/keycloak-init';
 import { AuthService, CurrentUser } from './auth.service';
 import { environment } from '@env/environment';
 import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
@@ -8,19 +9,13 @@ import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
 /**
  * These run with `authDisabled = true`, which short-circuits the Keycloak
  * adapter exactly as the API's AUTH_DISABLED short-circuits token validation.
- * A KeycloakService stub is still provided because the service injects it.
+ * A keycloak-js stub is still provided because the service injects it.
  */
 describe('AuthService', () => {
   let service: AuthService;
   const originalAuthDisabled = environment.authDisabled;
 
-  const keycloakStub = {
-    isLoggedIn: () => Promise.resolve(false),
-    getToken: () => Promise.resolve(''),
-    getKeycloakInstance: () => ({ subject: 'kc-sub' }),
-    login: () => Promise.resolve(),
-    logout: () => Promise.resolve(),
-  };
+  let keycloakStub: { authenticated: boolean; subject?: string; token?: string; updateToken: jasmine.Spy; login: jasmine.Spy; logout: jasmine.Spy };
 
   const user = (over: Partial<CurrentUser> = {}): CurrentUser => ({
     sub: 'u-001',
@@ -34,10 +29,17 @@ describe('AuthService', () => {
   beforeEach(() => {
     // Force authDisabled so login/logout don't trigger window.location redirects
     (environment as any).authDisabled = true;
+    keycloakStub = {
+      authenticated: false,
+      subject: 'kc-sub',
+      updateToken: jasmine.createSpy('updateToken').and.resolveTo(true),
+      login: jasmine.createSpy('login').and.resolveTo(),
+      logout: jasmine.createSpy('logout').and.resolveTo(),
+    };
 
     TestBed.configureTestingModule({
     imports: [],
-    providers: [AuthService, { provide: KeycloakService, useValue: keycloakStub }, provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
+    providers: [AuthService, { provide: Keycloak, useValue: keycloakStub }, provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
 });
     service = TestBed.inject(AuthService);
   });
@@ -114,5 +116,61 @@ describe('AuthService', () => {
     expect(service.isAuthenticated()).toBeTrue();
     expect(service.user()?.email).toBe('admin@truenorth.local');
     expect(service.isAdmin()).toBeTrue();
+  });
+
+  // ── With Keycloak enabled (keycloak-js instance, provideKeycloak) ──
+  describe('with auth enabled', () => {
+    beforeEach(() => ((environment as any).authDisabled = false));
+
+    it('bootstrap() is signed-out when Keycloak is not authenticated, without calling the API', async () => {
+      const http = TestBed.inject(HttpTestingController);
+      expect(await service.bootstrap(true)).toBeNull();
+      expect(service.user()).toBeNull();
+      http.expectNone(`${environment.apiUrl}/auth/me`);
+    });
+
+    it('bootstrap() takes the user from /auth/me and the token subject from Keycloak', async () => {
+      keycloakStub.authenticated = true;
+      const http = TestBed.inject(HttpTestingController);
+      const pending = service.bootstrap(true);
+      http.expectOne(`${environment.apiUrl}/auth/me`).flush({
+        status: 'registered',
+        user: { id: 'db-1', email: 'a@tn.local', display_name: 'A', role: 'student' },
+      });
+      await pending;
+      expect(service.user()?.sub).toBe('kc-sub');
+      expect(service.userId()).toBe('db-1');
+    });
+
+    it('login() and logout() hand off to Keycloak with this origin', () => {
+      service.login();
+      expect(keycloakStub.login).toHaveBeenCalledWith({ redirectUri: window.location.origin });
+      service.logout();
+      expect(keycloakStub.logout).toHaveBeenCalledWith({ redirectUri: window.location.origin });
+    });
+  });
+
+  describe('freshToken', () => {
+    it('is empty when not signed in, and does not try to refresh', async () => {
+      expect(await freshToken(keycloakStub as unknown as Keycloak)).toBe('');
+      expect(keycloakStub.updateToken).not.toHaveBeenCalled();
+    });
+
+    it('refreshes a token about to expire, then returns the current one', async () => {
+      keycloakStub.authenticated = true;
+      keycloakStub.updateToken.and.callFake(async () => {
+        keycloakStub.token = 'new';
+        return true;
+      });
+      expect(await freshToken(keycloakStub as unknown as Keycloak)).toBe('new');
+      expect(keycloakStub.updateToken).toHaveBeenCalledWith(10);
+    });
+
+    it('returns the held token when refresh fails, so the API can answer 401', async () => {
+      keycloakStub.authenticated = true;
+      keycloakStub.token = 'old';
+      keycloakStub.updateToken.and.rejectWith(new Error('refresh failed'));
+      expect(await freshToken(keycloakStub as unknown as Keycloak)).toBe('old');
+    });
   });
 });
