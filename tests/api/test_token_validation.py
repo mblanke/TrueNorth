@@ -355,7 +355,7 @@ LTI_JWKS = "http://moodle.test/mod/lti/certs.php"
 TENANT = uuid.UUID("00000000-0000-0000-0000-00000000000a")
 
 
-def _lti_platform(db) -> ExternalPlatform:
+def _lti_platform(db, client_id: str = "client-1") -> ExternalPlatform:
     p = ExternalPlatform(
         id=uuid.uuid4(),
         name="Moodle",
@@ -365,7 +365,7 @@ def _lti_platform(db) -> ExternalPlatform:
         auth_type=IntegrationAuthType.lti13,
         tenant_id=TENANT,
         lti_issuer=LTI_ISSUER,
-        lti_client_id="client-1",
+        lti_client_id=client_id,
         lti_deployment_id="dep-1",
         lti_jwks_url=LTI_JWKS,
     )
@@ -468,6 +468,47 @@ def test_deep_linking_round_trip_signs_verifiable_tokens(db_session, client):
     assert decoded[lti13.CLAIM_DEPLOYMENT] == "dep-1"
     assert decoded["https://purl.imsglobal.org/spec/lti-dl/claim/data"] == "opaque"
     assert decoded[lti13.CLAIM_DL_CONTENT_ITEMS][0]["title"] == "Intro quiz"
+
+
+@pytest.mark.asyncio
+class TestLTILaunchBinding:
+    async def test_a_nonce_issued_for_another_platform_is_refused(self, db_session, lti_platform_key):
+        """The login that minted state+nonce must be this platform's."""
+        platform = _lti_platform(db_session)
+        other = _lti_platform(db_session, client_id="client-9")
+        nonce, state = _lti_state(db_session, other)
+        token = sign(_lti_claims(nonce), lti_platform_key)
+        with pytest.raises(ValueError, match="replayed"):
+            await lti13.validate_launch(db_session, token, state)
+        assert platform.id != other.id
+
+    async def test_azp_for_another_client_is_refused(self, db_session, lti_platform_key):
+        platform = _lti_platform(db_session)
+        nonce, state = _lti_state(db_session, platform)
+        token = sign(_lti_claims(nonce, azp="client-2"), lti_platform_key)
+        with pytest.raises(ValueError, match="azp"):
+            await lti13.validate_launch(db_session, token, state)
+
+    async def test_several_audiences_without_azp_are_refused(self, db_session, lti_platform_key):
+        platform = _lti_platform(db_session)
+        nonce, state = _lti_state(db_session, platform)
+        token = sign(_lti_claims(nonce, aud=["client-1", "client-2"]), lti_platform_key)
+        with pytest.raises(ValueError, match="azp"):
+            await lti13.validate_launch(db_session, token, state)
+
+    async def test_several_audiences_with_our_azp_are_accepted(self, db_session, lti_platform_key):
+        platform = _lti_platform(db_session)
+        nonce, state = _lti_state(db_session, platform)
+        token = sign(_lti_claims(nonce, aud=["client-1", "client-2"], azp="client-1"), lti_platform_key)
+        found, _ = await lti13.validate_launch(db_session, token, state)
+        assert found.id == platform.id
+
+
+def test_another_tool_signed_token_is_not_a_deep_linking_session(db_session, client):
+    """A genuine LtiDeepLinkingResponse (visible in the browser) is not a session: 401, not 500."""
+    platform = _lti_platform(db_session)
+    response_jwt = lti13.build_deep_link_response(db_session, platform, "dep-1", [], None)
+    assert client.post("/lti/deeplink/finish", data={"session": response_jwt}).status_code == 401
 
 
 def test_a_forged_deep_linking_session_is_refused(db_session, client, other_rsa_key):

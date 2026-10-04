@@ -191,15 +191,28 @@ async def validate_launch(db: Session, id_token: str, state: str) -> tuple[Exter
         platform_jwks,
         algorithms=["RS256"],
         audience=platform.lti_client_id,
-        issuer=iss,
+        # Our registration, not the token's own claim (which found the platform).
+        issuer=platform.lti_issuer,
     )
+    # OIDC Core 3.1.3.7 / LTI 1.3 5.1.2: with several audiences azp is required, and
+    # when present it must be our client id.
+    azp = claims.get("azp")
+    if isinstance(claims.get("aud"), list) and len(claims["aud"]) > 1 and azp is None:
+        raise ValueError("LTI id_token has several audiences but no azp")
+    if azp is not None and azp != platform.lti_client_id:
+        raise ValueError("LTI id_token azp is not this tool's client id")
     if str(claims.get(CLAIM_DEPLOYMENT, "")) != platform.lti_deployment_id:
         raise ValueError("LTI deployment id does not match the registered platform")
 
-    # Replay protection: nonce must exist with matching state, then be consumed.
+    # Replay protection: nonce must exist with matching state, have been issued for
+    # this platform's login, then be consumed.
     record = (
         db.query(LTINonce)
-        .filter(LTINonce.nonce == claims.get("nonce", ""), LTINonce.state == state)
+        .filter(
+            LTINonce.nonce == claims.get("nonce", ""),
+            LTINonce.state == state,
+            LTINonce.platform_id == platform.id,
+        )
         .first()
     )
     if not record:

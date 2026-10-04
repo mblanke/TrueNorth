@@ -365,6 +365,11 @@ async def lti_launch(
     return RedirectResponse(target, status_code=302)
 
 
+# The tool key also signs the LtiDeepLinkingResponse and AGS client assertions; this
+# audience means only a picker session is accepted back at /deeplink/finish.
+DEEP_LINK_SESSION_AUDIENCE = "truenorth:lti-deeplink-session"
+
+
 def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
     """Render a minimal content picker; selection posts a signed DL response."""
     settings = claims.get(lti13.CLAIM_DL_SETTINGS) or {}
@@ -376,6 +381,7 @@ def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
     key = lti13.get_tool_key(db)
     session_jwt = _jwt.encode(
         {
+            "aud": DEEP_LINK_SESSION_AUDIENCE,
             "platform_id": str(platform.id),
             "deployment_id": claims.get(lti13.CLAIM_DEPLOYMENT, ""),
             "return_url": return_url,
@@ -441,11 +447,18 @@ async def lti_deep_link_finish(
 
     key = lti13.get_tool_key(db)
     try:
-        session = _jwt.decode(session_token, key.public_key_pem, algorithms=["RS256"])
+        session = _jwt.decode(
+            session_token,
+            key.public_key_pem,
+            algorithms=["RS256"],
+            audience=DEEP_LINK_SESSION_AUDIENCE,
+            options={"require": ["exp", "platform_id"]},
+        )
+        platform_id = uuid.UUID(str(session["platform_id"]))
     except Exception as exc:
         raise HTTPException(401, "Invalid deep-linking session") from exc
 
-    platform = db.get(ExternalPlatform, uuid.UUID(session["platform_id"]))
+    platform = db.get(ExternalPlatform, platform_id)
     if not platform:
         raise HTTPException(404, "Platform not found")
 
