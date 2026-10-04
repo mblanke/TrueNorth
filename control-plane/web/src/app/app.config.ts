@@ -1,4 +1,4 @@
-import { APP_INITIALIZER, ApplicationConfig, importProvidersFrom } from '@angular/core';
+import { APP_INITIALIZER, ApplicationConfig, importProvidersFrom, provideZoneChangeDetection } from '@angular/core';
 import { provideRouter, withComponentInputBinding, withPreloading, PreloadAllModules } from '@angular/router';
 import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
@@ -10,6 +10,8 @@ import { initializeKeycloak } from './core/auth/keycloak-init';
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    // Angular 21 bootstraps zoneless by default; the app is written for zone.js.
+    provideZoneChangeDetection(),
     provideRouter(routes, withComponentInputBinding(), withPreloading(PreloadAllModules)),
     provideHttpClient(withInterceptorsFromDi()),
     provideAnimations(),
