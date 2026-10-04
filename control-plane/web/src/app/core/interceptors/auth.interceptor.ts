@@ -1,11 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import {
-  HttpInterceptor,
-  HttpRequest,
-  HttpHandler,
-  HttpEvent,
-  HTTP_INTERCEPTORS,
-} from '@angular/common/http';
+import { HttpInterceptor, HttpRequest, HttpHandler, HttpEvent, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { Observable, from, switchMap } from 'rxjs';
 import { KeycloakService } from 'keycloak-angular';
 import { environment } from '@env/environment';

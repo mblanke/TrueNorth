@@ -1,11 +1,11 @@
 @use '@angular/material' as mat;
 
 /* ── Angular Material theme init (emits MDC CSS tokens) ── */
-$tn-primary: mat.define-palette(mat.$cyan-palette);
-$tn-accent:  mat.define-palette(mat.$teal-palette);
-$tn-warn:    mat.define-palette(mat.$red-palette);
+$tn-primary: mat.m2-define-palette(mat.$m2-cyan-palette);
+$tn-accent:  mat.m2-define-palette(mat.$m2-teal-palette);
+$tn-warn:    mat.m2-define-palette(mat.$m2-red-palette);
 
-$tn-theme: mat.define-dark-theme((
+$tn-theme: mat.m2-define-dark-theme((
   color: (
     primary: $tn-primary,
     accent:  $tn-accent,
@@ -17,9 +17,9 @@ $tn-theme: mat.define-dark-theme((
 @include mat.all-component-themes($tn-theme);
 
 /* Light Material color tokens, scoped to the Great White North theme */
-$tnl-primary: mat.define-palette(mat.$red-palette, 700, 500, 900);
-$tnl-accent:  mat.define-palette(mat.$blue-grey-palette, 600);
-$tn-light-theme: mat.define-light-theme((
+$tnl-primary: mat.m2-define-palette(mat.$m2-red-palette, 700, 500, 900);
+$tnl-accent:  mat.m2-define-palette(mat.$m2-blue-grey-palette, 600);
+$tn-light-theme: mat.m2-define-light-theme((
   color: (
     primary: $tnl-primary,
     accent:  $tnl-accent,

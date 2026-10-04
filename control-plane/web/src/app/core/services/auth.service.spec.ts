@@ -1,8 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { KeycloakService } from 'keycloak-angular';
 import { AuthService, CurrentUser } from './auth.service';
 import { environment } from '@env/environment';
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 
 /**
  * These run with `authDisabled = true`, which short-circuits the Keycloak
@@ -35,9 +36,9 @@ describe('AuthService', () => {
     (environment as any).authDisabled = true;
 
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
-      providers: [AuthService, { provide: KeycloakService, useValue: keycloakStub }],
-    });
+    imports: [],
+    providers: [AuthService, { provide: KeycloakService, useValue: keycloakStub }, provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
+});
     service = TestBed.inject(AuthService);
   });
 
