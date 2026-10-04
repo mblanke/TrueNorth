@@ -27,6 +27,7 @@ from .db import Base, engine, get_db
 from .models import Tenant, User, UserRole
 from .schemas import HealthOut
 from .search_backends import get_search_backend
+from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
 
 logger = logging.getLogger("truenorth.api")
 logging.basicConfig(
@@ -136,6 +137,8 @@ app = FastAPI(
     version=APP_VERSION,
     description="Control-plane API for the TrueNorth Range cyber training platform",
     lifespan=lifespan,
+    # The published base path. Unversioned paths remain as aliases (app/versioning.py).
+    servers=[{"url": SERVER_PREFIX}],
 )
 
 # -- CORS ------------------------------------------------------------------
@@ -273,6 +276,11 @@ app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
+
+# -- API versioning: /api/v1/... -> canonical route (docs/adr/0002) ---------
+# Added last so it is the outermost middleware: rate limiting, metrics and tracing all
+# see the canonical path, not one per version alias.
+app.add_middleware(VersionPrefixMiddleware)
 
 
 # -- Health check (backwards-compatible format) ----------------------------

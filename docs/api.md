@@ -37,7 +37,11 @@
 | Staging | `https://staging.truenorth.local` | Keycloak auth required |
 | Production | `https://api.truenorth.example.com` | Keycloak auth required |
 
-The current API version is **v1** (implicit). All endpoints are served from the root path. Future versions will use `/v2/` prefix.
+The current API version is **v1**, served at `/api/v1/...` (through nginx on `:4200`).
+Unversioned paths (`/api/ranges`) remain aliases of v1 for existing clients. Every
+response carries `X-API-Version`. A breaking change will ship as `/api/v2` alongside v1.
+The machine-readable contract is [`docs/interfaces/openapi.json`](interfaces/openapi.json)
+and is checked against the code on every `scripts/dod.sh` run (ADR 0002).
 
 ---
 
