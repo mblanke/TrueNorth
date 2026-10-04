@@ -24,6 +24,15 @@ lowers the baseline automatically. CI also fails if the lowered baseline isn't c
 
 Raise a baseline only with a new ADR explaining why.
 
+## Decision: supply-chain evidence
+- CI job `supply-chain` produces a CycloneDX SBOM (`sbom.cdx.json`) and pip-audit and
+  npm audit reports as build artifacts.
+- The audits are **report-only** for now. The 2026-10-03 baseline was 81 Python
+  advisories in 10 packages (notably `python-jose`, `starlette`/FastAPI,
+  `python-multipart`, `pypdf`, `urllib3`) and 14 npm advisories. Make the job blocking
+  once those upgrades land.
+- Third-party container images are pinned to a tag. Never use `:latest`.
+
 ## Decision: licensing and data rights
 - The repository is **proprietary, all rights reserved** (`LICENSE`). This can be
   relaxed later by the copyright holder. Open-sourcing cannot be undone, so it is not

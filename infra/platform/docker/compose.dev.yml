@@ -148,7 +148,7 @@ services:
 
   # -- Learning Record Store (xAPI/cmi5) ----------------------------------
   lrs:
-    image: yetanalytics/lrsql:latest
+    image: yetanalytics/lrsql:v0.9.9  # pinned: what :latest resolved to on 2026-10-03
     # Published for amd64 only. Naming the platform lets Apple Silicon hosts run it
     # under emulation instead of failing the pull with "no matching manifest".
     platform: linux/amd64
