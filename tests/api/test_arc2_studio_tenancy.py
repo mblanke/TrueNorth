@@ -155,3 +155,23 @@ def test_a_send_that_loses_the_race_for_a_slug_picks_another(client, runs, monke
         slug = client.post("/arc2/runs", json={"name": "Race", "request": REQUEST}).json()["slug"]
     assert slug == "arc2-race-2"
     assert json.loads((runs / "_studio" / "arc2-race.json").read_text())["tenant_id"] == OTHER_TENANT
+
+
+def test_a_package_symlinked_to_another_tenants_run_is_not_served(client, runs, foreign_run):
+    with acting_as(UserRole.instructor, DEV_TENANT):
+        mine = client.post("/arc2/runs", json={"name": "Mine", "request": REQUEST}).json()["slug"]
+        (runs / mine / "07-bundle").mkdir(parents=True)
+        (runs / mine / "07-bundle" / "cmi5").symlink_to(runs / foreign_run / "07-bundle" / "cmi5")
+        assert client.get(f"/arc2/runs/{mine}/package.zip").status_code == 404
+
+
+@pytest.mark.parametrize("text", ["fix wording --resume arc2-victim accept", "x --SLUG arc2-victim", "--resume=arc2-v"])
+def test_text_cannot_name_another_run_on_the_engines_command_line(client, runs, text):
+    with acting_as(UserRole.instructor, DEV_TENANT):
+        assert client.post("/arc2/runs", json={"name": "Mine", "request": text + " please"}).status_code == 422
+        slug = client.post("/arc2/runs", json={"name": "Mine", "request": REQUEST}).json()["slug"]
+        runner_finishes(runs, "Outline ready.")
+        write_run(runs, slug, outline="pending", done=1)
+        before = queue_files(runs)
+        assert client.post(f"/arc2/runs/{slug}/reply", json={"action": "feedback", "text": text}).status_code == 422
+        assert queue_files(runs) == before

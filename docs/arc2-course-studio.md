@@ -321,3 +321,15 @@ PYTHONPATH=tools .venv/bin/python -m arc2.assign_owner --tenant <tenant-uuid> --
 The tool is idempotent. It refuses to move a run that another tenant already owns, and it
 never edits `manifest.json`. Tests: `tests/api/test_arc2_studio_tenancy.py`,
 `tests/arc2/test_assign_owner.py`.
+
+Request and feedback text may not contain `--slug` or `--resume`. The API returns 422 and
+the runner fails the job, because that text is placed on `/arc2`'s argument line after
+the run's own slug. `package.zip` serves only files that resolve inside the caller's run.
+
+**Open (S1b, runner isolation).** The API enforces the boundary, but the engine does not.
+A headless `/arc2` may write anywhere under `build/arc2/`, including other tenants' runs
+and `_studio/` where ownership is recorded. It may read the whole repository and run
+`.venv/bin/python`. Prompt text from one tenant could therefore steer it into another
+tenant's run. `_detail` still reads a run's files (outline, course YAML, manifest) without
+resolving symlinks. Confining each job to `build/arc2/<slug>/**` and keeping `_studio/`
+out of the agent's reach is the S1b deliverable.

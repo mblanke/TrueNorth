@@ -54,6 +54,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SLUG_RE = re.compile(r"^arc2-[a-z0-9-]{1,60}$")
+# The job's text follows its own slug on /arc2's argument line; --slug or --resume in it
+# would point the engine at another run (the API refuses these too).
+RUN_FLAG_RE = re.compile(r"(?i)(?:^|\s)--(?:slug|resume)\b")
 ACTIONS = {"start", "resume"}
 MAX_TEXT = 4000
 DEFAULT_TIMEOUT = 4 * 3600
@@ -123,6 +126,8 @@ def validate(job: dict) -> dict:
         raise JobError("empty text")
     if len(text) > MAX_TEXT:
         raise JobError("text too long")
+    if RUN_FLAG_RE.search(text):
+        raise JobError("text may not contain --slug or --resume")
     if not re.match(r"^[A-Za-z0-9_-]{6,64}$", str(job.get("id") or "")):
         raise JobError("bad id")
     return {**job, "slug": slug, "text": text}

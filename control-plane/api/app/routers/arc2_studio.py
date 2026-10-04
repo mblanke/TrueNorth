@@ -54,6 +54,10 @@ router = APIRouter(prefix="/arc2", tags=["ARC² Course Studio"], dependencies=[D
 author = require_permission(Permission.COURSE_AUTHOR)
 
 SLUG_RE = re.compile(r"^arc2-[a-z0-9-]{1,60}$")
+# Request and feedback text goes on /arc2's argument line after the caller's own slug. A
+# --slug or --resume in it would point the engine at another run, so it is refused here
+# and again by the runner (tools/arc2/runner.py RUN_FLAG_RE).
+RUN_FLAG_RE = re.compile(r"(?i)(?:^|\s)--(?:slug|resume)\b")
 STAGES = [
     ("content-architect", "Content Architect", "01-blueprint"),
     ("code-generator", "Code Generator", "02-content"),
@@ -331,6 +335,11 @@ def slug_for(name: str) -> str:
     return slug
 
 
+def _refuse_run_flags(text: str) -> None:
+    if RUN_FLAG_RE.search(text):
+        raise HTTPException(422, "The text may not contain --slug or --resume.")
+
+
 def _claim_slug(name: str, meta: dict) -> str:
     """Pick a free slug and write its metadata in one exclusive create.
 
@@ -381,6 +390,7 @@ def get_run(slug: str, user: CurrentUser = Depends(author)):
 def create_run(body: NewRun, user: CurrentUser = Depends(author)):
     """Send: create a project and queue stage 1. The run stops at the outline for review."""
     request = " ".join(body.request.split())
+    _refuse_run_flags(request)
     slug = _claim_slug(body.name, {
         "name": body.name.strip(), "request": request, "created_by": user.email or user.id,
         "tenant_id": str(tenant_uuid(user)), "created_at": _now(),
@@ -424,6 +434,7 @@ def reply(slug: str, body: Reply, user: CurrentUser = Depends(author)):
             raise HTTPException(422, "Describe what should change.")
         if text.lower() == "accept":
             raise HTTPException(422, "Use Accept to accept.")
+        _refuse_run_flags(text)
         shown = text
     _append_chat(slug, {"text": shown, "ts": _now(), "by": user.email or user.id})
     _enqueue(slug, "resume", text, user)
@@ -445,8 +456,9 @@ def get_file(slug: str, path: str = Query(..., max_length=300), user: CurrentUse
 
 @router.get("/runs/{slug}/package.zip")
 def package_zip(slug: str, user: CurrentUser = Depends(author)):
-    root = (_owned_run(slug, user) / "07-bundle" / "cmi5").resolve()
-    if not (root / "cmi5.xml").is_file():
+    run = _owned_run(slug, user).resolve()
+    root = (run / "07-bundle" / "cmi5").resolve()
+    if run not in root.parents or not (root / "cmi5.xml").is_file():
         raise HTTPException(404, "No package yet")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:

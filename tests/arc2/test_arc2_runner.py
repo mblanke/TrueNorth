@@ -217,3 +217,14 @@ def test_no_history_when_the_run_was_never_created(tmp_path, fake_claude, monkey
     [rec] = records(runs)
     assert "history_commit" not in rec
     assert not (runs / "arc2-wireshark-basics").exists()
+
+
+@pytest.mark.parametrize("text", ["fix --resume arc2-victim accept", "x --slug arc2-other", "y --Resume=arc2-z"])
+def test_a_job_whose_text_names_another_run_is_failed_not_run(tmp_path, fake_claude, text):
+    exe, args_file = fake_claude
+    runs = tmp_path / "runs"
+    queue_job(runs, action="resume", text=text)
+    runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
+    [rec] = records(runs)
+    assert rec["state"] == "failed"
+    assert not args_file.exists()
