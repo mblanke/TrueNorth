@@ -15,6 +15,23 @@ Web checks are opt-in with `DOD_WEB=1`.
 
 Do not claim work is done until it passes. Run it with the venv: `bash scripts/dod.sh`.
 
+## Modularity rules (MOSA) — enforced by the gate
+
+The gate also runs `scripts/mosa_check.py` (`.dod-mosa-baseline`, same ratchet) and
+fails on OpenAPI drift. Decisions and reasons are in `docs/adr/`.
+
+- External systems go behind an adapter ABC + registry (`provisioners/`,
+  `*_backends/`). Vendor SDKs (`proxmoxer`, `pyVmomi`, `opensearchpy`) are imported
+  only there; no `if hypervisor_type == "..."` in routers. ADR 0001.
+- `docs/interfaces/openapi.json` is the published API contract. If you change an
+  endpoint or schema, run `.venv/bin/python scripts/export_openapi.py` and commit the
+  diff with the change. One handler per method; every route needs a unique
+  `operationId`. ADR 0002.
+- No new raw SQL in the worker. No new `HttpClient` in Angular `features/`; use the
+  shared client. Put new code in per-section modules, not `models.py` / `schemas.py` /
+  `worker/tasks.py`, whose line counts are ratcheted. ADR 0003.
+- Raise a baseline only with an ADR. Lowering is automatic; commit it.
+
 ## Writes are gated by model capability
 
 A `PreToolUse` hook (`~/.claude/hooks/model-write-gate.py`) can refuse file edits. It

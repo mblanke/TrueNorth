@@ -275,7 +275,11 @@ def lti_jwks(db: Session = Depends(get_db)):
     return lti13.jwks(db)
 
 
-@lti_router.api_route("/login", methods=["GET", "POST"])
+# Two registrations, not api_route(methods=[...]): one route with two methods gets one
+# operationId, and FastAPI picks its method suffix from a set, so the published
+# contract (docs/interfaces/openapi.json) changed from run to run.
+@lti_router.get("/login", operation_id="lti_oidc_login_get")
+@lti_router.post("/login", operation_id="lti_oidc_login_post")
 async def lti_oidc_login(request: Request, db: Session = Depends(get_db)):
     """LTI 1.3 OIDC initiation: validate issuer, mint state+nonce, redirect."""
     params = dict(request.query_params)

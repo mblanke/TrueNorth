@@ -49,6 +49,17 @@ fi
 if (( CUR < BASE )); then echo "  ratcheting baseline down: $BASE -> $CUR"; fi
 echo "$CUR" > "$BASELINE_FILE"
 
+# MOSA: modularity debt (raw SQL in the worker, vendor SDKs outside adapters, hardcoded
+# backend branches, god-file growth) ratchets like ruff debt. docs/adr/0003.
+echo "+ MOSA ratchet (.dod-mosa-baseline)"
+"$PY" scripts/mosa_check.py || fail "MOSA modularity debt grew — see the locations above"
+
+# The committed OpenAPI file is the published API contract. Code and contract must
+# agree; an intended change is regenerated and committed in the same change. docs/adr/0002.
+echo "+ OpenAPI contract drift (docs/interfaces/openapi.json)"
+"$PY" scripts/export_openapi.py --check 2>/dev/null \
+  || fail "API contract drift — run: $PY scripts/export_openapi.py, review, commit"
+
 # Match .github/workflows/ci.yml:37 exactly, so local green and CI green mean the same
 # thing. tests/integration needs OpenSearch and live provisioners and is a separate CI
 # job (ci.yml:137); running it here just produces errors that teach people to ignore
