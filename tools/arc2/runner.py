@@ -13,7 +13,11 @@ gate; feedback re-runs the stages it routes to. The page shows the run from its
 Queue contract (the API writes, the runner reads):
 
     <runs>/_queue/<created>-<id>.json   {"id", "action": "start"|"resume",
-                                          "slug", "text", "created_at", "requested_by"}
+                                          "slug", "text", "created_at", "requested_by",
+                                          "tenant_id"}
+
+``tenant_id`` is the owning tenant, carried into the job record for audit. The runner
+does not authorize: the API only queues jobs for runs the caller's tenant owns.
 
 * ``start``: ``text`` is the course request; runs ``/arc2 --slug <slug> <text>``.
 * ``resume``: ``text`` is ``accept`` or feedback; runs ``/arc2 --resume <slug> <text>``.

@@ -299,3 +299,25 @@ where the student career-path view is reached from Moodle.
   only (`cmi5.no_instructor_content`). Slice B adds `audience`.
 - The Moodle integration runbook named in slice C does not exist yet; only the design
   (`docs/moodle-integration.md`) does.
+
+## 11. Run ownership (2026-10-04)
+
+A Studio run belongs to the tenant recorded as `tenant_id` in `<runs>/_studio/<slug>.json`.
+`POST /arc2/runs` records the caller's tenant on the run and on every queued job. Every
+other route resolves the slug through the owner check, so another tenant's run is a 404 and
+nothing is queued or appended to its chat. Admins are tenant-scoped as well, following
+`app/tenancy.py`. Slugs share one namespace on disk; a new run claims its slug with an
+exclusive create, so it can never overwrite another run's metadata.
+
+Runs with no recorded owner are listed to nobody. That covers runs started from Claude Code
+and runs created before this change. Assign them once, after deploying, then check that the
+"unowned after" count is 0:
+
+```bash
+PYTHONPATH=tools .venv/bin/python -m arc2.assign_owner --tenant <tenant-uuid> --all-unowned --dry-run
+PYTHONPATH=tools .venv/bin/python -m arc2.assign_owner --tenant <tenant-uuid> --all-unowned
+```
+
+The tool is idempotent. It refuses to move a run that another tenant already owns, and it
+never edits `manifest.json`. Tests: `tests/api/test_arc2_studio_tenancy.py`,
+`tests/arc2/test_assign_owner.py`.

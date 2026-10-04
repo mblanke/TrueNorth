@@ -5183,6 +5183,100 @@
         "title": "InstructorInjectIn",
         "type": "object"
       },
+      "JobView": {
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Agent"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "title": "JobView",
+        "type": "object"
+      },
       "KitDefinitionIn": {
         "properties": {
           "description": {
@@ -8295,6 +8389,353 @@
         "title": "Reply",
         "type": "object"
       },
+      "RunDetail": {
+        "properties": {
+          "actions_blocking": {
+            "title": "Actions Blocking",
+            "type": "integer"
+          },
+          "actions_open": {
+            "title": "Actions Open",
+            "type": "integer"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "findings": {
+            "items": {},
+            "title": "Findings",
+            "type": "array"
+          },
+          "gates": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Gates",
+            "type": "object"
+          },
+          "human_actions": {
+            "items": {},
+            "title": "Human Actions",
+            "type": "array"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lab": {
+            "additionalProperties": true,
+            "title": "Lab",
+            "type": "object"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "modules": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Modules",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectives": {
+            "items": {},
+            "title": "Objectives",
+            "type": "array"
+          },
+          "outline": {
+            "title": "Outline"
+          },
+          "package_ready": {
+            "title": "Package Ready",
+            "type": "boolean"
+          },
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "phase_text": {
+            "title": "Phase Text",
+            "type": "string"
+          },
+          "qa": {
+            "additionalProperties": true,
+            "title": "Qa",
+            "type": "object"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageView"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "phase",
+          "phase_text",
+          "stages",
+          "gates",
+          "qa",
+          "actions_open",
+          "actions_blocking",
+          "messages",
+          "objectives",
+          "modules",
+          "pages",
+          "lab",
+          "findings",
+          "human_actions",
+          "files",
+          "package_ready"
+        ],
+        "title": "RunDetail",
+        "type": "object"
+      },
+      "RunFile": {
+        "properties": {
+          "instructor_only": {
+            "title": "Instructor Only",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "text",
+          "instructor_only"
+        ],
+        "title": "RunFile",
+        "type": "object"
+      },
+      "RunList": {
+        "properties": {
+          "runner_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runner Seen"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "RunList",
+        "type": "object"
+      },
+      "RunSummary": {
+        "properties": {
+          "actions_blocking": {
+            "title": "Actions Blocking",
+            "type": "integer"
+          },
+          "actions_open": {
+            "title": "Actions Open",
+            "type": "integer"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "gates": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Gates",
+            "type": "object"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "phase_text": {
+            "title": "Phase Text",
+            "type": "string"
+          },
+          "qa": {
+            "additionalProperties": true,
+            "title": "Qa",
+            "type": "object"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageView"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "phase",
+          "phase_text",
+          "stages",
+          "gates",
+          "qa",
+          "actions_open",
+          "actions_blocking"
+        ],
+        "title": "RunSummary",
+        "type": "object"
+      },
       "ScenarioDraftIn": {
         "properties": {
           "difficulty": {
@@ -8932,6 +9373,32 @@
           "name"
         ],
         "title": "SnapshotRequest",
+        "type": "object"
+      },
+      "StageView": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "stop_reason": {
+            "title": "Stop Reason"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "state"
+        ],
+        "title": "StageView",
         "type": "object"
       },
       "StorageApplianceIn": {
@@ -12120,7 +12587,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
               }
             },
             "description": "Successful Response"
@@ -12153,7 +12622,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
               }
             },
             "description": "Successful Response"
@@ -12198,7 +12669,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
               }
             },
             "description": "Successful Response"
@@ -12253,7 +12726,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RunFile"
+                }
               }
             },
             "description": "Successful Response"
@@ -12354,7 +12829,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
               }
             },
             "description": "Successful Response"
@@ -12400,7 +12877,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
               }
             },
             "description": "Successful Response"

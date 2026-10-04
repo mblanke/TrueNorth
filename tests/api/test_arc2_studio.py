@@ -58,8 +58,15 @@ def runner_finishes(runs: Path, result: str, state: str = "done") -> None:
         path.unlink()
 
 
-def write_run(runs: Path, slug: str, outline: str = "pending", preview: str = "n/a", done: int = 1, package: bool = False) -> Path:
+def write_run(runs: Path, slug: str, outline: str = "pending", preview: str = "n/a", done: int = 1, package: bool = False,
+              owner: str | None = DEV_TENANT) -> Path:
+    """A run as the engine leaves it on disk. ``owner`` records the tenant in the Studio
+    metadata, as the API or tools/arc2/assign_owner.py would; None leaves the run unowned."""
     run = runs / slug
+    meta = runs / "_studio" / f"{slug}.json"
+    if owner and not meta.exists():
+        meta.parent.mkdir(exist_ok=True)
+        meta.write_text(json.dumps({"name": slug, "tenant_id": owner}))
     (run / "01-blueprint").mkdir(parents=True)
     keys = ["content-architect", "code-generator", "range-engineer", "artifact-creator", "sensor-gateway", "qa-tester", "package-builder"]
     manifest = {
@@ -156,8 +163,12 @@ def test_there_is_nothing_to_accept_on_a_packaged_run(client, runs):
     assert client.post("/arc2/runs/arc2-done-course/reply", json={"action": "accept"}).status_code == 409
 
 
-def test_a_run_started_from_claude_code_shows_up_too(client, runs):
-    write_run(runs, "arc2-from-cli", outline="accepted", preview="pending", done=6)
+def test_a_run_started_from_claude_code_shows_up_once_it_has_an_owner(client, runs):
+    from arc2 import assign_owner
+
+    write_run(runs, "arc2-from-cli", outline="accepted", preview="pending", done=6, owner=None)
+    assert client.get("/arc2/runs").json()["runs"] == []
+    assert assign_owner.main(["--runs", str(runs), "--tenant", DEV_TENANT, "--slug", "arc2-from-cli"]) == 0
     [run] = client.get("/arc2/runs").json()["runs"]
     assert (run["slug"], run["phase"], run["actions_open"], run["actions_blocking"]) == ("arc2-from-cli", "preview", 1, 1)
 

@@ -11,6 +11,12 @@ host through ``tools/arc2/runner.py``; this router never imports it. It:
 Nothing here publishes, imports into the course library or edits ``manifest.json``; the
 engine's own gate operations do that, driven by ``/arc2``. Off unless
 ``ARC2_STUDIO_ENABLED`` is set. See docs/arc2-course-studio.md (slice D, first version).
+
+Ownership: a run belongs to the tenant recorded as ``tenant_id`` in its Studio metadata
+(``_studio/<slug>.json``). Every route resolves the slug through ``_owned_run`` first, so
+another tenant's run, or a run with no recorded owner (started from Claude Code, or made
+before ownership was recorded), is a 404 and nothing is queued for it. Admins are tenant
+scoped too, as in ``app/tenancy.py``. ``tools/arc2/assign_owner.py`` assigns unowned runs.
 """
 
 from __future__ import annotations
@@ -29,8 +35,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from ..arc2_studio_schemas import RunDetail, RunFile, RunList
 from ..auth import CurrentUser
 from ..rbac import Permission, require_permission
+from ..tenancy import tenant_uuid
 
 
 def enabled() -> bool:
@@ -85,6 +93,20 @@ def _meta(slug: str) -> dict:
     return _read_json(runs_dir() / "_studio" / f"{slug}.json") or {}
 
 
+def _is_owner(slug: str, user: CurrentUser) -> bool:
+    """True only when the run's recorded tenant is the caller's; an unowned run has no owner."""
+    owner = _meta(slug).get("tenant_id")
+    return bool(owner) and str(owner).lower() == str(tenant_uuid(user))
+
+
+def _owned_run(slug: str, user: CurrentUser) -> Path:
+    """The run directory for ``slug`` if the caller's tenant owns it, else 404 (never 403)."""
+    run = _run_path(slug)
+    if not _is_owner(slug, user):
+        raise HTTPException(404, "No such run")
+    return run
+
+
 def _chat(slug: str) -> list[dict]:
     path = runs_dir() / "_studio" / f"{slug}.chat.jsonl"
     out = []
@@ -132,7 +154,7 @@ def _enqueue(slug: str, action: str, text: str, user: CurrentUser) -> dict:
     queue.mkdir(parents=True, exist_ok=True)
     job = {
         "id": secrets.token_hex(8), "action": action, "slug": slug, "text": text,
-        "created_at": _now(), "requested_by": user.email or user.id,
+        "created_at": _now(), "requested_by": user.email or user.id, "tenant_id": str(tenant_uuid(user)),
     }
     tmp = queue / f".{job['id']}.tmp"
     tmp.write_text(json.dumps(job))
@@ -309,13 +331,35 @@ def slug_for(name: str) -> str:
     return slug
 
 
-@router.get("/runs")
-def list_runs(_: CurrentUser = Depends(author)):
+def _claim_slug(name: str, meta: dict) -> str:
+    """Pick a free slug and write its metadata in one exclusive create.
+
+    Slugs are one namespace on disk across tenants. ``slug_for`` alone is check-then-write:
+    two concurrent sends with the same name could pick the same slug and the second would
+    overwrite the first run's metadata, owner included. ``O_EXCL`` makes the claim atomic;
+    on a lost race, pick again.
+    """
+    studio = runs_dir() / "_studio"
+    studio.mkdir(parents=True, exist_ok=True)
+    for _ in range(20):
+        slug = slug_for(name)
+        try:
+            fd = os.open(studio / f"{slug}.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except FileExistsError:
+            continue
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(meta))
+        return slug
+    raise HTTPException(503, "Could not allocate a name for the run; try again.")
+
+
+@router.get("/runs", response_model=RunList)
+def list_runs(user: CurrentUser = Depends(author)):
     root = runs_dir()
     slugs = {p.name for p in root.iterdir() if p.is_dir() and SLUG_RE.match(p.name)} if root.is_dir() else set()
     slugs |= {j["slug"] for j in _jobs() if SLUG_RE.match(str(j.get("slug") or ""))}
     slugs |= {p.stem for p in (root / "_studio").glob("*.json") if SLUG_RE.match(p.stem)} if (root / "_studio").is_dir() else set()
-    runs = [_summary(s) for s in slugs]
+    runs = [_summary(s) for s in slugs if _is_owner(s, user)]
     return {"runs": sorted(runs, key=lambda r: r.get("updated_at") or "", reverse=True),
             "runner_seen": _runner_seen()}
 
@@ -327,29 +371,29 @@ def _runner_seen() -> str | None:
     return datetime.fromtimestamp(max(times), UTC).strftime("%Y-%m-%dT%H:%M:%SZ") if times else None
 
 
-@router.get("/runs/{slug}")
-def get_run(slug: str, _: CurrentUser = Depends(author)):
+@router.get("/runs/{slug}", response_model=RunDetail)
+def get_run(slug: str, user: CurrentUser = Depends(author)):
+    _owned_run(slug, user)
     return _detail(slug)
 
 
-@router.post("/runs", status_code=201)
+@router.post("/runs", status_code=201, response_model=RunDetail)
 def create_run(body: NewRun, user: CurrentUser = Depends(author)):
     """Send: create a project and queue stage 1. The run stops at the outline for review."""
-    slug = slug_for(body.name)
-    studio = runs_dir() / "_studio"
-    studio.mkdir(parents=True, exist_ok=True)
     request = " ".join(body.request.split())
-    (studio / f"{slug}.json").write_text(json.dumps(
-        {"name": body.name.strip(), "request": request, "created_by": user.email or user.id, "created_at": _now()}))
+    slug = _claim_slug(body.name, {
+        "name": body.name.strip(), "request": request, "created_by": user.email or user.id,
+        "tenant_id": str(tenant_uuid(user)), "created_at": _now(),
+    })
     _append_chat(slug, {"text": request, "ts": _now(), "by": user.email or user.id})
     _enqueue(slug, "start", request, user)
     return _detail(slug)
 
 
-@router.post("/runs/{slug}/retry")
+@router.post("/runs/{slug}/retry", response_model=RunDetail)
 def retry(slug: str, user: CurrentUser = Depends(author)):
     """Queue the last job again when it failed (for example the runner could not sign in)."""
-    _run_path(slug)
+    _owned_run(slug, user)
     if _active_job(slug):
         raise HTTPException(409, "ARC² is still working on this run.")
     jobs = _jobs(slug)
@@ -361,10 +405,10 @@ def retry(slug: str, user: CurrentUser = Depends(author)):
     return _detail(slug)
 
 
-@router.post("/runs/{slug}/reply")
+@router.post("/runs/{slug}/reply", response_model=RunDetail)
 def reply(slug: str, body: Reply, user: CurrentUser = Depends(author)):
     """Accept the pending review, or send feedback; the runner resumes /arc2 with it."""
-    _run_path(slug)
+    _owned_run(slug, user)
     if _active_job(slug):
         raise HTTPException(409, "ARC² is still working on this run. Wait for it to stop at a review.")
     manifest = _read_json(runs_dir() / slug / "manifest.json")
@@ -386,9 +430,9 @@ def reply(slug: str, body: Reply, user: CurrentUser = Depends(author)):
     return _detail(slug)
 
 
-@router.get("/runs/{slug}/file")
-def get_file(slug: str, path: str = Query(..., max_length=300), _: CurrentUser = Depends(author)):
-    run = _run_path(slug).resolve()
+@router.get("/runs/{slug}/file", response_model=RunFile)
+def get_file(slug: str, path: str = Query(..., max_length=300), user: CurrentUser = Depends(author)):
+    run = _owned_run(slug, user).resolve()
     target = (run / path).resolve()
     if run not in target.parents or target.suffix not in TEXT_SUFFIXES or not target.is_file():
         raise HTTPException(404, "No such file")
@@ -400,8 +444,8 @@ def get_file(slug: str, path: str = Query(..., max_length=300), _: CurrentUser =
 
 
 @router.get("/runs/{slug}/package.zip")
-def package_zip(slug: str, _: CurrentUser = Depends(author)):
-    root = (_run_path(slug) / "07-bundle" / "cmi5").resolve()
+def package_zip(slug: str, user: CurrentUser = Depends(author)):
+    root = (_owned_run(slug, user) / "07-bundle" / "cmi5").resolve()
     if not (root / "cmi5.xml").is_file():
         raise HTTPException(404, "No package yet")
     buf = io.BytesIO()
