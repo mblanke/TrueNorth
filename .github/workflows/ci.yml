@@ -165,6 +165,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Trivy's release channel was compromised on 2026-03-19 (CVE-2026-33634): its action
+  # tags were force-pushed to a credential stealer. So: pin the action by commit SHA,
+  # pin Trivy itself, give the job read-only permissions, and expose no secrets to it.
+  # Report-only for now (exit-code 0): the remaining HIGHs are Angular 17 CVEs that
+  # are only fixed in Angular 19+.
+  security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          skip-dirs: node_modules
+          exit-code: "0"
+
   helm-lint:
     runs-on: ubuntu-latest
     steps:

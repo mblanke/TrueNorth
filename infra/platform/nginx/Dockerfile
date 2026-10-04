@@ -1,7 +1,7 @@
 # =============================================================================
 # TrueNorth Range — Nginx Reverse Proxy
 # =============================================================================
-FROM nginx:1.25-alpine
+FROM nginx:1.30-alpine
 
 LABEL maintainer="TrueNorth Range DevOps"
 LABEL description="Production reverse proxy for TrueNorth Range platform"

@@ -301,7 +301,7 @@ COPY . .
 RUN npm run build -- --configuration=production
 
 # Stage 2: Serve with Nginx
-FROM nginx:1.25-alpine
+FROM nginx:1.30-alpine
 COPY --from=builder /app/dist/truenorth-frontend/browser/ /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
