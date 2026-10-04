@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, claude/eager-aryabhata-c85b25]
-  pull_request:  # the claude/ branch is the GitHub default PRs merge into; drop once main is
-    branches: [main, claude/eager-aryabhata-c85b25]
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
 
 env:
   PYTHON_VERSION: "3.11"
