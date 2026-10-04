@@ -800,11 +800,11 @@ export class TextPromptDialogComponent {
       color: var(--text-secondary);
     }
     :host ::ng-deep .service-cb .mdc-checkbox {
-      --mdc-checkbox-selected-checkmark-color: var(--text-on-accent);
-      --mdc-checkbox-selected-icon-color: var(--accent);
-      --mdc-checkbox-selected-hover-icon-color: var(--accent-hover);
-      --mdc-checkbox-unselected-icon-color: var(--border-light);
-      --mdc-checkbox-unselected-hover-icon-color: var(--text-muted);
+      --mat-checkbox-selected-checkmark-color: var(--text-on-accent);
+      --mat-checkbox-selected-icon-color: var(--accent);
+      --mat-checkbox-selected-hover-icon-color: var(--accent-hover);
+      --mat-checkbox-unselected-icon-color: var(--border-light);
+      --mat-checkbox-unselected-hover-icon-color: var(--text-muted);
     }
     :host ::ng-deep .service-cb .mdc-checkbox__background {
       border-radius: 3px;

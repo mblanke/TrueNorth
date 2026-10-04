@@ -30,8 +30,8 @@ body.theme-great-white-north {
     color: var(--success); background: var(--accent-soft); border-color: var(--success);
   }
   .mat-mdc-unelevated-button.mat-primary {
-    --mdc-filled-button-container-color: var(--accent);
-    --mdc-filled-button-label-text-color: #ffffff;
+    --mat-button-filled-container-color: var(--accent);
+    --mat-button-filled-label-text-color: #ffffff;
   }
   .mat-mdc-raised-button:disabled, .mat-mdc-unelevated-button:disabled {
     background: var(--bg-secondary) !important; color: var(--text-muted) !important;
