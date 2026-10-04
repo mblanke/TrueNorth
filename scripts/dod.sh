@@ -66,6 +66,12 @@ echo "+ Worker task contract drift"
 "$PY" scripts/export_task_contracts.py --check \
   || fail "task contract drift — run: $PY scripts/export_task_contracts.py, review, commit"
 
+# The worker's typed view of API-owned tables (worker/worker/tables.py) must match the
+# API models, so a schema change the worker depends on is caught here, not in production.
+echo "+ Worker table mirror drift"
+"$PY" scripts/export_worker_tables.py --check 2>/dev/null \
+  || fail "worker table drift — run: $PY scripts/export_worker_tables.py, fix worker code, commit"
+
 # Match .github/workflows/ci.yml:37 exactly, so local green and CI green mean the same
 # thing. tests/integration needs OpenSearch and live provisioners and is a separate CI
 # job (ci.yml:137); running it here just produces errors that teach people to ignore
