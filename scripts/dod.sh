@@ -17,10 +17,14 @@ fail() { echo "DoD FAIL: $1" >&2; exit 1; }
 run() { echo "+ $*"; "$@"; }
 
 # Use the venv explicitly. PY can be overridden for CI images that install globally.
+# Build it from the same file CI installs, so local green and CI green agree:
+#   uv venv .venv --python 3.11
+#   uv pip install --python .venv/bin/python -r requirements-test.txt "ruff==0.16.3"
+# ruff is pinned because a newer one adds rules and moves .dod-ruff-baseline.
 PY="${PY:-$ROOT/.venv/bin/python}"
 [[ -x "$PY" ]] || fail "no python at $PY (set PY=... to override)"
 "$PY" -m ruff --version >/dev/null 2>&1 || fail "ruff not installed in $PY"
-"$PY" -m pytest --version >/dev/null 2>&1 || fail "pytest not installed in $PY"
+"$PY" -m pytest --version >/dev/null 2>&1 || fail "pytest not installed in $PY (pip install -r requirements-test.txt)"
 
 PY_TARGETS=(control-plane/ scenario-engine/ ai-orchestrator/ telemetry/ tools/ tests/)
 
