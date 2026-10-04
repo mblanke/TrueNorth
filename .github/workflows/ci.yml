@@ -1,10 +1,12 @@
 name: CI
 
+# claude/eager-aryabhata-c85b25 is the GitHub default branch PRs actually merge into;
+# without it here no PR got CI at all. Drop it once `main` is the integration branch again.
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, claude/eager-aryabhata-c85b25]
   pull_request:
-    branches: [main]
+    branches: [main, claude/eager-aryabhata-c85b25]
 
 env:
   PYTHON_VERSION: "3.11"
