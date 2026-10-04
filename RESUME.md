@@ -146,3 +146,8 @@ The 5 xfails are real gaps, named in the tests, not hidden:
   during a failed networking attempt keeps that broken config; only
   `docker compose up -d --force-recreate dcgm-exporter` restored `9400:9400`. If a target
   is refused while the process looks healthy, check `docker port` before the process.
+- **CI can go red with no code change** (since 2026-10-04). The `supply-chain` job's
+  pip-audit and npm audit are blocking, so a newly published advisory against an
+  unchanged pin fails the build. The `supply-chain` artifact holds `pip-audit.json` and
+  `npm-audit.json` naming the package. Fix by upgrading or replacing the package; an
+  ignore needs its own ADR (ADR 0003).
