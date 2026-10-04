@@ -28,9 +28,9 @@ import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from proxmoxer import ProxmoxAPI
 from pydantic import BaseModel, Field
 
+from ..hypervisor_backends.proxmox import proxmox_client
 from ..rbac import Permission, require_permission
 
 logger = logging.getLogger("truenorth.api.proxmox")
@@ -60,16 +60,16 @@ _IP_TO_NAME: dict[str, str] = {v: k for k, v in _KNOWN_IPS.items()}
 
 
 # ── Proxmox client singleton ───────────────────────────────────────────
-_prox: ProxmoxAPI | None = None
+_prox: Any = None  # proxmoxer.ProxmoxAPI, built by the adapter package (ADR 0001)
 
 
-def _get_client() -> ProxmoxAPI:
+def _get_client() -> Any:
     """Return a cached ProxmoxAPI client (creates on first call)."""
     global _prox
     if _prox is None:
         host = _PM_HOSTS[0]
         logger.info("Connecting to Proxmox VE at %s as %s", host, _PM_USER)
-        _prox = ProxmoxAPI(
+        _prox = proxmox_client(
             host,
             user=_PM_USER,
             password=_PM_PASS,

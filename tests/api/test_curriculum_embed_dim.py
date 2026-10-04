@@ -42,6 +42,13 @@ def reset_dim_state():
     _clear()
 
 
+def _os() -> str:
+    """The vector store the module talks to (app/vector_backends, default opensearch)."""
+    from app.vector_backends import get_vector_store
+
+    return get_vector_store().url
+
+
 def _embed_url() -> str:
     from app import curriculum_ingest as ci
 
@@ -49,15 +56,13 @@ def _embed_url() -> str:
 
 
 def _mapping_url() -> str:
-    from app import curriculum_ingest as ci
 
-    return f"{ci.OPENSEARCH_URL}/{INDEX}/_mapping"
+    return f"{_os()}/{INDEX}/_mapping"
 
 
 def _index_url() -> str:
-    from app import curriculum_ingest as ci
 
-    return f"{ci.OPENSEARCH_URL}/{INDEX}"
+    return f"{_os()}/{INDEX}"
 
 
 def _mapping_response(dimension: int) -> Response:
@@ -135,7 +140,7 @@ class TestIndexChunks:
 
         respx.get(_mapping_url()).mock(return_value=_mapping_response(1024))
         respx.post(_embed_url()).mock(return_value=_embedding_response(384))
-        bulk = respx.post(f"{ci.OPENSEARCH_URL}/_bulk").mock(
+        bulk = respx.post(f"{_os()}/_bulk").mock(
             return_value=Response(200, json={"items": [{"index": {"status": 201}}]})
         )
 
@@ -154,7 +159,7 @@ class TestIndexChunks:
 
         respx.get(_mapping_url()).mock(return_value=_mapping_response(384))
         respx.post(_embed_url()).mock(return_value=_embedding_response(384))
-        bulk = respx.post(f"{ci.OPENSEARCH_URL}/_bulk").mock(
+        bulk = respx.post(f"{_os()}/_bulk").mock(
             return_value=Response(200, json={"items": [{"index": {"status": 201}}]})
         )
 

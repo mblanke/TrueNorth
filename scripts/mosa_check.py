@@ -32,6 +32,7 @@ ADAPTER_DIRS = (
     "control-plane/worker/worker/provisioners/",
     "control-plane/api/app/search_backends/",
     "control-plane/api/app/hypervisor_backends/",
+    "control-plane/api/app/vector_backends/",
     "telemetry-pipeline/",
     "scenario-engine/scenario_engine/validators/",
 )
@@ -67,6 +68,9 @@ def collect() -> dict[str, list[str] | int]:
         f for d in SDK_SCAN_DIRS for f in _py_files(ROOT / d) if not str(f.relative_to(ROOT)).startswith(ADAPTER_DIRS)
     ]
     vendor_sdk = _hits(sdk_files, VENDOR_SDK)
+    # Same rule for vendor endpoints reached over plain HTTP: reading the store's URL
+    # outside an adapter means building requests against it there.
+    vendor_url = _hits(sdk_files, re.compile(r"getenv\(\s*['\"]OPENSEARCH_URL|environ\[\s*['\"]OPENSEARCH_URL"))
 
     branches = _hits(
         _py_files(API / "routers"),
@@ -79,6 +83,7 @@ def collect() -> dict[str, list[str] | int]:
     return {
         "worker_raw_sql": worker_sql,
         "vendor_sdk_outside_adapters": vendor_sdk,
+        "vendor_endpoint_outside_adapters": vendor_url,
         "hardcoded_backend_branches": branches,
         "web_features_direct_httpclient": http,
         "lines_api_models_py": _lines(API / "models.py"),
