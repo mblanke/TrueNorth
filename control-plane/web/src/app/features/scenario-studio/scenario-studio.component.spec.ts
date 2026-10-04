@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 
 import { ScenarioStudioComponent } from './scenario-studio.component';
 import { ApiService, YamlValidation } from '@core/services/api.service';
@@ -98,6 +98,50 @@ describe('ScenarioStudioComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Read-only');
     component['save']();
     expect(mockApi.updateScenario).not.toHaveBeenCalled();
+  });
+
+  it('should open a scenario with keys the editor cannot keep as read-only', () => {
+    setUp(of({ ...parsed, normalized: { ...parsed.normalized, mitre_attack: ['T1566'] } }));
+    component['open']('s1');
+    fixture.detectChanges();
+
+    expect(saveButton().disabled).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('mitre_attack');
+    component['save']();
+    expect(mockApi.updateScenario).not.toHaveBeenCalled();
+  });
+
+  it('should change only visibility from a read-only scenario, never its YAML', () => {
+    setUp(of({ ...parsed, normalized: { ...parsed.normalized, scoring: { total: 100 } } }));
+    component['open']('s1');
+
+    component['setPublic'](false);
+
+    expect(mockApi.updateScenario).toHaveBeenCalledOnceWith('s1', { is_public: false });
+  });
+
+  it('should not send anything when toggling visibility on an editable scenario', () => {
+    setUp(of(parsed));
+    component['open']('s1');
+
+    component['setPublic'](false);
+
+    expect(mockApi.updateScenario).not.toHaveBeenCalled();
+    expect(component['isPublic']()).toBeFalse();
+  });
+
+  it('should ignore an Open that is overtaken by a later one', () => {
+    setUp(of(parsed));
+    const slow = new Subject<Scenario>();
+    const other: Scenario = { ...stored, id: 's2', name: 'Other', is_public: false };
+    mockApi.getScenario.and.callFake((id: string) => (id === 's1' ? slow : of(other)));
+
+    component['open']('s1');
+    component['open']('s2');
+    slow.next(stored);
+
+    expect(component['editingId']()).toBe('s2');
+    expect(component['isPublic']()).toBeFalse();
   });
 
   it('should refuse to save when the stored YAML does not parse', () => {

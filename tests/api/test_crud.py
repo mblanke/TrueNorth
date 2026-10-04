@@ -115,7 +115,7 @@ class TestTemplates:
         assert client.get(f"/templates/{tid}").json()["yaml"] == "id: keep\nnodes: []"
 
     def test_list_rows_carry_host_count_not_yaml(self, client):
-        yaml = "name: hc\nassets:\n  - role: dc\n  - role: ws\n    count: 3\nnodes:\n  - name: kali\n"
+        yaml = "name: hc\nassets:\n  - role: dc\n  - role: ws\n    count: 3\n  - role: kali\n"
         tid = client.post("/templates", json={"name": "HostCount", "yaml": yaml}).json()["id"]
         bare = client.post("/templates", json={"name": "Bare", "yaml": "name: bare\n"}).json()["id"]
         rows = {r["id"]: r for r in client.get("/templates").json()}
