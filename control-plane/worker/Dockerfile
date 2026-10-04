@@ -1,7 +1,11 @@
 FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# setuptools and wheel are build tooling the base image ships; nothing imports them at
+# runtime (the OTel 0.65b0 instrumentation no longer needs pkg_resources), and they
+# carry CVEs (Trivy).
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y setuptools wheel
 COPY . .
 # Run as an unprivileged user (Trivy DS-0002). Dependencies and code stay root-owned,
 # so a compromised process cannot rewrite the app it is running. The workspace dir is
