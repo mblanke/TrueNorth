@@ -44,8 +44,8 @@ def _uint(value: int) -> str:
     return _b64(value.to_bytes((value.bit_length() + 7) // 8, "big"))
 
 
-def sign(claims: dict, key, *, alg: str = "RS256", kid: str | None = "k1") -> str:
-    header = {"alg": alg, "typ": "JWT"}
+def sign(claims: dict, key, *, alg: str = "RS256", kid: str | None = "k1", **extra_header) -> str:
+    header = {"alg": alg, "typ": "JWT", **extra_header}
     if kid is not None:
         header["kid"] = kid
     signing_input = f"{_b64(json.dumps(header).encode())}.{_b64(json.dumps(claims).encode())}".encode()
@@ -115,10 +115,12 @@ def _claims(**overrides) -> dict:
     return {k: v for k, v in claims.items() if v is not None}
 
 
-async def _refused(backend, token: str) -> None:
+async def _refused(backend, token: str, because: str | None = None) -> None:
     with pytest.raises(HTTPException) as exc:
         await backend.validate_token(token)
     assert exc.value.status_code == 401
+    if because:
+        assert because in exc.value.detail, exc.value.detail
 
 
 # ── Keycloak OIDC backend ────────────────────────────────────────────────
@@ -281,7 +283,57 @@ class TestSharedRules:
         assert (await keycloak.validate_token(sign(_claims(), rsa_key, kid=None)))["sub"] == "user-123"
 
     async def test_no_kid_is_refused_when_several_keys_fit(self, oidc, rsa_key):
-        await _refused(oidc, sign(_claims(), rsa_key, kid=None))
+        """Refused by the ambiguity rule itself, not by trying the wrong key first."""
+        await _refused(oidc, sign(_claims(), rsa_key, kid=None), because="no kid")
+
+    async def test_an_encryption_key_never_verifies_a_signature(self, rsa_key):
+        enc = {**rsa_jwk(rsa_key, kid="k-enc"), "use": "enc"}
+        with respx.mock() as mock:
+            mock.get(OIDC_JWKS).mock(return_value=Response(200, json={"keys": [enc]}))
+            backend = GenericOIDCBackend(jwks_url=OIDC_JWKS, audience="truenorth-api")
+            await _refused(backend, sign(_claims(), rsa_key, kid="k-enc"), because="No published RS256")
+
+    async def test_an_unrelated_key_does_not_make_a_kidless_token_ambiguous(self, rsa_key, other_rsa_key):
+        """An RSA-OAEP key with no `use` is not a candidate for an RS256 signature."""
+        keys = [{**rsa_jwk(other_rsa_key, kid="oaep"), "alg": "RSA-OAEP"}, rsa_jwk(rsa_key)]
+        with respx.mock() as mock:
+            mock.get(OIDC_JWKS).mock(return_value=Response(200, json={"keys": keys}))
+            backend = GenericOIDCBackend(jwks_url=OIDC_JWKS, audience="truenorth-api")
+            assert (await backend.validate_token(sign(_claims(), rsa_key, kid=None)))["sub"] == "user-123"
+
+    async def test_x5t_selects_the_key_when_there_is_no_kid(self, rsa_key, other_rsa_key):
+        """ADFS tokens carry x5t only; during rollover the set holds two RSA keys."""
+        keys = [{**rsa_jwk(other_rsa_key, kid="a"), "x5t": "old"}, {**rsa_jwk(rsa_key, kid="b"), "x5t": "new"}]
+        with respx.mock() as mock:
+            mock.get(OIDC_JWKS).mock(return_value=Response(200, json={"keys": keys}))
+            backend = GenericOIDCBackend(jwks_url=OIDC_JWKS, audience="truenorth-api")
+            assert (await backend.validate_token(sign(_claims(), rsa_key, kid=None, x5t="new")))["sub"] == "user-123"
+            await _refused(backend, sign(_claims(), rsa_key, kid=None, x5t="old"))
+
+    async def test_every_key_sharing_a_kid_is_tried(self, rsa_key, other_rsa_key):
+        keys = [rsa_jwk(other_rsa_key, kid="k1"), rsa_jwk(rsa_key, kid="k1")]
+        with respx.mock() as mock:
+            mock.get(OIDC_JWKS).mock(return_value=Response(200, json={"keys": keys}))
+            backend = GenericOIDCBackend(jwks_url=OIDC_JWKS, audience="truenorth-api")
+            assert (await backend.validate_token(sign(_claims(), rsa_key)))["sub"] == "user-123"
+
+
+@pytest.mark.parametrize("jwks", [[], {"keys": {}}, {"keys": "x"}, None])
+def test_a_malformed_key_set_raises_a_jwt_error(jwks, rsa_key):
+    """Caught by the backends' single `except jwt.PyJWTError` -> 401, never a 500."""
+    import jwt
+
+    with pytest.raises(jwt.PyJWTError):
+        jwks_verify.decode(sign(_claims(), rsa_key), jwks, algorithms=["RS256"])
+
+
+def test_decode_refuses_a_symmetric_alg_even_if_the_caller_allows_it(rsa_key):
+    """The asymmetric-only rule holds inside decode(), not only in check_algorithms()."""
+    import jwt
+
+    token = sign(_claims(), public_pem(rsa_key), alg="HS256")
+    with pytest.raises(jwt.InvalidAlgorithmError):
+        jwks_verify.decode(token, {"keys": [rsa_jwk(rsa_key)]}, algorithms=["HS256", "RS256"])
 
     async def test_a_key_that_declares_its_alg_is_not_used_for_another(self, oidc_jwks, rsa_key):
         """k1 is published as RS256. A genuine RS384 signature by the same key is refused."""

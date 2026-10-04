@@ -6,8 +6,10 @@ One place for the rules every third-party token must meet, whoever issued it
 - the header ``alg`` is on the caller's allow-list, and only asymmetric algorithms
   are ever allowed. ``none`` and HS* are refused outright, so a JWKS public key can
   never be used as an HMAC secret.
-- the key is chosen by ``kid``. With no ``kid``, only if exactly one published
-  signing key fits the algorithm. A key that declares its own ``alg`` must match.
+- only keys that can verify the header ``alg`` are considered: a signing key (``use``
+  absent or ``sig``) of the matching ``kty`` whose declared ``alg``, if any, is that alg.
+  Among those the key is chosen by ``kid``, else by ``x5t`` (ADFS), else only if exactly
+  one remains. If several share the ``kid`` (rollover), each is tried.
 - ``exp`` is required. ``exp``/``nbf``/``iat`` allow ``CLOCK_SKEW_SECONDS`` of drift
   between the issuer's clock and ours.
 
@@ -63,34 +65,50 @@ def decode(
     alg = header.get("alg")
     if alg not in algorithms or alg not in ASYMMETRIC_ALGORITHMS:
         raise jwt.InvalidAlgorithmError(f"Algorithm {alg!r} is not allowed")
-    key = _select_key(jwks, header.get("kid"), alg)
-    return jwt.decode(
-        token,
-        key,
-        algorithms=[alg],
-        audience=audience if verify_aud else None,
-        issuer=issuer,
-        leeway=CLOCK_SKEW_SECONDS,
-        options={"verify_aud": verify_aud, "require": ["exp"]},
-    )
+    last_error: jwt.PyJWTError | None = None
+    for key in _candidate_keys(jwks, header, alg):
+        try:
+            return jwt.decode(
+                token,
+                key,
+                algorithms=[alg],
+                audience=audience if verify_aud else None,
+                issuer=issuer,
+                leeway=CLOCK_SKEW_SECONDS,
+                options={"verify_aud": verify_aud, "require": ["exp"]},
+            )
+        except jwt.InvalidSignatureError as exc:
+            last_error = exc
+    raise last_error or jwt.InvalidTokenError("No usable key")
 
 
-def _select_key(jwks: dict, kid: str | None, alg: str) -> PyJWK:
+def _candidate_keys(jwks: dict, header: dict, alg: str) -> list[PyJWK]:
     if not isinstance(jwks, dict) or not isinstance(jwks.get("keys"), list):
         raise jwt.PyJWKSetError("Invalid JWK Set")
-    signing = [k for k in jwks["keys"] if isinstance(k, dict) and k.get("use", "sig") == "sig"]
+    usable = [
+        k
+        for k in jwks["keys"]
+        if isinstance(k, dict)
+        and k.get("use", "sig") == "sig"
+        and k.get("kty") == ASYMMETRIC_ALGORITHMS[alg]
+        and k.get("alg") in (None, alg)
+    ]
+    kid, x5t = header.get("kid"), header.get("x5t")
     if kid is not None:
-        candidates = [k for k in signing if k.get("kid") == kid]
-        if not candidates:
-            raise jwt.InvalidTokenError(f"No published signing key with kid {kid!r}")
+        matched = [k for k in usable if k.get("kid") == kid]
+        hint = f"kid {kid!r}"
+    elif x5t is not None:
+        matched = [k for k in usable if k.get("x5t") == x5t]
+        hint = f"x5t {x5t!r}"
     else:
-        candidates = [k for k in signing if k.get("kty") == ASYMMETRIC_ALGORITHMS[alg]]
-        if len(candidates) != 1:
-            raise jwt.InvalidTokenError("Token has no kid and the key set has no single matching key")
-    jwk = candidates[0]
-    if jwk.get("alg") not in (None, alg):
-        raise jwt.InvalidAlgorithmError(f"Key {kid!r} is for {jwk['alg']}, token says {alg}")
-    try:
-        return PyJWK(jwk, algorithm=alg)
-    except jwt.PyJWTError as exc:
-        raise jwt.InvalidTokenError(f"Key {kid!r} cannot verify {alg}") from exc
+        matched = usable if len(usable) == 1 else []
+        hint = "no kid (and not exactly one matching key)"
+    keys: list[PyJWK] = []
+    for jwk in matched:
+        try:
+            keys.append(PyJWK(jwk, algorithm=alg))
+        except jwt.PyJWTError:
+            continue
+    if not keys:
+        raise jwt.InvalidTokenError(f"No published {alg} signing key for {hint}")
+    return keys

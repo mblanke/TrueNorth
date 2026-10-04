@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .auth import CurrentUser, get_current_user
+from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
 from .models import Tenant, User, UserRole
 from .schemas import HealthOut
@@ -55,6 +56,9 @@ async def lifespan(app: FastAPI):
     if _env_flag("DB_AUTO_CREATE"):
         Base.metadata.create_all(bind=engine)
     _seed_dev_data(dev_account=_env_flag("SEED_DEV_DATA"))
+    # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
+    # process at boot instead of turning every authenticated request into a 500.
+    logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
 
     yield
 

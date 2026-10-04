@@ -268,3 +268,20 @@ class TestGetAuthBackend:
         monkeypatch.setenv("AUTH_BACKEND", "DISABLED")
         backend = get_auth_backend()
         assert isinstance(backend, DisabledAuthBackend)
+
+
+class TestStartup:
+    @pytest.mark.asyncio
+    async def test_a_bad_oidc_config_stops_the_app_at_boot(self, monkeypatch):
+        """Not a 500 on every request later: lifespan builds the backend up front."""
+        from app.main import app, lifespan
+
+        monkeypatch.setenv("AUTH_DISABLED", "false")
+        monkeypatch.setenv("AUTH_BACKEND", "generic_oidc")
+        monkeypatch.setenv("OIDC_JWKS_URL", "https://idp.test/keys")
+        monkeypatch.setenv("OIDC_ALGORITHMS", "HS256")
+        monkeypatch.setenv("DB_AUTO_CREATE", "false")
+        monkeypatch.setenv("SEED_DEV_DATA", "false")
+        with pytest.raises(ValueError, match="Unsupported JWT algorithm"):
+            async with lifespan(app):
+                pass
