@@ -3,9 +3,11 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
-  AAR, Exercise, HealthResponse, HypervisorNode, Objective, Range, RangeDocument,
-  Scenario, Team, Template, Tenant, TelemetryEvent, User,
+  AAR, Exercise, ExerciseSummary, HealthResponse, HypervisorNode, Objective, Range,
+  RangeDocument, RangeSummary, Scenario, ScenarioSummary, Team, Template, TemplateSummary,
+  Tenant, TelemetryEvent, User,
 } from '../models';
+import type { components } from '../api/schema';
 
 /** Result of POST /scenarios/validate and /templates/validate. */
 export interface YamlValidation {
@@ -22,13 +24,8 @@ export interface InjectorInfo {
   mitre_techniques: string[];
 }
 
-/** GET /ranges/stats. */
-export interface RangeStats {
-  total_ranges: number;
-  by_state: Record<string, number>;
-  total_vms: number;
-  active_exercises: number;
-}
+/** GET /ranges/stats. `by_state` may be absent. */
+export type RangeStats = components['schemas']['RangeStatsOut'];
 
 /** One row of GET /exercise-forge/history. */
 export interface ForgeHistoryItem {
@@ -89,6 +86,13 @@ export interface RangeTopologySave {
   template: Record<string, unknown>;
 }
 
+/** GET /competency/heatmap. */
+export interface CompetencyHeatmap {
+  categories: string[];
+  work_roles: string[];
+  values: number[][]; // [categoryIdx, roleIdx, score 0-100]
+}
+
 /** Result of POST /templates/from-diagram: the same template as a dict and as YAML. */
 export interface DiagramTemplate {
   template: Record<string, unknown>;
@@ -134,14 +138,11 @@ export class ApiService {
   updateTenant(id: string, data: Partial<Tenant>): Observable<Tenant> {
     return this.http.put<Tenant>(`${this.base}/tenants/${id}`, data);
   }
-  deleteTenant(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/tenants/${id}`);
-  }
 
   // ── Templates ────────────────────────────────────────────
-  listTemplates(limit = 50, offset = 0): Observable<Template[]> {
+  listTemplates(limit = 50, offset = 0): Observable<TemplateSummary[]> {
     const params = new HttpParams().set('limit', limit).set('offset', offset);
-    return this.http.get<Template[]>(`${this.base}/templates`, { params });
+    return this.http.get<TemplateSummary[]>(`${this.base}/templates`, { params });
   }
   getTemplate(id: string): Observable<Template> {
     return this.http.get<Template>(`${this.base}/templates/${id}`);
@@ -157,9 +158,9 @@ export class ApiService {
   }
 
   // ── Scenarios ────────────────────────────────────────────
-  listScenarios(limit = 50, offset = 0): Observable<Scenario[]> {
+  listScenarios(limit = 50, offset = 0): Observable<ScenarioSummary[]> {
     const params = new HttpParams().set('limit', limit).set('offset', offset);
-    return this.http.get<Scenario[]>(`${this.base}/scenarios`, { params });
+    return this.http.get<ScenarioSummary[]>(`${this.base}/scenarios`, { params });
   }
   getScenario(id: string): Observable<Scenario> {
     return this.http.get<Scenario>(`${this.base}/scenarios/${id}`);
@@ -175,9 +176,9 @@ export class ApiService {
   }
 
   // ── Ranges ───────────────────────────────────────────────
-  listRanges(limit = 50, offset = 0): Observable<Range[]> {
+  listRanges(limit = 50, offset = 0): Observable<RangeSummary[]> {
     const params = new HttpParams().set('limit', limit).set('offset', offset);
-    return this.http.get<Range[]>(`${this.base}/ranges`, { params });
+    return this.http.get<RangeSummary[]>(`${this.base}/ranges`, { params });
   }
   getRange(id: string): Observable<Range> {
     return this.http.get<Range>(`${this.base}/ranges/${id}`);
@@ -318,9 +319,9 @@ export class ApiService {
   }
 
   // ── Exercises ────────────────────────────────────────────
-  listExercises(limit = 50, offset = 0): Observable<Exercise[]> {
+  listExercises(limit = 50, offset = 0): Observable<ExerciseSummary[]> {
     const params = new HttpParams().set('limit', limit).set('offset', offset);
-    return this.http.get<Exercise[]>(`${this.base}/exercises`, { params });
+    return this.http.get<ExerciseSummary[]>(`${this.base}/exercises`, { params });
   }
   getExercise(id: string): Observable<Exercise> {
     return this.http.get<Exercise>(`${this.base}/exercises/${id}`);
@@ -392,6 +393,12 @@ export class ApiService {
   }
   updateUser(id: string, data: Partial<User>): Observable<User> {
     return this.http.patch<User>(`${this.base}/users/${id}`, data);
+  }
+  createUser(data: components['schemas']['UserCreateIn']): Observable<User> {
+    return this.http.post<User>(`${this.base}/users`, data);
+  }
+  deleteUser(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/users/${id}`);
   }
 
   // ── Audit Log ────────────────────────────────────────────
@@ -678,6 +685,10 @@ export class ApiService {
   // ── Adaptive learning / competency profile ──────────────
   getCompetencyProfile(userId: string): Observable<any> {
     return this.http.get<any>(`${this.base}/competency/users/${userId}/profile`);
+  }
+  /** GET /competency/heatmap (untyped in the contract). */
+  getCompetencyHeatmap(view: string): Observable<CompetencyHeatmap> {
+    return this.http.get<CompetencyHeatmap>(`${this.base}/competency/heatmap`, { params: { view } });
   }
 
   // ── Wiki / Knowledge Base ────────────────────────────────

@@ -15,7 +15,7 @@ import type { EChartsOption } from 'echarts';
 import { Subscription, interval } from 'rxjs';
 
 import { ApiService } from '@core/services/api.service';
-import { Range, TelemetryEvent } from '@core/models';
+import { RangeSummary, TelemetryEvent } from '@core/models';
 import { ThemeService } from '@core/services/theme.service';
 import { tnChartColors, tnCartesianBase } from '../../shared/charts/echarts-theme';
 import { LottieIconComponent } from '../../shared/components/lottie-icon.component';
@@ -128,7 +128,7 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
   `],
 })
 export class TelemetryComponent implements OnInit, OnDestroy {
-  ranges = signal<Range[]>([]);
+  ranges = signal<RangeSummary[]>([]);
   events = signal<TelemetryEvent[]>([]);
   timelineOption = signal<EChartsOption>({});
   donutOption = signal<EChartsOption>({});

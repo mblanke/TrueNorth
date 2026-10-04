@@ -183,6 +183,42 @@ export function fromNormalized(doc: Record<string, any> | null | undefined): Sce
   return model;
 }
 
+const TOP_KEYS = new Set(['name', 'version', 'description', 'range_template', 'timeline', 'objectives']);
+const EVENT_KEYS = new Set(['t', 'action', 'params']);
+const OBJECTIVE_KEYS = new Set(['id', 'type', 'validator', 'points', 'params']);
+
+/**
+ * Paths in a parsed scenario that `toYaml(fromNormalized(doc))` would drop or alter:
+ * keys the editor model has no field for, non-string params (flattened to strings) and
+ * unknown objective types (coerced to `detection`). Saving such a document from the
+ * editor would silently rewrite it, so a non-empty result makes the editor read-only.
+ */
+export function lostOnSave(doc: Record<string, any> | null | undefined): string[] {
+  if (!doc || typeof doc !== 'object') return [];
+  const lost = Object.keys(doc).filter(k => !TOP_KEYS.has(k));
+  const params = (value: unknown, at: string) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [k, v] of Object.entries(value)) {
+        if (typeof v !== 'string') lost.push(`${at}.params.${k}`);
+      }
+    } else if (value !== undefined && value !== null) {
+      lost.push(`${at}.params`);
+    }
+  };
+  (Array.isArray(doc['timeline']) ? doc['timeline'] : []).forEach((e: any, i: number) => {
+    if (!e || typeof e !== 'object') return;
+    lost.push(...Object.keys(e).filter(k => !EVENT_KEYS.has(k)).map(k => `timeline[${i}].${k}`));
+    params(e['params'], `timeline[${i}]`);
+  });
+  (Array.isArray(doc['objectives']) ? doc['objectives'] : []).forEach((o: any, i: number) => {
+    if (!o || typeof o !== 'object') return;
+    lost.push(...Object.keys(o).filter(k => !OBJECTIVE_KEYS.has(k)).map(k => `objectives[${i}].${k}`));
+    if (o['type'] !== undefined && !OBJECTIVE_TYPES.includes(o['type'])) lost.push(`objectives[${i}].type`);
+    params(o['params'], `objectives[${i}]`);
+  });
+  return lost;
+}
+
 /** Points across all objectives — surfaced so an author can hit 100. */
 export function totalPoints(model: ScenarioModel): number {
   return model.objectives.reduce((sum, o) => sum + (Number(o.points) || 0), 0);

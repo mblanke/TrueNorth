@@ -1,0 +1,254 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://truenorthrange.local/interfaces/xapi-statement.schema.json",
+  "title": "xAPI 1.0.3 Statement (minimal structural subset)",
+  "description": "Structural subset of the xAPI 1.0.3 Statement data model (https://github.com/adlnet/xAPI-Spec/blob/1.0.3/xAPI-Data.md#statements) used to check statements TrueNorth emits. It encodes the rules expressible in JSON Schema: required properties, exactly one Inverse Functional Identifier per Agent, absolute IRIs, UUIDs, ISO 8601 timestamps and durations, score.scaled in [-1, 1], language maps and IRI-keyed extensions. Rules that need cross-field arithmetic (score.min <= score.raw <= score.max) are asserted by the tests, not here. Statement, Verb, Result, Score, Context and Agent are closed, as the spec defines no other properties on them; Activity definitions stay open because interaction-activity properties are out of scope for this subset.",
+  "type": "object",
+  "required": ["actor", "verb", "object"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "$ref": "#/definitions/uuid" },
+    "actor": { "$ref": "#/definitions/actor" },
+    "verb": { "$ref": "#/definitions/verb" },
+    "object": { "$ref": "#/definitions/statementObject" },
+    "result": { "$ref": "#/definitions/result" },
+    "context": { "$ref": "#/definitions/context" },
+    "timestamp": { "$ref": "#/definitions/timestamp" },
+    "stored": { "$ref": "#/definitions/timestamp" },
+    "authority": { "$ref": "#/definitions/actor" },
+    "version": { "type": "string", "pattern": "^1\\.0(\\.[0-9]+)?$" },
+    "attachments": { "type": "array", "items": { "type": "object" } }
+  },
+  "definitions": {
+    "iri": {
+      "description": "Absolute IRI: must carry a scheme.",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:\\S+$"
+    },
+    "uuid": {
+      "description": "RFC 4122 UUID in canonical 8-4-4-4-12 form.",
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "timestamp": {
+      "description": "ISO 8601 date-time. A time zone SHOULD be present, so it is not required here.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}(:?[0-9]{2})?)?$"
+    },
+    "duration": {
+      "description": "ISO 8601 duration.",
+      "type": "string",
+      "pattern": "^P(?=[0-9T])([0-9]+Y)?([0-9]+M)?([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?)?$"
+    },
+    "languageMap": {
+      "description": "Map of RFC 5646 language tags to strings.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z]{1,8}(-[A-Za-z0-9]{1,8})*$" },
+      "additionalProperties": { "type": "string" }
+    },
+    "extensions": {
+      "description": "Extension keys must be IRIs; values are any JSON.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/definitions/iri" }
+    },
+    "mbox": { "type": "string", "pattern": "^mailto:[^@\\s]+@[^@\\s]+$" },
+    "mbox_sha1sum": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
+    "account": {
+      "type": "object",
+      "required": ["homePage", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "homePage": { "$ref": "#/definitions/iri" },
+        "name": { "type": "string" }
+      }
+    },
+    "ifi": {
+      "description": "Exactly one Inverse Functional Identifier.",
+      "oneOf": [
+        { "required": ["mbox"] },
+        { "required": ["mbox_sha1sum"] },
+        { "required": ["openid"] },
+        { "required": ["account"] }
+      ]
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [{ "$ref": "#/definitions/ifi" }],
+      "properties": {
+        "objectType": { "const": "Agent" },
+        "name": { "type": "string" },
+        "mbox": { "$ref": "#/definitions/mbox" },
+        "mbox_sha1sum": { "$ref": "#/definitions/mbox_sha1sum" },
+        "openid": { "$ref": "#/definitions/iri" },
+        "account": { "$ref": "#/definitions/account" }
+      }
+    },
+    "group": {
+      "description": "Identified Group (one IFI) or Anonymous Group (no IFI, member required).",
+      "type": "object",
+      "required": ["objectType"],
+      "additionalProperties": false,
+      "properties": {
+        "objectType": { "const": "Group" },
+        "name": { "type": "string" },
+        "member": { "type": "array", "items": { "$ref": "#/definitions/agent" } },
+        "mbox": { "$ref": "#/definitions/mbox" },
+        "mbox_sha1sum": { "$ref": "#/definitions/mbox_sha1sum" },
+        "openid": { "$ref": "#/definitions/iri" },
+        "account": { "$ref": "#/definitions/account" }
+      },
+      "anyOf": [
+        { "$ref": "#/definitions/ifi" },
+        {
+          "required": ["member"],
+          "not": {
+            "anyOf": [
+              { "required": ["mbox"] },
+              { "required": ["mbox_sha1sum"] },
+              { "required": ["openid"] },
+              { "required": ["account"] }
+            ]
+          }
+        }
+      ]
+    },
+    "actor": {
+      "if": { "required": ["objectType"], "properties": { "objectType": { "const": "Group" } } },
+      "then": { "$ref": "#/definitions/group" },
+      "else": { "$ref": "#/definitions/agent" }
+    },
+    "verb": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/iri" },
+        "display": { "$ref": "#/definitions/languageMap" }
+      }
+    },
+    "activityDefinition": {
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/definitions/languageMap" },
+        "description": { "$ref": "#/definitions/languageMap" },
+        "type": { "$ref": "#/definitions/iri" },
+        "moreInfo": { "$ref": "#/definitions/iri" },
+        "extensions": { "$ref": "#/definitions/extensions" }
+      }
+    },
+    "activity": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "objectType": { "const": "Activity" },
+        "id": { "$ref": "#/definitions/iri" },
+        "definition": { "$ref": "#/definitions/activityDefinition" }
+      }
+    },
+    "statementRef": {
+      "type": "object",
+      "required": ["objectType", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "objectType": { "const": "StatementRef" },
+        "id": { "$ref": "#/definitions/uuid" }
+      }
+    },
+    "subStatement": {
+      "type": "object",
+      "required": ["objectType", "actor", "verb", "object"],
+      "properties": {
+        "objectType": { "const": "SubStatement" },
+        "actor": { "$ref": "#/definitions/actor" },
+        "verb": { "$ref": "#/definitions/verb" },
+        "object": { "$ref": "#/definitions/statementObject" },
+        "result": { "$ref": "#/definitions/result" },
+        "context": { "$ref": "#/definitions/context" },
+        "timestamp": { "$ref": "#/definitions/timestamp" }
+      }
+    },
+    "statementObject": {
+      "description": "Activity when objectType is absent (spec default), otherwise by objectType.",
+      "type": "object",
+      "allOf": [
+        {
+          "if": { "not": { "required": ["objectType"] } },
+          "then": { "$ref": "#/definitions/activity" }
+        },
+        {
+          "if": { "required": ["objectType"], "properties": { "objectType": { "const": "Activity" } } },
+          "then": { "$ref": "#/definitions/activity" }
+        },
+        {
+          "if": { "required": ["objectType"], "properties": { "objectType": { "enum": ["Agent", "Group"] } } },
+          "then": { "$ref": "#/definitions/actor" }
+        },
+        {
+          "if": { "required": ["objectType"], "properties": { "objectType": { "const": "StatementRef" } } },
+          "then": { "$ref": "#/definitions/statementRef" }
+        },
+        {
+          "if": { "required": ["objectType"], "properties": { "objectType": { "const": "SubStatement" } } },
+          "then": { "$ref": "#/definitions/subStatement" }
+        }
+      ],
+      "properties": {
+        "objectType": { "enum": ["Activity", "Agent", "Group", "StatementRef", "SubStatement"] }
+      }
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scaled": { "type": "number", "minimum": -1, "maximum": 1 },
+        "raw": { "type": "number" },
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "score": { "$ref": "#/definitions/score" },
+        "success": { "type": "boolean" },
+        "completion": { "type": "boolean" },
+        "response": { "type": "string" },
+        "duration": { "$ref": "#/definitions/duration" },
+        "extensions": { "$ref": "#/definitions/extensions" }
+      }
+    },
+    "contextActivityList": {
+      "description": "A single Activity or an array of Activities (spec allows both on input).",
+      "oneOf": [
+        { "$ref": "#/definitions/activity" },
+        { "type": "array", "items": { "$ref": "#/definitions/activity" } }
+      ]
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registration": { "$ref": "#/definitions/uuid" },
+        "instructor": { "$ref": "#/definitions/actor" },
+        "team": { "$ref": "#/definitions/group" },
+        "contextActivities": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "parent": { "$ref": "#/definitions/contextActivityList" },
+            "grouping": { "$ref": "#/definitions/contextActivityList" },
+            "category": { "$ref": "#/definitions/contextActivityList" },
+            "other": { "$ref": "#/definitions/contextActivityList" }
+          }
+        },
+        "revision": { "type": "string" },
+        "platform": { "type": "string" },
+        "language": { "type": "string", "pattern": "^[A-Za-z]{1,8}(-[A-Za-z0-9]{1,8})*$" },
+        "statement": { "$ref": "#/definitions/statementRef" },
+        "extensions": { "$ref": "#/definitions/extensions" }
+      }
+    }
+  }
+}

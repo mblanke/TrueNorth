@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Celery tasks (JSON serializer, positional args) the worker accepts.",
+  "queues": [
+    "default",
+    "provision",
+    "destroy",
+    "scenario",
+    "telemetry"
+  ],
+  "tasks": {
+    "worker.tasks.auto_assess_competency": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "exercises.id (UUID)",
+            "title": "exercise_id",
+            "type": "string"
+          },
+          {
+            "description": "",
+            "title": "user_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "default"
+    },
+    "worker.tasks.batch_provision": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "ranges.id list",
+            "title": "range_ids",
+            "type": "array"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "provision"
+    },
+    "worker.tasks.cleanup_expired_ranges": {
+      "args": {
+        "maxItems": 0,
+        "minItems": 0,
+        "prefixItems": [],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "default"
+    },
+    "worker.tasks.collect_range_metrics": {
+      "args": {
+        "maxItems": 0,
+        "minItems": 0,
+        "prefixItems": [],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "telemetry"
+    },
+    "worker.tasks.delete_snapshot": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          },
+          {
+            "description": "range_snapshots.id (UUID)",
+            "title": "snapshot_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "provision"
+    },
+    "worker.tasks.destroy_range": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Tear down a range's VMs.",
+      "queue": "destroy"
+    },
+    "worker.tasks.forge_exercise": {
+      "args": {
+        "maxItems": 4,
+        "minItems": 4,
+        "prefixItems": [
+          {
+            "description": "",
+            "title": "request_id",
+            "type": "string"
+          },
+          {
+            "description": "",
+            "title": "tenant_id",
+            "type": "string"
+          },
+          {
+            "description": "",
+            "title": "indicators",
+            "type": "array"
+          },
+          {
+            "description": "",
+            "title": "config",
+            "type": "object"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "default"
+    },
+    "worker.tasks.generate_aar": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "exercises.id (UUID)",
+            "title": "exercise_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Write the after-action review.",
+      "queue": "default"
+    },
+    "worker.tasks.generate_learning_recommendation": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "",
+            "title": "user_id",
+            "type": "string"
+          },
+          {
+            "description": "NICE work role code",
+            "title": "target_role",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "default"
+    },
+    "worker.tasks.health_check_ranges": {
+      "args": {
+        "maxItems": 0,
+        "minItems": 0,
+        "prefixItems": [],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "default"
+    },
+    "worker.tasks.ingest_telemetry_batch": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          },
+          {
+            "description": "",
+            "title": "events",
+            "type": "array"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "telemetry"
+    },
+    "worker.tasks.provision_range": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Build a range's VMs on its hypervisor.",
+      "queue": "provision"
+    },
+    "worker.tasks.restore_snapshot": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          },
+          {
+            "description": "range_snapshots.id (UUID)",
+            "title": "snapshot_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "provision"
+    },
+    "worker.tasks.run_scenario": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "exercises.id (UUID)",
+            "title": "exercise_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "scenario"
+    },
+    "worker.tasks.run_scenario_v2": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "exercises.id (UUID)",
+            "title": "exercise_id",
+            "type": "string"
+          },
+          {
+            "description": "validated scenario YAML as JSON",
+            "title": "scenario_definition",
+            "type": "object"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "scenario"
+    },
+    "worker.tasks.snapshot_range": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          },
+          {
+            "description": "range_snapshots.id (UUID)",
+            "title": "snapshot_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "",
+      "queue": "provision"
+    }
+  },
+  "title": "TrueNorth worker task contract"
+}

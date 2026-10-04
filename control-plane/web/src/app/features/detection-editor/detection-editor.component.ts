@@ -1,7 +1,6 @@
 import { Component, signal, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,6 +16,7 @@ import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dial
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
+import { StaticAssetsService } from '@core/services/static-assets.service';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EnterStaggerDirective } from '../../shared/motion';
@@ -589,7 +589,7 @@ export class DetectionEditorComponent implements OnInit, OnDestroy {
 
   constructor(
     private api: ApiService,
-    private http: HttpClient,
+    private assets: StaticAssetsService,
     private dialog: MatDialog,
     private snackBar: MatSnackBar,
   ) {}
@@ -669,7 +669,7 @@ export class DetectionEditorComponent implements OnInit, OnDestroy {
 
   private loadSuggestions() {
     // Optional nicety — a missing or malformed asset must not break the editor.
-    this.http.get<MitreTechnique[]>('/assets/mitre-common.json').subscribe({
+    this.assets.json<MitreTechnique[]>('/assets/mitre-common.json').subscribe({
       next: list => this.suggestions.set(Array.isArray(list) ? list : []),
       error: () => this.suggestions.set([]),
     });

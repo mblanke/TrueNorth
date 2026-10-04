@@ -36,7 +36,7 @@ import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
 import { ApiService } from '@core/services/api.service';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
-import { Range, Template } from '@core/models';
+import { RangeSummary, TemplateSummary } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
@@ -885,8 +885,8 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
 
   /* Range / template picker overlay */
   showPicker = signal(false);
-  ranges = signal<Range[]>([]);
-  templates = signal<Template[]>([]);
+  ranges = signal<RangeSummary[]>([]);
+  templates = signal<TemplateSummary[]>([]);
   pickerRangeId = '';
   pickerTemplateId = '';
 

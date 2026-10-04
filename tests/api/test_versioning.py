@@ -1,168 +1,45 @@
-"""Tests for control-plane/api/app/versioning.py - API versioning support."""
+"""API versioning (app/versioning.py, docs/adr/0002): /api/v1 is real, root paths alias it."""
 
 from __future__ import annotations
 
-import os
-import sys
-
 import pytest
-
-# ---------------------------------------------------------------------------
-# Ensure the control-plane package is importable
-# ---------------------------------------------------------------------------
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "control-plane", "api"))
-
-from app.versioning import (
-    DEPRECATED_VERSIONS,
-    LATEST_VERSION,
-    SUPPORTED_VERSIONS,
-    APIVersion,
-    V1toV2Adapter,
-    VersionMiddleware,
-    create_versioned_app,
-)
-
-# ---------------------------------------------------------------------------
-# test_supported_versions
-# ---------------------------------------------------------------------------
+from app.main import app
+from app.versioning import CURRENT_VERSION, SERVER_PREFIX
 
 
-def test_supported_versions():
-    """Validates the version constants are set correctly."""
-    assert APIVersion.V1 in SUPPORTED_VERSIONS
-    assert APIVersion.V2 in SUPPORTED_VERSIONS
-    assert LATEST_VERSION == APIVersion.V2
-    assert APIVersion.V1 in DEPRECATED_VERSIONS
-    assert APIVersion.V2 not in DEPRECATED_VERSIONS
+@pytest.mark.parametrize("path", ["/health", "/v1/health", "/api/v1/health"])
+def test_versioned_and_root_paths_reach_the_same_route(client, path):
+    """Root path (existing clients), nginx-stripped /v1 and direct /api/v1 all resolve."""
+    resp = client.get(path)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"]
+    assert resp.headers["X-API-Version"] == CURRENT_VERSION.value
 
 
-# ---------------------------------------------------------------------------
-# test_version_middleware_adds_header
-# ---------------------------------------------------------------------------
+def test_versioned_path_keeps_query_and_params(client):
+    a = client.get("/ranges", params={"limit": 1})
+    b = client.get("/api/v1/ranges", params={"limit": 1})
+    assert a.status_code == b.status_code
+    assert a.json() == b.json()
 
 
-@pytest.mark.asyncio
-async def test_version_middleware_adds_header():
-    """VersionMiddleware must set the X-API-Version response header."""
-    from fastapi import FastAPI
-    from starlette.testclient import TestClient
-
-    app = FastAPI()
-    app.add_middleware(VersionMiddleware)
-
-    @app.get("/api/v2/test")
-    async def _test_endpoint():
-        return {"ok": True}
-
-    client = TestClient(app)
-    resp = client.get("/api/v2/test")
-    assert resp.status_code == 200
-    assert resp.headers.get("X-API-Version") == "v2"
+@pytest.mark.parametrize("path", ["/v9/health", "/api/v2/health"])
+def test_unsupported_version_is_404_with_reason(client, path):
+    resp = client.get(path)
+    assert resp.status_code == 404
+    assert "Unsupported API version" in resp.json()["detail"]
 
 
-# ---------------------------------------------------------------------------
-# test_deprecated_version_warning
-# ---------------------------------------------------------------------------
+def test_bare_version_root_maps_to_root(client):
+    assert client.get("/api/v1").status_code == client.get("/").status_code
 
 
-@pytest.mark.asyncio
-async def test_deprecated_version_warning():
-    """Deprecated v1 requests include Deprecation + Sunset headers."""
-    from fastapi import FastAPI
-    from starlette.testclient import TestClient
-
-    app = FastAPI()
-    app.add_middleware(VersionMiddleware)
-
-    @app.get("/api/v1/ranges")
-    async def _v1_ranges():
-        return {"ranges": []}
-
-    client = TestClient(app)
-    resp = client.get("/api/v1/ranges")
-    assert resp.status_code == 200
-    assert resp.headers.get("X-API-Version") == "v1"
-    assert resp.headers.get("Deprecation") == "true"
-    assert "Sunset" in resp.headers
-    assert "Link" in resp.headers
+def test_unknown_route_under_version_is_plain_404(client):
+    resp = client.get("/api/v1/definitely-not-a-route")
+    assert resp.status_code == 404
+    assert "Unsupported" not in resp.text
 
 
-# ---------------------------------------------------------------------------
-# test_v1_to_v2_range_adapter
-# ---------------------------------------------------------------------------
-
-
-def test_v1_to_v2_range_adapter():
-    """V1toV2Adapter.adapt_range_response adds v2-specific fields."""
-    v1_data = {"id": "r-1", "name": "SOC Lab", "state": "ready"}
-    v2_data = V1toV2Adapter.adapt_range_response(v1_data)
-
-    # Original fields preserved
-    assert v2_data["id"] == "r-1"
-    assert v2_data["name"] == "SOC Lab"
-    # v2 additions present
-    assert "resource_usage" in v2_data
-    assert "health_status" in v2_data
-    assert "tags" in v2_data
-    # Default values
-    assert v2_data["resource_usage"] == {}
-    assert v2_data["health_status"] == "unknown"
-    assert v2_data["tags"] == []
-
-
-# ---------------------------------------------------------------------------
-# test_v1_to_v2_list_pagination
-# ---------------------------------------------------------------------------
-
-
-def test_v1_to_v2_list_pagination():
-    """V1toV2Adapter.adapt_list_response wraps lists in pagination envelope."""
-    result = V1toV2Adapter.adapt_list_response(
-        items=[{"id": 1}, {"id": 2}],
-        total=50,
-        page=1,
-        page_size=20,
-    )
-
-    assert result["items"] == [{"id": 1}, {"id": 2}]
-    assert result["total"] == 50
-    assert result["page"] == 1
-    assert result["page_size"] == 20
-    assert result["has_more"] is True
-
-    # Last page
-    result_last = V1toV2Adapter.adapt_list_response(
-        items=[{"id": 50}],
-        total=50,
-        page=3,
-        page_size=20,
-    )
-    assert result_last["has_more"] is False
-
-
-# ---------------------------------------------------------------------------
-# test_v1_to_v2_exercise_adapter
-# ---------------------------------------------------------------------------
-
-
-def test_v1_to_v2_exercise_adapter():
-    """V1toV2Adapter.adapt_exercise_response adds v2 exercise fields."""
-    v1_data = {"id": "ex-1", "name": "IR Drill", "score": 85}
-    v2_data = V1toV2Adapter.adapt_exercise_response(v1_data)
-
-    assert v2_data["id"] == "ex-1"
-    assert "detailed_scores" in v2_data
-    assert "timeline_events" in v2_data
-    assert "recommendations" in v2_data
-
-
-# ---------------------------------------------------------------------------
-# test_create_versioned_app
-# ---------------------------------------------------------------------------
-
-
-def test_create_versioned_app():
-    """create_versioned_app returns routers for both versions."""
-    routers = create_versioned_app()
-    assert APIVersion.V1 in routers
-    assert APIVersion.V2 in routers
+def test_openapi_declares_versioned_server():
+    assert app.openapi()["servers"] == [{"url": SERVER_PREFIX}]
+    assert SERVER_PREFIX == "/api/v1"

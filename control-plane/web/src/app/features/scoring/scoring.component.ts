@@ -13,7 +13,7 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { Exercise, Objective, AAR } from '@core/models';
+import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
 
 @Component({
   selector: 'tn-scoring',
@@ -124,7 +124,7 @@ import { Exercise, Objective, AAR } from '@core/models';
   `],
 })
 export class ScoringComponent implements OnInit {
-  exercises = signal<Exercise[]>([]);
+  exercises = signal<ExerciseSummary[]>([]);
   selectedExerciseId = '';
   selectedExercise = signal<Exercise | null>(null);
   objectives = signal<Objective[]>([]);

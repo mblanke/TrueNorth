@@ -2,7 +2,6 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -11,7 +10,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { environment } from '@env/environment';
+import { DirectoryApiService } from '@core/services/directory-api.service';
+import { RegistrationApiService } from '@core/services/registration-api.service';
 import { AuthService, RegistrationPrefill, RegistrationSuggestions } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 
@@ -271,7 +271,8 @@ interface RegistrationForm {
   ],
 })
 export class RegisterComponent implements OnInit {
-  private readonly http = inject(HttpClient);
+  private readonly directory = inject(DirectoryApiService);
+  private readonly registration = inject(RegistrationApiService);
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
   private readonly notify = inject(NotificationService);
@@ -302,11 +303,11 @@ export class RegisterComponent implements OnInit {
 
     // Reference data is best-effort: an empty nation list should not stop
     // someone registering.
-    this.http.get<Nation[]>(`${environment.apiUrl}/directory/nations`).subscribe({
+    this.directory.nations().subscribe({
       next: (rows) => this.nations.set(rows ?? []),
       error: () => this.nations.set([]),
     });
-    this.http.get<Qualification[]>(`${environment.apiUrl}/qsp/qualifications`).subscribe({
+    this.directory.qualifications().subscribe({
       next: (rows) => this.qualifications.set(rows ?? []),
       error: () => this.qualifications.set([]),
     });
@@ -316,7 +317,7 @@ export class RegisterComponent implements OnInit {
 
   submit(): void {
     this.submitting.set(true);
-    this.http.post(`${environment.apiUrl}/registration`, this.form).subscribe({
+    this.registration.submit(this.form).subscribe({
       next: async () => {
         await this.auth.bootstrap(true);
         this.submitting.set(false);

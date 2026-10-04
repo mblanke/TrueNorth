@@ -9,11 +9,30 @@ Load only those relevant to the current task; model selection stays inherited.
 
 `./scripts/dod.sh` is the Definition of Done. It is real: it fails on undefined names,
 redefinitions and syntax errors; it ratchets total ruff findings (`.dod-ruff-baseline`)
-so debt can shrink but never grow; it runs the same pytest selection as CI
-(`.github/workflows/ci.yml:42`). On success it records the passing tree in `.dod-pass`.
+so debt can shrink but never grow; it runs the same ruff checks and pytest selection as CI
+(`lint-python` and `test-python` in `.github/workflows/ci.yml`). On success it records the
+passing tree in `.dod-pass`.
 Web checks are opt-in with `DOD_WEB=1`.
 
 Do not claim work is done until it passes. Run it with the venv: `bash scripts/dod.sh`.
+
+## Modularity rules (MOSA) — enforced by the gate
+
+The gate also runs `scripts/mosa_check.py` (`.dod-mosa-baseline`, same ratchet) and
+fails on OpenAPI drift. Decisions and reasons are in `docs/adr/`.
+
+- External systems go behind an adapter ABC + registry (`provisioners/`,
+  `*_backends/`). Vendor SDKs (`proxmoxer`, `pyVmomi`, `opensearchpy`) are imported
+  only there; no `if hypervisor_type == "..."` in routers. ADR 0001.
+- `docs/interfaces/openapi.json` is the published API contract. If you change an
+  endpoint or schema, run `.venv/bin/python scripts/export_openapi.py`, then
+  `npm run gen:api` in `control-plane/web` (Angular types are generated from it), and
+  commit both with the change. One handler per method; every route needs a unique
+  `operationId`. ADR 0002.
+- No new raw SQL in the worker. No new `HttpClient` in Angular `features/`; use the
+  shared client. Put new code in per-section modules, not `models.py` / `schemas.py` /
+  `worker/tasks.py`, whose line counts are ratcheted. ADR 0003.
+- Raise a baseline only with an ADR. Lowering is automatic; commit it.
 
 ## Writes are gated by model capability
 

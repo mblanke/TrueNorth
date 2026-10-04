@@ -17,7 +17,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { ApiService, ForgeHistoryItem } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { Range as RangeModel } from '@core/models';
+import { RangeSummary as RangeModel } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
 interface ForgePreset {

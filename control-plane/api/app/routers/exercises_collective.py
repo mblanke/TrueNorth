@@ -234,18 +234,18 @@ _MESL_EDITABLE = {
 
 
 class MeslEventPatch(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    phase: str | None = None
-    scenario_time: str | None = None
-    objective_ref: str | None = None
-    attack_technique: str | None = None
-    delivery_method: str | None = None
-    from_cell: str | None = None
-    to_participant: str | None = None
-    expected_action: str | None = None
-    moe: str | None = None
-    status: str | None = None
+    title: str = Field(default=None)
+    description: str = Field(default=None)
+    phase: str = Field(default=None)
+    scenario_time: str = Field(default=None)
+    objective_ref: str = Field(default=None)
+    attack_technique: str = Field(default=None)
+    delivery_method: str = Field(default=None)
+    from_cell: str = Field(default=None)
+    to_participant: str = Field(default=None)
+    expected_action: str = Field(default=None)
+    moe: str = Field(default=None)
+    status: str = Field(default=None)
 
 
 @router.patch("/{exercise_id}/mesl/{event_id}")

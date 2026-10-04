@@ -16,7 +16,7 @@ import respx
 from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
 from app.models import HypervisorConnection, HypervisorNode, UserRole
-from app.routers.hypervisors import _discover_vsphere
+from app.hypervisor_backends.vsphere import discover as _discover_vsphere
 
 DEV_TENANT = "00000000-0000-0000-0000-000000000001"
 VCENTER = "https://vcsa.range.test"

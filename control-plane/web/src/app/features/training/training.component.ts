@@ -19,7 +19,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { HttpClient } from '@angular/common/http';
 
 interface Course {
   id: string;
@@ -687,7 +686,6 @@ export class TrainingComponent implements OnInit {
   constructor(
     private api: ApiService,
     private notify: NotificationService,
-    private http: HttpClient,
     private fb: FormBuilder,
   ) {
     this.courseForm = this.fb.group({
@@ -892,10 +890,9 @@ export class TrainingComponent implements OnInit {
 
   // ── Training Records ──
   loadUsers() {
-    this.http.get<any>('/api/admin/users').subscribe({
-      next: res => {
-        const list = Array.isArray(res) ? res : (res.items || []);
-        this.users.set(list.map((u: any) => ({ id: u.id, display_name: u.display_name, email: u.email })));
+    this.api.listUsers().subscribe({
+      next: list => {
+        this.users.set(list.map(u => ({ id: u.id, display_name: u.display_name, email: u.email })));
       },
       error: () => this.users.set([]),
     });

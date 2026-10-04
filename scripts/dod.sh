@@ -30,10 +30,27 @@ PY="${PY:-$ROOT/.venv/bin/python}"
 # .dod-ruff-baseline). Lives in its own script so CI runs the identical check.
 PY="$PY" "$ROOT/scripts/ruff-gate.sh"
 
-# Match .github/workflows/ci.yml:42 exactly, so local green and CI green mean the same
-# thing. tests/integration needs OpenSearch and live provisioners and is a separate CI
-# job (ci.yml:139); running it here just produces errors that teach people to ignore
-# this script.
+# MOSA: modularity debt (raw SQL in the worker, vendor SDKs outside adapters, hardcoded
+# backend branches, god-file growth) ratchets like ruff debt. docs/adr/0003.
+echo "+ MOSA ratchet (.dod-mosa-baseline)"
+"$PY" scripts/mosa_check.py || fail "MOSA modularity debt grew — see the locations above"
+
+# The committed OpenAPI file is the published API contract. Code and contract must
+# agree; an intended change is regenerated and committed in the same change. docs/adr/0002.
+echo "+ OpenAPI contract drift (docs/interfaces/openapi.json)"
+"$PY" scripts/export_openapi.py --check 2>/dev/null \
+  || fail "API contract drift — run: $PY scripts/export_openapi.py, review, commit"
+
+# The API -> worker task contract: worker/worker/contracts.py is the source; the API's
+# copy and docs/interfaces/worker-tasks.schema.json must match it.
+echo "+ Worker task contract drift"
+"$PY" scripts/export_task_contracts.py --check \
+  || fail "task contract drift — run: $PY scripts/export_task_contracts.py, review, commit"
+
+# Match the test-python job in .github/workflows/ci.yml exactly, so local green and CI
+# green mean the same thing (its lint-python job runs scripts/ruff-gate.sh too). tests/integration
+# needs OpenSearch and live provisioners and is a separate CI job (`integration`); running
+# it here just produces errors that teach people to ignore this script.
 run "$PY" -m pytest tests/ --tb=short -q --ignore=tests/integration
 
 # Angular is opt-in until the repo actually carries a karma.conf.js and CHROME_BIN is

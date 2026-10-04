@@ -13,7 +13,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { Exercise, Range, Scenario } from '@core/models';
+import { ExerciseSummary, RangeSummary, ScenarioSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
 @Component({
@@ -205,9 +205,9 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
   `],
 })
 export class ExercisesComponent implements OnInit {
-  exercises = signal<Exercise[]>([]);
-  ranges = signal<Range[]>([]);
-  scenarios = signal<Scenario[]>([]);
+  exercises = signal<ExerciseSummary[]>([]);
+  ranges = signal<RangeSummary[]>([]);
+  scenarios = signal<ScenarioSummary[]>([]);
   loading = signal(true);
   loadError = signal(false);
   showCreate = false;
@@ -284,7 +284,7 @@ export class ExercisesComponent implements OnInit {
     });
   }
 
-  startEdit(e: Exercise): void {
+  startEdit(e: ExerciseSummary): void {
     this.editingId = e.id;
     this.editForm.name = e.name;
   }

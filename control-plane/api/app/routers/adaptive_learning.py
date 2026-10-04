@@ -140,13 +140,12 @@ def trigger_recommendation(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Trigger AI learning recommendation generation (dispatched async via Celery)."""
-    from worker.celery_app import app as celery_app
+    # Was `from worker.celery_app import ...`: the worker package is not in the API
+    # image, so this endpoint raised ImportError (500) everywhere but the test suite.
+    from ..celery_client import dispatch
 
-    celery_app.send_task(
-        "worker.tasks.generate_learning_recommendation",
-        args=[str(user_id), target_role],
-        queue="default",
-    )
+    if dispatch("generate_learning_recommendation", str(user_id), target_role) is None:
+        logger.warning("Broker unreachable; learning recommendation for user=%s not queued", user_id)
     logger.info("Triggered learning recommendation for user=%s role=%s", user_id, target_role)
     return {"status": "queued", "message": "Learning recommendation generation started"}
 

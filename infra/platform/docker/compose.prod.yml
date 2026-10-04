@@ -154,7 +154,9 @@ services:
       - tn-backend
 
   minio:
-    image: minio/minio:latest
+    # Same image as compose.dev.yml: minio/minio is gone from Docker Hub (MinIO stopped
+    # publishing community images), so `:latest` failed every fresh pull.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     restart: always
     command: server /data --console-address ":9001"
     environment:
@@ -716,7 +718,7 @@ services:
   # this service every xAPI statement fails against an unset LRS_URL. Learner
   # progress tracking depends on it.
   lrs:
-    image: yetanalytics/lrsql:latest
+    image: yetanalytics/lrsql:v0.9.9  # pinned: what :latest resolved to on 2026-10-03
     restart: always
     command: /lrsql/bin/run_postgres.sh
     environment:

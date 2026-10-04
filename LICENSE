@@ -1,0 +1,12 @@
+Copyright (c) 2026 TrueNorth Range authors. All rights reserved.
+
+This software and its associated documentation, content and data are proprietary and
+confidential. No licence, express or implied, is granted to use, copy, modify, merge,
+publish, distribute, sublicense or sell any part of it except under a separate written
+agreement with the copyright holder.
+
+Rights granted to any government customer are defined solely by the applicable contract
+and the markings on delivered items. See docs/adr/0003-mosa-ratchet.md.
+
+Third-party components included in or used by this software remain subject to their own
+licences.

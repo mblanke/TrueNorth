@@ -13,22 +13,12 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatBadgeModule } from '@angular/material/badge';
-import { HttpClient } from '@angular/common/http';
+import { AiConfigApiService, DiscoverNodeResult } from '@core/services/ai-config-api.service';
+import { AIBackendConfig, AIFleetSummary, AIModelRoute } from '@core/models';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
-interface AIBackend {
-  id: string;
-  name: string;
-  backend_type: string;
-  base_url: string;
-  is_active: boolean;
-  is_primary: boolean;
-  max_concurrent: number;
-  timeout_seconds: number;
-  notes: string | null;
-  created_at: string;
-}
+type AIBackend = AIBackendConfig;
 
 interface _AIFleetNode {
   id: string;
@@ -43,45 +33,6 @@ interface _AIFleetNode {
   max_requests: number;
 }
 
-interface DiscoveredModel {
-  name: string;
-  size_bytes: number;
-  family: string;
-  parameter_size: string;
-  quantization: string;
-}
-
-interface DiscoverNodeResult {
-  node_name: string;
-  url: string;
-  online: boolean;
-  version: string | null;
-  gpu_model: string | null;
-  gpu_vram_gb: number | null;
-  model_count: number;
-  models: DiscoveredModel[];
-  running: string[];
-}
-
-interface AIModelRoute {
-  id: string;
-  model_pattern: string;
-  backend_id: string;
-  priority: number;
-  tags: string | null;
-  is_active: boolean;
-}
-
-interface AIFleetSummary {
-  total_backends: number;
-  active_backends: number;
-  total_nodes: number;
-  online_nodes: number;
-  total_gpu_vram_gb: number;
-  active_requests: number;
-  model_routes: number;
-  by_backend_type: Record<string, number>;
-}
 
 @Component({
   selector: 'tn-ai-orchestrator',
@@ -538,7 +489,7 @@ export class AiOrchestratorComponent implements OnInit {
 
   newRoute = { model_pattern: '', backend_id: '', priority: 0, tags: '' };
 
-  constructor(private http: HttpClient, private snack: MatSnackBar) {}
+  constructor(private aiConfig: AiConfigApiService, private snack: MatSnackBar) {}
 
   ngOnInit(): void {
     this.loadBackends();
@@ -548,25 +499,25 @@ export class AiOrchestratorComponent implements OnInit {
   }
 
   loadBackends(): void {
-    this.http.get<AIBackend[]>('/api/ai-config/backends').subscribe({
+    this.aiConfig.backends().subscribe({
       next: b => this.backends = b,
       error: () => this.snack.open('Failed to load backends', 'OK', { duration: 3000 }),
     });
   }
 
   loadRoutes(): void {
-    this.http.get<AIModelRoute[]>('/api/ai-config/routes').subscribe({
+    this.aiConfig.routes().subscribe({
       next: r => this.routes = r,
       error: () => this.snack.open('Failed to load routes', 'OK', { duration: 3000 }),
     });
   }
 
   loadSummary(): void {
-    this.http.get<AIFleetSummary>('/api/ai-config/summary').subscribe({ next: s => this.summary = s, error: () => {} });
+    this.aiConfig.summary().subscribe({ next: s => this.summary = s, error: () => {} });
   }
 
   loadModels(): void {
-    this.http.get<{ models: { name: string; node: string }[]; count: number }>('/api/ai-config/models').subscribe({
+    this.aiConfig.models().subscribe({
       next: res => this.availableModels = res.models,
       error: () => {},
     });
@@ -578,7 +529,7 @@ export class AiOrchestratorComponent implements OnInit {
   }
 
   createBackend(): void {
-    this.http.post('/api/ai-config/backends', this.newBackend).subscribe({
+    this.aiConfig.createBackend(this.newBackend).subscribe({
       next: () => {
         this.showAddBackend = false;
         this.loadBackends();
@@ -590,7 +541,7 @@ export class AiOrchestratorComponent implements OnInit {
   }
 
   setPrimary(b: AIBackend): void {
-    this.http.post(`/api/ai-config/backends/${b.id}/set-primary`, {}).subscribe({
+    this.aiConfig.setPrimaryBackend(b.id).subscribe({
       next: () => this.loadBackends(),
       error: () => this.snack.open('Failed to set primary', 'OK', { duration: 3000 }),
     });
@@ -598,7 +549,7 @@ export class AiOrchestratorComponent implements OnInit {
 
   deleteBackend(b: AIBackend): void {
     if (confirm(`Delete backend "${b.name}"?`)) {
-      this.http.delete(`/api/ai-config/backends/${b.id}`).subscribe({
+      this.aiConfig.deleteBackend(b.id).subscribe({
         next: () => { this.loadBackends(); this.loadSummary(); },
         error: () => this.snack.open('Failed to delete', 'OK', { duration: 3000 }),
       });
@@ -617,7 +568,7 @@ export class AiOrchestratorComponent implements OnInit {
   updateBackend(): void {
     if (!this.editingBackendId) return;
     this.backendSaving = true;
-    this.http.patch(`/api/ai-config/backends/${this.editingBackendId}`, this.newBackend).subscribe({
+    this.aiConfig.updateBackend(this.editingBackendId, this.newBackend).subscribe({
       next: () => {
         this.cancelBackendEdit();
         this.loadBackends();
@@ -647,9 +598,7 @@ export class AiOrchestratorComponent implements OnInit {
       return;
     }
     this.scanning = true;
-    this.http.post<{ scanned: number; results: DiscoverNodeResult[] }>(
-      `/api/ai-config/backends/${primary.id}/discover`, {}
-    ).subscribe({
+    this.aiConfig.discoverFleet(primary.id).subscribe({
       next: res => {
         this.discoveredNodes = res.results;
         this.scanning = false;
@@ -679,7 +628,7 @@ export class AiOrchestratorComponent implements OnInit {
   }
 
   createRoute(): void {
-    this.http.post('/api/ai-config/routes', this.newRoute).subscribe({
+    this.aiConfig.createRoute(this.newRoute).subscribe({
       next: () => {
         this.showAddRoute = false;
         this.newRoute = { model_pattern: '', backend_id: '', priority: 0, tags: '' };
@@ -692,7 +641,7 @@ export class AiOrchestratorComponent implements OnInit {
   }
 
   deleteRoute(r: AIModelRoute): void {
-    this.http.delete(`/api/ai-config/routes/${r.id}`).subscribe({
+    this.aiConfig.deleteRoute(r.id).subscribe({
       next: () => { this.loadRoutes(); this.loadSummary(); },
       error: () => this.snack.open('Failed to delete route', 'OK', { duration: 3000 }),
     });
@@ -710,7 +659,7 @@ export class AiOrchestratorComponent implements OnInit {
   updateRoute(): void {
     if (!this.editingRouteId) return;
     this.routeSaving = true;
-    this.http.patch(`/api/ai-config/routes/${this.editingRouteId}`, this.newRoute).subscribe({
+    this.aiConfig.updateRoute(this.editingRouteId, this.newRoute).subscribe({
       next: () => {
         this.cancelRouteEdit();
         this.loadRoutes();
@@ -733,9 +682,7 @@ export class AiOrchestratorComponent implements OnInit {
   testGenerate(): void {
     this.generating = true;
     this.testResult = null;
-    this.http.post('/api/ai-config/test-generate', null, {
-      params: { prompt: this.testPrompt, model: this.selectedModel }
-    }).subscribe({
+    this.aiConfig.testGenerate(this.testPrompt, this.selectedModel).subscribe({
       next: r => { this.testResult = r; this.generating = false; },
       error: e => {
         this.snack.open('Generation failed: ' + (e.error?.detail || e.message), 'OK', { duration: 4000 });

@@ -22,6 +22,7 @@ from ..models import (
     IntegrationAuthType,
     User,
 )
+from ..platforms import get_platform_adapter
 from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
     ExternalActivityOut,
@@ -151,19 +152,8 @@ async def test_connectivity(
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            if p.platform_type == "moodle":
-                # Moodle: hit /admin/tool/mobile/launch.php or /login/token.php
-                resp = await client.get(f"{p.base_url}/lib/ajax/service-nologin.php")
-                reachable = resp.status_code < 500
-            elif p.platform_type == "immersive_labs":
-                resp = await client.get(f"{p.base_url}/api/health", timeout=10)
-                reachable = resp.status_code < 500
-            elif p.platform_type == "offsec":
-                resp = await client.get(f"{p.base_url}", timeout=10)
-                reachable = resp.status_code < 500
-            else:
-                resp = await client.get(p.base_url, timeout=10)
-                reachable = resp.status_code < 500
+            resp = await client.get(get_platform_adapter(p.platform_type).health_url(p.base_url))
+            reachable = resp.status_code < 500
     except Exception as e:
         return {"platform_id": str(p.id), "reachable": False, "error": str(e)}
 
@@ -275,7 +265,11 @@ def lti_jwks(db: Session = Depends(get_db)):
     return lti13.jwks(db)
 
 
-@lti_router.api_route("/login", methods=["GET", "POST"])
+# Two registrations, not api_route(methods=[...]): one route with two methods gets one
+# operationId, and FastAPI picks its method suffix from a set, so the published
+# contract (docs/interfaces/openapi.json) changed from run to run.
+@lti_router.get("/login", operation_id="lti_oidc_login_get")
+@lti_router.post("/login", operation_id="lti_oidc_login_post")
 async def lti_oidc_login(request: Request, db: Session = Depends(get_db)):
     """LTI 1.3 OIDC initiation: validate issuer, mint state+nonce, redirect."""
     params = dict(request.query_params)
