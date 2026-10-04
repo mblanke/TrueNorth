@@ -14,6 +14,8 @@ import os
 from celery import Celery
 from kombu import Exchange, Queue
 
+from .contracts import QUEUES, route_table
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 app = Celery("truenorth", broker=REDIS_URL, backend=REDIS_URL)
@@ -21,13 +23,7 @@ app = Celery("truenorth", broker=REDIS_URL, backend=REDIS_URL)
 # -- Queue definitions for task isolation --------------------------------
 default_exchange = Exchange("truenorth", type="direct")
 
-app.conf.task_queues = (
-    Queue("default", default_exchange, routing_key="default"),
-    Queue("provision", default_exchange, routing_key="provision"),
-    Queue("destroy", default_exchange, routing_key="destroy"),
-    Queue("scenario", default_exchange, routing_key="scenario"),
-    Queue("telemetry", default_exchange, routing_key="telemetry"),
-)
+app.conf.task_queues = tuple(Queue(q, default_exchange, routing_key=q) for q in QUEUES)
 app.conf.task_default_queue = "default"
 
 app.conf.update(
@@ -37,15 +33,9 @@ app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
-    # Routing: map task names to queues
-    task_routes={
-        "worker.tasks.provision_range": {"queue": "provision"},
-        "worker.tasks.destroy_range": {"queue": "destroy"},
-        "worker.tasks.run_scenario": {"queue": "scenario"},
-        "worker.tasks.batch_provision": {"queue": "provision"},
-        "worker.tasks.ingest_telemetry_batch": {"queue": "telemetry"},
-        "worker.tasks.*": {"queue": "default"},
-    },
+    # Routing: one table, shared with the API's sender (contracts.py). The API used to
+    # keep its own copy, and the two disagreed on delete_snapshot.
+    task_routes={**route_table(), "worker.tasks.*": {"queue": "default"}},
     # Concurrency control
     task_track_started=True,
     task_acks_late=True,  # Don't ack until task completes
@@ -91,25 +81,6 @@ app.conf.beat_schedule = {
         "schedule": 30.0,  # every 30 seconds
     },
 }
-
-# -- Additional routing for new tasks -------------------------------------
-app.conf.task_routes.update(
-    {
-        "worker.tasks.run_scenario_v2": {"queue": "scenario"},
-        "worker.tasks.generate_aar": {"queue": "default"},
-        "worker.tasks.cleanup_expired_ranges": {"queue": "default"},
-        "worker.tasks.snapshot_range": {"queue": "provision"},
-        "worker.tasks.restore_snapshot": {"queue": "provision"},
-        "worker.tasks.health_check_ranges": {"queue": "default"},
-        "worker.tasks.collect_range_metrics": {"queue": "telemetry"},
-        "worker.tasks.delete_snapshot": {"queue": "provision"},
-        # EPIC 1: Exercise Forge
-        "worker.tasks.forge_exercise": {"queue": "default"},
-        # EPIC 3: Adaptive Learning
-        "worker.tasks.auto_assess_competency": {"queue": "default"},
-        "worker.tasks.generate_learning_recommendation": {"queue": "default"},
-    }
-)
 
 # -- Register task modules -------------------------------------------------
 # Importing at the end (after `app` is configured) registers every @app.task

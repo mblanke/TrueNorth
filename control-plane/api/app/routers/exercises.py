@@ -341,17 +341,10 @@ async def complete_exercise(
     db.refresh(ex)
     _audit(db, user, "complete", "exercise", str(ex.id))
     db.commit()
-    # Trigger competency auto-assessment (EPIC 3)
-    try:
-        from worker.celery_app import app as celery_app
-
-        celery_app.send_task(
-            "worker.tasks.auto_assess_competency",
-            args=[str(ex.id), user.id],
-            queue="default",
-            ignore_result=True,
-        )
-    except Exception:
+    # Trigger competency auto-assessment (EPIC 3). This used to import worker.celery_app,
+    # which is not in the API image, so the ImportError was swallowed below and no
+    # auto-assessment was ever queued outside the test suite.
+    if _dispatch_task("auto_assess_competency", str(ex.id), str(user.id)) is None:
         logger.warning("Failed to dispatch auto-assess task for exercise %s", ex.id)
     if background_tasks is not None:
         # Moodle/LTI grade pass-back (no-op unless launched via LTI)

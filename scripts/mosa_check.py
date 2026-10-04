@@ -77,6 +77,10 @@ def collect() -> dict[str, list[str] | int]:
         re.compile(r"\b(?:hypervisor_type|platform_type)\s*==\s*['\"]"),
     )
 
+    # The API and worker are separate images. An import across that line passes under
+    # pytest (both on sys.path) and fails in production. Talk via celery_client.dispatch.
+    cross_service = _hits(_py_files(API), re.compile(r"^\s*(?:from|import)\s+worker\b", re.M))
+
     ts = [p for p in FEATURES.rglob("*.ts") if not p.name.endswith(".spec.ts")] if FEATURES.exists() else []
     http = _hits(ts, re.compile(r"\bHttpClient\b(?=[^\n]*from\s+'@angular/common/http')"))
 
@@ -85,6 +89,7 @@ def collect() -> dict[str, list[str] | int]:
         "vendor_sdk_outside_adapters": vendor_sdk,
         "vendor_endpoint_outside_adapters": vendor_url,
         "hardcoded_backend_branches": branches,
+        "api_imports_worker": cross_service,
         "web_features_direct_httpclient": http,
         "lines_api_models_py": _lines(API / "models.py"),
         "lines_api_schemas_py": _lines(API / "schemas.py"),
