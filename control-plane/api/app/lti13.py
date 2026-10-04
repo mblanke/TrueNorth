@@ -146,14 +146,24 @@ def build_login_redirect(
 
 
 def find_platform(db: Session, iss: str, client_id: str | None = None) -> ExternalPlatform | None:
+    """The registration for (issuer, client id), never a different client's.
+
+    Several tenants can register the same Moodle (same issuer) under different client
+    ids. An unknown client id used to fall back to whichever registration came first,
+    so login initiation minted state for, and redirected as, someone else's client.
+    A registration without a client id is still returned so launch can refuse it with
+    a clear reason. Without a client id the issuer must identify exactly one platform.
+    """
     q = db.query(ExternalPlatform).filter(
         ExternalPlatform.lti_issuer == iss, ExternalPlatform.is_active.is_(True)
     )
     if client_id:
-        by_client = q.filter(ExternalPlatform.lti_client_id == client_id).first()
-        if by_client:
-            return by_client
-    return q.first()
+        return (
+            q.filter(ExternalPlatform.lti_client_id == client_id).first()
+            or q.filter(ExternalPlatform.lti_client_id.is_(None)).first()
+        )
+    candidates = q.limit(2).all()
+    return candidates[0] if len(candidates) == 1 else None
 
 
 # ── Launch validation ────────────────────────────────────────────────────
@@ -165,7 +175,8 @@ async def validate_launch(db: Session, id_token: str, state: str) -> tuple[Exter
     unverified = jwt.decode(id_token, options={"verify_signature": False})
     iss = unverified.get("iss", "")
     aud = unverified.get("aud")
-    client_id = aud[0] if isinstance(aud, list) else aud
+    # With several audiences, azp names the client (enforced after verification below).
+    client_id = unverified.get("azp") or (aud[0] if isinstance(aud, list) and aud else aud)
 
     platform = find_platform(db, iss, client_id)
     if not platform:

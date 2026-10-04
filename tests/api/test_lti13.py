@@ -53,7 +53,7 @@ def _platform(db, *, client_id="client-1", deployment_id="dep-1", tenant=TENANT_
     return p
 
 
-def _launch(db, platform: ExternalPlatform, *, aud="client-1", deployment="dep-1") -> tuple[str, str]:
+def _launch(db, platform: ExternalPlatform, *, aud="client-1", deployment="dep-1", extra=None) -> tuple[str, str]:
     """A signed id_token plus the state it was issued under."""
     nonce, state = uuid.uuid4().hex, uuid.uuid4().hex
     db.add(
@@ -77,6 +77,7 @@ def _launch(db, platform: ExternalPlatform, *, aud="client-1", deployment="dep-1
             "nonce": nonce,
             lti13.CLAIM_DEPLOYMENT: deployment,
             lti13.CLAIM_MESSAGE_TYPE: "LtiResourceLinkRequest",
+            **(extra or {}),
         },
         key.private_key_pem,
         algorithm="RS256",
@@ -122,9 +123,28 @@ class TestValidateLaunch:
             await lti13.validate_launch(db_session, token, state)
 
     async def test_a_token_for_another_client_is_refused(self, db_session, platform_keys):
+        """An unknown client id no longer falls back to another registration."""
         platform = _platform(db_session)
         token, state = _launch(db_session, platform, aud="client-2")
+        with pytest.raises(ValueError, match="No registered LTI platform"):
+            await lti13.validate_launch(db_session, token, state)
+
+    async def test_the_audience_is_verified_against_our_registration(self, db_session, platform_keys):
+        """azp selects our registration, but the signed aud is someone else's."""
+        platform = _platform(db_session)
+        token, state = _launch(db_session, platform, aud="client-2", extra={"azp": "client-1"})
         with pytest.raises(jwt.InvalidAudienceError):
+            await lti13.validate_launch(db_session, token, state)
+
+    async def test_state_minted_for_another_registration_is_refused(self, db_session, platform_keys):
+        """Nonce/state are bound to the platform whose login initiation minted them."""
+        mine = _platform(db_session)
+        other = _platform(db_session, client_id="client-9", tenant=TENANT_B)
+        token, state = _launch(db_session, mine)
+        # Same nonce and state, but minted by the other registration's login initiation.
+        db_session.query(LTINonce).filter(LTINonce.state == state).update({"platform_id": other.id})
+        db_session.flush()
+        with pytest.raises(ValueError, match="replayed"):
             await lti13.validate_launch(db_session, token, state)
 
     async def test_a_replayed_state_is_refused(self, db_session, platform_keys):
@@ -169,3 +189,43 @@ class TestJitUser:
         assert str(user.tenant_id) == str(TENANT_A)
         assert user.role == UserRole.student
         assert user.source == "lti"
+
+
+class TestLoginInitiation:
+    """Several tenants may register the same Moodle (one issuer) as different clients."""
+
+    def _registered(self, db, **kw) -> ExternalPlatform:
+        p = _platform(db, **kw)
+        p.lti_auth_login_url = f"{ISSUER}/mod/lti/auth.php"
+        db.flush()
+        return p
+
+    def _login(self, db, client_id):
+        return lti13.build_login_redirect(
+            db,
+            iss=ISSUER,
+            login_hint="u",
+            target_link_uri="http://tool/launch",
+            client_id=client_id,
+            lti_message_hint=None,
+        )
+
+    def test_a_known_client_gets_its_own_registration(self, db_session):
+        self._registered(db_session, client_id="client-1")
+        self._registered(db_session, client_id="client-2", tenant=TENANT_B)
+        assert "client_id=client-2" in self._login(db_session, "client-2")
+
+    def test_an_unknown_client_does_not_borrow_another_registration(self, db_session):
+        self._registered(db_session, client_id="client-1")
+        with pytest.raises(ValueError, match="Unknown LTI platform"):
+            self._login(db_session, "client-3")
+
+    def test_no_client_id_is_ambiguous_when_the_issuer_has_several(self, db_session):
+        self._registered(db_session, client_id="client-1")
+        self._registered(db_session, client_id="client-2", tenant=TENANT_B)
+        with pytest.raises(ValueError, match="Unknown LTI platform"):
+            self._login(db_session, None)
+
+    def test_no_client_id_resolves_a_sole_registration(self, db_session):
+        self._registered(db_session, client_id="client-1")
+        assert "client_id=client-1" in self._login(db_session, None)
