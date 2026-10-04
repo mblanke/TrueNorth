@@ -31,9 +31,10 @@ import {
 } from '@angular/material/dialog';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Observable } from 'rxjs';
-import * as joint from 'jointjs';
+import * as joint from '@joint/core';
 import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
+import { upgradeDiagramJson } from './diagram-compat';
 import { ApiService } from '@core/services/api.service';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { RangeSummary, TemplateSummary } from '@core/models';
@@ -122,14 +123,14 @@ function createNodeShape(
           attrs: {
             circle: { fill: color, stroke: 'var(--border)', strokeWidth: 1, r: 5, magnet: true },
           },
-          label: { position: 'outside' },
+          label: { position: { name: 'outside' } },
         },
         out: {
           position: 'right',
           attrs: {
             circle: { fill: color, stroke: 'var(--border)', strokeWidth: 1, r: 5, magnet: true },
           },
-          label: { position: 'outside' },
+          label: { position: { name: 'outside' } },
         },
       },
       items: [
@@ -997,7 +998,9 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
 
   /* --- Graph + Paper init --- */
   private initGraph(): void {
-    this.graph = new joint.dia.Graph();
+    // @joint/core has no global `joint`, so the shape namespace must be passed for
+    // fromJSON() to rebuild saved diagrams (cell types like "standard.Rectangle").
+    this.graph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
     (this.graph as any).on('add remove', () => this.updateCounts());
   }
 
@@ -1006,6 +1009,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     this.paper = new joint.dia.Paper({
       el,
       model: this.graph,
+      cellViewNamespace: joint.shapes,
       width: '100%',
       height: '100%',
       gridSize: GRID,
@@ -1604,7 +1608,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
         // arrive on the stack as something to undo, nor mark the range dirty.
         this.suppressHistory = true;
         try {
-          this.graph.fromJSON(diagram);
+          this.graph.fromJSON(upgradeDiagramJson(diagram));
         } catch {
           this.snack.open('Saved diagram was corrupted — starting blank', 'Dismiss', { duration: 4000, panelClass: 'snack-error' });
           return;
@@ -1728,7 +1732,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
         if (diagram && diagram.cells && diagram.cells.length) {
           this.suppressHistory = true;
           try {
-            this.graph.fromJSON(diagram);
+            this.graph.fromJSON(upgradeDiagramJson(diagram));
           } catch {
             this.snack.open('Template preview was unusable — starting blank', '', { duration: 3000 });
           } finally {
