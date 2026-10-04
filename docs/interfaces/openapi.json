@@ -1093,6 +1093,7 @@
           },
           "competency_mappings": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Competency Mappings",
@@ -1274,7 +1275,7 @@
       "Body_import_catalogue_golden_images_import_catalogue_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1288,12 +1289,12 @@
       "Body_import_competency_crosswalk_qsp_import_competency_crosswalk_post": {
         "properties": {
           "crosswalk": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "Crosswalk",
             "type": "string"
           },
           "taxonomy": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "Taxonomy",
             "type": "string"
           }
@@ -1308,7 +1309,7 @@
       "Body_import_course_content_courses_import_course_content_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1322,7 +1323,7 @@
       "Body_import_crosswalk_qsp_import_crosswalk_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1336,7 +1337,7 @@
       "Body_import_description_ranges__range_id__description_import_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1350,7 +1351,7 @@
       "Body_import_mesl_collective_exercises__exercise_id__mesl_import_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1364,7 +1365,7 @@
       "Body_import_objectives_collective_exercises__exercise_id__objectives_import_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1378,7 +1379,7 @@
       "Body_import_programme_courses_import_programme_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1392,7 +1393,7 @@
       "Body_import_roster_csv_users_import_csv_post": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1425,7 +1426,7 @@
         "properties": {
           "files": {
             "items": {
-              "format": "binary",
+              "contentMediaType": "application/octet-stream",
               "type": "string"
             },
             "title": "Files",
@@ -1442,7 +1443,7 @@
         "properties": {
           "files": {
             "items": {
-              "format": "binary",
+              "contentMediaType": "application/octet-stream",
               "type": "string"
             },
             "title": "Files",
@@ -2007,6 +2008,7 @@
           },
           "objectives": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Objectives",
@@ -3319,6 +3321,7 @@
       "DiagramIn": {
         "properties": {
           "diagram_json": {
+            "additionalProperties": true,
             "title": "Diagram Json",
             "type": "object"
           },
@@ -5421,6 +5424,7 @@
             "type": "string"
           },
           "params": {
+            "additionalProperties": true,
             "title": "Params",
             "type": "object"
           }
@@ -5710,6 +5714,7 @@
           },
           "recommendations": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Recommendations",
@@ -7105,6 +7110,7 @@
           },
           "competency_trend": {
             "items": {
+              "additionalProperties": true,
               "type": "object"
             },
             "title": "Competency Trend",
@@ -11254,6 +11260,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -11688,6 +11701,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Trigger Recommendation Adaptive Users  User Id  Recommendations Post",
                   "type": "object"
                 }
@@ -12534,6 +12548,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Detection Draft Ai Detection Draft Post",
                   "type": "object"
                 }
@@ -12582,6 +12597,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Scenario Draft Ai Scenario Draft Post",
                   "type": "object"
                 }
@@ -13039,6 +13055,7 @@
               "application/json": {
                 "schema": {
                   "items": {
+                    "additionalProperties": true,
                     "type": "object"
                   },
                   "title": "Response List Exercises Collective Exercises Get",
@@ -13077,6 +13094,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Create Exercise Collective Exercises Post",
                   "type": "object"
                 }
@@ -13125,6 +13143,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Get Exercise Collective Exercises  Exercise Id  Get",
                   "type": "object"
                 }
@@ -13184,6 +13203,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Generate Mesl Collective Exercises  Exercise Id  Mesl Generate Post",
                   "type": "object"
                 }
@@ -13243,6 +13263,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Import Mesl Collective Exercises  Exercise Id  Mesl Import Post",
                   "type": "object"
                 }
@@ -13311,6 +13332,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Patch Mesl Event Collective Exercises  Exercise Id  Mesl  Event Id  Patch",
                   "type": "object"
                 }
@@ -13370,6 +13392,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Import Objectives Collective Exercises  Exercise Id  Objectives Import Post",
                   "type": "object"
                 }
@@ -14062,6 +14085,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Generate Programme Paths Courses Generate Programme Paths Post",
                   "type": "object"
                 }
@@ -14100,6 +14124,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Import Course Content Courses Import Course Content Post",
                   "type": "object"
                 }
@@ -14148,6 +14173,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Import Programme Courses Import Programme Post",
                   "type": "object"
                 }
@@ -14515,6 +14541,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Course Outline Courses  Course Id  Outline Get",
                   "type": "object"
                 }
@@ -15221,6 +15248,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": true,
                 "title": "Payload",
                 "type": "object"
               }
@@ -16293,6 +16321,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Forge History Exercise Forge History Get",
                   "type": "object"
                 }
@@ -17154,6 +17183,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Scenario Detail Exercises  Exercise Id  Scenario Detail Get",
                   "type": "object"
                 }
@@ -17310,6 +17340,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Alias Map Golden Images Alias Map Get",
                   "type": "object"
                 }
@@ -17370,6 +17401,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Import Catalogue Golden Images Import Catalogue Post",
                   "type": "object"
                 }
@@ -17430,6 +17462,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Resolve Golden Images Resolve Get",
                   "type": "object"
                 }
@@ -18107,6 +18140,7 @@
               "application/json": {
                 "schema": {
                   "items": {
+                    "additionalProperties": true,
                     "type": "object"
                   },
                   "title": "Response List Injectors Injectors Get",
@@ -19035,6 +19069,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Assign Learning Path To Group Learning Paths  Path Id  Assign Group Post",
                   "type": "object"
                 }
@@ -19935,6 +19970,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Instructor Inject Ops Exercises  Exercise Id  Inject Post",
                   "type": "object"
                 }
@@ -21760,6 +21796,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Curriculum Map Qsp Curriculum Map Get",
                   "type": "object"
                 }
@@ -21788,6 +21825,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Developmental Progression Qsp Developmental Progression Get",
                   "type": "object"
                 }
@@ -21816,6 +21854,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Generate Exercises Qsp Generate Exercises Post",
                   "type": "object"
                 }
@@ -21844,6 +21883,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Generate Learning Paths Qsp Generate Learning Paths Post",
                   "type": "object"
                 }
@@ -21882,6 +21922,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Import Competency Crosswalk Qsp Import Competency Crosswalk Post",
                   "type": "object"
                 }
@@ -21930,6 +21971,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Import Crosswalk Qsp Import Crosswalk Post",
                   "type": "object"
                 }
@@ -21968,6 +22010,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Po Coverage Qsp Po Coverage Get",
                   "type": "object"
                 }
@@ -22088,6 +22131,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Range Curriculum Qsp Ranges  Range Id  Curriculum Get",
                   "type": "object"
                 }
@@ -22137,6 +22181,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Template Curriculum Qsp Templates  Template Id  Curriculum Get",
                   "type": "object"
                 }
@@ -22196,6 +22241,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Attach Template Objectives Qsp Templates  Template Id  Objectives Post",
                   "type": "object"
                 }
@@ -22254,6 +22300,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Detach Template Objective Qsp Templates  Template Id  Objectives  Po Id  Delete",
                   "type": "object"
                 }
@@ -23273,6 +23320,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Get Range Diagram Ranges  Range Id  Diagram Get",
                   "type": "object"
                 }
@@ -23320,6 +23368,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": true,
                 "title": "Body",
                 "type": "object"
               }
@@ -23332,6 +23381,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Save Range Diagram Ranges  Range Id  Diagram Put",
                   "type": "object"
                 }
@@ -23921,6 +23971,7 @@
               "schema": {
                 "anyOf": [
                   {
+                    "additionalProperties": true,
                     "type": "object"
                   },
                   {
@@ -23937,6 +23988,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Save Range Topology Ranges  Range Id  Topology Post",
                   "type": "object"
                 }
@@ -24492,6 +24544,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Validate Scenario Scenarios Validate Post",
                   "type": "object"
                 }
@@ -25707,6 +25760,7 @@
               "application/json": {
                 "schema": {
                   "items": {
+                    "additionalProperties": true,
                     "type": "object"
                   },
                   "title": "Response List Team Members Teams  Team Id  Members Get",
@@ -25777,6 +25831,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Add Team Member Teams  Team Id  Members Post",
                   "type": "object"
                 }
@@ -25879,6 +25934,7 @@
             "application/json": {
               "schema": {
                 "items": {
+                  "additionalProperties": true,
                   "type": "object"
                 },
                 "title": "Events",
@@ -26118,6 +26174,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Template From Diagram Templates From Diagram Post",
                   "type": "object"
                 }
@@ -26166,6 +26223,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Validate Template Templates Validate Post",
                   "type": "object"
                 }
@@ -26362,6 +26420,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Template Diagram Preview Templates  Template Id  Diagram Preview Post",
                   "type": "object"
                 }
@@ -27121,6 +27180,7 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "additionalProperties": true,
                   "title": "Response Import Roster Csv Users Import Csv Post",
                   "type": "object"
                 }

@@ -22,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, RouteContext, iter_route_contexts
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 API = REPO_ROOT / "control-plane/api"
@@ -68,11 +68,21 @@ AUTH_MARKERS = (
 )
 
 
+def _api_routes(routes) -> list[RouteContext]:
+    """Every API route as served: prefix applied, include-level dependencies merged.
+
+    Since FastAPI 0.13x `include_router` no longer copies routes into `app.routes`;
+    it adds one `_IncludedRouter` wrapper. Walking `app.routes` for `APIRoute` would
+    find none and pass vacuously, so walk the effective route contexts instead.
+    """
+    return [c for c in iter_route_contexts(routes) if isinstance(c.original_route, APIRoute)]
+
+
 def _is_public(path: str) -> bool:
     return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
 
 
-def _dependency_names(route: APIRoute) -> set[str]:
+def _dependency_names(route: RouteContext) -> set[str]:
     """Every callable name in a route's flattened dependency tree."""
     names: set[str] = set()
     stack = list(route.dependant.dependencies)
@@ -109,9 +119,9 @@ def test_every_route_requires_authentication():
     from app.main import app
 
     unguarded: list[str] = []
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
+    routes = _api_routes(app.routes)
+    assert len(routes) > 100, f"found only {len(routes)} API routes; the walk is broken"
+    for route in routes:
         if _is_public(route.path):
             continue
         if not AUTH_MARKERS_present(route):
@@ -155,8 +165,8 @@ def test_auth_debt_ratchet_is_current():
     from app.main import app
 
     counts: dict[str, int] = {}
-    for route in app.routes:
-        if not isinstance(route, APIRoute) or _is_public(route.path):
+    for route in _api_routes(app.routes):
+        if _is_public(route.path):
             continue
         if not AUTH_MARKERS_present(route):
             prefix = _router_prefix(route.path)
@@ -171,7 +181,7 @@ def test_auth_debt_ratchet_is_current():
     )
 
 
-def AUTH_MARKERS_present(route: APIRoute) -> bool:  # noqa: N802 - reads as a predicate
+def AUTH_MARKERS_present(route: RouteContext) -> bool:  # noqa: N802 - reads as a predicate
     return bool(_dependency_names(route) & set(AUTH_MARKERS))
 
 
@@ -191,10 +201,19 @@ def test_the_guard_actually_detects_something():
     def guarded(user=Depends(get_current_user)):
         return {}
 
+    # Router-level auth, the way most TrueNorth routers are guarded.
+    guarded_router = APIRouter()
+
+    @guarded_router.get("/via-include")
+    def via_include():
+        return {}
+
     probe.include_router(router)
-    routes = {r.path: r for r in probe.routes if isinstance(r, APIRoute)}
+    probe.include_router(guarded_router, dependencies=[Depends(get_current_user)])
+    routes = {r.path: r for r in _api_routes(probe.routes)}
     assert not AUTH_MARKERS_present(routes["/wide-open"])
     assert AUTH_MARKERS_present(routes["/guarded"])
+    assert AUTH_MARKERS_present(routes["/via-include"])
 
 
 # ── Role vocabulary ────────────────────────────────────────────────────

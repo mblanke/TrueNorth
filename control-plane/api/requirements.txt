@@ -1,6 +1,6 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-pydantic==2.8.2
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
 sqlalchemy==2.0.32
 psycopg[binary]==3.2.1
 alembic==1.13.2
@@ -19,7 +19,7 @@ pypdf==6.19.0
 python-docx==1.1.2
 python-pptx==1.0.2
 html2text==2024.2.26
-python-multipart==0.0.9
+python-multipart==0.0.32
 aiosmtplib>=2.0
 proxmoxer>=2.0
 requests>=2.34.2
