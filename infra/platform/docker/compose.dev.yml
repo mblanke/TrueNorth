@@ -132,7 +132,10 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     restart: unless-stopped
-    command: start-dev
+    # Imports the truenorth realm on first start; an existing realm is left alone.
+    command: start-dev --import-realm
+    volumes:
+      - ../../keycloak/realm-truenorth.json:/opt/keycloak/data/import/realm-truenorth.json:ro
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/forge
