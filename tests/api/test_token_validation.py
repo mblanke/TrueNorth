@@ -130,7 +130,9 @@ KC_JWKS = f"{KC_URL}/realms/truenorth/protocol/openid-connect/certs"
 
 
 @pytest.fixture
-def keycloak(rsa_key, ec_key):
+def keycloak(rsa_key, ec_key, monkeypatch):
+    monkeypatch.delenv("KEYCLOAK_AUDIENCE", raising=False)
+    monkeypatch.delenv("KEYCLOAK_ISSUER", raising=False)
     with respx.mock(assert_all_called=False) as mock:
         mock.get(KC_JWKS).mock(return_value=Response(200, json={"keys": [rsa_jwk(rsa_key), ec_jwk(ec_key)]}))
         yield KeycloakOIDCBackend(keycloak_url=KC_URL, realm="truenorth")
@@ -174,15 +176,23 @@ class TestKeycloakBackend:
     async def test_garbage_is_refused(self, keycloak):
         await _refused(keycloak, "not.a.jwt")
 
-    async def test_audience_is_not_checked(self, keycloak, rsa_key):
-        """Pins current behaviour: Keycloak tokens are accepted for any audience.
-
-        A token issued to any client in the realm is accepted. Tightening this needs a
-        configured audience (KEYCLOAK_URL is the internal URL, not the token's issuer,
-        so the issuer can't be derived either). Change this test deliberately.
-        """
-        payload = await keycloak.validate_token(sign(_claims(aud="some-other-client"), rsa_key))
+    async def test_audience_and_issuer_are_not_checked_by_default(self, keycloak, rsa_key):
+        """Unset KEYCLOAK_AUDIENCE/KEYCLOAK_ISSUER keeps the historical behaviour."""
+        payload = await keycloak.validate_token(sign(_claims(aud="some-other-client", iss="https://x.test/"), rsa_key))
         assert payload["aud"] == "some-other-client"
+
+    async def test_keycloak_audience_when_configured(self, keycloak, rsa_key, monkeypatch):
+        monkeypatch.setenv("KEYCLOAK_AUDIENCE", "truenorth-api")
+        backend = KeycloakOIDCBackend(keycloak_url=KC_URL, realm="truenorth")
+        assert (await backend.validate_token(sign(_claims(aud=["account", "truenorth-api"]), rsa_key)))["sub"]
+        await _refused(backend, sign(_claims(aud="account"), rsa_key), because="Audience")
+        await _refused(backend, sign(_claims(aud=None), rsa_key))
+
+    async def test_keycloak_issuer_when_configured(self, keycloak, rsa_key, monkeypatch):
+        monkeypatch.setenv("KEYCLOAK_ISSUER", "https://idp.test/realms/truenorth")
+        backend = KeycloakOIDCBackend(keycloak_url=KC_URL, realm="truenorth")
+        assert (await backend.validate_token(sign(_claims(), rsa_key)))["sub"]
+        await _refused(backend, sign(_claims(iss="http://keycloak:8080/realms/truenorth"), rsa_key), because="issuer")
 
 
 # ── Generic OIDC backend ─────────────────────────────────────────────────

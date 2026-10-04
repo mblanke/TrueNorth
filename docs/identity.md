@@ -102,6 +102,22 @@ why `95-smoke-test` obtains a real token, decodes it, and asserts the claims are
 present: it is the only check that catches "everything is green and role
 suggestion has never worked".
 
+### Audience and issuer (opt-in)
+
+By default the Keycloak backend checks signature, `kid`, algorithm (RS256) and
+time claims, but **not** `aud` or `iss`: a token issued to any client in the realm
+is accepted. Two settings on the API tighten that. Both are off when unset.
+
+| Setting | Effect | Prerequisite |
+|---|---|---|
+| `KEYCLOAK_AUDIENCE=truenorth-api` | `aud` must include it | Keycloak puts only `account` in `aud`. Add an **Audience** mapper (`oidc-audience-mapper`, *Included Client Audience* `truenorth-api`, *Add to access token* on) to the `truenorth-identity` scope or to `truenorth-web`'s dedicated scope **first**, or every user is locked out |
+| `KEYCLOAK_ISSUER=https://<public-host>/realms/truenorth` | `iss` must equal it | The realm's **public** URL as the browser sees it. `KEYCLOAK_URL` (e.g. `http://keycloak:8080`) is the internal address and will not match |
+
+Verified 2026-10-04 against Keycloak 24: with the mapper, `aud` is
+`["truenorth-api", "account"]` and the token is accepted; the internal URL as
+`KEYCLOAK_ISSUER` is refused. Roll out by adding the mapper, confirming a fresh
+token's `aud` with the smoke test, then setting the variables.
+
 ---
 
 ## AD groups → roles
