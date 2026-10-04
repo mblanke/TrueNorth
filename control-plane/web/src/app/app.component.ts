@@ -1,5 +1,4 @@
 import { Component, ElementRef, NgZone, OnDestroy, ViewChild, signal, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import {
   NavigationCancel,
   NavigationEnd,
@@ -37,7 +36,6 @@ interface NavSection {
 @Component({
   selector: 'tn-root',
   imports: [
-    CommonModule,
     RouterModule,
     RouterOutlet,
     TourOverlayComponent,
@@ -47,8 +45,8 @@ interface NavSection {
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
-    MatExpansionModule,
-  ],
+    MatExpansionModule
+],
   template: `
     @if (isBareRoute()) {
       <router-outlet />

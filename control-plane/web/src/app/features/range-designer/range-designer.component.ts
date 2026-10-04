@@ -1,5 +1,4 @@
 import { Component, OnDestroy, ElementRef, ViewChild, AfterViewInit, HostListener, signal, ChangeDetectorRef, ViewEncapsulation, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -226,12 +225,24 @@ export class TextPromptDialogComponent {
   selector: 'tn-range-designer',
   encapsulation: ViewEncapsulation.None,
   imports: [
-    CommonModule, FormsModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule,
-    MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule, MatTooltipModule,
-    MatSliderModule, MatDividerModule, MatSnackBarModule, MatDialogModule, FilterCategoryPipe,
+    FormsModule,
+    RouterModule,
+    MatCardModule,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule,
+    MatCheckboxModule,
+    MatTooltipModule,
+    MatSliderModule,
+    MatDividerModule,
+    MatSnackBarModule,
+    MatDialogModule,
+    FilterCategoryPipe,
     RangeNotesComponent,
-    EmptyStateComponent,
-  ],
+    EmptyStateComponent
+],
   template: `
     <div class="designer-layout">
       <!-- LEFT: STENCIL PALETTE -->

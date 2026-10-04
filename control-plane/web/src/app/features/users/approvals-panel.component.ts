@@ -1,5 +1,4 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
@@ -30,7 +29,6 @@ const ROLES = ['student', 'instructor', 'observer', 'range_ops', 'admin'];
 @Component({
   selector: 'tn-approvals-panel',
   imports: [
-    CommonModule,
     FormsModule,
     MatCardModule,
     MatTableModule,
@@ -43,8 +41,8 @@ const ROLES = ['student', 'instructor', 'observer', 'range_ops', 'admin'];
     MatCheckboxModule,
     MatTooltipModule,
     MatProgressSpinnerModule,
-    EmptyStateComponent,
-  ],
+    EmptyStateComponent
+],
   template: `
     <div class="panel">
       <header class="bar">

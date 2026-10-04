@@ -1,5 +1,4 @@
 import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, ViewChild, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -11,7 +10,7 @@ import { AuroraScene } from './aurora-scene';
 
 @Component({
   selector: 'tn-login',
-  imports: [CommonModule, MatButtonModule, MatIconModule],
+  imports: [MatButtonModule, MatIconModule],
   template: `
     <div class="hero" #hero>
       <canvas class="hero-canvas" #bg></canvas>

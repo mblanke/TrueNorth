@@ -1,7 +1,6 @@
 import {
   Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, effect, inject,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ApiService, CompetencyHeatmap } from '@core/services/api.service';
 import { MatCardModule } from '@angular/material/card';
 import { MatSelectModule } from '@angular/material/select';
@@ -25,7 +24,7 @@ type HeatmapData = CompetencyHeatmap;
 
 @Component({
   selector: 'tn-competency-heatmap',
-  imports: [CommonModule, MatCardModule, MatSelectModule, MatFormFieldModule, FormsModule],
+  imports: [MatCardModule, MatSelectModule, MatFormFieldModule, FormsModule],
   template: `
     <mat-card>
       <mat-card-header>

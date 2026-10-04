@@ -1,5 +1,4 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,7 +15,7 @@ import { AuthService } from '@core/services/auth.service';
  */
 @Component({
   selector: 'tn-registration-pending',
-  imports: [CommonModule, MatCardModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [MatCardModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   template: `
     <div class="shell">
       <mat-card class="card">

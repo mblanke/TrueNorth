@@ -1,5 +1,4 @@
 import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, ViewChild, signal, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,9 +16,15 @@ import { HoverInfo, TopologyScene, parseDiagram } from './topology-scene';
 @Component({
   selector: 'tn-topology-3d',
   imports: [
-    CommonModule, RouterModule, FormsModule, MatButtonModule, MatCardModule,
-    MatFormFieldModule, MatIconModule, MatSelectModule, MatTooltipModule,
-  ],
+    RouterModule,
+    FormsModule,
+    MatButtonModule,
+    MatCardModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatSelectModule,
+    MatTooltipModule
+],
   template: `
     <div class="page-container topo-page">
       <div class="page-header">

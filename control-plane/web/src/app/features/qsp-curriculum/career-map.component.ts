@@ -15,7 +15,6 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -82,7 +81,7 @@ const STATE_LABEL: Record<NodeState, string> = {
  */
 @Component({
   selector: 'tn-career-map',
-  imports: [CommonModule, RouterLink, MatIconModule, MatTooltipModule],
+  imports: [RouterLink, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="map-scroll">

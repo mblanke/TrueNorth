@@ -1,5 +1,4 @@
 import { Component, OnDestroy, OnInit, effect, signal, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -23,10 +22,19 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
 @Component({
   selector: 'tn-telemetry',
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule,
-    MatIconModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatTableModule,
-    MatSlideToggleModule, MatTooltipModule, NgxEchartsDirective, LottieIconComponent,
-  ],
+    FormsModule,
+    MatCardModule,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule,
+    MatTableModule,
+    MatSlideToggleModule,
+    MatTooltipModule,
+    NgxEchartsDirective,
+    LottieIconComponent
+],
   // Component-level provider keeps echarts inside this route's lazy chunk.
   providers: [provideEchartsCore({ echarts: () => import('echarts') })],
   template: `

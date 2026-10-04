@@ -43,11 +43,7 @@
         "plugin:@angular-eslint/template/recommended",
         "plugin:@angular-eslint/template/accessibility"
       ],
-      "rules": {
-        // Added to recommended in angular-eslint 21. *ngIf/*ngFor still work; convert
-        // with `ng generate @angular/core:control-flow`, then drop this.
-        "@angular-eslint/template/prefer-control-flow": "off"
-      }
+      "rules": {}
     }
   ]
 }

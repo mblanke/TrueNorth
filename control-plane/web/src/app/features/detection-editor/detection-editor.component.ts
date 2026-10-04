@@ -1,5 +1,5 @@
 import { Component, signal, OnInit, OnDestroy, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DatePipe, UpperCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { MatCardModule } from '@angular/material/card';
@@ -147,12 +147,25 @@ export class DetectionAiDialogComponent {
 @Component({
   selector: 'tn-detection-editor',
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
-    MatFormFieldModule, MatInputModule, MatSelectModule, MatChipsModule,
-    MatCheckboxModule, MatTableModule, MatSnackBarModule, MatDialogModule,
-    MatProgressSpinnerModule, MatTooltipModule,
-    EmptyStateComponent, EnterStaggerDirective,
-  ],
+    DatePipe,
+    UpperCasePipe,
+    FormsModule,
+    MatCardModule,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule,
+    MatChipsModule,
+    MatCheckboxModule,
+    MatTableModule,
+    MatSnackBarModule,
+    MatDialogModule,
+    MatProgressSpinnerModule,
+    MatTooltipModule,
+    EmptyStateComponent,
+    EnterStaggerDirective
+],
   template: `
     <div class="page-container">
       <div class="page-header">

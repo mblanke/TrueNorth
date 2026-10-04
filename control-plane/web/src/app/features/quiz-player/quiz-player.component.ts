@@ -1,5 +1,4 @@
 import { Component, OnDestroy, OnInit, computed, signal, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -15,10 +14,14 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
 @Component({
   selector: 'tn-quiz-player',
   imports: [
-    CommonModule, RouterModule, MatButtonModule, MatCardModule,
-    MatIconModule, MatProgressBarModule, MatSnackBarModule,
-    LottieIconComponent,
-  ],
+    RouterModule,
+    MatButtonModule,
+    MatCardModule,
+    MatIconModule,
+    MatProgressBarModule,
+    MatSnackBarModule,
+    LottieIconComponent
+],
   template: `
     <div class="player-shell">
       @if (!attempt() && !result()) {

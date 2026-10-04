@@ -1,5 +1,4 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -26,9 +25,14 @@ interface ObjectiveDraft {
 @Component({
   selector: 'tn-collective-create-dialog',
   imports: [
-    CommonModule, FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
-    MatIconModule, MatInputModule, MatSelectModule,
-  ],
+    FormsModule,
+    MatDialogModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatSelectModule
+],
   template: `
     <h2 mat-dialog-title>New collective exercise</h2>
     <mat-dialog-content>
@@ -115,10 +119,17 @@ export class CollectiveCreateDialogComponent {
 @Component({
   selector: 'tn-mesl-home',
   imports: [
-    CommonModule, RouterLink, MatButtonModule, MatCardModule, MatDialogModule,
-    MatIconModule, MatTooltipModule,
-    EmptyStateComponent, CountUpDirective, EnterStaggerDirective, HoverLiftDirective,
-  ],
+    RouterLink,
+    MatButtonModule,
+    MatCardModule,
+    MatDialogModule,
+    MatIconModule,
+    MatTooltipModule,
+    EmptyStateComponent,
+    CountUpDirective,
+    EnterStaggerDirective,
+    HoverLiftDirective
+],
   template: `
     <div class="page-container">
       <div class="page-header">

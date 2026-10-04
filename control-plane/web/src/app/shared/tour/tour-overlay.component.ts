@@ -8,7 +8,6 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TourService } from './tour.service';
@@ -30,7 +29,7 @@ interface Box {
  */
 @Component({
   selector: 'tn-tour-overlay',
-  imports: [CommonModule, MatButtonModule, MatIconModule],
+  imports: [MatButtonModule, MatIconModule],
   template: `
     @if (tour.active() && box(); as b) {
       <div class="tour-root" role="dialog" aria-modal="true" [attr.aria-label]="step()?.title">

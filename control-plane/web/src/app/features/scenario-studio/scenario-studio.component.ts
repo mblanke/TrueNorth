@@ -1,5 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -106,11 +106,22 @@ export class ScenarioDraftDialogComponent {
 @Component({
   selector: 'tn-scenario-studio',
   imports: [
-    CommonModule, FormsModule, RouterLink, MatButtonModule, MatCardModule, MatChipsModule,
-    MatDialogModule, MatFormFieldModule, MatIconModule, MatInputModule,
-    MatProgressSpinnerModule, MatSelectModule, MatTooltipModule,
-    EmptyStateComponent, EnterStaggerDirective,
-  ],
+    DatePipe,
+    FormsModule,
+    RouterLink,
+    MatButtonModule,
+    MatCardModule,
+    MatChipsModule,
+    MatDialogModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    MatSelectModule,
+    MatTooltipModule,
+    EmptyStateComponent,
+    EnterStaggerDirective
+],
   template: `
     <div class="page-container">
       @if (!editorOpen()) {

@@ -1,5 +1,4 @@
 import { Component, Input, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { LottieComponent, AnimationOptions } from 'ngx-lottie';
 
 import { MotionService } from '../motion';
@@ -13,7 +12,7 @@ import { MotionService } from '../motion';
  */
 @Component({
   selector: 'tn-lottie',
-  imports: [CommonModule, LottieComponent],
+  imports: [LottieComponent],
   template: `
     <ng-lottie
       [options]="options"

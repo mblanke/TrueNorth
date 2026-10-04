@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatExpansionModule } from '@angular/material/expansion';
@@ -59,14 +58,13 @@ export function catalogueStages(map: CurriculumMap | null, query = ''): Catalogu
 @Component({
   selector: 'tn-course-catalogue',
   imports: [
-    CommonModule,
     RouterLink,
     MatButtonModule,
     MatExpansionModule,
     MatIconModule,
     MatTooltipModule,
-    EmptyStateComponent,
-  ],
+    EmptyStateComponent
+],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="cat tn-quiet">
