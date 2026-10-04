@@ -1,6 +1,6 @@
 """TrueNorth Range — LTI 1.3 tool-provider core.
 
-Native implementation on python-jose + cryptography + httpx:
+Native implementation on PyJWT + cryptography + httpx:
   - persistent RSA tool keypair (DB) + JWKS publication
   - OIDC login initiation + id_token launch validation (nonce/state replay-safe)
   - Deep Linking response signing
@@ -22,11 +22,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
+import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from jose import jwt
 from sqlalchemy.orm import Session
 
+from . import jwks as jwks_verify
 from .models import ExternalPlatform, LTILaunch, LTINonce, LTIToolKey
 
 logger = logging.getLogger("truenorth.api.lti13")
@@ -160,7 +161,8 @@ def find_platform(db: Session, iss: str, client_id: str | None = None) -> Extern
 
 async def validate_launch(db: Session, id_token: str, state: str) -> tuple[ExternalPlatform, dict]:
     """Step 2: verify state/nonce + the platform-signed id_token. Returns claims."""
-    unverified = jwt.get_unverified_claims(id_token)
+    # Unverified read only to find the platform registration; verified below.
+    unverified = jwt.decode(id_token, options={"verify_signature": False})
     iss = unverified.get("iss", "")
     aud = unverified.get("aud")
     client_id = aud[0] if isinstance(aud, list) else aud
@@ -184,13 +186,12 @@ async def validate_launch(db: Session, id_token: str, state: str) -> tuple[Exter
         resp.raise_for_status()
         platform_jwks = resp.json()
 
-    claims = jwt.decode(
+    claims = jwks_verify.decode(
         id_token,
         platform_jwks,
         algorithms=["RS256"],
         audience=platform.lti_client_id,
         issuer=iss,
-        options={"verify_at_hash": False},
     )
     if str(claims.get(CLAIM_DEPLOYMENT, "")) != platform.lti_deployment_id:
         raise ValueError("LTI deployment id does not match the registered platform")

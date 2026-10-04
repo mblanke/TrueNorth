@@ -246,9 +246,9 @@ def record_external_activity(
 import time as _time
 from html import escape as _html_escape
 
+import jwt as _jwt
 from fastapi import Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from jose import jwt as _jwt
 from pydantic import BaseModel as _BaseModel
 
 from .. import lti13

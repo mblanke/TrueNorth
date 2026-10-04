@@ -19,6 +19,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 import respx
 from app import lti13
@@ -26,7 +27,6 @@ from app.models import ExternalPlatform, IntegrationAuthType, LTINonce, User, Us
 from app.routers.integrations import _jit_user
 from fastapi import HTTPException
 from httpx import Response
-from jose import jwt
 
 TENANT_A = uuid.UUID("00000000-0000-0000-0000-00000000000a")
 TENANT_B = uuid.UUID("00000000-0000-0000-0000-00000000000b")
@@ -124,7 +124,7 @@ class TestValidateLaunch:
     async def test_a_token_for_another_client_is_refused(self, db_session, platform_keys):
         platform = _platform(db_session)
         token, state = _launch(db_session, platform, aud="client-2")
-        with pytest.raises(Exception):  # noqa: B017 — jose raises JWTClaimsError
+        with pytest.raises(jwt.InvalidAudienceError):
             await lti13.validate_launch(db_session, token, state)
 
     async def test_a_replayed_state_is_refused(self, db_session, platform_keys):

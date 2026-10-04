@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import respx
+from app import jwks as jwks_verify
 from app import lti13
 from app.auth_backends import GenericOIDCBackend, KeycloakOIDCBackend
 from app.models import ExternalPlatform, IntegrationAuthType, LTINonce
@@ -48,8 +49,9 @@ def sign(claims: dict, key, *, alg: str = "RS256", kid: str | None = "k1") -> st
     if kid is not None:
         header["kid"] = kid
     signing_input = f"{_b64(json.dumps(header).encode())}.{_b64(json.dumps(claims).encode())}".encode()
-    if alg == "RS256":
-        sig = key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+    if alg in ("RS256", "RS384"):
+        digest = hashes.SHA256() if alg == "RS256" else hashes.SHA384()
+        sig = key.sign(signing_input, padding.PKCS1v15(), digest)
     elif alg == "ES256":
         r, s = decode_dss_signature(key.sign(signing_input, ec.ECDSA(hashes.SHA256())))
         sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
@@ -113,18 +115,6 @@ def _claims(**overrides) -> dict:
     return {k: v for k, v in claims.items() if v is not None}
 
 
-# python-jose (3.3.0) gaps these tests found; the PyJWT backend fixes them.
-JOSE_MIXED_JWKS = pytest.mark.xfail(
-    strict=True,
-    reason="python-jose tries every JWKS key; a key of another type raises JWKError, "
-    "which escapes `except JWTError` as a 500",
-)
-JOSE_IGNORES_KID = pytest.mark.xfail(strict=True, reason="python-jose ignores kid and tries every key")
-JOSE_MISSING_AUD = pytest.mark.xfail(
-    strict=True, reason="python-jose skips the audience check when the token has no aud claim"
-)
-
-
 async def _refused(backend, token: str) -> None:
     with pytest.raises(HTTPException) as exc:
         await backend.validate_token(token)
@@ -151,17 +141,14 @@ class TestKeycloakBackend:
         assert payload["sub"] == "user-123"
         assert payload["preferred_username"] == "tester"
 
-    @JOSE_MIXED_JWKS
     async def test_a_token_signed_by_another_key_is_refused(self, keycloak, other_rsa_key):
         await _refused(keycloak, sign(_claims(), other_rsa_key))
 
-    @JOSE_MIXED_JWKS
     async def test_a_tampered_payload_is_refused(self, keycloak, rsa_key):
         header, _, sig = sign(_claims(), rsa_key).split(".")
         forged = _b64(json.dumps(_claims(sub="admin")).encode())
         await _refused(keycloak, f"{header}.{forged}.{sig}")
 
-    @JOSE_IGNORES_KID
     async def test_an_unknown_key_id_is_refused(self, keycloak, rsa_key):
         await _refused(keycloak, sign(_claims(), rsa_key, kid="rotated-away"))
 
@@ -224,7 +211,6 @@ class TestGenericOIDCBackend:
     async def test_the_key_is_chosen_by_kid(self, oidc, other_rsa_key):
         assert (await oidc.validate_token(sign(_claims(), other_rsa_key, kid="k0")))["sub"] == "user-123"
 
-    @JOSE_MIXED_JWKS
     async def test_a_kid_pointing_at_the_wrong_key_is_refused(self, oidc, other_rsa_key):
         await _refused(oidc, sign(_claims(), other_rsa_key, kid="k1"))
 
@@ -235,7 +221,6 @@ class TestGenericOIDCBackend:
         payload = await oidc.validate_token(sign(_claims(aud=["another-api", "truenorth-api"]), rsa_key))
         assert payload["sub"] == "user-123"
 
-    @JOSE_MISSING_AUD
     async def test_a_token_with_no_audience_is_refused_when_one_is_configured(self, oidc, rsa_key):
         await _refused(oidc, sign(_claims(aud=None), rsa_key))
 
@@ -257,7 +242,6 @@ class TestGenericOIDCBackend:
     async def test_an_algorithm_outside_the_allow_list_is_refused(self, oidc, ec_key):
         await _refused(oidc, sign(_claims(), ec_key, alg="ES256", kid="e1"))
 
-    @JOSE_MIXED_JWKS
     async def test_es256_is_accepted_when_allowed(self, oidc_jwks, ec_key):
         backend = GenericOIDCBackend(jwks_url=OIDC_JWKS, audience="truenorth-api", algorithms=["ES256"])
         payload = await backend.validate_token(sign(_claims(), ec_key, alg="ES256", kid="e1"))
@@ -273,6 +257,43 @@ class TestGenericOIDCBackend:
         backend = GenericOIDCBackend(jwks_url=OIDC_JWKS)
         payload = await backend.validate_token(sign(_claims(aud="whatever", iss="https://anyone.test/"), rsa_key))
         assert payload["sub"] == "user-123"
+
+
+# ── Rules shared by every JWKS-verified token (app/jwks.py) ──────────────
+
+
+@pytest.mark.asyncio
+class TestSharedRules:
+    async def test_a_token_without_exp_is_refused(self, oidc, keycloak, rsa_key):
+        """An id/access token with no expiry would be valid forever."""
+        await _refused(oidc, sign(_claims(exp=None), rsa_key))
+        await _refused(keycloak, sign(_claims(exp=None), rsa_key))
+
+    async def test_a_few_seconds_of_issuer_clock_skew_is_tolerated(self, oidc, rsa_key):
+        payload = await oidc.validate_token(sign(_claims(iat=int(time.time()) + 10), rsa_key))
+        assert payload["sub"] == "user-123"
+
+    async def test_an_iat_far_in_the_future_is_refused(self, oidc, rsa_key):
+        await _refused(oidc, sign(_claims(iat=int(time.time()) + 3600), rsa_key))
+
+    async def test_no_kid_is_accepted_when_one_key_fits(self, keycloak, rsa_key):
+        """Keycloak's set here has one RSA and one EC key: RS256 has exactly one candidate."""
+        assert (await keycloak.validate_token(sign(_claims(), rsa_key, kid=None)))["sub"] == "user-123"
+
+    async def test_no_kid_is_refused_when_several_keys_fit(self, oidc, rsa_key):
+        await _refused(oidc, sign(_claims(), rsa_key, kid=None))
+
+    async def test_a_key_that_declares_its_alg_is_not_used_for_another(self, oidc_jwks, rsa_key):
+        """k1 is published as RS256. A genuine RS384 signature by the same key is refused."""
+        backend = GenericOIDCBackend(jwks_url=OIDC_JWKS, audience="truenorth-api", algorithms=["RS256", "RS384"])
+        await _refused(backend, sign(_claims(), rsa_key, alg="RS384"))
+
+
+@pytest.mark.parametrize("algs", [["HS256"], ["none"], ["RS256", "HS512"], ["nope"]])
+def test_generic_oidc_refuses_a_symmetric_or_unknown_algorithm_config(algs):
+    """OIDC_ALGORITHMS=HS256 would let anyone holding the public JWKS mint tokens."""
+    with pytest.raises(ValueError, match="Unsupported JWT algorithm"):
+        GenericOIDCBackend(jwks_url=OIDC_JWKS, algorithms=algs)
 
 
 # ── LTI 1.3 launch id_token ──────────────────────────────────────────────
@@ -359,3 +380,49 @@ class TestLTILaunchToken:
         # The nonce is consumed only after the signature checks, so a refused token
         # must not burn it.
         assert db_session.query(LTINonce).filter(LTINonce.state == state).count() == 1
+
+
+# ── Tokens TrueNorth signs (LTI tool key) ────────────────────────────────
+
+
+def test_deep_linking_round_trip_signs_verifiable_tokens(db_session, client):
+    """Picker session -> /lti/deeplink/finish -> LtiDeepLinkingResponse, all tool-signed."""
+    import re
+
+    from app.routers.integrations import _deep_link_picker
+
+    platform = _lti_platform(db_session)
+    claims = {
+        lti13.CLAIM_DEPLOYMENT: "dep-1",
+        lti13.CLAIM_DL_SETTINGS: {"deep_link_return_url": "http://moodle.test/return", "data": "opaque"},
+    }
+    picker = _deep_link_picker(db_session, platform, claims).body.decode()
+    session = re.search(r'name="session" value="([^"]+)"', picker).group(1)
+
+    item = f"quiz:{uuid.uuid4()}:Intro quiz"
+    finished = client.post("/lti/deeplink/finish", data={"session": session, "item": item})
+    assert finished.status_code == 200, finished.text
+    response_jwt = re.search(r'name="JWT" value="([^"]+)"', finished.text).group(1)
+
+    # What the platform does: verify against the tool's published JWKS.
+    decoded = jwks_verify.decode(
+        response_jwt,
+        lti13.jwks(db_session),
+        algorithms=["RS256"],
+        audience=LTI_ISSUER,
+        issuer="client-1",
+    )
+    assert decoded[lti13.CLAIM_MESSAGE_TYPE] == "LtiDeepLinkingResponse"
+    assert decoded[lti13.CLAIM_DEPLOYMENT] == "dep-1"
+    assert decoded["https://purl.imsglobal.org/spec/lti-dl/claim/data"] == "opaque"
+    assert decoded[lti13.CLAIM_DL_CONTENT_ITEMS][0]["title"] == "Intro quiz"
+
+
+def test_a_forged_deep_linking_session_is_refused(db_session, client, other_rsa_key):
+    platform = _lti_platform(db_session)
+    forged = sign(
+        {"platform_id": str(platform.id), "return_url": "http://evil.test/", "exp": int(time.time()) + 600},
+        other_rsa_key,
+        kid=lti13.get_tool_key(db_session).kid,
+    )
+    assert client.post("/lti/deeplink/finish", data={"session": forged}).status_code == 401

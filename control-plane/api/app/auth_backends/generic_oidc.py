@@ -16,9 +16,10 @@ import logging
 import os
 
 import httpx
+import jwt
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
 
+from .. import jwks as jwks_verify
 from .base import BaseAuthBackend
 
 logger = logging.getLogger("truenorth.auth.generic_oidc")
@@ -42,7 +43,9 @@ class GenericOIDCBackend(BaseAuthBackend):
             )
         self._audience = audience or os.getenv("OIDC_AUDIENCE", "")
         raw_algs = os.getenv("OIDC_ALGORITHMS", "RS256")
-        self._algorithms = algorithms or [a.strip() for a in raw_algs.split(",") if a.strip()]
+        self._algorithms = jwks_verify.check_algorithms(
+            algorithms or [a.strip() for a in raw_algs.split(",") if a.strip()]
+        )
         self._issuer = issuer or os.getenv("OIDC_ISSUER", "") or None
         self._jwks_cache: dict | None = None
 
@@ -63,18 +66,15 @@ class GenericOIDCBackend(BaseAuthBackend):
     async def validate_token(self, raw_token: str) -> dict:
         try:
             jwks = await self._get_jwks()
-            options: dict = {"verify_aud": bool(self._audience)}
-            if self._issuer:
-                options["verify_iss"] = True
-            return jwt.decode(
+            return jwks_verify.decode(
                 raw_token,
                 jwks,
                 algorithms=self._algorithms,
                 audience=self._audience or None,
                 issuer=self._issuer,
-                options=options,
+                verify_aud=bool(self._audience),
             )
-        except JWTError as exc:
+        except jwt.PyJWTError as exc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Invalid token: {exc}",

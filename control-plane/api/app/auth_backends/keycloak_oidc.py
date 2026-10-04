@@ -15,9 +15,10 @@ import logging
 import os
 
 import httpx
+import jwt
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
 
+from .. import jwks as jwks_verify
 from ..circuit_breaker import CircuitOpenError, keycloak_breaker
 from .base import BaseAuthBackend
 
@@ -68,14 +69,9 @@ class KeycloakOIDCBackend(BaseAuthBackend):
     async def validate_token(self, raw_token: str) -> dict:
         try:
             jwks = await self._get_jwks()
-            return jwt.decode(
-                raw_token,
-                jwks,
-                algorithms=["RS256"],
-                audience="account",
-                options={"verify_aud": False},
-            )
-        except JWTError as exc:
+            # No audience check: see test_token_validation.test_audience_is_not_checked.
+            return jwks_verify.decode(raw_token, jwks, algorithms=["RS256"], verify_aud=False)
+        except jwt.PyJWTError as exc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Invalid token: {exc}",
