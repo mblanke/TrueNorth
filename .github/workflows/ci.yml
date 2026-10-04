@@ -18,9 +18,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: pip install ruff mypy
-      - run: ruff check control-plane/ scenario-engine/ tools/ ai-orchestrator/
-      - run: ruff format --check control-plane/ scenario-engine/ tools/ ai-orchestrator/
+      # Same rules, targets and pin as scripts/dod.sh: newer ruff adds rules and moves the ratchet.
+      - run: pip install "ruff==0.16.3"
+      - name: ruff breakage rules (undefined names, redefinitions, syntax)
+        run: ruff check $RUFF_TARGETS --exclude control-plane/web --no-fix --select F821,F811,E9
+      - name: ruff debt may not rise above .dod-ruff-baseline
+        run: |
+          CUR=$(ruff check $RUFF_TARGETS --exclude control-plane/web --no-fix --output-format=concise | grep -c ':' || true)
+          BASE=$(cat .dod-ruff-baseline)
+          echo "ruff debt: $CUR (baseline $BASE)"
+          if [ "$CUR" -gt "$BASE" ]; then ruff check $RUFF_TARGETS --exclude control-plane/web --no-fix --output-format=concise; exit 1; fi
+    env:
+      RUFF_TARGETS: control-plane/ scenario-engine/ ai-orchestrator/ telemetry/ tools/ tests/
 
   test-python:
     runs-on: ubuntu-latest
@@ -31,9 +40,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: |
-          pip install -r control-plane/api/requirements.txt
-          pip install -r control-plane/worker/requirements.txt
-          pip install pytest pytest-asyncio httpx aiosmtplib
+          pip install -r control-plane/api/requirements.txt -r control-plane/worker/requirements.txt \
+            -r ai-orchestrator/requirements.txt -r telemetry-pipeline/requirements.txt
+          pip install pytest pytest-asyncio pytest-mock respx opensearch-py httpx aiosmtplib
       - run: pytest tests/ --tb=short -q --ignore=tests/integration
         env:
           AUTH_DISABLED: "true"

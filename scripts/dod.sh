@@ -66,10 +66,10 @@ echo "+ Worker task contract drift"
 "$PY" scripts/export_task_contracts.py --check \
   || fail "task contract drift — run: $PY scripts/export_task_contracts.py, review, commit"
 
-# Match .github/workflows/ci.yml:37 exactly, so local green and CI green mean the same
-# thing. tests/integration needs OpenSearch and live provisioners and is a separate CI
-# job (ci.yml:137); running it here just produces errors that teach people to ignore
-# this script.
+# Match the test-python job in .github/workflows/ci.yml exactly, so local green and CI
+# green mean the same thing (its lint-python job runs the ruff checks above). tests/integration
+# needs OpenSearch and live provisioners and is a separate CI job (`integration`); running
+# it here just produces errors that teach people to ignore this script.
 run "$PY" -m pytest tests/ --tb=short -q --ignore=tests/integration
 
 # Angular is opt-in until the repo actually carries a karma.conf.js and CHROME_BIN is

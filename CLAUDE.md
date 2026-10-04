@@ -9,8 +9,9 @@ Load only those relevant to the current task; model selection stays inherited.
 
 `./scripts/dod.sh` is the Definition of Done. It is real: it fails on undefined names,
 redefinitions and syntax errors; it ratchets total ruff findings (`.dod-ruff-baseline`)
-so debt can shrink but never grow; it runs the same pytest selection as CI
-(`.github/workflows/ci.yml:37`). On success it records the passing tree in `.dod-pass`.
+so debt can shrink but never grow; it runs the same ruff checks and pytest selection as CI
+(`lint-python` and `test-python` in `.github/workflows/ci.yml`). On success it records the
+passing tree in `.dod-pass`.
 Web checks are opt-in with `DOD_WEB=1`.
 
 Do not claim work is done until it passes. Run it with the venv: `bash scripts/dod.sh`.

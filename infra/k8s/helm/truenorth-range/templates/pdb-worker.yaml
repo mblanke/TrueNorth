@@ -12,7 +12,7 @@ spec:
       {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "worker-provision") | nindent 6 }}
 {{- end }}
 ---
-{{- if .Values.workerScenario.enabled -}}
+{{ if .Values.workerScenario.enabled -}}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -26,7 +26,7 @@ spec:
       {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "worker-scenario") | nindent 6 }}
 {{- end }}
 ---
-{{- if .Values.workerTelemetry.enabled -}}
+{{ if .Values.workerTelemetry.enabled -}}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
