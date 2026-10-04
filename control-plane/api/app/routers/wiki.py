@@ -1,0 +1,602 @@
+"""TrueNorth Range — Wiki / knowledge base router.
+
+Confluence-style spaces holding a tree of markdown pages, with full revision history.
+
+Permissions required per endpoint:
+
+==================================================  ==========================
+Endpoint                                            Permission(s)
+==================================================  ==========================
+GET    /wiki/spaces                                 WIKI_READ
+POST   /wiki/spaces                                 WIKI_ADMIN
+GET    /wiki/spaces/{slug}                          WIKI_READ
+PUT    /wiki/spaces/{slug}                          WIKI_ADMIN
+DELETE /wiki/spaces/{slug}  (archives)              WIKI_ADMIN
+GET    /wiki/spaces/{slug}/tree                     WIKI_READ
+POST   /wiki/spaces/{slug}/pages                    WIKI_EDIT
+GET    /wiki/pages/{page_id}                        WIKI_READ
+PUT    /wiki/pages/{page_id}                        WIKI_EDIT
+DELETE /wiki/pages/{page_id}                        WIKI_EDIT
+GET    /wiki/pages/{page_id}/revisions              WIKI_READ
+GET    /wiki/pages/{page_id}/revisions/{n}          WIKI_READ
+POST   /wiki/pages/{page_id}/revisions/{n}/restore  WIKI_EDIT
+GET    /wiki/search?q=                              WIKI_READ
+==================================================  ==========================
+
+Visibility: a space marked ``staff`` is invisible (404, never 403) to anyone without
+WIKI_EDIT, and so are unpublished pages. Saving a page requires the ``base_revision``
+the editor started from; a stale one is a 409 carrying the current page, so concurrent
+editors cannot silently overwrite each other.
+"""
+
+from __future__ import annotations
+
+import re
+import uuid
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from ..auth import CurrentUser
+from ..db import get_db
+from ..models import AuditLog, User, WikiPage, WikiRevision, WikiSpace
+from ..rbac import Permission, require_permission, user_has_permission
+from ..tenancy import get_owned, tenant_uuid
+
+router = APIRouter(prefix="/wiki", tags=["wiki"])
+
+SLUG_RE = r"^[a-z0-9][a-z0-9-]*$"
+
+
+# ── Schemas ─────────────────────────────────────────────────────────────
+class SpaceIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    slug: str = Field(..., min_length=1, max_length=100, pattern=SLUG_RE)
+    description: str = ""
+    icon: str = Field("folder", max_length=50)
+    visibility: str = Field("all", pattern=r"^(all|staff)$")
+
+
+class SpaceUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    icon: str | None = Field(None, max_length=50)
+    visibility: str | None = Field(None, pattern=r"^(all|staff)$")
+    is_archived: bool | None = None
+
+
+class SpaceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    slug: str
+    description: str
+    icon: str
+    visibility: str
+    is_archived: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PageIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    body: str = ""
+    parent_id: uuid.UUID | None = None
+    tags: str = Field("", max_length=500)
+    is_published: bool = True
+
+
+class PageUpdate(BaseModel):
+    base_revision: int = Field(..., ge=1, description="revision_number the edit started from")
+    title: str | None = Field(None, min_length=1, max_length=500)
+    body: str | None = None
+    parent_id: uuid.UUID | None = None
+    move_to_root: bool = False
+    tags: str | None = Field(None, max_length=500)
+    is_published: bool | None = None
+    ordinal: int | None = None
+    edit_summary: str = Field("", max_length=500)
+
+
+class PageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    space_id: uuid.UUID
+    space_slug: str = ""
+    parent_id: uuid.UUID | None = None
+    title: str
+    slug: str
+    body: str
+    tags: str
+    ordinal: int
+    is_published: bool
+    author_id: uuid.UUID
+    last_editor_id: uuid.UUID
+    last_editor_name: str = ""
+    revision_number: int
+    breadcrumbs: list[dict] = Field(default_factory=list)
+    children: list[dict] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class TreeNode(BaseModel):
+    id: uuid.UUID
+    title: str
+    slug: str
+    is_published: bool
+    children: list[TreeNode] = Field(default_factory=list)
+
+
+class RevisionListOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    revision_number: int
+    title: str
+    editor_id: uuid.UUID
+    editor_name: str = ""
+    edit_summary: str
+    created_at: datetime
+
+
+class RevisionOut(RevisionListOut):
+    body: str
+
+
+class SearchHit(BaseModel):
+    page_id: uuid.UUID
+    space_slug: str
+    space_name: str
+    title: str
+    snippet: str
+    updated_at: datetime
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────
+def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
+    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid))
+
+
+def _staff(user: CurrentUser) -> bool:
+    return user_has_permission(user, Permission.WIKI_EDIT)
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return (slug or "page")[:200]
+
+
+def _names(db: Session, user: CurrentUser, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    rows = (
+        db.query(User.id, User.display_name)
+        .filter(User.id.in_(ids), User.tenant_id == tenant_uuid(user))
+        .all()
+    )
+    return {r.id: r.display_name for r in rows}
+
+
+def _space(db: Session, slug: str, user: CurrentUser) -> WikiSpace:
+    """A space by slug in the caller's tenant, honouring staff-only visibility."""
+    space = (
+        db.query(WikiSpace)
+        .filter(
+            WikiSpace.tenant_id == tenant_uuid(user),
+            WikiSpace.slug == slug,
+            WikiSpace.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not space or (space.visibility == "staff" and not _staff(user)):
+        raise HTTPException(404, "Space not found")
+    return space
+
+
+def _page(db: Session, page_id: uuid.UUID, user: CurrentUser) -> tuple[WikiPage, WikiSpace]:
+    page = get_owned(db, WikiPage, page_id, user, not_found="Page not found")
+    space = get_owned(db, WikiSpace, page.space_id, user, not_found="Page not found")
+    if not _staff(user) and (space.visibility == "staff" or not page.is_published):
+        raise HTTPException(404, "Page not found")
+    return page, space
+
+
+def _visible_pages(db: Session, space: WikiSpace, user: CurrentUser):
+    q = db.query(WikiPage).filter(
+        WikiPage.tenant_id == tenant_uuid(user),
+        WikiPage.space_id == space.id,
+        WikiPage.deleted_at.is_(None),
+    )
+    if not _staff(user):
+        q = q.filter(WikiPage.is_published.is_(True))
+    return q
+
+
+def _page_out(db: Session, page: WikiPage, space: WikiSpace, user: CurrentUser) -> PageOut:
+    siblings = _visible_pages(db, space, user).all()
+    by_id = {p.id: p for p in siblings}
+    crumbs: list[dict] = []
+    cursor = by_id.get(page.parent_id) if page.parent_id else None
+    while cursor is not None and len(crumbs) < 50:
+        crumbs.insert(0, {"id": str(cursor.id), "title": cursor.title})
+        cursor = by_id.get(cursor.parent_id) if cursor.parent_id else None
+    children = sorted((p for p in siblings if p.parent_id == page.id), key=lambda p: (p.ordinal, p.title.lower()))
+    out = PageOut.model_validate(page)
+    out.space_slug = space.slug
+    out.breadcrumbs = crumbs
+    out.children = [{"id": str(c.id), "title": c.title} for c in children]
+    out.last_editor_name = _names(db, user, {page.last_editor_id}).get(page.last_editor_id, "")
+    return out
+
+
+def _write_revision(db: Session, page: WikiPage, user: CurrentUser, summary: str) -> None:
+    db.add(
+        WikiRevision(
+            tenant_id=page.tenant_id,
+            page_id=page.id,
+            revision_number=page.revision_number,
+            title=page.title,
+            body=page.body,
+            editor_id=uuid.UUID(user.id),
+            edit_summary=summary,
+        )
+    )
+
+
+def _check_parent(db: Session, page: WikiPage | None, space: WikiSpace, parent_id: uuid.UUID, user: CurrentUser):
+    """The new parent must be in the same space and must not be the page or its descendant."""
+    parent = get_owned(db, WikiPage, parent_id, user, not_found="Parent page not found")
+    if parent.space_id != space.id:
+        raise HTTPException(422, "Parent page is in a different space")
+    if page is None:
+        return
+    cursor, hops = parent, 0
+    while cursor is not None and hops < 500:
+        if cursor.id == page.id:
+            raise HTTPException(422, "A page cannot be moved under itself or one of its children")
+        if cursor.parent_id is None:
+            break
+        cursor = db.get(WikiPage, cursor.parent_id)
+        hops += 1
+
+
+# ── Spaces ──────────────────────────────────────────────────────────────
+@router.get("/spaces", response_model=list[SpaceOut])
+def list_spaces(
+    include_archived: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+) -> list[WikiSpace]:
+    q = db.query(WikiSpace).filter(WikiSpace.tenant_id == tenant_uuid(user), WikiSpace.deleted_at.is_(None))
+    if not _staff(user):
+        q = q.filter(WikiSpace.visibility == "all")
+    if not include_archived:
+        q = q.filter(WikiSpace.is_archived.is_(False))
+    return q.order_by(WikiSpace.name).all()
+
+
+@router.post("/spaces", response_model=SpaceOut, status_code=201)
+def create_space(
+    body: SpaceIn,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_ADMIN)),
+) -> WikiSpace:
+    tid = tenant_uuid(user)
+    clash = db.query(WikiSpace.id).filter(WikiSpace.tenant_id == tid, WikiSpace.slug == body.slug).first()
+    if clash:
+        raise HTTPException(409, f"A space with slug '{body.slug}' already exists")
+    space = WikiSpace(tenant_id=tid, created_by=uuid.UUID(user.id), **body.model_dump())
+    db.add(space)
+    db.flush()
+    _audit(db, user, "wiki_space_create", "wiki_space", str(space.id))
+    db.commit()
+    db.refresh(space)
+    return space
+
+
+@router.get("/spaces/{slug}", response_model=SpaceOut)
+def get_space(
+    slug: str = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+) -> WikiSpace:
+    return _space(db, slug, user)
+
+
+@router.put("/spaces/{slug}", response_model=SpaceOut)
+def update_space(
+    body: SpaceUpdate,
+    slug: str = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_ADMIN)),
+) -> WikiSpace:
+    space = _space(db, slug, user)
+    for k, v in body.model_dump(exclude_unset=True).items():
+        if v is not None:
+            setattr(space, k, v)
+    _audit(db, user, "wiki_space_update", "wiki_space", str(space.id))
+    db.commit()
+    db.refresh(space)
+    return space
+
+
+@router.delete("/spaces/{slug}", status_code=204, response_class=Response)
+def archive_space(
+    slug: str = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_ADMIN)),
+):
+    """Archive, not destroy: pages and their history stay restorable."""
+    space = _space(db, slug, user)
+    space.is_archived = True
+    _audit(db, user, "wiki_space_archive", "wiki_space", str(space.id))
+    db.commit()
+
+
+@router.get("/spaces/{slug}/tree", response_model=list[TreeNode])
+def space_tree(
+    slug: str = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+) -> list[TreeNode]:
+    space = _space(db, slug, user)
+    pages = _visible_pages(db, space, user).order_by(WikiPage.ordinal, WikiPage.title).all()
+    nodes = {p.id: TreeNode(id=p.id, title=p.title, slug=p.slug, is_published=p.is_published) for p in pages}
+    roots: list[TreeNode] = []
+    for p in pages:
+        parent = nodes.get(p.parent_id) if p.parent_id else None
+        # A page whose parent is hidden or deleted surfaces at the root rather than vanishing.
+        (parent.children if parent else roots).append(nodes[p.id])
+    return roots
+
+
+@router.post("/spaces/{slug}/pages", response_model=PageOut, status_code=201)
+def create_page(
+    body: PageIn,
+    slug: str = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
+) -> PageOut:
+    space = _space(db, slug, user)
+    if body.parent_id:
+        _check_parent(db, None, space, body.parent_id, user)
+    uid = uuid.UUID(user.id)
+    last = (
+        _visible_pages(db, space, user)
+        .filter(WikiPage.parent_id == body.parent_id if body.parent_id else WikiPage.parent_id.is_(None))
+        .count()
+    )
+    page = WikiPage(
+        tenant_id=space.tenant_id,
+        space_id=space.id,
+        parent_id=body.parent_id,
+        title=body.title,
+        slug=_slugify(body.title),
+        body=body.body,
+        tags=body.tags,
+        is_published=body.is_published,
+        ordinal=last,
+        author_id=uid,
+        last_editor_id=uid,
+        revision_number=1,
+    )
+    db.add(page)
+    db.flush()
+    _write_revision(db, page, user, "Created")
+    _audit(db, user, "wiki_page_create", "wiki_page", str(page.id))
+    db.commit()
+    db.refresh(page)
+    return _page_out(db, page, space, user)
+
+
+# ── Pages ───────────────────────────────────────────────────────────────
+@router.get("/pages/{page_id}", response_model=PageOut)
+def get_page(
+    page_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+) -> PageOut:
+    page, space = _page(db, page_id, user)
+    return _page_out(db, page, space, user)
+
+
+@router.put("/pages/{page_id}", response_model=PageOut)
+def update_page(
+    body: PageUpdate,
+    page_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
+):
+    page, space = _page(db, page_id, user)
+    if body.base_revision != page.revision_number:
+        current = _page_out(db, page, space, user)
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": "This page was changed by someone else since you started editing.",
+                "current": current.model_dump(mode="json"),
+            },
+        )
+
+    if body.move_to_root:
+        page.parent_id = None
+    elif body.parent_id is not None and body.parent_id != page.parent_id:
+        _check_parent(db, page, space, body.parent_id, user)
+        page.parent_id = body.parent_id
+
+    content_changed = False
+    if body.title is not None and body.title != page.title:
+        page.title = body.title
+        page.slug = _slugify(body.title)
+        content_changed = True
+    if body.body is not None and body.body != page.body:
+        page.body = body.body
+        content_changed = True
+    if body.tags is not None:
+        page.tags = body.tags
+    if body.is_published is not None:
+        page.is_published = body.is_published
+    if body.ordinal is not None:
+        page.ordinal = body.ordinal
+
+    page.last_editor_id = uuid.UUID(user.id)
+    if content_changed:
+        page.revision_number += 1
+        _write_revision(db, page, user, body.edit_summary)
+    _audit(db, user, "wiki_page_update", "wiki_page", str(page.id))
+    db.commit()
+    db.refresh(page)
+    return _page_out(db, page, space, user)
+
+
+@router.delete("/pages/{page_id}", status_code=204, response_class=Response)
+def delete_page(
+    page_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
+):
+    """Soft-delete the page and everything under it; revisions are kept."""
+    page, space = _page(db, page_id, user)
+    pages = _visible_pages(db, space, user).all()
+    doomed, frontier = {page.id}, [page.id]
+    while frontier:
+        nxt = [p.id for p in pages if p.parent_id in frontier and p.id not in doomed]
+        doomed.update(nxt)
+        frontier = nxt
+    for p in pages:
+        if p.id in doomed:
+            p.soft_delete()
+    _audit(db, user, "wiki_page_delete", "wiki_page", str(page.id))
+    db.commit()
+
+
+@router.get("/pages/{page_id}/revisions", response_model=list[RevisionListOut])
+def list_revisions(
+    page_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+) -> list[RevisionListOut]:
+    page, _ = _page(db, page_id, user)
+    revs = (
+        db.query(WikiRevision)
+        .filter(WikiRevision.page_id == page.id, WikiRevision.tenant_id == tenant_uuid(user))
+        .order_by(WikiRevision.revision_number.desc())
+        .all()
+    )
+    names = _names(db, user, {r.editor_id for r in revs})
+    out = []
+    for r in revs:
+        item = RevisionListOut.model_validate(r)
+        item.editor_name = names.get(r.editor_id, "")
+        out.append(item)
+    return out
+
+
+def _revision(db: Session, page: WikiPage, n: int, user: CurrentUser) -> WikiRevision:
+    rev = (
+        db.query(WikiRevision)
+        .filter(
+            WikiRevision.page_id == page.id,
+            WikiRevision.tenant_id == tenant_uuid(user),
+            WikiRevision.revision_number == n,
+        )
+        .first()
+    )
+    if not rev:
+        raise HTTPException(404, "Revision not found")
+    return rev
+
+
+@router.get("/pages/{page_id}/revisions/{n}", response_model=RevisionOut)
+def get_revision(
+    page_id: uuid.UUID = Path(...),
+    n: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+) -> RevisionOut:
+    page, _ = _page(db, page_id, user)
+    rev = _revision(db, page, n, user)
+    out = RevisionOut.model_validate(rev)
+    out.editor_name = _names(db, user, {rev.editor_id}).get(rev.editor_id, "")
+    return out
+
+
+@router.post("/pages/{page_id}/revisions/{n}/restore", response_model=PageOut)
+def restore_revision(
+    page_id: uuid.UUID = Path(...),
+    n: int = Path(..., ge=1),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
+) -> PageOut:
+    """Bring an old version back as a NEW revision; history is never rewritten."""
+    page, space = _page(db, page_id, user)
+    rev = _revision(db, page, n, user)
+    page.title = rev.title
+    page.slug = _slugify(rev.title)
+    page.body = rev.body
+    page.last_editor_id = uuid.UUID(user.id)
+    page.revision_number += 1
+    _write_revision(db, page, user, f"Restored revision {n}")
+    _audit(db, user, "wiki_page_restore", "wiki_page", str(page.id))
+    db.commit()
+    db.refresh(page)
+    return _page_out(db, page, space, user)
+
+
+# ── Search ──────────────────────────────────────────────────────────────
+def _snippet(body: str, q: str, width: int = 160) -> str:
+    idx = body.lower().find(q.lower())
+    if idx < 0:
+        return body[:width].strip()
+    start = max(0, idx - width // 3)
+    text = body[start : start + width].strip()
+    return ("…" if start else "") + text + ("…" if start + width < len(body) else "")
+
+
+@router.get("/search", response_model=list[SearchHit])
+def search(
+    q: str = Query(..., min_length=2, max_length=200),
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+) -> list[SearchHit]:
+    tid = tenant_uuid(user)
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    query = (
+        db.query(WikiPage, WikiSpace)
+        .join(WikiSpace, WikiSpace.id == WikiPage.space_id)
+        .filter(
+            WikiPage.tenant_id == tid,
+            WikiSpace.tenant_id == tid,
+            WikiPage.deleted_at.is_(None),
+            WikiSpace.deleted_at.is_(None),
+            WikiSpace.is_archived.is_(False),
+            or_(
+                WikiPage.title.ilike(pattern, escape="\\"),
+                WikiPage.body.ilike(pattern, escape="\\"),
+                WikiPage.tags.ilike(pattern, escape="\\"),
+            ),
+        )
+    )
+    if not _staff(user):
+        query = query.filter(WikiSpace.visibility == "all", WikiPage.is_published.is_(True))
+    rows = query.order_by(WikiPage.updated_at.desc()).limit(limit * 2).all()
+    ql = q.lower()
+    rows.sort(key=lambda r: 0 if ql in r[0].title.lower() else 1)
+    return [
+        SearchHit(
+            page_id=p.id,
+            space_slug=s.slug,
+            space_name=s.name,
+            title=p.title,
+            snippet=_snippet(p.body, q),
+            updated_at=p.updated_at,
+        )
+        for p, s in rows[:limit]
+    ]

@@ -36,6 +36,8 @@ from .scheduling import router as scheduling_router
 from .storage import router as storage_router
 from .templates import router as templates_router
 from .threat_intel import router as threat_intel_router
+from .tickets import router as tickets_router
+from .wiki import router as wiki_router
 
 __all__ = [
     "registration_router",
@@ -75,4 +77,6 @@ __all__ = [
     "curriculum_router",
     "qsp_router",
     "quizzes_router",
+    "tickets_router",
+    "wiki_router",
 ]

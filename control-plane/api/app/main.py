@@ -229,7 +229,9 @@ from .routers import (
     storage_router,
     templates_router,
     threat_intel_router,
+    tickets_router,
     transcript_router,
+    wiki_router,
 )
 
 # Identity intake. Registration is mounted first because /auth/me is the one
@@ -280,6 +282,9 @@ app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
+# Knowledge base + trouble tickets
+app.include_router(wiki_router)
+app.include_router(tickets_router)
 
 # -- API versioning: /api/v1/... -> canonical route (docs/adr/0002) ---------
 # Added last so it is the outermost middleware: rate limiting, metrics and tracing all
