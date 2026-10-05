@@ -24,8 +24,8 @@ from celery import group
 
 from .celery_app import app
 from .fencing import skipped
-from .reliable import ReliableTask, _last_attempt
 from .provisioners import get_provisioner
+from .reliable import ReliableTask, _last_attempt
 from .render import load_template
 
 logger = logging.getLogger("truenorth.worker")
