@@ -72,7 +72,8 @@ def test_start_runs_arc2_with_the_callers_slug_and_records_the_result(tmp_path, 
     assert "--dangerously-skip-permissions" not in args
     assert args[args.index("--permission-mode") + 1] == "dontAsk"
     tools = args[args.index("--allowedTools") + 1:]
-    assert "Write(./build/arc2/**)" in tools and "Write" not in tools and "Edit" not in tools
+    assert "Write(./build/arc2/arc2-wireshark-basics/**)" in tools and "Write(./build/arc2/**)" not in tools
+    assert "Write" not in tools and "Edit" not in tools
 
     [rec] = records(runs)
     assert rec["state"] == "done"

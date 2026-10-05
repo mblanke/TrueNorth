@@ -80,7 +80,28 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
+def _contained(path: Path) -> bool:
+    """True when ``path`` resolves inside the runs-root entry it is addressed through.
+
+    Run directories are written by the engine, so a symlink in one (or a run directory
+    that is itself a symlink) must not make this API read another run's files. Every
+    read of a file under the runs root goes through this check.
+    """
+    root = runs_dir()
+    try:
+        top = root / path.relative_to(root).parts[0]
+    except (ValueError, IndexError):
+        return False
+    real_top = top.resolve()
+    if real_top != root.resolve() / top.name:
+        return False  # the run directory itself is a link
+    real = path.resolve()
+    return real == real_top or real_top in real.parents
+
+
 def _read_json(path: Path) -> dict | None:
+    if not _contained(path):
+        return None
     try:
         return json.loads(path.read_text())
     except (OSError, ValueError):
@@ -106,7 +127,7 @@ def _is_owner(slug: str, user: CurrentUser) -> bool:
 def _owned_run(slug: str, user: CurrentUser) -> Path:
     """The run directory for ``slug`` if the caller's tenant owns it, else 404 (never 403)."""
     run = _run_path(slug)
-    if not _is_owner(slug, user):
+    if not _is_owner(slug, user) or run.is_symlink():
         raise HTTPException(404, "No such run")
     return run
 
@@ -245,6 +266,8 @@ def _mtime(path: Path) -> str | None:
 
 
 def _safe_text(path: Path, limit: int = 4000) -> str | None:
+    if not _contained(path):
+        return None
     try:
         return path.read_text()[:limit]
     except OSError:
@@ -252,6 +275,8 @@ def _safe_text(path: Path, limit: int = 4000) -> str | None:
 
 
 def _safe_yaml(path: Path):
+    if not _contained(path):
+        return None
     try:
         return yaml.safe_load(path.read_text())
     except (OSError, yaml.YAMLError):

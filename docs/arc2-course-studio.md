@@ -326,10 +326,36 @@ Request and feedback text may not contain `--slug` or `--resume`. The API return
 the runner fails the job, because that text is placed on `/arc2`'s argument line after
 the run's own slug. `package.zip` serves only files that resolve inside the caller's run.
 
-**Open (S1b, runner isolation).** The API enforces the boundary, but the engine does not.
-A headless `/arc2` may write anywhere under `build/arc2/`, including other tenants' runs
-and `_studio/` where ownership is recorded. It may read the whole repository and run
-`.venv/bin/python`. Prompt text from one tenant could therefore steer it into another
-tenant's run. `_detail` still reads a run's files (outline, course YAML, manifest) without
-resolving symlinks. Confining each job to `build/arc2/<slug>/**` and keeping `_studio/`
-out of the agent's reach is the S1b deliverable.
+**Runner isolation (S1b).** Request and feedback text from any tenant drives the engine,
+and its tools include arbitrary Python, so Claude Code's `--allowedTools` rules are not a
+boundary. The runner therefore runs the whole `claude` process tree for a job in an OS
+sandbox (`tools/arc2/confine.py`; Seatbelt via `sandbox-exec` on macOS):
+
+| While a job runs | Allowed |
+|---|---|
+| Write `build/arc2/<slug>/` and `build/arc2/<slug>.request.txt` | yes |
+| Write other runs, `_studio/` (ownership), `_queue/`, `_jobs/`, the repository | no |
+| Read other runs, `_studio/`, `_queue/`, `_jobs/` (including through symlinks) | no |
+| Read the rest of the repository (agents, content, tools) | yes |
+| Claude Code's own files outside the repository, temp files, network | yes |
+
+The kernel checks paths after resolving symlinks. The runner fails closed: without a
+sandbox (`ARC2_CONFINE=auto`, the default, on a host other than macOS) it exits with
+status 2 and runs nothing. `ARC2_CONFINE=none` runs jobs unconfined and is only for a
+single-tenant host. Each job record carries `confinement`. As defence in depth, a job's
+`Write`/`Edit` tool rules name only its own run.
+
+The API reads run files only when they resolve inside the run they are addressed through,
+so a link the engine leaves in its own run (or a run directory that is a link) cannot
+expose another run.
+
+Evidence:
+- `tests/arc2/test_arc2_confinement.py` runs a probe engine under the runner. Before this
+  change every escape succeeded; now each one is denied and the job's own run still works.
+- A real `claude -p` started under the profile and wrote its own run with the Write tool.
+
+Still open:
+- There is no Linux backend (bubblewrap) yet.
+- The sandbox does not limit network access or reads outside the runs root, such as `~/`.
+- `/arc2` always uses `<repo>/build/arc2`, so `ARC2_RUNS_DIR` must point there for the
+  engine, runner and API to agree.

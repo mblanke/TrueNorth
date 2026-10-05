@@ -175,3 +175,28 @@ def test_text_cannot_name_another_run_on_the_engines_command_line(client, runs, 
         before = queue_files(runs)
         assert client.post(f"/arc2/runs/{slug}/reply", json={"action": "feedback", "text": text}).status_code == 422
         assert queue_files(runs) == before
+
+
+@pytest.mark.parametrize("link", ["manifest.json", "01-blueprint/outline.yaml", "request.txt"])
+def test_run_files_symlinked_to_another_tenants_run_are_not_read(client, runs, foreign_run, link):
+    (runs / foreign_run / "request.txt").write_text("their request")
+    with acting_as(UserRole.instructor, DEV_TENANT):
+        mine = client.post("/arc2/runs", json={"name": "Mine", "request": REQUEST}).json()["slug"]
+        meta = runs / "_studio" / f"{mine}.json"
+        meta.write_text(json.dumps({k: v for k, v in json.loads(meta.read_text()).items() if k != "request"}))
+        target = runs / mine / link
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(runs / foreign_run / link)
+        body = client.get(f"/arc2/runs/{mine}").text
+    assert "Capture basics" not in body and "Packet Sniffing with Wireshark" not in body
+    assert "their request" not in body
+
+
+def test_a_run_directory_that_is_a_symlink_to_another_run_is_not_read(client, runs, foreign_run):
+    with acting_as(UserRole.instructor, DEV_TENANT):
+        mine = client.post("/arc2/runs", json={"name": "Mine", "request": REQUEST}).json()["slug"]
+        (runs / mine).symlink_to(runs / foreign_run, target_is_directory=True)
+        body = client.get(f"/arc2/runs/{mine}").text
+        assert client.get(f"/arc2/runs/{mine}/package.zip").status_code == 404
+        assert client.get(f"/arc2/runs/{mine}/file", params={"path": "01-blueprint/outline.yaml"}).status_code == 404
+    assert "Capture basics" not in body

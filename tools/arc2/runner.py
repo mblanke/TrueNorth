@@ -29,9 +29,10 @@ Job records (the runner writes, the API reads):
                              result, error, cost_usd, turns, log
     <runs>/_jobs/<id>.log    the raw stream-json output
 
-Nothing here commits, provisions or imports; ``/arc2``'s own hard rules apply. Edits are
-confined to ``build/arc2/``; Bash to the few commands ``/arc2`` needs; anything else is
-refused. If Claude cannot be used (signed out, usage limit, overloaded), the same step is
+Nothing here commits, provisions or imports; ``/arc2``'s own hard rules apply. Each job
+runs in an OS sandbox that confines it to its own run (``arc2/confine.py``, chosen by
+``ARC2_CONFINE``). Without one the runner does not start. Tool rules additionally limit
+edits to the job's run and Bash to the few commands ``/arc2`` needs. If Claude cannot be used (signed out, usage limit, overloaded), the same step is
 re-run on a local Ollama through its Anthropic-compatible API (see ``Fallback``); the job
 record's ``engine`` says which ran.
 
@@ -52,6 +53,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from arc2.confine import Confinement, ConfinementError, Unconfined, select
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SLUG_RE = re.compile(r"^arc2-[a-z0-9-]{1,60}$")
 # The job's text follows its own slug on /arc2's argument line; --slug or --resume in it
@@ -61,12 +64,13 @@ ACTIONS = {"start", "resume"}
 MAX_TEXT = 4000
 DEFAULT_TIMEOUT = 4 * 3600
 
-# What a headless /arc2 may use. Edits are confined to the runs directory (build/arc2,
-# gitignored) whichever model is driving; Bash is limited to the commands arc2.md runs.
-# With --permission-mode dontAsk, anything not listed is refused, not prompted.
+# What a headless /arc2 may use. Bash is limited to the commands arc2.md runs. With
+# --permission-mode dontAsk, anything not listed is refused, not prompted. These rules
+# match command text and are not the security boundary (.venv/bin/python runs anything):
+# the job's OS sandbox is (arc2/confine.py). File edits are added per job, for the job's
+# own run only (job_tools).
 ALLOWED_TOOLS = [
     "Read", "Glob", "Grep", "Task", "TodoWrite",
-    "Write(./build/arc2/**)", "Edit(./build/arc2/**)",
     "Bash(.venv/bin/python:*)",
     "Bash(PYTHONPATH=tools .venv/bin/python:*)",
     "Bash(git status:*)", "Bash(git rev-parse:*)", "Bash(git diff:*)", "Bash(git log:*)",
@@ -85,7 +89,8 @@ RUNNER_GUIDANCE = (
     "`.venv/bin/python -m arc2.check` (PYTHONPATH=tools is already set). "
     "Chaining with ; && | is fine only between allowed commands: python via .venv/bin/python, "
     "git status/rev-parse/diff/log, ls, cat, head, tail, wc, grep, sort, diff, stat, echo, printf, test, mkdir. "
-    "File edits are allowed only under build/arc2/."
+    "File edits are allowed only in this run's directory, build/arc2/<slug>/, and its "
+    "request file build/arc2/<slug>.request.txt; other runs and build/arc2/_* are out of reach."
 )
 
 AGENT_NAMES = {
@@ -141,12 +146,18 @@ def prompt_for(job: dict) -> str:
     return f"/arc2 --resume {job['slug']} {text}"
 
 
+def job_tools(slug: str) -> list[str]:
+    """ALLOWED_TOOLS plus file edits for this job's own run and request file."""
+    own = [f"./build/arc2/{slug}/**", f"./build/arc2/{slug}.request.txt"]
+    return [*ALLOWED_TOOLS, *(f"{tool}({path})" for tool in ("Write", "Edit") for path in own)]
+
+
 def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
     cmd = [
         claude, "-p", prompt_for(job),
         "--output-format", "stream-json", "--verbose",
         "--permission-mode", "dontAsk",
-        "--allowedTools", *ALLOWED_TOOLS,
+        "--allowedTools", *job_tools(job["slug"]),
         "--append-system-prompt", RUNNER_GUIDANCE,
     ]
     return cmd + (["--model", model] if model else [])
@@ -257,18 +268,31 @@ def agent_from_event(event: dict) -> str | None:
 
 
 def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOUT,
-            fallback: Fallback | None = None) -> dict:
-    """Run one job on Claude; if Claude is unavailable, run it again on the local fallback."""
+            fallback: Fallback | None = None, confinement: Confinement | None = None,
+            runs: Path | None = None) -> dict:
+    """Run one job on Claude; if Claude is unavailable, run it again on the local fallback.
+
+    Both attempts run inside ``confinement`` (arc2/confine.py), limited to
+    ``runs/<slug>``. Callers other than ``main`` (tests) may omit it to run unconfined.
+    """
+    confinement = confinement or Unconfined()
+    runs = runs or path.parent.parent
     env = {k: v for k, v in os.environ.items() if k not in ("AUTH_DISABLED", "DATABASE_URL")}
     env["PYTHONPATH"] = "tools"
+    env["PYTHONDONTWRITEBYTECODE"] = "1"  # the repository is read-only to the job
+
+    def confined(cmd: list[str]) -> list[str]:
+        return confinement.wrap(cmd, repo=REPO_ROOT, runs=runs, slug=record["slug"])
+
     record["engine"] = "claude"
-    record = _attempt(record, path, command_for(record, claude), env, timeout, append=False)
+    record["confinement"] = confinement.name
+    record = _attempt(record, path, confined(command_for(record, claude)), env, timeout, append=False)
     if fallback and should_fall_back(record) and fallback.reachable():
         record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
                       result=None, exit_code=None, finished_at=None, current_agent=None)
         write_record(path, record)
-        record = _attempt(record, path, command_for(record, claude, fallback.model), fallback.env(env), timeout,
-                          append=True)
+        record = _attempt(record, path, confined(command_for(record, claude, fallback.model)), fallback.env(env),
+                          timeout, append=True)
     return record
 
 
@@ -383,17 +407,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--poll", type=float, default=2.0)
     args = ap.parse_args(argv)
     claude = shutil.which(args.claude) or args.claude
+    try:
+        confinement = select()
+    except ConfinementError as exc:  # fail closed: no job runs without its sandbox
+        print(f"arc2 runner: not starting: {exc}", file=sys.stderr, flush=True)
+        return 2
     fallback = Fallback.from_env()
     queue, jobs = dirs(args.runs)
     reap(jobs)
     print(f"arc2 runner: watching {queue} (claude: {claude}; fallback: "
-          f"{fallback.label + ' at ' + fallback.url if fallback else 'off'})", flush=True)
+          f"{fallback.label + ' at ' + fallback.url if fallback else 'off'}; confinement: {confinement.name})",
+          flush=True)
     while True:
         claimed = claim(queue, jobs)
         if claimed:
             record, path = claimed
             print(f"{now()} {record['action']} {record['slug']}: running", flush=True)
-            record = run_job(record, path, claude, args.timeout, fallback)
+            record = run_job(record, path, claude, args.timeout, fallback, confinement, args.runs)
             commit = snapshot(args.runs, record, path.with_suffix(".log"))
             if commit:
                 record["history_commit"] = commit

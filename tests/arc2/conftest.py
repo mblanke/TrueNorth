@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from arc2 import check
+from arc2 import check, confine
 
 CROSSWALK = """qsp_code,nqual,tier,po_id,po_title,eos,conditions,critical_events,assessment_type,duration_min,pass_standard,deliverable,environment,target_role,nice_dcwf_task,component_version,scenario_count,build_hours,status
 ALJQ,ALJQ,core,PO_007,Analyze Malicious Activity in Network Traffic,007.01,pcap,scanning;exfiltration;lateral_movement,PC practical,240,P/F,report,COTE,Cyber Defense Analyst,T0023,SP800-181r1,4,200,todo
@@ -216,3 +216,12 @@ def repo(tmp_path: Path) -> Path:
     (root / "content" / "catalogue" / "references.yaml").write_text(REFERENCES)
     (root / check.CROSSWALK_REL).with_name("vm_catalogue.csv").write_text(VM_CATALOGUE)
     return root
+
+
+@pytest.fixture(autouse=True)
+def _confinement_where_available(monkeypatch):
+    """runner.main() fails closed without an OS sandbox. On hosts without one (Linux CI)
+    the generic runner tests run unconfined; test_arc2_confinement.py covers the sandbox
+    and the fail-closed start on its own terms."""
+    if not confine.Seatbelt().available():
+        monkeypatch.setenv("ARC2_CONFINE", "none")
