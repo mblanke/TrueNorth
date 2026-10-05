@@ -42,13 +42,16 @@ Usage: ``PYTHONPATH=tools .venv/bin/python -m arc2.runner [--once]``
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
+import queue
 import re
 import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -63,6 +66,11 @@ RUN_FLAG_RE = re.compile(r"(?i)(?:^|\s)--(?:slug|resume)\b")
 ACTIONS = {"start", "resume"}
 MAX_TEXT = 4000
 DEFAULT_TIMEOUT = 4 * 3600
+# After the deadline (or once the engine has exited) its process group gets SIGTERM, then
+# SIGKILL after this many seconds. A job therefore ends at most SHUTDOWN_GRACE seconds
+# (plus scheduling) after its deadline, whatever the engine does.
+SHUTDOWN_GRACE = 10
+PROGRESS_TICK = 5.0  # seconds between job-record writes while output is flowing or not
 
 # What a headless /arc2 may use. Bash is limited to the commands arc2.md runs. With
 # --permission-mode dontAsk, anything not listed is refused, not prompted. These rules
@@ -297,9 +305,18 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
 
 
 def _attempt(record: dict, path: Path, cmd: list[str], env: dict, timeout: int, append: bool) -> dict:
-    """One headless run of /arc2, streaming progress into the job record."""
+    """One headless run of /arc2, streaming progress into the job record.
+
+    The deadline is enforced by the clock, not by the engine's output: a reader thread
+    moves output lines onto a queue and this loop wakes at least every PROGRESS_TICK
+    seconds, so a silent engine, half a line with no newline, or an engine that exits
+    while a descendant keeps its output open cannot hold the runner. The engine runs in
+    its own session; when the job ends, its whole process group is stopped (see
+    ``_stop_group``). A descendant that calls setsid() itself leaves the group and is
+    out of reach of this; /arc2's tools do not.
+    """
     log_path = path.with_suffix(".log")
-    started = time.monotonic()
+    deadline = time.monotonic() + timeout
     try:
         proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
@@ -307,43 +324,109 @@ def _attempt(record: dict, path: Path, cmd: list[str], env: dict, timeout: int, 
         record.update(state="failed", error=f"could not start claude: {exc}", finished_at=now())
         write_record(path, record)
         return record
+    assert proc.stdout is not None
+    lines: queue.Queue[str | None] = queue.Queue()
+    reader = threading.Thread(target=_read_lines, args=(proc.stdout, lines), daemon=True)
+    reader.start()
+    timed_out = False
     last_write = 0.0
     with log_path.open("a" if append else "w") as log:
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            log.write(line)
-            log.flush()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
             try:
-                event = json.loads(line)
-            except ValueError:
+                line = lines.get(timeout=min(remaining, PROGRESS_TICK))
+            except queue.Empty:
+                if proc.poll() is not None:
+                    break  # the engine is gone; a descendant may still hold its output open
                 continue
-            agent = agent_from_event(event)
-            if agent:
-                record["current_agent"] = agent
-            if event.get("type") == "result":
-                record["result"] = str(event.get("result") or "")[-4000:]
-                record["cost_usd"] = event.get("total_cost_usd")
-                record["turns"] = event.get("num_turns")
-                if event.get("is_error"):
-                    record["error"] = record["result"][:500] or "claude reported an error"
-            if agent or time.monotonic() - last_write > 5:
+            if line is None:
+                break  # end of output
+            if _consume(record, line, log) or time.monotonic() - last_write > PROGRESS_TICK:
                 write_record(path, record)
                 last_write = time.monotonic()
-            if time.monotonic() - started > timeout:
-                os.killpg(proc.pid, signal.SIGTERM)
-                record["error"] = f"timed out after {timeout // 60} min"
+        if not timed_out:
+            try:
+                proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                timed_out = True  # output closed, but the engine kept running past the deadline
+        code = _stop_group(proc, SHUTDOWN_GRACE)
+        reader.join(timeout=2)
+        while True:  # whatever was printed before the group stopped
+            try:
+                line = lines.get_nowait()
+            except queue.Empty:
                 break
-    try:
-        code = proc.wait(timeout=30)
-    except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)
-        code = proc.wait()
+            if line is not None:
+                _consume(record, line, log)
+    if timed_out:
+        record["error"] = f"timed out after {_duration(timeout)}"
     record.update(exit_code=code, finished_at=now(), current_agent=None)
     record["state"] = "done" if code == 0 and not record.get("error") else "failed"
     if record["state"] == "failed" and not record.get("error"):
         record["error"] = f"claude exited with {code}"
     write_record(path, record)
     return record
+
+
+def _read_lines(stream, lines: queue.Queue) -> None:
+    """Reader thread: every output line onto ``lines``, then None at end of output."""
+    try:
+        for line in stream:
+            lines.put(line)
+    except (OSError, ValueError):
+        pass
+    finally:
+        lines.put(None)
+
+
+def _consume(record: dict, line: str, log) -> bool:
+    """Log one output line and fold it into the record. True when the record should be written now."""
+    log.write(line)
+    log.flush()
+    try:
+        event = json.loads(line)
+    except ValueError:
+        return False
+    if not isinstance(event, dict):
+        return False
+    agent = agent_from_event(event)
+    if agent:
+        record["current_agent"] = agent
+    if event.get("type") == "result":
+        record["result"] = str(event.get("result") or "")[-4000:]
+        record["cost_usd"] = event.get("total_cost_usd")
+        record["turns"] = event.get("num_turns")
+        if event.get("is_error"):
+            record["error"] = record["result"][:500] or "claude reported an error"
+    return bool(agent)
+
+
+def _stop_group(proc: subprocess.Popen, grace: float) -> int:
+    """Stop the engine's process group and reap the engine. Returns its exit status.
+
+    SIGTERM to the group, up to ``grace`` seconds for the engine to exit, then SIGKILL to
+    the group regardless, so descendants that outlive the engine (or ignore SIGTERM) go
+    too. Bounded: returns within ``grace`` seconds plus the time SIGKILL takes. The group
+    id is the engine's pid; once the engine is reaped the group lives only while a member
+    does, so a signal can reach only this job's leftovers.
+    """
+    _signal_group(proc.pid, signal.SIGTERM)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=grace)
+    _signal_group(proc.pid, signal.SIGKILL)
+    return proc.wait()
+
+
+def _signal_group(pgid: int, sig: int) -> None:
+    with contextlib.suppress(ProcessLookupError, PermissionError):  # nothing left in the group
+        os.killpg(pgid, sig)
+
+
+def _duration(seconds: int) -> str:
+    return f"{seconds // 60} min" if seconds >= 120 else f"{seconds} s"
 
 
 # ── Per-course history ──────────────────────────────────────────────────
