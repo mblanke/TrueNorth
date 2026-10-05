@@ -278,8 +278,6 @@ export class RangesComponent implements OnInit {
       if (this.ranges().some(r => IN_PROGRESS.has(r.state))) this.loadRanges();
     });
     this.api.listTemplates().subscribe(t => this.templates.set(t));
-    // Stats are decoration: a failure must not blank the page.
-    this.api.getRangeStats().subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
   }
 
   /** Non-zero state counts, for the strip's chips. */
@@ -289,6 +287,10 @@ export class RangesComponent implements OnInit {
   }
 
   loadRanges(): void {
+    // Refreshed with the list, so the counts never contradict the rows (the strip used to
+    // keep its first-load counts while polling moved ranges on). Stats are decoration: a
+    // failure must not blank the page.
+    this.api.getRangeStats().subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
     this.api.listRanges().subscribe({
       next: r => { this.ranges.set(r); this.loading.set(false); this.loadOps(r); },
       error: () => this.loading.set(false),
