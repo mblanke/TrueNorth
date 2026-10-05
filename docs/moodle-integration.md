@@ -1,5 +1,10 @@
 # Moodle integration (LTI 1.3 now, cmi5 next)
 
+> **Update 2026-10-05:** course creation in Moodle is now decided and built: accepted course
+> releases are published into Moodle by the `local_truenorth` plugin through a staged,
+> verified job, with native Moodle quizzes and LTI lab links. This supersedes "Custom Moodle
+> PHP plugin? Not now" below. See `docs/adr/0004-moodle-course-publication.md`.
+
 > **Status:** design. The security fixes it depends on have been made (commit `25b4a89`). The
 > integration itself isn't built. Written 2026-09-23.
 >

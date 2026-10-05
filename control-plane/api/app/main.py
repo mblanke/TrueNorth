@@ -10,6 +10,7 @@ Production FastAPI application with:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -59,6 +60,12 @@ async def lifespan(app: FastAPI):
     # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
     # process at boot instead of turning every authenticated request into a 500.
     logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
+    # Course publications a previous process left mid-way resume in the background
+    # (app/course_publishing); a Moodle that is down only delays them.
+    if os.getenv("COURSE_PUBLISH_RESUME", "true").lower() == "true":
+        from .course_publishing.runner import resume_on_start
+
+        asyncio.get_running_loop().run_in_executor(None, resume_on_start)
 
     yield
 
@@ -203,6 +210,7 @@ from .routers import (
     certifications_router,
     collective_exercises_router,
     competency_router,
+    course_publications_router,
     course_releases_router,
     courses_router,
     curriculum_router,
@@ -253,6 +261,7 @@ app.include_router(scheduling_router)
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(course_releases_router)
+app.include_router(course_publications_router)
 app.include_router(learning_paths_router)
 app.include_router(transcript_router)
 app.include_router(competency_router)

@@ -14,6 +14,7 @@ os.environ.setdefault("AUTH_DISABLED", "true")
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("COURSE_PUBLISH_RESUME", "false")
 
 from app.db import Base, get_db
 from app.main import app as fastapi_app

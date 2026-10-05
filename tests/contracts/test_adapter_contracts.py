@@ -194,6 +194,24 @@ def _ai_factory(key, mp):
         ai._reset_backends()
 
 
+def _moodle_abc():
+    from app.moodle_backends import BaseMoodleBackend
+
+    return BaseMoodleBackend
+
+
+def _moodle_registry():
+    from app import moodle_backends
+
+    return moodle_backends._REGISTRY
+
+
+def _moodle_factory(key, mp):
+    from app.moodle_backends import get_moodle_backend
+
+    return get_moodle_backend(key)
+
+
 SEAMS: dict[str, Seam] = {
     s.name: s
     for s in (
@@ -204,6 +222,7 @@ SEAMS: dict[str, Seam] = {
         Seam("notifications", _notif_abc, _notif_registry, _notif_factory, "in_app", KeyError),
         Seam("provisioners", _prov_abc, _prov_registry, _prov_factory, "mock", ValueError),
         Seam("ai", _ai_abc, _ai_registry, _ai_factory, "mock", ValueError),
+        Seam("moodle", _moodle_abc, _moodle_registry, _moodle_factory, "fake", ValueError),
     )
 }
 
@@ -443,3 +462,32 @@ def test_null_ai(monkeypatch):
     empty = _run(backend.generate(""))
     assert isinstance(empty, tuple) and len(empty) == 3
     assert _run(backend.health_check()) is True
+
+
+def test_null_moodle(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.moodle_backends import MoodleError, fake
+
+    fake.reset()
+    backend = _build(SEAMS["moodle"], SEAMS["moodle"].null_key, monkeypatch)
+    site = SimpleNamespace(lti_issuer="http://moodle.invalid", base_url="http://moodle.invalid")
+    quiz = {"idnumber": "tn:m1:quiz:h", "type": "quiz", "name": "Q", "questions": [{"text": "t"}]}
+    payload = {
+        "idnumber": "tn-stage:r1",
+        "fullname": "C1",
+        "shortname": "C1",
+        "visible": False,
+        "category": {"idnumber": "tn-catalogue", "name": "x"},
+        "sections": [{"name": "1", "activities": [quiz]}],
+    }
+    first = backend.upsert_course(site, payload)
+    assert first["created"] is True and set(first["activities"]) == {"tn:m1:quiz:h"}
+    assert backend.upsert_course(site, payload)["created"] is False
+    described = backend.describe_course(site, "tn-stage:r1")
+    assert described["activities"]["tn:m1:quiz:h"]["questions"] == 1 and described["visible"] == 0
+    assert backend.set_visible(site, "tn-stage:r1", True)["courseid"] == first["courseid"]
+    with pytest.raises(MoodleError):
+        backend.delete_stage(site, "a-live-course")
+    assert backend.delete_stage(site, "tn-stage:r1") == {"deleted": True}
+    assert backend.describe_course(site, "tn-stage:r1") == {"exists": False}

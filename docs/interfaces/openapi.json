@@ -2515,6 +2515,85 @@
         "title": "CourseOut",
         "type": "object"
       },
+      "CoursePublicationOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "receipt": {
+            "additionalProperties": true,
+            "title": "Receipt",
+            "type": "object"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "release_id",
+          "course_id",
+          "platform_id",
+          "state",
+          "error",
+          "attempts",
+          "receipt",
+          "created_at",
+          "published_at"
+        ],
+        "title": "CoursePublicationOut",
+        "type": "object"
+      },
       "CourseReleaseOut": {
         "properties": {
           "accepted_at": {
@@ -6988,6 +7067,20 @@
           "recent_assessments"
         ],
         "title": "ProgressSummaryOut",
+        "type": "object"
+      },
+      "PublishIn": {
+        "properties": {
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform_id"
+        ],
+        "title": "PublishIn",
         "type": "object"
       },
       "QualificationOut": {
@@ -13590,6 +13683,113 @@
         ]
       }
     },
+    "/course-publications/{publication_id}": {
+      "get": {
+        "operationId": "get_course_publication_course_publications__publication_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "publication_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publication Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Publication",
+        "tags": [
+          "course-publications"
+        ]
+      }
+    },
+    "/course-publications/{publication_id}/retry": {
+      "post": {
+        "description": "Run a failed or stalled publication again from staging (each step converges).",
+        "operationId": "retry_course_publication_course_publications__publication_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "publication_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publication Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Wait",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Course Publication",
+        "tags": [
+          "course-publications"
+        ]
+      }
+    },
     "/course-releases": {
       "get": {
         "operationId": "list_course_releases_course_releases_get",
@@ -13930,6 +14130,125 @@
         "summary": "Get Course Release Learner Bundle",
         "tags": [
           "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}/publications": {
+      "get": {
+        "operationId": "list_course_release_publications_course_releases__release_id__publications_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CoursePublicationOut"
+                  },
+                  "title": "Response List Course Release Publications Course Releases  Release Id  Publications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Course Release Publications",
+        "tags": [
+          "course-publications"
+        ]
+      },
+      "post": {
+        "description": "Publish the accepted release to one of the tenant's Moodles. Asking again for the\nsame release and Moodle returns the existing job (and runs it again only if it failed).",
+        "operationId": "publish_course_release_course_releases__release_id__publications_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Wait",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Publish Course Release",
+        "tags": [
+          "course-publications"
         ]
       }
     },

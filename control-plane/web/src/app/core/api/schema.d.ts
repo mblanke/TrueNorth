@@ -775,6 +775,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/course-publications/{publication_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Course Publication */
+        get: operations["get_course_publication_course_publications__publication_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/course-publications/{publication_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Course Publication
+         * @description Run a failed or stalled publication again from staging (each step converges).
+         */
+        post: operations["retry_course_publication_course_publications__publication_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/course-releases": {
         parameters: {
             query?: never;
@@ -888,6 +925,28 @@ export interface paths {
         get: operations["get_course_release_learner_bundle_course_releases__release_id__learner_bundle_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/course-releases/{release_id}/publications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Course Release Publications */
+        get: operations["list_course_release_publications_course_releases__release_id__publications_get"];
+        put?: never;
+        /**
+         * Publish Course Release
+         * @description Publish the accepted release to one of the tenant's Moodles. Asking again for the
+         *     same release and Moodle returns the existing job (and runs it again only if it failed).
+         */
+        post: operations["publish_course_release_course_releases__release_id__publications_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6316,6 +6375,43 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** CoursePublicationOut */
+        CoursePublicationOut: {
+            /** Attempts */
+            attempts: number;
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Created At */
+            created_at: string | null;
+            /** Error */
+            error: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
+            /** Published At */
+            published_at: string | null;
+            /** Receipt */
+            receipt: {
+                [key: string]: unknown;
+            };
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /** State */
+            state: string;
+        };
         /** CourseReleaseOut */
         CourseReleaseOut: {
             /** Accepted At */
@@ -8080,6 +8176,14 @@ export interface components {
             user_id: string;
             /** Weakest Areas */
             weakest_areas: string[];
+        };
+        /** PublishIn */
+        PublishIn: {
+            /**
+             * Platform Id
+             * Format: uuid
+             */
+            platform_id: string;
         };
         /** QualificationOut */
         QualificationOut: {
@@ -11217,6 +11321,70 @@ export interface operations {
             };
         };
     };
+    get_course_publication_course_publications__publication_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                publication_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursePublicationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_course_publication_course_publications__publication_id__retry_post: {
+        parameters: {
+            query?: {
+                wait?: boolean;
+            };
+            header?: never;
+            path: {
+                publication_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursePublicationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_course_releases_course_releases_get: {
         parameters: {
             query?: {
@@ -11424,6 +11592,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_course_release_publications_course_releases__release_id__publications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursePublicationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_course_release_course_releases__release_id__publications_post: {
+        parameters: {
+            query?: {
+                wait?: boolean;
+            };
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursePublicationOut"];
+                };
             };
             /** @description Validation Error */
             422: {

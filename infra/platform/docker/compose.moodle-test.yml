@@ -1,0 +1,47 @@
+# A disposable Moodle for the publishing integration test (tests/integration/
+# test_moodle_publish.py): the TrueNorth Moodle image with local_truenorth, its own
+# database, published on loopback only. It is not part of any running stack.
+#
+#   docker build -t truenorth/moodle:5.2.3-tn-test infra/platform/moodle
+#   TN_PUBLIC_KEY="$(cat tool-public.pem)" \
+#     docker compose -p tn-moodle-test -f infra/platform/docker/compose.moodle-test.yml up -d
+#   MOODLE_TEST_URL=http://localhost:8093 MOODLE_TEST_KEY=tool-private.pem \
+#     .venv/bin/python -m pytest tests/integration/test_moodle_publish.py
+#
+# TN_PUBLIC_KEY is the public half of the key the test signs sync tickets with.
+name: tn-moodle-test
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: moodle
+      POSTGRES_USER: moodle
+      POSTGRES_PASSWORD: moodle-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moodle -d moodle"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  moodle:
+    image: ${MOODLE_IMAGE:-truenorth/moodle:5.2.3-tn-test}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_TYPE: pgsql
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: moodle
+      DB_USER: moodle
+      DB_PASS: moodle-test
+      MOODLE_USERNAME: admin
+      MOODLE_PASSWORD: TrueNorth-Test1
+      MOODLE_SITENAME: TrueNorth_Test
+      SITE_URL: http://localhost:8093
+      MOODLE_PUBLIC_PORT: "8093"
+      TN_TOOL_URL: http://localhost:8081
+      TN_PUBLIC_KEY: ${TN_PUBLIC_KEY:?set TN_PUBLIC_KEY to the test tool public key (PEM)}
+    ports:
+      - "127.0.0.1:8093:8080"
