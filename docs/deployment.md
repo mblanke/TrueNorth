@@ -23,9 +23,10 @@ wrong manually:
   [identity.md](identity.md#the-claim-contract).
 - **Secrets that must not be regenerated.** A second run that produced a new
   `POSTGRES_PASSWORD` would lock you out of your own database.
-- **The env file location.** `infra/platform/docker/.env.production` is a
-  *tracked* path; secrets rendered there get committed. The installer writes to
-  `/srv/truenorth/config/` instead.
+- **The env file location.** The installer writes the real env file to
+  `/srv/truenorth/config/`, outside the git checkout. `infra/platform/docker/.env.production`
+  is git-ignored (it was tracked, holding placeholder values, until 2026-10-05); start a
+  manual deployment from `.env.production.example`.
 
 This guide remains the reference for what each component is, for Kubernetes, and
 for operating the stack after it is up.

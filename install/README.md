@@ -178,8 +178,8 @@ actually change:
 `inventory/group_vars/all/vault.yml` is gitignored and must be
 `ansible-vault`-encrypted. The rendered `.env.production` is written to
 `/srv/truenorth/config/` on the target, mode `0600` — deliberately **outside**
-the git checkout, because `infra/platform/docker/.env.production` is a tracked
-path and rendering secrets there would commit them.
+the git checkout, so a secret can never be swept into a commit (the in-repo
+`infra/platform/docker/.env.production` was once tracked; it is now git-ignored).
 
 Values left blank in the vault are generated on the target and persisted under
 `/srv/truenorth/config/secrets/`. They are never regenerated: a re-run that
