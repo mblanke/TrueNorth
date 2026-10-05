@@ -223,13 +223,14 @@ def render_topology(
         # Agent VMs get a full guest network config (vSphere guestinfo), so they need
         # the range's resolvers: its domain controllers / DNS servers.
         dns = [
-            str(n.get("ip")) for n in template.get("nodes") or []
-            if n.get("ip") and (n.get("role") == "domain_controller"
-                                or "dns" in {str(s).lower() for s in n.get("services") or []})
+            str(n.get("ip"))
+            for n in template.get("nodes") or []
+            if n.get("ip")
+            and (n.get("role") == "domain_controller" or "dns" in {str(s).lower() for s in n.get("services") or []})
         ]
         domain = str(_noise_block(template).get("domain") or "corp.local")
         for vm in vms:
-            host = vm["name"][len(range_id[:8]) + 1:]
+            host = vm["name"][len(range_id[:8]) + 1 :]
             if host in noise_nics:
                 vm["mgmt"] = noise_nics[host]
                 if dns:
