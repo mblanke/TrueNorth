@@ -27,3 +27,19 @@ Notes:
   `provisioning`.
 - **Scenarios not exercised here:** broker loss while a task is running (it comes back
   via redelivery and fencing, covered by unit tests) and a real hypervisor (S5a, lab).
+
+## Browser journey (same day, later)
+
+The candidate's web app (`ng serve` on :4300) ran against the candidate API (uvicorn on
+:8092, scratch database `tn_s7_ui`, throwaway Redis on :6390, real Celery worker), driven
+in a browser:
+
+| Step | Seen in the browser | Result |
+|---|---|---|
+| New Range from a template, then Provision | row `created`, then `ready` about 8 s later with no reload (the 5 s polling) | pass |
+| Redis stopped, then Provision | row **`provisioning` / "Queued: waiting for the task queue to come back"** (warning colour) | pass |
+| Redis and worker back, page left alone | row `ready` about 10 s later | pass |
+| Stats strip during the above | stuck at its first-load counts ("created 1, ready 1" next to two ready rows) | **bug, fixed in #19**: the strip now refreshes with the list; re-checked, "ready 3" with 3 ready rows |
+| Destroy after a finished provision | **409 "A provision of this range is still in progress"** | **bug, fixed in #17**: production sessions do not autoflush, so `reconcile()` settled the provision only in memory. Regression test runs with autoflush off. Re-checked: "Destroying…", then `destroyed` |
+
+Neither bug showed up in the unit or karma suites; both did in the browser.
