@@ -18,16 +18,17 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from . import tasks
 from .celery_app import app
 from .fencing import skipped
 from .range_rows import provisioner_output
-from .tasks import ReliableTask, _last_attempt
+from .reliable import ReliableTask, _last_attempt
 
 logger = logging.getLogger("worker.power")
 
 
 def _power(task, range_id: str, action: str, in_progress: str, done: str, back: str) -> dict:
+    from . import tasks  # not at import time: see reliable.py
+
     logger.info("[%s] range %s", action, range_id)
     if not tasks._update_range_state(range_id, in_progress, only_from=(in_progress,)):
         return skipped(action, range_id, in_progress)

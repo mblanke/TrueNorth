@@ -19,7 +19,7 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
-from celery import Task, group
+from celery import group
 
 from . import db_ops
 from .aar import build_report as build_aar_report
@@ -27,6 +27,7 @@ from .celery_app import app
 from .detection import DetectionScorer, range_index
 from .fencing import skipped
 from .provisioners import get_provisioner
+from .reliable import ReliableTask, _last_attempt
 from .render import load_template
 
 logger = logging.getLogger("truenorth.worker")
@@ -101,16 +102,6 @@ def _notify_api(channel: str, message: dict):
 
 
 # -- Base task with exponential backoff --------------------------------
-class ReliableTask(Task):
-    """Base task with exponential backoff + jitter on retries."""
-
-    autoretry_for = (Exception,)
-    max_retries = 3
-    retry_backoff = True  # Exponential backoff
-    retry_backoff_max = 300  # Max 5 minutes between retries
-    retry_jitter = True  # Add randomness to prevent thundering herd
-
-
 # -- Provisioning -------------------------------------------------------
 def _hypervisor_creds(db, hypervisor_type: str) -> dict:
     """Look up the primary/active hypervisor connection's endpoint+creds (empty → env fallback)."""
@@ -737,11 +728,6 @@ def _backend_snapshot_name(snapshot_id: str) -> str:
     with a digit ten times in sixteen, and Proxmox rejected those.
     """
     return "tn" + "".join(ch for ch in snapshot_id if ch.isalnum())[:38]
-
-
-def _last_attempt(task) -> bool:
-    """True when a failure now will not be retried, or the task was called directly."""
-    return bool(task.request.called_directly) or task.request.retries >= (task.max_retries or 0)
 
 
 def _discard_snapshot(provisioner, range_id: str, prov_output: dict, name: str) -> None:

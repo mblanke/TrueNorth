@@ -1,6 +1,6 @@
 ﻿import { Component, DestroyRef, OnInit, signal, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { interval } from 'rxjs';
+import { debounceTime, interval } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
@@ -16,6 +16,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService, RangeOperation, RangeStats } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { RangeEventsService } from '@core/services/range-events.service';
 import { RangeSummary, TemplateSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
@@ -261,6 +262,7 @@ export class RangesComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
   private destroyRef = inject(DestroyRef);
+  private rangeEvents = inject(RangeEventsService);
 
   /** The latest operation of each range that has one in progress. */
   ops = signal<Record<string, RangeOperation>>({});
@@ -287,6 +289,11 @@ export class RangesComponent implements OnInit {
     interval(POLL_MS).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       if (this.ranges().some(r => IN_PROGRESS.has(r.state))) this.loadRanges();
     });
+    // The worker's own reports (over /ws/ranges): refresh as soon as a range changes,
+    // instead of at the next poll. Bursts (a batch) collapse into one reload.
+    this.rangeEvents.stream()
+      .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadRanges());
     this.api.listTemplates().subscribe(t => this.templates.set(t));
   }
 

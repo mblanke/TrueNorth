@@ -16,7 +16,9 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -55,6 +57,7 @@ class WSConnection:
     last_pong: datetime = field(default_factory=lambda: datetime.now(UTC))
     sequence: int = 0
     missed_pongs: int = 0
+    expires_at: float | None = None  # the token's exp (epoch seconds); None: no token
 
     def next_sequence(self) -> int:
         self.sequence += 1
@@ -88,6 +91,9 @@ class WebSocketManager:
         self._tasks: list[asyncio.Task[Any]] = []
         self._running = False
         self._lock = asyncio.Lock()
+        # Redis channels the worker publishes on (not ``truenorth:ws:*`` envelopes) and
+        # what to do with each message, e.g. range_events.relay. Set before start().
+        self.worker_handlers: dict[str, Callable[[str], Awaitable[Any]]] = {}
 
     # ── Lifecycle ──────────────────────────────────────────────────────
     async def start(self) -> None:
@@ -125,6 +131,8 @@ class WebSocketManager:
         channel: str,
         user_id: str | None = None,
         tenant_id: str | None = None,
+        subprotocol: str | None = None,
+        expires_at: float | None = None,
     ) -> str:
         """Accept a WebSocket, register it, subscribe to *channel*.
 
@@ -147,7 +155,7 @@ class WebSocketManager:
                 await websocket.close(code=1008, reason="Too many connections for this user")
                 raise WebSocketDisconnect(code=1008)
 
-        await websocket.accept()
+        await websocket.accept(subprotocol=subprotocol)
         conn_id = uuid.uuid4().hex
 
         conn = WSConnection(
@@ -155,6 +163,7 @@ class WebSocketManager:
             user_id=user_id,
             tenant_id=tenant_id,
             channels={channel},
+            expires_at=expires_at,
         )
 
         async with self._lock:
@@ -318,6 +327,39 @@ class WebSocketManager:
             if conn.tenant_id == tenant_id:
                 await self._send(cid, conn, message_type, channel, data)
 
+    async def send_to_connection(self, conn_id: str, message: dict[str, Any]) -> None:
+        """Send a raw frame to one connection (replies such as acks). The endpoint has
+        always called this; it did not exist, so a client's first message closed it."""
+        conn = self.connections.get(conn_id)
+        if conn is None:
+            return
+        try:
+            await conn.websocket.send_json(message)
+        except Exception:
+            await self._force_disconnect(conn_id, reason="send_error")
+
+    async def deliver_to_tenant(
+        self,
+        tenant_id: str,
+        channels: tuple[str, ...],
+        message_type: str,
+        data: dict[str, Any],
+    ) -> int:
+        """Send to this process's sockets on any of *channels* that belong to *tenant_id*.
+
+        Local only: every API process receives the worker's event from Redis itself.
+        Returns how many sockets were sent to.
+        """
+        sent: set[str] = set()
+        for channel in channels:
+            for cid in list(self.channels.get(channel, set())):
+                conn = self.connections.get(cid)
+                if conn is None or cid in sent or conn.tenant_id != tenant_id:
+                    continue
+                sent.add(cid)
+                await self._send(cid, conn, message_type, channel, data)
+        return len(sent)
+
     # ── Redis Pub/Sub ──────────────────────────────────────────────────
     async def _connect_redis(self) -> None:
         """Establish an async Redis connection (redis.asyncio / aioredis)."""
@@ -327,6 +369,8 @@ class WebSocketManager:
             self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
             self._pubsub = self._redis.pubsub()
             await self._pubsub.psubscribe("truenorth:ws:*")
+            if self.worker_handlers:
+                await self._pubsub.subscribe(*self.worker_handlers)
             logger.info("Redis pub/sub connected: %s", self._redis_url)
         except Exception as exc:
             logger.warning("Redis unavailable — running local-only: %s", exc)
@@ -363,6 +407,13 @@ class WebSocketManager:
                     continue
                 if msg["type"] not in ("pmessage", "message"):
                     continue
+                handler = self.worker_handlers.get(msg.get("channel", "")) if msg["type"] == "message" else None
+                if handler:
+                    try:
+                        await handler(msg["data"])
+                    except Exception:
+                        logger.exception("worker event handler failed on %s", msg.get("channel"))
+                    continue
                 try:
                     payload = json.loads(msg["data"])
                 except (json.JSONDecodeError, TypeError):
@@ -390,6 +441,7 @@ class WebSocketManager:
         try:
             while self._running:
                 await asyncio.sleep(HEARTBEAT_INTERVAL_S)
+                await self.close_expired()
                 stale: list[str] = []
                 for cid, conn in list(self.connections.items()):
                     try:
@@ -404,6 +456,18 @@ class WebSocketManager:
                     await self._force_disconnect(cid, reason="heartbeat_timeout")
         except asyncio.CancelledError:
             pass
+
+    async def close_expired(self) -> int:
+        """Close every connection whose token has expired. Returns how many.
+
+        The user is checked once, at the handshake; without this, answering pings kept
+        a socket (and a disabled or moved user's access) alive for good.
+        """
+        now = time.time()
+        expired = [cid for cid, c in list(self.connections.items()) if c.expires_at is not None and c.expires_at <= now]
+        for cid in expired:
+            await self._force_disconnect(cid, reason="token_expired")
+        return len(expired)
 
     def handle_pong(self, conn_id: str) -> None:
         """Call when a ``pong`` frame is received from a client."""

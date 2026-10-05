@@ -1,13 +1,15 @@
 import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { POLL_MS, RangesComponent } from './ranges.component';
 import { ApiService, RangeOperation } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { RangeEventsService, RangeStateEvent } from '@core/services/range-events.service';
 import { Range, Template } from '@core/models';
 
 describe('RangesComponent', () => {
+  let rangeEvents: Subject<RangeStateEvent>;
   let component: RangesComponent;
   let fixture: ComponentFixture<RangesComponent>;
   let mockApi: jasmine.SpyObj<ApiService>;
@@ -52,12 +54,14 @@ describe('RangesComponent', () => {
       total_ranges: 4, by_state: { ready: 1, created: 1 }, total_vms: 12, active_exercises: 2,
     }));
 
+    rangeEvents = new Subject<RangeStateEvent>();
     await TestBed.configureTestingModule({
       imports: [RangesComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
+        { provide: RangeEventsService, useValue: { stream: () => rangeEvents.asObservable() } },
       ],
     }).compileComponents();
 
@@ -123,6 +127,17 @@ describe('RangesComponent', () => {
 
     expect(mockNotify.error).toHaveBeenCalledWith('Could not request destroy');
   });
+
+  // ── Worker events ────────────────────────────────────────────────
+  it('reloads the list when the worker reports a range state, once per burst', fakeAsync(() => {
+    fixture.detectChanges();
+    mockApi.listRanges.calls.reset();
+    rangeEvents.next({ id: 'r1', state: 'ready', error: null });
+    rangeEvents.next({ id: 'r2', state: 'ready', error: null });
+    tick(300);
+    expect(mockApi.listRanges).toHaveBeenCalledTimes(1);
+    discardPeriodicTasks();
+  }));
 
   // ── Stop ─────────────────────────────────────────────────────────
   it('stop() requests a power off; it does not claim the VMs are off', () => {

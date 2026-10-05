@@ -43,6 +43,12 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U tn_ci" --health-interval 5s --health-timeout 5s --health-retries 10
+      # Only for tests that name it (TEST_REDIS_URL): the worker -> browser range events.
+      # Port 6380, so REDIS_URL (6379) stays unreachable for everything else.
+      redis:
+        image: redis:7-alpine
+        ports: ["6380:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,6 +68,7 @@ jobs:
           REDIS_URL: "redis://localhost:6379/15"
           RATE_LIMIT_ENABLED: "false"
           TEST_POSTGRES_ADMIN_URL: "postgresql+psycopg://tn_ci:tn_ci@localhost:5432/postgres"
+          TEST_REDIS_URL: "redis://localhost:6380/0"
 
   # MOSA gates — same checks as scripts/dod.sh, so local green and CI green agree.
   # docs/adr/0002-interface-versioning.md, docs/adr/0003-mosa-ratchet.md

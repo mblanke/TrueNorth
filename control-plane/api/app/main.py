@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import range_ops
+from . import range_events, range_ops
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, SessionLocal, engine, get_db
@@ -65,6 +65,14 @@ async def lifespan(app: FastAPI):
     # (app/range_ops.py). RANGE_OP_REDISPATCH_SECONDS=0 turns it off (tests).
     interval = range_ops.redispatch_interval()
     redispatcher = asyncio.create_task(range_ops.redispatch_loop(SessionLocal, interval)) if interval > 0 else None
+
+    # Range states the worker reports go out to the browsers of the range's tenant
+    # (app/range_events.py). WS_EVENTS_ENABLED=false keeps the manager unstarted (tests).
+    if _env_flag("WS_EVENTS_ENABLED") and os.getenv("REDIS_URL"):
+        ws_manager.worker_handlers[range_events.WORKER_CHANNEL] = lambda raw: range_events.relay(
+            ws_manager, raw, SessionLocal
+        )
+        await ws_manager.start()
 
     yield
 
@@ -195,7 +203,7 @@ from .events import setup_event_bus
 
 event_bus = setup_event_bus(app, redis_url=os.getenv("REDIS_URL"))
 
-# -- WebSocket manager (registered but NOT started) -------------------------
+# -- WebSocket manager (started in lifespan when WS_EVENTS_ENABLED) ---------
 from .websocket_manager import WebSocketManager
 
 ws_manager = WebSocketManager(redis_url=os.getenv("REDIS_URL"))
@@ -365,8 +373,44 @@ async def deep_health():
 # -- WebSocket endpoint ----------------------------------------------------
 @app.websocket("/ws/{channel}")
 async def websocket_endpoint(ws: WebSocket, channel: str):
-    """Real-time event stream. Channels: 'ranges', 'exercises', 'all'."""
-    conn_id = await ws_manager.connect(ws, channel)
+    """Real-time event stream for a signed-in user. Channels: 'ranges' (range states of
+    the user's tenant), 'range.<id>' (one of the tenant's ranges), 'exercises', 'all'.
+
+    The access token is the second subprotocol: ``new WebSocket(url, ["bearer", token])``
+    (app/range_events.py). No valid token, or a channel the user may not open: 1008.
+    Reply ``{"type": "pong"}`` to each ``{"type": "ping"}`` or the socket is dropped.
+    """
+    db_gen = app.dependency_overrides.get(get_db, get_db)()  # a session only for the handshake
+    db = next(db_gen)
+    try:
+        who = await range_events.ws_user(ws, db)
+        allowed = who is not None and range_events.authorize(channel, who.user, db)
+    finally:
+        db_gen.close()
+    if not allowed:
+        await ws.close(code=1008)
+        return
+    user = who.user
+    conn_id = await ws_manager.connect(
+        ws,
+        channel,
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        subprotocol=range_events.SUBPROTOCOL if range_events.bearer_token(ws) else None,
+        expires_at=who.expires_at,
+    )
+
+    def room_ok(room_id: str, *, joined: bool) -> bool:
+        """A room of the user's tenant; for sending or listing, one this socket joined."""
+        conn = ws_manager.connections.get(conn_id)
+        if joined and (conn is None or f"room.{room_id}" not in conn.channels):
+            return False
+        db_gen = app.dependency_overrides.get(get_db, get_db)()
+        try:
+            return range_events.room_allowed(room_id, user, next(db_gen))
+        finally:
+            db_gen.close()
+
     try:
         while True:
             data = await ws.receive_text()
@@ -376,20 +420,29 @@ async def websocket_endpoint(ws: WebSocket, channel: str):
                 await ws_manager.send_to_connection(conn_id, {"type": "ack", "data": data})
                 continue
 
-            action = msg.get("action")
+            if isinstance(msg, dict) and msg.get("type") == "pong":
+                ws_manager.handle_pong(conn_id)
+                continue
+            action = msg.get("action") if isinstance(msg, dict) else None
+            room_id = str(msg.get("room_id", "")) if isinstance(msg, dict) else ""
+            if action in ("join_room", "room_message", "room_members") and not room_ok(
+                room_id, joined=action != "join_room"
+            ):
+                await ws_manager.send_to_connection(conn_id, {"type": "error", "detail": "room not allowed"})
+                continue
             if action == "join_room":
-                await ws_manager.join_room(conn_id, msg.get("room_id", ""), msg.get("display_name"))
+                await ws_manager.join_room(conn_id, room_id, msg.get("display_name"))
             elif action == "leave_room":
-                await ws_manager.leave_room(conn_id, msg.get("room_id", ""))
+                await ws_manager.leave_room(conn_id, room_id)
             elif action == "room_message":
                 await ws_manager.broadcast_to_room(
-                    msg.get("room_id", ""),
+                    room_id,
                     conn_id,
-                    msg.get("type", "room_chat"),
+                    range_events.room_message_type(msg.get("type")),
                     msg.get("data", {}),
                 )
             elif action == "room_members":
-                members = ws_manager.get_room_members(msg.get("room_id", ""))
+                members = ws_manager.get_room_members(room_id)
                 await ws_manager.send_to_connection(conn_id, {"type": "room_members", "members": members})
             else:
                 await ws_manager.send_to_connection(conn_id, {"type": "ack", "data": data})
