@@ -32,10 +32,10 @@ nothing. The job's credentials are in its environment, so a job can always use t
 Run the runner under a dedicated account whose token can be revoked (see
 docs/arc2-course-studio.md).
 
-Backends: ``seatbelt`` (macOS ``sandbox-exec``) and ``none``. Selection comes from
-``ARC2_CONFINE``: ``auto`` (the default) uses Seatbelt where it exists and otherwise
-fails closed. ``none`` runs unconfined, is for a single-tenant host only, and must be
-set explicitly. There is no Linux (bubblewrap) backend yet.
+Backends: ``seatbelt`` (macOS ``sandbox-exec``), ``bubblewrap`` (Linux ``bwrap``; see its
+class for the one known gap) and ``none``. Selection comes from ``ARC2_CONFINE``: ``auto``
+(the default) uses whichever exists and otherwise fails closed. ``none`` runs
+unconfined, is for a single-tenant host only, and must be set explicitly.
 """
 
 from __future__ import annotations
@@ -123,6 +123,89 @@ class Seatbelt(Confinement):
         return ["sandbox-exec", "-p", self.profile(jail), *cmd]
 
 
+class Bubblewrap(Confinement):
+    """Linux: the job runs in bubblewrap namespaces.
+
+    The root filesystem is mounted read-only. The runner account's home is replaced by an
+    empty read-only tmpfs, and the repository and ``claude`` installation are bound back
+    read-only. The runs root and the repository's other runs (``build/arc2``,
+    ``.claude/worktrees``) are hidden the same way, and ``.env*`` files are masked with
+    /dev/null. Only the job's run, its request file and its home are bound read-write.
+    ``--unshare-pid`` means the job cannot see, signal or read the arguments of any
+    process outside it, which is stronger than Seatbelt here.
+
+    Known gap: the network namespace is shared, so localhost services and filesystem
+    sockets outside the hidden paths stay reachable (``--unshare-net`` would also cut the
+    model API). On a Linux runner host, block the runner account's loopback traffic,
+    for example ``iptables -A OUTPUT -o lo -m owner --uid-owner arc2runner -j REJECT``,
+    and keep the Docker socket out of its reach (no ``docker`` group).
+    """
+
+    name = "bubblewrap"
+    _works: bool | None = None
+
+    def available(self) -> bool:
+        """``bwrap`` exists **and** can create namespaces here. Hosts that forbid
+        unprivileged user namespaces (Ubuntu 24.04's AppArmor default, some containers)
+        have the binary but cannot use it; then the runner fails closed at start instead of
+        failing every job."""
+        if not (sys.platform.startswith("linux") and shutil.which("bwrap")):
+            return False
+        if Bubblewrap._works is None:
+            import subprocess
+
+            probe = subprocess.run(
+                ["bwrap", "--ro-bind", "/", "/", "--unshare-pid", "--", "true"], capture_output=True, timeout=20
+            )
+            Bubblewrap._works = probe.returncode == 0
+        return Bubblewrap._works
+
+    def args(self, jail: Jail) -> list[str]:
+        """bwrap arguments, in mount order: later mounts sit on top of earlier ones."""
+        home, repo, runs = (Path(p).resolve() for p in (jail.home, jail.repo, jail.runs))
+        out = [
+            "bwrap",
+            "--die-with-parent",
+            "--new-session",
+            "--unshare-pid",
+            "--unshare-ipc",
+            "--unshare-uts",
+            "--ro-bind",
+            "/",
+            "/",
+            "--dev",
+            "/dev",
+            "--proc",
+            "/proc",
+        ]
+        out += ["--tmpfs", str(home)]  # 1. the runner's home: empty
+        for path in (repo, *jail.readable):  # 2. what the job may read, back on top, read-only
+            if Path(path).exists():
+                out += ["--ro-bind", str(Path(path).resolve()), str(Path(path).resolve())]
+        hidden = [p for p in (runs, repo / "build" / "arc2", repo / ".claude" / "worktrees") if p.exists()]
+        for path in hidden:  # 3. runs and other checkouts' runs: empty again
+            out += ["--tmpfs", str(path)]
+        for env_file in sorted({*repo.glob(".env*"), *repo.glob("*/.env*"), *repo.glob("*/*/.env*")}):
+            out += ["--ro-bind", "/dev/null", str(env_file.resolve())]  # 4. secrets: masked
+        for path in jail.readable_inner:  # 5. read-only views inside the hidden areas
+            out += ["--ro-bind", str(Path(path).resolve()), str(Path(path).resolve())]
+        for path in jail.writable:  # 6. the job's own run and home, read-write
+            path = Path(path).resolve()
+            path.mkdir(parents=True, exist_ok=True)
+            out += ["--bind", str(path), str(path)]
+        for path in jail.writable_files:
+            path = Path(path).resolve()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(exist_ok=True)
+            out += ["--bind", str(path), str(path)]
+        for path in (home, *hidden):  # 7. the empty tmpfs layers become read-only
+            out += ["--remount-ro", str(path)]
+        return out
+
+    def wrap(self, cmd: list[str], jail: Jail) -> list[str]:
+        return [*self.args(jail), "--", *cmd]
+
+
 class Unconfined(Confinement):
     name = "none"
 
@@ -133,18 +216,18 @@ class Unconfined(Confinement):
         return cmd
 
 
-BACKENDS: dict[str, type[Confinement]] = {"seatbelt": Seatbelt, "none": Unconfined}
+BACKENDS: dict[str, type[Confinement]] = {"seatbelt": Seatbelt, "bubblewrap": Bubblewrap, "none": Unconfined}
 
 
 def select(choice: str | None = None) -> Confinement:
     """The configured backend. Raises ConfinementError rather than silently running unconfined."""
     choice = (choice or os.environ.get("ARC2_CONFINE") or "auto").strip().lower()
     if choice == "auto":
-        seatbelt = Seatbelt()
-        if seatbelt.available():
-            return seatbelt
+        for backend in (Seatbelt(), Bubblewrap()):
+            if backend.available():
+                return backend
         raise ConfinementError(
-            "no OS sandbox for the ARC² engine on this host (Seatbelt needs macOS). "
+            "no OS sandbox for the ARC² engine on this host (Seatbelt on macOS, bubblewrap `bwrap` on Linux). "
             "Set ARC2_CONFINE=none to run jobs unconfined, on a single-tenant host only."
         )
     backend_type = BACKENDS.get(choice)
