@@ -202,6 +202,9 @@ def _check(db: Session, rng: Range, action: str) -> None:
         raise HTTPException(409, f"A {busy.action} of this range is still in progress (operation {busy.id})")
 
 
+RESTORE_STALE_AFTER = timedelta(hours=2)
+
+
 def refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
     """409 while any snapshot of the range is being restored.
 
@@ -213,7 +216,13 @@ def refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
 
     if (
         db.query(RangeSnapshot.id)
-        .filter(RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring")
+        .filter(
+            RangeSnapshot.range_id == range_id,
+            RangeSnapshot.snapshot_state == "restoring",
+            # A restore cannot outlive the worker's hard time limit (~1 h): one untouched
+            # this long belongs to a worker that died and no longer blocks the range.
+            RangeSnapshot.updated_at > _now() - RESTORE_STALE_AFTER,
+        )
         .first()
     ):
         raise HTTPException(409, "A restore of this range is in progress")

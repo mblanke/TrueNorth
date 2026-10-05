@@ -21,3 +21,12 @@ def test_a_range_with_noise_management_nics_is_refused_before_vcenter_is_touched
     template = {"vms": [{"name": "r-lnx01", "mgmt": {"vlan_id": 4001, "ip": "10.255.0.10", "prefix": 24}}]}
     with pytest.raises(PermanentError, match="noise"):
         asyncio.run(prov.provision("r1", template, {}))
+
+
+def test_it_is_refused_before_any_vlan_or_address_is_reserved():
+    """allocation_needs runs before reserve_for_build commits reservations; refusing there
+    leaves nothing held by a range that will never be built (re-review of #39)."""
+    prov = VsphereAPIProvisioner.__new__(VsphereAPIProvisioner)
+    template = {"vms": [{"name": "r-lnx01", "mgmt": {"vlan_id": 4001, "ip": "10.255.0.10", "prefix": 24}}]}
+    with pytest.raises(PermanentError, match="noise"):
+        prov.allocation_needs("r1", template)

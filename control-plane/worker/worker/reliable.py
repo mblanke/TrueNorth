@@ -10,14 +10,14 @@ from __future__ import annotations
 
 from celery import Task
 
-from .fencing import PermanentError
+from .fencing import FINAL_ERRORS
 
 
 class ReliableTask(Task):
     """Base task with exponential backoff + jitter on retries."""
 
     autoretry_for = (Exception,)
-    dont_autoretry_for = (PermanentError,)  # a full pool, nothing to power: retrying cannot help
+    dont_autoretry_for = FINAL_ERRORS  # a full pool, nothing to power, the soft time limit
     max_retries = 3
     retry_backoff = True  # Exponential backoff
     retry_backoff_max = 300  # Max 5 minutes between retries

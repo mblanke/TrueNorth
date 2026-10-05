@@ -305,6 +305,16 @@ def _vm_metrics(vm: dict, props: dict | None) -> dict:
     }
 
 
+def _refuse_noise(template: dict) -> None:
+    """render.py gives noise agents a management NIC (#29) that this provisioner does not
+    build yet; a range without it would come up `ready` with unreachable agents."""
+    if any(v.get("mgmt") for v in template.get("vms", [])):
+        raise PermanentError(
+            "background noise is not supported on vSphere yet (the agents' management NIC is not built); "
+            "turn noise off in the template or provision on another backend"
+        )
+
+
 class VsphereAPIProvisioner(BaseProvisioner):
     """VMware vSphere provisioner (Automation REST API + pyVmomi).
 
@@ -961,13 +971,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         Nothing is left behind on failure: when no VM could be built, the VMs and port
         groups this call made are removed again, so a retry starts clean.
         """
-        if any(v.get("mgmt") for v in template.get("vms", [])):
-            # render.py gives noise agents a management NIC (#29) that this provisioner does
-            # not build yet; a range without it would come up `ready` with unreachable agents.
-            raise PermanentError(
-                "background noise is not supported on vSphere yet (the agents' management NIC is not built); "
-                "turn noise off in the template or provision on another backend"
-            )
+        _refuse_noise(template)
         start = time.monotonic()
         errors: list[str] = []
         warnings: list[str] = []
@@ -1087,6 +1091,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
     def allocation_needs(self, range_id: str, template: dict) -> list[AllocationNeed]:
         """Physical VLANs for every logical VLAN (and RSPAN VLAN) the build will use, and
         the edge firewall's uplink address: the same planning ``provision`` does."""
+        _refuse_noise(template)  # before anything is reserved for a build that cannot happen
         vm_defs = [self._vm_plan(range_id, v) for v in template.get("vms", [])]
         logical = sorted({int(n["vlan"]) for v in vm_defs for n in v["nics"] if n.get("vlan") is not None})
         rules = infra.mirror_rules(template) if self._switch_mode != "vss" else []  # as _plan_mirrors

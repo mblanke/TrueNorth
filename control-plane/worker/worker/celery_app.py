@@ -15,7 +15,7 @@ from celery import Celery
 from kombu import Exchange, Queue
 
 from .contracts import QUEUES, route_table
-from .fencing import TASK_TIME_LIMIT
+from .fencing import SOFT_TIME_LIMIT, TASK_TIME_LIMIT
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
@@ -42,7 +42,8 @@ app.conf.update(
     task_acks_late=True,  # Don't ack until task completes
     # ...and stop it before the broker would hand it out again (visibility_timeout below);
     # a range task also holds the range's lease (fencing.py).
-    task_time_limit=TASK_TIME_LIMIT,
+    task_soft_time_limit=SOFT_TIME_LIMIT,  # raised in the task: cleanup and `failed` run
+    task_time_limit=TASK_TIME_LIMIT,  # kills the process: only a backstop
     worker_prefetch_multiplier=1,  # One task at a time per worker thread
     worker_max_tasks_per_child=100,  # Recycle workers to prevent memory leaks
     # Result backend

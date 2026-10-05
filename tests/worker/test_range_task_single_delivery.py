@@ -35,6 +35,16 @@ from worker.provisioners.base import DestroyResult, ProvisionResult, StopResult 
 OUTPUT = '{"vms": [{"name": "r-dc01", "vm_id": "vm-1"}]}'
 
 
+@pytest.fixture(autouse=True)
+def requeued(monkeypatch):
+    """Every re-queue (fencing.defer) is recorded here; none reaches a broker."""
+    from celery.app.task import Task
+
+    calls: list[dict] = []
+    monkeypatch.setattr(Task, "apply_async", lambda self, *a, **k: calls.append({"task": self.name, **k}))
+    return calls
+
+
 def _sqlite_now(dbapi_conn, _record):
     if type(dbapi_conn).__module__.startswith("sqlite3"):
         dbapi_conn.create_function("NOW", 0, lambda: datetime.now(UTC).isoformat())
@@ -110,7 +120,7 @@ class SlowBackend:
         ("stop_range", "stopping", OUTPUT),
     ],
 )
-def test_a_second_copy_while_the_first_runs_does_nothing(db, task, state, output):
+def test_a_second_copy_while_the_first_runs_does_nothing(db, task, state, output, requeued):
     rid = _range(db, state, output)
     backend = SlowBackend()
     results: dict = {}
@@ -125,8 +135,10 @@ def test_a_second_copy_while_the_first_runs_does_nothing(db, task, state, output
         backend.release.set()
         first.join(20)
     assert backend.calls == 1, f"{backend.calls} {task} calls reached the hypervisor"
-    assert results["second"]["status"] == "skipped"
+    # Not dropped: re-queued, to find the range finished (skip) or the lease expired (take over).
+    assert results["second"]["status"] == "deferred" and [c["task"] for c in requeued] == [f"worker.tasks.{task}"]
     assert results["first"]["status"] != "skipped"
+    assert getattr(tasks, task).run(rid)["status"] == "skipped", "after the first finished, a late copy does nothing"
 
 
 def test_a_retry_after_a_failed_attempt_still_runs(db):
@@ -208,8 +220,9 @@ def test_on_postgres_a_second_copy_while_the_first_runs_does_nothing(monkeypatch
         monkeypatch.setattr(tasks, "_db_session", session)
         monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
         results: dict = {}
-        with patch.object(tasks, "_get_backend", return_value=backend), patch.object(
-            tasks, "reserve_for_build", return_value={}
+        with (
+            patch.object(tasks, "_get_backend", return_value=backend),
+            patch.object(tasks, "reserve_for_build", return_value={}),
         ):
             first = threading.Thread(target=lambda: results.update(first=tasks.provision_range.run(rid)))
             first.start()
@@ -217,9 +230,66 @@ def test_on_postgres_a_second_copy_while_the_first_runs_does_nothing(monkeypatch
             results["second"] = tasks.provision_range.run(rid)
             backend.release.set()
             first.join(20)
-        assert backend.calls == 1 and results["second"]["status"] == "skipped"
+        assert backend.calls == 1 and results["second"]["status"] == "deferred"
         assert results["first"]["status"] == "ready"
+        assert tasks.provision_range.run(rid)["status"] == "skipped", (
+            "after the first finished, a late copy does nothing"
+        )
     finally:
         engine.dispose()
         with admin.connect() as conn:
             conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
+# ── From the re-review of #39 ──────────────────────────────────────────
+def test_a_copy_finding_the_lease_held_is_deferred_not_dropped(db, requeued):
+    """A re-send after a crash can arrive while the dead holder's lease still runs; it
+    must come back later (and take over once the lease expires), not be acknowledged
+    and lost with the range stuck in progress."""
+    if not hasattr(tables, "range_leases"):
+        pytest.skip("no lease table before the fix")
+    rid = _range(db, "provisioning")
+    with db.begin() as conn:
+        conn.execute(
+            tables.range_leases.insert().values(
+                range_id=rid, holder="dead-worker", expires_at=datetime.now(UTC) + timedelta(seconds=30)
+            )
+        )
+    with patch.object(tasks, "_get_backend") as backend:
+        result = tasks.provision_range.run(rid)
+    backend.assert_not_called()
+    assert result["status"] == "deferred", result
+    (call,) = requeued
+    assert call["args"][0] == rid and call["countdown"] > 0
+
+
+def test_a_soft_time_limit_records_failed_and_releases_the_lease(db):
+    """The hard limit kills the process with no cleanup; the soft limit, before it,
+    raises inside the task: it is final (no retry), records failed and frees the lease."""
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    rid = _range(db, "provisioning")
+    with (
+        patch.object(tasks, "_get_backend", side_effect=SoftTimeLimitExceeded()),
+        patch.object(tasks, "_last_attempt", return_value=False),  # retries would remain
+        patch.object(tasks, "reserve_for_build", return_value={}),
+        pytest.raises(SoftTimeLimitExceeded),
+    ):
+        tasks.provision_range.run(rid)
+    with db.connect() as conn:
+        state = conn.execute(sa.text("SELECT state FROM ranges WHERE id = :i"), {"i": rid}).scalar()
+        leases = (
+            conn.execute(sa.text("SELECT count(*) FROM range_leases")).scalar()
+            if hasattr(tables, "range_leases")
+            else 0
+        )
+    assert state == "failed" and leases == 0
+
+
+def test_the_soft_limit_comes_before_the_hard_one_and_both_before_redelivery():
+    from celery.exceptions import SoftTimeLimitExceeded
+    from worker.celery_app import app
+
+    visibility = app.conf.broker_transport_options["visibility_timeout"]
+    assert app.conf.task_soft_time_limit and app.conf.task_soft_time_limit < app.conf.task_time_limit < visibility
+    assert SoftTimeLimitExceeded in tasks.ReliableTask.dont_autoretry_for

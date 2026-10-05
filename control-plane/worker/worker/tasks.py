@@ -24,7 +24,7 @@ from . import db_ops, fencing, periodic
 from .aar import build_report as build_aar_report
 from .celery_app import app
 from .detection import DetectionScorer, range_index
-from .fencing import PermanentError, fenced, skipped
+from .fencing import FINAL_ERRORS, PermanentError, fenced, skipped
 from .periodic import HEALTH_CHECK_BUDGET, METRICS_BUDGET
 from .provisioners import get_provisioner
 from .range_alloc import reserve_for_build
@@ -214,7 +214,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
         return {"status": "ready", "range_id": range_id, "vm_count": len(result.vms)}
 
     except Exception as e:
-        if isinstance(e, PermanentError) or _last_attempt(self):  # a retry must still find it provisioning
+        if isinstance(e, FINAL_ERRORS) or _last_attempt(self):  # a retry must still find it provisioning
             _update_range_state(range_id, "failed", error=str(e), only_from=("provisioning",))
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[provision] Range {range_id} FAILED: {e}")
@@ -284,8 +284,8 @@ def _power_range(task, range_id: str, action: str, claim: str, done: str):
     by moving it to ``claim``: act only while it is there (fencing.py), write ``done`` only
     once the hypervisor did it; a retry is safe, and only the last attempt records failed."""
     logger.info(f"[{action}] Range {range_id}")
-    if not (lease := fencing.claim(_db_session, range_id, claim)):
-        return skipped(action, range_id, claim)
+    if (lease := fencing.claim(_db_session, range_id, claim)) in (None, fencing.LEASE_HELD):
+        return skipped(action, range_id, claim) if lease is None else fencing.defer(task, action, range_id, claim)
     try:
         with _db_session() as db:
             row = db_ops.range_output_and_backend(db, range_id)
@@ -300,7 +300,7 @@ def _power_range(task, range_id: str, action: str, claim: str, done: str):
         _notify_api("range", {"id": range_id, "state": done})
         return {"status": done, "range_id": range_id}
     except Exception as e:
-        if isinstance(e, PermanentError) or _last_attempt(task):  # a retry must still find it in `claim`
+        if isinstance(e, FINAL_ERRORS) or _last_attempt(task):  # a retry must still find it in `claim`
             _update_range_state(range_id, "failed", error=str(e), only_from=(claim,))
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[{action}] Range {range_id} FAILED: {e}")
