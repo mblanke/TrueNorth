@@ -41,6 +41,8 @@ infra/platform/docker/ssl/*.key
 # infra/platform/docker/.env.production was tracked for exactly that reason.
 .env.production
 .env.local
+# Live lab-session test settings (vCenter credentials): tests/integration/test_lab_sessions_vsphere.py
+.env.lab-test
 infra/platform/docker/.env
 infra/platform/docker/.env.production
 install/inventory/group_vars/all/vault.yml
