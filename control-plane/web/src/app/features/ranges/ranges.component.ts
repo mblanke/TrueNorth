@@ -1,4 +1,6 @@
-﻿import { Component, OnInit, signal, inject } from '@angular/core';
+﻿import { Component, DestroyRef, OnInit, signal, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { interval } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
@@ -12,12 +14,17 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { ApiService, RangeStats } from '@core/services/api.service';
+import { ApiService, RangeOperation, RangeStats } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { RangeSummary, TemplateSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { CountUpDirective } from '../../shared/motion';
+
+/** States in which the latest operation is still being worked on. */
+const IN_PROGRESS = new Set(['provisioning', 'destroying']);
+/** How often the list refreshes while any range is in progress. */
+export const POLL_MS = 5000;
 
 @Component({
   selector: 'tn-ranges',
@@ -121,6 +128,9 @@ import { CountUpDirective } from '../../shared/motion';
           <th mat-header-cell *matHeaderCellDef>State</th>
           <td mat-cell *matCellDef="let r">
             <span class="status-chip" [class]="r.state">{{ r.state }}</span>
+            @if (opText(r); as text) {
+              <span class="op-status" [class.op-warn]="opWarn(r)" data-testid="op-status">{{ text }}</span>
+            }
           </td>
         </ng-container>
         <ng-container matColumnDef="created">
@@ -139,19 +149,28 @@ import { CountUpDirective } from '../../shared/motion';
                 <mat-icon>edit</mat-icon>
               </button>
             }
-            @if (r.state === 'created') {
-              <button mat-icon-button color="primary" (click)="provision(r.id)" matTooltip="Provision">
+            @if (r.state === 'created' || r.state === 'failed') {
+              <button mat-icon-button color="primary" (click)="provision(r.id)" [disabled]="busy().has(r.id)"
+                      [matTooltip]="r.state === 'failed' ? 'Provision again' : 'Provision'">
                 <mat-icon>rocket_launch</mat-icon>
               </button>
             }
             @if (r.state === 'ready' || r.state === 'running') {
-              <button mat-icon-button (click)="stop(r.id)" matTooltip="Stop">
+              <button mat-icon-button (click)="stop(r.id)"
+                      matTooltip="Mark stopped (this backend does not power VMs off)">
                 <mat-icon>stop</mat-icon>
               </button>
             }
-            @if (r.state === 'ready' || r.state === 'running' || r.state === 'stopped') {
-              <button mat-icon-button color="warn" (click)="destroy(r.id)" matTooltip="Destroy">
+            @if (r.state === 'ready' || r.state === 'running' || r.state === 'stopped' || r.state === 'failed') {
+              <button mat-icon-button color="warn" (click)="destroy(r.id)" [disabled]="busy().has(r.id)"
+                      matTooltip="Destroy">
                 <mat-icon>delete</mat-icon>
+              </button>
+            }
+            @if (ops()[r.id]?.error?.['code'] === 'no_outcome') {
+              <button mat-stroked-button color="warn" (click)="abandon(r.id)" data-testid="abandon"
+                      matTooltip="Only after checking the hypervisor: nothing is still running there">
+                Give up on this {{ ops()[r.id].action }}
               </button>
             }
             <button mat-icon-button (click)="toggleNotes(r)"
@@ -224,11 +243,19 @@ import { CountUpDirective } from '../../shared/motion';
     .stat { display: flex; flex-direction: column; gap: 2px; }
     .stat-value { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--text-primary); }
     .stat-label { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+    .op-status { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .op-status.op-warn { color: var(--warn, #b26a00); }
   `],
 })
 export class RangesComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
+  private destroyRef = inject(DestroyRef);
+
+  /** The latest operation of each range that has one in progress. */
+  ops = signal<Record<string, RangeOperation>>({});
+  /** Ranges with a request on its way, so a double click cannot send two. */
+  busy = signal<Set<string>>(new Set());
 
   ranges = signal<RangeSummary[]>([]);
   templates = signal<TemplateSummary[]>([]);
@@ -246,6 +273,10 @@ export class RangesComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadRanges();
+    // Refresh while anything is in progress: the worker, not this page, decides when it is done.
+    interval(POLL_MS).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      if (this.ranges().some(r => IN_PROGRESS.has(r.state))) this.loadRanges();
+    });
     this.api.listTemplates().subscribe(t => this.templates.set(t));
     // Stats are decoration: a failure must not blank the page.
     this.api.getRangeStats().subscribe({ next: s => this.stats.set(s), error: () => this.stats.set(null) });
@@ -259,9 +290,56 @@ export class RangesComponent implements OnInit {
 
   loadRanges(): void {
     this.api.listRanges().subscribe({
-      next: r => { this.ranges.set(r); this.loading.set(false); },
+      next: r => { this.ranges.set(r); this.loading.set(false); this.loadOps(r); },
       error: () => this.loading.set(false),
     });
+  }
+
+  /** Latest operation for each range in progress or failed (its message says why). */
+  private loadOps(ranges: RangeSummary[]): void {
+    const wanted = ranges.filter(r => IN_PROGRESS.has(r.state) || r.state === 'failed');
+    const next: Record<string, RangeOperation> = {};
+    if (!wanted.length) { this.ops.set(next); return; }
+    let left = wanted.length;
+    for (const r of wanted) {
+      this.api.listRangeOperations(r.id).subscribe({
+        next: list => { if (list.length) next[r.id] = list[0]; },
+        complete: () => { if (--left === 0) this.ops.set({ ...next }); },
+        error: () => { if (--left === 0) this.ops.set({ ...next }); },
+      });
+    }
+  }
+
+  /** What the latest operation is doing, in words; null when there is nothing to add. */
+  opText(r: RangeSummary): string | null {
+    const op = this.ops()[r.id];
+    if (!op) return null;
+    const code = String(op.error?.['code'] ?? '');
+    const doing = op.action === 'destroy' ? 'Destroying' : 'Provisioning';
+    if (op.status === 'pending') {
+      return code === 'broker_unavailable'
+        ? 'Queued: waiting for the task queue to come back'
+        : 'Queued';
+    }
+    if (op.status === 'dispatched') {
+      return code === 'no_outcome' ? 'No result from the worker: check the hypervisor' : `${doing}…`;
+    }
+    if (op.status === 'failed' && r.state === 'failed') {
+      return code === 'abandoned' ? `${op.action} abandoned` : `${op.action} failed: ${String(op.error?.['message'] ?? '')}`;
+    }
+    return null;
+  }
+
+  opWarn(r: RangeSummary): boolean {
+    const op = this.ops()[r.id];
+    const code = String(op?.error?.['code'] ?? '');
+    return !!op && (op.status === 'failed' || code === 'broker_unavailable' || code === 'no_outcome');
+  }
+
+  private setBusy(id: string, on: boolean): void {
+    const next = new Set(this.busy());
+    if (on) next.add(id); else next.delete(id);
+    this.busy.set(next);
   }
 
   toggleNotes(r: RangeSummary): void {
@@ -301,23 +379,39 @@ export class RangesComponent implements OnInit {
   }
 
   provision(id: string): void {
-    this.api.provisionRange(id).subscribe({
-      next: () => { this.notify.success('Provisioning started'); this.loadRanges(); },
-      error: () => this.notify.error('Provisioning failed'),
-    });
+    this.request(id, this.api.provisionRange(id), 'Provisioning requested', 'Could not request provisioning');
   }
 
   stop(id: string): void {
     this.api.stopRange(id).subscribe({
-      next: () => { this.notify.success('Range stopped'); this.loadRanges(); },
+      next: () => { this.notify.success('Range marked stopped. Its VMs were not powered off.'); this.loadRanges(); },
       error: () => this.notify.error('Stop failed'),
     });
   }
 
   destroy(id: string): void {
-    this.api.destroyRange(id).subscribe({
-      next: () => { this.notify.success('Destroying range'); this.loadRanges(); },
-      error: () => this.notify.error('Destroy failed'),
+    this.request(id, this.api.destroyRange(id), 'Destroy requested', 'Could not request destroy');
+  }
+
+  /** A provision/destroy: 202 means recorded, not done; the row's status follows it. */
+  private request(id: string, call: ReturnType<ApiService['provisionRange']>, ok: string, failed: string): void {
+    this.setBusy(id, true);
+    call.subscribe({
+      next: () => { this.setBusy(id, false); this.notify.success(ok); this.loadRanges(); },
+      error: (e) => {
+        this.setBusy(id, false);
+        this.notify.error(e?.status === 409 && e?.error?.detail ? e.error.detail : failed);
+        this.loadRanges();
+      },
+    });
+  }
+
+  abandon(id: string): void {
+    const op = this.ops()[id];
+    if (!op) return;
+    this.api.abandonRangeOperation(id, op.id).subscribe({
+      next: () => { this.notify.success(`${op.action} abandoned; the range is marked failed`); this.loadRanges(); },
+      error: () => this.notify.error('Could not abandon the operation'),
     });
   }
 }

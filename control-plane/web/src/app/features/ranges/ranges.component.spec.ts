@@ -1,9 +1,9 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { RangesComponent } from './ranges.component';
-import { ApiService } from '@core/services/api.service';
+import { POLL_MS, RangesComponent } from './ranges.component';
+import { ApiService, RangeOperation } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Range, Template } from '@core/models';
 
@@ -34,6 +34,8 @@ describe('RangesComponent', () => {
       'stopRange',
       'destroyRange',
       'getRangeStats',
+      'listRangeOperations',
+      'abandonRangeOperation',
     ]);
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
@@ -43,6 +45,7 @@ describe('RangesComponent', () => {
     mockApi.provisionRange.and.returnValue(of({ id: 'r2', state: 'provisioning' } as Range));
     mockApi.stopRange.and.returnValue(of({ id: 'r1', state: 'stopped' } as Range));
     mockApi.destroyRange.and.returnValue(of({ id: 'r1', state: 'destroying' } as Range));
+    mockApi.listRangeOperations.and.returnValue(of([]));
     mockApi.getRangeStats.and.returnValue(of({
       total_ranges: 4, by_state: { ready: 1, created: 1 }, total_vms: 12, active_exercises: 2,
     }));
@@ -88,7 +91,7 @@ describe('RangesComponent', () => {
     component.provision('r2');
 
     expect(mockApi.provisionRange).toHaveBeenCalledWith('r2');
-    expect(mockNotify.success).toHaveBeenCalledWith('Provisioning started');
+    expect(mockNotify.success).toHaveBeenCalledWith('Provisioning requested');
   });
 
   it('provision() should show error on failure', () => {
@@ -97,7 +100,7 @@ describe('RangesComponent', () => {
 
     component.provision('r2');
 
-    expect(mockNotify.error).toHaveBeenCalledWith('Provisioning failed');
+    expect(mockNotify.error).toHaveBeenCalledWith('Could not request provisioning');
   });
 
   // ── Destroy button calls destroyRange ────────────────────────────
@@ -107,7 +110,7 @@ describe('RangesComponent', () => {
     component.destroy('r1');
 
     expect(mockApi.destroyRange).toHaveBeenCalledWith('r1');
-    expect(mockNotify.success).toHaveBeenCalledWith('Destroying range');
+    expect(mockNotify.success).toHaveBeenCalledWith('Destroy requested');
   });
 
   it('destroy() should show error on failure', () => {
@@ -116,7 +119,7 @@ describe('RangesComponent', () => {
 
     component.destroy('r1');
 
-    expect(mockNotify.error).toHaveBeenCalledWith('Destroy failed');
+    expect(mockNotify.error).toHaveBeenCalledWith('Could not request destroy');
   });
 
   // ── Stop ─────────────────────────────────────────────────────────
@@ -126,7 +129,7 @@ describe('RangesComponent', () => {
     component.stop('r1');
 
     expect(mockApi.stopRange).toHaveBeenCalledWith('r1');
-    expect(mockNotify.success).toHaveBeenCalledWith('Range stopped');
+    expect(mockNotify.success).toHaveBeenCalledWith('Range marked stopped. Its VMs were not powered off.');
   });
 
   // ── Create range ─────────────────────────────────────────────────
@@ -168,4 +171,62 @@ describe('RangesComponent', () => {
     expect(states).toContain('provisioning');
     expect(states).toContain('destroyed');
   });
+
+  // ── Operations: the row says what the request is actually doing ──
+  const op = (o: Partial<RangeOperation>): RangeOperation =>
+    ({ id: 'op1', range_id: 'r3', action: 'provision', generation: 1, status: 'dispatched',
+       dispatch_attempts: 1, error: null, ...o } as RangeOperation);
+
+  function statusText(): string {
+    const el = fixture.nativeElement.querySelector('[data-testid="op-status"]');
+    return el ? el.textContent.trim() : '';
+  }
+
+  it('says a provision is waiting for the task queue instead of claiming progress', () => {
+    mockApi.listRangeOperations.and.returnValue(of([op({ status: 'pending', error: { code: 'broker_unavailable' } })]));
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(mockApi.listRangeOperations).toHaveBeenCalledWith('r3');
+    expect(statusText()).toBe('Queued: waiting for the task queue to come back');
+  });
+
+  it('offers to give up only when the worker never reported back', () => {
+    mockApi.listRangeOperations.and.returnValue(of([op({ error: { code: 'no_outcome' } })]));
+    mockApi.abandonRangeOperation.and.returnValue(of(op({ status: 'failed' })));
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(statusText()).toBe('No result from the worker: check the hypervisor');
+    const btn: HTMLButtonElement = fixture.nativeElement.querySelector('[data-testid="abandon"]');
+    expect(btn).toBeTruthy();
+    btn.click();
+    expect(mockApi.abandonRangeOperation).toHaveBeenCalledWith('r3', 'op1');
+  });
+
+  it('shows no abandon button for an operation that is simply running', () => {
+    mockApi.listRangeOperations.and.returnValue(of([op({})]));
+    fixture.detectChanges();
+    fixture.detectChanges();
+    expect(statusText()).toBe('Provisioning…');
+    expect(fixture.nativeElement.querySelector('[data-testid="abandon"]')).toBeNull();
+  });
+
+  it('shows the server\'s reason when a request is refused', () => {
+    mockApi.provisionRange.and.returnValue(throwError(() => ({ status: 409, error: { detail: 'A destroy of this range is still in progress' } })));
+    fixture.detectChanges();
+    component.provision('r2');
+    expect(mockNotify.error).toHaveBeenCalledWith('A destroy of this range is still in progress');
+  });
+
+  it('refreshes while a range is in progress, and not otherwise', fakeAsync(() => {
+    fixture.detectChanges();
+    const calls = mockApi.listRanges.calls.count();
+    tick(POLL_MS);
+    expect(mockApi.listRanges.calls.count()).toBe(calls + 1);
+    mockApi.listRanges.and.returnValue(of([{ id: 'r1', name: 'A', state: 'ready' } as Range]));
+    tick(POLL_MS);
+    const settled = mockApi.listRanges.calls.count();
+    tick(POLL_MS * 3);
+    expect(mockApi.listRanges.calls.count()).toBe(settled);
+    discardPeriodicTasks();
+  }));
 });
