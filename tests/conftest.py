@@ -15,6 +15,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 os.environ.setdefault("RANGE_OP_REDISPATCH_SECONDS", "0")  # tests call range_ops.redispatch_pending
+os.environ.setdefault("WS_EVENTS_ENABLED", "false")  # no Redis subscription from the test process
 
 from app.db import Base, get_db
 from app.main import app as fastapi_app
