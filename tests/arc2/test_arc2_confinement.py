@@ -40,7 +40,7 @@ from arc2 import confine, runner
 SLUG = "arc2-mine"
 
 PROBE = r"""#!/usr/bin/python3
-import json, os, signal, socket, subprocess, sys
+import errno, json, os, signal, socket, subprocess, sys
 runs, repo, probe = os.environ["PROBE_RUNS"], os.environ["PROBE_REPO"], os.environ["PROBE_NAME"]
 real_home, port, runner_pid = os.environ["PROBE_REAL_HOME"], int(os.environ["PROBE_PORT"]), int(os.environ["PROBE_PARENT"])
 results = {}
@@ -78,6 +78,28 @@ attempt("connect_localhost", connect_tcp)
 attempt("connect_unix_socket", connect_unix)
 attempt("signal_runner", lambda: os.kill(runner_pid, 0))
 attempt("read_runner_environ", read(f"/proc/{runner_pid}/environ"))
+def direct_out():
+    try:
+        socket.create_connection(("192.0.2.1", 443), timeout=2).close()  # TEST-NET: never answers
+        return "connected"
+    except PermissionError:
+        return "blocked"  # refused by the sandbox (EPERM), not merely unreachable
+    except OSError as exc:
+        if exc.errno == errno.ENETUNREACH:
+            return "blocked"  # a network namespace with no route out at all (bubblewrap)
+        return "unreachable"
+results["direct_internet"] = direct_out()
+def via_proxy(host):
+    proxy = os.environ.get("HTTPS_PROXY", "")
+    if not proxy:
+        return "no-proxy"
+    p_host, p_port = proxy.rsplit("/", 1)[-1].split(":")
+    s = socket.create_connection((p_host, int(p_port)), timeout=5)
+    s.sendall(f"CONNECT {host}:443 HTTP/1.1\r\nHost: {host}:443\r\n\r\n".encode())
+    reply = s.recv(64).decode("latin-1")
+    s.close()
+    return "tunnelled" if " 200 " in reply else "refused" if " 403 " in reply else reply[:20]
+results["proxy_other_host"] = via_proxy("exfil.example.com")
 results["sees_runner_secret"] = "PROBE_RUNNER_SECRET" in os.environ
 results["home_is_fresh"] = os.environ["HOME"] != real_home and os.environ.get("CLAUDE_CONFIG_DIR", "").startswith(os.environ["HOME"])
 # Plant things the runner's history snapshot would run or follow, outside the sandbox.
@@ -102,7 +124,7 @@ SANDBOXES = [name for name in ("seatbelt", "bubblewrap") if confine.BACKENDS[nam
 ]
 # Documented gaps (confine.Bubblewrap): Linux shares the network namespace, so local
 # services stay reachable from a job unless the host firewall blocks the runner account.
-KNOWN_GAPS = {"bubblewrap": {"connect_localhost": "allowed", "connect_unix_socket": "allowed"}}
+KNOWN_GAPS: dict = {}  # none since bubblewrap jobs got their own network namespace
 
 
 @pytest.fixture
@@ -208,6 +230,8 @@ EXPECTED = {
     "connect_unix_socket": "denied",
     "signal_runner": "denied",
     "read_runner_environ": "denied",
+    "direct_internet": "blocked",
+    "proxy_other_host": "refused",
     "sees_runner_secret": False,
     "home_is_fresh": True,
 }
