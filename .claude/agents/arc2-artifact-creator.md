@@ -25,6 +25,23 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
   `instructor/answer_key.md`, `instructor/inject_solutions.md`, `media/<placeholders>`, `fragment.json`.
 - You have no shell: `sha256` is `null`; you run nothing. The orchestrator merges.
 
+## Theory and practical runs (no range module)
+When no module in `content.modules[]` has `activity.kind: range`, `range`, `injects` and
+`critical_events` are legitimately absent or empty: do not stop for them. Then:
+- `rubric.md` marks the course's summative written and practical work against its objectives
+  (criterion, evidence, objective ids, standard), not critical events.
+- `deliverable.md` is the student's submission template for that work (for practical modules:
+  findings, evidence cited, method, tool output excerpts).
+- `variant_b` is `04-artifacts/variant_B/assessment.md`: an alternate form of the summative task
+  and a second quiz form per module (different stems), for retests.
+- `instructor/` holds the instructor pack: `answer_key.md` (every quiz answer with a one-line
+  rationale, every practice task's expected answer), `facilitation.md` (per module: timing plan
+  matching the outline minutes, how to run it, likely misconceptions, discussion prompts) and
+  `marking_examples.md` (one strong and one weak sample answer per summative criterion, with the
+  mark and why). `inject_solutions.md` is not written.
+- `xapi.json` defines the module completion/pass statements only.
+- `files[]` entries for each of these, kind `artifact`, objective ids of what they cover.
+
 ## Steps
 1. Read `$RUN/manifest.json`. You need `course` (`code`, `title`, `po`, `po_candidates`),
    `objectives[]`, `critical_events[]`, `content.modules[]` (`id`, `objective_ids`, `pages`),

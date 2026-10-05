@@ -20,6 +20,10 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
 - Manifest key `content`; `files[]` / `human_actions[]` entries stamped `code-generator`.
 - `02-content/`: `<course.code lowercased>.yaml` (e.g. `arc2-adlm.yaml`) (the `content/courses/*.yaml` shape),
   `mod_NNN/course-config.json` per module, `mod_NNN/content/page-NN.html`, `fragment.json`.
+- For `practical` modules, the supplied material students work on (synthetic logs, exports,
+  datasets, templates) under `mod_NNN/content/evidence/`: text formats only, fictional, small,
+  consistent with the pages, every file in `files[]` (kind `content`). It ships to students;
+  the answers to it do not (those are the artifact-creator's instructor pack).
 - Not yours: `01-blueprint/catalogue_row.csv` (content-architect), the repo's `content/`
   tree (promotion is a human step), `07-bundle/` (package-builder copies your files there).
 
