@@ -56,3 +56,23 @@ do not exist yet.
 | New project, describe the course, Send | "Waiting for the runner"; the Pipeline panel says so | pass |
 | Runner picks the job up | about 8 s later: "Outline ready: 2 modules. Accept or send feedback.", both modules on the Outline tab, "Accept Outline" offered | pass |
 | Job record | `confinement: seatbelt`, `egress: ["api.anthropic.com"]`, the owner's `tenant_id`, `runner` identity, `history_commit` in the runner-owned `_history/<slug>.git`; the job's throwaway home removed | pass |
+
+## Exercise and scoring journey (API, same night)
+
+The candidate with a real Celery worker, a throwaway Redis and a scratch database ran:
+range (mock) → scenario `scenario-engine/examples/apt-breach.yaml` → exercise → start
+→ AAR.
+
+| Step | Result |
+|---|---|
+| range provisioned | `ready` |
+| scenario created, exercise created, started | 201, 201, 200 → `running`; the worker ran it and the exercise reached `completed` |
+| objectives and score | **0 objectives, score 0/0**, although the scenario defines 4 (`detect-phish`, `detect-c2`, `detect-priv-esc`, `incident-report`) |
+| AAR generate / read / html | 201 / 200 / 200, but the HTML is 74 bytes |
+
+**Finding (already on main, not introduced by this work):** `Objective` rows are created
+only for curriculum-driven exercises (`app/qsp_paths.py`). An exercise started from a
+scenario gets none, so the worker's scoring (`run_scenario_v2`, `db_ops.achieve_objective`
+by `ref_id`) has nothing to mark and the AAR is empty. The scoring journey is therefore
+**not complete**. Follow-up: materialise the scenario's objectives when an exercise is
+created (or started), keyed by `ref_id`.
