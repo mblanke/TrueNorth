@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import json
 import os
 import queue
@@ -235,8 +236,9 @@ def should_fall_back(record: dict) -> bool:
     return record.get("state") == "failed" and any(marker in error for marker in FALLBACK_ERRORS)
 
 
-def claim(queue: Path, jobs: Path) -> tuple[dict, Path] | None:
-    """Move the oldest queued job into _jobs as running. Invalid jobs are recorded as failed."""
+def claim(queue: Path, jobs: Path, owner: dict | None = None) -> tuple[dict, Path] | None:
+    """Move the oldest queued job into _jobs as running, recording ``owner`` (the runner).
+    Invalid jobs are recorded as failed."""
     for path in sorted(queue.glob("*.json")):
         try:
             raw = json.loads(path.read_text())
@@ -248,7 +250,7 @@ def claim(queue: Path, jobs: Path) -> tuple[dict, Path] | None:
         except OSError:
             continue  # another runner took it
         record = {**raw, "state": "running", "started_at": now(), "log": target.with_suffix(".log").name,
-                  "current_agent": None, "result": None, "error": None}
+                  "current_agent": None, "result": None, "error": None, "runner": owner}
         try:
             record = {**validate(raw), **{k: v for k, v in record.items() if k not in raw}}
         except JobError as exc:
@@ -561,6 +563,39 @@ def snapshot(runs: Path, record: dict, log_path: Path, confinement: Confinement 
     return git("rev-parse", "--short", "HEAD").stdout.strip() or None
 
 
+# ── One runner per runs root, and crash recovery ───────────────────────
+# The runner is a single host process. Recovery after a restart fails jobs left
+# "running", which is only safe if no other runner is working on them, so a runner holds
+# an exclusive flock on <runs>/_runner.lock for its whole life. A second runner exits
+# instead of recovering anything; the kernel releases the lock however the holder dies.
+# Jobs are not run twice: a job is only re-queued if it was never recorded as started.
+
+def acquire_lock(runs: Path):
+    """The open, exclusively locked runs-root lock file, or None if another runner holds it."""
+    handle = (runs / "_runner.lock").open("a")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.close()
+        return None
+    return handle
+
+
+def recover(queue: Path, jobs: Path) -> None:
+    """After a crash, with the lock held: put interrupted claims back on the queue (the job
+    never started) and fail jobs left running (they did start; resuming blind is unsafe)."""
+    for path in jobs.glob("*.claiming"):
+        job = None
+        with contextlib.suppress(OSError, ValueError):
+            job = json.loads(path.read_text())
+        if not isinstance(job, dict) or not job.get("id"):
+            path.unlink(missing_ok=True)
+            continue
+        stamp = str(job.get("created_at") or now()).replace(":", "").replace("-", "").replace(".", "")[:15]
+        path.rename(queue / f"{stamp}-{job['id']}.json")
+    reap(jobs)
+
+
 def reap(jobs: Path) -> None:
     """Jobs left 'running' by a runner that stopped are failed, not silently resumed."""
     for path in jobs.glob("*.json"):
@@ -592,26 +627,35 @@ def main(argv: list[str] | None = None) -> int:
         print(f"arc2 runner: warning: no CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY or {token_file()}; "
               "confined jobs start with an empty Claude config and cannot sign in", file=sys.stderr, flush=True)
     queue, jobs = dirs(args.runs)
-    reap(jobs)
+    lock = acquire_lock(args.runs)
+    if lock is None:
+        print(f"arc2 runner: not starting: another runner holds {args.runs / '_runner.lock'}",
+              file=sys.stderr, flush=True)
+        return 3
+    owner = {"pid": os.getpid(), "host": os.uname().nodename, "started_at": now()}
+    recover(queue, jobs)
     print(f"arc2 runner: watching {queue} (claude: {claude}; fallback: "
           f"{fallback.label + ' at ' + fallback.url if fallback else 'off'}; confinement: {confinement.name})",
           flush=True)
-    while True:
-        claimed = claim(queue, jobs)
-        if claimed:
-            record, path = claimed
-            print(f"{now()} {record['action']} {record['slug']}: running", flush=True)
-            record = run_job(record, path, claude, args.timeout, fallback, confinement, args.runs)
-            commit = snapshot(args.runs, record, path.with_suffix(".log"), confinement)
-            if commit:
-                record["history_commit"] = commit
-                write_record(path, record)
-            print(f"{now()} {record['action']} {record['slug']}: {record['state']} on {record.get('engine')}"
-                  + (f" ({record['error']})" if record.get("error") else ""), flush=True)
-            continue
-        if args.once:
-            return 0
-        time.sleep(args.poll)
+    try:
+        while True:
+            claimed = claim(queue, jobs, owner)
+            if claimed:
+                record, path = claimed
+                print(f"{now()} {record['action']} {record['slug']}: running", flush=True)
+                record = run_job(record, path, claude, args.timeout, fallback, confinement, args.runs)
+                commit = snapshot(args.runs, record, path.with_suffix(".log"), confinement)
+                if commit:
+                    record["history_commit"] = commit
+                    write_record(path, record)
+                print(f"{now()} {record['action']} {record['slug']}: {record['state']} on {record.get('engine')}"
+                      + (f" ({record['error']})" if record.get("error") else ""), flush=True)
+                continue
+            if args.once:
+                return 0
+            time.sleep(args.poll)
+    finally:
+        lock.close()  # releases the flock
 
 
 # The runner's own environment, as the kernel recorded it at exec. A confined job cannot
