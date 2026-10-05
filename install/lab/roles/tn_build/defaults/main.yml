@@ -1,0 +1,28 @@
+---
+# Packer from HashiCorp's apt repo. The key is checked against this fingerprint before
+# the repo is trusted (https://www.hashicorp.com/trust/security, "Linux package signing").
+tn_build_hashicorp_key_url: https://apt.releases.hashicorp.com/gpg
+tn_build_hashicorp_key_fpr: "798AEC654E5C15428C8E42EEAA16FCBCA621E701"
+# Empty: latest from the repo. infra/vsphere/packer needs >= 1.11.
+tn_build_packer_version: ""
+
+# govc: the release tarball, checksum-verified against the release's checksums.txt.
+tn_build_govc_version: "0.56.0"
+
+tn_build_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - jq
+  - git
+  - unzip
+  - rsync
+  - ansible-core
+  - xorriso # Packer cd_files (Ubuntu cidata, Rocky OEMDRV) needs an ISO tool
+  - genisoimage
+  - qemu-utils # qemu-img: disk conversion and inspection
+  - python3-venv
+  - python3-yaml # scripts/lab/choco-internalize.py reads content/choco/*.yaml
+  # prefetch.yml warms the depot from throwaway ubuntu:24.04 / rocky:9 containers, so
+  # the dependency closure is that of a minimal system, not of this build host.
+  - docker.io

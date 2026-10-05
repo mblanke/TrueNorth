@@ -1,0 +1,26 @@
+#cloud-config
+# TrueNorth Range — Ubuntu 24.04 autoinstall seed for the vSphere ubuntu-lts build.
+# Delivered on a second CD labelled "cidata" (cd_files + cd_label="cidata"), so the only
+# kernel arg the build needs is `autoinstall`. Build creds match ssh_username/ssh_password
+# (ubuntu/ubuntu); the password hash below is SHA-512 of "ubuntu" — override for real builds.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  storage:
+    layout:
+      name: lvm
+  identity:
+    hostname: ubuntu-lts
+    username: ubuntu
+    password: "$6$truenorthpkr$bVdgsetfx5CL7JMrDQFcHUqCOak0SE9VomTEvLepAaIO.OLaaIqggPw9zrNQ1AuWF73ChZfbTQKJOnkAIKymj0"
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - open-vm-tools
+    - cloud-init
+  late-commands:
+    - "echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/ubuntu"
+    - "chmod 440 /target/etc/sudoers.d/ubuntu"

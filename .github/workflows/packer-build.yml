@@ -57,6 +57,29 @@ jobs:
           done
           exit $FAILED
 
+  vsphere-validate:
+    name: Validate vSphere Templates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: latest
+
+      - name: Packer init
+        run: packer init infra/vsphere/packer
+
+      - name: Packer fmt check
+        run: packer fmt -check -recursive infra/vsphere/packer
+
+      - name: Validate (syntax-only, no secrets)
+        # Syntax-only: no vCenter credentials needed and no build runs. A full
+        # `packer validate` needs real var values (ISO paths, library), so that is
+        # left to the operator with a filled lab.auto.pkrvars.hcl.
+        run: packer validate -syntax-only infra/vsphere/packer
+
   build:
     name: "Build: ${{ inputs.template }}"
     runs-on: ubuntu-latest

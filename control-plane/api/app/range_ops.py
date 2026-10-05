@@ -49,10 +49,6 @@ class Action:
     task: str
     in_progress: RangeState
     outcomes: dict[RangeState, str]  # observed range state -> operation status
-    # Where an abandoned operation leaves the range. failed (destroy or provision
-    # again) for a build; for power, the range is built and failed's "provision again"
-    # would orphan its VMs, so it goes back to where it was, with the error.
-    abandoned: RangeState = RangeState.failed
 
 
 ACTIONS: dict[str, Action] = {
@@ -62,20 +58,9 @@ ACTIONS: dict[str, Action] = {
     "destroy": Action(
         "destroy_range", RangeState.destroying, {RangeState.destroyed: "succeeded", RangeState.failed: "failed"}
     ),
-    # Power. A worker that could not do it puts the range back where its VMs still are
-    # (app/state_machines.py), which settles the operation as failed.
-    "stop": Action(
-        "stop_range",
-        RangeState.stopping,
-        {RangeState.stopped: "succeeded", RangeState.ready: "failed", RangeState.failed: "failed"},
-        abandoned=RangeState.ready,
-    ),
-    "start": Action(
-        "start_range",
-        RangeState.starting,
-        {RangeState.ready: "succeeded", RangeState.stopped: "failed", RangeState.failed: "failed"},
-        abandoned=RangeState.stopped,
-    ),
+    # Power (S5a). The worker writes stopped/running only once the VMs are; the API never claims it.
+    "stop": Action("stop_range", RangeState.stopping, {RangeState.stopped: "succeeded", RangeState.failed: "failed"}),
+    "start": Action("start_range", RangeState.starting, {RangeState.running: "succeeded", RangeState.failed: "failed"}),
 }
 
 BROKER_UNAVAILABLE = {
@@ -203,6 +188,13 @@ def _check(db: Session, rng: Range, action: str) -> None:
     if not rng.state.can_transition_to(ACTIONS[action].in_progress):
         raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
     refuse_while_restoring(db, rng.id)
+    # ``failed`` covers both "nothing was built" and "built, but a power operation failed".
+    # The VMs a build recorded tell them apart: power needs some, a new build needs none.
+    vms = recorded_vms(rng)
+    if action in ("stop", "start") and not vms:
+        raise HTTPException(409, f"Cannot {action}: the range has no VMs (nothing was built)")
+    if action == "provision" and vms:
+        raise HTTPException(409, f"The range still has {vms} VMs from an earlier build; destroy it first")
     busy = (
         db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT)).first()
     )
@@ -225,6 +217,16 @@ def refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
         .first()
     ):
         raise HTTPException(409, "A restore of this range is in progress")
+
+
+def recorded_vms(rng: Range) -> int:
+    """How many VMs the range's last build recorded (provisioner_output["vms"])."""
+    try:
+        out = json.loads(rng.provisioner_output or "{}")
+    except ValueError:
+        return 0
+    vms = out.get("vms") if isinstance(out, dict) else None
+    return len(vms) if isinstance(vms, list) else 0
 
 
 def _user_uuid(user: CurrentUser) -> uuid.UUID | None:
@@ -329,7 +331,9 @@ def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> N
     op.finished_at = _now()
     op.error = {"code": "abandoned", "message": f"Abandoned by {user.email or user.id}"}
     if rng.state == ACTIONS[op.action].in_progress:
-        rng.state = ACTIONS[op.action].abandoned
+        # failed: a built range can still be started, stopped or destroyed from there, and
+        # a new build is refused while it has VMs (_check), so nothing is orphaned.
+        rng.state = RangeState.failed
         rng.error_message = f"{op.action} abandoned by an operator; check the hypervisor for the VMs' real state"
 
 

@@ -139,7 +139,7 @@ class ADAttackInjector(BaseInjector):
             "successful": len(successful),
             "compromised_accounts": [a["username"] for a in successful],
             "lockouts_triggered": max(0, len(users) - 3),
-            "tool": "Spray / CrackMapExec",
+            "tool": "Spray / NetExec",
         }
 
     def _dcsync(self, context: dict[str, Any]) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 """TrueNorth Range — Ranges router.
 
-Handles range CRUD, provision/destroy/stop lifecycle actions, batch
+Handles range CRUD, provision/destroy/stop/start lifecycle actions, batch
 provisioning (70k-VM scale), and range statistics.
 
 Permissions required per endpoint (enforced via ``rbac.require_permission``):
@@ -18,6 +18,7 @@ DELETE /ranges/{range_id}          RANGE_DELETE
 POST   /ranges/{range_id}/provision  RANGE_PROVISION
 POST   /ranges/{range_id}/destroy    RANGE_DESTROY
 POST   /ranges/{range_id}/stop       RANGE_PROVISION
+POST   /ranges/{range_id}/start      RANGE_PROVISION
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
 """
@@ -630,8 +631,9 @@ async def stop_range(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
-    """Power a ready range's VMs off (async worker task). The range is ``stopping`` until
-    the worker reports ``stopped``.  **Permission: range:provision**"""
+    """Power off a range's VMs (an operation; the range is ``stopping`` until the worker
+    reports ``stopped``).  **Permission: range:provision**"""
+    _refuse_while_restoring(db, _tenant_range(db, range_id, user).id)
     return _range_operation("stop", range_id, idempotency_key, db, user, response)
 
 
@@ -643,8 +645,9 @@ async def start_range(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
-    """Power a stopped range's VMs on (async worker task). The range is ``starting``
-    until the worker reports ``ready``.  **Permission: range:provision**"""
+    """Power a stopped range's VMs back on (an operation; the range is ``starting`` until
+    the worker reports ``running``).  **Permission: range:provision**"""
+    _refuse_while_restoring(db, _tenant_range(db, range_id, user).id)
     return _range_operation("start", range_id, idempotency_key, db, user, response)
 
 

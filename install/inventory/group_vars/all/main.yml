@@ -85,9 +85,46 @@ tn_vcenter_host: 192.168.1.10
 tn_vcenter_user: "svc-truenorth@vsphere.local"
 tn_vsphere_datacenter: DC-Lab
 tn_vsphere_cluster: CL-Lab
+# Only used with tn_vsphere_placement: cluster; otherwise each host's local datastore.
 tn_vsphere_datastore: esx04-local
-tn_vsphere_network: dPG-TN-MGMT
+# Fallback for a range VM with no VLAN (single-NIC smoke test only). Empty: such a
+# VM fails. It must never be the management network (it was dPG-TN-MGMT).
+tn_vsphere_network: ""
+# Range VMs are refused on these networks (comma-separated).
+tn_vsphere_mgmt_network: dPG-TN-MGMT
 tn_vsphere_verify_ssl: false
+# Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
+tn_vsphere_content_library: ""
+tn_vsphere_concurrency: 4
+tn_vsphere_tools_timeout: 120
+tn_vsphere_snapshot_timeout: 1800
+# Range networks: VLANs 100-199 are reserved for ranges and trunked on vDS-10G.
+tn_vsphere_range_switch_mode: vds
+tn_vsphere_range_dvs: vDS-10G
+tn_vsphere_range_vswitch: vSwitch1
+tn_vsphere_vlan_pool: "100-199"
+# spread | per-range-host | cluster. Hosts have 16 threads, so a big range must spread.
+tn_vsphere_placement: spread
+tn_vsphere_range_folder: truenorth/ranges
+tn_vsphere_max_vcpu_per_thread: 4
+# esx01 runs the VCSA: keep range VMs off it.
+tn_vsphere_exclude_hosts:
+  - esx01.truenorth.lab
+# Depot uplink (runbook §4.1a). Empty network: ranges stay fully isolated and node
+# `services` are not installed. Set to dPG-TN-SVC (and tn_depot_url) once that port
+# group, TN-DEPOT01 and the pfSense template's WAN rules exist.
+tn_vsphere_range_uplink_network: ""
+tn_vsphere_range_uplink_pool: "10.30.32.100-10.30.32.199"
+tn_vsphere_range_uplink_gateway: 10.30.32.1
+tn_vsphere_range_uplink_prefix: 24
+# No new provisioning work after this many seconds (Celery visibility timeout is 3600).
+tn_vsphere_provision_budget: 3300
+# TN-DEPOT01 as range guests see it, e.g. http://10.30.32.10. Empty: no depot installs.
+tn_depot_url: ""
+# Empty: <tn_depot_url>:8081/repository/chocolatey/ and <tn_depot_url> (forward proxy).
+tn_depot_choco_feed: ""
+tn_depot_apt_proxy: ""
+tn_software_install_timeout: 1800
 # Report rather than fail when the provisioning role is unassigned — see
 # roles/tn_vsphere. Flip to true once the role has been granted.
 tn_fail_on_missing_vsphere_privs: false

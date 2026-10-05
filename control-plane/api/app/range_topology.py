@@ -447,7 +447,7 @@ MAX_DIAGRAM_CELLS = 2000
 _ZONE_TYPES = frozenset({"subnet", "dmz"})
 # Drawn for readability, never built: a switch is the port group, the cloud is outside.
 _NON_VM_TYPES = frozenset({"switch", "cloud"}) | _ZONE_TYPES
-# Rendered templates give every VM one NIC, so these can't route when placed alone.
+# Get one NIC per zone they are linked to (`interfaces`); unlinked, they have one NIC.
 _MULTI_HOMED_TYPES = frozenset({"firewall", "router"})
 
 _TYPE_ROLE: dict[str, str] = {
@@ -647,8 +647,14 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
         raise TopologyError(f"diagram has {len(raw_cells)} cells; the limit is {MAX_DIAGRAM_CELLS}")
     warnings: list[str] = []
     cells: list[dict] = []
+    links: list[tuple[str, str]] = []  # (source id, target id): what a firewall/router is cabled to
     for c in raw_cells:
-        if not isinstance(c, dict) or c.get("type") == "standard.Link":
+        if isinstance(c, dict) and c.get("type") == "standard.Link":
+            src, dst = c.get("source"), c.get("target")
+            if isinstance(src, dict) and isinstance(dst, dict) and src.get("id") and dst.get("id"):
+                links.append((str(src["id"]), str(dst["id"])))
+            continue
+        if not isinstance(c, dict):
             continue
         if not isinstance(c.get("nodeType"), str):
             if c.get("nodeType") is not None:
@@ -729,6 +735,21 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
                 best, best_area = zi, zw * zh
         return best
 
+    zone_index = {str(z.get("id")): zi for zi, (z, _) in enumerate(zones)}
+    cell_by_id = {str(c.get("id")): c for c in cells}
+
+    def _linked_zones(cell: dict) -> list[int]:
+        """Zones a cell is cabled to: a linked zone itself, or the zone a linked cell sits in."""
+        cid, out = str(cell.get("id")), []
+        for a, b in links:
+            other = cell_by_id.get(b if a == cid else a if b == cid else "")
+            if other is None:
+                continue
+            zi = zone_index.get(str(other.get("id"))) if other["nodeType"] in _ZONE_TYPES else _zone_for(other)
+            if zi is not None and zi not in out:
+                out.append(zi)
+        return out
+
     # ── compute nodes ──
     nodes: list[dict] = []
     default_vlan: str | None = None  # shared by loose nodes that name no VLAN
@@ -755,6 +776,9 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
         id_counts.setdefault(nid, 1)
 
         zi = _zone_for(cell)
+        linked = _linked_zones(cell) if ntype in _MULTI_HOMED_TYPES else []
+        if zi is None and linked:
+            zi = linked[0]  # a gateway drawn outside the zones it is cabled to
         if zi is not None:
             vlan_name = zone_vlan[zi]
         else:
@@ -778,10 +802,6 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
                 if wants_default:
                     default_vlan = vlan_name
                 warnings.append(f"{label}: outside every zone; placed on VLAN {vid} ({cidr})")
-            if ntype in _MULTI_HOMED_TYPES:
-                warnings.append(
-                    f"{label}: a {ntype} outside the zones has a single NIC and will not route between them"
-                )
 
         extra = data.get("template_extra")
         node: dict = {k: v for k, v in extra.items() if k not in _NODE_FIELDS} if isinstance(extra, dict) else {}
@@ -794,6 +814,18 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
                 "vlan": vlan_name,
             }
         )
+        if ntype in _MULTI_HOMED_TYPES:
+            # One NIC per zone it is cabled to, its own zone first. The worker gives a
+            # router each zone's gateway address. A template's own `interfaces` (carried
+            # in template_extra) stand when the diagram has no cabling for it.
+            spans = [zone_vlan[z] for z in dict.fromkeys(([zi] if zi is not None else []) + linked)]
+            if len(spans) > 1:
+                node["interfaces"] = [{"vlan": v} for v in spans]
+            elif not linked and not node.get("interfaces") and _zone_for(cell) is None:
+                warnings.append(
+                    f"{label}: a {ntype} outside the zones has a single NIC and will not route "
+                    "between them; link it to each zone it serves"
+                )
 
         ip_raw = str(data.get("ip") or "").strip()
         if ip_raw:

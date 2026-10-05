@@ -17,6 +17,11 @@ import logging
 logger = logging.getLogger("worker.fencing")
 
 
+class PermanentError(RuntimeError):
+    """A failure no retry can fix (a full pool, a range with nothing to power): the task
+    records ``failed`` on the first attempt instead of retrying (tasks.ReliableTask)."""
+
+
 def skipped(action: str, range_id: str, expected: str) -> dict:
     """The result of a duplicate or stale delivery: logged, and nothing else."""
     logger.warning("[%s] range %s is no longer %s: duplicate or stale delivery, skipped", action, range_id, expected)

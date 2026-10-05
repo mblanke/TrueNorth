@@ -2,13 +2,13 @@ id: soc-training
 name: SOC Analyst Training Environment
 version: "1.0"
 description: |
-  A dedicated SOC analyst training environment with 25 VMs providing attacker
+  A dedicated SOC analyst training environment with 23 VMs providing attacker
   infrastructure, a realistic victim network, a full SOC toolset (SIEM,
   Velociraptor, TheHive/Cortex, MISP), and network monitoring (Security Onion,
   Zeek, Suricata). Designed for blue-team analyst skill development.
 author: TrueNorth Range
 difficulty: intermediate
-vm_count: 25
+vm_count: 23
 
 network:
   vlans:
@@ -68,7 +68,7 @@ nodes:
     os: kali-2024
     vlan: attacker_infra
     ip: "10.60.200.10"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
     services: [sliver_c2, metasploit, empire]
 
   - id: phish-server
@@ -77,7 +77,7 @@ nodes:
     os: ubuntu-2404
     vlan: attacker_infra
     ip: "10.60.200.20"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 40 }
     services: [gophish, nginx, letsencrypt_sim]
 
   - id: staging01
@@ -86,7 +86,7 @@ nodes:
     os: ubuntu-2404
     vlan: attacker_infra
     ip: "10.60.200.30"
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 100 }
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 100 }
     services: [sftp, http_fileserver, dns_exfil_listener]
 
   - id: redir01
@@ -105,7 +105,7 @@ nodes:
     os: windows-server-2022
     vlan: victim_network
     ip: "10.60.201.10"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
     services: [active_directory, dns, dhcp]
 
   - id: v-fs01
@@ -136,7 +136,7 @@ nodes:
     os: windows-11
     vlan: victim_network
     ip: "10.60.201.100"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     user_profile: finance_user
 
   - id: v-ws02
@@ -145,7 +145,7 @@ nodes:
     os: windows-11
     vlan: victim_network
     ip: "10.60.201.101"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     user_profile: hr_user
 
   - id: v-ws03
@@ -154,7 +154,7 @@ nodes:
     os: windows-11
     vlan: victim_network
     ip: "10.60.201.102"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     user_profile: it_admin
 
   - id: v-ws04
@@ -163,7 +163,7 @@ nodes:
     os: windows-11
     vlan: victim_network
     ip: "10.60.201.103"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
     user_profile: executive
 
   - id: v-mail01
@@ -172,7 +172,7 @@ nodes:
     os: ubuntu-2404
     vlan: victim_network
     ip: "10.60.201.40"
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 60 }
     services: [postfix, dovecot, roundcube]
 
   # --- SOC Tools (VLAN 202) ---
@@ -182,7 +182,7 @@ nodes:
     os: ubuntu-2404
     vlan: soc_tools
     ip: "10.60.202.10"
-    specs: { cores: 8, memory_mb: 32768, disk_gb: 500 }
+    specs: { cores: 4, memory_mb: 32768, disk_gb: 500 }
     services: [opensearch, opensearch_dashboards, sigma_rules]
 
   - id: velociraptor01
@@ -191,7 +191,7 @@ nodes:
     os: ubuntu-2404
     vlan: soc_tools
     ip: "10.60.202.20"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 200 }
     services: [velociraptor_server]
     note: "Agents deployed on all victim workstations"
 
@@ -201,7 +201,7 @@ nodes:
     os: ubuntu-2404
     vlan: soc_tools
     ip: "10.60.202.30"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
     services: [thehive, cortex, elasticsearch]
 
   - id: misp01
@@ -229,7 +229,7 @@ nodes:
     os: securityonion
     vlan: network_monitoring
     ip: "10.60.203.10"
-    specs: { cores: 8, memory_mb: 16384, disk_gb: 500 }
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 500 }
     services: [zeek, suricata, elasticsearch, kibana, strelka]
 
   - id: zeek01
@@ -238,7 +238,7 @@ nodes:
     os: ubuntu-2404
     vlan: network_monitoring
     ip: "10.60.203.20"
-    specs: { cores: 4, memory_mb: 8192, disk_gb: 200 }
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 200 }
     services: [zeek, filebeat]
 
   - id: pcap01
@@ -288,8 +288,8 @@ nodes:
       - vlan: management
         ip: "10.60.204.1"
 
-resource_totals:
-  total_vms: 25
-  total_cores: 76
-  total_memory_gb: 192
-  total_disk_gb: 3920
+resource_totals:  # summed from nodes by scripts/range-capacity.py (tests hold them equal)
+  total_vms: 23
+  total_cores: 48
+  total_memory_gb: 157
+  total_disk_gb: 3936

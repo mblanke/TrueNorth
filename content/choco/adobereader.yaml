@@ -1,0 +1,23 @@
+# Adobe Acrobat Reader, x64 MUI full installer (Adobe's enterprise distribution: one
+# exe for all languages, ~860 MB). Replaces the community "adobereader" wrapper, which
+# downloads this exe (and an .msp patch) from ardownload*.adobe.com at install time.
+#
+# `version` uses the community package's scheme (2026.2.21931 for Reader 26.002.21931,
+# build 2600221931 in the URL) so ours sorts above it.
+# sha256: computed 2026-10-03; matches the community adobereader 2026.2.21931 package.
+# Update: Adobe's release notes give the new build; change `version` and both build
+# numbers in the URL, blank `sha256` and rebuild with --write-back.
+name: adobereader
+version: "2026.2.21931"
+revision: 1
+title: Adobe Acrobat Reader (TrueNorth offline)
+authors: Adobe
+type: exe
+# Adobe's documented silent install; no desktop icon, no updater service (no internet).
+silent_args: /sAll /rs /msi /norestart /quiet ALLUSERS=1 EULA_ACCEPT=YES DISABLEDESKTOPSHORTCUT=1 DISABLE_ARM_SERVICE_INSTALL=1
+valid_exit_codes: [0, 1641, 3010]
+software_name: Adobe Acrobat
+installers:
+  - arch: x64
+    url: https://ardownload3.adobe.com/pub/adobe/acrobat/win/AcrobatDC/2600221931/AcroRdrDCx642600221931_MUI.exe
+    sha256: d5f1db0c2f685c54e8e968ee20358dd8ac90cde76c3ecbe52257ba27b03761d7

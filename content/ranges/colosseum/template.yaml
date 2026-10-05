@@ -1,0 +1,620 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  TrueNorth Range Template — Colosseum
+#  31 VMs · 66 vCPU · 227 GB RAM · ~4.3 TB disk (thin)
+#  Sized for the vSphere lab (esx02–04); see docs/vm-build-sheet.md §3–§4.
+#
+#  Reproduces the Colosseum network diagram (07 Jan 2025) and Operators Manual
+#  (docs/Coloseum/). Changes from the source, and why:
+#    * Grey Space was 22.0.0.0/16 (public, DoD-owned space). Range subnets must be
+#      private (tests/api/test_range_templates.py), so it is 10.22.0.0/16 here and
+#      every 22.0.0.x host keeps its last octet (22.0.0.14 -> 10.22.0.14).
+#    * OPFOR sits on its own 172.16.1.0/24 zone (the manual's layout); in the
+#      diagram the OPFOR VMs were drawn in Grey Space with DHCP addresses.
+#    * The OT hosts (PLC/HMI/Historian) were on the domain subnet; here they are
+#      their own segment, 10.10.1.0/24, behind the same firewall, last octets kept.
+#    * The CSTE edge router and the corp.ca transit (10.0.0.0/24) are not user
+#      VMs; TrueNorth's edge firewall holds Grey Space as a zone and its WAN is
+#      the depot uplink. The diagram's ANSIBLE host is replaced by the worker.
+#    * FW Edge was OPNsense; the library's firewall image is pfSense.
+#    * Windows servers were Server 2016; here Server 2022 (Historian: 2019).
+#    * Caldera was a Windows VM; here Ubuntu (Caldera's supported platform).
+#    * Four workstations (as drawn). The manual names a fifth user (Audrey Gill);
+#      add wkstn-05 at 10.10.0.105 for +2 vCPU if wanted.
+#
+#  Images: only ubuntu-2404 (ubuntu-lts) is built on vSphere today. Every other
+#  VM is marked "NOT BUILT" with what is missing (docs/deployment/vm-build-guide.md §1).
+#
+#  SPAN: the two TAPs are span_domain and span_dmz (promiscuous port groups). The
+#  "mirror" rules below become vDS port-mirroring sessions that copy the domain and
+#  DMZ VMs' traffic to the sensors' NICs on them (vsphere_infra.py, "Port
+#  mirroring"; on-site checks in vmware-site-runbook.md §7.1). pfsense_config.py
+#  skips them.
+# ═══════════════════════════════════════════════════════════════════════════
+id: colosseum
+name: Colosseum
+version: "1.0"
+description: |
+  Self-contained cyber operations range modelled on CSTE's Colosseum. Grey Space
+  simulates the internet (web via ACE, webmail, social media, threat intel, the
+  user-emulation C2). Blue Space is the corp.ca domain (DC, Exchange, file server,
+  Windows Event Collector, four user-emulated workstations and a small OT
+  segment), a DMZ web server, and a SOC (Security Onion with two sniffing
+  interfaces, Arkime, Velociraptor, Carbon Black, DFIR-IRIS, Assemblyline and an
+  analyst workstation). Red Space (OPFOR) holds a Cobalt Strike team server,
+  Caldera, Kali and a Windows payload-build VM. One edge firewall joins them.
+author: TrueNorth Range
+difficulty: intermediate
+vm_count: 31
+
+# ─── NETWORK ──────────────────────────────────────────────────────────
+network:
+  vlans:
+    - id: 300
+      name: greyspace
+      cidr: "10.22.0.0/16"
+      description: "Grey Space - simulated internet services (was 22.0.0.0/16)"
+    - id: 302
+      name: dmz
+      cidr: "172.16.0.0/24"
+      description: "DMZ - public CMS web server"
+    - id: 303
+      name: soc
+      cidr: "192.168.1.0/24"
+      description: "Security Operations Centre - sensors, EDR, DFIR, analyst seat"
+    - id: 304
+      name: domain
+      cidr: "10.10.0.0/24"
+      description: "corp.ca - servers and workstations"
+    - id: 305
+      name: ot
+      cidr: "10.10.1.0/24"
+      description: "corp.ca OT segment - PLC, HMI, historian"
+    - id: 306
+      name: opfor
+      cidr: "172.16.1.0/24"
+      description: "Red Space - adversary infrastructure"
+    - id: 314
+      name: span_domain
+      cidr: "10.250.4.0/24"
+      description: "TAP on the domain zone (sniffing only, promiscuous port group)"
+    - id: 312
+      name: span_dmz
+      cidr: "10.250.2.0/24"
+      description: "TAP on the DMZ (sniffing only, promiscuous port group)"
+
+  # Zone names only (pfsense_config.py). Anything not allowed here is pfSense's
+  # default deny; DNS to the firewall and the depot are added per zone by the worker.
+  # Rule names stay short: multi-port rules become a pfSense alias TN_P_<name>,
+  # truncated to 31 characters, so names must be unique in their first 26.
+  firewall_rules:
+    # ── TAPs (vSphere port groups, not pf rules) ──────────
+    - name: tap-domain
+      src: domain
+      dst: span_domain
+      action: mirror
+      note: "Domain TAP to Security Onion and Arkime"
+    - name: tap-dmz
+      src: dmz
+      dst: span_dmz
+      action: mirror
+      note: "DMZ TAP to Security Onion and Arkime"
+    # ── corp.ca outbound ("internet" is Grey Space + OPFOR) ──
+    - name: domain-to-grey
+      src: domain
+      dst: greyspace
+      action: allow
+      note: "Users browse Grey Space; Exchange sends mail; UE agents reach the UE server"
+    - name: domain-to-opfor
+      src: domain
+      dst: opfor
+      action: allow
+      note: "C2 callbacks reach Red Space (172.16.1.x is the tell)"
+    - name: domain-to-dmz
+      src: domain
+      dst: dmz
+      ports: [80, 443, 22]
+      action: allow
+      note: "Staff reach and administer the CMS"
+    - name: domain-to-ot
+      src: domain
+      dst: ot
+      ports: [443, 3389, 502]
+      action: allow
+      note: "Engineering access to HMI/historian and Modbus"
+    - name: domain-to-soc-agents
+      src: domain
+      dst: soc
+      ports: [443, 514, 1514, 1515, 5044, 8000]
+      action: allow
+      note: "Agents and log forwarding: Carbon Black, syslog, Wazuh, Beats, Velociraptor"
+    # ── DMZ ───────────────────────────────────────────────
+    - name: dmz-to-grey
+      src: dmz
+      dst: greyspace
+      action: allow
+    - name: dmz-to-opfor
+      src: dmz
+      dst: opfor
+      action: allow
+      note: "A compromised web server can call back"
+    - name: dmz-to-domain-deny
+      src: dmz
+      dst: domain
+      action: deny
+      note: "DMZ never initiates into corp.ca"
+    - name: dmz-to-soc-agents
+      src: dmz
+      dst: soc
+      ports: [443, 514, 5044, 8000]
+      action: allow
+    # ── OT ────────────────────────────────────────────────
+    - name: ot-to-soc-agents
+      src: ot
+      dst: soc
+      ports: [443, 514, 5044, 8000]
+      action: allow
+    - name: ot-to-domain-deny
+      src: ot
+      dst: domain
+      action: deny
+      note: "OT does not initiate into IT"
+    # ── Grey Space (the internet) ─────────────────────────
+    - name: grey-to-dmz
+      src: greyspace
+      dst: dmz
+      ports: [80, 443]
+      action: allow
+      note: "Public web traffic to the CMS"
+    - name: grey-to-domain-smtp
+      src: greyspace
+      dst: domain
+      ports: [25]
+      action: allow
+      note: "Inbound mail to Exchange (10.10.0.12)"
+    - name: grey-to-opfor
+      src: greyspace
+      dst: opfor
+      action: allow
+      note: "ACE redirectors forward to the team server"
+    # ── OPFOR ─────────────────────────────────────────────
+    - name: opfor-to-grey
+      src: opfor
+      dst: greyspace
+      action: allow
+      note: "RainLoop, ACE redirectors, Kali repo"
+    - name: opfor-to-dmz
+      src: opfor
+      dst: dmz
+      action: allow
+      note: "Attack surface"
+    - name: opfor-to-domain-smtp
+      src: opfor
+      dst: domain
+      ports: [25]
+      action: allow
+      note: "Direct phishing delivery to Exchange"
+    - name: opfor-to-soc-deny
+      src: opfor
+      dst: soc
+      action: deny
+    # ── SOC ───────────────────────────────────────────────
+    - name: soc-to-domain
+      src: soc
+      dst: domain
+      action: allow
+      note: "Agent push, investigation, response"
+    - name: soc-to-dmz
+      src: soc
+      dst: dmz
+      action: allow
+    - name: soc-to-ot
+      src: soc
+      dst: ot
+      action: allow
+    - name: soc-to-grey
+      src: soc
+      dst: greyspace
+      action: allow
+      note: "OpenCTI and MISP live in Grey Space"
+
+# ─── NODES (31 VMs) ──────────────────────────────────────────────────
+nodes:
+
+  # ════════════════════════════════════════════════════════════════════
+  # PERIMETER — 1 VM  2 vCPU · 4 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  # NOT BUILT: pfsense (no ISO on the datastore yet)
+  - id: fw-edge
+    name: FW Edge
+    role: firewall
+    os: pfsense
+    vlan: domain
+    ip: "10.10.0.1"
+    edge: true
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 20 }
+    services: [firewall, nat, dns_resolver]
+    description: "Edge firewall joining Grey Space, DMZ, SOC, corp.ca, OT and OPFOR"
+    interfaces:
+      - vlan: greyspace
+        ip: "10.22.0.1"
+      - vlan: dmz
+        ip: "172.16.0.1"
+      - vlan: soc
+        ip: "192.168.1.1"
+      - vlan: domain
+        ip: "10.10.0.1"
+      - vlan: ot
+        ip: "10.10.1.1"
+      - vlan: opfor
+        ip: "172.16.1.1"
+
+  # ════════════════════════════════════════════════════════════════════
+  # GREY SPACE — 7 VMs  11 vCPU · 42 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: ace
+    name: ACE (Advanced Cyberspace Emulator)
+    role: internet_emulator
+    os: ubuntu-2404
+    vlan: greyspace
+    ip: "10.22.0.10"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 60 }
+    services: [nginx, bind9, http, https, dns, root_ca_x9, c2_redirector]
+    description: "Hosts 100+ simulated web sites, nine public CAs and HTTP/HTTPS/DNS redirectors"
+
+  # NOT BUILT: srv2022 (ISO present, Packer ready; template not yet built)
+  - id: ue-server
+    name: User Agent Server
+    role: user_emulation_server
+    os: windows-server-2022
+    vlan: greyspace
+    ip: "10.22.0.12"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [user_emulation_c2, rdp]
+    tags: [no_strike]
+    description: "C2 for the user-emulation agents on the workstations. No Strike List"
+
+  - id: mail-grey
+    name: Mail Server (hotmail)
+    role: mail_server
+    os: ubuntu-2404
+    vlan: greyspace
+    ip: "10.22.0.14"
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 60 }
+    services: [postfix, dovecot, postgresql, smtp]
+    tags: [no_strike]
+    description: "Internet mail service mimicking hotmail.com. No Strike List"
+
+  - id: rainloop
+    name: RainLoop
+    role: webmail
+    os: ubuntu-2404
+    vlan: greyspace
+    ip: "10.22.0.16"
+    specs: { cores: 1, memory_mb: 2048, disk_gb: 20 }
+    services: [nginx, rainloop, https]
+    description: "Webmail GUI OPFOR uses to send mail into corp.ca"
+
+  - id: social
+    name: Twitter.com
+    role: web_server
+    os: ubuntu-2404
+    vlan: greyspace
+    ip: "10.22.0.17"
+    specs: { cores: 1, memory_mb: 4096, disk_gb: 40 }
+    services: [nginx, social_media_sim, https]
+    description: "Simulated social media site"
+
+  - id: opencti
+    name: OpenCTI
+    role: threat_intel
+    os: ubuntu-2404
+    vlan: greyspace
+    ip: "10.22.0.30"
+    specs: { cores: 2, memory_mb: 16384, disk_gb: 100 }
+    services: [opencti, elasticsearch, redis, rabbitmq, docker]
+    description: "Threat intelligence platform (needs ~16 GB for its Elasticsearch)"
+
+  - id: misp
+    name: MISP
+    role: threat_intel
+    os: ubuntu-2404
+    vlan: greyspace
+    ip: "10.22.0.31"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [misp, mysql]
+    description: "Threat intel sharing platform"
+
+  # ════════════════════════════════════════════════════════════════════
+  # RED SPACE (OPFOR) — 4 VMs  8 vCPU · 32 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  # NOT BUILT: kali (ISO present, Packer ready). Cobalt Strike is licensed media (prod only).
+  - id: teamserver
+    name: Team Server
+    role: red_c2
+    os: kali-2024
+    vlan: opfor
+    ip: "172.16.1.10"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 120 }
+    services: [cobalt_strike, metasploit]
+    description: "Kali with the Cobalt Strike team server"
+
+  - id: caldera
+    name: Caldera Server
+    role: red_c2
+    os: ubuntu-2404
+    vlan: opfor
+    ip: "172.16.1.35"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 60 }
+    services: [caldera, python]
+    description: "MITRE Caldera adversary emulation (web dashboard on 8888)"
+
+  # NOT BUILT: kali (ISO present, Packer ready)
+  - id: opfor-kali
+    name: OPFOR-Kali
+    role: red_operator
+    os: kali-2024
+    vlan: opfor
+    ip: "172.16.1.20"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 120 }
+    services: [cobalt_strike, metasploit, ssh]
+    description: "Red operator workstation with the Cobalt Strike client"
+
+  # NOT BUILT: win10-22h2 (no Windows 10 ISO yet)
+  - id: opfor-win
+    name: OPFOR-Windows
+    role: red_operator
+    os: windows-10-ltsc
+    vlan: opfor
+    ip: "172.16.1.21"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 80 }
+    services: [vscode, office, cobalt_strike_artifact_kit]
+    description: "Builds malicious Office documents and recompiles the artifact kit"
+
+  # ════════════════════════════════════════════════════════════════════
+  # DMZ — 1 VM  2 vCPU · 4 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: cms-web
+    name: CMS Web Server
+    role: web_server
+    os: ubuntu-2404
+    vlan: dmz
+    ip: "172.16.0.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 40 }
+    services: [nginx, php, mysql, wordpress, https]
+    tags: [blue_defend]
+    description: "Public-facing CMS"
+
+  # ════════════════════════════════════════════════════════════════════
+  # SOC — 7 VMs  20 vCPU · 76 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  # NOT BUILT: securityonion (no ISO yet). Disk 250 GB as in the Operators Manual.
+  - id: siem
+    name: SIEM (Security Onion)
+    role: siem
+    os: securityonion
+    vlan: soc
+    ip: "192.168.1.10"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 250 }
+    services: [zeek, suricata, elasticsearch, kibana, strelka]
+    description: "Security Onion 2.4 standalone; sniffs the domain and DMZ TAPs"
+    interfaces:
+      - vlan: span_domain
+      - vlan: span_dmz
+
+  - id: arkime
+    name: Arkime
+    role: packet_capture
+    os: ubuntu-2404
+    vlan: soc
+    ip: "192.168.1.14"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 500 }
+    services: [arkime, opensearch]
+    description: "Full packet capture from both TAPs"
+    interfaces:
+      - vlan: span_domain
+      - vlan: span_dmz
+
+  # NOT BUILT: rocky (Rocky 10 ISO present, catalogue row says 9; confirm the
+  # Carbon Black EDR server supports it). Carbon Black is licensed.
+  - id: carbonblack
+    name: Carbon Black
+    role: edr
+    os: rocky
+    vlan: soc
+    ip: "192.168.1.11"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 200 }
+    services: [carbon_black_edr]
+    description: "VMware Carbon Black EDR server; agents pushed on request"
+
+  - id: velociraptor
+    name: Velociraptor
+    role: edr
+    os: ubuntu-2404
+    vlan: soc
+    ip: "192.168.1.12"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 200 }
+    services: [velociraptor_server]
+    description: "Velociraptor DFIR/EDR server"
+
+  - id: iris
+    name: IRIS-DFIR
+    role: soar
+    os: ubuntu-2404
+    vlan: soc
+    ip: "192.168.1.13"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
+    services: [dfir_iris, docker, postgresql]
+    description: "DFIR-IRIS incident case management"
+
+  - id: assemblyline
+    name: Assembly Line
+    role: malware_triage
+    os: ubuntu-2404
+    vlan: soc
+    ip: "192.168.1.15"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [assemblyline, docker]
+    description: "CCCS Assemblyline file triage and malware analysis"
+
+  # NOT BUILT: sift (derived from ubuntu-lts; derived build not yet run)
+  - id: analyst-01
+    name: Analyst-01
+    role: analyst_workstation
+    os: sift
+    vlan: soc
+    ip: "192.168.1.101"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [autopsy, volatility3, plaso, yara, wireshark]
+    description: "SOC analyst / DFIR workstation (SANS SIFT)"
+
+  # ════════════════════════════════════════════════════════════════════
+  # corp.ca DOMAIN — 8 VMs  18 vCPU · 56 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  # NOT BUILT: srv2022 (ISO present, Packer ready)
+  - id: dc
+    name: DC
+    role: domain_controller
+    os: windows-server-2022
+    vlan: domain
+    ip: "10.10.0.10"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns, gpo]
+    tags: [blue_defend]
+    ad_forest: corp.ca
+    description: "corp.ca Active Directory (62 users)"
+
+  # NOT BUILT: srv2022 + Exchange role snapshot
+  - id: exchange
+    name: EXCHANGE
+    role: mail_server
+    os: windows-server-2022
+    vlan: domain
+    ip: "10.10.0.12"
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
+    services: [exchange, owa, smtp]
+    tags: [blue_defend]
+    description: "corp.ca Exchange; SMTP 25 inbound from Grey Space"
+
+  # NOT BUILT: srv2022 (ISO present, Packer ready)
+  - id: file
+    name: FILE
+    role: file_server
+    os: windows-server-2022
+    vlan: domain
+    ip: "10.10.0.14"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 500 }
+    services: [smb, dfs]
+    tags: [blue_defend]
+    description: "Shares: Headquarters, Confidential, Mission"
+
+  # NOT BUILT: srv2022 (ISO present, Packer ready)
+  - id: wec
+    name: WEC
+    role: log_collector
+    os: windows-server-2022
+    vlan: domain
+    ip: "10.10.0.16"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 200 }
+    services: [windows_event_collector, winrm]
+    tags: [blue_defend]
+    description: "Windows Event Collector (enabled, subscriptions left to the student)"
+
+  # NOT BUILT: win10-22h2 (no Windows 10 ISO yet) — the four workstations below
+  - id: wkstn-01
+    name: WKSTN-01
+    role: workstation
+    os: windows-10-ltsc
+    vlan: domain
+    ip: "10.10.0.101"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
+    services: [office, user_emulation_agent, rdp]
+    tags: [blue_defend]
+    user_profile: rick_sanchez
+    description: "Domain workstation with user-emulation agent"
+
+  - id: wkstn-02
+    name: WKSTN-02
+    role: workstation
+    os: windows-10-ltsc
+    vlan: domain
+    ip: "10.10.0.102"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
+    services: [office, user_emulation_agent, rdp]
+    tags: [blue_defend]
+    user_profile: natalie_simpson
+    description: "Domain workstation with user-emulation agent"
+
+  - id: wkstn-03
+    name: WKSTN-03
+    role: workstation
+    os: windows-10-ltsc
+    vlan: domain
+    ip: "10.10.0.103"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
+    services: [office, user_emulation_agent, rdp]
+    tags: [blue_defend]
+    user_profile: joseph_marshall
+    description: "Domain workstation with user-emulation agent"
+
+  - id: wkstn-04
+    name: WKSTN-04
+    role: workstation
+    os: windows-10-ltsc
+    vlan: domain
+    ip: "10.10.0.104"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 64 }
+    services: [office, user_emulation_agent, rdp]
+    tags: [blue_defend]
+    user_profile: cameron_hamilton
+    description: "Domain workstation with user-emulation agent"
+
+  # ════════════════════════════════════════════════════════════════════
+  # OT SEGMENT — 3 VMs  5 vCPU · 13 GB
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: plc
+    name: PLC
+    role: plc
+    os: ubuntu-2404
+    vlan: ot
+    ip: "10.10.1.201"
+    specs: { cores: 1, memory_mb: 1024, disk_gb: 16 }
+    services: [openplc, modbus_tcp]
+    tags: [blue_defend, ot]
+    description: "OpenPLC runtime, Modbus TCP"
+
+  # NOT BUILT: win10-22h2 (no Windows 10 ISO yet)
+  - id: hmi
+    name: HMI
+    role: hmi
+    os: windows-10-ltsc
+    vlan: ot
+    ip: "10.10.1.220"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+    services: [hmi_client, rdp]
+    tags: [blue_defend, ot]
+    description: "Operator HMI"
+
+  # NOT BUILT: srv2019 (no Server 2019 ISO yet)
+  - id: historian
+    name: HISTORIAN
+    role: historian
+    os: windows-server-2019
+    vlan: ot
+    ip: "10.10.1.225"
+    specs: { cores: 2, memory_mb: 8192, disk_gb: 500 }
+    services: [historian_sim, rdp]
+    tags: [blue_defend, ot]
+    description: "Process historian (simulator)"
+
+resource_totals:  # summed from nodes by scripts/range-capacity.py (tests hold them equal)
+  total_vms: 31
+  total_cores: 66
+  total_memory_gb: 227
+  total_disk_gb: 4322

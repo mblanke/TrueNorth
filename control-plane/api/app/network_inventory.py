@@ -18,7 +18,9 @@ everything a range holds; ``range_ops.reconcile`` calls it when a
 destroy succeeds. Rows also go with the range (ON DELETE CASCADE).
 
 Consumers: noise agents' management addresses (app/noise/mgmt.py, reserved when a
-provision is accepted, S4b). vSphere uplink/VLAN allocation adopts it in S5a.
+provision is accepted, S4b), and the worker's vSphere VLAN and uplink allocation (S5a),
+which reserves on the same table with the same lock and rules (worker/db_ops.reserve_values;
+the worker cannot import this module).
 """
 
 from __future__ import annotations
@@ -38,11 +40,15 @@ class PoolExhaustedError(RuntimeError):
     """The pool cannot hold every holder that needs a value."""
 
 
+class DomainChangedError(RuntimeError):
+    """The range already holds values of this kind in another domain."""
+
+
 def parse_ip_pool(spec: str) -> list[str]:
     """A CIDR (``10.255.0.0/24``: its hosts), a range (``10.30.32.100-199`` or
     ``10.30.32.100-10.30.32.199``) or a comma list of those, as sorted addresses.
 
-    Same forms as worker/uplink_pool.py (vmware branch), which the API may not import.
+    Same forms as worker/uplink_pool.py, which the API may not import.
     """
     out: set[ipaddress.IPv4Address] = set()
     for part in (spec or "").split(","):
@@ -85,11 +91,16 @@ def vlan_pool(spec: str) -> list[str]:
     return [str(i) for i in sorted(ids)]
 
 
+def lock_key(domain: str, kind: str) -> int:
+    """The advisory-lock key for one (kind, domain). The worker takes the same lock
+    (worker/db_ops.reservation_lock_key) when it reserves vSphere VLANs and uplinks."""
+    return zlib.crc32(f"{kind}:{domain}".encode()) - (1 << 31)  # signed 32-bit
+
+
 def _lock_domain(db: Session, domain: str, kind: str) -> None:
     """Serialise reservations in one domain until this transaction ends (PostgreSQL)."""
     if db.get_bind().dialect.name == "postgresql":
-        key = zlib.crc32(f"{kind}:{domain}".encode()) - (1 << 31)  # signed 32-bit
-        db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": key})
+        db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key(domain, kind)})
 
 
 def reserve(db: Session, rng: Range, *, domain: str, kind: str, pool: list[str], holders: list[str]) -> dict[str, str]:
@@ -99,14 +110,12 @@ def reserve(db: Session, rng: Range, *, domain: str, kind: str, pool: list[str],
     if not domain:
         raise ValueError("a reservation needs the shared network's domain")
     _lock_domain(db, domain, kind)
-    mine = {
-        r.holder: r.value
-        for r in db.query(NetworkReservation).filter(
-            NetworkReservation.range_id == rng.id,
-            NetworkReservation.kind == kind,
-            NetworkReservation.domain == domain,
-        )
-    }
+    held = db.query(NetworkReservation).filter(NetworkReservation.range_id == rng.id, NetworkReservation.kind == kind)
+    if elsewhere := sorted({r.domain for r in held if r.domain != domain}):
+        # The domain's name changed under a live range: its old values still exist. Same
+        # rule as the worker (db_ops.reserve_values).
+        raise DomainChangedError(f"range holds {kind} reservations in {', '.join(elsewhere)}, not {domain}")
+    mine = {r.holder: r.value for r in held}
     needed = [h for h in dict.fromkeys(holders) if h not in mine]
     if not needed:
         return {h: mine[h] for h in holders}

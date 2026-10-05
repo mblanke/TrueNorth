@@ -19,7 +19,7 @@ WORKER = Path(__file__).resolve().parents[2] / "control-plane" / "worker"
 
 
 @pytest.mark.parametrize(
-    "module", ["worker.tasks", "worker.power_tasks", "worker.celery_app", "worker.range_rows", "worker.render"]
+    "module", ["worker.tasks", "worker.celery_app", "worker.range_rows", "worker.render", "worker.reliable"]
 )
 def test_module_imports_first(module):
     env = {**os.environ, "PYTHONPATH": str(WORKER)}

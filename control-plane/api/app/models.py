@@ -66,12 +66,12 @@ class RangeState(str, enum.Enum):
     provisioning = "provisioning"
     ready = "ready"
     running = "running"
+    stopping = "stopping"
     stopped = "stopped"
+    starting = "starting"
     destroying = "destroying"
     destroyed = "destroyed"
     failed = "failed"
-    stopping = "stopping"  # a stop operation is with the worker (app/range_ops.py)
-    starting = "starting"
 
     def can_transition_to(self, target: RangeState) -> bool:
         return target.value in _RANGE_TRANSITIONS.get(self.value, [])

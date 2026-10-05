@@ -1,0 +1,19 @@
+# Sysinternals Suite (zip, unpacked into the package folder; Chocolatey shims every
+# .exe onto PATH). Replaces the community "sysinternals" wrapper, which downloads the
+# zip from download.sysinternals.com at install time. Tools still show their EULA on
+# first run (or pass -accepteula).
+#
+# The URL is FLOATING (always the current suite). `version` follows the community
+# package's date scheme so ours sorts above it. sha256 computed 2026-10-03; matches the
+# community sysinternals 2026.9.10 package. Update: set `version` to the release date
+# (YYYY.M.D), blank `sha256` and rebuild with --write-back.
+name: sysinternals
+version: "2026.9.10"
+revision: 1
+title: Sysinternals Suite (TrueNorth offline)
+authors: Mark Russinovich, Microsoft
+type: zip
+installers:
+  - arch: any
+    url: https://download.sysinternals.com/files/SysinternalsSuite.zip
+    sha256: e1c73a31b575c9cb216a94484a5b162bd585deb8bd1a8775c8103ced39cc67ce

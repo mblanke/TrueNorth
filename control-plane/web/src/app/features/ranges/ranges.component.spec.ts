@@ -6,7 +6,7 @@ import { POLL_MS, RangesComponent } from './ranges.component';
 import { ApiService, RangeOperation } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { RangeEventsService, RangeStateEvent } from '@core/services/range-events.service';
-import { Range, Template } from '@core/models';
+import { Range, RangeSummary, Template } from '@core/models';
 
 describe('RangesComponent', () => {
   let rangeEvents: Subject<RangeStateEvent>;
@@ -46,8 +46,8 @@ describe('RangesComponent', () => {
     mockApi.listTemplates.and.returnValue(of(mockTemplates as Template[]));
     mockApi.createRange.and.returnValue(of({ id: 'r5', name: 'New', state: 'created' } as Range));
     mockApi.provisionRange.and.returnValue(of({ id: 'r2', state: 'provisioning' } as Range));
-    mockApi.stopRange.and.returnValue(of({ id: 'r1', state: 'stopping' } as Range));
-    mockApi.startRange.and.returnValue(of({ id: 'r1', state: 'starting' } as Range));
+    mockApi.stopRange.and.returnValue(of({ id: 'r1', state: 'stopped' } as Range));
+    mockApi.startRange.and.returnValue(of({ id: 'r5', state: 'running' } as Range));
     mockApi.destroyRange.and.returnValue(of({ id: 'r1', state: 'destroying' } as Range));
     mockApi.listRangeOperations.and.returnValue(of([]));
     mockApi.getRangeStats.and.returnValue(of({
@@ -139,33 +139,79 @@ describe('RangesComponent', () => {
     discardPeriodicTasks();
   }));
 
-  // ── Stop ─────────────────────────────────────────────────────────
-  it('stop() requests a power off; it does not claim the VMs are off', () => {
+  // ── Stop / start: operations, like provision ─────────────────────
+  it('stop() requests a stop operation and reloads; nothing claims the VMs are off yet', () => {
     fixture.detectChanges();
 
     component.stop('r1');
 
     expect(mockApi.stopRange).toHaveBeenCalledWith('r1');
-    expect(mockNotify.success).toHaveBeenCalledWith('Power off requested');
+    expect(mockNotify.success).toHaveBeenCalledWith('Stop requested');
+    expect(mockApi.listRanges).toHaveBeenCalledTimes(2);
+    expect(component.busy().has('r1')).toBeFalse();
   });
 
-  it('start() requests a power on', () => {
+  it('start() requests a start operation and reloads', () => {
     fixture.detectChanges();
 
-    component.start('r1');
+    component.start('r5');
 
-    expect(mockApi.startRange).toHaveBeenCalledWith('r1');
-    expect(mockNotify.success).toHaveBeenCalledWith('Power on requested');
+    expect(mockApi.startRange).toHaveBeenCalledWith('r5');
+    expect(mockNotify.success).toHaveBeenCalledWith('Start requested');
+    expect(mockApi.listRanges).toHaveBeenCalledTimes(2);
   });
 
-  it('a stop the worker could not do says so on a range that is still ready', () => {
-    component.ops.set({ r1: { id: 'o1', action: 'stop', status: 'failed', error: { code: 'range_failed', message: 'VM r-dc01: timed out' } } as never });
-    expect(component.opText({ id: 'r1', state: 'ready' } as never)).toBe('stop failed: VM r-dc01: timed out');
+  it('start() shows the server detail on a 409', () => {
+    mockApi.startRange.and.returnValue(throwError(() => ({
+      status: 409, error: { detail: 'A stop of this range is still in progress' },
+    })));
+    fixture.detectChanges();
+
+    component.start('r5');
+
+    expect(mockNotify.error).toHaveBeenCalledWith('A stop of this range is still in progress');
+    expect(mockNotify.success).not.toHaveBeenCalled();
+    expect(component.busy().has('r5')).toBeFalse();
   });
 
-  it('a stop the worker is still doing reads as powering off', () => {
-    component.ops.set({ r1: { id: 'o1', action: 'stop', status: 'dispatched', error: null } as never });
-    expect(component.opText({ id: 'r1', state: 'stopping' } as never)).toBe('Powering off…');
+  it('enables Start for stopped/failed and Stop for running/ready/failed; in progress disables both', () => {
+    mockApi.listRanges.and.returnValue(of([
+      { id: 'a', name: 'Stopped', state: 'stopped', created_at: '2026-01-15T10:00:00Z' },
+      { id: 'b', name: 'Running', state: 'running', created_at: '2026-01-15T10:00:00Z' },
+      { id: 'c', name: 'Ready', state: 'ready', created_at: '2026-01-15T10:00:00Z' },
+      { id: 'd', name: 'Created', state: 'created', created_at: '2026-01-15T10:00:00Z' },
+      { id: 'e', name: 'Stopping', state: 'stopping', created_at: '2026-01-15T10:00:00Z' },
+      { id: 'f', name: 'Failed', state: 'failed', created_at: '2026-01-15T10:00:00Z' },
+    ] as Range[]));
+    mockApi.listRangeOperations.and.returnValue(of([]));
+    fixture.detectChanges();
+    const rows = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('tr.mat-mdc-row'));
+    const btn = (row: Element, cls: string) => row.querySelector<HTMLButtonElement>('button.' + cls);
+    const enabled = (row: Element) => [!btn(row, 'power-start')!.disabled, !btn(row, 'power-stop')!.disabled];
+
+    expect(enabled(rows[0])).toEqual([true, false]);
+    expect(enabled(rows[1])).toEqual([false, true]);
+    expect(enabled(rows[2])).toEqual([false, true]);
+    expect(btn(rows[3], 'power-start')).toBeNull();
+    expect(btn(rows[3], 'power-stop')).toBeNull();
+    expect(enabled(rows[4])).toEqual([false, false]);
+    expect(enabled(rows[5])).toEqual([true, true]);
+    expect(btn(rows[0], 'power-start')!.getAttribute('aria-label')).toBe('Start Stopped');
+
+    btn(rows[0], 'power-start')!.click();
+    expect(mockApi.startRange).toHaveBeenCalledWith('a');
+  });
+
+  it('describes an in-flight stop in words', () => {
+    mockApi.listRanges.and.returnValue(of([
+      { id: 'e', name: 'Stopping', state: 'stopping', created_at: '2026-01-15T10:00:00Z' },
+    ] as Range[]));
+    mockApi.listRangeOperations.and.returnValue(of([
+      { id: 'op1', range_id: 'e', action: 'stop', status: 'dispatched', generation: 1, dispatch_attempts: 1 },
+    ] as RangeOperation[]));
+    fixture.detectChanges();
+
+    expect(component.opText({ id: 'e', state: 'stopping' } as RangeSummary)).toBe('Stopping…');
   });
 
   // ── Create range ─────────────────────────────────────────────────

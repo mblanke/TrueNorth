@@ -1,0 +1,131 @@
+---
+# Warm the depot from TN-BUILD01, for every package in the software catalogue.
+#
+# Network path (this is the point): a Nexus proxy and apt-cacher-ng fetch upstream
+# THEMSELVES. TN-BUILD01 only asks; the depot makes the outbound request through its
+# uplink NIC, which prefetch.yml requires to be connected. Chocolatey packages are also
+# uploaded into chocolatey-hosted from here, so the Windows feed works offline without
+# relying on the proxy's query cache.
+#
+# Never fails mid-way: errors are recorded in tn_prefetch_error so that prefetch.yml can
+# still put the depot back offline before failing.
+
+- name: Prefetch
+  block:
+    - name: Prefetch — read the software catalogue
+      ansible.builtin.slurp:
+        src: "{{ tn_prefetch_catalogue }}"
+      register: tn_prefetch_cat_raw
+
+    - name: Prefetch — catalogue entries per package manager
+      ansible.builtin.set_fact:
+        tn_prefetch_sw: "{{ (tn_prefetch_cat_raw.content | b64decode | from_yaml).software | dict2items }}"
+
+    - name: Prefetch — work directory
+      ansible.builtin.file:
+        path: "{{ tn_prefetch_workdir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Prefetch — the depot answers on Nexus and apt-cacher-ng
+      ansible.builtin.uri:
+        url: "{{ item }}"
+        status_code: 200
+        timeout: 15
+      loop:
+        - "{{ tn_depot_nexus_url }}/service/rest/v1/status"
+        - "{{ tn_depot_apt_proxy_url }}/acng-report.html"
+
+    # ── Chocolatey ────────────────────────────────────────────────────
+    - name: Prefetch — Chocolatey
+      when: tn_prefetch_choco | bool
+      block:
+        - name: Prefetch — Chocolatey package list
+          ansible.builtin.copy:
+            dest: "{{ tn_prefetch_workdir }}/choco.json"
+            mode: "0600"
+            content: "{{ tn_prefetch_sw | selectattr('value.windows.choco', 'defined') | map(attribute='value.windows') | list | to_nice_json }}"
+
+        - name: Prefetch — Chocolatey helper
+          ansible.builtin.copy:
+            src: choco_prefetch.py
+            dest: "{{ tn_prefetch_workdir }}/choco_prefetch.py"
+            mode: "0755"
+
+        # Ids with an offline build in content/choco. Validates every definition too: a
+        # malformed one fails here, before anything is uploaded.
+        - name: Prefetch — offline Chocolatey definitions (content/choco)
+          ansible.builtin.command:
+            argv: [python3, "{{ tn_prefetch_choco_internalize_script }}", --defs, "{{ tn_prefetch_choco_defs }}", --list]
+          register: tn_prefetch_internal_ids
+          changed_when: false
+          when: tn_prefetch_choco_internalize | bool
+
+        - name: Prefetch — Chocolatey into chocolatey-hosted (and through chocolatey-proxy)
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ tn_prefetch_workdir }}/choco_prefetch.py"
+              - --nexus
+              - "{{ tn_depot_nexus_url }}"
+              - --upstream
+              - "{{ tn_prefetch_choco_upstream }}"
+              - --packages
+              - "{{ tn_prefetch_workdir }}/choco.json"
+              - --report
+              - "{{ tn_prefetch_workdir }}/choco-report.json"
+              - --skip
+              - "{{ (tn_prefetch_internal_ids.stdout | default('[]', true) | from_json) | join(',') }}"
+          environment:
+            NEXUS_USER: "{{ tn_depot_prefetch_user | default('tn-prefetch') }}"
+            NEXUS_PASSWORD: "{{ vault_nexus_prefetch_password }}"
+          register: tn_prefetch_choco_run
+          changed_when: "'uploaded=0 ' not in tn_prefetch_choco_run.stdout"
+
+        # Vendor installers -> raw "installers", offline packages -> chocolatey-hosted.
+        # Needs internet on THIS host (not the depot's uplink) and PyYAML (python3-yaml).
+        - name: Prefetch — internalize offline Chocolatey packages (content/choco)
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ tn_prefetch_choco_internalize_script }}"
+              - --defs
+              - "{{ tn_prefetch_choco_defs }}"
+              - --nexus
+              - "{{ tn_depot_nexus_url }}"
+              - --upstream
+              - "{{ tn_prefetch_choco_upstream }}"
+              - --workdir
+              - "{{ tn_prefetch_workdir }}/internalize"
+              - --report
+              - "{{ tn_prefetch_workdir }}/choco-internalize-report.json"
+          environment:
+            NEXUS_USER: "{{ tn_depot_prefetch_user | default('tn-prefetch') }}"
+            NEXUS_PASSWORD: "{{ vault_nexus_prefetch_password }}"
+          register: tn_prefetch_internalize_run
+          changed_when: "'uploaded=0 ' not in tn_prefetch_internalize_run.stdout"
+          when: tn_prefetch_choco_internalize | bool
+
+    # ── apt / dnf through apt-cacher-ng ───────────────────────────────
+    - name: Prefetch — Linux package managers
+      ansible.builtin.include_tasks: linux.yml
+      loop:
+        - { family: apt, image: "{{ tn_prefetch_ubuntu_image }}", enabled: "{{ tn_prefetch_apt }}" }
+        - { family: dnf, image: "{{ tn_prefetch_rocky_image }}", enabled: "{{ tn_prefetch_dnf }}" }
+      loop_control: { loop_var: tn_prefetch_fam, label: "{{ tn_prefetch_fam.family }}" }
+      when: tn_prefetch_fam.enabled | bool
+
+  rescue:
+    - name: Prefetch — record the failure (the depot still goes back offline)
+      ansible.builtin.set_fact:
+        tn_prefetch_error: "{{ ansible_failed_task.name }}: {{ ansible_failed_result.msg | default('failed') }}"
+
+- name: Prefetch — report
+  ansible.builtin.debug:
+    msg:
+      - "chocolatey: {{ (tn_prefetch_choco_run.stdout_lines | default(['skipped']))[-1] }}"
+      - "internalized (content/choco): {{ tn_prefetch_internalize_run.stdout_lines | default(['skipped'], true) }}"
+      - "internalize details: {{ tn_prefetch_workdir }}/choco-internalize-report.json (copy RECORDED sha256 values into content/choco)"
+      - "linux: {{ tn_prefetch_linux_results | default({}) }}"
+      - "details: {{ tn_prefetch_workdir }}/choco-report.json on {{ inventory_hostname }}"
+      - "error: {{ tn_prefetch_error | default('none') }}"

@@ -55,3 +55,6 @@ control-plane/web/devtools-shots/
 
 # ARC² staging: every /arc2 run writes here and only here; promotion is a human PR
 build/arc2/
+# vSphere Packer local vars + build logs
+infra/vsphere/packer/lab.auto.pkrvars.hcl
+infra/vsphere/packer/logs/

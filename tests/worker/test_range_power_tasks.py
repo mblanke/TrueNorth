@@ -1,165 +1,152 @@
-"""Stopping and starting a range powers its VMs off and on (codereview1 S0 defect).
+"""stop_range / start_range act only for the operation the API recorded (worker/fencing.py).
 
-``/stop`` used to set ``stopped`` and send nothing: the VMs kept running on the hypervisor
-while the platform said they were off. Now the API records a stop/start operation and
-moves the range to ``stopping``/``starting`` (app/range_ops.py); these tasks power the
-VMs through the range's provisioner and report what happened. Like provision and
-destroy, a task acts only while the range is in the state its operation set, so a
-duplicate or late delivery touches no hypervisor.
-
-A failure leaves the range where its VMs most likely are: a stop that did not stop them
-returns it to ``ready``, a start that did not start them to ``stopped``, each with the
-error. The operation is then reconciled as failed.
+Before: the API flipped the range to ``stopped``/``running`` itself and the task powered
+VMs off or on whatever the range's state was by then, so a duplicate or late delivery
+powered a range off again after it had been started, and the state said "stopped"
+before (or whether) anything was powered off. Now the API records a stop as an operation
+and moves the range to ``stopping`` (``starting`` for a start); the task claims the range
+from that state, writes ``stopped``/``running`` only from it, and does nothing at all for
+a range in any other state.
 """
 
 from __future__ import annotations
 
-import os
-from unittest.mock import AsyncMock, patch
+import uuid
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import sqlalchemy as sa
+from app import models as m
+from app.sections import Base
+from sqlalchemy.orm import Session, sessionmaker
 
-os.environ.setdefault("MOCK_PROVISION_DELAY", "0")
-os.environ.setdefault("MOCK_FAILURE_RATE", "0")
+tasks = pytest.importorskip("worker.tasks")
+from worker.provisioners.results import StartResult, StopResult  # noqa: E402
 
-import uuid  # noqa: E402
-from datetime import UTC, datetime  # noqa: E402
-
-import sqlalchemy as sa  # noqa: E402
-from worker import power_tasks, tasks  # noqa: E402
-from worker.provisioners.base import StartResult, StopResult  # noqa: E402
-
-
-def _sqlite_now(dbapi_conn, _record):
-    if type(dbapi_conn).__module__.startswith("sqlite3"):
-        dbapi_conn.create_function("NOW", 0, lambda: datetime.now(UTC).isoformat())
+TASKS = {"stop": ("stop_range", "stopping", "stopped"), "start": ("start_range", "starting", "running")}
 
 
 @pytest.fixture
-def db(tmp_path, monkeypatch):
-    """The worker's tables, in SQLite (as tests/worker/test_range_task_fencing.py)."""
-    sa.event.listen(sa.engine.Engine, "connect", _sqlite_now)
-    url = f"sqlite:///{tmp_path / 'worker.db'}"
-    engine = sa.create_engine(url)
-    with engine.begin() as conn:
-        conn.execute(sa.text("CREATE TABLE templates (id TEXT PRIMARY KEY, yaml TEXT)"))
-        conn.execute(
-            sa.text(
-                "CREATE TABLE ranges (id TEXT PRIMARY KEY, template_id TEXT, state TEXT, provisioner_backend TEXT, "
-                "provisioner_output TEXT, error_message TEXT, updated_at TIMESTAMP)"
-            )
-        )
-    monkeypatch.setattr(tasks, "DATABASE_URL", url)
+def factory(tmp_path, monkeypatch):
+    eng = sa.create_engine(f"sqlite:///{tmp_path / 'tn.db'}")
+    Base.metadata.create_all(eng)
+    make = sessionmaker(bind=eng, class_=Session, expire_on_commit=False)
+
+    @contextmanager
+    def _session():
+        s = make()
+        try:
+            yield s
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
+        finally:
+            s.close()
+
+    monkeypatch.setattr(tasks, "_db_session", _session)
     monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
-    yield engine
-    sa.event.remove(sa.engine.Engine, "connect", _sqlite_now)
+    yield make
+    eng.dispose()
 
 
-def _range(db, state: str, output: str | None = None) -> str:
-    rid = str(uuid.uuid4())
-    with db.begin() as conn:
-        conn.execute(
-            sa.text(
-                "INSERT INTO ranges (id, template_id, state, provisioner_backend, provisioner_output) "
-                "VALUES (:id, NULL, :s, 'mock', :o)"
-            ),
-            {"id": rid, "s": state, "o": output},
-        )
-    return rid
-
-
-def _state(db, rid: str) -> tuple:
-    with db.connect() as conn:
-        return tuple(conn.execute(sa.text("SELECT state, error_message FROM ranges WHERE id = :id"), {"id": rid}).one())
-
-
-OUTPUT = '{"vms": [{"vm_id": "vm-1", "name": "r-ws01"}, {"vm_id": "vm-2", "name": "r-dc01"}]}'
-
-
-def _backend(stop=None, start=None):
-    b = AsyncMock()
-    b.stop.return_value = stop or StopResult(status="ok", vms_stopped=2, duration_seconds=0.1, errors=[])
-    b.start.return_value = start or StartResult(status="ok", vms_started=2, duration_seconds=0.1, errors=[])
+@pytest.fixture
+def backend(monkeypatch):
+    b = MagicMock()
+    b.stop = AsyncMock(return_value=StopResult(status="ok", vms_stopped=2))
+    b.start = AsyncMock(return_value=StartResult(status="ok", vms_started=2))
+    monkeypatch.setattr(tasks, "_get_backend", lambda name=None: b)
     return b
 
 
-def test_a_stop_powers_the_vms_off_then_reads_stopped(db):
-    rid = _range(db, "stopping", output=OUTPUT)
-    backend = _backend()
-    with patch.object(tasks, "_get_backend", return_value=backend):
-        assert power_tasks.stop_range.run(rid)["status"] == "stopped"
-    backend.stop.assert_awaited_once()
-    assert backend.stop.await_args.args[1]["vms"][0]["vm_id"] == "vm-1"
-    assert _state(db, rid) == ("stopped", None)
+def _range(make, state: str) -> str:
+    with make() as s:
+        t = m.Tenant(name=f"t-{uuid.uuid4().hex[:6]}", slug=f"t-{uuid.uuid4().hex[:6]}")
+        s.add(t)
+        s.flush()
+        tmpl = m.Template(name="t", yaml="id: t\n", tenant_id=t.id)
+        s.add(tmpl)
+        s.flush()
+        r = m.Range(name="r", template_id=tmpl.id, tenant_id=t.id, provisioner_backend="mock",
+                    provisioner_output='{"vms": [{"vm_id": "vm-1"}]}', state=m.RangeState(state),
+                    error_message="an earlier failure")
+        s.add(r)
+        s.commit()
+        return str(r.id)
 
 
-def test_a_start_powers_the_vms_on_then_reads_ready(db):
-    rid = _range(db, "starting", output=OUTPUT)
-    backend = _backend()
-    with patch.object(tasks, "_get_backend", return_value=backend):
-        assert power_tasks.start_range.run(rid)["status"] == "ready"
-    backend.start.assert_awaited_once()
-    assert _state(db, rid) == ("ready", None)
+def _state(make, rid):
+    with make() as s:
+        r = s.get(m.Range, uuid.UUID(rid))
+        return r.state.value, r.error_message
 
 
-def test_the_mock_backend_end_to_end(db):
-    rid = _range(db, "stopping", output=OUTPUT)
-    assert power_tasks.stop_range.run(rid)["status"] == "stopped"
-    tasks._update_range_state(rid, "starting")
-    assert power_tasks.start_range.run(rid)["status"] == "ready"
+def _run(action, rid):
+    return getattr(tasks, TASKS[action][0]).run(rid)
 
 
-@pytest.mark.parametrize("state", ["ready", "stopped", "destroying", "provisioning"])
-def test_a_duplicate_or_stale_stop_touches_no_hypervisor(db, state):
-    rid = _range(db, state, output=OUTPUT)
-    with patch.object(tasks, "_get_backend") as backend:
-        assert power_tasks.stop_range.run(rid)["status"] == "skipped"
-    backend.assert_not_called()
-    assert _state(db, rid)[0] == state
+@pytest.mark.parametrize("action", ["stop", "start"])
+def test_a_recorded_power_operation_powers_the_vms_and_reaches_its_state(factory, backend, action):
+    _, in_progress, done = TASKS[action]
+    rid = _range(factory, in_progress)
+    assert _run(action, rid)["status"] == done
+    getattr(backend, action).assert_awaited_once_with(rid, {"vms": [{"vm_id": "vm-1"}]})
+    assert _state(factory, rid) == (done, None), "the observed state, written by the worker, error cleared"
 
 
-@pytest.mark.parametrize("state", ["ready", "stopped", "destroying"])
-def test_a_duplicate_or_stale_start_touches_no_hypervisor(db, state):
-    rid = _range(db, state, output=OUTPUT)
-    with patch.object(tasks, "_get_backend") as backend:
-        assert power_tasks.start_range.run(rid)["status"] == "skipped"
-    backend.assert_not_called()
-    assert _state(db, rid)[0] == state
+@pytest.mark.parametrize("action", ["stop", "start"])
+@pytest.mark.parametrize("state", ["ready", "running", "stopped", "destroying", "destroyed", "failed"])
+def test_a_duplicate_or_stale_power_task_touches_nothing(factory, backend, action, state):
+    rid = _range(factory, state)
+    assert _run(action, rid)["status"] == "skipped"
+    backend.stop.assert_not_called()
+    backend.start.assert_not_called()
+    assert _state(factory, rid)[0] == state
 
 
-def test_a_partial_stop_is_not_reported_as_stopped(db):
-    rid = _range(db, "stopping", output=OUTPUT)
-    partial = StopResult(status="partial", vms_stopped=1, duration_seconds=0.1, errors=["VM r-dc01: timed out"])
-    with patch.object(tasks, "_get_backend", return_value=_backend(stop=partial)), pytest.raises(RuntimeError):
-        power_tasks.stop_range.run(rid)
-    state, error = _state(db, rid)
-    assert state == "ready" and "r-dc01" in error
+@pytest.mark.parametrize("action", ["stop", "start"])
+def test_a_failed_attempt_that_will_be_retried_leaves_the_range_in_progress(factory, backend, action):
+    _, in_progress, done = TASKS[action]
+    rid = _range(factory, in_progress)
+    getattr(backend, action).return_value = (StopResult if action == "stop" else StartResult)(
+        status="failed", errors=["vm-1: host down"])
+    with patch.object(tasks, "_last_attempt", return_value=False), pytest.raises(RuntimeError, match="host down"):
+        _run(action, rid)
+    assert _state(factory, rid)[0] == in_progress
+    with patch.object(tasks, "_last_attempt", return_value=True), pytest.raises(RuntimeError):
+        _run(action, rid)
+    state, error = _state(factory, rid)
+    assert state == "failed" and "host down" in error
 
 
-def test_a_failed_start_returns_the_range_to_stopped(db):
-    rid = _range(db, "starting", output=OUTPUT)
-    with (
-        patch.object(tasks, "_get_backend", side_effect=RuntimeError("vCenter unreachable")),
-        pytest.raises(RuntimeError),
-    ):
-        power_tasks.start_range.run(rid)
-    assert _state(db, rid) == ("stopped", "vCenter unreachable")
+@pytest.mark.parametrize("action", ["stop", "start"])
+def test_a_failure_does_not_overwrite_a_range_that_moved_on(factory, backend, action):
+    _, in_progress, _ = TASKS[action]
+    rid = _range(factory, in_progress)
+
+    async def moved_on(*_):
+        with factory() as s:  # an operator abandoned it and destroyed the range meanwhile
+            s.get(m.Range, uuid.UUID(rid)).state = m.RangeState.destroying
+            s.commit()
+        raise RuntimeError("vCenter went away")
+
+    getattr(backend, action).side_effect = moved_on
+    with patch.object(tasks, "_last_attempt", return_value=True), pytest.raises(RuntimeError):
+        _run(action, rid)
+    assert _state(factory, rid)[0] == "destroying"
 
 
-def test_a_failed_attempt_that_will_be_retried_stays_in_progress(db):
-    rid = _range(db, "stopping", output=OUTPUT)
-    with (
-        patch.object(tasks, "_get_backend", side_effect=RuntimeError("busy")),
-        patch.object(power_tasks, "_last_attempt", return_value=False),
-        pytest.raises(RuntimeError),
-    ):
-        power_tasks.stop_range.run(rid)
-    assert _state(db, rid) == ("stopping", None)
-
-
-def test_a_success_clears_an_earlier_error(db):
-    rid = _range(db, "stopping", output=OUTPUT)
-    tasks._update_range_state(rid, "stopping", error="earlier stop failed")
-    with patch.object(tasks, "_get_backend", return_value=_backend()):
-        power_tasks.stop_range.run(rid)
-    assert _state(db, rid) == ("stopped", None)
+@pytest.mark.parametrize("action", ["stop", "start"])
+def test_a_range_with_no_vms_is_never_reported_powered(factory, backend, action):
+    """A build that failed with nothing built, then Start: it used to become `running`."""
+    _, in_progress, _ = TASKS[action]
+    rid = _range(factory, in_progress)
+    with factory() as s:
+        s.get(m.Range, uuid.UUID(rid)).provisioner_output = '{"provider": "vsphere_api", "networks": []}'
+        s.commit()
+    with pytest.raises(Exception, match="no VMs"):
+        _run(action, rid)  # not retried: there is nothing a retry could power
+    state, error = _state(factory, rid)
+    assert state == "failed" and "no VMs" in error
+    getattr(backend, action).assert_not_called()

@@ -36,11 +36,6 @@ def _rendered(tpl: dict) -> dict:
     return {"vms": out["vm_definitions"], "networks": out["network_definitions"], "vlan_map": out["vlan_map"]}
 
 
-def _invalid_cidr_warnings_only(warnings: list[str]) -> bool:
-    # medium-enterprise ships 10.10.300.0/24 (docs/vm-build-sheet.md §7): flagged, kept as written.
-    return all("is not valid" in w for w in warnings)
-
-
 def _make_po(db_session) -> uuid.UUID:
     """A real qualification + PO, built like tests/api/test_qsp_curriculum_map.py does."""
     from app.models import PerformanceObjective, POTier, Qualification
@@ -73,7 +68,9 @@ def test_template_diagram_template_round_trip_preserves_what_provisioning_reads(
     original = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
     diagram = rt.build_template_diagram(path.read_text(encoding="utf-8-sig"))
     back = rt.diagram_to_template(diagram, original.get("name", "x"))
-    assert _invalid_cidr_warnings_only(back["warnings"]), back["warnings"]
+    # Every shipped template is a valid address plan (tests/api/test_range_templates.py), so
+    # the round trip has nothing to flag. medium-enterprise's 10.10.300.0/24 used to be.
+    assert back["warnings"] == []
     assert _rendered(back["template"]) == _rendered(original)
     # Not just what the worker reads today: every authored key survives, in order.
     assert back["template"]["nodes"] == [{**n, "os": canonical_os(n["os"])} for n in original["nodes"]]
@@ -518,3 +515,28 @@ def test_host_count_matches_what_the_worker_builds(text):
     doc = yaml.safe_load(text)
     built = len(worker_render.render_topology(doc, "r-count", lambda a: a)["vm_definitions"])
     assert rt.count_template_hosts(text) == built
+
+
+# ── a firewall cabled to several zones gets a NIC in each ─────────────────
+
+
+def test_linked_firewall_spans_the_zones_it_is_cabled_to():
+    """The designer's links used to be dropped, so every firewall had one NIC and routed nothing."""
+    diagram = {"cells": [
+        _cell("fw", "firewall", 280, 20, label="Gateway", os_template="pfsense"),
+        _zone("z0", "corp", "10.1.0.0/24", 0, 130),
+        _zone("z1", "dmz", "10.2.0.0/24", 0, 400),
+        _cell("web", "server", 50, 450, label="web", os_template="ubuntu-24.04"),
+        {"type": "standard.Link", "id": "l1", "source": {"id": "fw"}, "target": {"id": "z0"}},
+        {"type": "standard.Link", "id": "l2", "source": {"id": "web"}, "target": {"id": "fw"}},  # via a node
+    ]}
+    out = rt.diagram_to_template(diagram)
+    fw = out["template"]["nodes"][0]
+    assert fw["vlan"] == "corp"  # outside every zone, so it joins the first one it is cabled to
+    assert fw["interfaces"] == [{"vlan": "corp"}, {"vlan": "dmz"}]
+    assert not any("single NIC" in w for w in out["warnings"])
+    assert [v["name"] for v in out["template"]["network"]["vlans"]] == ["corp", "dmz"]  # no stray VLAN
+
+    vms = {v["node_id"]: v for v in worker_render.render_topology(out["template"], "r", lambda a: a)["vm_definitions"]}
+    assert [(n["network"], n["ip"]) for n in vms["gateway"]["nics"]] == [("corp", "10.1.0.1"), ("dmz", "10.2.0.1")]
+    assert vms["web"]["gateway"] == "10.2.0.1"

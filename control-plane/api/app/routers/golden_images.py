@@ -1,17 +1,18 @@
 """Golden-image / template-library router.
 
 Import the golden-image catalogue, browse the registry, resolve an OS alias to a
-hypervisor template, and let an operator register the real template name / datastore
-and build status per image.
+hypervisor template, let an operator register the real template name / datastore
+and build status per image, and register custom variant images (POST).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import golden_images
@@ -42,6 +43,25 @@ class GoldenImageOut(BaseModel):
     build_status: str
     golden_gb: int
     notes: str
+
+
+class GoldenImageCreate(BaseModel):
+    """A custom (non-catalogue) image, e.g. a Packer variant from infra/vsphere/packer/variants/."""
+
+    catalogue_id: str = Field(..., pattern=r"^[a-z0-9][a-z0-9-]{1,62}$")
+    os_family: Literal["windows", "linux", "appliance"]
+    version: str = Field("", max_length=60)
+    role: str = Field("", max_length=160)
+    hypervisor: Literal["vsphere", "proxmox", "hyperv"] = "vsphere"
+    template_name: str = Field("", max_length=120)
+    datastore: str | None = Field(None, max_length=120)
+    os_aliases: list[Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")]] = Field(
+        default_factory=list, max_length=32
+    )
+    build_status: Literal["planned", "building", "built", "failed"] = "planned"
+    enabled: bool = True
+    golden_gb: int | None = Field(None, ge=0, le=4096)
+    notes: str = Field("", max_length=1000)
 
 
 class GoldenImagePatch(BaseModel):
@@ -97,6 +117,32 @@ async def import_catalogue(
         logger.exception("golden-image import failed")
         raise HTTPException(status_code=422, detail=f"import failed: {exc}") from exc
     return {"imported": True, **stats}
+
+
+@router.post("", response_model=GoldenImageOut)
+def upsert_custom_image(
+    body: GoldenImageCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.INFRA_WRITE)),
+) -> GoldenImageOut:
+    """Register a custom image (a Packer variant) so ranges and the designer can use it.
+
+    Creates (201) or updates (200) the image keyed on (catalogue_id, hypervisor). It is
+    marked as a variant, so catalogue re-imports leave it alone. A catalogue image's
+    slot is refused with 409; change those through PATCH.
+
+    **Permission: infra:write**: the registry is platform-wide, like PATCH below.
+    """
+    # tenant-safe: platform-wide registry keyed on (catalogue_id, hypervisor), same as
+    # PATCH; tenant_id only records who registered it.
+    try:
+        img, created = golden_images.upsert_variant(db, body.model_dump(), tenant_id=user.tenant_id or None)
+    except golden_images.CatalogueConflictError as exc:
+        # Raised before anything is written, so there is nothing to roll back.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    response.status_code = 201 if created else 200
+    return _out(img)
 
 
 @router.get("", response_model=list[GoldenImageOut])

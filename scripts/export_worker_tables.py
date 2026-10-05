@@ -35,6 +35,7 @@ WORKER_TABLES = (
     "golden_images",
     "hypervisor_connections",
     "learning_recommendations",
+    "network_reservations",
     "objectives",
     "range_snapshots",
     "ranges",
@@ -68,7 +69,7 @@ def _type_src(t) -> str:
 
 def render() -> str:
     from app import models
-    from app.db import Base
+    from app.sections import Base  # every model, including per-section modules (models_network, ...)
 
     md = Base.metadata
     missing = [t for t in WORKER_TABLES if t not in md.tables]

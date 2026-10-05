@@ -377,6 +377,9 @@ services:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      # GET /software-catalogue (Range Designer autocomplete) reads the same file the
+      # provisioning worker installs from.
+      - ../../../content/catalogue:/app/content/catalogue:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -437,8 +440,8 @@ services:
       PROXMOX_API_URL: ${PROXMOX_API_URL:-}
       PROXMOX_TOKEN: ${PROXMOX_TOKEN:-}
       # vsphere_api.py reads these at MODULE IMPORT, so they must be present in the
-      # worker environment at start. A hypervisor_connections row written later
-      # cannot override the module-level constants.
+      # worker environment at start. With VSPHERE_URL empty, the endpoint and login
+      # come from the primary vSphere hypervisor_connections row instead.
       VSPHERE_URL: ${VSPHERE_URL:-}
       VSPHERE_USERNAME: ${VSPHERE_USERNAME:-}
       VSPHERE_PASSWORD: ${VSPHERE_PASSWORD:-}
@@ -446,8 +449,38 @@ services:
       VSPHERE_CLUSTER: ${VSPHERE_CLUSTER:-}
       VSPHERE_DATASTORE: ${VSPHERE_DATASTORE:-}
       VSPHERE_NETWORK: ${VSPHERE_NETWORK:-}
+      VSPHERE_MGMT_NETWORK: ${VSPHERE_MGMT_NETWORK:-dPG-TN-MGMT}
       VSPHERE_VERIFY_SSL: ${VSPHERE_VERIFY_SSL:-false}
+      VSPHERE_CONTENT_LIBRARY: ${VSPHERE_CONTENT_LIBRARY:-}
+      VSPHERE_CONCURRENCY: ${VSPHERE_CONCURRENCY:-4}
+      VSPHERE_TOOLS_TIMEOUT: ${VSPHERE_TOOLS_TIMEOUT:-120}
+      VSPHERE_SNAPSHOT_TIMEOUT: ${VSPHERE_SNAPSHOT_TIMEOUT:-1800}
+      VSPHERE_RANGE_SWITCH_MODE: ${VSPHERE_RANGE_SWITCH_MODE:-vds}
+      VSPHERE_RANGE_DVS: ${VSPHERE_RANGE_DVS:-vDS-10G}
+      VSPHERE_RANGE_VSWITCH: ${VSPHERE_RANGE_VSWITCH:-vSwitch1}
+      VSPHERE_VLAN_POOL: ${VSPHERE_VLAN_POOL:-100-199}
+      VSPHERE_PLACEMENT: ${VSPHERE_PLACEMENT:-spread}
+      VSPHERE_RANGE_FOLDER: ${VSPHERE_RANGE_FOLDER:-truenorth/ranges}
+      VSPHERE_MAX_VCPU_PER_THREAD: ${VSPHERE_MAX_VCPU_PER_THREAD:-4}
+      VSPHERE_EXCLUDE_HOSTS: ${VSPHERE_EXCLUDE_HOSTS:-}
+      # Depot uplink and deploy-time software (runbook §4.1a). Empty network/depot:
+      # ranges stay fully isolated and node `services` are not installed.
+      VSPHERE_RANGE_UPLINK_NETWORK: ${VSPHERE_RANGE_UPLINK_NETWORK:-}
+      VSPHERE_RANGE_UPLINK_POOL: ${VSPHERE_RANGE_UPLINK_POOL:-}
+      VSPHERE_RANGE_UPLINK_GATEWAY: ${VSPHERE_RANGE_UPLINK_GATEWAY:-}
+      VSPHERE_RANGE_UPLINK_PREFIX: ${VSPHERE_RANGE_UPLINK_PREFIX:-24}
+      VSPHERE_PROVISION_BUDGET: ${VSPHERE_PROVISION_BUDGET:-3300}
+      TN_DEPOT_URL: ${TN_DEPOT_URL:-}
+      TN_DEPOT_CHOCO_FEED: ${TN_DEPOT_CHOCO_FEED:-}
+      TN_DEPOT_APT_PROXY: ${TN_DEPOT_APT_PROXY:-}
+      TN_DEPOT_PORTS: ${TN_DEPOT_PORTS:-8081,3142}
+      TN_SOFTWARE_INSTALL_TIMEOUT: ${TN_SOFTWARE_INSTALL_TIMEOUT:-1800}
+      TN_SOFTWARE_CATALOGUE: /app/content/catalogue/software_catalogue.yaml
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    # The image is built from control-plane/worker only; the software catalogue lives
+    # in content/catalogue.
+    volumes:
+      - ../../../content/catalogue:/app/content/catalogue:ro
     depends_on:
       postgres:
         condition: service_healthy

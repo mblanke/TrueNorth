@@ -121,7 +121,9 @@ def test_a_populated_deployed_database_upgrades_to_head_without_loss():
                         "template_id": template_id,
                         "tenant_id": tenant_ids[i % 2],
                         "state": state,
-                        "provisioner_output": '{"vms": [{"name": "web"}]}',
+                        # A built range records its VMs; one never built has none (#33
+                        # refuses to provision over recorded VMs).
+                        "provisioner_output": '{"vms": [{"name": "web"}]}' if state in ("ready", "failed") else None,
                     },
                 )
                 range_rows.append(row)
@@ -195,7 +197,9 @@ def test_a_populated_deployed_database_upgrades_to_head_without_loss():
         assert not set(NEW_TABLES) & set(names)
         with engine.connect() as conn:
             back = conn.execute(sa.text("SELECT CAST(state AS TEXT) FROM ranges WHERE id = :i"), {"i": ready["id"]})
-            assert back.scalar() == "ready", "a range caught stopping goes back to where its VMs were"
+            # d1e2f3a4b5c6's downgrade puts a range caught stopping where the previous code
+            # showed it (it set stopped at once). range_operations itself is gone by then.
+            assert back.scalar() == "stopped"
         after_down = snapshot()
         assert after_down["tenants"] == before["tenants"] and after_down["templates"] == before["templates"]
         _alembic(url, "upgrade", "head")
