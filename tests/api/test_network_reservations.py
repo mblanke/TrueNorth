@@ -223,3 +223,12 @@ def test_another_tenant_cannot_see_a_ranges_reservations(client, db_session):
     with acting_as(UserRole.admin, "00000000-0000-0000-0000-0000000000ff"):
         assert client.get(f"/ranges/{rid}/network-reservations").status_code == 404
     assert [r["value"] for r in client.get(f"/ranges/{rid}/network-reservations").json()] == ["10.255.0.10"]
+
+
+def test_a_range_holding_values_in_another_domain_is_refused(db_session):
+    """The worker refuses the same way (tests/worker/test_range_allocation.py)."""
+    rng = _range(db_session)
+    inv.reserve(db_session, rng, domain=DOMAIN, kind="noise_mgmt_ip", pool=POOL, holders=["ws01"])
+    with pytest.raises(inv.DomainChangedError, match=DOMAIN):
+        inv.reserve(db_session, rng, domain="vsphere:other:TN-Noise", kind="noise_mgmt_ip", pool=POOL,
+                    holders=["ws01"])

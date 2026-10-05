@@ -1011,13 +1011,16 @@ class VsphereAPIProvisioner(BaseProvisioner):
         text = str(exc) or getattr(exc, "msg", None) or type(exc).__name__
         return guest.redact(text, *(v.get("_guest") for v in vm_defs))
 
-    def _domain(self, network: str) -> str:
-        """The shared network a reservation must be unique in: ``vsphere:<vCenter>:<network>``.
+    @staticmethod
+    def _domain(what: str) -> str:
+        """The space a reservation must be unique in: ``<site>:vlans`` or ``<site>:uplink``.
 
-        VSPHERE_ALLOCATION_DOMAIN replaces ``vsphere:<vCenter>`` for vCenters that share
-        one physical switch fabric (and so one VLAN space)."""
-        site = os.getenv("VSPHERE_ALLOCATION_DOMAIN", "").strip()
-        return f"{site or 'vsphere:' + (urlparse(self._base_url).hostname or self._base_url)}:{network}"
+        ``<site>`` is VSPHERE_ALLOCATION_DOMAIN, default ``vsphere``: one VLAN space and one
+        uplink space for every vSphere range. It is never derived from how the vCenter is
+        addressed (IP or name, env or the Hypervisors page) or from switch names: a domain
+        that changed with those let two ranges hold one VLAN. Give two sites their own
+        value only when their ranges cannot share a VLAN segment or an uplink subnet."""
+        return f"{os.getenv('VSPHERE_ALLOCATION_DOMAIN', '').strip() or 'vsphere'}:{what}"
 
     def allocation_needs(self, range_id: str, template: dict) -> list[AllocationNeed]:
         """Physical VLANs for every logical VLAN (and RSPAN VLAN) the build will use, and
@@ -1027,15 +1030,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
         rules = infra.mirror_rules(template) if self._switch_mode != "vss" else []  # as _plan_mirrors
         plans = infra.plan_mirrors(rules, [dict(n) for n in template.get("networks", [])])[0] if rules else []
         keys = logical + [p["rspan_key"] for p in plans if p["rspan_key"] not in logical]
-        switch = self._dvs_name if self._switch_mode != "vss" else f"vss:{self._vswitch}"
         needs = []
         if keys:
             pool = [str(v) for v in vlan_pool.parse_pool(self._vlan_pool)]
-            needs.append(AllocationNeed("physical_vlans", "vlan", self._domain(switch), pool, [str(k) for k in keys]))
+            needs.append(AllocationNeed("physical_vlans", "vlan", self._domain("vlans"), pool, [str(k) for k in keys]))
         if self._uplink_network and infra.pick_edge(vm_defs) is not None:
             pool = uplink_pool.parse_ip_pool(self._uplink_pool)
-            needs.append(AllocationNeed("uplink_ip", "uplink_ip", self._domain(self._uplink_network), pool, ["edge"],
-                                        single=True))
+            needs.append(AllocationNeed("uplink_ip", "uplink_ip", self._domain("uplink"), pool, ["edge"], single=True))
         return needs
 
     def planned_output(self, range_id: str, allocations: dict) -> dict:

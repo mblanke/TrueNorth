@@ -1,0 +1,21 @@
+tests/worker/test_range_allocation.py:209: AssertionError: another tenant's live range keeps VLAN 100; the destroyed one's is free
+tests/worker/test_range_allocation.py:272: assert False
+tests/worker/test_range_allocation.py:300: AssertionError: assert ('vlan', '999', '150') not in {('uplink_ip', 'edge', '10.30.32.100'), ('vlan', '200', '100'), ('vlan', '201', '101'), ('vlan', '999', '150')}
+tests/worker/test_range_allocation.py:322: AssertionError: assert 'provisioning' == 'failed'
+tests/worker/test_range_allocation.py:394: AssertionError: the build went ahead while another transaction held the VLAN lock
+tests/api/test_range_power.py:189: assert (202 == 409)
+tests/api/test_range_power.py:189: assert (202 == 409)
+tests/api/test_range_power.py:197: assert (202 == 409)
+FAILED tests/worker/test_range_allocation.py::test_values_a_live_range_holds_are_skipped_and_a_destroyed_ranges_are_free
+FAILED tests/worker/test_range_allocation.py::test_the_domain_does_not_change_with_how_the_vcenter_is_addressed
+FAILED tests/worker/test_range_allocation.py::test_a_range_holding_values_in_another_domain_is_refused_not_given_more
+FAILED tests/worker/test_range_allocation.py::test_holders_a_new_build_no_longer_needs_are_released
+FAILED tests/worker/test_range_allocation.py::test_a_range_no_longer_provisioning_reserves_nothing
+FAILED tests/worker/test_range_allocation.py::test_an_exhausted_pool_is_not_retried
+FAILED tests/worker/test_range_allocation.py::test_on_postgres_with_redis_down_a_reservation_still_waits_for_the_domain_lock
+FAILED tests/worker/test_range_power_tasks.py::test_a_range_with_no_vms_is_never_reported_powered[stop]
+FAILED tests/worker/test_range_power_tasks.py::test_a_range_with_no_vms_is_never_reported_powered[start]
+FAILED tests/api/test_range_power.py::test_a_range_with_no_recorded_vms_cannot_be_powered[stop]
+FAILED tests/api/test_range_power.py::test_a_range_with_no_recorded_vms_cannot_be_powered[start]
+FAILED tests/api/test_range_power.py::test_a_range_that_still_has_vms_is_not_provisioned_on_top_of_them
+================== 12 failed, 47 passed, 5 warnings in 4.07s ===================

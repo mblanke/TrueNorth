@@ -22,6 +22,7 @@ from typing import Any
 
 import sqlalchemy as sa
 
+from .fencing import PermanentError
 from .tables import (
     after_action_reports,
     competencies,
@@ -154,8 +155,13 @@ def merge_range_output(db, range_id: str, updates: dict) -> None:
 # The worker's half of app/network_inventory.py (the API's reserve/release; the worker
 # cannot import it). Both must behave the same and take the same lock, which
 # tests/worker/test_range_allocation.py checks.
-class PoolExhaustedError(RuntimeError):
+class PoolExhaustedError(PermanentError):
     """The pool cannot hold every holder that needs a value."""
+
+
+class DomainChangedError(PermanentError):
+    """The range holds values of this kind in another domain (the setting that names the
+    domain changed under a live range). Refused: its old values still exist physically."""
 
 
 def reservation_lock_key(domain: str, kind: str) -> int:
@@ -163,19 +169,38 @@ def reservation_lock_key(domain: str, kind: str) -> int:
     return zlib.crc32(f"{kind}:{domain}".encode()) - (1 << 31)  # signed 32-bit
 
 
-def reserve_values(db, range_id: str, *, domain: str, kind: str, pool: list[str], holders: list[str]) -> dict:
+def claim_range(db, range_id: str, state: str) -> bool:
+    """Lock the range's row until commit and say whether it is still in ``state``."""
+    stmt = sa.select(ranges.c.id).where(ranges.c.id == range_id, sa.cast(ranges.c.state, sa.Text) == state)
+    return db.execute(stmt.with_for_update()).first() is not None
+
+
+def reserve_values(
+    db, range_id: str, *, domain: str, kind: str, pool: list[str], holders: list[str], prune: bool = False
+) -> dict:
     """{holder: value} for every holder, reserving the lowest free pool values as needed.
 
     Idempotent per (range, kind, holder). Values are unique per (domain, kind) across all
     tenants (a unique constraint). Concurrent reservations in one domain are serialised by
     a transaction-scoped PostgreSQL advisory lock, held until the caller's session commits;
-    no Redis. Raises PoolExhaustedError, reserving nothing, when the pool is too small.
+    no Redis. Raises PoolExhaustedError, reserving nothing, when the pool is too small, and
+    DomainChangedError when the range already holds this kind in another domain. ``prune``
+    (a fresh build) first frees the range's holders that are not in ``holders``.
     """
     nr = network_reservations
     if db.get_bind().dialect.name == "postgresql":
         db.execute(sa.select(sa.func.pg_advisory_xact_lock(reservation_lock_key(domain, kind))))
-    held = sa.select(nr.c.holder, nr.c.value).where(nr.c.range_id == range_id, nr.c.kind == kind)
-    mine = {h: v for h, v in db.execute(held)}
+    held = sa.select(nr.c.holder, nr.c.value, nr.c.domain).where(nr.c.range_id == range_id, nr.c.kind == kind)
+    rows = db.execute(held).all()
+    if elsewhere := sorted({d for _, _, d in rows if d != domain}):
+        raise DomainChangedError(
+            f"range holds {kind} reservations in {', '.join(elsewhere)}, not {domain}: the allocation domain "
+            "changed under it. Restore the setting, or destroy the range and build it again"
+        )
+    mine = {h: v for h, v, _ in rows}
+    if prune and (stale := [h for h in mine if h not in holders]):
+        db.execute(sa.delete(nr).where(nr.c.range_id == range_id, nr.c.kind == kind, nr.c.holder.in_(stale)))
+        mine = {h: v for h, v in mine.items() if h in holders}
     needed = [h for h in dict.fromkeys(holders) if h not in mine]
     if not needed:
         return {h: mine[h] for h in holders}

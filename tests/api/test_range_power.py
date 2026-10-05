@@ -43,6 +43,7 @@ def _range(client, db_session, state: str) -> Range:
     rid = client.post("/ranges", json={"name": f"R {uuid.uuid4().hex[:6]}", "template_id": tmpl["id"]}).json()["id"]
     rng = db_session.get(Range, uuid.UUID(rid))
     rng.state = RangeState(state)
+    rng.provisioner_output = '{"vms": [{"name": "dc1", "vm_id": "vm-1"}]}'  # what a build recorded
     db_session.flush()
     return rng
 
@@ -175,4 +176,23 @@ def test_another_tenant_gets_404_and_a_student_403(client, db_session, sent, act
         assert client.post(f"/ranges/{rng.id}/{action}").status_code == 404
     with _acting_as(UserRole.student, str(rng.tenant_id)):
         assert client.post(f"/ranges/{rng.id}/{action}").status_code == 403
+    assert sent == []
+
+
+@pytest.mark.parametrize("action", ["stop", "start"])
+def test_a_range_with_no_recorded_vms_cannot_be_powered(client, db_session, sent, action):
+    """A build that failed with nothing built must not become `running` (adversarial review)."""
+    rng = _range(client, db_session, "failed")
+    rng.provisioner_output = '{"provider": "vsphere_api", "networks": []}'
+    db_session.flush()
+    r = client.post(f"/ranges/{rng.id}/{action}")
+    assert r.status_code == 409 and "no VMs" in r.json()["detail"]
+    assert sent == [] and _ops(client, rng.id) == []
+
+
+def test_a_range_that_still_has_vms_is_not_provisioned_on_top_of_them(client, db_session, sent):
+    """failed after a power failure means the VMs are still there: destroy first."""
+    rng = _range(client, db_session, "failed")
+    r = client.post(f"/ranges/{rng.id}/provision")
+    assert r.status_code == 409 and "destroy" in r.json()["detail"].lower()
     assert sent == []

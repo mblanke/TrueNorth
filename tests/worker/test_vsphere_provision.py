@@ -19,7 +19,6 @@ import re
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -941,15 +940,18 @@ class TestVlanPool:
         vlans, up = needs["physical_vlans"], needs["uplink_ip"]
         assert (vlans.kind, vlans.holders, vlans.pool[:2], vlans.single) == ("vlan", ["200", "201", "203"],
                                                                              ["100", "101"], False)
-        assert vlans.domain == f"vsphere:{urlparse(mod.VSPHERE_URL).hostname}:{mod.VSPHERE_RANGE_DVS}"
+        assert vlans.domain == "vsphere:vlans"  # never derived from the vCenter's address (adversarial review)
         assert (up.kind, up.holders, up.pool, up.single) == ("uplink_ip", ["edge"], ["10.30.32.100", "10.30.32.101"],
                                                              True)
-        assert up.domain.endswith(":dPG-TN-SVC")
+        assert up.domain == "vsphere:uplink"
 
-    def test_one_allocation_domain_for_vcenters_sharing_a_switch_fabric(self, vc, monkeypatch):
-        monkeypatch.setenv("VSPHERE_ALLOCATION_DOMAIN", "lab-fabric")
-        [vlans] = _prov(vc).allocation_needs(RANGE_ID, _rendered())
-        assert vlans.domain == f"lab-fabric:{mod.VSPHERE_RANGE_DVS}"
+    def test_the_domain_ignores_the_vcenter_address_and_switch(self, vc, monkeypatch):
+        p = _prov(vc)
+        before = p.allocation_needs(RANGE_ID, _rendered())[0].domain
+        p._base_url, p._dvs_name = "https://10.0.0.5", "vDS-other"
+        assert p.allocation_needs(RANGE_ID, _rendered())[0].domain == before
+        monkeypatch.setenv("VSPHERE_ALLOCATION_DOMAIN", "site-b")  # sites that share no VLAN segment
+        assert p.allocation_needs(RANGE_ID, _rendered())[0].domain == "site-b:vlans"
 
     def test_an_unreserved_vlan_is_refused_not_picked(self, vc):
         # 200 reserved, 201 and 203 not (the fixture fills only keys that are missing altogether)

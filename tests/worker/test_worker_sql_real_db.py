@@ -720,6 +720,7 @@ PG_CALLS = {
     "merge_range_output": lambda db: db_ops.merge_range_output(db, ID, {"networks": []}),
     "reserve_values": lambda db: db_ops.reserve_values(db, ID, domain="d", kind="vlan", pool=["100"], holders=["200"]),
     "release_reservations": lambda db: db_ops.release_reservations(db, ID),
+    "claim_range": lambda db: db_ops.claim_range(db, ID, "provisioning"),
     "first_range_for_tenant": lambda db: db_ops.first_range_for_tenant(db, ID),
     "hypervisor_connection": lambda db: db_ops.hypervisor_connection(db, "vsphere"),
     "enabled_golden_images": lambda db: db_ops.enabled_golden_images(db, "vsphere"),

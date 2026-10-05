@@ -159,11 +159,28 @@ def _check(db: Session, rng: Range, action: str) -> None:
     reconcile(db, rng)
     if not rng.state.can_transition_to(ACTIONS[action].in_progress):
         raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
+    # ``failed`` covers both "nothing was built" and "built, but a power operation failed".
+    # The VMs a build recorded tell them apart: power needs some, a new build needs none.
+    vms = recorded_vms(rng)
+    if action in ("stop", "start") and not vms:
+        raise HTTPException(409, f"Cannot {action}: the range has no VMs (nothing was built)")
+    if action == "provision" and vms:
+        raise HTTPException(409, f"The range still has {vms} VMs from an earlier build; destroy it first")
     busy = (
         db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT)).first()
     )
     if busy:
         raise HTTPException(409, f"A {busy.action} of this range is still in progress (operation {busy.id})")
+
+
+def recorded_vms(rng: Range) -> int:
+    """How many VMs the range's last build recorded (provisioner_output["vms"])."""
+    try:
+        out = json.loads(rng.provisioner_output or "{}")
+    except ValueError:
+        return 0
+    vms = out.get("vms") if isinstance(out, dict) else None
+    return len(vms) if isinstance(vms, list) else 0
 
 
 def _user_uuid(user: CurrentUser) -> uuid.UUID | None:

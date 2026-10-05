@@ -125,8 +125,15 @@ shows a range's). Before a build the worker reserves the range's physical VLANs 
 edge firewall's WAN address there, unique per vCenter and switch across all tenants,
 under a PostgreSQL advisory lock (Redis is not involved, and a Redis outage does not
 weaken it). The provisioner refuses a VLAN or address nobody reserved. A destroy releases
-them. Set `VSPHERE_ALLOCATION_DOMAIN` (default `vsphere:<vCenter host>`) to the same value
-on two vCenters that share one switch fabric, so they share one VLAN space.
+them. All vSphere ranges share one VLAN space and one uplink-address space by default
+(`VSPHERE_ALLOCATION_DOMAIN`, default `vsphere`); it is deliberately not derived from the
+vCenter's address or switch names. Give a site its own value only if its ranges can never
+share a VLAN segment or uplink subnet with another's, and never change it while ranges
+exist: a range holding values under the old name is refused until it is destroyed.
+
+A range is only started or stopped if its build recorded VMs, and a range that still has
+VMs (for instance `failed` after a stop that vCenter refused) must be destroyed before it
+is provisioned again.
 
 Ranges built by the pre-S5a vmware branch kept their VLANs only in `provisioner_output`;
 the table does not know them. Destroy them (or provision them again) before building new

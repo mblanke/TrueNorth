@@ -37,6 +37,10 @@ class PoolExhaustedError(RuntimeError):
     """The pool cannot hold every holder that needs a value."""
 
 
+class DomainChangedError(RuntimeError):
+    """The range already holds values of this kind in another domain."""
+
+
 def parse_ip_pool(spec: str) -> list[str]:
     """A CIDR (``10.255.0.0/24``: its hosts), a range (``10.30.32.100-199`` or
     ``10.30.32.100-10.30.32.199``) or a comma list of those, as sorted addresses.
@@ -103,12 +107,12 @@ def reserve(db: Session, rng: Range, *, domain: str, kind: str, pool: list[str],
     if not domain:
         raise ValueError("a reservation needs the shared network's domain")
     _lock_domain(db, domain, kind)
-    mine = {
-        r.holder: r.value
-        for r in db.query(NetworkReservation).filter(
-            NetworkReservation.range_id == rng.id, NetworkReservation.kind == kind
-        )
-    }
+    held = db.query(NetworkReservation).filter(NetworkReservation.range_id == rng.id, NetworkReservation.kind == kind)
+    if elsewhere := sorted({r.domain for r in held if r.domain != domain}):
+        # The domain's name changed under a live range: its old values still exist. Same
+        # rule as the worker (db_ops.reserve_values).
+        raise DomainChangedError(f"range holds {kind} reservations in {', '.join(elsewhere)}, not {domain}")
+    mine = {r.holder: r.value for r in held}
     needed = [h for h in dict.fromkeys(holders) if h not in mine]
     if not needed:
         return {h: mine[h] for h in holders}

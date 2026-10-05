@@ -24,7 +24,7 @@ from . import db_ops, periodic
 from .aar import build_report as build_aar_report
 from .celery_app import app
 from .detection import DetectionScorer, range_index
-from .fencing import skipped
+from .fencing import PermanentError, skipped
 from .periodic import HEALTH_CHECK_BUDGET, METRICS_BUDGET
 from .provisioners import get_provisioner
 from .range_alloc import reserve_for_build
@@ -118,6 +118,7 @@ class ReliableTask(Task):
     """Base task with exponential backoff + jitter on retries."""
 
     autoretry_for = (Exception,)
+    dont_autoretry_for = (PermanentError,)  # a full pool, nothing to power: retrying cannot help
     max_retries = 3
     retry_backoff = True  # Exponential backoff
     retry_backoff_max = 300  # Max 5 minutes between retries
@@ -219,7 +220,7 @@ def provision_range(self, range_id: str):
         return {"status": "ready", "range_id": range_id, "vm_count": len(result.vms)}
 
     except Exception as e:
-        if _last_attempt(self):  # a retry must still find the range in provisioning
+        if isinstance(e, PermanentError) or _last_attempt(self):  # a retry must still find it provisioning
             _update_range_state(range_id, "failed", error=str(e), only_from=("provisioning",))
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[provision] Range {range_id} FAILED: {e}")
@@ -289,13 +290,9 @@ def destroy_range(self, range_id: str):
 
 
 def _power_range(task, range_id: str, action: str, claim: str, done: str):
-    """Power every VM of a range off (``stop``) or on (``start``), for the recorded operation.
-
-    The API accepted the operation and moved the range to ``claim`` (stopping/starting);
-    this acts only while the range is still there (fencing.py), and only it writes
-    ``done`` (stopped/running), once the hypervisor has done it. Powering a VM already in
-    that state is a no-op, so a retry is safe; only the last attempt records ``failed``.
-    """
+    """Power a range's VMs off (``stop``) or on (``start``) for the operation the API recorded
+    by moving it to ``claim``: act only while it is there (fencing.py), write ``done`` only
+    once the hypervisor did it; a retry is safe, and only the last attempt records failed."""
     logger.info(f"[{action}] Range {range_id}")
     if not _update_range_state(range_id, claim, only_from=(claim,)):
         return skipped(action, range_id, claim)
@@ -303,6 +300,8 @@ def _power_range(task, range_id: str, action: str, claim: str, done: str):
         with _db_session() as db:
             row = db_ops.range_output_and_backend(db, range_id)
         prov_output = json.loads(row[0]) if row and row[0] else {}
+        if not prov_output.get("vms"):  # a build that failed with nothing built is not "running"
+            raise PermanentError(f"{action}: the range has no VMs recorded; nothing to power")
         provisioner = _get_backend((row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock"))
         result = asyncio.run(getattr(provisioner, action)(range_id, prov_output))
         if result.status != "ok":
@@ -311,7 +310,7 @@ def _power_range(task, range_id: str, action: str, claim: str, done: str):
         _notify_api("range", {"id": range_id, "state": done})
         return {"status": done, "range_id": range_id}
     except Exception as e:
-        if _last_attempt(task):  # a retry must still find the range in `claim`
+        if isinstance(e, PermanentError) or _last_attempt(task):  # a retry must still find it in `claim`
             _update_range_state(range_id, "failed", error=str(e), only_from=(claim,))
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[{action}] Range {range_id} FAILED: {e}")

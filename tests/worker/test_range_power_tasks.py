@@ -135,3 +135,18 @@ def test_a_failure_does_not_overwrite_a_range_that_moved_on(factory, backend, ac
     with patch.object(tasks, "_last_attempt", return_value=True), pytest.raises(RuntimeError):
         _run(action, rid)
     assert _state(factory, rid)[0] == "destroying"
+
+
+@pytest.mark.parametrize("action", ["stop", "start"])
+def test_a_range_with_no_vms_is_never_reported_powered(factory, backend, action):
+    """A build that failed with nothing built, then Start: it used to become `running`."""
+    _, in_progress, _ = TASKS[action]
+    rid = _range(factory, in_progress)
+    with factory() as s:
+        s.get(m.Range, uuid.UUID(rid)).provisioner_output = '{"provider": "vsphere_api", "networks": []}'
+        s.commit()
+    with pytest.raises(Exception, match="no VMs"):
+        _run(action, rid)  # not retried: there is nothing a retry could power
+    state, error = _state(factory, rid)
+    assert state == "failed" and "no VMs" in error
+    getattr(backend, action).assert_not_called()

@@ -39,8 +39,10 @@ from worker.provisioners.results import DestroyResult, ProvisionResult  # noqa: 
 from worker.provisioners.vsphere_api import VsphereAPIProvisioner  # noqa: E402
 
 VCENTER = "vc.lab.test"
-VLAN_DOMAIN = f"vsphere:{VCENTER}:vDS-10G"
-UPLINK_DOMAIN = f"vsphere:{VCENTER}:dPG-TN-SVC"
+# Not derived from how the vCenter is addressed (IP, FQDN, env or the Hypervisors page):
+# a domain that changed with the address let two ranges hold one VLAN (adversarial review).
+VLAN_DOMAIN = "vsphere:vlans"
+UPLINK_DOMAIN = "vsphere:uplink"
 TEMPLATE = {
     "name": "lab",
     "network": {
@@ -259,6 +261,65 @@ def test_the_provisioner_does_not_allocate_vlans_or_addresses_on_its_own(pools):
     result = asyncio.run(p.provision("r-unreserved", template, {}))
     assert result.status == "failed"
     assert "reserv" in " ".join(result.errors).lower()
+
+
+def test_the_domain_does_not_change_with_how_the_vcenter_is_addressed(world, pools):
+    a, b = _seed(world.factory, 2).ids
+    world.rec.pools = {**pools, "VSPHERE_URL": "https://10.0.0.5"}
+    tasks.provision_range.run(a)
+    world.rec.pools = {**pools, "VSPHERE_URL": "https://vc.lab.test"}  # same vCenter, by name now
+    tasks.provision_range.run(b)
+    assert set(world.rec.got(a)[0].values()).isdisjoint(world.rec.got(b)[0].values())
+
+
+def test_a_range_holding_values_in_another_domain_is_refused_not_given_more(world, monkeypatch):
+    """After VSPHERE_ALLOCATION_DOMAIN changes, a range built under the old one must not be
+    given new values (or reuse old ones) as if nothing changed: fail closed and say why."""
+    a, b = _seed(world.factory, 2).ids
+    monkeypatch.setenv("VSPHERE_ALLOCATION_DOMAIN", "site-a")
+    tasks.provision_range.run(a)
+    monkeypatch.setenv("VSPHERE_ALLOCATION_DOMAIN", "site-b")
+    with world.factory() as s:
+        s.get(m.Range, uuid.UUID(a)).state = m.RangeState.provisioning
+        s.commit()
+    world.rec.builds.clear()
+    monkeypatch.setattr(tasks, "_last_attempt", lambda task: True)
+    with pytest.raises(Exception, match="site-a"):
+        tasks.provision_range.run(a)
+    assert world.rec.builds == [], "nothing was built"
+    tasks.provision_range.run(b)
+    assert world.rec.got(b)[0] == {200: 100, 201: 101}  # site-b's own pool, untouched by a
+
+
+def test_holders_a_new_build_no_longer_needs_are_released(world):
+    [rid] = _seed(world.factory, 1).ids
+    with world.factory() as s:
+        tenant = s.get(m.Range, uuid.UUID(rid)).tenant_id
+    _hold(world.factory, tenant, rid, VLAN_DOMAIN, "vlan", "150", "999")  # an old topology's VLAN
+    tasks.provision_range.run(rid)
+    assert ("vlan", "999", "150") not in _held(world.factory, rid)
+
+
+def test_a_range_no_longer_provisioning_reserves_nothing(world):
+    """Abandoned (failed) and maybe destroyed between the task's claim and its reservation."""
+    from worker.range_alloc import reserve_for_build
+
+    [rid] = _seed(world.factory, 1, state="failed").ids
+    template = {"vms": [VsphereAPIProvisioner._vm_plan(rid, {"name": "w", "os": "ubuntu", "nics": [{"vlan": 200}]})],
+                "networks": []}
+    with pytest.raises(Exception, match="no longer provisioning"):
+        reserve_for_build(tasks._db_session, rid, world.rec.make(), template)
+    assert _held(world.factory, rid) == set()
+
+
+def test_an_exhausted_pool_is_not_retried(world, monkeypatch):
+    first, second, third = _seed(world.factory, 3).ids
+    tasks.provision_range.run(first)
+    tasks.provision_range.run(second)
+    monkeypatch.setattr(tasks, "_last_attempt", lambda task: False)  # retries left, but they cannot help
+    with pytest.raises(Exception, match="(?i)pool"):
+        tasks.provision_range.run(third)
+    assert _state(world.factory, third)[0] == "failed"
 
 
 def test_the_api_and_the_worker_take_the_same_lock_for_a_domain():
