@@ -33,6 +33,12 @@ tn_compose_file: "{{ tn_app_dir }}/infra/platform/docker/compose.prod.yml"
 # ── Identity: Active Directory on TN-DC01 ─────────────────────────────
 tn_domain: corp.tnrange.lab
 tn_dc_host: tn-dc01.corp.tnrange.lab
+tn_dc_ip: 10.30.30.10
+# TN-MGMT01 must resolve corp.tnrange.lab through AD's DNS on TN-DC01 (which forwards
+# everything else). It was built pointing at the router, 192.168.1.1, which knows nothing
+# of the domain. roles/tn_base sets this through a systemd-resolved drop-in, which Docker
+# also reads, so Keycloak's LDAPS federation resolves the DC too.
+tn_dns_servers: ["{{ tn_dc_ip }}"]
 tn_ldap_port: 636
 tn_ldap_base_dn: "DC=corp,DC=tnrange,DC=lab"
 tn_ldap_users_dn: "OU=Users,OU=TrueNorth,DC=corp,DC=tnrange,DC=lab"
