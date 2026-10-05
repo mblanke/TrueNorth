@@ -2633,6 +2633,253 @@ export interface paths {
         patch: operations["update_device_network_devices__device_id__patch"];
         trace?: never;
     };
+    "/noise/agent/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Plan
+         * @description The calling node's actions for the next ``minutes``. Doubles as the heartbeat.
+         *
+         *     Each action is signed; ``lookalike`` is withheld (the agent has no use for it, and a
+         *     stolen token should not learn which upcoming activity is cover).
+         */
+        get: operations["agent_plan_noise_agent_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/agent/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Agent Report
+         * @description Record what the agent did. Only signed, planned actions are accepted; each is
+         *     recorded once. ``lookalike`` is derived from the kind, never taken from the agent.
+         */
+        post: operations["agent_report_noise_agent_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Presets
+         * @description The named dial positions and the activity vocabulary.
+         */
+        get: operations["presets_noise_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Profile */
+        get: operations["get_profile_noise_ranges__range_id__get"];
+        /** Put Profile */
+        put: operations["put_profile_noise_ranges__range_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Activity
+         * @description Ground truth, newest first. Which events on the wire were synthetic.
+         */
+        get: operations["list_activity_noise_ranges__range_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agents */
+        get: operations["list_agents_noise_ranges__range_id__agents_get"];
+        put?: never;
+        /**
+         * Register Agents
+         * @description Register (or re-key) agents. Each token is returned once and never again.
+         *
+         *     Re-registering an existing node issues a fresh token and invalidates the old one,
+         *     which is also how a compromised token is rotated.
+         */
+        post: operations["register_agents_noise_ranges__range_id__agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Agent
+         * @description Revoke an agent's token. Its ground truth is kept for the AAR.
+         */
+        delete: operations["revoke_agent_noise_ranges__range_id__agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy
+         * @description Put noise on a provisioned range, from its template's ``noise:`` block.
+         *
+         *     Derives the target pools from the template's servers, registers an agent on every
+         *     agent node (fresh tokens), creates the built-in roster if there is none, and hands
+         *     the worker an Ansible run that installs the agent over the management network.
+         *     ``dry_run`` shows all of that without changing anything.
+         *
+         *     Windows nodes are listed under ``skipped`` until the Windows agent exists.
+         */
+        post: operations["deploy_noise_ranges__range_id__deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/personas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Personas */
+        get: operations["list_personas_noise_ranges__range_id__personas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/personas/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Roster
+         * @description Fill the range with the built-in roster, spread over the registered agents' nodes.
+         */
+        post: operations["generate_roster_noise_ranges__range_id__personas_roster_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Plan
+         * @description What ``node``'s agent will be told to do next — the same plan the agent gets.
+         */
+        get: operations["preview_plan_noise_ranges__range_id__plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Activity Stats */
+        get: operations["activity_stats_noise_ranges__range_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/onboarding/complete": {
         parameters: {
             query?: never;
@@ -5881,6 +6128,54 @@ export interface components {
             /** Old Value */
             old_value: string;
         };
+        /**
+         * ActivityReport
+         * @description One executed action, echoing the planned fields and their signature verbatim.
+         */
+        ActivityReport: {
+            /** At */
+            at: string;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /**
+             * Ok
+             * @default true
+             */
+            ok?: boolean;
+            /**
+             * Persona
+             * @default
+             */
+            persona?: string;
+            /** Ran At */
+            ran_at?: string | null;
+            /** Sig */
+            sig: string;
+            /**
+             * Target
+             * @default
+             */
+            target?: string;
+        };
+        /** AgentIn */
+        AgentIn: {
+            /** Node */
+            node: string;
+            /**
+             * Zone
+             * @default
+             */
+            zone?: string;
+        };
+        /** AgentsIn */
+        AgentsIn: {
+            /** Agents */
+            agents: components["schemas"]["AgentIn"][];
+        };
         /** AnnotationIn */
         AnnotationIn: {
             /**
@@ -6976,6 +7271,19 @@ export interface components {
              * @default
              */
             term_code?: string;
+        };
+        /** DeployIn */
+        DeployIn: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run?: boolean;
+            /**
+             * Refresh Targets
+             * @default true
+             */
+            refresh_targets?: boolean;
         };
         /** DetectionDraftIn */
         DetectionDraftIn: {
@@ -8702,6 +9010,29 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** ProfileIn */
+        ProfileIn: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Level */
+            level?: number | null;
+            /** Overrides */
+            overrides?: {
+                [key: string]: number;
+            } | null;
+            /** Paused */
+            paused?: boolean | null;
+            /** Preset */
+            preset?: string | null;
+            /** Seed */
+            seed?: number | null;
+            /** Targets */
+            targets?: {
+                [key: string]: string[];
+            } | null;
+            /** Utc Offset */
+            utc_offset?: number | null;
+        };
         /** ProgressSummaryOut */
         ProgressSummaryOut: {
             /** Avg Score */
@@ -9352,6 +9683,16 @@ export interface components {
             /** Text */
             text?: string | null;
         };
+        /** ReportIn */
+        ReportIn: {
+            /** Results */
+            results?: components["schemas"]["ActivityReport"][];
+            /**
+             * Version
+             * @default
+             */
+            version?: string;
+        };
         /** RestoreRequest */
         RestoreRequest: {
             /**
@@ -9419,6 +9760,24 @@ export interface components {
             revision_number: number;
             /** Title */
             title: string;
+        };
+        /** RosterIn */
+        RosterIn: {
+            /**
+             * Count
+             * @default 20
+             */
+            count?: number;
+            /**
+             * Domain
+             * @default corp.local
+             */
+            domain?: string;
+            /**
+             * Replace
+             * @default false
+             */
+            replace?: boolean;
         };
         /** RunDetail */
         RunDetail: {
@@ -16120,6 +16479,484 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NetworkDeviceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_plan_noise_agent_plan_get: {
+        parameters: {
+            query?: {
+                minutes?: number;
+            };
+            header: {
+                "X-Noise-Agent-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_report_noise_agent_report_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Noise-Agent-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    presets_noise_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_profile_noise_ranges__range_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_profile_noise_ranges__range_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_activity_noise_ranges__range_id__activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                lookalike?: boolean | null;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agents_noise_ranges__range_id__agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_agents_noise_ranges__range_id__agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_agent_noise_ranges__range_id__agents__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deploy_noise_ranges__range_id__deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_personas_noise_ranges__range_id__personas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_roster_noise_ranges__range_id__personas_roster_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RosterIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_plan_noise_ranges__range_id__plan_get: {
+        parameters: {
+            query: {
+                node: string;
+                minutes?: number;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_stats_noise_ranges__range_id__stats_get: {
+        parameters: {
+            query?: {
+                minutes?: number;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

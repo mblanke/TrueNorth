@@ -37,7 +37,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
-from .. import scenario_objectives
+from .. import range_ops, scenario_objectives
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
@@ -283,9 +283,11 @@ async def run_exercise(
     # provision the range if it hasn't been (mock provisioner flips it to ready via the worker)
     rng = get_owned(db, Range, ex.range_id, user)
     if rng and rng.state.can_transition_to(RangeState.provisioning):
-        rng.state = RangeState.provisioning
+        # The same acceptance as POST /ranges/{id}/provision: an operation row, and the
+        # range's reserved addresses (noise management NICs) handed to the worker.
+        op, _, _ = range_ops.accept(db, rng.id, user, "provision")
         db.commit()
-        _dispatch_task("provision_range", str(rng.id))
+        range_ops.dispatch(db, op)
     # start the exercise + dispatch the scenario runner
     ex.state = ExerciseState.running
     ex.started_at = datetime.now(UTC)

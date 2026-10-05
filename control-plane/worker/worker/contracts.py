@@ -58,12 +58,32 @@ TASKS: dict[str, TaskContract] = {
     c.name: c
     for c in (
         # -- Range lifecycle ------------------------------------------------
-        TaskContract("provision_range", "provision", (_RANGE,), "Build a range's VMs on its hypervisor."),
+        TaskContract(
+            "provision_range",
+            "provision",
+            (
+                _RANGE,
+                Arg(
+                    "noise_mgmt",
+                    "object",
+                    required=False,
+                    description="{agent node: reserved noise management address} (app/noise/mgmt.py)",
+                ),
+            ),
+            "Build a range's VMs on its hypervisor.",
+        ),
         TaskContract("batch_provision", "provision", (Arg("range_ids", "array", description="ranges.id list"),)),
         TaskContract("destroy_range", "destroy", (_RANGE,), "Tear down a range's VMs."),
         TaskContract("snapshot_range", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("restore_snapshot", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("delete_snapshot", "provision", (_RANGE, _SNAPSHOT)),
+        # -- Background noise ------------------------------------------------
+        TaskContract(
+            "deploy_noise_agents",
+            "provision",
+            (Arg("inventory", "object", description="range_id, controller_url, mgmt_cidr, domain, agents"),),
+            "Install the noise agent on a range's agent nodes over the management network (Ansible).",
+        ),
         # -- Exercises -------------------------------------------------------
         TaskContract("run_scenario", "scenario", (_EXERCISE,)),
         TaskContract(
