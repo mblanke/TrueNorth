@@ -496,7 +496,8 @@ class TestLTILaunchBinding:
         platform = _lti_platform(db_session)
         nonce, state = _lti_state(db_session, platform)
         token = sign(_lti_claims(nonce, azp="client-2"), lti_platform_key)
-        with pytest.raises(ValueError, match="azp"):
+        # azp selects the registration, so another client's azp finds none of ours.
+        with pytest.raises(ValueError, match="No registered LTI platform"):
             await lti13.validate_launch(db_session, token, state)
 
     async def test_several_audiences_without_azp_are_refused(self, db_session, lti_platform_key):
