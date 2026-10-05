@@ -307,9 +307,10 @@ export class RangesComponent implements OnInit {
     });
   }
 
-  /** Latest operation for each range in progress or failed (its message says why). */
+  /** Latest operation for each range in progress, failed, or carrying an error (a
+   *  stop or start the worker could not do leaves the range where it was). */
   private loadOps(ranges: RangeSummary[]): void {
-    const wanted = ranges.filter(r => IN_PROGRESS.has(r.state) || r.state === 'failed');
+    const wanted = ranges.filter(r => IN_PROGRESS.has(r.state) || r.state === 'failed' || !!r.error_message);
     const next: Record<string, RangeOperation> = {};
     if (!wanted.length) { this.ops.set(next); return; }
     let left = wanted.length;
@@ -336,7 +337,7 @@ export class RangesComponent implements OnInit {
     if (op.status === 'dispatched') {
       return code === 'no_outcome' ? 'No result from the worker: check the hypervisor' : `${doing}…`;
     }
-    if (op.status === 'failed' && r.state === 'failed') {
+    if (op.status === 'failed' && (r.state === 'failed' || op.action === 'stop' || op.action === 'start')) {
       return code === 'abandoned' ? `${op.action} abandoned` : `${op.action} failed: ${String(op.error?.['message'] ?? '')}`;
     }
     return null;

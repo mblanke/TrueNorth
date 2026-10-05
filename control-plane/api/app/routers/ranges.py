@@ -126,19 +126,8 @@ _RESERVING_EVENT_STATES = (EventState.draft, EventState.scheduled, EventState.ac
 
 
 def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
-    """409 while any snapshot of the range is being restored.
-
-    A restore does not move the range out of `ready`, so without this a second
-    restore or a new snapshot could run over the VMs mid-revert.
-    """
     # tenant-safe: callers pass a range_id they already resolved through _tenant_range().
-    busy = (
-        db.query(RangeSnapshot.id)
-        .filter(RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring")
-        .first()
-    )
-    if busy:
-        raise HTTPException(409, "A restore of this range is in progress")
+    range_ops.refuse_while_restoring(db, range_id)
 
 
 @router.post("", response_model=RangeOut, status_code=201)
@@ -739,6 +728,9 @@ def restore_snapshot(
 ) -> RangeOut:
     """Restore a range from a snapshot."""
     rng = _tenant_range(db, range_id, user)
+    # Settle any finished stop/start first: the restore task moves the range, and an
+    # operation still 'dispatched' would then be judged on the restored state.
+    range_ops.reconcile(db, rng)
     if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
     _refuse_while_restoring(db, range_id)

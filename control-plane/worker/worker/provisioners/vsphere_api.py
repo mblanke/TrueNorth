@@ -251,8 +251,17 @@ class VsphereAPIProvisioner(BaseProvisioner):
             return result["resource_id"]["id"]
 
     async def _power_action(self, client: httpx.AsyncClient, vm_id: str, action: str) -> None:
-        """Perform a power action (start/stop/reset/suspend) on a VM."""
-        await self._api_post(client, f"/vcenter/vm/{vm_id}/power?action={action}")
+        """Perform a power action (start/stop/reset/suspend) on a VM.
+
+        A VM already in the requested state is success: vCenter answers 400
+        ALREADY_IN_DESIRED_STATE, and stop/start are retried (power_tasks.py).
+        """
+        try:
+            await self._api_post(client, f"/vcenter/vm/{vm_id}/power?action={action}")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 400 and "ALREADY_IN_DESIRED_STATE" in exc.response.text.upper():
+                return
+            raise
 
     async def _delete_vm(self, client: httpx.AsyncClient, vm_id: str) -> None:
         """Power off (if running) then delete a VM."""

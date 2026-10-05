@@ -34,7 +34,9 @@ export type RangeState =
   | 'stopped'
   | 'destroying'
   | 'destroyed'
-  | 'failed';
+  | 'failed'
+  | 'stopping'
+  | 'starting';
 
 /** GET /ranges/{id} and every range mutation. `description` is operator markdown. */
 export type Range = S['RangeOut'];

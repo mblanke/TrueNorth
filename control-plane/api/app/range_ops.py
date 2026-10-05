@@ -49,6 +49,10 @@ class Action:
     task: str
     in_progress: RangeState
     outcomes: dict[RangeState, str]  # observed range state -> operation status
+    # Where an abandoned operation leaves the range. failed (destroy or provision
+    # again) for a build; for power, the range is built and failed's "provision again"
+    # would orphan its VMs, so it goes back to where it was, with the error.
+    abandoned: RangeState = RangeState.failed
 
 
 ACTIONS: dict[str, Action] = {
@@ -64,11 +68,13 @@ ACTIONS: dict[str, Action] = {
         "stop_range",
         RangeState.stopping,
         {RangeState.stopped: "succeeded", RangeState.ready: "failed", RangeState.failed: "failed"},
+        abandoned=RangeState.ready,
     ),
     "start": Action(
         "start_range",
         RangeState.starting,
         {RangeState.ready: "succeeded", RangeState.stopped: "failed", RangeState.failed: "failed"},
+        abandoned=RangeState.stopped,
     ),
 }
 
@@ -168,11 +174,27 @@ def _check(db: Session, rng: Range, action: str) -> None:
     reconcile(db, rng)
     if not rng.state.can_transition_to(ACTIONS[action].in_progress):
         raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
+    refuse_while_restoring(db, rng.id)
     busy = (
         db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT)).first()
     )
     if busy:
         raise HTTPException(409, f"A {busy.action} of this range is still in progress (operation {busy.id})")
+
+
+def refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
+    """409 while any snapshot of the range is being restored.
+
+    A restore is not a range operation and does not move the range out of its state, so
+    without this a power action, a second restore or a new snapshot could run over the
+    VMs mid-revert (and the restore task, finding the range moved, would skip).
+    """
+    from .models import RangeSnapshot
+
+    if db.query(RangeSnapshot.id).filter(
+        RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring"
+    ).first():
+        raise HTTPException(409, "A restore of this range is in progress")
 
 
 def _user_uuid(user: CurrentUser) -> uuid.UUID | None:
@@ -277,8 +299,8 @@ def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> N
     op.finished_at = _now()
     op.error = {"code": "abandoned", "message": f"Abandoned by {user.email or user.id}"}
     if rng.state == ACTIONS[op.action].in_progress:
-        rng.state = RangeState.failed
-        rng.error_message = f"{op.action} abandoned by an operator"
+        rng.state = ACTIONS[op.action].abandoned
+        rng.error_message = f"{op.action} abandoned by an operator; check the hypervisor for the VMs' real state"
 
 
 async def redispatch_loop(session_factory, interval: float) -> None:

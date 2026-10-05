@@ -276,6 +276,8 @@ async def run_exercise(
         raise HTTPException(409, f"Exercise is {ex.state.value}, expected pending")
     # provision the range if it hasn't been (mock provisioner flips it to ready via the worker)
     rng = get_owned(db, Range, ex.range_id, user)
+    if rng and rng.state in (RangeState.stopped, RangeState.stopping, RangeState.starting):
+        raise HTTPException(409, f"The range is {rng.state.value}; power it on before running the exercise")
     if rng and rng.state.can_transition_to(RangeState.provisioning):
         rng.state = RangeState.provisioning
         db.commit()

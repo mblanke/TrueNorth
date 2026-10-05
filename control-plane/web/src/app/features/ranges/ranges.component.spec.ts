@@ -143,6 +143,11 @@ describe('RangesComponent', () => {
     expect(mockNotify.success).toHaveBeenCalledWith('Power on requested');
   });
 
+  it('a stop the worker could not do says so on a range that is still ready', () => {
+    component.ops.set({ r1: { id: 'o1', action: 'stop', status: 'failed', error: { code: 'range_failed', message: 'VM r-dc01: timed out' } } as never });
+    expect(component.opText({ id: 'r1', state: 'ready' } as never)).toBe('stop failed: VM r-dc01: timed out');
+  });
+
   it('a stop the worker is still doing reads as powering off', () => {
     component.ops.set({ r1: { id: 'o1', action: 'stop', status: 'dispatched', error: null } as never });
     expect(component.opText({ id: 'r1', state: 'stopping' } as never)).toBe('Powering off…');

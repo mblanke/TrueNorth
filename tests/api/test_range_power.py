@@ -171,3 +171,80 @@ def test_another_tenant_gets_404_and_a_student_403(client, db_session, sent, act
     with acting_as(UserRole.student, "00000000-0000-0000-0000-000000000001"):
         assert client.post(f"/ranges/{rid}/{action}").status_code == 403
     assert sent == []
+
+
+# ── From the S3d review ────────────────────────────────────────────────
+def _abandon(client, rid):
+    op = _ops(client, rid)[0]
+    r = client.post(f"/ranges/{rid}/operations/{op['id']}/abandon")
+    assert r.status_code == 200, r.text
+    return client.get(f"/ranges/{rid}").json()
+
+
+def test_abandoning_a_stop_leaves_a_built_range_not_failed(client, db_session, sent):
+    """failed offers 'Provision again', which would orphan the VMs that still exist."""
+    rid = _range(client, db_session, RangeState.ready)
+    client.post(f"/ranges/{rid}/stop")
+    rng = _abandon(client, rid)
+    assert rng["state"] == "ready" and "abandoned" in rng["error_message"]
+    assert client.post(f"/ranges/{rid}/provision").status_code == 409
+
+
+def test_abandoning_a_start_returns_the_range_to_stopped(client, db_session, sent):
+    rid = _range(client, db_session, RangeState.stopped)
+    client.post(f"/ranges/{rid}/start")
+    assert _abandon(client, rid)["state"] == "stopped"
+
+
+def _restoring(db, rid):
+    from app.models import RangeSnapshot
+
+    rng = db.get(Range, uuid.UUID(rid))
+    db.add(
+        RangeSnapshot(
+            range_id=rng.id,
+            name="s",
+            tenant_id=rng.tenant_id,
+            range_state_at_snapshot="ready",
+            snapshot_state="restoring",
+        )
+    )
+    db.commit()
+
+
+@pytest.mark.parametrize(("action", "state"), [("stop", RangeState.ready), ("start", RangeState.stopped)])
+def test_power_waits_for_a_restore_in_progress(client, db_session, sent, action, state):
+    rid = _range(client, db_session, state)
+    _restoring(db_session, rid)
+    r = client.post(f"/ranges/{rid}/{action}")
+    assert r.status_code == 409 and "restore" in r.json()["detail"]
+    assert sent == []
+
+
+def test_a_restore_settles_a_finished_stop_before_it_changes_the_range(client, db_session, sent):
+    """Unread, the stop was still 'dispatched'; the restore then put the range back in
+    ready, and the next read would have called the stop failed."""
+    from app.models import RangeSnapshot
+
+    rid = _range(client, db_session, RangeState.ready)
+    client.post(f"/ranges/{rid}/stop")
+    _worker_reports(db_session, rid, RangeState.stopped)  # nobody reads the operation
+    rng = db_session.get(Range, uuid.UUID(rid))
+    snap = RangeSnapshot(
+        range_id=rng.id, name="s", tenant_id=rng.tenant_id, range_state_at_snapshot="ready", snapshot_state="ready"
+    )
+    db_session.add(snap)
+    db_session.commit()
+    assert client.post(f"/ranges/{rid}/snapshots/{snap.id}/restore").status_code == 202
+    _worker_reports(db_session, rid, RangeState.ready)  # the restore task's outcome
+    assert _ops(client, rid)[0]["status"] == "succeeded"
+
+
+def test_an_exercise_does_not_start_on_a_powered_off_range(client, db_session, sent):
+    rid = _range(client, db_session, RangeState.stopped)
+    sid = client.post(
+        "/scenarios", json={"name": "S", "version": "1.0", "yaml": "id: s\ntimeline: []", "is_public": True}
+    ).json()["id"]
+    ex = client.post("/exercises", json={"name": "E", "range_id": rid, "scenario_id": sid, "max_score": 10}).json()
+    r = client.post(f"/exercises/{ex['id']}/run")
+    assert r.status_code == 409 and "power" in r.json()["detail"].lower()

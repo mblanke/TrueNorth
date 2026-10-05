@@ -422,7 +422,12 @@ class TrueNorthClient:
         return await self._post(f"/ranges/{range_id}/destroy")
 
     async def stop_range(self, range_id: str) -> dict:
+        """Power the range's VMs off. 202: the range is ``stopping`` until the worker reports."""
         return await self._post(f"/ranges/{range_id}/stop")
+
+    async def start_range(self, range_id: str) -> dict:
+        """Power a stopped range's VMs on. 202: the range is ``starting`` until the worker reports."""
+        return await self._post(f"/ranges/{range_id}/start")
 
     async def batch_provision(self, range_ids: list[str]) -> dict:
         """Provision up to 500 ranges in a single batch."""
