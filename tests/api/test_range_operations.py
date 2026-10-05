@@ -293,3 +293,14 @@ def test_a_batch_records_one_operation_per_range_or_none(client, db_session, sen
     refused = client.post("/ranges/batch-provision", json={"range_ids": [c["id"], a["id"]]})
     assert refused.status_code == 409, "a is already provisioning: the batch accepts nothing"
     assert _ops(client, c["id"]) == []
+def test_a_finished_operation_does_not_block_the_next_with_autoflush_off(client, db_session, sent):
+    """Production sessions do not autoflush (app/db.py SessionLocal). reconcile() must
+    write its outcome before the in-flight check queries, or a provision that finished
+    still blocks the destroy that follows (found in a browser run of the candidate)."""
+    db_session.autoflush = False
+    rng = _range(client)
+    assert client.post(f"/ranges/{rng['id']}/provision").status_code == 202
+    db_session.get(Range, uuid.UUID(rng["id"])).state = RangeState.ready  # the worker finished
+    db_session.flush()
+    r = client.post(f"/ranges/{rng['id']}/destroy")
+    assert r.status_code == 202, r.text
