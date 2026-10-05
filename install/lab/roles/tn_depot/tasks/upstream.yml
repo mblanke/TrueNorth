@@ -1,0 +1,68 @@
+---
+# Put the depot's caches online (prefetch window) or offline (normal). Called from
+# main.yml and from prefetch.yml with tn_depot_upstream_online true / false.
+#
+# This is the software half of the egress control. The other half is vCenter:
+# scripts/lab/depot-uplink.sh connects/disconnects the only NIC with a route out.
+
+- name: Upstream — apt-cacher-ng Offlinemode={{ 0 if (tn_depot_upstream_online | bool) else 1 }}
+  ansible.builtin.template:
+    src: acng.conf.j2
+    dest: /etc/apt-cacher-ng/zzz-truenorth.conf
+    owner: root
+    group: apt-cacher-ng
+    mode: "0644"
+  become: true
+  register: tn_depot_acng_conf
+
+- name: Upstream — restart apt-cacher-ng now (prefetch needs the new mode immediately)
+  ansible.builtin.systemd_service:
+    name: apt-cacher-ng
+    state: restarted
+  become: true
+  when: tn_depot_acng_conf is changed
+
+- name: Upstream — Nexus reachable (skipped before Nexus is first configured)
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/status/check"
+    user: admin
+    password: "{{ vault_nexus_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 401, -1]
+  register: tn_depot_nexus_auth
+  failed_when: false
+  no_log: true
+
+- name: Upstream — Nexus proxy repositories blocked={{ not (tn_depot_upstream_online | bool) }}
+  when: (tn_depot_nexus_auth.status | default(-1)) == 200
+  block:
+    - name: Upstream — current proxy configuration
+      ansible.builtin.uri:
+        url: "{{ tn_depot_nexus_api }}/v1/repositories/{{ item.format }}/proxy/{{ item.name }}"
+        user: admin
+        password: "{{ vault_nexus_admin_password }}"
+        force_basic_auth: true
+        status_code: [200, 404]
+      loop: "{{ tn_depot_nexus_repos | selectattr('proxy', 'defined') | selectattr('proxy') | list }}"
+      loop_control: { label: "{{ item.name }}" }
+      register: tn_depot_proxy_now
+      no_log: true
+
+    - name: Upstream — set blocked state
+      ansible.builtin.uri:
+        url: "{{ tn_depot_nexus_api }}/v1/repositories/{{ item.item.format }}/proxy/{{ item.item.name }}"
+        method: PUT
+        user: admin
+        password: "{{ vault_nexus_admin_password }}"
+        force_basic_auth: true
+        body_format: json
+        body: >-
+          {{ tn_depot_repo_common | combine({'name': item.item.name}) | combine(tn_depot_proxy_common, recursive=True)
+             | combine(item.item.body, recursive=True) }}
+        status_code: [204]
+      loop: "{{ tn_depot_proxy_now.results }}"
+      loop_control: { label: "{{ item.item.name }}" }
+      when:
+        - item.status == 200
+        - (item.json.httpClient.blocked | default(false) | bool) != (not (tn_depot_upstream_online | bool))
+      changed_when: true

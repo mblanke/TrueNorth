@@ -235,6 +235,7 @@ from .routers import (
     registration_router,
     scenarios_router,
     scheduling_router,
+    software_catalogue_router,
     storage_router,
     templates_router,
     threat_intel_router,
@@ -278,6 +279,8 @@ app.include_router(auth_zones_router)
 app.include_router(storage_router)
 app.include_router(network_devices_router)
 app.include_router(kit_router)
+# Deploy-time software names for the Range Designer's services autocomplete
+app.include_router(software_catalogue_router)
 # Threat Intelligence
 app.include_router(threat_intel_router)
 app.include_router(detection_rules_router)

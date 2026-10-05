@@ -1,0 +1,170 @@
+---
+# TN-BUILD01: Packer, govc, Ansible and a TrueNorth checkout. Idempotent. Writes nothing
+# secret: lab.auto.pkrvars.hcl (vCenter and build passwords) is filled in by hand.
+
+- name: Build — Ubuntu 24.04 only
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_release == 'noble'
+    fail_msg: "TN-BUILD01 is expected to be a clone of tmpl-ubuntu-2404 (got {{ ansible_distribution }} {{ ansible_distribution_release }})"
+
+- name: Build — base packages
+  ansible.builtin.apt:
+    name: "{{ tn_build_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Build — keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Build — HashiCorp signing key
+  ansible.builtin.get_url:
+    url: "{{ tn_build_hashicorp_key_url }}"
+    dest: /etc/apt/keyrings/hashicorp.asc
+    mode: "0644"
+  become: true
+
+- name: Build — HashiCorp key fingerprint
+  ansible.builtin.command: gpg --show-keys --with-colons /etc/apt/keyrings/hashicorp.asc
+  register: tn_build_hc_key
+  changed_when: false
+
+- name: Build — the key is HashiCorp's
+  ansible.builtin.assert:
+    that: >-
+      tn_build_hashicorp_key_fpr in (tn_build_hc_key.stdout_lines
+      | select('match', '^fpr:') | map('split', ':') | map(attribute=9) | list)
+    fail_msg: >-
+      /etc/apt/keyrings/hashicorp.asc does not carry fingerprint {{ tn_build_hashicorp_key_fpr }}.
+      Check HashiCorp's published fingerprint before trusting it.
+
+- name: Build — HashiCorp apt repository
+  ansible.builtin.deb822_repository:
+    name: hashicorp
+    types: [deb]
+    uris: https://apt.releases.hashicorp.com
+    suites: ["{{ ansible_distribution_release }}"]
+    components: [main]
+    signed_by: /etc/apt/keyrings/hashicorp.asc
+  become: true
+  register: tn_build_hc_repo
+
+- name: Build — Packer
+  ansible.builtin.apt:
+    name: "packer{{ '=' ~ tn_build_packer_version if tn_build_packer_version else '' }}"
+    state: present
+    update_cache: "{{ tn_build_hc_repo is changed }}"
+  become: true
+
+- name: Build — installed govc version
+  ansible.builtin.command: /usr/local/bin/govc version
+  register: tn_build_govc_installed
+  changed_when: false
+  failed_when: false
+
+- name: Build — govc release tarball
+  when: tn_build_govc_version not in (tn_build_govc_installed.stdout | default(''))
+  block:
+    - name: Build — download govc (checksum from the release's checksums.txt)
+      ansible.builtin.get_url:
+        url: "https://github.com/vmware/govmomi/releases/download/v{{ tn_build_govc_version }}/govc_Linux_x86_64.tar.gz"
+        checksum: "sha256:https://github.com/vmware/govmomi/releases/download/v{{ tn_build_govc_version }}/checksums.txt"
+        dest: "/tmp/govc_{{ tn_build_govc_version }}.tar.gz"
+        mode: "0644"
+
+    - name: Build — install govc to /usr/local/bin
+      ansible.builtin.unarchive:
+        src: "/tmp/govc_{{ tn_build_govc_version }}.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        include: [govc]
+        mode: "0755"
+      become: true
+
+- name: Build — the admin user may run docker (prefetch containers)
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: [docker]
+    append: true
+  become: true
+  register: tn_build_docker_group
+
+- name: Build — pick up the docker group in this run
+  ansible.builtin.meta: reset_connection
+  when: tn_build_docker_group is changed
+
+# ── The TrueNorth checkout ────────────────────────────────────────────
+- name: Build — checkout directory
+  ansible.builtin.file:
+    path: "{{ tn_build_repo_dir }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  become: true
+
+- name: Build — clone or update TrueNorth at {{ tn_build_repo_ref }}
+  ansible.builtin.git:
+    repo: "{{ tn_build_repo_url }}"
+    dest: "{{ tn_build_repo_dir }}"
+    version: "{{ tn_build_repo_ref }}"
+    force: false
+    accept_hostkey: true
+  when: tn_build_repo_mode == 'git'
+
+- name: Build — copy a local checkout from the control node
+  ansible.posix.synchronize:
+    src: "{{ tn_build_repo_local_path | regex_replace('/?$', '/') }}"
+    dest: "{{ tn_build_repo_dir }}/"
+    delete: false
+    rsync_opts:
+      - "--exclude=node_modules"
+      - "--exclude=.venv"
+      - "--exclude=__pycache__"
+      # Never ship a filled-in vars file or vault from the control node.
+      - "--exclude=lab.auto.pkrvars.hcl"
+      - "--exclude=vault.yml"
+      - "--exclude=*.env"
+  when: tn_build_repo_mode == 'local'
+
+- name: Build — the checkout has the Packer library
+  ansible.builtin.stat:
+    path: "{{ tn_build_repo_dir }}/infra/vsphere/packer/plugins.pkr.hcl"
+  register: tn_build_packer_dir
+
+- name: Build — assert the layout
+  ansible.builtin.assert:
+    that: tn_build_packer_dir.stat.exists
+    fail_msg: "{{ tn_build_repo_dir }}/infra/vsphere/packer is missing: check tn_build_repo_ref / tn_build_repo_mode"
+
+- name: Build — packer init (vSphere plugin into the admin user's ~/.config/packer)
+  ansible.builtin.command:
+    cmd: packer init .
+    chdir: "{{ tn_build_repo_dir }}/infra/vsphere/packer"
+  register: tn_build_packer_init
+  changed_when: "'Installed plugin' in tn_build_packer_init.stdout"
+
+- name: Build — versions
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - packer version
+    - /usr/local/bin/govc version
+    - ansible --version
+    - xorriso -version
+  register: tn_build_versions
+  changed_when: false
+
+- name: Build — report
+  ansible.builtin.debug:
+    msg:
+      - "{{ tn_build_versions.results | map(attribute='stdout_lines') | map('first') | list }}"
+      - >-
+        Next: in {{ tn_build_repo_dir }}/infra/vsphere/packer copy lab.auto.pkrvars.hcl.example
+        to lab.auto.pkrvars.hcl and fill in the secrets ON THIS HOST (never commit it).

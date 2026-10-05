@@ -1,0 +1,26 @@
+---
+# TrueNorth lab - build/depot plane variables (non-secret). Secrets: vault.yml.
+
+tn_lab_ssh_key: "~/.ssh/id_ed25519_lab"
+
+# ── Addresses (runbook §4.1a) ─────────────────────────────────────────
+tn_build_ip: 10.30.31.10
+# What ranges and TN-BUILD01 use. Everything below is built from this.
+tn_depot_ip: 10.30.32.10
+# The depot's uplink NIC on dPG-TN-BUILD, connected only during a prefetch window.
+tn_depot_uplink_ip: 10.30.31.11
+
+tn_depot_nexus_port: 8081
+tn_depot_acng_port: 3142
+tn_depot_nexus_url: "http://{{ tn_depot_ip }}:{{ tn_depot_nexus_port }}"
+tn_depot_apt_proxy_url: "http://{{ tn_depot_ip }}:{{ tn_depot_acng_port }}"
+
+# ── TrueNorth checkout on TN-BUILD01 ──────────────────────────────────
+# git: clone tn_build_repo_url at tn_build_repo_ref (pin a tag or SHA).
+# local: rsync tn_build_repo_local_path from the control node (private repo, no
+#        credentials on the build host).
+tn_build_repo_mode: git
+tn_build_repo_url: "https://git.guapo613.beer/soadmin/truenorth.git"
+tn_build_repo_ref: "main"
+tn_build_repo_local_path: ""
+tn_build_repo_dir: /opt/truenorth

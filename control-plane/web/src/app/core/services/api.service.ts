@@ -1,6 +1,6 @@
 ﻿import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { environment } from '@env/environment';
 import {
   AAR, Exercise, ExerciseSummary, HealthResponse, HypervisorNode, Objective, Range,
@@ -102,6 +102,25 @@ export interface DiagramTemplate {
   warnings: string[];
 }
 
+/** One entry of GET /software-catalogue. */
+export interface SoftwareEntry {
+  name: string;
+  aliases: string[];
+  /** Which guest families the catalogue can install it on. */
+  os_families: ('windows' | 'linux')[];
+  /**
+   * The Windows (Chocolatey) install works with no internet: the package embeds its
+   * installer or is internalized via content/choco. Absent from older APIs.
+   */
+  offline?: boolean;
+}
+
+/** GET /software-catalogue: installable software plus role names (never installed). */
+export interface SoftwareCatalogue {
+  software: SoftwareEntry[];
+  roles: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private http = inject(HttpClient);
@@ -196,6 +215,10 @@ export class ApiService {
   stopRange(id: string): Observable<Range> {
     return this.http.post<Range>(`${this.base}/ranges/${id}/stop`, {});
   }
+  /** Power a stopped range back on. 409 unless the range is `stopped`. */
+  startRange(id: string): Observable<Range> {
+    return this.http.post<Range>(`${this.base}/ranges/${id}/start`, {});
+  }
   updateRange(id: string, data: Partial<Range>): Observable<Range> {
     return this.http.put<Range>(`${this.base}/ranges/${id}`, data);
   }
@@ -266,15 +289,25 @@ export class ApiService {
   templateFromDiagram(diagram: any, name = 'Range Design'): Observable<DiagramTemplate> {
     return this.http.post<DiagramTemplate>(`${this.base}/templates/from-diagram`, { diagram_json: diagram, name });
   }
+  /** Software names a designer node's `services` can install, with OS families. */
+  getSoftwareCatalogue(): Observable<SoftwareCatalogue> {
+    return this.http.get<SoftwareCatalogue>(`${this.base}/software-catalogue`);
+  }
   /** The real injector registry — replaces hard-coded action lists. */
   listInjectors(): Observable<InjectorInfo[]> {
     return this.http.get<InjectorInfo[]>(`${this.base}/injectors`);
   }
-  /** Hypervisor-verified OS aliases for the designer's image picker. */
+  /**
+   * Hypervisor-verified OS aliases for the designer's image picker, including custom
+   * variant images registered through POST /golden-images. The endpoint answers
+   * `{hypervisor, map}`; callers get the inner alias -> template map.
+   */
   getGoldenImageAliasMap(hypervisor?: string): Observable<Record<string, string>> {
     let params = new HttpParams();
     if (hypervisor) params = params.set('hypervisor', hypervisor);
-    return this.http.get<Record<string, string>>(`${this.base}/golden-images/alias-map`, { params });
+    return this.http
+      .get<{ hypervisor: string; map: Record<string, string> }>(`${this.base}/golden-images/alias-map`, { params })
+      .pipe(map(res => res?.map ?? {}));
   }
   aiScenarioDraft(body: { objectives: string[]; difficulty?: string; duration_minutes?: number }):
     Observable<{ output: string; model_used: string }> {

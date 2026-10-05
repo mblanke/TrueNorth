@@ -114,16 +114,19 @@ def vsphere(monkeypatch):
     vms: dict[str, FakeVM] = {}
     waited: list[str] = []
 
-    def wait(task, si=None, maxWaitTime=None):  # noqa: N803 -- pyVim's keyword name
-        assert maxWaitTime, "an unbounded wait can outlive Celery's visibility timeout"
+    def wait(task, si, timeout):
+        # _wait_task itself (private collector, bounded) is tested in test_vsphere_provision.
+        assert timeout, "an unbounded wait can outlive Celery's visibility timeout"
         waited.append(task.label)
         if task.fail:
             raise RuntimeError(task.fail)
 
-    connect = MagicMock(return_value=SimpleNamespace(_stub=object()))
+    collector = SimpleNamespace(CreatePropertyCollector=lambda: SimpleNamespace(DestroyPropertyCollector=lambda: None))
+    connect = MagicMock(return_value=SimpleNamespace(_stub=object(), content=SimpleNamespace(
+        propertyCollector=collector)))
     monkeypatch.setattr(mod, "SmartConnect", connect)
     monkeypatch.setattr(mod, "Disconnect", MagicMock())
-    monkeypatch.setattr(mod, "WaitForTask", wait)
+    monkeypatch.setattr(mod, "_wait_task", wait)
     monkeypatch.setattr(mod, "vim", SimpleNamespace(VirtualMachine=lambda vm_id, stub: vms[vm_id]))
     return SimpleNamespace(prov=mod.VsphereAPIProvisioner(), vms=vms, waited=waited, connect=connect, mod=mod)
 
@@ -218,8 +221,8 @@ class TestVsphereSnapshots:
             vm.CreateSnapshot_Task.side_effect = lambda v=v, **kw: order.append(f"start {v}") or FakeTask(v)
             vsphere.vms[v] = vm
         vsphere.prov._concurrency = 2
-        real_wait = vsphere.mod.WaitForTask
-        vsphere.mod.WaitForTask = lambda task, **kw: order.append(f"wait {task.label}") or real_wait(task, **kw)
+        real_wait = vsphere.mod._wait_task
+        vsphere.mod._wait_task = lambda task, *a: order.append(f"wait {task.label}") or real_wait(task, *a)
 
         _run(vsphere.prov.snapshot("r1", _prov_output("vm-1", "vm-2", "vm-3"), "tnabc"))
 

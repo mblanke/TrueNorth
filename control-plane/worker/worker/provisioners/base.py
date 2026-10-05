@@ -5,11 +5,14 @@ All provisioner backends must implement this interface.
 
 from __future__ import annotations
 
+import contextlib
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 
 from .results import (
     DestroyResult,
     HealthResult,
+    MetricsResult,
     ProvisionResult,
     RestoreResult,
     SnapshotDeleteResult,
@@ -114,3 +117,27 @@ class BaseProvisioner(ABC):
     ) -> HealthResult:
         """Check health of all infrastructure in a range."""
         ...
+
+    async def collect_metrics(
+        self,
+        range_id: str,
+        provision_output: dict,
+    ) -> MetricsResult:
+        """Resource usage of every VM in a range (see MetricsResult for the fields).
+
+        Concrete, like restore: a backend that cannot read metrics says so. The worker
+        used to fill this gap with random numbers.
+        """
+        return MetricsResult(
+            status="unsupported",
+            errors=[f"{type(self).__name__} does not report VM metrics"],
+        )
+
+    @contextlib.asynccontextmanager
+    async def session(self) -> AsyncIterator[BaseProvisioner]:
+        """Scope for several calls in a row (one scheduled run over many ranges).
+
+        A backend that logs in to its hypervisor may keep one login for the whole scope
+        and log out at its end, instead of one login per range per run. Default: nothing.
+        """
+        yield self

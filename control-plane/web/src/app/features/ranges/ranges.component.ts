@@ -155,9 +155,21 @@ export const POLL_MS = 5000;
                 <mat-icon>rocket_launch</mat-icon>
               </button>
             }
-            @if (r.state === 'ready' || r.state === 'running') {
-              <button mat-icon-button (click)="stop(r.id)"
-                      matTooltip="Mark stopped (this backend does not power VMs off)">
+            @if (hasPowerControls(r)) {
+              <!-- The API starts only a stopped range and stops only a running one;
+                   anything else is a 409, so the button is disabled rather than hidden. -->
+              <button mat-icon-button color="primary" class="power-start"
+                      (click)="start(r.id)"
+                      [disabled]="r.state !== 'stopped' || powerPending() === r.id"
+                      [attr.aria-label]="'Start ' + r.name"
+                      matTooltip="Start">
+                <mat-icon>play_arrow</mat-icon>
+              </button>
+              <button mat-icon-button class="power-stop"
+                      (click)="stop(r.id)"
+                      [disabled]="(r.state !== 'running' && r.state !== 'ready') || powerPending() === r.id"
+                      [attr.aria-label]="'Stop ' + r.name"
+                      matTooltip="Stop">
                 <mat-icon>stop</mat-icon>
               </button>
             }
@@ -233,6 +245,8 @@ export const POLL_MS = 5000;
     .create-form mat-card-content, .edit-form mat-card-content { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
     .create-form mat-form-field, .edit-form mat-form-field { flex: 1; min-width: 200px; }
     .notes-card { border: 1px solid var(--accent); }
+    /* The theme paints disabled icon buttons close to enabled ones; make power state obvious. */
+    .power-start:disabled, .power-stop:disabled { opacity: 0.32; }
     .notes-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
     .notes-range { font-weight: 600; color: var(--text-primary); }
     .stats-strip {
@@ -270,6 +284,8 @@ export class RangesComponent implements OnInit {
   displayedColumns = ['name', 'state', 'created', 'actions'];
   /** The range whose description panel is open, if any. */
   notesFor = signal<RangeSummary | null>(null);
+  /** Id of the range whose start/stop request is in flight; its buttons stay disabled. */
+  powerPending = signal<string | null>(null);
 
   ngOnInit(): void {
     this.loadRanges();
@@ -384,10 +400,27 @@ export class RangesComponent implements OnInit {
     this.request(id, this.api.provisionRange(id), 'Provisioning requested', 'Could not request provisioning');
   }
 
+  /** Ranges that have (or had) powered VMs get the Start/Stop pair. */
+  hasPowerControls(r: Range): boolean {
+    return r.state === 'ready' || r.state === 'running' || r.state === 'stopped';
+  }
+
+  start(id: string): void {
+    this.powerPending.set(id);
+    this.api.startRange(id).subscribe({
+      next: () => { this.powerPending.set(null); this.notify.success('Range starting'); this.loadRanges(); },
+      error: (err) => {
+        this.powerPending.set(null);
+        this.notify.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'Start failed');
+      },
+    });
+  }
+
   stop(id: string): void {
+    this.powerPending.set(id);
     this.api.stopRange(id).subscribe({
-      next: () => { this.notify.success('Range marked stopped. Its VMs were not powered off.'); this.loadRanges(); },
-      error: () => this.notify.error('Stop failed'),
+      next: () => { this.powerPending.set(null); this.notify.success('Range stopped'); this.loadRanges(); },
+      error: () => { this.powerPending.set(null); this.notify.error('Stop failed'); },
     });
   }
 

@@ -1,0 +1,24 @@
+# Google Chrome, enterprise MSI (x64). Replaces the community "googlechrome" wrapper,
+# which downloads this MSI from dl.google.com at install time.
+#
+# Google publishes no checksum, and this URL is FLOATING: it always serves the current
+# stable build. The sha256 below was computed on 2026-10-03 from the file that URL served,
+# when the stable channel was 155.0.8059.26 (versionhistory.googleapis.com). When Google
+# ships the next build the download no longer matches and the build fails for this
+# package: set `version` to the new stable version and blank `sha256` ("") so the build
+# records the new one (with --write-back), then commit it.
+name: googlechrome
+version: "155.0.8059.26"
+revision: 1
+title: Google Chrome (TrueNorth offline)
+authors: Google LLC
+type: msi
+silent_args: /qn /norestart
+valid_exit_codes: [0, 1641, 3010]
+software_name: Google Chrome
+installers:
+  - arch: x64
+    url: https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi
+    sha256: 728bea0eb25389b9f308034725434288d3143827bebdf0abbd4a634df9c00a0c
+uninstall:
+  silent_args: /qn /norestart

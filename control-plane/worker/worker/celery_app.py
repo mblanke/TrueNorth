@@ -72,13 +72,18 @@ app.conf.beat_schedule = {
         "task": "worker.tasks.cleanup_expired_ranges",
         "schedule": 300.0,  # every 5 minutes
     },
+    # Both expire after one interval: a run still queued when the next is due is
+    # dropped, not run late. Overlap of runs that did start is stopped by a Redis lock
+    # in the task (worker/tasks.py, _run_lock).
     "health-check-ranges": {
         "task": "worker.tasks.health_check_ranges",
         "schedule": 60.0,  # every minute
+        "options": {"expires": 60},
     },
     "collect-range-metrics": {
         "task": "worker.tasks.collect_range_metrics",
         "schedule": 30.0,  # every 30 seconds
+        "options": {"expires": 30},
     },
 }
 

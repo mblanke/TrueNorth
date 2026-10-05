@@ -121,6 +121,13 @@ def touch_range(db, range_id: str) -> None:
     db.execute(sa.update(ranges).where(ranges.c.id == range_id).values(updated_at=_now()))
 
 
+def touch_ranges(db, range_ids: Iterable) -> None:
+    """Bump updated_at on every range in ``range_ids`` (one statement)."""
+    ids = list(range_ids)
+    if ids:
+        db.execute(sa.update(ranges).where(ranges.c.id.in_(ids)).values(updated_at=_now()))
+
+
 def first_range_for_tenant(db, tenant_id: str):
     return db.execute(sa.select(ranges.c.id).where(ranges.c.tenant_id == tenant_id).limit(1)).first()
 

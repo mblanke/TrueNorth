@@ -126,8 +126,8 @@ The TrueNorth Range Content Library provides pre-built, tested, and versioned tr
 | `exchange` | Win Server 2022 | Email Server | 10.10.100.0/24 |
 | `websvr01` | Ubuntu 24.04 | Public Web | 10.10.200.0/24 |
 | `websvr02` | Ubuntu 24.04 | Internal Web | 10.10.200.0/24 |
-| `dbsvr` | Ubuntu 24.04 | Database | 10.10.300.0/24 |
-| `siem` | Ubuntu 24.04 | SIEM (ELK) | 10.10.400.0/24 |
+| `dbsvr` | Ubuntu 24.04 | Database | 10.10.30.0/24 |
+| `siem` | Ubuntu 24.04 | SIEM (ELK) | 10.10.40.0/24 |
 | `fw01` | pfSense 2.7 | Edge Firewall | All subnets |
 | `fw02` | pfSense 2.7 | Internal Firewall | Internal only |
 
