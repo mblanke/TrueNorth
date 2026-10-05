@@ -27,7 +27,8 @@ everything combined (green at `78711f4`).
 | 17 | S3a: range operations, durable, idempotent, serialised | #14 |
 | 18 | S3b: worker fencing; lost tasks visible (`no_outcome`, abandon) | #17 |
 | 19 | S3c: range UI shows what an operation is doing | #18 |
-| 20 | S4a: collision-free network reservations (dormant until adopted) | #19 |
+| 20 | S4a: collision-free network reservations | #19 |
+| 29 | S4b: noise engine committed; its management addresses are reservations, not template order (sibling of #22) | #20 |
 | 22 | S6: populated-schema upgrade test; CI runs the Postgres tests | #20 |
 | 23 | S7: interruption exercise and browser journeys (evidence) | #22 |
 | 27 | S8: re-score; rollback rehearsal | #23 |
@@ -37,12 +38,13 @@ Merge conflicts to expect, all resolved already on #24, which shows how to resol
 - **#21 vs #18, `worker/tasks.py`:** re-apply the fence on `db_ops.update_range_state`, which already returns the row count. S5b's real-DB tests start from `provisioning`/`destroying`.
 - **#13 vs #21, worker `Dockerfile`:** keep both the non-root user and the `scenario_engine` build context.
 - **#12 against everything:** re-run `ruff format control-plane/ scenario-engine/ tools/ ai-orchestrator/`. A formatting-only rise in a capped line count follows ADR 0004.
+- **#29 vs #28, `routers/exercises.py` import:** keep both, `from .. import range_ops, scenario_objectives`.
 - **Generated files (`openapi.json`, `schema.d.ts`):** regenerate, never hand-merge: `.venv/bin/python scripts/export_openapi.py`, then `npm run gen:api`.
 
 ## What needs you
 
 1. **Runner account (#15).** Create a standard macOS user `arc2runner`, run `claude setup-token` in it, and save the token to `~/.arc2/oauth-token` (mode 600). Steps are in `docs/arc2-course-studio.md`.
-2. **Noise engine (S4b).** It is uncommitted work in `.claude/worktrees/network-traffic-noise-tool-8407d2`. Decide how to preserve it; a follow-up task chip is waiting.
+2. **Noise engine (#29).** Committed from `.claude/worktrees/network-traffic-noise-tool-8407d2` unchanged; that worktree is untouched and can be cleaned up once #29 is merged. Its Ansible role and vSphere management NIC have never run against a real vCenter.
 3. **vSphere (S5a).** Integrating the vmware branch onto reservations and operations needs lab access for evidence; a follow-up task chip is waiting.
 4. **Review.** S8 is a self-assessment by the author of most of these changes; a second reviewer should confirm it.
 
