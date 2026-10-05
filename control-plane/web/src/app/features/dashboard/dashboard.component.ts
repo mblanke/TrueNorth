@@ -15,6 +15,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
 import { DirectoryApiService } from '@core/services/directory-api.service';
 import { RangeSummary, ExerciseSummary, HealthResponse, HypervisorNode } from '@core/models';
 import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective, MotionService } from '../../shared/motion';
@@ -273,6 +274,7 @@ interface DeploymentProfile {
       </div>
 
       </details>
+      @if (auth.canViewSchedule()) {
       <details class="workspace-disclosure">
       <summary><strong>Schedule & resources</strong><span>Plan an event and check the capacity it requires</span></summary>
       <div class="scheduler-panel">
@@ -372,6 +374,7 @@ interface DeploymentProfile {
       </div>
 
       </details>
+      }
       <!-- ──── RECENT ACTIVITY ────────────────────────────────────────────────────────────────── -->
       <div class="recent-row">
         <div class="recent-col">
@@ -662,6 +665,7 @@ interface DeploymentProfile {
 })
 export class DashboardComponent implements OnInit {
   private api = inject(ApiService);
+  readonly auth = inject(AuthService);
   private directory = inject(DirectoryApiService);
   private snack = inject(MatSnackBar);
   private cdr = inject(ChangeDetectorRef);
@@ -724,15 +728,17 @@ export class DashboardComponent implements OnInit {
     // Cluster discovery
     this.refreshCluster();
 
-    // Capacity & events
-    this.api.getCapacity().subscribe({
-      next: c => {
-        this.capacity.set(c);
-        this.animateRings();
-      },
-      error: () => {},
-    });
-    this.loadEvents();
+    // Capacity & events: staff only, the API refuses Students (ADR 0004)
+    if (this.auth.canViewSchedule()) {
+      this.api.getCapacity().subscribe({
+        next: c => {
+          this.capacity.set(c);
+          this.animateRings();
+        },
+        error: () => {},
+      });
+      this.loadEvents();
+    }
 
     // Personal dashboard data
     this.directory.nations().subscribe({

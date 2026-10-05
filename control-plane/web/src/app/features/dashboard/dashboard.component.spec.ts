@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -6,6 +7,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { DashboardComponent, usagePct } from './dashboard.component';
 import { ApiService } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
 import { Range, Exercise, HealthResponse, HypervisorNode } from '@core/models';
 
 /** An ESXi host as vSphere discovery stores it: VM count, but no CPU/memory figures. */
@@ -19,6 +21,7 @@ describe('DashboardComponent', () => {
   let component: DashboardComponent;
   let fixture: ComponentFixture<DashboardComponent>;
   let mockApi: jasmine.SpyObj<ApiService>;
+  const canViewSchedule = signal(true);
 
   const mockHealth: HealthResponse = {
     status: 'ok',
@@ -40,6 +43,7 @@ describe('DashboardComponent', () => {
   ];
 
   beforeEach(async () => {
+    canViewSchedule.set(true);
     mockApi = jasmine.createSpyObj('ApiService', [
       'health',
       'listRanges',
@@ -69,6 +73,7 @@ describe('DashboardComponent', () => {
       ],
       providers: [
         { provide: ApiService, useValue: mockApi },
+        { provide: AuthService, useValue: { canViewSchedule } },
         provideHttpClient(),
         provideHttpClientTesting(),
       ],
@@ -184,6 +189,21 @@ describe('DashboardComponent', () => {
     const empty: HTMLElement = fixture.nativeElement.querySelector('.empty-card');
     expect(empty.textContent).toContain('vCenter');
     expect(empty.querySelector('a[href="/infrastructure"]')).not.toBeNull();
+  });
+
+  it('does not show or fetch the schedule for a Student (ADR 0004)', () => {
+    canViewSchedule.set(false);
+    fixture.detectChanges();
+    expect(mockApi.getCapacity).not.toHaveBeenCalled();
+    expect(mockApi.listScheduledEvents).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).not.toContain('Schedule & resources');
+  });
+
+  it('shows and fetches the schedule for staff', () => {
+    fixture.detectChanges();
+    expect(mockApi.getCapacity).toHaveBeenCalled();
+    expect(mockApi.listScheduledEvents).toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Schedule & resources');
   });
 
   it('usagePct() is null when a figure is not reported', () => {

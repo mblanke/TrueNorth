@@ -8,138 +8,37 @@ deployment will fit within the cluster capacity at a given time.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..models import EventState, ScheduledEvent, Tenant
 from ..rbac import Permission, require_permission
-from ..tenancy import get_owned
+from ..tenancy import get_owned, tenant_uuid
+from .models import EventState, ScheduledEvent
+from .schemas import CapacityCheck, CapacityResult, EventIn
+from .service import CLUSTER_DISK_GB, CLUSTER_RAM_MB, CLUSTER_VCPU
+from .service import committed_in_window as _committed_in_window
+from .service import to_out as _to_out
+from .service import usable as _usable
 
 logger = logging.getLogger("truenorth.api.scheduling")
 
-# This router had NO authentication of any kind: no require_permission, no CurrentUser,
-# no router-level dependency. Every /schedule endpoint -- including create, update,
-# delete and activate of scheduled events -- was reachable by anyone who could reach the
-# API. Auth is now enforced at the router level so a new endpoint cannot silently ship
-# unauthenticated, and the by-id handlers additionally scope to the caller's tenant.
+# Reading needs schedule:read, which every role except student holds (ADR 0004): Students
+# never see other bookings, capacity or the timeline. Writes add schedule:write on top.
+# This router once shipped with no authentication at all, and then with only
+# exercise:read, which Students hold; the gate stays at router level so a new endpoint
+# cannot ship ungated.
 router = APIRouter(
     prefix="/schedule",
     tags=["scheduling"],
-    dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
+    dependencies=[Depends(require_permission(Permission.SCHEDULE_READ))],
 )
-
-# -- Cluster capacity (set via env; the vCenter REST API has no host capacity) --
-CLUSTER_VCPU = int(os.getenv("CLUSTER_TOTAL_VCPU", "128"))  # total vCPU across all nodes
-CLUSTER_RAM_MB = int(os.getenv("CLUSTER_TOTAL_RAM_MB", "524288"))  # 512 GB
-CLUSTER_DISK_GB = int(os.getenv("CLUSTER_TOTAL_DISK_GB", "10240"))  # 10 TB
-CLUSTER_OVERHEAD_PCT = float(os.getenv("CLUSTER_OVERHEAD_PCT", "15"))  # % reserved for hypervisor
-
-
-# -- Pydantic schemas ---------------------------------------------------
-class EventIn(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    description: str | None = None
-    start_time: datetime
-    end_time: datetime
-    vm_count: int = Field(0, ge=0)
-    vcpu_total: int = Field(0, ge=0)
-    ram_mb_total: int = Field(0, ge=0)
-    disk_gb_total: int = Field(0, ge=0)
-    template_id: str | None = None
-    range_id: str | None = None
-
-
-class EventOut(BaseModel):
-    id: str
-    name: str
-    description: str | None
-    state: str
-    tenant_id: str
-    range_id: str | None
-    template_id: str | None
-    start_time: datetime
-    end_time: datetime
-    vm_count: int
-    vcpu_total: int
-    ram_mb_total: int
-    disk_gb_total: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class CapacityCheck(BaseModel):
-    start_time: datetime
-    end_time: datetime
-    vcpu_needed: int = 0
-    ram_mb_needed: int = 0
-    disk_gb_needed: int = 0
-
-
-class CapacityResult(BaseModel):
-    fits: bool
-    vcpu_available: int
-    vcpu_committed: int
-    vcpu_total: int
-    ram_mb_available: int
-    ram_mb_committed: int
-    ram_mb_total: int
-    disk_gb_available: int
-    disk_gb_committed: int
-    disk_gb_total: int
-    overlapping_events: int
-    message: str
-
-
-# -- Helpers -------------------------------------------------------------
-def _usable(total: float) -> int:
-    return int(total * (1 - CLUSTER_OVERHEAD_PCT / 100))
-
-
-def _committed_in_window(db: Session, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None):
-    """Sum resources committed by overlapping events."""
-    q = db.query(ScheduledEvent).filter(
-        ScheduledEvent.state.in_([EventState.scheduled, EventState.active]),
-        ScheduledEvent.start_time < end,
-        ScheduledEvent.end_time > start,
-    )
-    if exclude_id:
-        q = q.filter(ScheduledEvent.id != exclude_id)
-    events = q.all()
-    vcpu = sum(e.vcpu_total for e in events)
-    ram = sum(e.ram_mb_total for e in events)
-    disk = sum(e.disk_gb_total for e in events)
-    return vcpu, ram, disk, len(events)
-
-
-def _to_out(e: ScheduledEvent) -> dict:
-    return EventOut(
-        id=str(e.id),
-        name=e.name,
-        description=e.description,
-        state=e.state.value if e.state else "draft",
-        tenant_id=str(e.tenant_id),
-        range_id=str(e.range_id) if e.range_id else None,
-        template_id=str(e.template_id) if e.template_id else None,
-        start_time=e.start_time,
-        end_time=e.end_time,
-        vm_count=e.vm_count,
-        vcpu_total=e.vcpu_total,
-        ram_mb_total=e.ram_mb_total,
-        disk_gb_total=e.disk_gb_total,
-        created_at=e.created_at,
-        updated_at=e.updated_at,
-    ).model_dump()
+_WRITE = [Depends(require_permission(Permission.SCHEDULE_WRITE))]
 
 
 # -- Endpoints -----------------------------------------------------------
@@ -227,9 +126,14 @@ def list_events(
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
-    """List all scheduled events, optionally filtered by state."""
-    q = db.query(ScheduledEvent).order_by(ScheduledEvent.start_time)
+    """List the caller's tenant's scheduled events, optionally filtered by state."""
+    q = (
+        db.query(ScheduledEvent)
+        .filter(ScheduledEvent.tenant_id == tenant_uuid(user))
+        .order_by(ScheduledEvent.start_time)
+    )
     if state:
         q = q.filter(ScheduledEvent.state == state)
     total = q.count()
@@ -237,9 +141,8 @@ def list_events(
     return {"items": [_to_out(e) for e in events], "total": total}
 
 
-@router.post("/events", status_code=201, summary="Create a scheduled event")
-# write op: stronger than the router-level read gate
-def create_event(body: EventIn, db: Session = Depends(get_db)):
+@router.post("/events", status_code=201, summary="Create a scheduled event", dependencies=_WRITE)
+def create_event(body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """Create a new event with resource reservation.  Will reject if it
     would cause an over-commitment."""
     if body.end_time <= body.start_time:
@@ -258,16 +161,11 @@ def create_event(body: EventIn, db: Session = Depends(get_db)):
     if body.disk_gb_total > (usable_disk - disk_c):
         raise HTTPException(409, f"Insufficient Disk: need {body.disk_gb_total}GB, available {usable_disk - disk_c}GB")
 
-    # Get default tenant
-    tenant = db.query(Tenant).first()
-    if not tenant:
-        raise HTTPException(400, "No tenant configured")
-
     evt = ScheduledEvent(
         name=body.name,
         description=body.description,
         state=EventState.scheduled,
-        tenant_id=tenant.id,
+        tenant_id=tenant_uuid(user),
         range_id=uuid.UUID(body.range_id) if body.range_id else None,
         template_id=uuid.UUID(body.template_id) if body.template_id else None,
         start_time=body.start_time,
@@ -289,8 +187,7 @@ def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = 
     return _to_out(evt)
 
 
-@router.put("/events/{event_id}", summary="Update a scheduled event")
-# write op: stronger than the router-level read gate
+@router.put("/events/{event_id}", summary="Update a scheduled event", dependencies=_WRITE)
 def update_event(
     event_id: str, body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ):
@@ -327,16 +224,16 @@ def update_event(
     return _to_out(evt)
 
 
-@router.delete("/events/{event_id}", status_code=204, response_class=Response, summary="Cancel/delete event")
-# write op: stronger than the router-level read gate
+@router.delete(
+    "/events/{event_id}", status_code=204, response_class=Response, summary="Cancel/delete event", dependencies=_WRITE
+)
 def delete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
     db.delete(evt)
     db.commit()
 
 
-@router.post("/events/{event_id}/activate", summary="Mark event as active")
-# write op: stronger than the router-level read gate
+@router.post("/events/{event_id}/activate", summary="Mark event as active", dependencies=_WRITE)
 def activate_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
     evt.state = EventState.active
@@ -345,8 +242,7 @@ def activate_event(event_id: str, db: Session = Depends(get_db), user: CurrentUs
     return _to_out(evt)
 
 
-@router.post("/events/{event_id}/complete", summary="Mark event as completed")
-# write op: stronger than the router-level read gate
+@router.post("/events/{event_id}/complete", summary="Mark event as completed", dependencies=_WRITE)
 def complete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
     evt.state = EventState.completed

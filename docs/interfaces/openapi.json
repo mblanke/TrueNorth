@@ -24270,7 +24270,7 @@
     },
     "/schedule/events": {
       "get": {
-        "description": "List all scheduled events, optionally filtered by state.",
+        "description": "List the caller's tenant's scheduled events, optionally filtered by state.",
         "operationId": "list_events_schedule_events_get",
         "parameters": [
           {

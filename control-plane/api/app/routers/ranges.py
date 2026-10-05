@@ -39,17 +39,16 @@ from .. import object_store
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
-    EventState,
     Exercise,
     ExerciseState,
     Range,
     RangeDocument,
     RangeSnapshot,
     RangeState,
-    ScheduledEvent,
     Template,
 )
 from ..rbac import Permission, require_permission
+from ..scheduler import service as scheduler
 from ..schemas import (
     BatchProvisionIn,
     BatchProvisionOut,
@@ -120,7 +119,6 @@ _SNAPSHOT_BUSY = ("creating", "restoring")
 # Snapshot rows go with it: on a destroyed range their hypervisor copies went with
 # the VMs. So do its documents, rows and stored bytes.
 _DELETABLE_RANGE_STATES = (RangeState.created, RangeState.destroyed)
-_RESERVING_EVENT_STATES = (EventState.draft, EventState.scheduled, EventState.active)
 
 
 def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
@@ -254,15 +252,10 @@ def delete_range(
     if exercises:
         raise HTTPException(409, f"Range has {exercises} exercise(s) on record and is kept as part of their history")
     # tenant-safe: as above.
-    events = db.query(ScheduledEvent.id).filter(
-        ScheduledEvent.range_id == range_id, ScheduledEvent.state.in_(_RESERVING_EVENT_STATES)
-    )
-    if reserved := events.count():
+    if reserved := scheduler.reserving_event_count(db, range_id):
         raise HTTPException(409, f"Range is reserved by {reserved} scheduled event(s); cancel them first")
     # Completed and cancelled events are history: they keep their row, without the range.
-    db.query(ScheduledEvent).filter(ScheduledEvent.range_id == range_id).update(
-        {ScheduledEvent.range_id: None}, synchronize_session=False
-    )
+    scheduler.detach_range(db, range_id)
 
     # Snapshots and documents cascade with the range (Range.snapshots/.documents).
     # The documents' stored bytes do not, so note them for removal after the commit.

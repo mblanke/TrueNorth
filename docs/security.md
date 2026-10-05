@@ -230,6 +230,7 @@ Permissions follow the pattern `resource:action`:
 | **Telemetry** | `telemetry:read` |
 | **Stats** | `stats:read` |
 | **AAR** | `aar:generate`, `aar:read` |
+| **Schedule** | `schedule:read`, `schedule:write` (ADR 0004: Students hold neither) |
 
 ---
 
@@ -272,6 +273,8 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `stats:read` | X | X | | X | X |
 | `aar:generate` | X | X | | | |
 | `aar:read` | X | X | X | X | |
+| `schedule:read` | X | X | | X | X |
+| `schedule:write` | X | X | | | |
 
 ### Permission Enforcement
 

@@ -4352,7 +4352,7 @@ export interface paths {
         };
         /**
          * List scheduled events
-         * @description List all scheduled events, optionally filtered by state.
+         * @description List the caller's tenant's scheduled events, optionally filtered by state.
          */
         get: operations["list_events_schedule_events_get"];
         put?: never;

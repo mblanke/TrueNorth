@@ -111,14 +111,6 @@ class ObjectiveType(str, enum.Enum):
     deliverable = "deliverable"
 
 
-class EventState(str, enum.Enum):
-    draft = "draft"
-    scheduled = "scheduled"
-    active = "active"
-    completed = "completed"
-    cancelled = "cancelled"
-
-
 class UserRole(str, enum.Enum):
     admin = "admin"
     instructor = "instructor"
@@ -473,37 +465,6 @@ class AuditLog(Base):
     resource_type: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_id: Mapped[str] = mapped_column(String(255), nullable=False)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-# -- Scheduled Events (resource reservation) -------------------------------
-class ScheduledEvent(TimestampMixin, Base):
-    """Resource-reserving event to prevent over-commitment of cluster capacity."""
-
-    __tablename__ = "scheduled_events"
-    __table_args__ = (
-        Index("ix_event_tenant_start", "tenant_id", "start_time"),
-        Index("ix_event_state", "state"),
-    )
-    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    state: Mapped[EventState] = mapped_column(Enum(EventState), default=EventState.draft)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
-    range_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("ranges.id"), nullable=True)
-    template_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("templates.id"), nullable=True)
-
-    # Schedule
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-
-    # Resource reservation (claimed at schedule time)
-    vm_count: Mapped[int] = mapped_column(Integer, default=0)
-    vcpu_total: Mapped[int] = mapped_column(Integer, default=0)
-    ram_mb_total: Mapped[int] = mapped_column(Integer, default=0)
-    disk_gb_total: Mapped[int] = mapped_column(Integer, default=0)
-
-    # Relations
-    tenant = relationship("Tenant", lazy="select")
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1865,3 +1826,8 @@ class QuizAttempt(TimestampMixin, Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
 
     quiz: Mapped[Quiz] = relationship(back_populates="attempts")
+
+
+# Per-section tables live in their own packages; import them here so every
+# ``Base.metadata`` user (Alembic, create_all, the worker table export) sees them.
+from .scheduler import models as _scheduler_models  # noqa: E402,F401

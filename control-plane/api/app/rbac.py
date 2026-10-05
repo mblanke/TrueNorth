@@ -90,6 +90,11 @@ class Permission(str, Enum):
     LEARNING_RECORD_READ = "learning_record:read"
     LEARNING_RECORD_WRITE = "learning_record:write"
 
+    # The scheduling calendar (ADR 0004). Students hold neither: they never see other
+    # bookings, capacity or the timeline.
+    SCHEDULE_READ = "schedule:read"
+    SCHEDULE_WRITE = "schedule:write"
+
     # Tenant management
     TENANT_CREATE = "tenant:create"
     TENANT_READ = "tenant:read"
@@ -129,6 +134,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_START,
         Permission.EXERCISE_COMPLETE,
         Permission.EXERCISE_PAUSE,
+        # The calendar: instructors book sessions for their classes.
+        Permission.SCHEDULE_READ,
+        Permission.SCHEDULE_WRITE,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
@@ -167,6 +175,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.TEMPLATE_UPDATE,
         Permission.SCENARIO_READ,
         Permission.EXERCISE_READ,
+        Permission.SCHEDULE_READ,
         Permission.STATS_READ,
         Permission.TELEMETRY_READ,
     },
@@ -187,6 +196,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.SCENARIO_READ,
         Permission.EXERCISE_READ,
         Permission.AAR_READ,
+        Permission.SCHEDULE_READ,
         Permission.TELEMETRY_READ,
     },
 }

@@ -42,7 +42,7 @@ def _exercise(db, rng, deleted: bool = False):
 
 
 def _event(db, rng, state: str):
-    from app.models import EventState, ScheduledEvent
+    from app.scheduler.models import EventState, ScheduledEvent
 
     start = datetime.now(UTC)
     ev = ScheduledEvent(
@@ -172,7 +172,8 @@ class TestDeletion:
         delete_object.assert_called_once_with(key, bucket="ranges")
 
     def test_past_scheduled_events_are_kept_without_the_range(self, client, db_session):
-        from app.models import Range, ScheduledEvent
+        from app.models import Range
+        from app.scheduler.models import ScheduledEvent
 
         rng = _range(db_session)
         done = _event(db_session, rng, "completed")

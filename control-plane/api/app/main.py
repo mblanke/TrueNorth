@@ -225,12 +225,12 @@ from .routers import (
     ranges_router,
     registration_router,
     scenarios_router,
-    scheduling_router,
     storage_router,
     templates_router,
     threat_intel_router,
     transcript_router,
 )
+from .scheduler.router import router as scheduling_router  # noqa: E402
 
 # Identity intake. Registration is mounted first because /auth/me is the one
 # endpoint reachable without a users row — it is how the SPA learns whether the
@@ -248,7 +248,7 @@ app.include_router(injectors_router)
 app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)
-app.include_router(scheduling_router)
+app.include_router(scheduling_router)  # app/scheduler (ADR 0004)
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(learning_paths_router)
