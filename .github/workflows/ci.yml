@@ -27,7 +27,6 @@ jobs:
           PY: python
       # Report-only until the 44-file reformat lands; then drop continue-on-error.
       - run: ruff format --check control-plane/ scenario-engine/ tools/ ai-orchestrator/
-        continue-on-error: true
 
   test-python:
     runs-on: ubuntu-latest
