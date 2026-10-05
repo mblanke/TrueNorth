@@ -32,6 +32,11 @@ celery_app.conf.task_default_exchange = "truenorth"
 celery_app.conf.task_default_exchange_type = "direct"
 celery_app.conf.task_default_routing_key = "default"
 celery_app.conf.task_routes = route_table()
+# Fail fast when the broker is down: a request handler must not sit for ~20 s while kombu
+# retries. dispatch() returns None and its caller records "not queued" and retries later.
+celery_app.conf.broker_connection_retry = False
+celery_app.conf.broker_connection_timeout = 3
+celery_app.conf.broker_transport_options = {"socket_timeout": 3, "socket_connect_timeout": 3, "max_retries": 0}
 
 
 def dispatch(task_name: str, *args: Any) -> str | None:
@@ -42,6 +47,8 @@ def dispatch(task_name: str, *args: Any) -> str | None:
     """
     contract = validate_args(task_name, args)
     try:
-        return celery_app.send_task(contract.qualified_name, args=list(args)).id
+        # The API never reads a task's result, so it does not subscribe to one either: with
+        # results on, a down result backend made every send retry for 20 seconds.
+        return celery_app.send_task(contract.qualified_name, args=list(args), ignore_result=True).id
     except Exception:
         return None

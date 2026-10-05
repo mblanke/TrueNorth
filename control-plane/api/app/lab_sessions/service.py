@@ -345,7 +345,9 @@ def _vms(rng: Range | None) -> list[dict[str, Any]]:
         return []
 
 
-def advance(db: Session, session: LabSession) -> LabSession:
+def advance(db: Session, session: LabSession, *, redispatch: bool = False) -> LabSession:
+    """One step forward. ``redispatch`` (the background sweep only) re-sends a provision the
+    broker did not take; a page read never waits on the broker."""
     now = _now()
     rng = db.get(Range, session.range_id) if session.range_id else None
     state = session.state
@@ -353,7 +355,7 @@ def advance(db: Session, session: LabSession) -> LabSession:
     if state == QUEUED:
         _start(db, session, _profile(db, session))
     elif state == PROVISIONING:
-        _advance_provisioning(db, session, rng, now)
+        _advance_provisioning(db, session, rng, now, redispatch=redispatch)
     elif state == BASELINING:
         snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
         if snap is not None and snap.snapshot_state == "ready":
@@ -375,7 +377,9 @@ def advance(db: Session, session: LabSession) -> LabSession:
     return session
 
 
-def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
+def _advance_provisioning(
+    db: Session, session: LabSession, rng: Range | None, now: datetime, *, redispatch: bool = False
+) -> None:
     if rng is None:
         return _fail(db, session, "the lab's range record is missing")
     if rng.state == RangeState.failed:
@@ -384,7 +388,11 @@ def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, n
     if now - _aware(session.provisioning_at or now) > timeout:
         return _fail(db, session, f"the lab was not ready within {int(timeout.total_seconds() // 60)} minutes")
     if rng.state != RangeState.ready:
-        if session.error.startswith("the provisioning service") and _dispatch("provision_range", str(rng.id)):
+        if (
+            redispatch
+            and session.error.startswith("the provisioning service")
+            and _dispatch("provision_range", str(rng.id))
+        ):
             session.error = ""
         return None
     results = probes.run(_profile(db, session)["health_checks"], _vms(rng))
@@ -524,7 +532,7 @@ def sweep(db: Session) -> int:
     for session in db.query(LabSession).filter(LabSession.state.in_(LIVE + ENDING)).all():
         before = session.state
         try:
-            advance(db, session)
+            advance(db, session, redispatch=True)
             db.commit()
         except Exception:  # noqa: BLE001 — one bad session must not stop the sweep
             db.rollback()
