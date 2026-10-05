@@ -52,3 +52,20 @@ class RangeOperation(TimestampMixin, Base):
     error: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RangeLease(Base):
+    """Which worker execution is acting on a range right now (worker/fencing.py).
+
+    A task claims the range's in-progress state *and* this lease; a second copy of the
+    task arriving while the first runs finds the lease held and does nothing. The holder
+    is one execution (a random token, not the Celery task id, which a redelivered copy
+    shares). Released when the task ends, so a retry can claim it; ``expires_at`` lets a
+    copy redelivered after its worker died take over.
+    """
+
+    __tablename__ = "range_leases"
+
+    range_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("ranges.id", ondelete="CASCADE"), primary_key=True)
+    holder: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -193,11 +193,22 @@ def _user_uuid(user: CurrentUser) -> uuid.UUID | None:
 def dispatch(db: Session, op: RangeOperation) -> bool:
     """Send a pending operation's task, after its acceptance has committed. Commits.
 
-    The status changes only from ``pending`` (a conditional UPDATE), so a concurrent
-    redispatch or a superseding request is never overwritten.
+    One sender per operation: the operation's row is locked (PostgreSQL; SKIP LOCKED)
+    from before the send until the status is written, so another API process sending
+    the same operation skips it, and one that comes later finds it no longer pending.
+    Returns False when this call did not send it.
     """
     from .celery_client import dispatch as send
 
+    held = (
+        db.query(RangeOperation.id)
+        .filter(RangeOperation.id == op.id, RangeOperation.status == "pending")
+        .with_for_update(skip_locked=True)
+        .first()
+    )
+    if held is None:  # being sent by someone else, or already sent
+        db.commit()
+        return False
     task_id = send(ACTIONS[op.action].task, str(op.range_id))
     values: dict = {"dispatch_attempts": RangeOperation.dispatch_attempts + 1}
     if task_id:
@@ -218,22 +229,19 @@ def dispatch(db: Session, op: RangeOperation) -> bool:
 def redispatch_pending(db: Session, *, min_age: timedelta = timedelta(seconds=15), limit: int = 50) -> int:
     """Send operations still pending (the broker was down). Returns how many were sent.
 
-    ``min_age`` leaves a just-accepted operation to its own request. On PostgreSQL rows
-    another API process is already sending are skipped (SKIP LOCKED).
+    ``min_age`` leaves a just-accepted operation to its own request. Each operation is
+    locked only while it is being sent (``dispatch``), so another API process running this
+    loop skips it rather than sending it again.
     """
     pending = (
         db.query(RangeOperation)
         .filter(RangeOperation.status == "pending", RangeOperation.created_at <= _now() - min_age)
         .order_by(RangeOperation.created_at)
         .limit(limit)
-        .with_for_update(skip_locked=True)
         .all()
     )
-    sent = 0
-    for op in pending:
-        sent += dispatch(db, op)
     db.commit()
-    return sent
+    return sum(dispatch(db, op) for op in pending)
 
 
 def stale_after() -> timedelta:

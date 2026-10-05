@@ -257,6 +257,14 @@ objectives = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+range_leases = sa.Table(
+    "range_leases",
+    metadata,
+    sa.Column("range_id", GUID(), primary_key=True),
+    sa.Column("holder", sa.String(64), nullable=False),
+    sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 range_snapshots = sa.Table(
     "range_snapshots",
     metadata,
@@ -385,6 +393,7 @@ __all__ = [
     "metadata",
     "network_reservations",
     "objectives",
+    "range_leases",
     "range_snapshots",
     "ranges",
     "scenarios",

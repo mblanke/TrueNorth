@@ -20,11 +20,11 @@ from datetime import UTC, datetime
 
 from celery import Task, group
 
-from . import db_ops, periodic
+from . import db_ops, fencing, periodic
 from .aar import build_report as build_aar_report
 from .celery_app import app
 from .detection import DetectionScorer, range_index
-from .fencing import PermanentError, skipped
+from .fencing import PermanentError, fenced, skipped
 from .periodic import HEALTH_CHECK_BUDGET, METRICS_BUDGET
 from .provisioners import get_provisioner
 from .range_alloc import reserve_for_build
@@ -139,6 +139,7 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
+@fenced("provision", "provisioning")
 def provision_range(self, range_id: str):
     """Provision a single range using the configured backend.
 
@@ -147,8 +148,6 @@ def provision_range(self, range_id: str):
     structured ProvisionResult back to the database.
     """
     logger.info(f"[provision] Starting range {range_id}")
-    if not _update_range_state(range_id, "provisioning", only_from=("provisioning",)):  # fencing.py
-        return skipped("provision", range_id, "provisioning")
 
     try:
         # Fetch template, allocations, and provisioner_backend from DB
@@ -250,6 +249,7 @@ def batch_provision(self, range_ids: list[str]):
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.destroy_range")
+@fenced("destroy", "destroying")
 def destroy_range(self, range_id: str):
     """Destroy a provisioned range using the configured backend.
 
@@ -257,8 +257,6 @@ def destroy_range(self, range_id: str):
     the provisioner class hierarchy, and updates range state.
     """
     logger.info(f"[destroy] Starting range {range_id}")
-    if not _update_range_state(range_id, "destroying", only_from=("destroying",)):  # fencing.py
-        return skipped("destroy", range_id, "destroying")
 
     try:
         # Get provisioner output and backend from DB
@@ -294,7 +292,7 @@ def _power_range(task, range_id: str, action: str, claim: str, done: str):
     by moving it to ``claim``: act only while it is there (fencing.py), write ``done`` only
     once the hypervisor did it; a retry is safe, and only the last attempt records failed."""
     logger.info(f"[{action}] Range {range_id}")
-    if not _update_range_state(range_id, claim, only_from=(claim,)):
+    if not (lease := fencing.claim(_db_session, range_id, claim)):
         return skipped(action, range_id, claim)
     try:
         with _db_session() as db:
@@ -315,6 +313,8 @@ def _power_range(task, range_id: str, action: str, claim: str, done: str):
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[{action}] Range {range_id} FAILED: {e}")
         raise
+    finally:
+        fencing.release(_db_session, range_id, lease)
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.stop_range")

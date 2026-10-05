@@ -721,6 +721,8 @@ PG_CALLS = {
     "reserve_values": lambda db: db_ops.reserve_values(db, ID, domain="d", kind="vlan", pool=["100"], holders=["200"]),
     "release_reservations": lambda db: db_ops.release_reservations(db, ID),
     "claim_range": lambda db: db_ops.claim_range(db, ID, "provisioning"),
+    "claim_lease": lambda db: db_ops.claim_lease(db, ID, "holder", 60),
+    "release_lease": lambda db: db_ops.release_lease(db, ID, "holder"),
     "first_range_for_tenant": lambda db: db_ops.first_range_for_tenant(db, ID),
     "hypervisor_connection": lambda db: db_ops.hypervisor_connection(db, "vsphere"),
     "enabled_golden_images": lambda db: db_ops.enabled_golden_images(db, "vsphere"),
@@ -764,7 +766,9 @@ class TestPostgresRendering:
         PG_CALLS[name](db)
         assert db.sql, f"{name} executed nothing"
         for sql in db.sql:
-            assert "now()" in sql.lower() or sql.lstrip().upper().startswith(("SELECT", "DELETE")), sql
+            # Writes stamp now(); the lease upsert carries its own expiry instead.
+            assert ("now()" in sql.lower() or sql.lstrip().upper().startswith(("SELECT", "DELETE"))
+                    or "ON CONFLICT (range_id) DO UPDATE" in sql), sql
 
     def test_every_public_helper_is_covered(self):
         public = {n for n, f in vars(db_ops).items() if callable(f) and getattr(f, "__module__", "") == db_ops.__name__

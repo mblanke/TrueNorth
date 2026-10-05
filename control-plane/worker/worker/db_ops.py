@@ -18,6 +18,7 @@ import json
 import uuid
 import zlib
 from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
@@ -36,6 +37,7 @@ from .tables import (
     learning_recommendations,
     network_reservations,
     objectives,
+    range_leases,
     range_snapshots,
     ranges,
     scenarios,
@@ -70,6 +72,28 @@ def update_range_state(
         # CAST: `state` is a native enum on Postgres and plain text on SQLite.
         stmt = stmt.where(sa.cast(ranges.c.state, sa.Text).in_(list(only_from)))
     return db.execute(stmt).rowcount
+
+
+def claim_lease(db, range_id: str, holder: str, seconds: int) -> bool:
+    """Take the range's lease for ``holder`` unless another unexpired holder has it."""
+    now = datetime.now(UTC)
+    values = {"range_id": range_id, "holder": holder, "expires_at": now + timedelta(seconds=seconds)}
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    stmt = insert(range_leases).values(**values)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[range_leases.c.range_id],
+        set_={"holder": holder, "expires_at": values["expires_at"]},
+        where=range_leases.c.expires_at < now,
+    )
+    return db.execute(stmt).rowcount == 1
+
+
+def release_lease(db, range_id: str, holder: str) -> None:
+    """Give the lease back, if ``holder`` still has it."""
+    db.execute(sa.delete(range_leases).where(range_leases.c.range_id == range_id, range_leases.c.holder == holder))
 
 
 def range_template_and_backend(db, range_id: str):
