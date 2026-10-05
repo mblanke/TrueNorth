@@ -159,3 +159,67 @@ def test_the_task_time_limit_ends_a_task_before_the_broker_redelivers_it():
     visibility = app.conf.broker_transport_options["visibility_timeout"]
     assert app.conf.task_time_limit and app.conf.task_time_limit < visibility
     assert int(os.environ.get("VSPHERE_PROVISION_BUDGET", "3300")) < app.conf.task_time_limit
+
+
+def test_on_postgres_a_second_copy_while_the_first_runs_does_nothing(monkeypatch):
+    """The same, on PostgreSQL (the lease upsert's result is read differently there)."""
+    from contextlib import contextmanager
+
+    from app import models as m
+    from app.sections import Base
+    from sqlalchemy.orm import Session, sessionmaker
+
+    admin_url = os.getenv("TEST_POSTGRES_ADMIN_URL")
+    if not admin_url:
+        pytest.skip("set TEST_POSTGRES_ADMIN_URL to run against Postgres")
+    name = f"tn_lease_{uuid.uuid4().hex[:12]}"
+    admin = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(sa.text(f'CREATE DATABASE "{name}"'))
+    engine = sa.create_engine(sa.engine.make_url(admin_url).set(database=name), pool_size=10)
+    try:
+        Base.metadata.create_all(engine)
+        factory = sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
+
+        @contextmanager
+        def session():
+            s = factory()
+            try:
+                yield s
+                s.commit()
+            except Exception:
+                s.rollback()
+                raise
+            finally:
+                s.close()
+
+        with factory() as s:
+            tenant = m.Tenant(name="t", slug=f"t-{uuid.uuid4().hex[:6]}")
+            s.add(tenant)
+            s.flush()
+            tmpl = m.Template(name="t", yaml="id: t\n", tenant_id=tenant.id)
+            s.add(tmpl)
+            s.flush()
+            rng = m.Range(name="r", template_id=tmpl.id, tenant_id=tenant.id, state=m.RangeState.provisioning)
+            s.add(rng)
+            s.commit()
+            rid = str(rng.id)
+        backend = SlowBackend()
+        monkeypatch.setattr(tasks, "_db_session", session)
+        monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
+        results: dict = {}
+        with patch.object(tasks, "_get_backend", return_value=backend), patch.object(
+            tasks, "reserve_for_build", return_value={}
+        ):
+            first = threading.Thread(target=lambda: results.update(first=tasks.provision_range.run(rid)))
+            first.start()
+            assert backend.started.wait(10), "the first copy never reached the hypervisor"
+            results["second"] = tasks.provision_range.run(rid)
+            backend.release.set()
+            first.join(20)
+        assert backend.calls == 1 and results["second"]["status"] == "skipped"
+        assert results["first"]["status"] == "ready"
+    finally:
+        engine.dispose()
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))

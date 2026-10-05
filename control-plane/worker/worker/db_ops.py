@@ -88,7 +88,8 @@ def claim_lease(db, range_id: str, holder: str, seconds: int) -> bool:
         set_={"holder": holder, "expires_at": values["expires_at"]},
         where=range_leases.c.expires_at < now,
     )
-    return db.execute(stmt).rowcount == 1
+    # RETURNING, not rowcount: psycopg reports -1 for an upsert.
+    return db.execute(stmt.returning(range_leases.c.holder)).first() is not None
 
 
 def release_lease(db, range_id: str, holder: str) -> None:
