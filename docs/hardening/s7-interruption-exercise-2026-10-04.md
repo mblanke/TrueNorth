@@ -76,3 +76,8 @@ scenario gets none, so the worker's scoring (`run_scenario_v2`, `db_ops.achieve_
 by `ref_id`) has nothing to mark and the AAR is empty. The scoring journey is therefore
 **not complete**. Follow-up: materialise the scenario's objectives when an exercise is
 created (or started), keyed by `ref_id`.
+
+**Fixed in #28** (`app/scenario_objectives.py`): the scenario's objectives are now created
+with the exercise. Rerun of the same journey with a real worker: all four objectives
+achieved, score **100/100**, and the AAR reports 100% (the HTML summary is intentionally
+one line; `report_json` lists each objective).
