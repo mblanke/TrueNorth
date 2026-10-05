@@ -19,10 +19,86 @@ from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
 from app.models import UserRole
 
-from tests.api.test_arc2_studio import REQUEST, runner_finishes, write_run
-
 DEV_TENANT = "00000000-0000-0000-0000-000000000001"
 OTHER_TENANT = "00000000-0000-0000-0000-0000000000ff"
+# Same helpers as test_arc2_studio.py, kept here: test modules are not importable from
+# each other under plain `pytest` (CI), only under `python -m pytest`.
+REQUEST = "60 min beginner course on the basics of packet sniffing and using Wireshark"
+
+
+def runner_finishes(runs: Path, result: str, state: str = "done") -> None:
+    """What tools/arc2/runner.py does with each queued job."""
+    (runs / "_jobs").mkdir(exist_ok=True)
+    for path in sorted((runs / "_queue").glob("*.json")):
+        job = json.loads(path.read_text())
+        job.update(
+            state=state,
+            result=result if state == "done" else None,
+            error=None if state == "done" else result,
+            started_at=job["created_at"],
+            finished_at=job["created_at"],
+        )
+        (runs / "_jobs" / f"{job['id']}.json").write_text(json.dumps(job))
+        path.unlink()
+
+
+def write_run(
+    runs: Path,
+    slug: str,
+    outline: str = "pending",
+    preview: str = "n/a",
+    done: int = 1,
+    package: bool = False,
+    owner: str | None = DEV_TENANT,
+) -> Path:
+    """A run as the engine leaves it on disk. ``owner`` records the tenant in the Studio
+    metadata, as the API or tools/arc2/assign_owner.py would; None leaves the run unowned."""
+    run = runs / slug
+    meta = runs / "_studio" / f"{slug}.json"
+    if owner and not meta.exists():
+        meta.parent.mkdir(exist_ok=True)
+        meta.write_text(json.dumps({"name": slug, "tenant_id": owner}))
+    (run / "01-blueprint").mkdir(parents=True)
+    keys = [
+        "content-architect",
+        "code-generator",
+        "range-engineer",
+        "artifact-creator",
+        "sensor-gateway",
+        "qa-tester",
+        "package-builder",
+    ]
+    manifest = {
+        "slug": slug,
+        "course": {"code": "ARC2-WSB", "title": "Packet Sniffing with Wireshark"},
+        "stages": {
+            k: {"state": "done" if i < done else "pending", "attempts": 1 if i < done else 0}
+            for i, k in enumerate(keys)
+        },
+        "gates": {"outline": {"state": outline}, "preview": {"state": preview}},
+        "qa": {"result": "not_run", "cycle": 0, "findings": []},
+        "files": [],
+        "human_actions": [
+            {
+                "id": "a1",
+                "stage": "orchestrator",
+                "category": "package",
+                "text": "x",
+                "blocks_promotion": True,
+                "status": "open",
+            }
+        ],
+    }
+    (run / "manifest.json").write_text(json.dumps(manifest))
+    (run / "01-blueprint" / "outline.yaml").write_text(
+        "course: ARC2-WSB\nmodules:\n  - id: mod_001\n    title: Capture basics\n"
+    )
+    (run / "04-artifacts" / "instructor").mkdir(parents=True)
+    (run / "04-artifacts" / "instructor" / "answer_key.md").write_text("answers")
+    if package:
+        (run / "07-bundle" / "cmi5").mkdir(parents=True)
+        (run / "07-bundle" / "cmi5" / "cmi5.xml").write_text("<courseStructure/>")
+    return run
 
 
 @pytest.fixture
