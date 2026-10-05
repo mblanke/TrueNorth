@@ -168,8 +168,11 @@ jobs:
   # Trivy's release channel was compromised on 2026-03-19 (CVE-2026-33634): its action
   # tags were force-pushed to a credential stealer. So: pin the action by commit SHA,
   # pin Trivy itself, give the job read-only permissions, and expose no secrets to it.
-  # Report-only for now (exit-code 0): the remaining HIGHs are Angular 17 CVEs that
-  # are only fixed in Angular 19+.
+  # Report-only for now (exit-code 0). No dependency CVE remains (Angular 21); the only
+  # HIGH findings (2026-10-05) are DS-0002 on the three nginx images, which still run as
+  # root (control-plane/web/Dockerfile, infra/platform/nginx/Dockerfile{,.dev}). Make
+  # them non-root (unprivileged base or USER plus an unprivileged listen port), then set
+  # exit-code "1".
   security-scan:
     runs-on: ubuntu-latest
     permissions:
