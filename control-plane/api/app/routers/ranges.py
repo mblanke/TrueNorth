@@ -29,6 +29,7 @@ import contextlib
 import logging
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, UploadFile, status
@@ -126,16 +127,25 @@ _DELETABLE_RANGE_STATES = (RangeState.created, RangeState.destroyed)
 _RESERVING_EVENT_STATES = (EventState.draft, EventState.scheduled, EventState.active)
 
 
+RESTORE_STALE_AFTER = timedelta(hours=2)  # well past the worker's hard time limit (~1 h)
+
+
 def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
     """409 while any snapshot of the range is being restored.
 
     A restore does not move the range out of `ready`, so without this a second
-    restore or a new snapshot could run over the VMs mid-revert.
+    restore or a new snapshot could run over the VMs mid-revert. A restore cannot run
+    longer than the worker's hard time limit, so a `restoring` row untouched for
+    RESTORE_STALE_AFTER belongs to a worker that died, and no longer blocks the range.
     """
     # tenant-safe: callers pass a range_id they already resolved through _tenant_range().
     busy = (
         db.query(RangeSnapshot.id)
-        .filter(RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring")
+        .filter(
+            RangeSnapshot.range_id == range_id,
+            RangeSnapshot.snapshot_state == "restoring",
+            RangeSnapshot.updated_at > datetime.now(UTC) - RESTORE_STALE_AFTER,
+        )
         .first()
     )
     if busy:

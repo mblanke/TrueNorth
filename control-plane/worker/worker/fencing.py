@@ -5,16 +5,23 @@ The API records an operation by moving the range into its in-progress state
 the operation row (control-plane/api/app/range_ops.py). A task may be delivered twice
 (worker loss with late acks, or the API's outbox re-sending) or late, after the range has
 moved on. So a task ``claim``s the range: the range must still be in that state, *and* the
-task takes the range's lease (table ``range_leases``), which only one execution holds at a
-time. A late copy finds the state moved on; a copy arriving while another runs finds the
-lease held. Either does nothing and touches no hypervisor. Outcomes are written only from
-the in-progress state.
+task takes the range's lease (table ``range_leases``), which one execution holds at a time.
 
-The lease is released when the task ends (``release``), so a retry of a failed attempt can
-claim again; it still finds the range in progress, because only the last attempt records
-``failed`` (reliable._last_attempt). A lease left by a worker that died expires after
-``LEASE_SECONDS``, longer than any task may run (``TASK_TIME_LIMIT``, which is shorter
-than the broker's visibility timeout, so a running task is never redelivered).
+* State moved on: a late or duplicate copy. ``skipped``; nothing touched.
+* State matches, lease held by another execution: that one may be running, or may have
+  died with its lease not yet expired. The copy is ``deferred``: re-queued with a
+  countdown (``LEASE_RETRY_SECONDS``). When it comes back it either finds the state moved
+  on (the holder finished) or the lease expired (the holder died) and takes over. It is
+  never dropped while the range is still in progress.
+
+The lease is released when the task ends, however it ends (``release``), so a retry of a
+failed attempt can claim again; it still finds the range in progress, because only the
+last attempt records ``failed`` (reliable._last_attempt). Time limits (celery_app): the
+soft limit ``SOFT_TIME_LIMIT`` raises ``SoftTimeLimitExceeded`` inside the task, which is
+final (``FINAL_ERRORS``: no retry, the task records ``failed``, cleanup and ``release``
+run); the hard limit ``TASK_TIME_LIMIT`` only backs it up (it kills the process, nothing
+runs after it) and is below the broker's visibility timeout, so a running task is not
+redelivered. ``LEASE_SECONDS`` outlives the hard limit.
 """
 
 from __future__ import annotations
@@ -23,17 +30,24 @@ import functools
 import logging
 import uuid
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 logger = logging.getLogger("worker.fencing")
 
-# A task is stopped after TASK_TIME_LIMIT (celery_app), before the broker would redeliver
-# it (visibility_timeout 3600); vSphere's own provision budget is below it (3300).
-TASK_TIME_LIMIT = 3500
+SOFT_TIME_LIMIT = 3300
+TASK_TIME_LIMIT = 3500  # below the broker's visibility_timeout (3600)
 LEASE_SECONDS = 3600
+LEASE_RETRY_SECONDS = 60
+LEASE_HELD = "lease-held"  # claim(): the state matches but another execution holds the lease
 
 
 class PermanentError(RuntimeError):
     """A failure no retry can fix (a full pool, a range with nothing to power): the task
     records ``failed`` on the first attempt instead of retrying (tasks.ReliableTask)."""
+
+
+# Failures that end a task for good on the first attempt: no retry, record failed.
+FINAL_ERRORS = (PermanentError, SoftTimeLimitExceeded)
 
 
 def skipped(action: str, range_id: str, expected: str) -> dict:
@@ -43,18 +57,30 @@ def skipped(action: str, range_id: str, expected: str) -> dict:
 
 
 def claim(session_factory, range_id: str, state: str) -> str | None:
-    """Claim ``range_id`` for this execution if it is still ``state`` and nobody else holds
-    its lease. Returns the holder token to ``release`` with, or None (do nothing)."""
+    """Claim ``range_id`` for this execution. Returns the holder token to ``release`` with;
+    ``LEASE_HELD`` when the range is still ``state`` but another execution holds its lease
+    (``defer``); None when the range is no longer ``state`` (``skipped``)."""
     from . import db_ops
 
     holder = uuid.uuid4().hex
     with session_factory() as db:
-        if not db_ops.claim_lease(db, range_id, holder, LEASE_SECONDS):
-            return None
-        if not db_ops.update_range_state(db, range_id, state, only_from=(state,)):
+        leased = db_ops.claim_lease(db, range_id, holder, LEASE_SECONDS)
+        in_state = db_ops.update_range_state(db, range_id, state, only_from=(state,))
+        if leased and in_state:
+            return holder
+        if leased:
             db_ops.release_lease(db, range_id, holder)
-            return None
-    return holder
+    return LEASE_HELD if in_state else None
+
+
+def defer(task, action: str, range_id: str, state: str, *args, **kwargs) -> dict:
+    """Re-queue this delivery to try again in ``LEASE_RETRY_SECONDS`` (the lease is held)."""
+    logger.warning(
+        "[%s] range %s is %s but another execution holds its lease; trying again in %ss",
+        action, range_id, state, LEASE_RETRY_SECONDS,
+    )
+    task.apply_async(args=(range_id, *args), kwargs=kwargs, countdown=LEASE_RETRY_SECONDS)
+    return {"status": "deferred", "range_id": range_id, "reason": "another execution holds the range's lease"}
 
 
 def release(session_factory, range_id: str, holder: str) -> None:
@@ -69,8 +95,8 @@ def release(session_factory, range_id: str, holder: str) -> None:
 
 
 def fenced(action: str, state: str):
-    """Decorate a bound range task ``fn(task, range_id, ...)``: ``claim`` first (or return
-    ``skipped``), ``release`` when it ends, however it ends."""
+    """Decorate a bound range task ``fn(task, range_id, ...)``: ``claim`` first (``skipped``
+    or ``defer`` when it cannot), ``release`` when it ends, however it ends."""
 
     def wrap(fn):
         @functools.wraps(fn)
@@ -80,6 +106,8 @@ def fenced(action: str, state: str):
             holder = claim(_db_session, range_id, state)
             if holder is None:
                 return skipped(action, range_id, state)
+            if holder == LEASE_HELD:
+                return defer(task, action, range_id, state, *args, **kwargs)
             try:
                 return fn(task, range_id, *args, **kwargs)
             finally:

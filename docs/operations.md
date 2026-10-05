@@ -896,6 +896,25 @@ Each provision or destroy request is a durable *operation* (`range_operations`;
 | `succeeded` / `failed` | the range reached the outcome's state; `failed` carries the worker's message | — |
 
 The worker acts on a task only while the range is still in the state the API put it
-in (`worker/fencing.py`). A duplicate or late delivery logs "duplicate or stale
-delivery, skipped" and touches nothing. Only the last retry of a failing task marks the
-range `failed`.
+in, and only one execution at a time (`worker/fencing.py`, table `range_leases`):
+
+- **Late or duplicate delivery** (the range has moved on): logs "duplicate or stale
+  delivery, skipped" and touches nothing.
+- **Another execution holds the range's lease** (one running, or one that died less than
+  an hour ago): logs "another execution holds its lease; trying again in 60s" and re-queues
+  itself. It finds the range finished (then skips) or the lease expired (then takes over).
+  A lease outlives a dead worker by at most `LEASE_SECONDS` (1 h); nothing to do but wait.
+  To see one: `SELECT * FROM range_leases WHERE range_id = '<id>'`. Do not delete a lease
+  whose `expires_at` is in the future unless you are sure no worker is running that task.
+- **Time limits**: a range task is stopped after 3300 s (soft: it records `failed` with
+  `SoftTimeLimitExceeded`, cleans up and releases its lease) and killed after 3500 s
+  (hard: a backstop; nothing runs after it, so the operation shows `no_outcome` later and
+  you abandon it as above). Both are below the broker's 1 h visibility timeout, so a
+  running task is never handed to a second worker.
+- **Stuck restore**: a snapshot left `restoring` by a worker that died blocks every
+  operation on its range (409 "A restore of this range is in progress") for at most 2 h
+  (`RESTORE_STALE_AFTER`), after which it no longer counts. Restore the snapshot again
+  or delete it once the range is usable.
+
+Only the last retry of a failing task marks the range `failed`; a soft time limit, a full
+address pool or a range with nothing to power do so on the first attempt.
