@@ -37,6 +37,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from .. import scenario_objectives
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
@@ -120,6 +121,11 @@ def create_exercise(
         max_score=body.max_score or 100,
     )
     db.add(ex)
+    db.flush()
+    # The scenario's objectives are what the run scores; the score is out of their points.
+    points = scenario_objectives.materialise(db, ex.id, sc.yaml)
+    if points:
+        ex.max_score = points
     db.commit()
     db.refresh(ex)
     _audit(db, user, "create", "exercise", str(ex.id))
