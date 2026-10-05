@@ -293,6 +293,8 @@ def test_a_batch_records_one_operation_per_range_or_none(client, db_session, sen
     refused = client.post("/ranges/batch-provision", json={"range_ids": [c["id"], a["id"]]})
     assert refused.status_code == 409, "a is already provisioning: the batch accepts nothing"
     assert _ops(client, c["id"]) == []
+
+
 def test_a_finished_operation_does_not_block_the_next_with_autoflush_off(client, db_session, sent):
     """Production sessions do not autoflush (app/db.py SessionLocal). reconcile() must
     write its outcome before the in-flight check queries, or a provision that finished
@@ -304,3 +306,22 @@ def test_a_finished_operation_does_not_block_the_next_with_autoflush_off(client,
     db_session.flush()
     r = client.post(f"/ranges/{rng['id']}/destroy")
     assert r.status_code == 202, r.text
+
+
+def test_another_tenant_cannot_abandon_and_an_operation_of_another_range_is_not_found(client, sent):
+    rng, other = _range(client), _range(client)
+    op_id = client.post(f"/ranges/{rng['id']}/provision").headers["Operation-Id"]
+    with acting_as(UserRole.admin, OTHER_TENANT):
+        assert client.post(f"/ranges/{rng['id']}/operations/{op_id}/abandon").status_code == 404
+    assert client.post(f"/ranges/{other['id']}/operations/{op_id}/abandon").status_code == 404
+    assert _ops(client, rng["id"])[0]["status"] == "dispatched", "nothing was abandoned"
+
+
+@pytest.mark.parametrize("role", [UserRole.student, UserRole.observer])
+def test_roles_without_range_permissions_are_refused(client, sent, role):
+    rng = _range(client)
+    op_id = client.post(f"/ranges/{rng['id']}/provision").headers["Operation-Id"]
+    with acting_as(role, "00000000-0000-0000-0000-000000000001"):
+        assert client.post(f"/ranges/{rng['id']}/destroy").status_code == 403
+        assert client.post(f"/ranges/{rng['id']}/operations/{op_id}/abandon").status_code == 403
+    assert len(sent) == 1
