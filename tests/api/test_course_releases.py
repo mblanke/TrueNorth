@@ -251,3 +251,176 @@ class TestImmutability:
         with pytest.raises(ImmutableReleaseError, match="accepted → candidate"):
             db_session.flush()
         db_session.rollback()
+
+
+# -- review findings (2026-10-05) ---------------------------------------------
+
+
+def _meta_and_members(data: bytes) -> tuple[dict, dict[str, bytes]]:
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        members = {m.name: tar.extractfile(m).read() for m in tar}
+    return json.loads(members["release.json"]), members
+
+
+def _repack(meta: dict, members: dict[str, bytes], *, redigest: bool) -> bytes:
+    from arc2 import release as arc_release
+
+    if redigest:
+        meta["release_digest"] = arc_release.release_digest(meta)
+    members = dict(members, **{"release.json": json.dumps(meta).encode()})
+    out = io.BytesIO()
+    with gzip.GzipFile(fileobj=out, mode="wb") as gz, tarfile.open(fileobj=gz, mode="w") as tar:
+        for name, blob in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(blob)
+            tar.addfile(info, io.BytesIO(blob))
+    return out.getvalue()
+
+
+class TestReleaseJsonIsVerified:
+    def test_dropping_open_actions_breaks_the_digest(self, catalogue, tmp_path):
+        actions = [{"id": "po.x", "category": "standards", "text": "Standards decides"}]
+        meta, members = _meta_and_members(build(tmp_path, open_actions=actions))
+        meta["open_human_actions"] = []
+        resp = upload(catalogue, _repack(meta, members, redigest=False))
+        assert resp.status_code == 422 and "release_digest does not match" in resp.json()["detail"]
+
+    def test_a_redigested_release_json_must_still_match_the_run(self, catalogue, tmp_path):
+        actions = [{"id": "po.x", "category": "standards", "text": "Standards decides"}]
+        meta, members = _meta_and_members(build(tmp_path, open_actions=actions))
+        meta["open_human_actions"] = []
+        resp = upload(catalogue, _repack(meta, members, redigest=True))
+        assert resp.status_code == 422 and "open actions differ from the run's" in resp.json()["detail"]
+
+    def test_a_range_module_cannot_be_left_out_of_the_activities(self, catalogue, tmp_path):
+        meta, members = _meta_and_members(build(tmp_path, range_ordinals=frozenset({2})))
+        del meta["activities"]["mod_002"]
+        resp = upload(catalogue, _repack(meta, members, redigest=True))
+        assert resp.status_code == 422 and "activities differ from the run's modules" in resp.json()["detail"]
+
+    def test_a_run_without_passed_qa_is_refused(self, catalogue, tmp_path):
+        meta, members = _meta_and_members(build(tmp_path))
+        manifest = json.loads(members["platform/manifest.json"])
+        manifest["qa"]["result"] = "fail"
+        blob = json.dumps(manifest).encode()
+        members["platform/manifest.json"] = blob
+        from arc2 import release as arc_release
+
+        entry = next(f for f in meta["parts"]["platform"]["files"] if f["path"] == "manifest.json")
+        entry["sha256"] = __import__("hashlib").sha256(blob).hexdigest()
+        meta["parts"]["platform"]["digest"] = arc_release.digest_files(meta["parts"]["platform"]["files"])
+        resp = upload(catalogue, _repack(meta, members, redigest=True))
+        assert resp.status_code == 422 and "QA did not pass" in resp.json()["detail"]
+
+    def test_an_expansion_bomb_is_refused_before_tar_reads_it(self, catalogue, monkeypatch):
+        from app.course_releases import bundle
+
+        monkeypatch.setattr(bundle, "MAX_EXPANDED", 1024)
+        bomb = gzip.compress(b"\0" * 4096)
+        resp = upload(catalogue, bomb)
+        assert resp.status_code == 422 and "expands beyond 1024 bytes" in resp.json()["detail"]
+
+
+class TestAcceptOrdering:
+    def test_an_older_candidate_cannot_replace_a_newer_release(self, catalogue, tmp_path):
+        v1 = upload(catalogue, build(tmp_path / "a")).json()["id"]
+        v2 = upload(catalogue, build(tmp_path / "b", title_suffix=" (rev)", slug="arc2-iot-b")).json()["id"]
+        assert catalogue.post(f"/course-releases/{v2}/accept", json={}).status_code == 200
+        resp = catalogue.post(f"/course-releases/{v1}/accept", json={})
+        assert resp.status_code == 409 and "is older and would replace newer content" in resp.json()["detail"]
+
+    def test_releases_are_never_deleted(self, catalogue, tmp_path, db_session):
+        rid = upload(catalogue, build(tmp_path)).json()["id"]
+        db_session.delete(db_session.get(CourseRelease, uuid.UUID(rid)))
+        with pytest.raises(ImmutableReleaseError, match="never deleted"):
+            db_session.flush()
+        db_session.rollback()
+
+    def test_the_acceptance_record_is_written_once(self, catalogue, tmp_path, db_session):
+        rid = upload(catalogue, build(tmp_path)).json()["id"]
+        catalogue.post(f"/course-releases/{rid}/accept", json={"notes": "first"})
+        release = db_session.get(CourseRelease, uuid.UUID(rid))
+        release.notes = "rewritten"
+        with pytest.raises(ImmutableReleaseError, match="written once"):
+            db_session.flush()
+        db_session.rollback()
+
+
+class TestAcceptKeepsStudentsWork:
+    def _attempt(self, db, course, user):
+        from app.course_content_ingest import _current_quiz
+        from app.models import QuizAttempt
+
+        module = db.query(CourseModule).filter_by(course_id=course.id, ordinal=1).one()
+        quiz = _current_quiz(db, module)
+        db.add(QuizAttempt(quiz_id=quiz.id, user_id=user.id))
+        db.flush()
+        return quiz
+
+    def test_a_changed_quiz_with_attempts_is_retired_not_rewritten(self, catalogue, tmp_path, db_session):
+        from app.course_content_ingest import _current_quiz
+
+        v1 = upload(catalogue, build(tmp_path / "a")).json()["id"]
+        catalogue.post(f"/course-releases/{v1}/accept", json={})
+        course = _course(db_session)
+        course.is_published = True
+        db_session.commit()
+        old_quiz = self._attempt(db_session, course, _student(db_session))
+        old_ids = sorted(str(q.id) for q in old_quiz.questions)
+
+        v2 = upload(catalogue, _with_revised_question(tmp_path / "b")).json()["id"]
+        assert catalogue.post(f"/course-releases/{v2}/accept", json={}).status_code == 200
+        db_session.expire_all()
+        module = db_session.query(CourseModule).filter_by(course_id=course.id, ordinal=1).one()
+        new_quiz = _current_quiz(db_session, module)
+        assert new_quiz.id != old_quiz.id
+        assert sorted(str(q.id) for q in db_session.get(type(old_quiz), old_quiz.id).questions) == old_ids
+        assert _course(db_session).is_published is True  # accepting a release does not unpublish
+
+    def test_an_unchanged_quiz_keeps_its_questions(self, catalogue, tmp_path, db_session):
+        from app.course_content_ingest import _current_quiz
+
+        v1 = upload(catalogue, build(tmp_path / "a")).json()["id"]
+        catalogue.post(f"/course-releases/{v1}/accept", json={})
+        course = _course(db_session)
+        quiz = self._attempt(db_session, course, _student(db_session))
+        ids = sorted(str(q.id) for q in quiz.questions)
+        v2 = upload(catalogue, build(tmp_path / "b", title_suffix=" (rev)", slug="arc2-iot-b")).json()["id"]
+        catalogue.post(f"/course-releases/{v2}/accept", json={})
+        module = db_session.query(CourseModule).filter_by(course_id=course.id, ordinal=1).one()
+        assert _current_quiz(db_session, module).id == quiz.id
+        assert sorted(str(q.id) for q in _current_quiz(db_session, module).questions) == ids
+
+    def test_dropped_modules_retire_and_new_ones_get_progress(self, catalogue, tmp_path, db_session):
+        from app.models import ModuleProgress
+
+        v1 = upload(catalogue, build(tmp_path / "a", drop_ordinals=frozenset({6}))).json()["id"]
+        catalogue.post(f"/course-releases/{v1}/accept", json={})
+        course = _course(db_session)
+        e = ensure_enrollment(db_session, user_id=_student(db_session).id, course_id=course.id, tenant_id=DEV_TENANT)
+        assert db_session.query(ModuleProgress).filter_by(enrollment_id=e.id).count() == 5
+        v2 = upload(catalogue, build(tmp_path / "b", drop_ordinals=frozenset({1}), slug="arc2-iot-b")).json()["id"]
+        assert catalogue.post(f"/course-releases/{v2}/accept", json={}).status_code == 200
+        first = db_session.query(CourseModule).filter_by(course_id=course.id, ordinal=1).one()
+        assert json.loads(first.content_ref)["retired"] is True and first.is_required is False
+        assert db_session.query(ModuleProgress).filter_by(enrollment_id=e.id).count() == 6
+
+
+def _with_revised_question(root):
+    from _release_kit import write_run
+    from arc2 import release as arc_release
+
+    run = root / "arc2-iot-rev"
+    write_run(run)
+    course_file = run / "02-content/arc2-iot.yaml"
+    import yaml as _yaml
+
+    doc = _yaml.safe_load(course_file.read_text())
+    doc["modules"][0]["quiz"]["questions"][0]["question"] += " (revised)"
+    course_file.write_text(_yaml.safe_dump(doc, sort_keys=False, allow_unicode=True))
+    meta, _ = _meta_and_members(build(root / "base"))
+    parts = arc_release.collect(run)
+    meta["slug"] = "arc2-iot-rev"
+    meta["parts"] = {n: {"digest": arc_release.digest_files(f), "files": f} for n, f in parts.items()}
+    meta["release_digest"] = arc_release.release_digest(meta)
+    return arc_release._tarball(run, meta)

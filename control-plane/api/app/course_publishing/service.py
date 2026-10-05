@@ -144,29 +144,67 @@ def _verify(described: dict[str, Any], want: dict[str, dict[str, Any]], sections
             continue
         if got.get("type") != spec["type"] or not got.get("visible"):
             problems.append(f"{idn} is {got.get('type')} visible={got.get('visible')}, expected visible {spec['type']}")
+        if got.get("section") is not None and got.get("section") != spec["section"]:
+            problems.append(f"{idn} is in section {got.get('section')}, expected {spec['section']}")
         if "questions" in spec and got.get("questions") != spec["questions"]:
             problems.append(f"{idn} has {got.get('questions')} questions, expected {spec['questions']}")
+        if spec.get("content") and not got.get("content_length", 1):
+            problems.append(f"{idn} is an empty page")
+    extra = sorted(k for k, a in acts.items() if k not in want and a.get("visible"))
+    if extra:
+        problems.append(f"visible TrueNorth activities this release does not have: {', '.join(extra)}")
     if any(s["type"] == "lti" for s in want.values()) and not described.get("ltitool"):
         problems.append("the TrueNorth Range LTI tool is not registered on this Moodle")
     return problems
 
 
+def _same_course(db: Session, pub: CoursePublication):
+    return db.query(CoursePublication).filter(
+        CoursePublication.course_id == pub.course_id,
+        CoursePublication.platform_id == pub.platform_id,
+        CoursePublication.id != pub.id,
+    )
+
+
+def _newer_than(db: Session, pub: CoursePublication, release: CourseRelease) -> bool:
+    """Whether a later release of this course is already published on this Moodle."""
+    for other in _same_course(db, pub).filter(CoursePublication.state == PUBLISHED).all():
+        other_release = db.get(CourseRelease, other.release_id)
+        if other_release is not None and other_release.version > release.version:
+            return True
+    return False
+
+
 def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | None = None) -> CoursePublication:
     """Drive a publication to published or failed. Commits after every step, so a crash
-    leaves the job resumable at the step it reached."""
-    if pub.state == PUBLISHED:
+    leaves the job resumable at the step it reached. Only the course's accepted release is
+    ever published: a job for a release that has since been superseded ends superseded,
+    whether it is retried by hand or resumed at startup, so Moodle never rolls back."""
+    if pub.state in (PUBLISHED, SUPERSEDED):
+        return pub
+    release = db.get(CourseRelease, pub.release_id)
+    if release is None or release.state != ACCEPTED or _newer_than(db, pub, release):
+        pub.state = SUPERSEDED
+        pub.error = "a later release of this course has been accepted"
+        pub.lease_until = None
+        db.commit()
         return pub
     if not claim(db, pub):
         raise PublishRefusedError("this publication is already running")
-    release = db.get(CourseRelease, pub.release_id)
     platform = db.get(ExternalPlatform, pub.platform_id)
-    backend = backend or backend_for(db, platform)
     pub.attempts += 1
     pub.error = ""
+    warnings: list[str] = []
     try:
+        backend = backend or backend_for(db, platform)
         bundle = load_bundle(db, release)
         category = _category(db, release)
-        common = {"release_id": release.id, "category": category, "version": release.version}
+        common = {
+            "release_id": release.id,
+            "course_id": release.course_id,
+            "category": category,
+            "version": release.version,
+        }
         stage = payload_mod.build(bundle, idnumber=pub.stage_idnumber, visible=False, **common)
         live = payload_mod.build(bundle, idnumber=pub.live_idnumber, visible=True, **common)
         want = payload_mod.expected(live)
@@ -187,9 +225,16 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
         problems = _verify(described, want, len(live["sections"]), visible=True)
         if problems:
             return _fail(db, pub, "live course did not verify after activation: " + "; ".join(problems))
-        _remote(pub, "cleanup", backend.delete_stage(platform, pub.stage_idnumber))
     except MoodleError as exc:
         return _fail(db, pub, str(exc))
+    except Exception as exc:  # noqa: BLE001 — anything else is recorded, never left running
+        logger.exception("publication %s crashed", pub.id)
+        return _fail(db, pub, f"publication crashed: {type(exc).__name__}: {exc}")
+    try:
+        # Students are already on the new release; a stage left behind is housekeeping.
+        _remote(pub, "cleanup", backend.delete_stage(platform, pub.stage_idnumber))
+    except MoodleError as exc:
+        warnings.append(f"the staging course {pub.stage_idnumber} was not deleted: {exc}")
 
     now = datetime.now(UTC)
     pub.receipt = json.dumps(
@@ -201,20 +246,15 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
             "release_digest": release.release_digest,
             "payload_digest": pub.payload_digest,
             "published_at": now.isoformat(),
+            "warnings": warnings,
         },
         sort_keys=True,
     )
-    for older in (
-        db.query(CoursePublication)
-        .filter(
-            CoursePublication.course_id == pub.course_id,
-            CoursePublication.platform_id == pub.platform_id,
-            CoursePublication.state == PUBLISHED,
-            CoursePublication.id != pub.id,
-        )
-        .all()
-    ):
-        older.state = SUPERSEDED
+    for older in _same_course(db, pub).all():
+        older_release = db.get(CourseRelease, older.release_id)
+        if older.state != SUPERSEDED and older_release is not None and older_release.version < release.version:
+            older.state = SUPERSEDED
+            older.lease_until = None
     pub.state = PUBLISHED
     pub.published_at = now
     pub.lease_until = None
@@ -224,7 +264,10 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
 
 
 def _step(db: Session, pub: CoursePublication, state: str) -> None:
+    """Move to the next step and renew the lease, so a slow Moodle never lets a second
+    runner take over a job that is still making progress."""
     pub.state = state
+    pub.lease_until = datetime.now(UTC) + LEASE
     db.commit()
 
 
@@ -240,8 +283,9 @@ def _fail(db: Session, pub: CoursePublication, error: str) -> CoursePublication:
 def retry(db: Session, pub: CoursePublication) -> CoursePublication:
     if pub.state == PUBLISHED:
         raise PublishRefusedError("already published")
-    if pub.state == SUPERSEDED:
-        raise PublishRefusedError("a later release has been published here")
+    release = db.get(CourseRelease, pub.release_id)
+    if pub.state == SUPERSEDED or release is None or release.state != ACCEPTED:
+        raise PublishRefusedError("a later release of this course has been accepted; publish that one")
     pub.state = REQUESTED
     db.flush()
     return pub

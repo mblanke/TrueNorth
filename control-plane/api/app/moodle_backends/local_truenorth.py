@@ -2,7 +2,8 @@
 
 Every call is one POST to ``/local/truenorth/api.php`` carrying a ticket signed with the
 TrueNorth LTI tool key: ``typ`` "sync", single-use ``jti``, 60-second life, audience the
-Moodle's wwwroot (``lti_issuer``) and bound to the request body by its SHA-256. Moodle
+Moodle's wwwroot (``lti_issuer``), ``tid`` the platform's tenant (the Moodle refuses any
+other tenant) and bound to the request body by its SHA-256. Moodle
 already trusts that key for LTI, so no Moodle token is stored in TrueNorth.
 
 The request goes to ``base_url`` (the address the API reaches, e.g. a container name) with
@@ -51,7 +52,7 @@ class LocalTrueNorthMoodle(BaseMoodleBackend):
     def delete_stage(self, platform: Any, idnumber: str) -> dict[str, Any]:
         return self._post(platform, {"op": "delete_stage", "idnumber": idnumber})
 
-    def _ticket(self, audience: str, body: bytes) -> str:
+    def _ticket(self, audience: str, body: bytes, tenant: str) -> str:
         if self._key_provider is None:
             raise MoodleError("no TrueNorth signing key is configured for Moodle calls")
         private_pem, kid = self._key_provider()
@@ -64,6 +65,10 @@ class LocalTrueNorthMoodle(BaseMoodleBackend):
             "exp": now + TICKET_SECONDS,
             "jti": uuid.uuid4().hex,
             "body_sha256": hashlib.sha256(body).hexdigest(),
+            # Every tenant's Moodle trusts this one key; the Moodle accepts a sync ticket
+            # only for the tenant it serves (local_truenorth tenantid), so a job cannot be
+            # replayed into another tenant's site.
+            "tid": tenant,
         }
         return jwt.encode(claims, private_pem, algorithm="RS256", headers={"kid": kid})
 
@@ -73,7 +78,8 @@ class LocalTrueNorthMoodle(BaseMoodleBackend):
             raise MoodleError("this Moodle has no site address (lti_issuer) registered")
         target = (platform.base_url or wwwroot).rstrip("/")
         body = json.dumps(request, separators=(",", ":")).encode()
-        headers = {"Authorization": f"Bearer {self._ticket(wwwroot, body)}", "Content-Type": "application/json"}
+        ticket = self._ticket(wwwroot, body, str(platform.tenant_id))
+        headers = {"Authorization": f"Bearer {ticket}", "Content-Type": "application/json"}
         public, private = urlparse(wwwroot), urlparse(target)
         if public.netloc and public.netloc != private.netloc:
             headers["Host"] = public.netloc

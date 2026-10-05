@@ -33,6 +33,7 @@ import pytest
 import yaml
 
 URL = os.getenv("MOODLE_TEST_URL", "")
+TENANT = uuid.UUID(os.getenv("MOODLE_TEST_TENANT", "7e57e57e-0000-4000-8000-000000000001"))
 KEY = os.getenv("MOODLE_TEST_KEY", "")
 CONTAINER = os.getenv("MOODLE_TEST_CONTAINER", "tn-moodle-test-moodle-1")
 HERE = pathlib.Path(__file__).resolve().parent
@@ -59,7 +60,7 @@ def world(tmp_path_factory):
     engine = create_engine(f"sqlite:///{tmp_path_factory.mktemp('db') / 'tn.db'}")
     Base.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
-    tenant = Tenant(id=uuid.uuid4(), name="t", slug=f"t-{uuid.uuid4().hex[:6]}")
+    tenant = Tenant(id=TENANT, name="t", slug=f"t-{uuid.uuid4().hex[:6]}")
     db.add(tenant)
     db.commit()
     qsp_ingest.import_crosswalk(db, CROSSWALK.read_text(encoding="utf-8"))
@@ -133,6 +134,7 @@ def test_publish_learn_republish_and_revise(world):
     kinds = [a["type"] for a in described["activities"].values()]
     assert kinds.count("quiz") == 6 and kinds.count("lti") == 1 and kinds.count("page") == 6
     assert all(a["questions"] == 5 for a in described["activities"].values() if a["type"] == "quiz")
+    assert all(a["content_length"] > 0 for a in described["activities"].values() if a["type"] == "page")
     assert world.backend.describe_course(world.platform, f"tn-stage:{first.id}") == {"exists": False}
 
     # A student starts the quiz, leaves, comes back, passes.
@@ -170,7 +172,7 @@ def test_publish_learn_republish_and_revise(world):
     meta.update(
         slug="arc2-iot-b", parts={n: {"digest": arc_release.digest_files(f), "files": f} for n, f in parts.items()}
     )
-    meta["release_digest"] = arc_release.release_digest(meta["parts"])
+    meta["release_digest"] = arc_release.release_digest(meta)
     second = release(world, arc_release._tarball(run, meta))
     assert publish(world, second).state == "published"
 
@@ -183,3 +185,67 @@ def test_publish_learn_republish_and_revise(world):
         if a["type"] == "quiz" and a["visible"] and k.startswith("tn:mod_001:")
     ]
     assert len(new) == 1 and new[0] != attempted
+
+
+def test_a_ticket_for_another_tenant_is_refused(world):
+    """Every tenant's Moodle trusts the same TrueNorth key: the tenant in the ticket is what
+    stops one tenant's job being replayed into another tenant's Moodle."""
+    from app.moodle_backends import MoodleError
+
+    other = SimpleNamespace(lti_issuer=URL, base_url=URL, tenant_id=uuid.uuid4())
+    with pytest.raises(MoodleError, match="401|ticket refused"):
+        world.backend.describe_course(other, str(uuid.uuid4()))
+
+
+def test_script_in_authored_html_is_cleaned(world):
+    """Pages and question text are purified before Moodle stores them."""
+    hostile = '<h2>Safe</h2><img src=x onerror="alert(1)"><script>alert(2)</script><p>kept</p>'
+    course_id = str(uuid.uuid4())
+    payload = {
+        "idnumber": course_id,
+        "fullname": "XSS check",
+        "shortname": f"xss-{course_id[:8]}",
+        "visible": False,
+        "category": {"idnumber": "tn-catalogue", "name": "TrueNorth courses"},
+        "sections": [
+            {
+                "name": "1. x",
+                "activities": [
+                    {
+                        "idnumber": "tn:mod_001:page:01",
+                        "type": "page",
+                        "name": "p",
+                        "content": hostile,
+                        "format": "html",
+                    },
+                    {
+                        "idnumber": "tn:mod_001:quiz:x",
+                        "type": "quiz",
+                        "name": "q",
+                        "questions": [{"text": hostile, "answers": ["a", "b"], "correct": [0]}],
+                    },
+                ],
+            }
+        ],
+    }
+    world.backend.upsert_course(world.platform, payload)
+    php = (
+        "<?php define('CLI_SCRIPT', true); require('/var/www/html/config.php');"
+        f"$c=$DB->get_record('course',['idnumber'=>'{course_id}'],'*',MUST_EXIST);"
+        "$p=$DB->get_field('page','content',['course'=>$c->id]);"
+        "$q=$DB->get_field_sql('SELECT q.questiontext FROM {question} q JOIN {question_versions} v ON v.questionid=q.id"
+        " JOIN {question_bank_entries} e ON e.id=v.questionbankentryid JOIN {question_categories} qc ON qc.id=e.questioncategoryid"
+        " JOIN {context} ctx ON ctx.id=qc.contextid JOIN {course_modules} cm ON cm.id=ctx.instanceid AND ctx.contextlevel=70"
+        " WHERE cm.course=?',[$c->id]);"
+        "echo json_encode(['page'=>$p,'question'=>$q]);"
+    )
+    subprocess.run(
+        ["docker", "exec", "-i", CONTAINER, "sh", "-c", "cat > /tmp/xss.php"], input=php, text=True, check=True
+    )
+    out = json.loads(
+        subprocess.run(
+            ["docker", "exec", CONTAINER, "php", "/tmp/xss.php"], capture_output=True, text=True, check=True
+        ).stdout
+    )
+    for text in out.values():
+        assert "<script" not in text and "onerror" not in text and "kept" in text

@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..course_content_ingest import find_catalogue_course, import_course_content
@@ -58,6 +59,9 @@ def create_candidate(
         )
     if db.get(CourseReleaseBlob, parsed.sha256) is None:
         db.add(CourseReleaseBlob(sha256=parsed.sha256, size=len(data), data=data))
+    # Serialise uploads for one course (the course row lock) so two at once cannot both
+    # take the next version; the unique (course, version) constraint backs it up.
+    db.query(Course).filter(Course.id == course.id).with_for_update().one()
     version = (db.query(func.max(CourseRelease.version)).filter(CourseRelease.course_id == course.id).scalar() or 0) + 1
     release = CourseRelease(
         tenant_id=tenant_id,
@@ -78,7 +82,11 @@ def create_candidate(
         created_by=user_id,
     )
     db.add(release)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ReleaseRefusedError("another upload for this course was stored at the same moment; upload again") from exc
     logger.info("course release %s v%d candidate for %s", release.id, version, release.catalogue_code)
     return release, True
 
@@ -107,11 +115,21 @@ def accept(
     acknowledged what, rather than letting a candidate with open actions through silently."""
     if release.state != CANDIDATE:
         raise ReleaseRefusedError(f"release is {release.state}; only a candidate can be accepted")
+    # One acceptance per course at a time: lock the course row, then re-read what is live.
+    db.query(Course).filter(Course.id == release.course_id).with_for_update().one()
+    db.refresh(release)
+    if release.state != CANDIDATE:
+        raise ReleaseRefusedError(f"release is {release.state}; only a candidate can be accepted")
+    current = active_release(db, release.course_id)
+    if current is not None and current.version > release.version:
+        raise ReleaseRefusedError(
+            f"v{current.version} is already accepted; v{release.version} is older and would replace newer content"
+        )
     pending = [a["id"] for a in open_actions(release) if a["id"] not in set(acknowledge)]
     if pending:
         raise ReleaseRefusedError("acknowledge the open actions first: " + ", ".join(pending))
     parsed = load_bundle(db, release)
-    import_course_content(db, _as_catalogue_course(parsed), release.tenant_id, commit=False)
+    import_course_content(db, _as_catalogue_course(parsed), release.tenant_id, commit=False, release_mode=True)
 
     previous = (
         db.query(CourseRelease)
@@ -120,6 +138,7 @@ def accept(
     )
     for old in previous:
         old.state = SUPERSEDED
+    db.flush()  # the old release leaves `accepted` before the new one enters it (one per course)
     release.state = ACCEPTED
     release.accepted_by = user_id
     release.accepted_at = datetime.now(UTC)

@@ -1,10 +1,14 @@
 """Read and verify an ARC² release tarball (``tools/arc2/release.py`` writes it).
 
 Nothing in the upload is trusted: every file's sha256, each part's digest and the release
-digest are recomputed here, the three parts are checked against their own allow-lists
-(independently of the tool that built them), the course file is parsed with the importer's
-parser, and a lab profile is validated with the same rules ARC² applied. A tarball that
-fails any of this is refused with the reason, before anything is stored.
+digest (which also covers the rest of release.json) are recomputed here; the three parts
+are checked against their own allow-lists (independently of the tool that built them);
+release.json is checked against the run's own manifest (QA passed, both gates accepted on
+the digests it names, the same open actions, the same module activities, both ways); the
+course file is parsed with the importer's parser; and a lab profile is validated with the
+same rules ARC² applied. A tarball that fails any of this is refused with the reason,
+before anything is stored. The gzip is inflated against a hard ceiling before tar sees it,
+so a small upload cannot expand into gigabytes.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import io
 import json
 import re
 import tarfile
+import zlib
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,7 +31,10 @@ from . import lab_profile
 RELEASE_SCHEMA = "arc2/release/0.1"
 PARTS = ("learner", "platform", "instructor")
 MAX_BYTES = 64 * 1024 * 1024
+MAX_EXPANDED = 256 * 1024 * 1024
 MAX_MEMBERS = 5000
+MODULE_ID = re.compile(r"^mod_[0-9]{3}$")
+ACTIVITY_KINDS = ("theory", "practical", "range")
 PATH_RE = re.compile(r"^(?!.*(^|/)\.\.(/|$))[A-Za-z0-9_][A-Za-z0-9_./ -]*$")
 ALLOWED: dict[str, tuple[re.Pattern[str], ...]] = {
     "learner": (
@@ -69,8 +77,27 @@ def digest_files(files: dict[str, bytes]) -> str:
     return hashlib.sha256(lines.encode()).hexdigest()
 
 
-def release_digest(part_digests: dict[str, str]) -> str:
-    return hashlib.sha256("".join(f"{n} {part_digests[n]}\n" for n in PARTS).encode()).hexdigest()
+def meta_digest(meta: dict[str, Any]) -> str:
+    rest = {k: v for k, v in meta.items() if k not in ("parts", "release_digest")}
+    return hashlib.sha256(json.dumps(rest, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def release_digest(part_digests: dict[str, str], meta: dict[str, Any]) -> str:
+    lines = "".join(f"{n} {part_digests[n]}\n" for n in PARTS) + f"meta {meta_digest(meta)}\n"
+    return hashlib.sha256(lines.encode()).hexdigest()
+
+
+def _gunzip(data: bytes) -> bytes:
+    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    try:
+        raw = inflater.decompress(data, MAX_EXPANDED + 1)
+    except zlib.error as exc:
+        raise BundleError(f"not a gzipped tar: {exc}") from exc
+    if len(raw) > MAX_EXPANDED or inflater.unconsumed_tail:
+        raise BundleError(f"release expands beyond {MAX_EXPANDED} bytes")
+    if not inflater.eof:
+        raise BundleError("not a gzipped tar: truncated")
+    return raw
 
 
 def _members(data: bytes) -> dict[str, bytes]:
@@ -78,8 +105,9 @@ def _members(data: bytes) -> dict[str, bytes]:
         raise BundleError(f"release is {len(data)} bytes; the limit is {MAX_BYTES}")
     out: dict[str, bytes] = {}
     total = 0
+    raw = _gunzip(data)
     try:
-        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as tar:
             for i, info in enumerate(tar):
                 if i >= MAX_MEMBERS:
                     raise BundleError(f"more than {MAX_MEMBERS} files")
@@ -145,8 +173,10 @@ def parse(data: bytes) -> Bundle:
             raise BundleError(f"{name} digest does not match its files")
     if not bundle.files["learner"]:
         raise BundleError("the learner part is empty")
-    if meta.get("release_digest") != release_digest(digests):
-        raise BundleError("release_digest does not match the parts")
+    if meta.get("release_digest") != release_digest(digests, meta):
+        raise BundleError("release_digest does not match the parts and release.json")
+    manifest = _manifest(bundle)
+    _check_manifest(bundle, manifest)
 
     course_rel = meta["course_yaml"]
     if course_rel not in bundle.files["platform"]:
@@ -155,12 +185,12 @@ def parse(data: bytes) -> Bundle:
         bundle.course = parse_course_content(bundle.files["platform"][course_rel].decode("utf-8"))
     except (ValueError, UnicodeDecodeError, yaml.YAMLError) as exc:
         raise BundleError(f"{course_rel}: {exc}") from exc
-    bundle.activities = _check_activities(bundle)
+    bundle.activities = _check_activities(bundle, manifest)
     bundle.lab_profile = _check_lab_profile(bundle)
     return bundle
 
 
-def _module_ordinals(bundle: Bundle) -> dict[str, int]:
+def _manifest(bundle: Bundle) -> dict[str, Any]:
     raw = bundle.files["platform"].get("manifest.json")
     if raw is None:
         raise BundleError("platform/manifest.json is missing")
@@ -168,21 +198,63 @@ def _module_ordinals(bundle: Bundle) -> dict[str, int]:
         manifest = json.loads(raw)
     except ValueError as exc:
         raise BundleError(f"manifest.json: {exc}") from exc
-    return {m["id"]: m["ordinal"] for m in (manifest.get("content") or {}).get("modules") or []}
+    if not isinstance(manifest, dict):
+        raise BundleError("manifest.json is not an object")
+    return manifest
 
 
-def _check_activities(bundle: Bundle) -> dict[str, str]:
+def _check_manifest(bundle: Bundle, manifest: dict[str, Any]) -> None:
+    """release.json must say what the run itself recorded: a release cannot claim QA, gates,
+    identity or a shorter list of open actions the run does not have."""
+    meta = bundle.meta
+    course = manifest.get("course") or {}
+    if course.get("catalogue_code") != meta["catalogue_code"] or course.get("code") != meta["arc2_code"]:
+        raise BundleError("release.json names a different course than the run's manifest")
+    if (manifest.get("qa") or {}).get("result") != "pass":
+        raise BundleError("the run's QA did not pass")
+    gates = manifest.get("gates") or {}
+    for which in ("outline", "preview"):
+        gate = gates.get(which) or {}
+        if gate.get("state") != "accepted" or gate.get("accepted_sha256") != (meta.get("gates") or {}).get(which):
+            raise BundleError(f"the run's {which} gate is not accepted on the digest release.json names")
+    open_ids = {
+        a.get("id")
+        for a in manifest.get("human_actions") or []
+        if a.get("status") == "open" and a.get("blocks_promotion")
+    }
+    if open_ids != {a.get("id") for a in meta.get("open_human_actions") or []}:
+        raise BundleError("release.json's open actions differ from the run's")
+
+
+def _check_activities(bundle: Bundle, manifest: dict[str, Any]) -> dict[str, str]:
+    """Activities agree three ways: release.json, the manifest's modules and the course
+    file, with every module accounted for in each."""
     acts = bundle.meta["activities"]
-    if not isinstance(acts, dict) or any(v not in ("theory", "practical", "range") for v in acts.values()):
+    if not isinstance(acts, dict) or any(v not in ACTIVITY_KINDS for v in acts.values()):
         raise BundleError("release.json activities must map module ids to theory, practical or range")
-    ordinals = _module_ordinals(bundle)
+    legacy = manifest.get("schema_version") == "arc2/manifest/0.1"
+    modules = (manifest.get("content") or {}).get("modules") or []
+    declared: dict[str, str] = {}
+    ordinals: dict[str, int] = {}
+    for m in modules:
+        mid = str(m.get("id", ""))
+        if not MODULE_ID.match(mid):
+            raise BundleError(f"module id {mid!r} is not mod_NNN")
+        kind = (m.get("activity") or {}).get("kind") or ("range" if legacy else None)
+        if kind not in ACTIVITY_KINDS:
+            raise BundleError(f"{mid} declares no activity in the run's manifest")
+        declared[mid] = kind
+        ordinals[mid] = int(m.get("ordinal", -1))
+    if declared != acts:
+        raise BundleError("release.json activities differ from the run's modules")
     by_ordinal = {m["ordinal"]: m for m in bundle.course["modules"]}
+    if set(by_ordinal) != set(ordinals.values()):
+        raise BundleError("the course file's modules differ from the run's modules")
     for mid, kind in acts.items():
-        m = by_ordinal.get(ordinals.get(mid, -1))
-        if m is None:
-            raise BundleError(f"{mid} is in release.json but not in the course file")
-        if m["activity"] != kind:
-            raise BundleError(f"{mid} is {kind} in release.json but {m['activity']} in the course file")
+        if by_ordinal[ordinals[mid]]["activity"] != kind:
+            raise BundleError(
+                f"{mid} is {kind} in the run but {by_ordinal[ordinals[mid]]['activity']} in the course file"
+            )
     return dict(acts)
 
 

@@ -12,6 +12,8 @@
 #                      if TrueNorth is unreachable.
 #   TN_PUBLIC_KEY      the key itself (PEM), instead of TN_PUBLIC_KEY_URL.
 #   TN_LOGIN_URL       send Moodle's login page here (the TrueNorth app). Optional.
+#   TN_TENANT_ID       the TrueNorth tenant this node serves; course sync is refused
+#                      until it is set (a sync ticket must name this tenant).
 #
 # Writes /var/www/moodledata/truenorth-registration.json: the values TrueNorth's
 # platform registration needs (scripts/moodle-farm.sh reads it).
@@ -40,6 +42,7 @@ if ! grep -q "BEGIN PUBLIC KEY" "$pem" 2>/dev/null; then
 fi
 
 set -- --sso-publickey="$pem"
+[ -n "${TN_TENANT_ID:-}" ] && set -- "$@" --tenant-id="$TN_TENANT_ID"
 [ -n "${TN_LOGIN_URL:-}" ] && set -- "$@" --tn-login-url="$TN_LOGIN_URL"
 [ -f /opt/truenorth/truenorth.scss ] && set -- "$@" --theme-scss=/opt/truenorth/truenorth.scss
 php /opt/truenorth/bootstrap/truenorth_setup.php "$@"

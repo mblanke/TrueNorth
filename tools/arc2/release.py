@@ -12,7 +12,7 @@ tarball has three parts that never mix:
   instructor/  the instructor pack: rubric, deliverable, variant, xAPI map, instructor/ notes
 
 ``release.json`` at the root lists every file with its sha256, a digest per part and a release
-digest over the three. The API recomputes all of them on upload and refuses a mismatch, so
+digest over the three parts and the rest of release.json (identity, activities, open actions). The API recomputes all of them on upload and refuses a mismatch, so
 the digest it records is the content it stores. Only an accepted, packaged run with a
 catalogue identity can be released; open human actions travel with it and must be
 acknowledged by whoever accepts the release.
@@ -86,8 +86,17 @@ def digest_files(files: list[dict[str, str]]) -> str:
     return hashlib.sha256(lines.encode()).hexdigest()
 
 
-def release_digest(parts: dict[str, dict[str, Any]]) -> str:
-    return hashlib.sha256("".join(f"{name} {parts[name]['digest']}\n" for name in PARTS).encode()).hexdigest()
+def meta_digest(meta: dict[str, Any]) -> str:
+    """Everything release.json says apart from the file lists and the digest itself: the
+    identity, activities and open actions are part of what a release digest names."""
+    rest = {k: v for k, v in meta.items() if k not in ("parts", "release_digest")}
+    return hashlib.sha256(json.dumps(rest, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def release_digest(meta: dict[str, Any]) -> str:
+    parts = meta["parts"]
+    lines = "".join(f"{name} {parts[name]['digest']}\n" for name in PARTS) + f"meta {meta_digest(meta)}\n"
+    return hashlib.sha256(lines.encode()).hexdigest()
 
 
 def readiness(run: Path, manifest: dict[str, Any]) -> list[str]:
@@ -159,7 +168,7 @@ def build(run: Path, out: Path | None = None) -> tuple[Path, dict[str, Any]]:
         ],
         "parts": {name: {"digest": digest_files(files), "files": files} for name, files in parts.items()},
     }
-    meta["release_digest"] = release_digest(meta["parts"])
+    meta["release_digest"] = release_digest(meta)
     out = out or run.parent / f"{manifest['slug']}-{meta['release_digest'][:12]}.tar.gz"
     out.write_bytes(_tarball(run, meta))
     return out, meta

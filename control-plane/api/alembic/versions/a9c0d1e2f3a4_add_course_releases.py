@@ -65,6 +65,15 @@ def upgrade() -> None:
             sa.UniqueConstraint("course_id", "version", name="uq_course_release_version"),
         )
         op.create_index("ix_course_releases_course_state", "course_releases", ["course_id", "state"])
+        # At most one accepted release per course, whatever races the application loses.
+        op.create_index(
+            "uq_course_release_accepted",
+            "course_releases",
+            ["course_id"],
+            unique=True,
+            sqlite_where=sa.text("state = 'accepted'"),
+            postgresql_where=sa.text("state = 'accepted'"),
+        )
     if not _has_table("enrollment_release_pins"):
         op.create_table(
             "enrollment_release_pins",
@@ -76,6 +85,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("enrollment_release_pins")
+    op.drop_index("uq_course_release_accepted", table_name="course_releases")
     op.drop_index("ix_course_releases_course_state", table_name="course_releases")
     op.drop_table("course_releases")
     op.drop_table("course_release_blobs")

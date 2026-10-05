@@ -89,7 +89,9 @@ try {
 } catch (\moodle_exception $e) {
     local_truenorth_reply(422, ['ok' => false, 'error' => $e->errorcode, 'detail' => $e->getMessage()]);
 } catch (\Throwable $e) {
+    // The detail (SQL, paths) stays in Moodle's log; TrueNorth gets the fact of failure.
     debugging($e->getMessage() . "\n" . $e->getTraceAsString(), DEBUG_DEVELOPER);
-    local_truenorth_reply(500, ['ok' => false, 'error' => 'internal', 'detail' => $e->getMessage()]);
+    error_log('local_truenorth: ' . $e->getMessage());
+    local_truenorth_reply(500, ['ok' => false, 'error' => 'internal']);
 }
 local_truenorth_reply(200, ['ok' => true] + $result);

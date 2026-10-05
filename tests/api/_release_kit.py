@@ -40,9 +40,12 @@ LAB_PROFILE = {
 }
 
 
-def course_yaml(range_ordinals: frozenset[int] = frozenset(), *, title_suffix: str = "") -> str:
+def course_yaml(
+    range_ordinals: frozenset[int] = frozenset(), *, title_suffix: str = "", drop_ordinals: frozenset[int] = frozenset()
+) -> str:
     doc = yaml.safe_load(COURSE_FILE.read_text(encoding="utf-8"))
     doc["course_code"] = "ARC2-IOT"
+    doc["modules"] = [m for m in doc["modules"] if m["ordinal"] not in drop_ordinals]
     for m in doc["modules"]:
         if m["ordinal"] in range_ordinals:
             m["activity"] = "range"
@@ -53,23 +56,47 @@ def course_yaml(range_ordinals: frozenset[int] = frozenset(), *, title_suffix: s
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
 
 
+GATES = {"outline": "0" * 64, "preview": "1" * 64}
+
+
+def manifest(
+    mods: list[dict[str, Any]], activities: dict[str, str], open_actions: list[dict[str, str]], catalogue_code: str
+) -> dict[str, Any]:
+    """The parts of a run's manifest the API cross-checks release.json against."""
+    for m in mods:
+        kind = activities[m["id"]]
+        m["activity"] = {"kind": kind} if kind == "range" else {"kind": kind, "no_range_reason": "no live systems"}
+    return {
+        "schema_version": "arc2/manifest/0.2",
+        "course": {"code": "ARC2-IOT", "catalogue_code": catalogue_code},
+        "content": {"modules": mods},
+        "qa": {"result": "pass"},
+        "gates": {w: {"state": "accepted", "accepted_sha256": d} for w, d in GATES.items()},
+        "human_actions": [dict(a, stage="orchestrator", status="open", blocks_promotion=True) for a in open_actions],
+    }
+
+
 def write_run(
     run: pathlib.Path,
     *,
     range_ordinals: frozenset[int] = frozenset(),
     title_suffix: str = "",
     lab_profile: dict[str, Any] | None | bool = True,
+    open_actions: list[dict[str, str]] | None = None,
+    catalogue_code: str = "C304",
+    drop_ordinals: frozenset[int] = frozenset(),
 ) -> dict[str, str]:
     """Lay down the files a released run carries; returns module id → activity."""
-    doc = yaml.safe_load(course_yaml(range_ordinals, title_suffix=title_suffix))
+    yml = course_yaml(range_ordinals, title_suffix=title_suffix, drop_ordinals=drop_ordinals)
+    doc = yaml.safe_load(yml)
     mods = [{"id": f"mod_{m['ordinal']:03d}", "ordinal": m["ordinal"]} for m in doc["modules"]]
     activities = {m["id"]: ("range" if m["ordinal"] in range_ordinals else "theory") for m in mods}
     files = {
-        "manifest.json": json.dumps({"content": {"modules": mods}}),
+        "manifest.json": json.dumps(manifest(mods, activities, open_actions or [], catalogue_code)),
         "01-blueprint/outline.yaml": yaml.safe_dump(
             {"modules": [{"id": k, "activity": v} for k, v in activities.items()]}
         ),
-        "02-content/arc2-iot.yaml": course_yaml(range_ordinals, title_suffix=title_suffix),
+        "02-content/arc2-iot.yaml": yml,
         "04-artifacts/rubric.md": "| ID | Criterion |\n",
         "04-artifacts/instructor/answer_key.md": "Q1: B\n",
     }
@@ -97,9 +124,18 @@ def build(
     open_actions: list[dict[str, str]] | None = None,
     lab_profile: dict[str, Any] | None | bool = True,
     slug: str = "arc2-iot",
+    drop_ordinals: frozenset[int] = frozenset(),
 ) -> bytes:
     run = tmp_path / slug
-    activities = write_run(run, range_ordinals=range_ordinals, title_suffix=title_suffix, lab_profile=lab_profile)
+    activities = write_run(
+        run,
+        range_ordinals=range_ordinals,
+        title_suffix=title_suffix,
+        lab_profile=lab_profile,
+        open_actions=open_actions,
+        catalogue_code=catalogue_code,
+        drop_ordinals=drop_ordinals,
+    )
     parts = arc_release.collect(run)
     meta = {
         "schema": arc_release.RELEASE_SCHEMA,
@@ -112,9 +148,9 @@ def build(
         "course_yaml": "02-content/arc2-iot.yaml",
         "activities": activities,
         "lab_profile": "03-range/lab_profile.yaml" if (run / "03-range/lab_profile.yaml").exists() else None,
-        "gates": {"outline": "0" * 64, "preview": "1" * 64},
+        "gates": dict(GATES),
         "open_human_actions": open_actions or [],
         "parts": {n: {"digest": arc_release.digest_files(f), "files": f} for n, f in parts.items()},
     }
-    meta["release_digest"] = arc_release.release_digest(meta["parts"])
+    meta["release_digest"] = arc_release.release_digest(meta)
     return arc_release._tarball(run, meta)

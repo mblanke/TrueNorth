@@ -91,7 +91,10 @@ class TestPublish:
         assert labs == ["tn:mod_002:lab"]
         payload = live(platform, db_session, rid)["payload"]
         lab = next(a for s in payload["sections"] for a in s["activities"] if a["type"] == "lti")
-        assert lab["resource"] == f"lab:{rid}:mod_002"
+        from app.course_releases.models import CourseRelease
+
+        course_id = db_session.get(CourseRelease, uuid.UUID(rid)).course_id
+        assert lab["resource"] == f"lab:{course_id}:mod_002"  # the course, not the release
 
     def test_asking_again_returns_the_same_job(self, ready, tmp_path):
         client, platform = ready
@@ -109,7 +112,7 @@ class TestPublish:
 
 
 class TestInterruption:
-    @pytest.mark.parametrize("op", ["upsert_course", "describe_course", "delete_stage"])
+    @pytest.mark.parametrize("op", ["upsert_course", "describe_course"])
     def test_a_failure_anywhere_is_recorded_and_a_retry_converges(self, ready, tmp_path, db_session, op):
         client, platform = ready
         rid = accepted(client, build(tmp_path))
@@ -125,6 +128,14 @@ class TestInterruption:
         expected = sum(len(s["activities"]) for s in live(platform, db_session, rid)["payload"]["sections"])
         assert len(live(platform, db_session, rid)["activities"]) == expected  # no duplicates
 
+    def test_a_stage_left_behind_after_activation_is_a_warning_not_a_failure(self, ready, tmp_path):
+        client, platform = ready
+        rid = accepted(client, build(tmp_path))
+        fake.fail_next("delete_stage")
+        body = publish(client, rid, platform).json()
+        assert body["state"] == "published"
+        assert "was not deleted" in body["receipt"]["warnings"][0]
+
     def test_a_failed_stage_never_touches_the_live_course(self, ready, tmp_path, db_session):
         client, platform = ready
         first = accepted(client, build(tmp_path / "a"))
@@ -134,6 +145,44 @@ class TestInterruption:
         fake.fail_next("describe_course")
         assert publish(client, second, platform).json()["state"] == "failed"
         assert live(platform, db_session, first)["payload"] == before  # students still on v1
+
+    def test_retrying_an_old_release_never_rolls_moodle_back(self, ready, tmp_path, db_session):
+        client, platform = ready
+        v1 = accepted(client, build(tmp_path / "a"))
+        fake.fail_next("upsert_course")
+        p1 = publish(client, v1, platform).json()
+        assert p1["state"] == "failed"
+        v2 = accepted(client, build(tmp_path / "b", title_suffix=" (rev)", slug="arc2-iot-b"))
+        assert publish(client, v2, platform).json()["state"] == "published"
+        refused = client.post(f"/course-publications/{p1['id']}/retry?wait=true")
+        assert refused.status_code == 409 and "publish that one" in refused.json()["detail"]
+        assert "Release v2" in live(platform, db_session, v2)["payload"]["summary"]
+
+    def test_a_resumed_job_of_a_superseded_release_does_not_run(self, ready, tmp_path, db_session):
+        from app.course_publishing import service
+
+        client, platform = ready
+        v1 = accepted(client, build(tmp_path / "a"))
+        p1 = publish(client, v1, platform, wait=False).json()["id"]
+        accepted(client, build(tmp_path / "b", title_suffix=" (rev)", slug="arc2-iot-b"))
+        pub = db_session.get(CoursePublication, uuid.UUID(p1))
+        pub.state, pub.lease_until = "staging", None
+        db_session.commit()
+        service.resume_stalled(db_session)
+        assert db_session.get(CoursePublication, uuid.UUID(p1)).state == "superseded"
+        assert not fake.site(platform)  # nothing was pushed for v1
+
+    def test_the_background_runner_publishes(self, ready, tmp_path, db_session, monkeypatch):
+        """wait=false hands the job to run_by_id, which opens its own session."""
+        from app import db as app_db
+        from app.course_publishing.runner import run_by_id
+
+        client, platform = ready
+        rid = accepted(client, build(tmp_path))
+        pub_id = publish(client, rid, platform, wait=False).json()["id"]
+        monkeypatch.setattr(app_db, "SessionLocal", lambda: _Borrowed(db_session))
+        run_by_id(uuid.UUID(pub_id))
+        assert db_session.get(CoursePublication, uuid.UUID(pub_id)).state == "published"
 
     def test_a_job_whose_process_died_is_resumed(self, ready, tmp_path, db_session):
         from app.course_publishing import service
@@ -231,5 +280,46 @@ def _edit_question(data: bytes) -> bytes:
     parts = arc_release.collect(run)
     meta["slug"] = "arc2-iot-c"
     meta["parts"] = {n: {"digest": arc_release.digest_files(f), "files": f} for n, f in parts.items()}
-    meta["release_digest"] = arc_release.release_digest(meta["parts"])
+    meta["release_digest"] = arc_release.release_digest(meta)
     return arc_release._tarball(run, meta)
+
+
+class _Borrowed:
+    """The test's session, handed to code that opens and closes its own."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+    def close(self):
+        pass
+
+
+def test_sync_tickets_name_the_platform_tenant():
+    """Every tenant's Moodle trusts one TrueNorth key; the ticket's tid is what a Moodle
+    checks against the tenant it serves (local_truenorth ticket.php)."""
+    from types import SimpleNamespace
+
+    import httpx
+    import jwt as pyjwt
+    from app.moodle_backends import LocalTrueNorthMoodle
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["claims"] = pyjwt.decode(request.headers["authorization"].split()[1], options={"verify_signature": False})
+        seen["host"] = request.headers["host"]
+        return httpx.Response(200, json={"ok": True, "exists": False})
+
+    tenant = uuid.uuid4()
+    backend = LocalTrueNorthMoodle(key_provider=lambda: (pem.decode(), "k"), transport=httpx.MockTransport(handler))
+    site = SimpleNamespace(lti_issuer="https://moodle.example", base_url="http://moodle-node:8080", tenant_id=tenant)
+    assert backend.describe_course(site, str(uuid.uuid4())) == {"exists": False}
+    assert seen["claims"]["tid"] == str(tenant) and seen["claims"]["typ"] == "sync"
+    assert seen["claims"]["aud"] == "https://moodle.example" and seen["host"] == "moodle.example"

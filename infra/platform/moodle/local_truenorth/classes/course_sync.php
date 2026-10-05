@@ -132,6 +132,9 @@ class course_sync {
      * @return array exists, courseid, visible, sections, activities {idnumber: {cmid, type, visible, questions}}
      */
     public static function describe(string $idnumber): array {
+        if (!self::is_tn_course($idnumber)) {
+            throw new moodle_exception('syncbadpayload', 'local_truenorth');
+        }
         global $DB;
         $course = $idnumber === '' ? false : $DB->get_record('course', ['idnumber' => $idnumber]);
         if (!$course) {
@@ -143,6 +146,9 @@ class course_sync {
                 'section' => (int) $cm->sectionnum];
             if ($cm->modname === 'quiz') {
                 $row['questions'] = $DB->count_records('quiz_slots', ['quizid' => $cm->instance]);
+            }
+            if ($cm->modname === 'page') {
+                $row['content_length'] = strlen((string) $DB->get_field('page', 'content', ['id' => $cm->instance]));
             }
             $activities[$id] = $row;
         }
@@ -164,6 +170,9 @@ class course_sync {
      * @return array courseid (0 when absent)
      */
     public static function set_visible(string $idnumber, bool $visible): array {
+        if (!self::is_tn_course($idnumber)) {
+            throw new moodle_exception('syncbadpayload', 'local_truenorth');
+        }
         global $CFG, $DB;
         require_once($CFG->dirroot . '/course/lib.php');
         $id = $idnumber === '' ? false : $DB->get_field('course', 'id', ['idnumber' => $idnumber]);
@@ -220,6 +229,9 @@ class course_sync {
      * @return array courseid (0 when Moodle never had it)
      */
     public static function hide(string $idnumber): array {
+        if (!self::is_tn_course($idnumber)) {
+            throw new moodle_exception('syncbadpayload', 'local_truenorth');
+        }
         global $CFG, $DB;
         require_once($CFG->dirroot . '/course/lib.php');
         $id = $idnumber === '' ? false : $DB->get_field('course', 'id', ['idnumber' => $idnumber]);
@@ -235,8 +247,8 @@ class course_sync {
      * @param array $p
      */
     private static function check_payload(array $p): void {
-        $ok = !empty($p['idnumber']) && !empty($p['fullname']) && !empty($p['shortname'])
-            && !empty($p['category']['idnumber']) && !empty($p['category']['name'])
+        $ok = self::is_tn_course((string) ($p['idnumber'] ?? '')) && !empty($p['fullname']) && !empty($p['shortname'])
+            && str_starts_with((string) ($p['category']['idnumber'] ?? ''), 'tn-') && !empty($p['category']['name'])
             && isset($p['sections']) && is_array($p['sections']);
         foreach ($p['sections'] ?? [] as $s) {
             $ok = $ok && !empty($s['name']);
@@ -250,6 +262,29 @@ class course_sync {
         if (!$ok) {
             throw new moodle_exception('syncbadpayload', 'local_truenorth');
         }
+    }
+
+    /**
+     * Only courses TrueNorth created: idnumber is a TrueNorth course UUID or a staging
+     * `tn-stage:<release UUID>`. Nothing here can reach a course someone made in Moodle.
+     *
+     * @param string $idnumber
+     * @return bool
+     */
+    private static function is_tn_course(string $idnumber): bool {
+        return (bool) preg_match('/^(tn-stage:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $idnumber);
+    }
+
+    /**
+     * Authored HTML is cleaned with Moodle's purifier before it is stored: TrueNorth content
+     * must never run script for the students and admins who view it.
+     *
+     * @param string $text
+     * @param string|int $format a FORMAT_* constant (Moodle defines them as strings)
+     * @return string
+     */
+    private static function clean(string $text, $format): string {
+        return (string) $format === (string) FORMAT_HTML ? clean_text($text, FORMAT_HTML) : $text;
     }
 
     /**
@@ -348,7 +383,11 @@ class course_sync {
             return [
                 'name' => $a['name'],
                 'introeditor' => $intro,
-                'page' => ['text' => $a['content'] ?? '', 'format' => $format, 'itemid' => 0],
+                'page' => ['text' => self::clean($a['content'] ?? '', $format), 'format' => $format, 'itemid' => 0],
+                // page_add_instance/page_update_instance copy `page` into `content` only when a
+                // form is passed; called from code there is none, so set the columns directly.
+                'content' => self::clean($a['content'] ?? '', $format),
+                'contentformat' => $format,
                 'display' => 5, 'printintro' => 0, 'printlastmodified' => 0,
                 'completion' => COMPLETION_TRACKING_AUTOMATIC, 'completionview' => 1,
             ];
@@ -420,8 +459,11 @@ class course_sync {
         $review = [];
         foreach (['attempt', 'correctness', 'maxmarks', 'marks', 'specificfeedback', 'generalfeedback', 'rightanswer',
                      'overallfeedback'] as $what) {
-            $review[$what . 'immediately'] = 1;
-            $review[$what . 'open'] = 1;
+            // The right answer only once the quiz is closed: shown straight after an
+            // attempt, it turns the next attempt into copying.
+            $right = $what !== 'rightanswer';
+            $review[$what . 'immediately'] = (int) $right;
+            $review[$what . 'open'] = (int) $right;
             $review[$what . 'closed'] = 1;
         }
         return $review + [
@@ -465,7 +507,7 @@ class course_sync {
             $form = (object) [
                 'category' => $category->id . ',' . $context->id,
                 'name' => $q['name'] ?? ('Q' . ($i + 1)),
-                'questiontext' => ['text' => $q['text'], 'format' => FORMAT_HTML],
+                'questiontext' => ['text' => self::clean((string) $q['text'], FORMAT_HTML), 'format' => FORMAT_HTML],
                 'generalfeedback' => ['text' => $q['rationale'] ?? '', 'format' => FORMAT_HTML],
                 'defaultmark' => 1,
                 'penalty' => 0.3333333,

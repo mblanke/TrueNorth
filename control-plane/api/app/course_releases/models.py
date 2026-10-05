@@ -12,7 +12,19 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, event, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    event,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -41,6 +53,14 @@ class CourseRelease(Base):
         UniqueConstraint("tenant_id", "release_digest", name="uq_course_release_digest"),
         UniqueConstraint("course_id", "version", name="uq_course_release_version"),
         Index("ix_course_releases_course_state", "course_id", "state"),
+        # At most one accepted release per course, whatever races the application loses.
+        Index(
+            "uq_course_release_accepted",
+            "course_id",
+            unique=True,
+            sqlite_where=text("state = 'accepted'"),
+            postgresql_where=text("state = 'accepted'"),
+        ),
     )
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
@@ -117,6 +137,13 @@ def _refuse_rewrites(mapper, connection, target: CourseRelease) -> None:  # noqa
         before, after = hist.deleted[0], target.state
         if after not in TRANSITIONS.get(before, set()):
             raise ImmutableReleaseError(f"course release {target.id}: {before} → {after} is not a release transition")
-    accepted = state.attrs["accepted_at"].history
-    if accepted.has_changes() and accepted.deleted and accepted.deleted[0] is not None:
-        raise ImmutableReleaseError(f"course release {target.id}: acceptance is recorded once")
+    moved = state.attrs["state"].history
+    accepting_now = bool(moved.deleted) and moved.deleted[0] == CANDIDATE and target.state == ACCEPTED
+    for col in ("accepted_at", "accepted_by", "acknowledged_actions", "notes"):
+        if state.attrs[col].history.has_changes() and not accepting_now:
+            raise ImmutableReleaseError(f"course release {target.id}: the acceptance record ({col}) is written once")
+
+
+@event.listens_for(CourseRelease, "before_delete")
+def _refuse_deletes(mapper, connection, target: CourseRelease) -> None:  # noqa: ARG001
+    raise ImmutableReleaseError(f"course release {target.id}: releases are never deleted")

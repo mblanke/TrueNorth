@@ -63,6 +63,12 @@ class ticket {
             && !empty($claims->jti) && strlen($claims->jti) <= 64
             && !empty($claims->iat) && !empty($claims->exp)
             && ($claims->exp - $claims->iat) <= self::MAX_LIFETIME;
+        if ($ok && $typ === 'sync') {
+            // One TrueNorth key signs for every tenant: a sync ticket must name the tenant
+            // this Moodle serves, or one tenant's job could be replayed into another's site.
+            $tenant = (string) get_config('local_truenorth', 'tenantid');
+            $ok = $tenant !== '' && hash_equals($tenant, (string) ($claims->tid ?? ''));
+        }
         if (!$ok) {
             throw new moodle_exception('ssodenied', 'local_truenorth', '', null, 'claims');
         }

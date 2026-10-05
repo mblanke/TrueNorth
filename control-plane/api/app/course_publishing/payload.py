@@ -3,11 +3,13 @@
     release module mod_NNN       -> section "N. <title>", summary = its objectives
       learner page page-NN.html  -> page     tn:mod_NNN:page:NN   (HTML as authored)
       quiz                       -> quiz     tn:mod_NNN:quiz:<hash of the questions>
-      range activity             -> LTI link tn:mod_NNN:lab, resource lab:<release>:mod_NNN
+      range activity             -> LTI link tn:mod_NNN:lab, resource lab:<course>:mod_NNN
 
 Activity idnumbers depend on the module, not the release, so publishing a new release
 converges the same Moodle activities; a quiz is named by its questions, so changed
-questions are a new quiz and the old one (with its attempts) is kept, hidden.
+questions are a new quiz and the old one (with its attempts) is kept, hidden. A lab link
+names the course, not the release: the launch resolves the student's pinned release
+(app/lab_sessions), so publishing a new release never re-points a lab a student is in.
 """
 
 from __future__ import annotations
@@ -46,14 +48,16 @@ def _page_title(html: str, fallback: str) -> str:
     return (title or fallback)[:250]
 
 
-def quiz_hash(questions: list[dict[str, Any]]) -> str:
-    return hashlib.sha256(json.dumps(questions, sort_keys=True).encode()).hexdigest()[:12]
+def quiz_hash(questions: list[dict[str, Any]], pass_pct: int) -> str:
+    """Names a quiz by everything a student's attempt was graded against."""
+    return hashlib.sha256(json.dumps([questions, pass_pct], sort_keys=True).encode()).hexdigest()[:12]
 
 
 def build(
     bundle: Bundle,
     *,
     release_id: uuid.UUID,
+    course_id: uuid.UUID,
     idnumber: str,
     visible: bool,
     category: dict[str, str],
@@ -82,7 +86,7 @@ def build(
             questions = [{"text": q["stem"], "answers": q["options"], "correct": q["correct"]} for q in m["questions"]]
             activities.append(
                 {
-                    "idnumber": f"tn:{m['id']}:quiz:{quiz_hash(questions)}",
+                    "idnumber": f"tn:{m['id']}:quiz:{quiz_hash(questions, m['quiz_pass'])}",
                     "type": "quiz",
                     "name": m["quiz_title"] or f"{m['title']} quiz",
                     "intro": f"Pass mark {m['quiz_pass']}%.",
@@ -98,7 +102,7 @@ def build(
                     "type": "lti",
                     "name": f"Start lab: {m['title']}",
                     "intro": m["lab"],
-                    "resource": f"lab:{release_id}:{m['id']}",
+                    "resource": f"lab:{course_id}:{m['id']}",
                     "grade": 100,
                 }
             )
@@ -124,6 +128,8 @@ def expected(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
             want: dict[str, Any] = {"type": a["type"], "section": num}
             if a["type"] == "quiz":
                 want["questions"] = len(a["questions"])
+            if a["type"] == "page" and a.get("content", "").strip():
+                want["content"] = True  # Moodle must hold a non-empty page body
             out[a["idnumber"]] = want
     return out
 

@@ -43,5 +43,7 @@ services:
       MOODLE_PUBLIC_PORT: "8093"
       TN_TOOL_URL: http://localhost:8081
       TN_PUBLIC_KEY: ${TN_PUBLIC_KEY:?set TN_PUBLIC_KEY to the test tool public key (PEM)}
+      # The TrueNorth tenant this Moodle serves; sync tickets for any other tenant are refused.
+      TN_TENANT_ID: ${TN_TENANT_ID:-7e57e57e-0000-4000-8000-000000000001}
     ports:
       - "127.0.0.1:8093:8080"

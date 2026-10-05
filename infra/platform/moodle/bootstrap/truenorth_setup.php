@@ -21,12 +21,13 @@ require_once($CFG->libdir . '/clilib.php');
 require_once($CFG->dirroot . '/webservice/lib.php');
 
 [$options] = cli_get_params(
-    ['print-token' => false, 'sso-publickey' => '', 'tn-login-url' => '', 'theme-scss' => '', 'help' => false],
+    ['print-token' => false, 'sso-publickey' => '', 'tn-login-url' => '', 'theme-scss' => '', 'tenant-id' => '',
+        'help' => false],
     ['h' => 'help']
 );
 if ($options['help']) {
     echo "Usage: php truenorth_setup.php [--print-token] [--sso-publickey=<pem file>] [--tn-login-url=<url>]"
-        . " [--theme-scss=<scss file>]\n";
+        . " [--theme-scss=<scss file>] [--tenant-id=<TrueNorth tenant uuid>]\n";
     exit(0);
 }
 
@@ -38,6 +39,18 @@ if ($options['sso-publickey']) {
     set_config('ssopublickey', $pem, 'local_truenorth');
     set_config('ssoissuer', 'truenorth', 'local_truenorth');
 }
+// The TrueNorth tenant this Moodle belongs to. Every TrueNorth tenant's Moodle trusts the
+// same TrueNorth key, so a course-sync ticket names its tenant and only that tenant's
+// Moodle accepts it (local_truenorth\ticket). Without it this Moodle refuses sync calls.
+if ($options['tenant-id']) {
+    if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $options['tenant-id'])) {
+        cli_error('--tenant-id must be a TrueNorth tenant UUID');
+    }
+    set_config('tenantid', $options['tenant-id'], 'local_truenorth');
+}
+// TrueNorth publishes authored HTML (pages, question text) into this site; clean every
+// HTML text Moodle shows, whatever its author's capabilities.
+set_config('forceclean', 1);
 if ($options['tn-login-url']) {
     set_config('alternateloginurl', $options['tn-login-url']);
 }

@@ -29,11 +29,21 @@ TrueNorth LTI tool key.
    course is untouched until verification passes.
 4. Quizzes are native Moodle quizzes in the quiz's own question bank, so Moodle owns the
    attempt, the grade and completion, as `docs/moodle-integration.md` gives Moodle the
-   gradebook. Range labs are LTI links to TrueNorth (`resource=lab:<release>:<module>`).
+   gradebook. Range labs are LTI links to TrueNorth (`resource=lab:<course>:<module>`); the
+   launch resolves the student's pinned release, so a new release never re-points a lab.
 5. A TrueNorth-owned activity no longer in the release is deleted only if no student has
    used it; otherwise it is hidden with its attempts and grades. A quiz is identified by a
-   hash of its questions, so changed questions are a new quiz and never rewrite one that
-   students have attempted.
+   hash of its questions and pass mark, so changed questions are a new quiz and never
+   rewrite one that students have attempted. Correct answers show only once a quiz closes.
+6. Trust boundaries (security review, 2026-10-05): every TrueNorth tenant's Moodle trusts
+   the one TrueNorth tool key, so a sync ticket carries the tenant (`tid`) and a Moodle
+   refuses sync for any tenant but the one it is configured for (`--tenant-id`); the plugin
+   only touches courses whose idnumber is a TrueNorth UUID or `tn-stage:<UUID>` and
+   categories prefixed `tn-`; authored HTML (pages, question text) is cleaned with Moodle's
+   purifier before it is stored and `forceclean` is on.
+7. Only a course's accepted release is ever published: a job for a superseded release ends
+   superseded, whether retried or resumed, and publications are superseded by release
+   version, so Moodle never rolls back.
 
 ## Consequences
 - Moodle needs the plugin installed; the TrueNorth Moodle image
@@ -41,7 +51,10 @@ TrueNorth LTI tool key.
 - One Moodle course carries the latest accepted release. Work students completed is
   kept (hidden activities keep their grades), but a student mid-course sees the new
   release's activities from the moment it is activated: per-student version pinning is
-  enforced in TrueNorth (`enrollment_release_pins`), not inside one Moodle course.
+  recorded in TrueNorth (`enrollment_release_pins`, used by lab launches), not inside one
+  Moodle course. Accepting a release keeps TrueNorth-side work too: unchanged quizzes are
+  left alone, a changed quiz that students attempted is retired (not rewritten), dropped
+  modules are retired and publication flags are kept.
 - The cmi5 package ARC² builds stays a release artefact (formative runtime, quiz keys
   client-side); it is not how Moodle receives a course.
 - Live verification: `tests/integration/test_moodle_publish.py` against

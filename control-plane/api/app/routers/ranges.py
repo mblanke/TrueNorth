@@ -687,6 +687,8 @@ async def import_description(
         raise HTTPException(422, f"{filename} is not valid UTF-8 text") from exc
     if len(text) > MAX_DESCRIPTION_CHARS:
         raise HTTPException(413, "Description exceeds 200,000 characters")
+    if "\x00" in text:  # multipart bodies are not stripped of NULs; text columns refuse them
+        raise HTTPException(422, f"{filename} contains NUL bytes; it is not a text file")
 
     rng.description = text
     db.commit()

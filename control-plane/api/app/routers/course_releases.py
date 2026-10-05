@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from datetime import datetime
 
@@ -176,7 +177,8 @@ def accept_course_release(
 def _part(db: Session, user: CurrentUser, release_id: uuid.UUID, part: str) -> Response:
     release = get_owned(db, CourseRelease, release_id, user)
     data = bundle_mod.part_tarball(service.load_bundle(db, release), part)
-    name = f"{release.catalogue_code.replace(' ', '_')}-v{release.version}-{part}.tar.gz"
+    code = re.sub(r"[^A-Za-z0-9_.-]", "_", release.catalogue_code)
+    name = f"{code}-v{release.version}-{part}.tar.gz"
     return Response(
         content=data,
         media_type="application/gzip",
