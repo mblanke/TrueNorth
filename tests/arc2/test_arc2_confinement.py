@@ -77,6 +77,7 @@ attempt("read_repo_env_file", read(os.environ["PROBE_ENV_FILE"]))
 attempt("connect_localhost", connect_tcp)
 attempt("connect_unix_socket", connect_unix)
 attempt("signal_runner", lambda: os.kill(runner_pid, 0))
+attempt("read_runner_environ", read(f"/proc/{runner_pid}/environ"))
 results["sees_runner_secret"] = "PROBE_RUNNER_SECRET" in os.environ
 results["home_is_fresh"] = os.environ["HOME"] != real_home and os.environ.get("CLAUDE_CONFIG_DIR", "").startswith(os.environ["HOME"])
 # Plant things the runner's history snapshot would run or follow, outside the sandbox.
@@ -94,6 +95,14 @@ print(json.dumps({"type": "result", "is_error": False, "result": "probed"}), flu
 needs_seatbelt = pytest.mark.skipif(
     sys.platform != "darwin" or not shutil.which("sandbox-exec"), reason="Seatbelt (sandbox-exec) is macOS only"
 )
+
+# Every OS sandbox this host has; the end-to-end cases run once per backend.
+SANDBOXES = [name for name in ("seatbelt", "bubblewrap") if confine.BACKENDS[name]().available()] or [
+    pytest.param("none-available", marks=pytest.mark.skip(reason="no OS sandbox on this host"))
+]
+# Documented gaps (confine.Bubblewrap): Linux shares the network namespace, so local
+# services stay reachable from a job unless the host firewall blocks the runner account.
+KNOWN_GAPS = {"bubblewrap": {"connect_localhost": "allowed", "connect_unix_socket": "allowed"}}
 
 
 @pytest.fixture
@@ -140,7 +149,7 @@ def listener(tmp_path):
 def probe_engine(tmp_path, monkeypatch, runs, listener):
     port, unix_path = listener
     exe = tmp_path / "claude"
-    exe.write_text(PROBE)
+    exe.write_text(PROBE.replace("#!/usr/bin/python3", f"#!{sys.executable}", 1))
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
     name = f"_arc2_probe_{tmp_path.name}"
     home_file = Path.home() / f".{name}"
@@ -198,27 +207,28 @@ EXPECTED = {
     "connect_localhost": "denied",
     "connect_unix_socket": "denied",
     "signal_runner": "denied",
+    "read_runner_environ": "denied",
     "sees_runner_secret": False,
     "home_is_fresh": True,
 }
 
 
-@needs_seatbelt
-def test_a_confined_job_reaches_only_its_own_run(runs, probe_engine, monkeypatch):
-    monkeypatch.setenv("ARC2_CONFINE", "seatbelt")
+@pytest.mark.parametrize("sandbox", SANDBOXES)
+def test_a_confined_job_reaches_only_its_own_run(runs, probe_engine, monkeypatch, sandbox):
+    monkeypatch.setenv("ARC2_CONFINE", sandbox)
     queue_job(runs)
     assert runner.main(["--runs", str(runs), "--claude", str(probe_engine), "--once"]) == 0
     record = json.loads((runs / "_jobs" / "job000001.json").read_text())
     assert record["state"] == "done", record
-    assert record["confinement"] == "seatbelt"
-    assert json.loads((runs / SLUG / "probe.json").read_text()) == EXPECTED
+    assert record["confinement"] == sandbox
+    assert json.loads((runs / SLUG / "probe.json").read_text()) == {**EXPECTED, **KNOWN_GAPS.get(sandbox, {})}
     assert not (runs / "arc2-other" / "stolen.txt").exists()
     assert not list(Path(os.environ["ARC2_JOB_HOMES"]).glob("*")), "the job's home is removed afterwards"
 
 
-@needs_seatbelt
-def test_the_history_snapshot_runs_nothing_the_job_planted(runs, probe_engine, monkeypatch):
-    monkeypatch.setenv("ARC2_CONFINE", "seatbelt")
+@pytest.mark.parametrize("sandbox", SANDBOXES)
+def test_the_history_snapshot_runs_nothing_the_job_planted(runs, probe_engine, monkeypatch, sandbox):
+    monkeypatch.setenv("ARC2_CONFINE", sandbox)
     queue_job(runs)
     runner.main(["--runs", str(runs), "--claude", str(probe_engine), "--once"])
     record = json.loads((runs / "_jobs" / "job000001.json").read_text())
@@ -246,17 +256,22 @@ def test_a_run_folder_replaced_by_a_link_is_not_recorded(tmp_path, runs, target)
     assert not (other / "_transcripts").exists()
 
 
+def _no_sandboxes(monkeypatch):
+    for backend in (confine.Seatbelt, confine.Bubblewrap):
+        monkeypatch.setattr(backend, "available", lambda self: False)
+
+
 def test_without_a_sandbox_the_runner_does_not_start(runs, tmp_path, monkeypatch):
     monkeypatch.setenv("ARC2_CONFINE", "auto")
-    monkeypatch.setattr(confine.Seatbelt, "available", lambda self: False)
+    _no_sandboxes(monkeypatch)
     queue_job(runs)
     assert runner.main(["--runs", str(runs), "--claude", str(tmp_path / "never-run"), "--once"]) == 2
     assert [p.name for p in (runs / "_queue").glob("*.json")] == ["20261004T120000-job000001.json"]
 
 
-@pytest.mark.parametrize("choice", ["seatbelt", "bubblewrap", "yes"])
+@pytest.mark.parametrize("choice", ["auto", "seatbelt", "bubblewrap", "firejail", "yes"])
 def test_an_unavailable_or_unknown_sandbox_is_an_error_not_a_downgrade(monkeypatch, choice):
-    monkeypatch.setattr(confine.Seatbelt, "available", lambda self: False)
+    _no_sandboxes(monkeypatch)
     with pytest.raises(confine.ConfinementError):
         confine.select(choice)
 
@@ -331,7 +346,7 @@ def test_the_runners_own_environment_holds_nothing_a_job_could_read(runs, tmp_pa
     (KERN_PROCARGS2) and Seatbelt cannot stop it, so the runner re-executes itself with
     a scrubbed environment and passes prompts on stdin. Run as a real process."""
     exe = tmp_path / "claude"
-    exe.write_text(PROCARGS_PROBE)
+    exe.write_text(PROCARGS_PROBE.replace("#!/usr/bin/python3", f"#!{sys.executable}", 1))
     exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
     queue_job(runs)
     env = {

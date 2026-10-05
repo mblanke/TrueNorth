@@ -329,7 +329,7 @@ the run's own slug. `package.zip` serves only files that resolve inside the call
 **Runner isolation (S1b).** Request and feedback text from any tenant drives the engine,
 and its tools include arbitrary Python, so Claude Code's `--allowedTools` rules are not a
 boundary. The runner runs the whole `claude` process tree for each job in an OS sandbox
-where file writes are denied by default (`tools/arc2/confine.py`, Seatbelt via `sandbox-exec` on macOS):
+where file writes are denied by default (`tools/arc2/confine.py`: Seatbelt via `sandbox-exec` on macOS, bubblewrap on Linux):
 
 | While a job runs | Allowed |
 |---|---|
@@ -411,7 +411,7 @@ Evidence:
   escapes that this version closes.
 
 Still open:
-- There is no Linux backend (bubblewrap).
+- Linux (bubblewrap, `confine.Bubblewrap`) shares the network namespace: localhost services and filesystem sockets stay reachable. Block the runner account's loopback traffic on the host, e.g. `iptables -A OUTPUT -o lo -m owner --uid-owner arc2runner -j REJECT`, and keep it out of the `docker` group.
 - The internet stays open, so the token can be exfiltrated (see above).
 - `/arc2` always uses `<repo>/build/arc2`, so `ARC2_RUNS_DIR` must point there for the
   engine, runner and API to agree.

@@ -38,6 +38,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install -r requirements-test.txt
+      # bubblewrap, so the Course Studio runner's Linux sandbox is tested end to end
+      # (tests/arc2/test_arc2_confinement.py). Ubuntu 24.04 blocks unprivileged user
+      # namespaces by default; allow them on this throwaway runner.
+      - run: |
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: pytest tests/ --tb=short -q --ignore=tests/integration
         env:
           AUTH_DISABLED: "true"
