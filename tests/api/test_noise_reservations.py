@@ -139,6 +139,69 @@ def test_destroying_a_range_frees_its_addresses_for_the_next(client, db_session,
     assert set(_reserved(db_session, late).values()) == set(held.values())
 
 
+def test_running_an_exercise_on_a_noisy_range_reserves_like_a_provision(client, db_session, sent):
+    """POST /exercises/{id}/run provisions the range itself: it must reserve too."""
+    rid = _range(client, _template(client, _noisy()))
+    sid = client.post(
+        "/scenarios", json={"name": "S", "version": "1.0", "yaml": "id: s\ntimeline: []", "is_public": True}
+    ).json()["id"]
+    ex = client.post("/exercises", json={"name": "E", "range_id": rid, "scenario_id": sid, "max_score": 10}).json()
+    assert client.post(f"/exercises/{ex['id']}/run").status_code == 200
+    held = _reserved(db_session, rid)
+    assert held and ("provision_range", rid, held) in sent
+    assert [o["action"] for o in client.get(f"/ranges/{rid}/operations").json()] == ["provision"]
+
+
+def test_reprovisioning_after_a_template_change_follows_the_new_mgmt_network(client, db_session, sent):
+    tid = _template(client, _noisy())
+    rid = _range(client, tid)
+    client.post(f"/ranges/{rid}/provision")
+    rng = db_session.get(Range, uuid.UUID(rid))
+    rng.state = RangeState.failed
+    changed = _noisy(cidr="10.66.0.0/24")
+    for node in changed["nodes"]:  # and one agent fewer
+        if node["id"] == "lnx02":
+            node["noise"] = {"agent": False}
+    rng.template.yaml = yaml.safe_dump(changed)
+    db_session.commit()
+    assert client.post(f"/ranges/{rid}/provision").status_code == 202
+    held = _reserved(db_session, rid)
+    assert "lnx02" not in held, "a node that is no longer an agent keeps no address"
+    assert held and all(v.startswith("10.66.0.") for v in held.values()), held
+
+
+def test_turning_noise_off_releases_the_ranges_addresses(client, db_session, sent):
+    rid = _range(client, _template(client, _noisy()))
+    client.post(f"/ranges/{rid}/provision")
+    rng = db_session.get(Range, uuid.UUID(rid))
+    rng.state = RangeState.failed
+    rng.template.yaml = yaml.safe_dump(RVB)
+    db_session.commit()
+    client.post(f"/ranges/{rid}/provision")
+    assert _reserved(db_session, rid) == {}
+    assert sent[-1] == ("provision_range", rid)
+
+
+def test_overlapping_mgmt_networks_on_one_vlan_never_share_an_address(client, db_session, sent):
+    """One portgroup per VLAN: a /24 and a /25 of it are the same wire."""
+    a = _range(client, _template(client, _noisy(cidr="10.255.0.0/24")))
+    b = _range(client, _template(client, _noisy(cidr="10.255.0.0/25")))
+    client.post(f"/ranges/{a}/provision")
+    client.post(f"/ranges/{b}/provision")
+    assert not set(_reserved(db_session, a).values()) & set(_reserved(db_session, b).values())
+
+
+def test_a_batch_that_overflows_the_pool_accepts_none(client, db_session, sent):
+    tid = _template(client, _noisy(cidr=SMALL))  # room for three ranges
+    ids = [_range(client, tid) for _ in range(4)]
+    r = client.post("/ranges/batch-provision", json={"range_ids": ids})
+    assert r.status_code == 409, r.text
+    db_session.expire_all()
+    assert db_session.query(NetworkReservation).count() == 0
+    assert all(client.get(f"/ranges/{i}/operations").json() == [] for i in ids)
+    assert sent == []
+
+
 # ── Deploy registers agents where the worker put them ──────────────────
 @pytest.fixture
 def deployed(monkeypatch):

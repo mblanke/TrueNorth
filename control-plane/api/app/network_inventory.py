@@ -12,7 +12,9 @@ nobody in the same ``domain`` holds, across all tenants. It is:
 * **Capacity-checked.** If the pool cannot hold every new holder, nothing is reserved
   and ``PoolExhaustedError`` names the domain and the shortfall.
 
-``release_range`` frees everything a range holds; ``range_ops.reconcile`` calls it when a
+``sync`` is ``reserve`` for a holder set that can shrink or move: it first releases what
+the range holds for holders no longer listed or in another domain. ``release_range`` frees
+everything a range holds; ``range_ops.reconcile`` calls it when a
 destroy succeeds. Rows also go with the range (ON DELETE CASCADE).
 
 Consumers: noise agents' management addresses (app/noise/mgmt.py, reserved when a
@@ -100,7 +102,9 @@ def reserve(db: Session, rng: Range, *, domain: str, kind: str, pool: list[str],
     mine = {
         r.holder: r.value
         for r in db.query(NetworkReservation).filter(
-            NetworkReservation.range_id == rng.id, NetworkReservation.kind == kind
+            NetworkReservation.range_id == rng.id,
+            NetworkReservation.kind == kind,
+            NetworkReservation.domain == domain,
         )
     }
     needed = [h for h in dict.fromkeys(holders) if h not in mine]
@@ -143,6 +147,30 @@ def reserve(db: Session, rng: Range, *, domain: str, kind: str, pool: list[str],
         mine[holder] = value
     db.flush()  # the unique constraints are the last word, inside this transaction
     return {h: mine[h] for h in holders}
+
+
+def sync(db: Session, rng: Range, *, domain: str, kind: str, pool: list[str], holders: list[str]) -> dict[str, str]:
+    """Make the range hold exactly ``holders`` in ``domain``, from ``pool``: first release
+    what it holds of ``kind`` for anything else (a holder that went away, another domain,
+    a value outside the pool after the range's template changed), then ``reserve``.
+    Does not commit. An empty ``holders`` releases all of ``kind``."""
+    keep, allowed = set(holders), set(pool)
+    stale = [
+        r.id
+        for r in db.query(NetworkReservation).filter(
+            NetworkReservation.range_id == rng.id, NetworkReservation.kind == kind
+        )
+        if r.domain != domain or r.holder not in keep or r.value not in allowed
+    ]
+    if stale:
+        db.execute(
+            delete(NetworkReservation)
+            .where(NetworkReservation.id.in_(stale))
+            .execution_options(synchronize_session=False)
+        )
+    if not holders:
+        return {}
+    return reserve(db, rng, domain=domain, kind=kind, pool=pool, holders=holders)
 
 
 def release_range(db: Session, range_id: uuid.UUID) -> int:

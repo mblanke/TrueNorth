@@ -32,10 +32,9 @@ def settings(template: dict) -> dict:
 
 
 def domain(template: dict) -> str:
-    """The shared network these addresses must be unique in: one portgroup per VLAN."""
-    mgmt = settings(template)
-    net = ipaddress.ip_network(str(mgmt["cidr"]), strict=False)
-    return f"noise-mgmt:vlan{int(mgmt['vlan_id'])}:{net}"
+    """The shared network these addresses must be unique in: the management portgroup,
+    one per VLAN. Not the CIDR: a /24 and a /25 of it are the same wire."""
+    return f"noise-mgmt:vlan{int(settings(template)['vlan_id'])}"
 
 
 def pool(template: dict) -> list[str]:
@@ -56,15 +55,18 @@ def range_template(rng: Range) -> dict:
 
 
 def reserve(db: Session, rng: Range, template: dict) -> dict[str, str]:
-    """{agent node: address} for every agent node, reserving as needed. Does not commit.
+    """{agent node: address} for every agent node, reserving as needed and releasing what
+    the range no longer needs. Does not commit.
 
-    Empty when the template has no noise. Raises ``network_inventory.PoolExhaustedError``
+    Empty (and nothing held) when the template has no noise. Raises ``network_inventory.PoolExhaustedError``
     when the management network cannot hold this range's agents.
     """
     nodes = [n["node"] for n in topology.agent_nodes(template)]
-    if not nodes:
-        return {}
-    return network_inventory.reserve(db, rng, domain=domain(template), kind=KIND, pool=pool(template), holders=nodes)
+    # sync, not reserve: after a template edit the range releases addresses its former
+    # agents held, or that are on its former management network; with noise off, all.
+    return network_inventory.sync(
+        db, rng, domain=domain(template), kind=KIND, pool=pool(template) if nodes else [], holders=nodes
+    )
 
 
 def reserved(db: Session, range_id: uuid.UUID) -> dict[str, str]:

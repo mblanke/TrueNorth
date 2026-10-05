@@ -655,9 +655,12 @@ def batch_provision_ranges(
     owned_or_404(db, Range, body.range_ids, user)
     try:
         ordered = sorted(set(body.range_ids), key=str)
-        for rid in ordered:  # every range passes before any operation is written
-            range_ops.check(db, rid, user, "provision")
-        ops = [range_ops.accept(db, rid, user, "provision")[0] for rid in ordered]
+        # A refusal while accepting (a full address pool shows only then) undoes the
+        # operations and reservations of the ranges accepted before it.
+        with db.begin_nested():
+            for rid in ordered:  # every range passes before any operation is written
+                range_ops.check(db, rid, user, "provision")
+            ops = [range_ops.accept(db, rid, user, "provision")[0] for rid in ordered]
         _audit(db, user, "batch_provision", "range", f"{len(ops)} ranges")
         db.commit()
     except HTTPException:
