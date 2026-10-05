@@ -1,0 +1,18 @@
+# tests/arc2/test_arc2_confinement.py on macOS (Darwin 27.2.0), in this session's shell where sandbox-exec works (an earlier reviewer's nested sandbox could not run it), candidate 8d93ab1, 2026-10-05
+tests/arc2/test_arc2_confinement.py::test_a_confined_job_reaches_only_its_own_run[seatbelt] PASSED [  6%]
+tests/arc2/test_arc2_confinement.py::test_the_history_snapshot_runs_nothing_the_job_planted[seatbelt] PASSED [ 12%]
+tests/arc2/test_arc2_confinement.py::test_a_run_folder_replaced_by_a_link_is_not_recorded[repo] PASSED [ 18%]
+tests/arc2/test_arc2_confinement.py::test_a_run_folder_replaced_by_a_link_is_not_recorded[other_run] PASSED [ 25%]
+tests/arc2/test_arc2_confinement.py::test_without_a_sandbox_the_runner_does_not_start PASSED [ 31%]
+tests/arc2/test_arc2_confinement.py::test_an_unavailable_or_unknown_sandbox_is_an_error_not_a_downgrade[auto] PASSED [ 37%]
+tests/arc2/test_arc2_confinement.py::test_an_unavailable_or_unknown_sandbox_is_an_error_not_a_downgrade[seatbelt] PASSED [ 43%]
+tests/arc2/test_arc2_confinement.py::test_an_unavailable_or_unknown_sandbox_is_an_error_not_a_downgrade[bubblewrap] PASSED [ 50%]
+tests/arc2/test_arc2_confinement.py::test_an_unavailable_or_unknown_sandbox_is_an_error_not_a_downgrade[firejail] PASSED [ 56%]
+tests/arc2/test_arc2_confinement.py::test_an_unavailable_or_unknown_sandbox_is_an_error_not_a_downgrade[yes] PASSED [ 62%]
+tests/arc2/test_arc2_confinement.py::test_running_unconfined_takes_an_explicit_choice PASSED [ 68%]
+tests/arc2/test_arc2_confinement.py::test_the_profile_denies_writes_by_default_and_allows_the_job_last PASSED [ 75%]
+tests/arc2/test_arc2_confinement.py::test_the_job_environment_is_an_allow_list PASSED [ 81%]
+tests/arc2/test_arc2_confinement.py::test_the_engine_ignores_user_settings_and_may_edit_only_its_own_run PASSED [ 87%]
+tests/arc2/test_arc2_confinement.py::test_the_runners_own_environment_holds_nothing_a_job_could_read PASSED [ 93%]
+tests/arc2/test_arc2_confinement.py::test_the_runner_keeps_only_its_own_settings_and_forwarded_names PASSED [100%]
+============================== 16 passed in 1.49s ==============================
