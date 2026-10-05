@@ -58,6 +58,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from arc2.confine import Confinement, ConfinementError, Jail, Unconfined, select
+from arc2.egress import EgressProxy, LocalForward
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SLUG_RE = re.compile(r"^arc2-[a-z0-9-]{1,60}$")
@@ -327,7 +328,7 @@ def _local_ports(fallback: Fallback | None) -> tuple[int, ...]:
 
 def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOUT,
             fallback: Fallback | None = None, confinement: Confinement | None = None,
-            runs: Path | None = None) -> dict:
+            runs: Path | None = None, egress: EgressProxy | None = None) -> dict:
     """Run one job on Claude; if Claude is unavailable, run it again on the local fallback.
 
     Both attempts run inside ``confinement`` (arc2/confine.py). Confined, a job gets a
@@ -350,11 +351,16 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
             (home / sub).mkdir(parents=True, exist_ok=True)
         home.chmod(0o700)
         env = job_env(home)
+        if egress:
+            env.update(egress.env(), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1")
+            record["egress"] = list(egress.allow)
     jail = Jail(
         repo=REPO_ROOT, runs=runs, home=Path.home(),
         writable=tuple(p for p in (runs / record["slug"], home) if p is not None),
         writable_files=(runs / f"{record['slug']}.request.txt",),
         readable=_claude_install(claude), local_ports=_local_ports(fallback),
+        egress_port=egress.port if egress and not isinstance(confinement, Unconfined) else None,
+        bridges=tuple(getattr(egress, "bridges", ())) if egress else (),
     )
     try:
         record = _attempt(record, path, confinement.wrap(command_for(record, claude), jail), env, timeout,
@@ -633,6 +639,24 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr, flush=True)
         return 3
     owner = {"pid": os.getpid(), "host": os.uname().nodename, "started_at": now()}
+    # Confined jobs reach the internet only through this allow-listing proxy (arc2/egress.py).
+    # ARC2_EGRESS=open leaves egress unrestricted (the sandbox still applies).
+    egress = None
+    forwards: list[LocalForward] = []
+    if confinement.name != "none" and os.environ.get("ARC2_EGRESS", "proxy").lower() != "open":
+        if confinement.name == "bubblewrap":
+            # Linux jobs get a network namespace of their own; the proxy and the local
+            # fallback reach them as Unix sockets (arc2/netbridge.py) in a private directory.
+            import tempfile
+
+            sockets = Path(tempfile.mkdtemp(prefix="arc2-net-"))
+            egress = EgressProxy(unix_path=str(sockets / "egress.sock")).start()
+            egress.bridges = [(egress.port, sockets / "egress.sock")]
+            for port in _local_ports(fallback):
+                forwards.append(LocalForward(str(sockets / f"local-{port}.sock"), port))
+                egress.bridges.append((port, sockets / f"local-{port}.sock"))
+        else:
+            egress = EgressProxy().start()
     recover(queue, jobs)
     print(f"arc2 runner: watching {queue} (claude: {claude}; fallback: "
           f"{fallback.label + ' at ' + fallback.url if fallback else 'off'}; confinement: {confinement.name})",
@@ -643,7 +667,7 @@ def main(argv: list[str] | None = None) -> int:
             if claimed:
                 record, path = claimed
                 print(f"{now()} {record['action']} {record['slug']}: running", flush=True)
-                record = run_job(record, path, claude, args.timeout, fallback, confinement, args.runs)
+                record = run_job(record, path, claude, args.timeout, fallback, confinement, args.runs, egress)
                 commit = snapshot(args.runs, record, path.with_suffix(".log"), confinement)
                 if commit:
                     record["history_commit"] = commit
@@ -656,6 +680,10 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(args.poll)
     finally:
         lock.close()  # releases the flock
+        if egress:
+            egress.close()
+        for forward in forwards:
+            forward.close()
 
 
 # The runner's own environment, as the kernel recorded it at exec. A confined job cannot
