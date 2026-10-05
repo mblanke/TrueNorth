@@ -259,3 +259,37 @@ def test_on_postgres_two_concurrent_provisions_send_one_task():
         engine.dispose()
         with admin.connect() as conn:
             conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
+def test_a_dispatch_with_no_outcome_is_reported_but_still_blocks(client, db_session, sent, monkeypatch):
+    rng = _range(client)
+    client.post(f"/ranges/{rng['id']}/provision")
+    monkeypatch.setenv("RANGE_OP_STALE_AFTER_SECONDS", "0")
+    [op] = _ops(client, rng["id"])
+    assert op["status"] == "dispatched", "silence is not proof that the hypervisor stopped"
+    assert op["error"]["code"] == "no_outcome"
+    assert client.get(f"/ranges/{rng['id']}").json()["state"] == "provisioning"
+
+
+def test_an_operator_can_abandon_an_operation_that_will_not_finish(client, db_session, sent):
+    rng = _range(client)
+    r = client.post(f"/ranges/{rng['id']}/provision")
+    op_id = r.headers["Operation-Id"]
+    gone = client.post(f"/ranges/{rng['id']}/operations/{op_id}/abandon")
+    assert gone.status_code == 200
+    assert gone.json()["status"] == "failed" and gone.json()["error"]["code"] == "abandoned"
+    assert client.get(f"/ranges/{rng['id']}").json()["state"] == "failed"
+    assert client.post(f"/ranges/{rng['id']}/operations/{op_id}/abandon").status_code == 409
+    assert client.post(f"/ranges/{rng['id']}/destroy").status_code == 202, "the range can be cleaned up now"
+
+
+def test_a_batch_records_one_operation_per_range_or_none(client, db_session, sent):
+    a, b = _range(client), _range(client)
+    r = client.post("/ranges/batch-provision", json={"range_ids": [a["id"], b["id"]]})
+    assert r.status_code == 202 and r.json()["dispatched"] == 2
+    assert {s[0] for s in sent} == {"provision_range"} and len(sent) == 2
+    assert [o["action"] for o in _ops(client, a["id"])] == ["provision"]
+    c = _range(client)
+    refused = client.post("/ranges/batch-provision", json={"range_ids": [c["id"], a["id"]]})
+    assert refused.status_code == 409, "a is already provisioning: the batch accepts nothing"
+    assert _ops(client, c["id"]) == []

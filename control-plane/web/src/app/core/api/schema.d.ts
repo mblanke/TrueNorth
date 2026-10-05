@@ -3770,6 +3770,13 @@ export interface paths {
         /**
          * Batch Provision Ranges
          * @description Batch-provision multiple ranges.  **Permission: range:batch_provision**
+         *
+         *     Each range gets its own provision operation (app/range_ops.py), all accepted in one
+         *     transaction: one refusal (not the caller's, wrong state, already busy) accepts none.
+         *     Ranges are locked in id order so two overlapping batches cannot deadlock. The
+         *     worker only provisions a range the API moved to ``provisioning``, so the old
+         *     single ``batch_provision`` task, which did not, is no longer sent. ``task_id`` now
+         *     carries the operations' ids, comma-separated.
          */
         post: operations["batch_provision_ranges_ranges_batch_provision_post"];
         delete?: never;
@@ -3979,6 +3986,30 @@ export interface paths {
         get: operations["get_range_operation_ranges__range_id__operations__operation_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/operations/{operation_id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon Range Operation
+         * @description Give up on an in-flight operation that will not finish (lost task, dead worker).
+         *
+         *     Check the hypervisor first: the API cannot see whether work is still running there.
+         *     The range goes to ``failed``, from where it can be destroyed or provisioned again.
+         *     **Permission: range:destroy**
+         */
+        post: operations["abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -18226,6 +18257,38 @@ export interface operations {
         };
     };
     get_range_operation_ranges__range_id__operations__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeOperationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post: {
         parameters: {
             query?: never;
             header?: never;

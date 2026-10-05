@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import ipaddress
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -197,3 +198,19 @@ def golden_image_resolver(db, hypervisor: str = "vsphere") -> Callable[[str], st
         return by_id.get(os_alias) or by_alias.get(os_alias)
 
     return _resolve
+
+
+def load_template(raw: str | None) -> dict:
+    """A template's stored text as a dict: YAML (content/ranges/*.yaml), or JSON. Empty or
+    unreadable gives {}: provisioners do not require template content."""
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        try:
+            import yaml
+
+            return yaml.safe_load(raw) or {}
+        except Exception:  # noqa: BLE001
+            return {}

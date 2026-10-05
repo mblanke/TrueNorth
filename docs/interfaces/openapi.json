@@ -23968,7 +23968,7 @@
     },
     "/ranges/batch-provision": {
       "post": {
-        "description": "Batch-provision multiple ranges.  **Permission: range:batch_provision**",
+        "description": "Batch-provision multiple ranges.  **Permission: range:batch_provision**\n\nEach range gets its own provision operation (app/range_ops.py), all accepted in one\ntransaction: one refusal (not the caller's, wrong state, already busy) accepts none.\nRanges are locked in id order so two overlapping batches cannot deadlock. The\nworker only provisions a range the API moved to ``provisioning``, so the old\nsingle ``batch_provision`` task, which did not, is no longer sent. ``task_id`` now\ncarries the operations' ids, comma-separated.",
         "operationId": "batch_provision_ranges_ranges_batch_provision_post",
         "requestBody": {
           "content": {
@@ -24753,6 +24753,65 @@
           }
         ],
         "summary": "Get Range Operation",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/operations/{operation_id}/abandon": {
+      "post": {
+        "description": "Give up on an in-flight operation that will not finish (lost task, dead worker).\n\nCheck the hypervisor first: the API cannot see whether work is still running there.\nThe range goes to ``failed``, from where it can be destroyed or provisioned again.\n**Permission: range:destroy**",
+        "operationId": "abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOperationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abandon Range Operation",
         "tags": [
           "ranges"
         ]

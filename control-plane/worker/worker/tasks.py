@@ -23,7 +23,9 @@ from datetime import UTC, datetime
 from celery import Task, group
 
 from .celery_app import app
+from .fencing import skipped
 from .provisioners import get_provisioner
+from .render import load_template
 
 logger = logging.getLogger("truenorth.worker")
 
@@ -98,7 +100,7 @@ def _update_range_state(
             # CAST: `state` is a native enum on Postgres and plain text on SQLite.
             sql += f" AND CAST(state AS TEXT) IN ({', '.join(':' + k for k in keys)})"
             params.update(zip(keys, only_from, strict=True))
-        db.execute(text(sql), params)
+        return db.execute(text(sql), params).rowcount
 
 
 def _notify_api(channel: str, message: dict):
@@ -154,8 +156,8 @@ def provision_range(self, range_id: str):
     structured ProvisionResult back to the database.
     """
     logger.info(f"[provision] Starting range {range_id}")
-    _update_range_state(range_id, "provisioning")
-    _notify_api("range", {"id": range_id, "state": "provisioning"})
+    if not _update_range_state(range_id, "provisioning", only_from=("provisioning",)):  # fencing.py
+        return skipped("provision", range_id, "provisioning")
 
     try:
         # Fetch template, allocations, and provisioner_backend from DB
@@ -171,19 +173,7 @@ def provision_range(self, range_id: str):
                 {"rid": range_id},
             ).first()
 
-        # The template column holds YAML (see content/ranges/*.yaml); tolerate JSON too.
-        raw = row[0] if row and row[0] else ""
-        template = {}
-        if raw:
-            try:
-                template = json.loads(raw)
-            except (json.JSONDecodeError, TypeError):
-                try:
-                    import yaml as _yaml
-
-                    template = _yaml.safe_load(raw) or {}
-                except Exception:  # noqa: BLE001 — provisioners don't require template content
-                    template = {}
+        template = load_template(row[0] if row else None)
         backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
         allocations: dict = {}
 
@@ -229,14 +219,15 @@ def provision_range(self, range_id: str):
             }
         )
 
-        _update_range_state(range_id, "ready", output=output)
+        _update_range_state(range_id, "ready", output=output, only_from=("provisioning",))
         _notify_api("range", {"id": range_id, "state": "ready"})
         logger.info(f"[provision] Range {range_id} ready ({len(result.vms)} VMs)")
         return {"status": "ready", "range_id": range_id, "vm_count": len(result.vms)}
 
     except Exception as e:
-        _update_range_state(range_id, "failed", error=str(e))
-        _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        if _last_attempt(self):  # a retry must still find the range in provisioning
+            _update_range_state(range_id, "failed", error=str(e), only_from=("provisioning",))
+            _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[provision] Range {range_id} FAILED: {e}")
         raise
 
@@ -271,8 +262,8 @@ def destroy_range(self, range_id: str):
     the provisioner class hierarchy, and updates range state.
     """
     logger.info(f"[destroy] Starting range {range_id}")
-    _update_range_state(range_id, "destroying")
-    _notify_api("range", {"id": range_id, "state": "destroying"})
+    if not _update_range_state(range_id, "destroying", only_from=("destroying",)):  # fencing.py
+        return skipped("destroy", range_id, "destroying")
 
     try:
         # Get provisioner output and backend from DB
@@ -293,14 +284,15 @@ def destroy_range(self, range_id: str):
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
-        _update_range_state(range_id, "destroyed")
+        _update_range_state(range_id, "destroyed", only_from=("destroying",))
         _notify_api("range", {"id": range_id, "state": "destroyed"})
         logger.info(f"[destroy] Range {range_id} destroyed ({result.resources_removed} resources)")
         return {"status": "destroyed", "range_id": range_id}
 
     except Exception as e:
-        _update_range_state(range_id, "failed", error=str(e))
-        _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        if _last_attempt(self):  # a retry must still find the range in destroying
+            _update_range_state(range_id, "failed", error=str(e), only_from=("destroying",))
+            _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[destroy] Range {range_id} FAILED: {e}")
         raise
 

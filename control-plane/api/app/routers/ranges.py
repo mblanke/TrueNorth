@@ -560,6 +560,38 @@ def get_range_operation(
     return op
 
 
+@router.post("/{range_id}/operations/{operation_id}/abandon", response_model=range_ops.RangeOperationOut)
+def abandon_range_operation(
+    range_id: uuid.UUID = Path(...),
+    operation_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_DESTROY)),
+) -> RangeOperation:
+    """Give up on an in-flight operation that will not finish (lost task, dead worker).
+
+    Check the hypervisor first: the API cannot see whether work is still running there.
+    The range goes to ``failed``, from where it can be destroyed or provisioned again.
+    **Permission: range:destroy**
+    """
+    rng = _tenant_range(db, range_id, user)
+    op = (
+        db.query(RangeOperation)
+        .filter(
+            RangeOperation.id == operation_id,
+            RangeOperation.range_id == rng.id,
+            RangeOperation.tenant_id == rng.tenant_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if not op:
+        raise HTTPException(404, "Operation not found")
+    range_ops.abandon(db, rng, op, user)
+    _audit(db, user, "abandon_operation", "range", str(rng.id), f"operation {op.id}")
+    db.commit()
+    return op
+
+
 @router.post("/{range_id}/stop", response_model=RangeOut)
 async def stop_range(
     range_id: uuid.UUID = Path(...),
@@ -582,19 +614,33 @@ def batch_provision_ranges(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_BATCH_PROVISION)),
 ) -> BatchProvisionOut:
-    """Batch-provision multiple ranges.  **Permission: range:batch_provision**"""
-    range_ids = [str(rid) for rid in body.range_ids]
+    """Batch-provision multiple ranges.  **Permission: range:batch_provision**
+
+    Each range gets its own provision operation (app/range_ops.py), all accepted in one
+    transaction: one refusal (not the caller's, wrong state, already busy) accepts none.
+    Ranges are locked in id order so two overlapping batches cannot deadlock. The
+    worker only provisions a range the API moved to ``provisioning``, so the old
+    single ``batch_provision`` task, which did not, is no longer sent. ``task_id`` now
+    carries the operations' ids, comma-separated.
+    """
     # owned_or_404 refuses partial results: a batch must not silently act on the
     # subset the caller happens to own.
-    ranges_found = owned_or_404(db, Range, body.range_ids, user)
-    for rng in ranges_found:
-        if not rng.state.can_transition_to(RangeState.provisioning):
-            raise HTTPException(409, f"Range {rng.id} in state {rng.state.value} cannot be provisioned")
-    task = _dispatch_task("batch_provision", range_ids)
-    task_id = task if isinstance(task, str) else "mock-batch"
-    _audit(db, user, "batch_provision", "range", f"{len(range_ids)} ranges")
-    db.commit()
-    return BatchProvisionOut(dispatched=len(range_ids), task_id=task_id)
+    owned_or_404(db, Range, body.range_ids, user)
+    try:
+        ordered = sorted(set(body.range_ids), key=str)
+        for rid in ordered:  # every range passes before any operation is written
+            range_ops.check(db, rid, user, "provision")
+        ops = [range_ops.accept(db, rid, user, "provision")[0] for rid in ordered]
+        _audit(db, user, "batch_provision", "range", f"{len(ops)} ranges")
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        raise
+    for op in ops:
+        range_ops.dispatch(db, op)
+    return BatchProvisionOut(dispatched=len(ops), task_id=",".join(str(op.id) for op in ops))
 
 
 # ── Snapshots ──────────────────────────────────────────────────────────

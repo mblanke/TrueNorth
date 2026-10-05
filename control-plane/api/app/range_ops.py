@@ -125,14 +125,7 @@ def accept(
             if existing.request_hash != digest:
                 raise HTTPException(409, "This Idempotency-Key was already used for a different request")
             return existing, rng, False
-    reconcile(db, rng)
-    if not rng.state.can_transition_to(spec.in_progress):
-        raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
-    busy = (
-        db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT)).first()
-    )
-    if busy:
-        raise HTTPException(409, f"A {busy.action} of this range is still in progress (operation {busy.id})")
+    _check(db, rng, action)
     generation = (
         db.query(func.max(RangeOperation.generation)).filter(RangeOperation.range_id == rng.id).scalar() or 0
     ) + 1
@@ -151,6 +144,23 @@ def accept(
     rng.state = spec.in_progress
     rng.error_message = None
     return op, rng, True
+
+
+def check(db: Session, range_id: uuid.UUID, user: CurrentUser, action: str) -> None:
+    """Lock the range and refuse (409) as ``accept`` would, writing nothing but reconciled
+    outcomes. A batch checks every range first, so one refusal leaves no partial batch."""
+    _check(db, _locked_range(db, range_id, user), action)
+
+
+def _check(db: Session, rng: Range, action: str) -> None:
+    reconcile(db, rng)
+    if not rng.state.can_transition_to(ACTIONS[action].in_progress):
+        raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
+    busy = (
+        db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT)).first()
+    )
+    if busy:
+        raise HTTPException(409, f"A {busy.action} of this range is still in progress (operation {busy.id})")
 
 
 def _user_uuid(user: CurrentUser) -> uuid.UUID | None:
@@ -206,16 +216,50 @@ def redispatch_pending(db: Session, *, min_age: timedelta = timedelta(seconds=15
     return sent
 
 
+def stale_after() -> timedelta:
+    return timedelta(seconds=float(os.getenv("RANGE_OP_STALE_AFTER_SECONDS", str(6 * 3600))))
+
+
 def reconcile(db: Session, rng: Range) -> None:
-    """Settle dispatched operations from the range's observed state. Does not commit."""
+    """Settle dispatched operations from the range's observed state. Does not commit.
+
+    No outcome long after dispatch (the worker died, the task was lost) is reported as
+    ``error.code = no_outcome``, but the operation stays in flight: a quiet task is not
+    proof that nothing is still happening on the hypervisor. ``abandon`` is the explicit,
+    human way out.
+    """
     for op in db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status == "dispatched"):
         outcome = ACTIONS[op.action].outcomes.get(rng.state) if op.action in ACTIONS else None
         if outcome is None:
+            dispatched = op.dispatched_at and op.dispatched_at.replace(tzinfo=op.dispatched_at.tzinfo or UTC)
+            if dispatched and _now() - dispatched > stale_after() and not op.error:
+                op.error = {
+                    "code": "no_outcome",
+                    "message": f"No result from the worker {stale_after()} after dispatch. The task may have been "
+                    "lost; check the hypervisor, then abandon the operation if nothing is running.",
+                }
             continue
         op.status = outcome
         op.finished_at = _now()
         if outcome == "failed":
             op.error = {"code": "range_failed", "message": (rng.error_message or "The worker reported a failure")[:500]}
+
+
+def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> None:
+    """An operator's decision that an in-flight operation will not finish. Does not commit.
+
+    The range goes to ``failed`` (from where it can be destroyed or provisioned again)
+    and the operation records who gave up on it. This is not automatic, because the
+    API cannot see whether the hypervisor is still working.
+    """
+    if op.status not in IN_FLIGHT:
+        raise HTTPException(409, f"Operation is already {op.status}")
+    op.status = "failed"
+    op.finished_at = _now()
+    op.error = {"code": "abandoned", "message": f"Abandoned by {user.email or user.id}"}
+    if rng.state == ACTIONS[op.action].in_progress:
+        rng.state = RangeState.failed
+        rng.error_message = f"{op.action} abandoned by an operator"
 
 
 async def redispatch_loop(session_factory, interval: float) -> None:
