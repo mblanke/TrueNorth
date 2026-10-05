@@ -188,3 +188,38 @@ def test_on_postgres_concurrent_reservations_in_one_domain_never_collide():
         engine.dispose()
         with admin.connect() as conn:
             conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
+def test_another_tenant_cannot_see_a_ranges_reservations(client, db_session):
+    from contextlib import contextmanager
+
+    from app.auth import CurrentUser, get_current_user
+    from app.main import app as fastapi_app
+    from app.models import UserRole
+
+    tmpl = client.post("/templates", json={"name": "T", "version": "1.0", "yaml": "id: t\n", "is_public": True}).json()
+    rid = client.post("/ranges", json={"name": "R", "template_id": tmpl["id"]}).json()["id"]
+    inv.reserve(
+        db_session,
+        db_session.get(Range, uuid.UUID(rid)),
+        domain=DOMAIN,
+        kind="noise_mgmt_ip",
+        pool=POOL,
+        holders=["ws01"],
+    )
+    db_session.flush()
+
+    @contextmanager
+    def acting_as(role, tenant):
+        who = CurrentUser(
+            id=str(uuid.uuid4()), email="x@x", display_name="x", role=role, tenant_id=tenant, keycloak_id="kc"
+        )
+        fastapi_app.dependency_overrides[get_current_user] = lambda: who
+        try:
+            yield
+        finally:
+            fastapi_app.dependency_overrides.pop(get_current_user, None)
+
+    with acting_as(UserRole.admin, "00000000-0000-0000-0000-0000000000ff"):
+        assert client.get(f"/ranges/{rid}/network-reservations").status_code == 404
+    assert [r["value"] for r in client.get(f"/ranges/{rid}/network-reservations").json()] == ["10.255.0.10"]
