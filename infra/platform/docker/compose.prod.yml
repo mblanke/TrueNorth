@@ -329,6 +329,8 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      # Seals stored credentials (app/secretbox.py); the workers need the same value.
+      TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
       OPENSEARCH_URL: http://opensearch:9200
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-truenorth}
@@ -428,6 +430,8 @@ services:
     environment: &worker-env
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      # Unseals the hypervisor login the API stored (worker/secretbox.py). Same value as the api.
+      TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
       OPENSEARCH_URL: http://opensearch:9200
       # See the api service: "proxmox" is not a registry key. vSphere is "vsphere_api".
       PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-mock}

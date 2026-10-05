@@ -5,7 +5,6 @@ Designed for 70,000-VM scale:
   - Exponential backoff retries with jitter
   - Proper DB session lifecycle (no leaks)
   - Telemetry batch ingest to OpenSearch
-  - Distributed locking via Redis for state transitions
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ from celery import Task, group
 
 from .celery_app import app
 from .provisioners import get_provisioner
+from .secretbox import unseal
 
 logger = logging.getLogger("truenorth.worker")
 
@@ -140,7 +140,7 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
         return {}
     return {
         "host": row[0], "port": row[1], "username": row[2],
-        "password": row[3] or "", "api_token": row[4] or "",
+        "password": unseal(row[3]) or "", "api_token": unseal(row[4]) or "",
         "verify_ssl": bool(row[5]), "datacenter": row[6] or "",
     }
 

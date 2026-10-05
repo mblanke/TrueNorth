@@ -31,6 +31,7 @@ from ..schemas import (
     AIModelRouteOut,
     AIModelRouteUpdate,
 )
+from ..secretbox import seal, unseal
 
 logger = logging.getLogger("truenorth.api.ai_config")
 
@@ -52,7 +53,7 @@ def create_backend(payload: AIBackendConfigIn, db: Session = Depends(get_db)):
         name=payload.name,
         backend_type=payload.backend_type,
         base_url=payload.base_url,
-        api_key_encrypted=payload.api_key,
+        api_key_encrypted=seal(payload.api_key),  # app/secretbox.py: never stored as typed
         is_primary=payload.is_primary,
         max_concurrent=payload.max_concurrent,
         timeout_seconds=payload.timeout_seconds,
@@ -79,7 +80,7 @@ def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Se
         raise HTTPException(404, "Backend not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "api_key":
-            backend.api_key_encrypted = value
+            backend.api_key_encrypted = seal(value)
         else:
             setattr(backend, field, value)
     db.commit()
@@ -288,7 +289,7 @@ def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
         # OpenAI-compatible backends (LiteLLM/vLLM) expose models at the backend
         # base_url, not on the Ollama port. Probe accordingly.
         if openai_like:
-            probe = _probe_openai_engine(backend.base_url, backend.api_key_encrypted)
+            probe = _probe_openai_engine(backend.base_url, unseal(backend.api_key_encrypted))
         else:
             probe = _probe_ollama_node(known["host"], known["port"])
 
@@ -478,7 +479,7 @@ def test_generate(
             result["node"] = node_label
         elif primary.backend_type in ("openai", "azure_openai", "anthropic", "vllm", "litellm"):
             req_model = model if model and model != "llama3.1:latest" else ""
-            result = _call_openai(primary.base_url, primary.api_key_encrypted, prompt, primary.timeout_seconds, req_model)
+            result = _call_openai(primary.base_url, unseal(primary.api_key_encrypted), prompt, primary.timeout_seconds, req_model)
         elif primary.backend_type == "mock":
             result = _call_mock(prompt)
         else:

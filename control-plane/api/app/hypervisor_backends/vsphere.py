@@ -9,6 +9,7 @@ import httpx
 
 from ..models import HypervisorConnection, HypervisorNode
 from ..schemas import HypervisorTestResult
+from ..secretbox import unseal
 from .base import BaseHypervisorBackend
 
 
@@ -31,7 +32,7 @@ def check_connection(conn: HypervisorConnection, db) -> HypervisorTestResult:
             # Create a session
             r = client.post(
                 f"{base}/api/session",
-                auth=(conn.username, conn.password_encrypted or ""),
+                auth=(conn.username, unseal(conn.password_encrypted) or ""),
             )
             r.raise_for_status()
             token = r.json()
@@ -89,7 +90,7 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
     base = f"https://{conn.host}"
     try:
         with httpx.Client(verify=conn.verify_ssl, timeout=15) as client:
-            r = client.post(f"{base}/api/session", auth=(conn.username, conn.password_encrypted or ""))
+            r = client.post(f"{base}/api/session", auth=(conn.username, unseal(conn.password_encrypted) or ""))
             r.raise_for_status()
             token = r.json()
             headers = {"vmware-api-session-id": token}

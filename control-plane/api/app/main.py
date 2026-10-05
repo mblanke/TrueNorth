@@ -164,6 +164,20 @@ app.add_middleware(
     max_age=86400,
 )
 
+# -- Stored credentials (app/secretbox.py) ----------------------------------
+# No key, or a key that does not open what is stored: a clear 503 naming the setting, never
+# a credential stored as typed or a login attempted with ciphertext.
+from fastapi.responses import JSONResponse
+
+from .secretbox import SecretKeyMissingError, SecretUnreadableError
+
+
+@app.exception_handler(SecretKeyMissingError)
+@app.exception_handler(SecretUnreadableError)
+async def _credentials_unavailable(request, exc):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
 # -- Security middleware (rate limit, headers, request ID, logging) ---------
 from .middleware import setup_middleware
 
