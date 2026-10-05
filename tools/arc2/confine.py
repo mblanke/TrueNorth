@@ -121,7 +121,13 @@ class Seatbelt(Confinement):
             "(deny signal (target others))",
             "(deny process-info* (target others))",
             "(deny network-outbound (remote unix-socket))",
-            f'(allow network-outbound (remote unix-socket (path-literal "{DNS_SOCKET}")))',
+            # DNS only without an egress proxy: with one, the proxy resolves hosts outside the
+            # sandbox, and a job that can query DNS can leak data in the names it looks up.
+            *(
+                []
+                if jail.egress_port
+                else [f'(allow network-outbound (remote unix-socket (path-literal "{DNS_SOCKET}")))']
+            ),
             '(deny network-outbound (remote ip "localhost:*"))',
             *(['(deny network-outbound (remote ip "*:*"))'] if jail.egress_port else []),
             *(
