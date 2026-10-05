@@ -91,13 +91,13 @@ def _extract_nodes(t: dict) -> list[dict]:
 
 
 # -- Background-noise management NIC -------------------------------------
-# Mirror of control-plane/api/app/noise/topology.py (agent_nodes). The API registers an
-# agent for each of these nodes at the address assigned here; tests/api/
-# test_noise_topology.py fails if the two disagree.
+# Which nodes get an agent mirrors control-plane/api/app/noise/topology.py (agent_nodes);
+# tests/api/test_noise_topology.py fails if the two disagree. Their addresses are NOT
+# derived here: the API reserves them when it accepts the provision (app/noise/mgmt.py)
+# and passes them to provision_range. A node with no reserved address gets no NIC.
 NOISE_AGENT_ROLES = frozenset({"workstation", "usersim", "traffic_generator"})
 _NOISE_DEFAULT_EXCLUDE = re.compile(r"red|blue|soc|mgmt|management", re.I)
 NOISE_DEFAULT_MGMT = {"vlan_id": 4001, "cidr": "10.255.0.0/24"}
-NOISE_MGMT_FIRST_HOST = 10
 
 
 def _noise_block(t: dict) -> dict:
@@ -115,10 +115,11 @@ def _is_noise_agent(node: dict, block: dict) -> bool:
     return node.get("role") in NOISE_AGENT_ROLES and not excluded
 
 
-def noise_mgmt_plan(template: dict) -> tuple[dict | None, dict[str, dict]]:
-    """(management network definition, {vm hostname: mgmt nic}) — empty unless noise is on."""
+def noise_mgmt_plan(template: dict, addresses: dict[str, str] | None = None) -> tuple[dict | None, dict[str, dict]]:
+    """(management network definition, {vm hostname: mgmt nic}) for the agent nodes that
+    hold a reserved address in ``addresses``. Empty unless noise is on and some do."""
     block = _noise_block(template)
-    if not block.get("enabled"):
+    if not block.get("enabled") or not addresses:
         return None, {}
     mgmt = {**NOISE_DEFAULT_MGMT, **(block.get("mgmt") or {})}
     net = ipaddress.ip_network(mgmt["cidr"], strict=False)
@@ -126,14 +127,11 @@ def noise_mgmt_plan(template: dict) -> tuple[dict | None, dict[str, dict]]:
     for node in template.get("nodes") or []:  # noise is a `nodes`-format feature only
         count = int(node.get("count", 1) or 1)
         for r in range(count):
-            if not _is_noise_agent(node, block):
-                continue
             host = f"{node.get('id', 'vm')}-{r}" if count > 1 else str(node.get("id", "vm"))
-            nics[host] = {
-                "vlan_id": int(mgmt["vlan_id"]),
-                "ip": str(net.network_address + NOISE_MGMT_FIRST_HOST + len(nics)),
-                "prefix": net.prefixlen,
-            }
+            if _is_noise_agent(node, block) and addresses.get(host):
+                nics[host] = {"vlan_id": int(mgmt["vlan_id"]), "ip": addresses[host], "prefix": net.prefixlen}
+    if not nics:
+        return None, {}
     network = {
         "name": "noise_mgmt",
         "vlan_id": int(mgmt["vlan_id"]),
@@ -149,6 +147,7 @@ def render_topology(
     range_id: str,
     resolve_template: Callable[[str], str | None],
     vlan_base: int = 100,
+    noise_mgmt: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return {range_name, vm_definitions, network_definitions, vlan_map, unresolved}.
 
@@ -216,7 +215,7 @@ def render_topology(
                 "services": node.get("services", []),
             })
 
-    noise_net, noise_nics = noise_mgmt_plan(template)
+    noise_net, noise_nics = noise_mgmt_plan(template, noise_mgmt)
     if noise_net:
         networks.append(noise_net)
         # Agent VMs get a full guest network config (vSphere guestinfo), so they need

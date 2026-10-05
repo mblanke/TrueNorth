@@ -148,7 +148,7 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
-def provision_range(self, range_id: str):
+def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
     """Provision a single range using the configured backend.
 
     Fetches the range template from the database, delegates to the
@@ -186,7 +186,7 @@ def provision_range(self, range_id: str):
             with _db_session() as db2:
                 resolver = golden_image_resolver(db2, hv)
                 creds = _hypervisor_creds(db2, hv)
-            rendered = render_topology(template, range_id, resolver)
+            rendered = render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt)
             template = {
                 **template,
                 "name": rendered["range_name"],

@@ -15,8 +15,8 @@ nobody in the same ``domain`` holds, across all tenants. It is:
 ``release_range`` frees everything a range holds; ``range_ops.reconcile`` calls it when a
 destroy succeeds. Rows also go with the range (ON DELETE CASCADE).
 
-Consumers (noise deploy, vSphere uplink/VLAN allocation) adopt this in S4b/S5a; until
-then the table is unused.
+Consumers: noise agents' management addresses (app/noise/mgmt.py, reserved when a
+provision is accepted, S4b). vSphere uplink/VLAN allocation adopts it in S5a.
 """
 
 from __future__ import annotations

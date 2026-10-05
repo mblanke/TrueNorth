@@ -157,7 +157,11 @@ def test_render_output_feeds_the_provisioner():
     rvb = yaml.safe_load((Path(__file__).resolve().parents[2] / "content/ranges/red-vs-blue/template.yaml").read_text())
     t = copy.deepcopy(rvb)
     t["noise"] = {"enabled": True}
-    rendered = render_topology(t, "abcdef0123456789", lambda alias: alias)
+    # The API reserves these when it accepts the provision (app/noise/mgmt.py).
+    reserved = {
+        h: f"10.255.0.{40 + i}" for i, h in enumerate(("lnx01", "lnx02", "tgen01", "ws01", "ws02", "ws03", "ws04"))
+    }
+    rendered = render_topology(t, "abcdef0123456789", lambda alias: alias, noise_mgmt=reserved)
     agents = [v for v in rendered["vm_definitions"] if "mgmt" in v]
     prov = FakeVcenter()
     result = _run(prov, *agents)

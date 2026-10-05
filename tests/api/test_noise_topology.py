@@ -54,14 +54,14 @@ class TestAgentNodes:
         t["noise"]["exclude_vlans"] = ["red_team"]
         assert "analyst01" in {n["node"] for n in topology.agent_nodes(t)}
 
-    def test_mgmt_addresses_are_unique_and_inside_the_mgmt_net(self):
-        import ipaddress
-
-        nodes = topology.agent_nodes(_with_noise(mgmt={"vlan_id": 3999, "cidr": "172.31.9.0/24"}))
-        ips = [n["mgmt_ip"] for n in nodes]
-        assert len(set(ips)) == len(ips)
-        assert all(ipaddress.ip_address(ip) in ipaddress.ip_network("172.31.9.0/24") for ip in ips)
-        assert {n["mgmt_vlan"] for n in nodes} == {3999}
+    def test_mgmt_addresses_are_the_reserved_ones_never_derived(self):
+        # Reserved per range on the shared portgroup (app/noise/mgmt.py,
+        # tests/api/test_noise_reservations.py); template order gives nothing.
+        t = _with_noise(mgmt={"vlan_id": 3999, "cidr": "172.31.9.0/24"})
+        assert {n["mgmt_ip"] for n in topology.agent_nodes(t)} == {""}
+        nodes = {n["node"]: n for n in topology.agent_nodes(t, {"lnx01": "172.31.9.42"})}
+        assert nodes["lnx01"]["mgmt_ip"] == "172.31.9.42" and nodes["tgen01"]["mgmt_ip"] == ""
+        assert {n["mgmt_vlan"] for n in nodes.values()} == {3999}
 
 
 class TestTargets:
@@ -89,12 +89,14 @@ def test_worker_and_api_agree_on_agent_nodes_and_addresses():
     from worker.render import render_topology
 
     t = _with_noise(mgmt={"vlan_id": 4001, "cidr": "10.255.0.0/24"})
-    rendered = render_topology(t, "abcdef0123456789", lambda alias: alias)
+    # Every node the API would reserve for, each with a distinct address.
+    reserved = {n["node"]: f"10.255.0.{100 + i}" for i, n in enumerate(topology.agent_nodes(t))}
+    rendered = render_topology(t, "abcdef0123456789", lambda alias: alias, noise_mgmt=reserved)
     # VM names are "<first 8 of range id>-<hostname>".
     worker_side = {vm["name"][9:]: vm["mgmt"] for vm in rendered["vm_definitions"] if "mgmt" in vm}
     api_side = {
         n["node"]: {"vlan_id": n["mgmt_vlan"], "ip": n["mgmt_ip"], "prefix": n["mgmt_prefix"]}
-        for n in topology.agent_nodes(t)
+        for n in topology.agent_nodes(t, reserved)
     }
     assert worker_side == api_side and api_side
     mgmt_nets = [n for n in rendered["network_definitions"] if n["name"] == "noise_mgmt"]
@@ -120,6 +122,10 @@ def noisy_range(db_session):
     db_session.flush()
     r = Range(name="RvB noisy", template_id=tpl.id, tenant_id=DEV_TENANT, state="ready")
     db_session.add(r)
+    db_session.flush()
+    from app.noise import mgmt
+
+    mgmt.reserve(db_session, r, t)  # as accepting its provision did
     db_session.commit()
     return r
 

@@ -1,11 +1,10 @@
 """Shared-network addresses and VLANs: unique across tenants, idempotent, capacity-checked.
 
-The noise engine (uncommitted, network-traffic-noise-tool worktree) gives each agent's
-management NIC ``.10 + its index in the template`` on one portgroup shared by every
-range, so any two noise-enabled ranges collide, and two from the same template collide
-exactly. The vSphere branch allocates uplink IPs and VLANs under a Redis lock that is
+The noise engine gave each agent's management NIC ``.10 + its index in the template`` on
+one portgroup shared by every range, so any two noise-enabled ranges collided, and two
+from the same template collided exactly (fixed in S4b: tests/api/test_noise_reservations.py). The vSphere branch allocates uplink IPs and VLANs under a Redis lock that is
 skipped when Redis is down, with no database constraint. ``app/network_inventory.py``
-is the replacement both adopt (S4b/S5a): these tests pin its contract.
+is the replacement both adopt (S4b done, S5a): these tests pin its contract.
 """
 
 from __future__ import annotations

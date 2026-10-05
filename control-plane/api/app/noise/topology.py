@@ -17,10 +17,10 @@ Template opt-in, all optional except ``enabled``::
         noise: {agent: false}   # opt a node out (or in, for any other role)
 
 Agents go on workstations and user-simulation boxes by default. Which nodes are agent
-nodes, and the order their management addresses are handed out in, MUST match
-``control-plane/worker/worker/render.py`` (``noise_agent_vms``): the worker builds the
-management NIC, this side registers the agent. tests/api/test_noise_topology.py fails
-if the two drift apart.
+nodes MUST match ``control-plane/worker/worker/render.py`` (``_is_noise_agent``);
+tests/api/test_noise_topology.py fails if the two drift apart. Their management
+addresses are not derived here: they are reserved when the range is provisioned
+(``app/noise/mgmt.py``) and passed to the worker, which builds the NIC at that address.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ AGENT_ROLES = frozenset({"workstation", "usersim", "traffic_generator"})
 # where the people it is hidden from work.
 DEFAULT_EXCLUDE = re.compile(r"red|blue|soc|mgmt|management", re.I)
 DEFAULT_MGMT = {"vlan_id": 4001, "cidr": "10.255.0.0/24"}
-MGMT_FIRST_HOST = 10  # .1 is the controller's side, .10 onward the agents
+MGMT_FIRST_HOST = 10  # .1 is the controller's side, .10 onward the agents (app/noise/mgmt.py)
 
 # Node role -> the target pools it serves.
 ROLE_POOLS: dict[str, tuple[str, ...]] = {
@@ -84,15 +84,19 @@ def is_agent_node(node: dict, block: dict) -> bool:
     return node.get("role") in AGENT_ROLES and not _excluded(str(node.get("vlan", "")), block)
 
 
-def agent_nodes(template: dict) -> list[dict]:
-    """Every agent node with its management address. Empty unless noise is enabled."""
+def agent_nodes(template: dict, addresses: dict[str, str] | None = None) -> list[dict]:
+    """Every agent node, with the management address it holds in ``addresses`` (the
+    range's reservations; "" where it holds none). Empty unless noise is enabled."""
     block = noise_block(template)
     if not block.get("enabled"):
         return []
     mgmt = {**DEFAULT_MGMT, **(block.get("mgmt") or {})}
     net = ipaddress.ip_network(mgmt["cidr"], strict=False)
+    addresses = addresses or {}
     out = []
-    for i, (name, node) in enumerate((n, nd) for n, nd in _expand(template) if is_agent_node(nd, block)):
+    for name, node in _expand(template):
+        if not is_agent_node(node, block):
+            continue
         out.append(
             {
                 "node": name,
@@ -100,7 +104,7 @@ def agent_nodes(template: dict) -> list[dict]:
                 "os": str(node.get("os", "")),
                 "platform": "windows" if str(node.get("os", "")).lower().startswith("win") else "linux",
                 "ip": str(node.get("ip", "")),
-                "mgmt_ip": str(net.network_address + MGMT_FIRST_HOST + i),
+                "mgmt_ip": addresses.get(name, ""),
                 "mgmt_prefix": net.prefixlen,
                 "mgmt_vlan": int(mgmt["vlan_id"]),
             }

@@ -41,6 +41,7 @@ from ..auth import CurrentUser, client_ip
 from ..db import get_db
 from ..models import AuditLog, Range, RangeState
 from ..noise import dial, planner, targets, topology
+from ..noise import mgmt as noise_mgmt
 from ..noise.models import NoiseActivity, NoiseAgent, NoisePersona, NoiseProfile
 from ..noise.roster import builtin_roster
 from ..rbac import Permission, require_permission
@@ -541,7 +542,7 @@ def deploy(range_id: str, body: DeployIn, db: Session = Depends(get_db), user: C
     block = topology.noise_block(template)
     if not block.get("enabled"):
         raise HTTPException(409, "the range template has no `noise:` block with `enabled: true`")
-    nodes = topology.agent_nodes(template)
+    nodes = topology.agent_nodes(template, noise_mgmt.reserved(db, rng.id))
     linux = [n for n in nodes if n["platform"] == "linux"]
     skipped = [
         {"node": n["node"], "reason": f"{n['platform']} agent not available yet"} for n in nodes if n not in linux
@@ -577,6 +578,14 @@ def deploy(range_id: str, body: DeployIn, db: Session = Depends(get_db), user: C
             422,
             "set noise.mgmt.controller_url in the template (or NOISE_CONTROLLER_URL) to the API's https URL "
             "as reached from the management network",
+        )
+    if unreserved := [n["node"] for n in linux if not n["mgmt_ip"]]:
+        # Its NICs were built before addresses were reserved (or the template's agents
+        # changed since): nobody knows which address each agent is really on.
+        raise HTTPException(
+            409,
+            f"no reserved management address for {', '.join(unreserved)}; reprovision the range to give its "
+            "agents reserved addresses",
         )
 
     # Everything below is undone if the hand-off fails, so old tokens stay valid.
