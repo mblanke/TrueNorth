@@ -28,6 +28,7 @@ everything combined (green at `78711f4`).
 | 18 | S3b: worker fencing; lost tasks visible (`no_outcome`, abandon) | #17 |
 | 19 | S3c: range UI shows what an operation is doing | #18 |
 | 20 | S4a: collision-free network reservations | #19 |
+| 33 | S5a: vSphere VLAN/uplink allocation on reservations; start/stop as fenced operations (own session; merge before #30, see handoff §1) | #20 |
 | 29 | S4b: noise engine committed; its management addresses are reservations, not template order (sibling of #22) | #20 |
 | 22 | S6: populated-schema upgrade test; CI runs the Postgres tests | #20 |
 | 23 | S7: interruption exercise and browser journeys (evidence) | #22 |
@@ -54,8 +55,8 @@ Merge conflicts to expect, all resolved already on #24, which shows how to resol
 
 1. **Runner account (#15).** Create a standard macOS user `arc2runner`, run `claude setup-token` in it, and save the token to `~/.arc2/oauth-token` (mode 600). Steps are in `docs/arc2-course-studio.md`.
 2. **Noise engine (#29).** Committed from `.claude/worktrees/network-traffic-noise-tool-8407d2` unchanged; that worktree is untouched and can be cleaned up once #29 is merged. Its Ansible role and vSphere management NIC have never run against a real vCenter.
-3. **vSphere (S5a).** Integrating the vmware branch onto reservations and operations needs lab access for evidence; a follow-up task chip is waiting.
-4. **Review.** S8 is a self-assessment by the author of most of these changes; a second reviewer should confirm it.
+3. **vSphere lab run.** S5a is #33, integrated into #24; run `scripts/lab/candidate_smoke.py` with your vCenter credentials (handoff-2026-10-05.md §2).
+4. **Review.** An independent review of the candidate is recorded in `handoff-2026-10-05.md` §5; a human sign-off is still yours.
 
 ## Evidence files
 

@@ -376,8 +376,9 @@ async def deep_health():
 # -- WebSocket endpoint ----------------------------------------------------
 @app.websocket("/ws/{channel}")
 async def websocket_endpoint(ws: WebSocket, channel: str):
-    """Real-time event stream for a signed-in user. Channels: 'ranges' (range states of
-    the user's tenant), 'range.<id>' (one of the tenant's ranges), 'exercises', 'all'.
+    """Real-time event stream for a signed-in user. Channels (``range_events.authorize``;
+    any other is refused): 'ranges' (range states of the user's tenant), 'range.<id>' /
+    'exercise.<id>' (one of the tenant's), 'tenant.<own id>', and 'system.*' for admins.
 
     The access token is the second subprotocol: ``new WebSocket(url, ["bearer", token])``
     (app/range_events.py). No valid token, or a channel the user may not open: 1008.
