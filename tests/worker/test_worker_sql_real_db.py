@@ -153,6 +153,7 @@ class TestRanges:
             "network:\n  vlans:\n    - name: lan\n      cidr: 10.9.0.0/24\n"
         )
         world.range.provisioner_backend = "vsphere_api"
+        world.range.state = m.RangeState.provisioning  # as the API leaves it (worker/fencing.py)
         _add(
             db,
             m.GoldenImage(catalogue_id="ubuntu-2404", hypervisor="vsphere", template_name="tpl-ubuntu",
@@ -185,6 +186,8 @@ class TestRanges:
     def test_provision_failure_marks_failed(self, world, monkeypatch):
         backend = _fake_backend(provision=ProvisionResult(status="failed", errors=["no capacity"]))
         monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+        world.range.state = m.RangeState.provisioning  # as the API leaves it (worker/fencing.py)
+        world.db.commit()
         with pytest.raises(RuntimeError, match="no capacity"):
             tasks.provision_range(str(world.range.id))
         r = _fresh(world.db, world.range)
@@ -192,7 +195,7 @@ class TestRanges:
 
     def test_destroy_reads_output_and_backend(self, world, monkeypatch):
         world.range.provisioner_output = '{"vms": [{"name": "web"}]}'
-        world.range.state = m.RangeState.ready
+        world.range.state = m.RangeState.destroying  # as the API leaves it (worker/fencing.py)
         world.db.commit()
         backend = _fake_backend(destroy=DestroyResult(status="ok", resources_removed=1))
         seen = []
