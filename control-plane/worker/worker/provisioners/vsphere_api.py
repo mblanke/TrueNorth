@@ -50,6 +50,7 @@ except ImportError:  # only the snapshot operations need it
     Disconnect = SmartConnect = vim = vmodl = None  # type: ignore[assignment]
 
 from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool
+from ..fencing import PermanentError
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
 from .base import AllocationNeed, BaseProvisioner
@@ -960,6 +961,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
         Nothing is left behind on failure: when no VM could be built, the VMs and port
         groups this call made are removed again, so a retry starts clean.
         """
+        if any(v.get("mgmt") for v in template.get("vms", [])):
+            # render.py gives noise agents a management NIC (#29) that this provisioner does
+            # not build yet; a range without it would come up `ready` with unreachable agents.
+            raise PermanentError(
+                "background noise is not supported on vSphere yet (the agents' management NIC is not built); "
+                "turn noise off in the template or provision on another backend"
+            )
         start = time.monotonic()
         errors: list[str] = []
         warnings: list[str] = []
