@@ -79,13 +79,33 @@ PROGRESS_TICK = 5.0  # seconds between job-record writes while output is flowing
 # the job's OS sandbox is (arc2/confine.py). File edits are added per job, for the job's
 # own run only (job_tools).
 ALLOWED_TOOLS = [
-    "Read", "Glob", "Grep", "Task", "TodoWrite",
+    "Read",
+    "Glob",
+    "Grep",
+    "Task",
+    "TodoWrite",
     "Bash(.venv/bin/python:*)",
     "Bash(PYTHONPATH=tools .venv/bin/python:*)",
-    "Bash(git status:*)", "Bash(git rev-parse:*)", "Bash(git diff:*)", "Bash(git log:*)",
-    "Bash(mkdir:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(cat:*)", "Bash(wc:*)",
-    "Bash(echo:*)", "Bash(printf:*)", "Bash(grep:*)", "Bash(sort:*)", "Bash(diff:*)", "Bash(stat:*)",
-    "Bash(test:*)", "Bash(true)", "Bash(shasum:*)", "Bash(command -v:*)",
+    "Bash(git status:*)",
+    "Bash(git rev-parse:*)",
+    "Bash(git diff:*)",
+    "Bash(git log:*)",
+    "Bash(mkdir:*)",
+    "Bash(ls:*)",
+    "Bash(head:*)",
+    "Bash(tail:*)",
+    "Bash(cat:*)",
+    "Bash(wc:*)",
+    "Bash(echo:*)",
+    "Bash(printf:*)",
+    "Bash(grep:*)",
+    "Bash(sort:*)",
+    "Bash(diff:*)",
+    "Bash(stat:*)",
+    "Bash(test:*)",
+    "Bash(true)",
+    "Bash(shasum:*)",
+    "Bash(command -v:*)",
 ]
 
 # Headless, a chained command is allowed only if every part is on the list above, and a
@@ -166,13 +186,21 @@ def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
     it: it goes on stdin (``prompt_for``), because any process of the same account can
     read another's arguments, and a sandbox cannot stop that on macOS."""
     cmd = [
-        claude, "-p",
-        "--output-format", "stream-json", "--verbose",
-        "--permission-mode", "dontAsk",
-        "--allowedTools", *job_tools(job["slug"]),
+        claude,
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        "dontAsk",
+        "--allowedTools",
+        *job_tools(job["slug"]),
         # No user-level settings, hooks or MCP servers: only this repository's project settings.
-        "--setting-sources", "project", "--strict-mcp-config",
-        "--append-system-prompt", RUNNER_GUIDANCE,
+        "--setting-sources",
+        "project",
+        "--strict-mcp-config",
+        "--append-system-prompt",
+        RUNNER_GUIDANCE,
     ]
     return cmd + (["--model", model] if model else [])
 
@@ -184,9 +212,20 @@ def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
 # ARC2_FALLBACK=off disables it; ARC2_FALLBACK_URL / ARC2_FALLBACK_MODEL choose where.
 
 FALLBACK_ERRORS = (
-    "failed to authenticate", "oauth", "not logged in", "invalid api key", "invalid x-api-key",
-    "usage limit", "rate limit", "rate_limit", "overloaded", "credit balance",
-    "could not connect", "connection error", "api error: 5", "service unavailable",
+    "failed to authenticate",
+    "oauth",
+    "not logged in",
+    "invalid api key",
+    "invalid x-api-key",
+    "usage limit",
+    "rate limit",
+    "rate_limit",
+    "overloaded",
+    "credit balance",
+    "could not connect",
+    "connection error",
+    "api error: 5",
+    "service unavailable",
 )
 
 
@@ -198,8 +237,10 @@ class Fallback:
     def from_env(cls) -> Fallback | None:
         if os.environ.get("ARC2_FALLBACK", "on").lower() in ("off", "0", "false", "no"):
             return None
-        return cls(os.environ.get("ARC2_FALLBACK_URL", "http://127.0.0.1:11434"),
-                   os.environ.get("ARC2_FALLBACK_MODEL", "qwen3.6:35b-a3b"))
+        return cls(
+            os.environ.get("ARC2_FALLBACK_URL", "http://127.0.0.1:11434"),
+            os.environ.get("ARC2_FALLBACK_MODEL", "qwen3.6:35b-a3b"),
+        )
 
     @property
     def label(self) -> str:
@@ -207,6 +248,7 @@ class Fallback:
 
     def reachable(self, timeout: float = 3.0) -> bool:
         import urllib.request
+
         try:
             with urllib.request.urlopen(f"{self.url}/api/tags", timeout=timeout) as resp:
                 names = [m.get("name") for m in json.loads(resp.read()).get("models", [])]
@@ -216,17 +258,19 @@ class Fallback:
 
     def env(self, base: dict) -> dict:
         env = {k: v for k, v in base.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")}
-        env.update({
-            "ANTHROPIC_BASE_URL": self.url,
-            "ANTHROPIC_AUTH_TOKEN": "ollama",
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_MODEL": self.model,
-            "ANTHROPIC_DEFAULT_OPUS_MODEL": self.model,
-            "ANTHROPIC_DEFAULT_SONNET_MODEL": self.model,
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL": self.model,
-            "CLAUDE_CODE_SUBAGENT_MODEL": self.model,
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-        })
+        env.update(
+            {
+                "ANTHROPIC_BASE_URL": self.url,
+                "ANTHROPIC_AUTH_TOKEN": "ollama",
+                "ANTHROPIC_API_KEY": "",
+                "ANTHROPIC_MODEL": self.model,
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": self.model,
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": self.model,
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": self.model,
+                "CLAUDE_CODE_SUBAGENT_MODEL": self.model,
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            }
+        )
         return env
 
 
@@ -249,8 +293,16 @@ def claim(queue: Path, jobs: Path, owner: dict | None = None) -> tuple[dict, Pat
             path.rename(target.with_suffix(".claiming"))
         except OSError:
             continue  # another runner took it
-        record = {**raw, "state": "running", "started_at": now(), "log": target.with_suffix(".log").name,
-                  "current_agent": None, "result": None, "error": None, "runner": owner}
+        record = {
+            **raw,
+            "state": "running",
+            "started_at": now(),
+            "log": target.with_suffix(".log").name,
+            "current_agent": None,
+            "result": None,
+            "error": None,
+            "runner": owner,
+        }
         try:
             record = {**validate(raw), **{k: v for k, v in record.items() if k not in raw}}
         except JobError as exc:
@@ -303,9 +355,15 @@ def job_env(home: Path) -> dict:
     if not any(env.get(k) for k in AUTH_ENV):
         with contextlib.suppress(OSError):
             env["CLAUDE_CODE_OAUTH_TOKEN"] = token_file().read_text().strip()
-    env.update(HOME=str(home), CLAUDE_CONFIG_DIR=str(home / ".claude"), TMPDIR=str(home / "tmp"),
-               XDG_CONFIG_HOME=str(home / ".config"), XDG_CACHE_HOME=str(home / ".cache"),
-               PYTHONPATH="tools", PYTHONDONTWRITEBYTECODE="1")
+    env.update(
+        HOME=str(home),
+        CLAUDE_CONFIG_DIR=str(home / ".claude"),
+        TMPDIR=str(home / "tmp"),
+        XDG_CONFIG_HOME=str(home / ".config"),
+        XDG_CACHE_HOME=str(home / ".cache"),
+        PYTHONPATH="tools",
+        PYTHONDONTWRITEBYTECODE="1",
+    )
     return env
 
 
@@ -319,15 +377,22 @@ def _local_ports(fallback: Fallback | None) -> tuple[int, ...]:
     if not fallback:
         return ()
     from urllib.parse import urlparse
+
     url = urlparse(fallback.url)
     if url.hostname in ("localhost", "127.0.0.1", "::1"):
         return (url.port or (443 if url.scheme == "https" else 80),)
     return ()
 
 
-def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOUT,
-            fallback: Fallback | None = None, confinement: Confinement | None = None,
-            runs: Path | None = None) -> dict:
+def run_job(
+    record: dict,
+    path: Path,
+    claude: str,
+    timeout: int = DEFAULT_TIMEOUT,
+    fallback: Fallback | None = None,
+    confinement: Confinement | None = None,
+    runs: Path | None = None,
+) -> dict:
     """Run one job on Claude; if Claude is unavailable, run it again on the local fallback.
 
     Both attempts run inside ``confinement`` (arc2/confine.py). Confined, a job gets a
@@ -351,28 +416,54 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
         home.chmod(0o700)
         env = job_env(home)
     jail = Jail(
-        repo=REPO_ROOT, runs=runs, home=Path.home(),
+        repo=REPO_ROOT,
+        runs=runs,
+        home=Path.home(),
         writable=tuple(p for p in (runs / record["slug"], home) if p is not None),
         writable_files=(runs / f"{record['slug']}.request.txt",),
-        readable=_claude_install(claude), local_ports=_local_ports(fallback),
+        readable=_claude_install(claude),
+        local_ports=_local_ports(fallback),
     )
     try:
-        record = _attempt(record, path, confinement.wrap(command_for(record, claude), jail), env, timeout,
-                          append=False, stdin_text=prompt_for(record))
+        record = _attempt(
+            record,
+            path,
+            confinement.wrap(command_for(record, claude), jail),
+            env,
+            timeout,
+            append=False,
+            stdin_text=prompt_for(record),
+        )
         if fallback and should_fall_back(record) and fallback.reachable():
-            record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
-                          result=None, exit_code=None, finished_at=None, current_agent=None)
+            record.update(
+                fallback_from=record["error"],
+                engine=fallback.label,
+                state="running",
+                error=None,
+                result=None,
+                exit_code=None,
+                finished_at=None,
+                current_agent=None,
+            )
             write_record(path, record)
-            record = _attempt(record, path, confinement.wrap(command_for(record, claude, fallback.model), jail),
-                              fallback.env(env), timeout, append=True, stdin_text=prompt_for(record))
+            record = _attempt(
+                record,
+                path,
+                confinement.wrap(command_for(record, claude, fallback.model), jail),
+                fallback.env(env),
+                timeout,
+                append=True,
+                stdin_text=prompt_for(record),
+            )
     finally:
         if home is not None:
             shutil.rmtree(home, ignore_errors=True)
     return record
 
 
-def _attempt(record: dict, path: Path, cmd: list[str], env: dict, timeout: int, append: bool,
-             stdin_text: str | None = None) -> dict:
+def _attempt(
+    record: dict, path: Path, cmd: list[str], env: dict, timeout: int, append: bool, stdin_text: str | None = None
+) -> dict:
     """One headless run of /arc2, streaming progress into the job record.
 
     The deadline is enforced by the clock, not by the engine's output: a reader thread
@@ -386,9 +477,17 @@ def _attempt(record: dict, path: Path, cmd: list[str], env: dict, timeout: int, 
     log_path = path.with_suffix(".log")
     deadline = time.monotonic() + timeout
     try:
-        proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdout=subprocess.PIPE,
-                                stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
-                                stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
+        proc = subprocess.Popen(
+            cmd,
+            cwd=REPO_ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            start_new_session=True,
+        )
     except OSError as exc:
         record.update(state="failed", error=f"could not start claude: {exc}", finished_at=now())
         write_record(path, record)
@@ -514,12 +613,23 @@ def _duration(seconds: int) -> str:
 # A run folder that is itself a link is not recorded. Any two rounds can be compared, and
 # a bad rework rolled back.
 
-GIT_SAFE = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.symlinks=true",
-            "-c", "user.name=ARC2 runner", "-c", "user.email=arc2-runner@localhost"]
+GIT_SAFE = [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.symlinks=true",
+    "-c",
+    "user.name=ARC2 runner",
+    "-c",
+    "user.email=arc2-runner@localhost",
+]
 
 
-def _git(git_dir: Path, work: Path, *args: str, confinement: Confinement | None = None,
-         jail: Jail | None = None) -> subprocess.CompletedProcess:
+def _git(
+    git_dir: Path, work: Path, *args: str, confinement: Confinement | None = None, jail: Jail | None = None
+) -> subprocess.CompletedProcess:
     cmd = ["git", f"--git-dir={git_dir}", f"--work-tree={work}", *GIT_SAFE, *args]
     if confinement and jail:
         cmd = confinement.wrap(cmd, jail)
@@ -542,10 +652,16 @@ def snapshot(runs: Path, record: dict, log_path: Path, confinement: Confinement 
         shutil.copyfile(log_path, transcripts / f"{stamp}-{record['id']}.jsonl")
     jail = Jail(repo=REPO_ROOT, runs=runs, home=Path.home(), writable=(git_dir,), readable_inner=(run,))
     confinement = confinement or Unconfined()
-    if not git_dir.is_dir() and subprocess.run(
-        ["git", "init", "-q", "--bare", str(git_dir)], capture_output=True, timeout=60,
-        env={"PATH": os.environ.get("PATH", ""), "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"},
-    ).returncode != 0:
+    if (
+        not git_dir.is_dir()
+        and subprocess.run(
+            ["git", "init", "-q", "--bare", str(git_dir)],
+            capture_output=True,
+            timeout=60,
+            env={"PATH": os.environ.get("PATH", ""), "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"},
+        ).returncode
+        != 0
+    ):
         return None
 
     def git(*args: str) -> subprocess.CompletedProcess:
@@ -555,9 +671,11 @@ def snapshot(runs: Path, record: dict, log_path: Path, confinement: Confinement 
     if git("diff", "--cached", "--quiet").returncode == 0:
         return None
     what = "start" if record["action"] == "start" else f"resume: {' '.join(record['text'].split())[:60]}"
-    message = (f"{what} · {record.get('state')} on {record.get('engine')}\n\n"
-               f"Job: {record['id']}\nRequested-by: {record.get('requested_by')}\n"
-               + (f"Error: {record['error'][:200]}\n" if record.get("error") else ""))
+    message = (
+        f"{what} · {record.get('state')} on {record.get('engine')}\n\n"
+        f"Job: {record['id']}\nRequested-by: {record.get('requested_by')}\n"
+        + (f"Error: {record['error'][:200]}\n" if record.get("error") else "")
+    )
     if git("commit", "-q", "-m", message).returncode != 0:
         return None
     return git("rev-parse", "--short", "HEAD").stdout.strip() or None
@@ -569,6 +687,7 @@ def snapshot(runs: Path, record: dict, log_path: Path, confinement: Confinement 
 # an exclusive flock on <runs>/_runner.lock for its whole life. A second runner exits
 # instead of recovering anything; the kernel releases the lock however the holder dies.
 # Jobs are not run twice: a job is only re-queued if it was never recorded as started.
+
 
 def acquire_lock(runs: Path):
     """The open, exclusively locked runs-root lock file, or None if another runner holds it."""
@@ -624,19 +743,26 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     fallback = Fallback.from_env()
     if confinement.name != "none" and not any(os.environ.get(k) for k in AUTH_ENV) and not token_file().is_file():
-        print(f"arc2 runner: warning: no CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY or {token_file()}; "
-              "confined jobs start with an empty Claude config and cannot sign in", file=sys.stderr, flush=True)
+        print(
+            f"arc2 runner: warning: no CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY or {token_file()}; "
+            "confined jobs start with an empty Claude config and cannot sign in",
+            file=sys.stderr,
+            flush=True,
+        )
     queue, jobs = dirs(args.runs)
     lock = acquire_lock(args.runs)
     if lock is None:
-        print(f"arc2 runner: not starting: another runner holds {args.runs / '_runner.lock'}",
-              file=sys.stderr, flush=True)
+        print(
+            f"arc2 runner: not starting: another runner holds {args.runs / '_runner.lock'}", file=sys.stderr, flush=True
+        )
         return 3
     owner = {"pid": os.getpid(), "host": os.uname().nodename, "started_at": now()}
     recover(queue, jobs)
-    print(f"arc2 runner: watching {queue} (claude: {claude}; fallback: "
-          f"{fallback.label + ' at ' + fallback.url if fallback else 'off'}; confinement: {confinement.name})",
-          flush=True)
+    print(
+        f"arc2 runner: watching {queue} (claude: {claude}; fallback: "
+        f"{fallback.label + ' at ' + fallback.url if fallback else 'off'}; confinement: {confinement.name})",
+        flush=True,
+    )
     try:
         while True:
             claimed = claim(queue, jobs, owner)
@@ -648,8 +774,11 @@ def main(argv: list[str] | None = None) -> int:
                 if commit:
                     record["history_commit"] = commit
                     write_record(path, record)
-                print(f"{now()} {record['action']} {record['slug']}: {record['state']} on {record.get('engine')}"
-                      + (f" ({record['error']})" if record.get("error") else ""), flush=True)
+                print(
+                    f"{now()} {record['action']} {record['slug']}: {record['state']} on {record.get('engine')}"
+                    + (f" ({record['error']})" if record.get("error") else ""),
+                    flush=True,
+                )
                 continue
             if args.once:
                 return 0

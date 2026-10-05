@@ -30,6 +30,12 @@ PY="${PY:-$ROOT/.venv/bin/python}"
 # .dod-ruff-baseline). Lives in its own script so CI runs the identical check.
 PY="$PY" "$ROOT/scripts/ruff-gate.sh"
 
+# Same paths as ci.yml lint-python's `ruff format --check`. It never ran here, and 45
+# files drifted until CI's lint job could not pass on any branch. docs/adr/0004.
+echo "+ ruff format --check (ci.yml lint-python scope)"
+"$PY" -m ruff format --check control-plane/ scenario-engine/ tools/ ai-orchestrator/ \
+  || fail "unformatted Python; run: $PY -m ruff format control-plane/ scenario-engine/ tools/ ai-orchestrator/"
+
 # MOSA: modularity debt (raw SQL in the worker, vendor SDKs outside adapters, hardcoded
 # backend branches, god-file growth) ratchets like ruff debt. docs/adr/0003.
 echo "+ MOSA ratchet (.dod-mosa-baseline)"

@@ -147,9 +147,7 @@ def upgrade() -> None:
     if not _has_column("competency_auto_assessments", "quiz_attempt_id"):
         with op.batch_alter_table("competency_auto_assessments") as batch:
             batch.alter_column("exercise_id", existing_type=GUID(), nullable=True)
-            batch.add_column(
-                sa.Column("quiz_attempt_id", GUID(), sa.ForeignKey("quiz_attempts.id"), nullable=True)
-            )
+            batch.add_column(sa.Column("quiz_attempt_id", GUID(), sa.ForeignKey("quiz_attempts.id"), nullable=True))
 
     # Phase 6: LTI 1.3 tool keys + launch records + platform OIDC auth URL
     op.create_table(

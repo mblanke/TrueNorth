@@ -86,9 +86,7 @@ def ad_sync_status(
     """Return current AD sync status and statistics.  **Permission: user:read**"""
     ad_users = db.query(User).filter(User.source.in_(AD_SOURCES)).count()
     ad_groups = db.query(SecurityGroup).filter(SecurityGroup.ad_object_guid.isnot(None)).count()
-    last_sync = (
-        db.query(func.max(User.last_synced_at)).filter(User.source.in_(AD_SOURCES)).scalar()
-    )
+    last_sync = db.query(func.max(User.last_synced_at)).filter(User.source.in_(AD_SOURCES)).scalar()
     config = _get_ldap_config()
     kc = _keycloak_config()
 
@@ -155,8 +153,7 @@ def trigger_ad_sync(
     try:
         token = _admin_token(kc)
         resp = httpx.post(
-            f"{kc['base']}/admin/realms/{kc['realm']}/user-storage/"
-            f"{kc['component_id']}/sync",
+            f"{kc['base']}/admin/realms/{kc['realm']}/user-storage/{kc['component_id']}/sync",
             params={"action": action},
             headers={"Authorization": f"Bearer {token}"},
             timeout=300,
@@ -170,9 +167,7 @@ def trigger_ad_sync(
         ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.error("Keycloak sync failed: %s", exc)
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY, f"Could not reach Keycloak: {exc}"
-        ) from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Could not reach Keycloak: {exc}") from exc
 
     result = resp.json() if resp.content else {}
     logger.info("Keycloak federation sync (%s) result: %s", action, result)

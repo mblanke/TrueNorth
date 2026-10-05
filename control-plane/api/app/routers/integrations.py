@@ -180,9 +180,11 @@ def list_external_activities(
     they see their tenant's — never another tenant's. ExternalActivity carries no
     tenant_id of its own, so the scope comes through the platform that recorded it.
     """
-    q = db.query(ExternalActivity).join(
-        ExternalPlatform, ExternalActivity.platform_id == ExternalPlatform.id
-    ).filter(ExternalPlatform.tenant_id == tenant_uuid(user))
+    q = (
+        db.query(ExternalActivity)
+        .join(ExternalPlatform, ExternalActivity.platform_id == ExternalPlatform.id)
+        .filter(ExternalPlatform.tenant_id == tenant_uuid(user))
+    )
     if not user_has_permission(user, Permission.LEARNING_RECORD_READ):
         if user_id and str(user_id) != str(user.id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Missing permission: learning_record:read")

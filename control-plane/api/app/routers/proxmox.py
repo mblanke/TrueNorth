@@ -40,7 +40,9 @@ logger = logging.getLogger("truenorth.api.proxmox")
 # hypervisor's node list that does not also imply operating it.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/proxmox", tags=["proxmox"], dependencies=[Depends(require_permission(Permission.INFRA_CONTROL))])
+router = APIRouter(
+    prefix="/proxmox", tags=["proxmox"], dependencies=[Depends(require_permission(Permission.INFRA_CONTROL))]
+)
 
 # ── Config ──────────────────────────────────────────────────────────────
 # No hosts are assumed: until PROXMOX_HOSTS points at reachable nodes,

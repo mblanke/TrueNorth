@@ -173,9 +173,7 @@ def _resolve_po(db: Session, ref: dict | None, course_code: str, ordinal: int):
     return po.id
 
 
-def _remove_placeholder(
-    db: Session, course: Course, superseded_by: str, meta: dict, stats: dict
-) -> None:
+def _remove_placeholder(db: Session, course: Course, superseded_by: str, meta: dict, stats: dict) -> None:
     """Delete a spine-generated stub that authored content has replaced.
 
     The stub existed only because no real content did. Once a course delivers the
@@ -296,9 +294,7 @@ def _content_row(db: Session, module: CourseModule, kind: ContentKind, ordinal: 
     return row
 
 
-def _build_module_content(
-    db: Session, module: CourseModule, m: dict, quiz: Quiz | None, tenant_id: str | None
-) -> None:
+def _build_module_content(db: Session, module: CourseModule, m: dict, quiz: Quiz | None, tenant_id: str | None) -> None:
     """Give an authored module the teach -> check -> assess shape.
 
     Spine-generated modules always had this; authored ones carried their content in a
@@ -306,11 +302,7 @@ def _build_module_content(
     an empty shell next to a placeholder.
     """
     teach = _content_row(db, module, ContentKind.teach, 0)
-    lesson = (
-        db.query(Lesson).filter_by(id=teach.lesson_id).one_or_none()
-        if teach.lesson_id
-        else None
-    )
+    lesson = db.query(Lesson).filter_by(id=teach.lesson_id).one_or_none() if teach.lesson_id else None
     if lesson is None:
         # title is NOT NULL, and the row is flushed to get its id — so it has to be set
         # at construction, not after.

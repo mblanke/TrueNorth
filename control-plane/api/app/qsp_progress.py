@@ -112,11 +112,7 @@ def po_progress(
     module_by_po = modules_by_po
 
     course_ids = {m.course_id for m in module_by_po.values()}
-    enrollments = (
-        db.query(Enrollment)
-        .filter(Enrollment.user_id == user_id, Enrollment.course_id.in_(course_ids))
-        .all()
-    )
+    enrollments = db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id.in_(course_ids)).all()
     if not enrollments:
         return {}
     enroll_by_course = {str(e.course_id): e for e in enrollments}
@@ -141,9 +137,7 @@ def po_progress(
     return out
 
 
-def _resolve_state(
-    progress: ModuleProgress | None, enrollment: Enrollment, module: CourseModule
-) -> str:
+def _resolve_state(progress: ModuleProgress | None, enrollment: Enrollment, module: CourseModule) -> str:
     """Prefer the module-level record; fall back to the enrolment when it is absent."""
     if progress is not None:
         if progress.status == ModuleProgressStatus.completed:

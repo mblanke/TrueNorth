@@ -183,11 +183,7 @@ def resolve_nation(db: Session, code: str | None) -> Nation | None:
     key = code.strip().upper()
     if not key:
         return None
-    return (
-        db.query(Nation)
-        .filter((Nation.iso_alpha2 == key) | (Nation.iso_alpha3 == key))
-        .first()
-    )
+    return db.query(Nation).filter((Nation.iso_alpha2 == key) | (Nation.iso_alpha3 == key)).first()
 
 
 # ── Auth zone enforcement ──────────────────────────────────────────────
@@ -268,10 +264,7 @@ def auth_zone_denial(
             return f"Auth zone '{policy.zone_name}' requires multi-factor authentication"
 
     if _clearance_rank(claims.get("clearance_level")) < _clearance_rank(policy.clearance_required):
-        return (
-            f"Auth zone '{policy.zone_name}' requires clearance "
-            f"'{policy.clearance_required}'"
-        )
+        return f"Auth zone '{policy.zone_name}' requires clearance '{policy.clearance_required}'"
 
     if not _ip_permitted(policy.ip_whitelist, client_ip):
         return f"Auth zone '{policy.zone_name}' does not permit access from {client_ip or 'unknown'}"

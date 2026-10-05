@@ -532,9 +532,7 @@ class CourseGenerateRequest(BaseModel):
     """Draft a course from retrieved curriculum chunks (RAG happens upstream)."""
 
     curriculum_name: str = Field(..., description="Human name of the source curriculum")
-    context_chunks: list[str] = Field(
-        ..., min_length=1, max_length=40, description="Retrieved curriculum text chunks"
-    )
+    context_chunks: list[str] = Field(..., min_length=1, max_length=40, description="Retrieved curriculum text chunks")
     difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
     module_count: int = Field(default=6, ge=2, le=16)
     focus: str = Field(default="", description="Optional focus/outline hint from the instructor")
@@ -556,9 +554,7 @@ class QuizGenerateRequest(BaseModel):
     """Draft quiz questions from retrieved curriculum chunks."""
 
     topic: str = Field(..., description="Topic or module title the quiz covers")
-    context_chunks: list[str] = Field(
-        ..., min_length=1, max_length=30, description="Retrieved curriculum text chunks"
-    )
+    context_chunks: list[str] = Field(..., min_length=1, max_length=30, description="Retrieved curriculum text chunks")
     question_count: int = Field(default=10, ge=3, le=30)
     difficulty: str = Field(default="intermediate", pattern=r"^(beginner|intermediate|advanced|expert)$")
     competency_codes: list[str] = Field(
@@ -774,6 +770,7 @@ async def _call_openai(
     prompt: str, model: str = "", max_tokens: int = 2000, system_prompt: str = ""
 ) -> tuple[str, str, str, dict]:
     from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
+
     text, model_used, usage = await get_cloud_backend("openai").generate(
         prompt, model=model, max_tokens=max_tokens, system_prompt=system_prompt
     )
@@ -782,6 +779,7 @@ async def _call_openai(
 
 async def _call_anthropic(prompt: str, model: str = "", max_tokens: int = 2000) -> tuple[str, str, str, dict]:
     from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
+
     text, model_used, usage = await get_cloud_backend("anthropic").generate(prompt, model=model, max_tokens=max_tokens)
     return text, model_used, "anthropic", usage
 
@@ -868,6 +866,7 @@ async def _generate(
             result = await _call_anthropic(prompt, effective_model or route.fallback_model, effective_max)
         else:
             from .backends import get_cloud_backend  # lazy
+
             text, model_used, usage = await get_cloud_backend("mock").generate(prompt, max_tokens=effective_max)
             result = (text, model_used, "mock", usage)
 
@@ -884,6 +883,7 @@ async def _cloud_fallback(prompt: str, route: ModelRoute, max_tokens: int) -> tu
         return await _call_anthropic(prompt, route.fallback_model, max_tokens)
     else:
         from .backends import get_cloud_backend  # lazy
+
         text, model_used, usage = await get_cloud_backend("mock").generate(prompt, max_tokens=max_tokens)
         return text, model_used, "mock", usage
 
@@ -1191,7 +1191,7 @@ MITRE ATT&CK techniques involved: {", ".join(sorted(mitre_ids)) if mitre_ids els
         comp_block = (
             f"\n- Each exercise objective MUST carry a competency_code drawn from: {', '.join(req.competency_codes)}"
             if req.competency_codes
-            else "\n- Set competency_code on each objective to a relevant NICE task/skill code when evident, else \"\""
+            else '\n- Set competency_code on each objective to a relevant NICE task/skill code when evident, else ""'
         )
         context_section = f"""## Training Context (curriculum-driven)
 Design the attack scenario so a student demonstrating these learning objectives is
@@ -1436,12 +1436,21 @@ exercises the training objectives below over {req.duration_days} day(s).{adv}
 ]"""
 
     output, model_used, node_used, usage, cached = await _generate(
-        prompt, TaskType.mesl_generate, req.model, use_cache=False, max_tokens=6000,
+        prompt,
+        TaskType.mesl_generate,
+        req.model,
+        use_cache=False,
+        max_tokens=6000,
     )
     latency = (time.perf_counter() - start) * 1000
     return GenerateResponse(
-        task="mesl-generate", model_used=model_used, node_used=node_used,
-        backend=PRIMARY_BACKEND.value, output=output, usage=usage, cached=cached,
+        task="mesl-generate",
+        model_used=model_used,
+        node_used=node_used,
+        backend=PRIMARY_BACKEND.value,
+        output=output,
+        usage=usage,
+        cached=cached,
         latency_ms=round(latency, 1),
     )
 

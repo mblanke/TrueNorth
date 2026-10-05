@@ -43,11 +43,7 @@ def ensure_enrollment(
     but does not commit — the caller owns the transaction, which is what lets
     approval create the user, the enrollment and the progress rows atomically.
     """
-    existing = (
-        db.query(Enrollment)
-        .filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id)
-        .first()
-    )
+    existing = db.query(Enrollment).filter(Enrollment.user_id == user_id, Enrollment.course_id == course_id).first()
     if existing:
         return existing
 
@@ -60,12 +56,7 @@ def ensure_enrollment(
     db.add(enrollment)
     db.flush()
 
-    modules = (
-        db.query(CourseModule)
-        .filter(CourseModule.course_id == course_id)
-        .order_by(CourseModule.ordinal)
-        .all()
-    )
+    modules = db.query(CourseModule).filter(CourseModule.course_id == course_id).order_by(CourseModule.ordinal).all()
     for mod in modules:
         db.add(ModuleProgress(enrollment_id=enrollment.id, module_id=mod.id))
     db.flush()
@@ -121,6 +112,4 @@ def ensure_path_enrollment(
 ) -> list[Enrollment]:
     """Enroll ``user_id`` on every course in a learning path. Idempotent."""
     courses = courses_for_learning_path(db, learning_path_id)
-    return [
-        ensure_enrollment(db, user_id=user_id, course_id=c.id, tenant_id=tenant_id) for c in courses
-    ]
+    return [ensure_enrollment(db, user_id=user_id, course_id=c.id, tenant_id=tenant_id) for c in courses]

@@ -244,9 +244,7 @@ def reingest(
     """Re-run ingestion for any documents that are pending or errored."""
     curriculum = _get_owned(curriculum_id, db, user)
     pending = [
-        d.id
-        for d in curriculum.documents
-        if d.status in (CurriculumDocStatus.pending, CurriculumDocStatus.error)
+        d.id for d in curriculum.documents if d.status in (CurriculumDocStatus.pending, CurriculumDocStatus.error)
     ]
     if not pending:
         raise HTTPException(409, "No pending or errored documents to ingest.")
@@ -470,9 +468,7 @@ async def _ingest_documents(curriculum_id: uuid.UUID, doc_ids: list[uuid.UUID]) 
                 doc.status = CurriculumDocStatus.embedding
                 db.commit()
 
-                indexed, model = await curriculum_ingest.index_chunks(
-                    curriculum_id, doc.id, doc.filename, chunks
-                )
+                indexed, model = await curriculum_ingest.index_chunks(curriculum_id, doc.id, doc.filename, chunks)
                 if model:
                     embed_model = model
                 doc.chunk_count = indexed

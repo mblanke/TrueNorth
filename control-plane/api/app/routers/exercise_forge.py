@@ -110,15 +110,19 @@ def forge_history(
     total = base.count()
     rows = base.order_by(ForgedExercise.created_at.desc()).offset(offset).limit(limit).all()
 
-    ex_names = {
-        e.id: e.name
-        for e in db.query(Exercise)
-        .filter(
-            Exercise.id.in_([r.exercise_id for r in rows]),
-            Exercise.tenant_id == user.tenant_id,
-        )
-        .all()
-    } if rows else {}
+    ex_names = (
+        {
+            e.id: e.name
+            for e in db.query(Exercise)
+            .filter(
+                Exercise.id.in_([r.exercise_id for r in rows]),
+                Exercise.tenant_id == user.tenant_id,
+            )
+            .all()
+        }
+        if rows
+        else {}
+    )
 
     items = [
         {
@@ -154,9 +158,7 @@ async def preview_forge(
     indicators = _resolve_indicators(req, user.tenant_id, db)
     curriculum_context = await _resolve_curriculum_context(req, user.tenant_id, db)
     if not indicators and not req.learning_objectives:
-        raise HTTPException(
-            422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode)."
-        )
+        raise HTTPException(422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode).")
 
     scenario_yaml, model_used = await _call_forge_ai(indicators, req, curriculum_context)
     mitre_techniques = _extract_mitre(scenario_yaml)
@@ -188,9 +190,7 @@ async def generate_exercise(
     indicators = _resolve_indicators(req, user.tenant_id, db)
     curriculum_context = await _resolve_curriculum_context(req, user.tenant_id, db)
     if not indicators and not req.learning_objectives:
-        raise HTTPException(
-            422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode)."
-        )
+        raise HTTPException(422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode).")
 
     scenario_yaml, model_used = await _call_forge_ai(indicators, req, curriculum_context)
     mitre_techniques = _extract_mitre(scenario_yaml)
@@ -216,11 +216,7 @@ async def generate_exercise(
     from ..models import Range
 
     if req.range_id is not None:
-        range_obj = (
-            db.query(Range)
-            .filter(Range.id == req.range_id, Range.tenant_id == user.tenant_id)
-            .first()
-        )
+        range_obj = db.query(Range).filter(Range.id == req.range_id, Range.tenant_id == user.tenant_id).first()
         if not range_obj:
             raise HTTPException(404, "Range not found in your tenant.")
     else:
@@ -338,9 +334,7 @@ def _resolve_indicators(req: ForgeRequest, tenant_id: uuid.UUID, db: Session) ->
     return indicators
 
 
-async def _resolve_curriculum_context(
-    req: ForgeRequest, tenant_id: uuid.UUID, db: Session
-) -> list[str]:
+async def _resolve_curriculum_context(req: ForgeRequest, tenant_id: uuid.UUID, db: Session) -> list[str]:
     """Curriculum mode: retrieve grounding chunks for the learning objectives."""
     if not req.curriculum_id or not req.learning_objectives:
         return []

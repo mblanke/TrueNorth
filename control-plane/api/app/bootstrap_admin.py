@@ -100,9 +100,7 @@ def ensure_admin(db: Session, tenant: Tenant, kc_user: dict) -> User:
     sub = kc_user["id"]
     email = (kc_user.get("email") or "").strip()
     display = (
-        f"{kc_user.get('firstName', '')} {kc_user.get('lastName', '')}".strip()
-        or kc_user.get("username")
-        or email
+        f"{kc_user.get('firstName', '')} {kc_user.get('lastName', '')}".strip() or kc_user.get("username") or email
     )
 
     user = db.query(User).filter(User.keycloak_id == sub).first()

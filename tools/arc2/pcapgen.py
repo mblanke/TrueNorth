@@ -48,8 +48,15 @@ ALLOWED_NETS = [ipaddress.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/
 NAME_SUFFIXES = (".example", ".test", ".invalid")
 EVENT_TYPES = {"arp", "ping", "dns", "http", "tls", "tcp_refused"}
 ROLES = {"workstation", "server", "web", "dns", "gateway", "printer", "external", "sensor"}
-HTTP_STATUS = {200: "OK", 301: "Moved Permanently", 302: "Found", 304: "Not Modified",
-               403: "Forbidden", 404: "Not Found", 500: "Internal Server Error"}
+HTTP_STATUS = {
+    200: "OK",
+    301: "Moved Permanently",
+    302: "Found",
+    304: "Not Modified",
+    403: "Forbidden",
+    404: "Not Found",
+    500: "Internal Server Error",
+}
 MAX_PACKETS = 20000
 MAX_SECONDS = 3600
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
@@ -111,7 +118,9 @@ def validate(spec: dict) -> list[str]:
         if h.get("role") not in ROLES:
             errs.append(f"host {hid}: role must be one of {', '.join(sorted(ROLES))}")
         name = h.get("name")
-        if name is not None and (not isinstance(name, str) or not NAME_RE.match(name) or not name.endswith(NAME_SUFFIXES)):
+        if name is not None and (
+            not isinstance(name, str) or not NAME_RE.match(name) or not name.endswith(NAME_SUFFIXES)
+        ):
             errs.append(f"host {hid}: name {name!r} must be a hostname under .example, .test or .invalid")
     ips = [str(h.get("ip")) for h in hosts if isinstance(h, dict)]
     if len(ips) != len(set(ips)):
@@ -145,8 +154,21 @@ def validate(spec: dict) -> list[str]:
         if not isinstance(e, dict) or e.get("type") not in EVENT_TYPES:
             errs.append(f"{where}: type must be one of {', '.join(sorted(EVENT_TYPES))}")
             continue
-        allowed_keys = {"type", "at", "every", "src", "dst", "server", "target", "query", "path",
-                        "status", "sni", "count", "port"}
+        allowed_keys = {
+            "type",
+            "at",
+            "every",
+            "src",
+            "dst",
+            "server",
+            "target",
+            "query",
+            "path",
+            "status",
+            "sni",
+            "count",
+            "port",
+        }
         extra = set(e) - allowed_keys
         if extra:
             errs.append(f"{where}: unknown field(s) {', '.join(sorted(extra))}")
@@ -305,10 +327,30 @@ class _Writer:
     def arp(self, t: float, src: str, target: str) -> None:
         s, tg = self.topo.hosts[src], self.topo.hosts[target]
         smac, tmac = self.topo.mac[src], self.topo.mac[target]
-        req = struct.pack("!HHBBH6s4s6s4s", 1, 0x0800, 6, 4, 1, smac, ipaddress.ip_address(s["ip"]).packed,
-                          b"\0" * 6, ipaddress.ip_address(tg["ip"]).packed)
-        rep = struct.pack("!HHBBH6s4s6s4s", 1, 0x0800, 6, 4, 2, tmac, ipaddress.ip_address(tg["ip"]).packed,
-                          smac, ipaddress.ip_address(s["ip"]).packed)
+        req = struct.pack(
+            "!HHBBH6s4s6s4s",
+            1,
+            0x0800,
+            6,
+            4,
+            1,
+            smac,
+            ipaddress.ip_address(s["ip"]).packed,
+            b"\0" * 6,
+            ipaddress.ip_address(tg["ip"]).packed,
+        )
+        rep = struct.pack(
+            "!HHBBH6s4s6s4s",
+            1,
+            0x0800,
+            6,
+            4,
+            2,
+            tmac,
+            ipaddress.ip_address(tg["ip"]).packed,
+            smac,
+            ipaddress.ip_address(s["ip"]).packed,
+        )
         self.frames.append((t, _ether(b"\xff" * 6, smac, 0x0806, req)))
         self.frames.append((t + 0.0004, _ether(smac, tmac, 0x0806, rep)))
         self.conv("arp")
@@ -364,11 +406,15 @@ class _Writer:
 
     def http_get(self, t: float, src: str, dst: str, path: str, status: int) -> None:
         host = self.topo.hosts[dst].get("name") or self.ip(dst)
-        req = (f"GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: Mozilla/5.0 (training)\r\n"
-               "Accept: text/html\r\nConnection: close\r\n\r\n").encode()
+        req = (
+            f"GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: Mozilla/5.0 (training)\r\n"
+            "Accept: text/html\r\nConnection: close\r\n\r\n"
+        ).encode()
         body = f"<html><body><h1>{status} {HTTP_STATUS[status]}</h1><p>Training page.</p></body></html>".encode()
-        resp = (f"HTTP/1.1 {status} {HTTP_STATUS[status]}\r\nServer: training-web\r\nContent-Type: text/html\r\n"
-                f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n").encode() + body
+        resp = (
+            f"HTTP/1.1 {status} {HTTP_STATUS[status]}\r\nServer: training-web\r\nContent-Type: text/html\r\n"
+            f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n"
+        ).encode() + body
         self._tcp_session(t, src, dst, 80, [("c", req), ("s", resp)])
         self.http.append({"client": src, "server": dst, "host": host, "path": path, "status": status})
         self.conv("http")
@@ -381,8 +427,16 @@ class _Writer:
         exts = sni_ext + versions + groups
         rnd = bytes(self.rng.randrange(256) for _ in range(32))
         ciphers = b"\x13\x01\x13\x02\xc0\x2f"
-        body = b"\x03\x03" + rnd + b"\x00" + struct.pack("!H", len(ciphers)) + ciphers + b"\x01\x00" \
-            + struct.pack("!H", len(exts)) + exts
+        body = (
+            b"\x03\x03"
+            + rnd
+            + b"\x00"
+            + struct.pack("!H", len(ciphers))
+            + ciphers
+            + b"\x01\x00"
+            + struct.pack("!H", len(exts))
+            + exts
+        )
         hs = b"\x01" + struct.pack("!I", len(body))[1:] + body
         record = b"\x16\x03\x01" + struct.pack("!H", len(hs)) + hs
         self._tcp_session(t, src, dst, 443, [("c", record)])
@@ -442,13 +496,31 @@ class _Writer:
             "packets": len(self.frames),
             "duration_s": round(self.frames[-1][0] - self.frames[0][0], 3) if self.frames else 0,
             "sha256": hashlib.sha256(pcap).hexdigest(),
-            "segments": [{"id": s["id"], "cidr": s["cidr"], "gateway": s["gateway"],
-                          "gateway_ip": topo.hosts[s["gateway"]]["ip"],
-                          "gateway_mac": topo.mac[s["gateway"]].hex(":")} for s in topo.segments],
-            "hosts": [{"id": hid, "ip": h["ip"], "mac": topo.mac[hid].hex(":"), "name": h.get("name"),
-                       "role": h["role"], "segment": topo.segment_of[hid]} for hid, h in topo.hosts.items()],
+            "segments": [
+                {
+                    "id": s["id"],
+                    "cidr": s["cidr"],
+                    "gateway": s["gateway"],
+                    "gateway_ip": topo.hosts[s["gateway"]]["ip"],
+                    "gateway_mac": topo.mac[s["gateway"]].hex(":"),
+                }
+                for s in topo.segments
+            ],
+            "hosts": [
+                {
+                    "id": hid,
+                    "ip": h["ip"],
+                    "mac": topo.mac[hid].hex(":"),
+                    "name": h.get("name"),
+                    "role": h["role"],
+                    "segment": topo.segment_of[hid],
+                }
+                for hid, h in topo.hosts.items()
+            ],
             "conversations": dict(sorted(self.convs.items())),
-            "dns": self.dns, "http": self.http, "tls": self.tls,
+            "dns": self.dns,
+            "http": self.http,
+            "tls": self.tls,
         }
 
 
@@ -470,8 +542,8 @@ def read_pcap(data: bytes) -> list[tuple[float, bytes]]:
         raise ValueError("not a little-endian Ethernet pcap")
     out, i = [], 24
     while i < len(data):
-        sec, usec, incl, _orig = struct.unpack("<IIII", data[i:i + 16])
-        out.append((sec + usec / 1e6, data[i + 16:i + 16 + incl]))
+        sec, usec, incl, _orig = struct.unpack("<IIII", data[i : i + 16])
+        out.append((sec + usec / 1e6, data[i + 16 : i + 16 + incl]))
         i += 16 + incl
     return out
 
@@ -500,8 +572,17 @@ def main(argv: list[str] | None = None) -> int:
     args.out.write_bytes(data)
     if args.summary:
         args.summary.write_text(json.dumps(summary, indent=2) + "\n")
-    print(json.dumps({"ok": True, "pcap": str(args.out), "sha256": summary["sha256"],
-                      "packets": summary["packets"], "summary": str(args.summary) if args.summary else None}))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "pcap": str(args.out),
+                "sha256": summary["sha256"],
+                "packets": summary["packets"],
+                "summary": str(args.summary) if args.summary else None,
+            }
+        )
+    )
     return 0
 
 

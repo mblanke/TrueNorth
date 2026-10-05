@@ -407,8 +407,7 @@ def save_range_topology(
     # provision waits and then builds the new topology; if the provision got there
     # first, nothing matches and nothing has been written.
     editable_now = (Range.state.in_([RangeState.created, RangeState.destroyed])) | (
-        (Range.state == RangeState.failed)
-        & (Range.provisioner_output.is_(None) | (Range.provisioner_output == ""))
+        (Range.state == RangeState.failed) & (Range.provisioner_output.is_(None) | (Range.provisioner_output == ""))
     )
     claimed = (
         db.query(Range)
@@ -431,8 +430,9 @@ def save_range_topology(
         current.yaml = text
         tmpl = current
     else:
-        tmpl = Template(name=f"{rng.name} (designer)", version="1.0", yaml=text,
-                        tenant_id=rng.tenant_id, is_public=False)
+        tmpl = Template(
+            name=f"{rng.name} (designer)", version="1.0", yaml=text, tenant_id=rng.tenant_id, is_public=False
+        )
         db.add(tmpl)
         db.flush()
         if current is not None:
@@ -442,8 +442,14 @@ def save_range_topology(
     db.query(Range).filter(Range.id == rng.id, Range.tenant_id == rng.tenant_id).update(
         {Range.template_id: tmpl.id}, synchronize_session=False
     )
-    _audit(db, user, "update", "range.topology", str(rng.id),
-           detail=f"template={tmpl.id} nodes={len(template['nodes'])} created={not owned}")
+    _audit(
+        db,
+        user,
+        "update",
+        "range.topology",
+        str(rng.id),
+        detail=f"template={tmpl.id} nodes={len(template['nodes'])} created={not owned}",
+    )
     db.commit()
     return {
         "range_id": str(rng.id),
@@ -458,15 +464,23 @@ def save_range_topology(
 
 # ── Lifecycle Actions ──────────────────────────────────────────────────
 _OPERATION_RESPONSES: dict = {
-    202: {"description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). "
-                         "It may still be waiting for the task queue; see the operation's status."},
-    409: {"description": "Not allowed in the range's state, another operation is in flight, "
-                         "or the Idempotency-Key was used for a different request"},
+    202: {
+        "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). "
+        "It may still be waiting for the task queue; see the operation's status."
+    },
+    409: {
+        "description": "Not allowed in the range's state, another operation is in flight, "
+        "or the Idempotency-Key was used for a different request"
+    },
 }
 
 
 def _range_operation(
-    action: str, range_id: uuid.UUID, idempotency_key: str | None, db: Session, user: CurrentUser,
+    action: str,
+    range_id: uuid.UUID,
+    idempotency_key: str | None,
+    db: Session,
+    user: CurrentUser,
     response: Response,
 ) -> Range:
     """Accept a provision/destroy: operation + state change in one commit, then dispatch.
@@ -836,9 +850,7 @@ async def import_description(
     return rng
 
 
-def _tenant_document(
-    db: Session, range_id: uuid.UUID, document_id: uuid.UUID, user: CurrentUser
-) -> RangeDocument:
+def _tenant_document(db: Session, range_id: uuid.UUID, document_id: uuid.UUID, user: CurrentUser) -> RangeDocument:
     """Fetch an attachment scoped to both its range and the caller's tenant, or 404.
 
     The range check alone would be enough (callers reach here through

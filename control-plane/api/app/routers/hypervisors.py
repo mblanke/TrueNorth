@@ -37,7 +37,9 @@ from ..schemas import (
 # carries WRITE below.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/hypervisors", tags=["Infrastructure"], dependencies=[Depends(require_permission(Permission.INFRA_READ))])
+router = APIRouter(
+    prefix="/hypervisors", tags=["Infrastructure"], dependencies=[Depends(require_permission(Permission.INFRA_READ))]
+)
 WRITE = [Depends(require_permission(Permission.INFRA_WRITE))]
 
 

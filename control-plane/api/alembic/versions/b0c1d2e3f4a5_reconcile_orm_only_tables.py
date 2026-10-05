@@ -101,9 +101,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     existing = set(sa.inspect(bind).get_table_names())
     wanted = [
-        Base.metadata.tables[name]
-        for name in ORM_ONLY_TABLES
-        if name in Base.metadata.tables and name not in existing
+        Base.metadata.tables[name] for name in ORM_ONLY_TABLES if name in Base.metadata.tables and name not in existing
     ]
     if not wanted:
         return
@@ -153,9 +151,7 @@ def downgrade() -> None:
     bind = op.get_bind()
     existing = set(sa.inspect(bind).get_table_names())
     present = [
-        Base.metadata.tables[name]
-        for name in ORM_ONLY_TABLES
-        if name in Base.metadata.tables and name in existing
+        Base.metadata.tables[name] for name in ORM_ONLY_TABLES if name in Base.metadata.tables and name in existing
     ]
     if not present:
         return

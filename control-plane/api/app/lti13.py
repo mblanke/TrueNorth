@@ -154,9 +154,7 @@ def find_platform(db: Session, iss: str, client_id: str | None = None) -> Extern
     A registration without a client id is still returned so launch can refuse it with
     a clear reason. Without a client id the issuer must identify exactly one platform.
     """
-    q = db.query(ExternalPlatform).filter(
-        ExternalPlatform.lti_issuer == iss, ExternalPlatform.is_active.is_(True)
-    )
+    q = db.query(ExternalPlatform).filter(ExternalPlatform.lti_issuer == iss, ExternalPlatform.is_active.is_(True))
     if client_id:
         return (
             q.filter(ExternalPlatform.lti_client_id == client_id).first()
@@ -308,9 +306,7 @@ def build_deep_link_response(
     }
     if deep_link_return_data:
         payload["https://purl.imsglobal.org/spec/lti-dl/claim/data"] = deep_link_return_data
-    return jwt.encode(
-        payload, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid}
-    )
+    return jwt.encode(payload, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid})
 
 
 def content_item_for(kind: str, resource_id: str, title: str, max_score: int = 100) -> dict:

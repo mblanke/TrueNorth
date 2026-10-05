@@ -302,7 +302,9 @@ def get_request(
     return row
 
 
-def _resolve_tenant(db: Session, req: RegistrationRequest, approver: CurrentUser, chosen: uuid.UUID | None) -> uuid.UUID:
+def _resolve_tenant(
+    db: Session, req: RegistrationRequest, approver: CurrentUser, chosen: uuid.UUID | None
+) -> uuid.UUID:
     """Decide which tenant the new user lands in, and whether that is permitted."""
     target = chosen or req.suggested_tenant_id or uuid.UUID(approver.tenant_id)
     if approver.role != UserRole.admin and str(target) != approver.tenant_id:
@@ -327,9 +329,7 @@ def _enroll_for(
     count = 0
     if learning_path_id:
         count += len(
-            ensure_path_enrollment(
-                db, user_id=user_id, learning_path_id=learning_path_id, tenant_id=tenant_id
-            )
+            ensure_path_enrollment(db, user_id=user_id, learning_path_id=learning_path_id, tenant_id=tenant_id)
         )
     if qualification_id:
         # Scoped to the tenant the account is being created in, or to shared
@@ -512,9 +512,7 @@ def bulk_approve(
     for rid in body.request_ids:
         req = _visible(db, user).filter(RegistrationRequest.id == rid).first()
         if req is None:
-            results.append(
-                RegistrationBulkResultItem(request_id=rid, ok=False, error="not found")
-            )
+            results.append(RegistrationBulkResultItem(request_id=rid, ok=False, error="not found"))
             continue
         try:
             with db.begin_nested():
@@ -529,21 +527,13 @@ def bulk_approve(
                     note=body.note,
                 )
                 _audit(db, user, "approve", str(req.id))
-            results.append(
-                RegistrationBulkResultItem(request_id=rid, ok=True, user_id=created.id)
-            )
+            results.append(RegistrationBulkResultItem(request_id=rid, ok=True, user_id=created.id))
         except HTTPException as exc:
-            results.append(
-                RegistrationBulkResultItem(request_id=rid, ok=False, error=str(exc.detail))
-            )
+            results.append(RegistrationBulkResultItem(request_id=rid, ok=False, error=str(exc.detail)))
         except Exception as exc:  # noqa: BLE001 - one bad row must not abort the batch
             logger.exception("Bulk approve failed for %s", rid)
-            results.append(
-                RegistrationBulkResultItem(request_id=rid, ok=False, error=str(exc))
-            )
+            results.append(RegistrationBulkResultItem(request_id=rid, ok=False, error=str(exc)))
 
     db.commit()
     approved = sum(1 for r in results if r.ok)
-    return RegistrationBulkApproveOut(
-        approved=approved, failed=len(results) - approved, results=results
-    )
+    return RegistrationBulkApproveOut(approved=approved, failed=len(results) - approved, results=results)

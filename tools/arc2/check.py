@@ -814,13 +814,25 @@ def _check_captures(run: Path, manifest: dict[str, Any]) -> list[Finding]:
             continue
         who = f"inject {inj.get('id')}"
         if inj.get("author_required"):
-            out.append(Finding("inject.capture_author_required", "fail", "range-engineer",
-                               f"{who} has a generated capture but is still marked author_required"))
+            out.append(
+                Finding(
+                    "inject.capture_author_required",
+                    "fail",
+                    "range-engineer",
+                    f"{who} has a generated capture but is still marked author_required",
+                )
+            )
         paths = {k: run / cap[k] for k in ("spec", "pcap", "summary")}
         missing = [k for k, p in paths.items() if not p.is_file()]
         if missing:
-            out.append(Finding("inject.capture_missing", "fail", "range-engineer",
-                               f"{who}: capture {', '.join(missing)} missing ({', '.join(cap[k] for k in missing)})"))
+            out.append(
+                Finding(
+                    "inject.capture_missing",
+                    "fail",
+                    "range-engineer",
+                    f"{who}: capture {', '.join(missing)} missing ({', '.join(cap[k] for k in missing)})",
+                )
+            )
             continue
         try:
             spec = pcapgen.load(paths["spec"])
@@ -832,8 +844,14 @@ def _check_captures(run: Path, manifest: dict[str, Any]) -> list[Finding]:
             continue
         data, _summary = pcapgen.render(spec)
         if hashlib.sha256(data).hexdigest() != sha256_file(paths["pcap"]):
-            out.append(Finding("inject.capture_matches_spec", "fail", "range-engineer",
-                               f"{who}: {cap['pcap']} is not what {cap['spec']} renders to; re-run pcapgen render"))
+            out.append(
+                Finding(
+                    "inject.capture_matches_spec",
+                    "fail",
+                    "range-engineer",
+                    f"{who}: {cap['pcap']} is not what {cap['spec']} renders to; re-run pcapgen render",
+                )
+            )
     return out
 
 

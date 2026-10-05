@@ -131,7 +131,12 @@ def hypervisor_connection(db, hypervisor_type: str):
     hc = hypervisor_connections
     stmt = (
         sa.select(
-            hc.c.host, hc.c.port, hc.c.username, hc.c.password_encrypted, hc.c.api_token, hc.c.verify_ssl,
+            hc.c.host,
+            hc.c.port,
+            hc.c.username,
+            hc.c.password_encrypted,
+            hc.c.api_token,
+            hc.c.verify_ssl,
             hc.c.datacenter,
         )
         .where(hc.c.hypervisor_type == hypervisor_type, hc.c.is_active == sa.true())
@@ -371,8 +376,14 @@ def insert_forged_scenario(db, name: str, yaml_text: str, tenant_id: str) -> str
     sid = str(uuid.uuid4())
     db.execute(
         sa.insert(scenarios).values(
-            id=sid, name=name, version="1.0", yaml=yaml_text, tenant_id=tenant_id, is_public=False,
-            created_at=_now(), updated_at=_now(),
+            id=sid,
+            name=name,
+            version="1.0",
+            yaml=yaml_text,
+            tenant_id=tenant_id,
+            is_public=False,
+            created_at=_now(),
+            updated_at=_now(),
         )
     )
     return sid
@@ -387,8 +398,17 @@ def insert_forged_exercise(db, name: str, range_id, scenario_id: str, tenant_id:
     eid = str(uuid.uuid4())
     db.execute(
         sa.insert(exercises).values(
-            id=eid, name=name, kind="assessment", range_id=range_id, scenario_id=scenario_id, state="pending",
-            tenant_id=tenant_id, total_score=0, max_score=0, created_at=_now(), updated_at=_now(),
+            id=eid,
+            name=name,
+            kind="assessment",
+            range_id=range_id,
+            scenario_id=scenario_id,
+            state="pending",
+            tenant_id=tenant_id,
+            total_score=0,
+            max_score=0,
+            created_at=_now(),
+            updated_at=_now(),
         )
     )
     return eid
@@ -410,10 +430,18 @@ def insert_forged_exercise_record(
     fid = str(uuid.uuid4())
     db.execute(
         sa.insert(forged_exercises).values(
-            id=fid, exercise_id=exercise_id, scenario_id=scenario_id, feed_id=feed_id,
-            indicator_ids=json.dumps(list(indicator_ids)), scenario_yaml=scenario_yaml,
-            mitre_techniques=json.dumps(list(mitre_techniques)), difficulty=difficulty, model_used=model_used,
-            tenant_id=tenant_id, created_at=_now(), updated_at=_now(),
+            id=fid,
+            exercise_id=exercise_id,
+            scenario_id=scenario_id,
+            feed_id=feed_id,
+            indicator_ids=json.dumps(list(indicator_ids)),
+            scenario_yaml=scenario_yaml,
+            mitre_techniques=json.dumps(list(mitre_techniques)),
+            difficulty=difficulty,
+            model_used=model_used,
+            tenant_id=tenant_id,
+            created_at=_now(),
+            updated_at=_now(),
         )
     )
     return fid
@@ -442,8 +470,15 @@ def insert_auto_assessment(db, user_id: str, exercise_id: str, mappings: list, r
     aid = str(uuid.uuid4())
     db.execute(
         sa.insert(competency_auto_assessments).values(
-            id=aid, user_id=user_id, exercise_id=exercise_id, competency_mappings=json.dumps(mappings),
-            raw_score=raw, max_score=max_score, assessed_at=_now(), created_at=_now(), updated_at=_now(),
+            id=aid,
+            user_id=user_id,
+            exercise_id=exercise_id,
+            competency_mappings=json.dumps(mappings),
+            raw_score=raw,
+            max_score=max_score,
+            assessed_at=_now(),
+            created_at=_now(),
+            updated_at=_now(),
         )
     )
     return aid
@@ -467,8 +502,14 @@ def upsert_competency_assertion(db, user_id: str, competency_id: str, proficienc
     else:
         db.execute(
             sa.insert(ca).values(
-                id=str(uuid.uuid4()), user_id=user_id, competency_id=competency_id, proficiency=proficiency,
-                evidence_refs=json.dumps([exercise_id]), source="truenorth", assessed_at=_now(), created_at=_now(),
+                id=str(uuid.uuid4()),
+                user_id=user_id,
+                competency_id=competency_id,
+                proficiency=proficiency,
+                evidence_refs=json.dumps([exercise_id]),
+                source="truenorth",
+                assessed_at=_now(),
+                created_at=_now(),
                 updated_at=_now(),
             )
         )

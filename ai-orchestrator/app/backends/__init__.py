@@ -65,9 +65,7 @@ def get_cloud_backend(name: str) -> BaseAIBackend:
         cls = _REGISTRY.get(key)
         if cls is None:
             valid = ", ".join(sorted(_REGISTRY))
-            raise ValueError(
-                f"Unknown AI backend={name!r}. Valid options: {valid}"
-            )
+            raise ValueError(f"Unknown AI backend={name!r}. Valid options: {valid}")
         _instances[key] = cls()
     return _instances[key]
 
