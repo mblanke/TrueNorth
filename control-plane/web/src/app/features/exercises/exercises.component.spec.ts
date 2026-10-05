@@ -1,8 +1,8 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { ExercisesComponent } from './exercises.component';
+import { EXERCISE_POLL_MS, ExercisesComponent } from './exercises.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Exercise, Range, Scenario } from '@core/models';
@@ -62,6 +62,31 @@ describe('ExercisesComponent', () => {
     fixture = TestBed.createComponent(ExercisesComponent);
     component = fixture.componentInstance;
   });
+
+  // ── Live state ───────────────────────────────────────────────────
+  // The worker runs and scores an exercise; the page used to show it running at 0/100,
+  // with Pause and Complete, long after it had finished (found in a browser journey).
+  it('refreshes while an exercise is running, until none is', fakeAsync(() => {
+    const running = [{ ...mockExercises[1] }] as Exercise[];
+    const done = [{ ...mockExercises[1], state: 'completed', total_score: 100 }] as Exercise[];
+    mockApi.listExercises.and.returnValues(of(running), of(done), of(done));
+    fixture.detectChanges();
+    expect(mockApi.listExercises).toHaveBeenCalledTimes(1);
+    tick(EXERCISE_POLL_MS);
+    expect(mockApi.listExercises).toHaveBeenCalledTimes(2);
+    expect(component.exercises()[0].state).toBe('completed');
+    tick(EXERCISE_POLL_MS * 3);
+    expect(mockApi.listExercises).toHaveBeenCalledTimes(2);
+    discardPeriodicTasks();
+  }));
+
+  it('does not poll when nothing is running', fakeAsync(() => {
+    mockApi.listExercises.and.returnValue(of([mockExercises[2]] as Exercise[]));
+    fixture.detectChanges();
+    tick(EXERCISE_POLL_MS * 3);
+    expect(mockApi.listExercises).toHaveBeenCalledTimes(1);
+    discardPeriodicTasks();
+  }));
 
   // ── Creation ─────────────────────────────────────────────────────
   it('should create', () => {
