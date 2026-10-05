@@ -38,12 +38,15 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import or_
+from sqlalchemy import or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models import AuditLog, User, WikiPage, WikiRevision, WikiSpace
+from ..models import AuditLog, User
+from ..models_wiki import WikiPage, WikiRevision, WikiSpace
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import get_owned, tenant_uuid
 
@@ -62,11 +65,12 @@ class SpaceIn(BaseModel):
 
 
 class SpaceUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    icon: str | None = Field(None, max_length=50)
-    visibility: str | None = Field(None, pattern=r"^(all|staff)$")
-    is_archived: bool | None = None
+    # Omit a field to keep it; an explicit null is refused (422), never written to a NOT NULL column.
+    name: str = Field(default=None, min_length=1, max_length=255)
+    description: str = Field(default=None)
+    icon: str = Field(default=None, max_length=50)
+    visibility: str = Field(default=None, pattern=r"^(all|staff)$")
+    is_archived: bool = Field(default=None)
 
 
 class SpaceOut(BaseModel):
@@ -100,6 +104,10 @@ class PageUpdate(BaseModel):
     is_published: bool | None = None
     ordinal: int | None = None
     edit_summary: str = Field("", max_length=500)
+
+
+class RestoreRequest(BaseModel):
+    base_revision: int = Field(..., ge=1, description="revision_number the restore was decided against")
 
 
 class PageOut(BaseModel):
@@ -174,11 +182,7 @@ def _names(db: Session, user: CurrentUser, ids: set[uuid.UUID]) -> dict[uuid.UUI
     ids = {i for i in ids if i}
     if not ids:
         return {}
-    rows = (
-        db.query(User.id, User.display_name)
-        .filter(User.id.in_(ids), User.tenant_id == tenant_uuid(user))
-        .all()
-    )
+    rows = db.query(User.id, User.display_name).filter(User.id.in_(ids), User.tenant_id == tenant_uuid(user)).all()
     return {r.id: r.display_name for r in rows}
 
 
@@ -232,6 +236,47 @@ def _page_out(db: Session, page: WikiPage, space: WikiSpace, user: CurrentUser) 
     out.children = [{"id": str(c.id), "title": c.title} for c in children]
     out.last_editor_name = _names(db, user, {page.last_editor_id}).get(page.last_editor_id, "")
     return out
+
+
+def _conflict(db: Session, page_id: uuid.UUID, user: CurrentUser, *, rollback: bool = False) -> JSONResponse:
+    """409 with the page as it is now, read fresh from the database.
+
+    Before ``_claim`` succeeds nothing has been written, so re-reading is enough; after a
+    failed commit (``rollback``) the transaction is discarded first.
+    """
+    if rollback:
+        db.rollback()
+    else:
+        db.expire_all()
+    page, space = _page(db, page_id, user)
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": "This page was changed by someone else since you started editing.",
+            "current": _page_out(db, page, space, user).model_dump(mode="json"),
+        },
+    )
+
+
+def _claim(db: Session, page: WikiPage, base_revision: int, *, bump: bool) -> bool:
+    """Compare-and-set on the page's revision_number, in the database, before any change.
+
+    ``UPDATE ... WHERE revision_number = :base`` is atomic: of two saves from the same
+    base, one matches and the other matches no row (on PostgreSQL the second waits for
+    the first's row lock, then re-checks). A check against the page this request loaded
+    cannot do that. With ``bump`` the revision advances; without it the row is still
+    locked and checked, so a metadata-only save cannot overwrite a newer edit either.
+    """
+    result = db.execute(
+        update(WikiPage)
+        .where(WikiPage.id == page.id, WikiPage.revision_number == base_revision)
+        .values(revision_number=base_revision + (1 if bump else 0))
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        return False
+    set_committed_value(page, "revision_number", base_revision + (1 if bump else 0))
+    return True
 
 
 def _write_revision(db: Session, page: WikiPage, user: CurrentUser, summary: str) -> None:
@@ -414,14 +459,12 @@ def update_page(
 ):
     page, space = _page(db, page_id, user)
     if body.base_revision != page.revision_number:
-        current = _page_out(db, page, space, user)
-        return JSONResponse(
-            status_code=409,
-            content={
-                "detail": "This page was changed by someone else since you started editing.",
-                "current": current.model_dump(mode="json"),
-            },
-        )
+        return _conflict(db, page.id, user)
+    content_changed = (body.title is not None and body.title != page.title) or (
+        body.body is not None and body.body != page.body
+    )
+    if not _claim(db, page, body.base_revision, bump=content_changed):
+        return _conflict(db, page.id, user)
 
     if body.move_to_root:
         page.parent_id = None
@@ -429,14 +472,11 @@ def update_page(
         _check_parent(db, page, space, body.parent_id, user)
         page.parent_id = body.parent_id
 
-    content_changed = False
     if body.title is not None and body.title != page.title:
         page.title = body.title
         page.slug = _slugify(body.title)
-        content_changed = True
     if body.body is not None and body.body != page.body:
         page.body = body.body
-        content_changed = True
     if body.tags is not None:
         page.tags = body.tags
     if body.is_published is not None:
@@ -446,10 +486,12 @@ def update_page(
 
     page.last_editor_id = uuid.UUID(user.id)
     if content_changed:
-        page.revision_number += 1
         _write_revision(db, page, user, body.edit_summary)
     _audit(db, user, "wiki_page_update", "wiki_page", str(page.id))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:  # a revision row for this number already exists: someone else won
+        return _conflict(db, page.id, user, rollback=True)
     db.refresh(page)
     return _page_out(db, page, space, user)
 
@@ -526,24 +568,38 @@ def get_revision(
     return out
 
 
-@router.post("/pages/{page_id}/revisions/{n}/restore", response_model=PageOut)
+@router.post(
+    "/pages/{page_id}/revisions/{n}/restore",
+    response_model=PageOut,
+    responses={409: {"description": "The page changed since base_revision; body carries the current page"}},
+)
 def restore_revision(
+    body: RestoreRequest,
     page_id: uuid.UUID = Path(...),
     n: int = Path(..., ge=1),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
-) -> PageOut:
-    """Bring an old version back as a NEW revision; history is never rewritten."""
+):
+    """Bring an old version back as a NEW revision; history is never rewritten.
+
+    Like an edit, it names the revision it was decided against (``base_revision``): a
+    restore chosen while looking at revision 4 must not wipe out a revision 5 saved
+    since. A stale base is a 409 with the current page.
+    """
     page, space = _page(db, page_id, user)
     rev = _revision(db, page, n, user)
+    if body.base_revision != page.revision_number or not _claim(db, page, body.base_revision, bump=True):
+        return _conflict(db, page.id, user)
     page.title = rev.title
     page.slug = _slugify(rev.title)
     page.body = rev.body
     page.last_editor_id = uuid.UUID(user.id)
-    page.revision_number += 1
     _write_revision(db, page, user, f"Restored revision {n}")
     _audit(db, user, "wiki_page_restore", "wiki_page", str(page.id))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        return _conflict(db, page.id, user, rollback=True)
     db.refresh(page)
     return _page_out(db, page, space, user)
 

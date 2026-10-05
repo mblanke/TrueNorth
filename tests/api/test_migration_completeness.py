@@ -54,7 +54,7 @@ def _tables_created_by_migrations() -> set[str]:
 
 
 def _orm_tables() -> set[str]:
-    from app.models import Base
+    from app.sections import Base
 
     return set(Base.metadata.tables)
 
@@ -65,7 +65,7 @@ def test_every_orm_table_is_created_by_a_migration():
     `b0c1d2e3f4a5` creates the set that historically did. A model added without
     a migration fails here rather than at somebody's first production install.
     """
-    from app.models import Base  # noqa: F401  (import cost is the point of the fixture)
+    from app.sections import Base  # noqa: F401  (import cost is the point of the fixture)
 
     orm = _orm_tables()
     created = _tables_created_by_migrations()
@@ -137,7 +137,7 @@ def _assert_schema_matches_orm(database_url: str, *, foreign_keys: bool = False)
     among them `users.first_name`: a migrated database could not load a single user.
     """
     import sqlalchemy as sa
-    from app.models import Base
+    from app.sections import Base
 
     engine = sa.create_engine(database_url)
     try:

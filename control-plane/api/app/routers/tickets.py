@@ -51,18 +51,8 @@ from sqlalchemy.orm import Session
 from .. import object_store
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models import (
-    AuditLog,
-    Exercise,
-    Range,
-    SupportQueue,
-    Ticket,
-    TicketActivity,
-    TicketAttachment,
-    TicketComment,
-    User,
-    UserRole,
-)
+from ..models import AuditLog, Exercise, Range, User, UserRole
+from ..models_tickets import SupportQueue, Ticket, TicketActivity, TicketAttachment, TicketComment
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import get_owned, tenant_uuid
 
@@ -88,9 +78,10 @@ class QueueIn(BaseModel):
 
 
 class QueueUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = None
-    is_default: bool | None = None
+    # Omit a field to keep it; an explicit null is refused (422), never written to a NOT NULL column.
+    name: str = Field(default=None, min_length=1, max_length=255)
+    description: str = Field(default=None)
+    is_default: bool = Field(default=None)
 
 
 class QueueOut(BaseModel):
@@ -232,11 +223,7 @@ def _names(db: Session, user: CurrentUser, ids: set) -> dict[uuid.UUID, str]:
     ids = {i for i in ids if i}
     if not ids:
         return {}
-    rows = (
-        db.query(User.id, User.display_name)
-        .filter(User.id.in_(ids), User.tenant_id == tenant_uuid(user))
-        .all()
-    )
+    rows = db.query(User.id, User.display_name).filter(User.id.in_(ids), User.tenant_id == tenant_uuid(user)).all()
     names = {r.id: r.display_name for r in rows}
     # The caller may have no users row (AUTH_DISABLED dev identity); name them anyway.
     names.setdefault(uuid.UUID(user.id), user.display_name)

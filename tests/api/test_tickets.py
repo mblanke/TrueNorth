@@ -11,7 +11,8 @@ from contextlib import contextmanager
 import pytest
 from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
-from app.models import Range, Template, Ticket, User, UserRole
+from app.models import Range, Template, User, UserRole
+from app.models_tickets import Ticket
 
 DEV_TENANT = "00000000-0000-0000-0000-000000000001"
 OTHER_TENANT = "00000000-0000-0000-0000-0000000000ff"

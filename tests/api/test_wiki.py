@@ -11,7 +11,8 @@ from contextlib import contextmanager
 import pytest
 from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
-from app.models import UserRole, WikiPage, WikiSpace
+from app.models import UserRole
+from app.models_wiki import WikiPage, WikiSpace
 
 DEV_TENANT = "00000000-0000-0000-0000-000000000001"
 OTHER_TENANT = "00000000-0000-0000-0000-0000000000ff"
@@ -116,7 +117,7 @@ class TestRevisions:
         _space(client)
         page = _page(client, body="original")
         client.put(f"/wiki/pages/{page['id']}", json={"base_revision": 1, "body": "vandalised"})
-        restored = client.post(f"/wiki/pages/{page['id']}/revisions/1/restore").json()
+        restored = client.post(f"/wiki/pages/{page['id']}/revisions/1/restore", json={"base_revision": 2}).json()
         assert restored["body"] == "original"
         assert restored["revision_number"] == 3
         assert len(client.get(f"/wiki/pages/{page['id']}/revisions").json()) == 3

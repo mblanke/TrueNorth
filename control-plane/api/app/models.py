@@ -1865,14 +1865,3 @@ class QuizAttempt(TimestampMixin, Base):
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
 
     quiz: Mapped[Quiz] = relationship(back_populates="attempts")
-
-
-# -- Section models kept in their own files (re-exported here) ------------
-from .models_tickets import (  # noqa: E402, F401
-    SupportQueue,
-    Ticket,
-    TicketActivity,
-    TicketAttachment,
-    TicketComment,
-)
-from .models_wiki import WikiPage, WikiRevision, WikiSpace  # noqa: E402, F401
