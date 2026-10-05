@@ -94,6 +94,8 @@ class Permission(str, Enum):
     # bookings, capacity or the timeline.
     SCHEDULE_READ = "schedule:read"
     SCHEDULE_WRITE = "schedule:write"
+    # Platform-wide scheduler policy (over-capacity block/warn). Admin only: no role lists it.
+    SCHEDULE_ADMIN = "schedule:admin"
 
     # Tenant management
     TENANT_CREATE = "tenant:create"

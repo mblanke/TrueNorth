@@ -19,12 +19,11 @@ from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..rbac import Permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
+from . import service
+from .capacity import Resources, available, get_capacity_provider
 from .models import EventState, ScheduledEvent
-from .schemas import CapacityCheck, CapacityResult, EventIn
-from .service import CLUSTER_DISK_GB, CLUSTER_RAM_MB, CLUSTER_VCPU
-from .service import committed_in_window as _committed_in_window
+from .schemas import CapacityCheck, CapacityResult, EventIn, PolicyIn, PolicyOut
 from .service import to_out as _to_out
-from .service import usable as _usable
 
 logger = logging.getLogger("truenorth.api.scheduling")
 
@@ -57,67 +56,84 @@ def get_capacity(
     start = start_time or now
     end = end_time or (now + timedelta(hours=8))
 
-    vcpu_c, ram_c, disk_c, count = _committed_in_window(db, start, end)
-
-    usable_cpu = _usable(CLUSTER_VCPU)
-    usable_ram = _usable(CLUSTER_RAM_MB)
-    usable_disk = _usable(CLUSTER_DISK_GB)
+    provider = get_capacity_provider()
+    supply = provider.supply()
+    committed = provider.committed(db, start, end)
+    free = available(supply, committed.resources)
+    c = committed.resources
 
     return CapacityResult(
         fits=True,
-        vcpu_available=max(0, usable_cpu - vcpu_c),
-        vcpu_committed=vcpu_c,
-        vcpu_total=usable_cpu,
-        ram_mb_available=max(0, usable_ram - ram_c),
-        ram_mb_committed=ram_c,
-        ram_mb_total=usable_ram,
-        disk_gb_available=max(0, usable_disk - disk_c),
-        disk_gb_committed=disk_c,
-        disk_gb_total=usable_disk,
-        overlapping_events=count,
-        message=f"{count} event(s) in window",
+        vcpu_available=free.vcpu,
+        vcpu_committed=c.vcpu,
+        vcpu_total=supply.vcpu,
+        ram_mb_available=free.ram_mb,
+        ram_mb_committed=c.ram_mb,
+        ram_mb_total=supply.ram_mb,
+        disk_gb_available=free.disk_gb,
+        disk_gb_committed=c.disk_gb,
+        disk_gb_total=supply.disk_gb,
+        overlapping_events=committed.events,
+        message=f"{committed.events} event(s) in window",
+        policy=service.get_policy(db).value,
+        supply_source=provider.supply_source,
     )
 
 
 @router.post("/check", response_model=CapacityResult, summary="Check if deployment fits")
-def check_capacity(body: CapacityCheck, db: Session = Depends(get_db)):
-    """Check whether a proposed deployment fits within the cluster at the given time."""
-    vcpu_c, ram_c, disk_c, count = _committed_in_window(db, body.start_time, body.end_time)
+def check_capacity(body: CapacityCheck, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Check whether a proposed deployment fits within the cluster at the given time.
 
-    usable_cpu = _usable(CLUSTER_VCPU)
-    usable_ram = _usable(CLUSTER_RAM_MB)
-    usable_disk = _usable(CLUSTER_DISK_GB)
-
-    avail_cpu = max(0, usable_cpu - vcpu_c)
-    avail_ram = max(0, usable_ram - ram_c)
-    avail_disk = max(0, usable_disk - disk_c)
-
-    fits = body.vcpu_needed <= avail_cpu and body.ram_mb_needed <= avail_ram and body.disk_gb_needed <= avail_disk
-
-    problems = []
-    if body.vcpu_needed > avail_cpu:
-        problems.append(f"vCPU: need {body.vcpu_needed}, only {avail_cpu} available")
-    if body.ram_mb_needed > avail_ram:
-        problems.append(f"RAM: need {body.ram_mb_needed}MB, only {avail_ram}MB available")
-    if body.disk_gb_needed > avail_disk:
-        problems.append(f"Disk: need {body.disk_gb_needed}GB, only {avail_disk}GB available")
-
-    msg = "Resources available" if fits else "; ".join(problems)
+    With `template_id`, the need is that template's VM specs. The window includes the
+    provisioning lead and teardown grace, exactly as booking it would."""
+    if body.end_time <= body.start_time:
+        raise HTTPException(400, "end_time must be after start_time")
+    typed = Resources(body.vcpu_needed, body.ram_mb_needed, body.disk_gb_needed)
+    need = service.demand_for(db, user, body.template_id, typed).resources
+    provider = get_capacity_provider()
+    a = service.assess(db, provider, body.start_time, body.end_time, need)
+    c = a.committed.resources
 
     return CapacityResult(
-        fits=fits,
-        vcpu_available=avail_cpu,
-        vcpu_committed=vcpu_c + (body.vcpu_needed if fits else 0),
-        vcpu_total=usable_cpu,
-        ram_mb_available=avail_ram,
-        ram_mb_committed=ram_c + (body.ram_mb_needed if fits else 0),
-        ram_mb_total=usable_ram,
-        disk_gb_available=avail_disk,
-        disk_gb_committed=disk_c + (body.disk_gb_needed if fits else 0),
-        disk_gb_total=usable_disk,
-        overlapping_events=count,
-        message=msg,
+        fits=a.fits,
+        vcpu_available=a.free.vcpu,
+        vcpu_committed=c.vcpu + (need.vcpu if a.fits else 0),
+        vcpu_total=a.supply.vcpu,
+        ram_mb_available=a.free.ram_mb,
+        ram_mb_committed=c.ram_mb + (need.ram_mb if a.fits else 0),
+        ram_mb_total=a.supply.ram_mb,
+        disk_gb_available=a.free.disk_gb,
+        disk_gb_committed=c.disk_gb + (need.disk_gb if a.fits else 0),
+        disk_gb_total=a.supply.disk_gb,
+        overlapping_events=a.committed.events,
+        message="Resources available" if a.fits else "; ".join(a.reasons),
+        vcpu_needed=need.vcpu,
+        ram_mb_needed=need.ram_mb,
+        disk_gb_needed=need.disk_gb,
+        reasons=a.reasons,
+        policy=service.get_policy(db).value,
+        supply_source=provider.supply_source,
     )
+
+
+@router.get("/policy", response_model=PolicyOut, summary="Over-capacity policy")
+def get_policy(db: Session = Depends(get_db)):
+    """`block`: a booking that does not fit is refused for everyone. `warn`: it is
+    created, with warnings in the response, and the warning is audit-logged."""
+    return PolicyOut(overcapacity=service.get_policy(db))
+
+
+@router.put(
+    "/policy",
+    response_model=PolicyOut,
+    summary="Set the over-capacity policy (admin)",
+    dependencies=[Depends(require_permission(Permission.SCHEDULE_ADMIN))],
+)
+def put_policy(body: PolicyIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Platform-wide, because every tenant books against the same cluster. Audit-logged."""
+    service.set_policy(db, user, body.overcapacity)
+    db.commit()
+    return PolicyOut(overcapacity=service.get_policy(db))
 
 
 @router.get("/events", summary="List scheduled events")
@@ -143,23 +159,9 @@ def list_events(
 
 @router.post("/events", status_code=201, summary="Create a scheduled event", dependencies=_WRITE)
 def create_event(body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
-    """Create a new event with resource reservation.  Will reject if it
-    would cause an over-commitment."""
-    if body.end_time <= body.start_time:
-        raise HTTPException(400, "end_time must be after start_time")
-
-    # Check capacity
-    vcpu_c, ram_c, disk_c, _ = _committed_in_window(db, body.start_time, body.end_time)
-    usable_cpu = _usable(CLUSTER_VCPU)
-    usable_ram = _usable(CLUSTER_RAM_MB)
-    usable_disk = _usable(CLUSTER_DISK_GB)
-
-    if body.vcpu_total > (usable_cpu - vcpu_c):
-        raise HTTPException(409, f"Insufficient vCPU: need {body.vcpu_total}, available {usable_cpu - vcpu_c}")
-    if body.ram_mb_total > (usable_ram - ram_c):
-        raise HTTPException(409, f"Insufficient RAM: need {body.ram_mb_total}MB, available {usable_ram - ram_c}MB")
-    if body.disk_gb_total > (usable_disk - disk_c):
-        raise HTTPException(409, f"Insufficient Disk: need {body.disk_gb_total}GB, available {usable_disk - disk_c}GB")
+    """Create a new event with resource reservation. A booking that does not fit is
+    refused with 409 (policy `block`) or created with warnings (policy `warn`)."""
+    demand, warnings = _plan(db, user, body)
 
     evt = ScheduledEvent(
         name=body.name,
@@ -170,15 +172,32 @@ def create_event(body: EventIn, db: Session = Depends(get_db), user: CurrentUser
         template_id=uuid.UUID(body.template_id) if body.template_id else None,
         start_time=body.start_time,
         end_time=body.end_time,
-        vm_count=body.vm_count,
-        vcpu_total=body.vcpu_total,
-        ram_mb_total=body.ram_mb_total,
-        disk_gb_total=body.disk_gb_total,
+        vm_count=demand.vm_count,
+        vcpu_total=demand.resources.vcpu,
+        ram_mb_total=demand.resources.ram_mb,
+        disk_gb_total=demand.resources.disk_gb,
     )
     db.add(evt)
+    db.flush()
+    _audit_warnings(db, user, evt, warnings)
     db.commit()
     db.refresh(evt)
-    return _to_out(evt)
+    return _to_out(evt, warnings)
+
+
+def _plan(db: Session, user: CurrentUser, body: EventIn, exclude_id: uuid.UUID | None = None):
+    """Size a booking and apply the over-capacity policy. Raises 400/404/409/422."""
+    if body.end_time <= body.start_time:
+        raise HTTPException(400, "end_time must be after start_time")
+    typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
+    demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
+    a = service.assess(db, get_capacity_provider(), body.start_time, body.end_time, demand.resources, exclude_id)
+    return demand, service.enforce(db, a)
+
+
+def _audit_warnings(db: Session, user: CurrentUser, evt: ScheduledEvent, warnings: list[str]) -> None:
+    if warnings:
+        service.audit(db, user, "overcapacity_warning", str(evt.id), "; ".join(warnings))
 
 
 @router.get("/events/{event_id}", summary="Get a scheduled event")
@@ -192,36 +211,22 @@ def update_event(
     event_id: str, body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ):
     evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
-
-    if body.end_time <= body.start_time:
-        raise HTTPException(400, "end_time must be after start_time")
-
-    # Check capacity (excluding this event)
-    vcpu_c, ram_c, disk_c, _ = _committed_in_window(db, body.start_time, body.end_time, exclude_id=evt.id)
-    usable_cpu = _usable(CLUSTER_VCPU)
-    usable_ram = _usable(CLUSTER_RAM_MB)
-    usable_disk = _usable(CLUSTER_DISK_GB)
-
-    if body.vcpu_total > (usable_cpu - vcpu_c):
-        raise HTTPException(409, "Insufficient vCPU for update")
-    if body.ram_mb_total > (usable_ram - ram_c):
-        raise HTTPException(409, "Insufficient RAM for update")
-    if body.disk_gb_total > (usable_disk - disk_c):
-        raise HTTPException(409, "Insufficient Disk for update")
+    demand, warnings = _plan(db, user, body, exclude_id=evt.id)
 
     evt.name = body.name
     evt.description = body.description
     evt.start_time = body.start_time
     evt.end_time = body.end_time
-    evt.vm_count = body.vm_count
-    evt.vcpu_total = body.vcpu_total
-    evt.ram_mb_total = body.ram_mb_total
-    evt.disk_gb_total = body.disk_gb_total
+    evt.vm_count = demand.vm_count
+    evt.vcpu_total = demand.resources.vcpu
+    evt.ram_mb_total = demand.resources.ram_mb
+    evt.disk_gb_total = demand.resources.disk_gb
     evt.range_id = uuid.UUID(body.range_id) if body.range_id else None
     evt.template_id = uuid.UUID(body.template_id) if body.template_id else None
+    _audit_warnings(db, user, evt, warnings)
     db.commit()
     db.refresh(evt)
-    return _to_out(evt)
+    return _to_out(evt, warnings)
 
 
 @router.delete(
@@ -260,24 +265,28 @@ def resource_timeline(
     Used to render the capacity timeline chart in the dashboard."""
     from datetime import timedelta
 
+    provider = get_capacity_provider()
     now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
     buckets = []
     for h in range(0, days * 24, 1):
         t_start = now + timedelta(hours=h)
         t_end = t_start + timedelta(hours=1)
-        vcpu, ram, disk, count = _committed_in_window(db, t_start, t_end)
+        committed = provider.committed(db, t_start, t_end)
+        c = committed.resources
         buckets.append(
             {
                 "time": t_start.isoformat(),
-                "vcpu_committed": vcpu,
-                "ram_mb_committed": ram,
-                "disk_gb_committed": disk,
-                "event_count": count,
+                "vcpu_committed": c.vcpu,
+                "ram_mb_committed": c.ram_mb,
+                "disk_gb_committed": c.disk_gb,
+                "event_count": committed.events,
             }
         )
+    supply = provider.supply()
     return {
         "buckets": buckets,
-        "cluster_vcpu": _usable(CLUSTER_VCPU),
-        "cluster_ram_mb": _usable(CLUSTER_RAM_MB),
-        "cluster_disk_gb": _usable(CLUSTER_DISK_GB),
+        "cluster_vcpu": supply.vcpu,
+        "cluster_ram_mb": supply.ram_mb,
+        "cluster_disk_gb": supply.disk_gb,
+        "supply_source": provider.supply_source,
     }

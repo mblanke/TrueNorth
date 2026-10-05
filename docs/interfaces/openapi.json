@@ -1495,6 +1495,18 @@
             "title": "Start Time",
             "type": "string"
           },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Size the check from this template; overrides the *_needed values",
+            "title": "Template Id"
+          },
           "vcpu_needed": {
             "default": 0,
             "title": "Vcpu Needed",
@@ -1518,6 +1530,11 @@
             "title": "Disk Gb Committed",
             "type": "integer"
           },
+          "disk_gb_needed": {
+            "default": 0,
+            "title": "Disk Gb Needed",
+            "type": "integer"
+          },
           "disk_gb_total": {
             "title": "Disk Gb Total",
             "type": "integer"
@@ -1534,6 +1551,11 @@
             "title": "Overlapping Events",
             "type": "integer"
           },
+          "policy": {
+            "default": "block",
+            "title": "Policy",
+            "type": "string"
+          },
           "ram_mb_available": {
             "title": "Ram Mb Available",
             "type": "integer"
@@ -1542,9 +1564,28 @@
             "title": "Ram Mb Committed",
             "type": "integer"
           },
+          "ram_mb_needed": {
+            "default": 0,
+            "title": "Ram Mb Needed",
+            "type": "integer"
+          },
           "ram_mb_total": {
             "title": "Ram Mb Total",
             "type": "integer"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "supply_source": {
+            "default": "env",
+            "description": "Where cluster totals came from: env fallback, or discovery",
+            "title": "Supply Source",
+            "type": "string"
           },
           "vcpu_available": {
             "title": "Vcpu Available",
@@ -1552,6 +1593,11 @@
           },
           "vcpu_committed": {
             "title": "Vcpu Committed",
+            "type": "integer"
+          },
+          "vcpu_needed": {
+            "default": 0,
+            "title": "Vcpu Needed",
             "type": "integer"
           },
           "vcpu_total": {
@@ -3399,6 +3445,7 @@
                 "type": "null"
               }
             ],
+            "description": "Size the booking from this template's VM specs",
             "title": "Template Id"
           },
           "vcpu_total": {
@@ -6463,6 +6510,15 @@
         "title": "OpsStatsOut",
         "type": "object"
       },
+      "OvercapacityPolicy": {
+        "description": "What happens to a booking that does not fit (ADR 0004, \"Booking rules\").",
+        "enum": [
+          "block",
+          "warn"
+        ],
+        "title": "OvercapacityPolicy",
+        "type": "string"
+      },
       "POOut": {
         "properties": {
           "assessment_type": {
@@ -6694,6 +6750,30 @@
           "offset"
         ],
         "title": "PaginatedResponse[ExternalActivityOut]",
+        "type": "object"
+      },
+      "PolicyIn": {
+        "properties": {
+          "overcapacity": {
+            "$ref": "#/components/schemas/OvercapacityPolicy"
+          }
+        },
+        "required": [
+          "overcapacity"
+        ],
+        "title": "PolicyIn",
+        "type": "object"
+      },
+      "PolicyOut": {
+        "properties": {
+          "overcapacity": {
+            "$ref": "#/components/schemas/OvercapacityPolicy"
+          }
+        },
+        "required": [
+          "overcapacity"
+        ],
+        "title": "PolicyOut",
         "type": "object"
       },
       "ProgressSummaryOut": {
@@ -24223,7 +24303,7 @@
     },
     "/schedule/check": {
       "post": {
-        "description": "Check whether a proposed deployment fits within the cluster at the given time.",
+        "description": "Check whether a proposed deployment fits within the cluster at the given time.\n\nWith `template_id`, the need is that template's VM specs. The window includes the\nprovisioning lead and teardown grace, exactly as booking it would.",
         "operationId": "check_capacity_schedule_check_post",
         "requestBody": {
           "content": {
@@ -24343,7 +24423,7 @@
         ]
       },
       "post": {
-        "description": "Create a new event with resource reservation.  Will reject if it\nwould cause an over-commitment.",
+        "description": "Create a new event with resource reservation. A booking that does not fit is\nrefused with 409 (policy `block`) or created with warnings (policy `warn`).",
         "operationId": "create_event_schedule_events_post",
         "requestBody": {
           "content": {
@@ -24607,6 +24687,78 @@
           }
         ],
         "summary": "Mark event as completed",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/policy": {
+      "get": {
+        "description": "`block`: a booking that does not fit is refused for everyone. `warn`: it is\ncreated, with warnings in the response, and the warning is audit-logged.",
+        "operationId": "get_policy_schedule_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Over-capacity policy",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "put": {
+        "description": "Platform-wide, because every tenant books against the same cluster. Audit-logged.",
+        "operationId": "put_policy_schedule_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set the over-capacity policy (admin)",
         "tags": [
           "scheduling"
         ]

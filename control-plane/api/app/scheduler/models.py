@@ -6,7 +6,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
@@ -49,3 +49,23 @@ class ScheduledEvent(TimestampMixin, Base):
 
     # Relations
     tenant = relationship("Tenant", lazy="select")
+
+
+class OvercapacityPolicy(str, enum.Enum):
+    """What happens to a booking that does not fit (ADR 0004, "Booking rules")."""
+
+    block = "block"  # refused with 409, for everyone
+    warn = "warn"  # created; the response carries the warnings and they are audit-logged
+
+
+class SchedulerSetting(Base):
+    """Platform-wide scheduler settings, one row per key. Platform-wide because every
+    tenant books against the same cluster. Changed by admins only, audit-logged."""
+
+    __tablename__ = "scheduler_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)

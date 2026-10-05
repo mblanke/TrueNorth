@@ -4335,6 +4335,9 @@ export interface paths {
         /**
          * Check if deployment fits
          * @description Check whether a proposed deployment fits within the cluster at the given time.
+         *
+         *     With `template_id`, the need is that template's VM specs. The window includes the
+         *     provisioning lead and teardown grace, exactly as booking it would.
          */
         post: operations["check_capacity_schedule_check_post"];
         delete?: never;
@@ -4358,8 +4361,8 @@ export interface paths {
         put?: never;
         /**
          * Create a scheduled event
-         * @description Create a new event with resource reservation.  Will reject if it
-         *     would cause an over-commitment.
+         * @description Create a new event with resource reservation. A booking that does not fit is
+         *     refused with 409 (policy `block`) or created with warnings (policy `warn`).
          */
         post: operations["create_event_schedule_events_post"];
         delete?: never;
@@ -4415,6 +4418,31 @@ export interface paths {
         put?: never;
         /** Mark event as completed */
         post: operations["complete_event_schedule_events__event_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Over-capacity policy
+         * @description `block`: a booking that does not fit is refused for everyone. `warn`: it is
+         *     created, with warnings in the response, and the warning is audit-logged.
+         */
+        get: operations["get_policy_schedule_policy_get"];
+        /**
+         * Set the over-capacity policy (admin)
+         * @description Platform-wide, because every tenant books against the same cluster. Audit-logged.
+         */
+        put: operations["put_policy_schedule_policy_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5721,6 +5749,11 @@ export interface components {
              */
             start_time: string;
             /**
+             * Template Id
+             * @description Size the check from this template; overrides the *_needed values
+             */
+            template_id?: string | null;
+            /**
              * Vcpu Needed
              * @default 0
              */
@@ -5732,6 +5765,11 @@ export interface components {
             disk_gb_available: number;
             /** Disk Gb Committed */
             disk_gb_committed: number;
+            /**
+             * Disk Gb Needed
+             * @default 0
+             */
+            disk_gb_needed?: number;
             /** Disk Gb Total */
             disk_gb_total: number;
             /** Fits */
@@ -5740,16 +5778,42 @@ export interface components {
             message: string;
             /** Overlapping Events */
             overlapping_events: number;
+            /**
+             * Policy
+             * @default block
+             */
+            policy?: string;
             /** Ram Mb Available */
             ram_mb_available: number;
             /** Ram Mb Committed */
             ram_mb_committed: number;
+            /**
+             * Ram Mb Needed
+             * @default 0
+             */
+            ram_mb_needed?: number;
             /** Ram Mb Total */
             ram_mb_total: number;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons?: string[];
+            /**
+             * Supply Source
+             * @description Where cluster totals came from: env fallback, or discovery
+             * @default env
+             */
+            supply_source?: string;
             /** Vcpu Available */
             vcpu_available: number;
             /** Vcpu Committed */
             vcpu_committed: number;
+            /**
+             * Vcpu Needed
+             * @default 0
+             */
+            vcpu_needed?: number;
             /** Vcpu Total */
             vcpu_total: number;
         };
@@ -6538,7 +6602,10 @@ export interface components {
              * Format: date-time
              */
             start_time: string;
-            /** Template Id */
+            /**
+             * Template Id
+             * @description Size the booking from this template's VM specs
+             */
             template_id?: string | null;
             /**
              * Vcpu Total
@@ -7755,6 +7822,12 @@ export interface components {
             /** Shared Commands Count */
             shared_commands_count: number;
         };
+        /**
+         * OvercapacityPolicy
+         * @description What happens to a booking that does not fit (ADR 0004, "Booking rules").
+         * @enum {string}
+         */
+        OvercapacityPolicy: "block" | "warn";
         /** POOut */
         POOut: {
             /**
@@ -7852,6 +7925,14 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** PolicyIn */
+        PolicyIn: {
+            overcapacity: components["schemas"]["OvercapacityPolicy"];
+        };
+        /** PolicyOut */
+        PolicyOut: {
+            overcapacity: components["schemas"]["OvercapacityPolicy"];
         };
         /** ProgressSummaryOut */
         ProgressSummaryOut: {
@@ -18006,6 +18087,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_policy_schedule_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+        };
+    };
+    put_policy_schedule_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
                 };
             };
             /** @description Validation Error */

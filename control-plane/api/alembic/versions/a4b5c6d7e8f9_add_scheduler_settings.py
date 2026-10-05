@@ -1,0 +1,35 @@
+"""add scheduler_settings (ADR 0004 slice 2: admin-set over-capacity policy)
+
+Revision ID: a4b5c6d7e8f9
+Revises: f7a8b9c0d1e2
+Create Date: 2026-10-05 15:00:00.000000
+
+One row per key; the only key so far is `overcapacity_policy` (`block` or `warn`).
+No row means the default, `block`, so nothing is seeded.
+"""
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from alembic import op
+from app.models import GUID
+
+# revision identifiers, used by Alembic.
+revision: str = "a4b5c6d7e8f9"
+down_revision: str | None = "f7a8b9c0d1e2"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        "scheduler_settings",
+        sa.Column("key", sa.String(64), primary_key=True),
+        sa.Column("value", sa.String(255), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+        sa.Column("updated_by", GUID(), sa.ForeignKey("users.id"), nullable=True),
+    )
+
+
+def downgrade() -> None:
+    op.drop_table("scheduler_settings")

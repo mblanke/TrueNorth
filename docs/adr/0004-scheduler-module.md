@@ -122,8 +122,10 @@ What users need:
   - `warn`: the booking is created, the response carries the warnings, and the
     warning is audit-logged.
 
-  Only admins can change the policy, and each change is audit-logged. The default is
-  `block`.
+  Only admins (`schedule:admin`) can change the policy, through `PUT /schedule/policy`,
+  and each change is audit-logged. The default is `block`. The policy is platform-wide,
+  not per tenant: every tenant books against the same cluster, so one tenant's `warn`
+  would overbook everyone else.
 - **Conflicts:** the same range, or the same Instructor, double-booked in an
   overlapping window is refused with 409.
 - **Lead time:** provision `SCHEDULER_PROVISION_LEAD_MIN` before the start
@@ -139,7 +141,7 @@ What users need:
   |---|---|---|---|---|---|
   | `schedule:read`: calendar, events, capacity, timeline | yes | yes | yes | yes | **no** |
   | `schedule:write`: create, edit, cancel, state changes | yes | yes | no | no | no |
-  | set the over-capacity policy | yes | no | no | no | no |
+  | `schedule:admin`: set the over-capacity policy | yes | no | no | no | no |
 
   A Student's own-sessions feed (slice 5) is authorised by its feed token. That token
   is issued only for that Student's own bookings, so it never grants `schedule:read`.
@@ -205,8 +207,17 @@ What users need:
    range deletion through the service. Add `schedule:read` and `schedule:write` and
    tenant-scope list and create (problems 4 and 5). Paths and response shapes are
    unchanged, and the dashboard hides the schedule panel from Students.
-2. Capacity: switch `/check` and booking creation to `CapacityService` (after ADR 0005
-   lands); demand derived from templates; over-capacity policy.
+2. Capacity. The booking check, `/check`, `/capacity` and `/timeline` ask a
+   `CapacityProvider` (`scheduler/capacity.py`), the seam that ADR 0005's
+   CapacityService implements.
+   - Until 0005 lands, `EnvCapacity` serves today's numbers: env totals, bookings
+     only, and `supply_source: "env"`.
+   - Demand comes from the template's VM specs (`range_topology.template_demand`). A
+     contract test checks it against `worker/render.py` for every shipped template.
+     Typed totals remain only for bookings that name no template.
+   - The lead time and teardown grace count as committed capacity.
+   - Refusals give one reason per resource and the window.
+   - Over-capacity policy: `GET`/`PUT /schedule/policy`, stored in `scheduler_settings`.
 3. Lifecycle, guarded state transitions, conflicts.
 4. Worker tasks for provision lead, teardown and reminders, via `contracts.py`.
 5. ICS feed with per-user tokens and a profile page to regenerate them.
@@ -220,6 +231,14 @@ What users need:
   confirmed): Students still get their own sessions in a personal feed.
 - 2026-10-04 — Over-capacity: an admin-set policy, `block` (default) or `warn`. This
   replaces the per-booking admin force flag.
+- 2026-10-05 — The policy is platform-wide, not per tenant (shared cluster).
+- 2026-10-05 — Slice 2 shipped ahead of ADR 0005 behind `CapacityProvider`, so
+  0005 replaces one function (`get_capacity_provider`) and nothing else.
+  - Still 0005's: vSphere supply, the overcommit policy, and counting running ranges
+    with no booking.
+  - Found while building it: four shipped templates declare a `vm_count` that
+    differs from what they build (soc-training 25 vs 23, cloud-security 20 vs 16,
+    red-team 30 vs 28, large-enterprise 54 vs 50). Demand uses what is built.
 - Moot: whether Students can see other Students' names. They can't see the calendar,
   and their own feed omits other attendees.
 

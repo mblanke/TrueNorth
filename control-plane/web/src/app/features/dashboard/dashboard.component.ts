@@ -885,8 +885,13 @@ export class DashboardComponent implements OnInit {
       disk_gb_total: this.newEvtDisk,
     };
     this.api.createScheduledEvent(body).subscribe({
-      next: () => {
-        this.snack.open('Event scheduled', '', { duration: 2000, panelClass: 'snack-success' });
+      next: (evt: { warnings?: string[] }) => {
+        // Under the `warn` over-capacity policy the booking is made but does not fit.
+        if (evt?.warnings?.length) {
+          this.snack.open(`Scheduled over capacity: ${evt.warnings.join('; ')}`, 'OK', { duration: 8000 });
+        } else {
+          this.snack.open('Event scheduled', '', { duration: 2000, panelClass: 'snack-success' });
+        }
         this.newEvtName = '';
         this.fitCheckResult.set(null);
         this.loadEvents();
