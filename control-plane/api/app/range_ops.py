@@ -243,6 +243,9 @@ def reconcile(db: Session, rng: Range) -> None:
         op.finished_at = _now()
         if outcome == "failed":
             op.error = {"code": "range_failed", "message": (rng.error_message or "The worker reported a failure")[:500]}
+    # Production sessions do not autoflush: write the outcomes now, so the in-flight
+    # check that follows (accept) sees them, not the stale 'dispatched' rows.
+    db.flush()
 
 
 def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> None:
