@@ -25,18 +25,10 @@ _CORPUS: dict[str, tuple[str, ...]] = {
     "template": ("content/ranges/**/template.yaml",),
 }
 
-# The examples write timeline offsets as "H:MM" ("0:10"); the schema pins "HH:MM"
-# (^[0-9]{2}:[0-9]{2}$). Every file under content/scenarios uses "HH:MM", but the worker
-# (tasks.py, tests/worker/test_tasks.py) and the exercises router's synthesized timeline
-# (routers/exercises.py: f"{i}:00") use "H:MM" too. Whether the schema should accept
-# one-digit hours or the examples should be zero-padded is a contract decision, not a
-# typo fix, so it is left visible here rather than resolved silently either way.
-_TIMELINE_H_MM = 'timeline[].t uses "H:MM"; schema requires "HH:MM" (contract decision pending)'
-_KNOWN_NONCONFORMANT: dict[str, str] = {
-    "scenario-engine/examples/apt-breach.yaml": _TIMELINE_H_MM,
-    "scenario-engine/examples/insider-threat.yaml": _TIMELINE_H_MM,
-    "scenario-engine/examples/supply-chain.yaml": _TIMELINE_H_MM,
-}
+# Files known not to conform, as strict xfails with the reason. Empty since 2026-10-03,
+# when timeline[].t was widened to "H:MM" or "HH:MM": the examples, the worker and
+# routers/exercises.py (f"{i}:00") all write one-digit hours.
+_KNOWN_NONCONFORMANT: dict[str, str] = {}
 
 
 def _load_schema(name: str) -> dict:
