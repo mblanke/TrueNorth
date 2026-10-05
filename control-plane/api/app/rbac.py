@@ -90,6 +90,12 @@ class Permission(str, Enum):
     LEARNING_RECORD_READ = "learning_record:read"
     LEARNING_RECORD_WRITE = "learning_record:write"
 
+    # Course releases. COURSE_AUTHOR uploads ARC² release candidates and reads the instructor
+    # pack; COURSE_RELEASE accepts a candidate (it becomes what students get) and publishes it
+    # to the learning platform.
+    COURSE_AUTHOR = "course:author"
+    COURSE_RELEASE = "course:release"
+
     # Tenant management
     TENANT_CREATE = "tenant:create"
     TENANT_READ = "tenant:read"
@@ -142,6 +148,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # Their cohort's records: progress, transcripts, grade passback retries.
         Permission.LEARNING_RECORD_READ,
         Permission.LEARNING_RECORD_WRITE,
+        # Their courses: author release candidates, accept and publish them.
+        Permission.COURSE_AUTHOR,
+        Permission.COURSE_RELEASE,
         # Analytics
         Permission.STATS_READ,
         Permission.AAR_GENERATE,

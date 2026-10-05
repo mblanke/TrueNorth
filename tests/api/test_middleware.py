@@ -212,6 +212,19 @@ class TestInputSanitization:
         assert resp.status_code == 200
         assert "\x00" not in resp.json().get("body", "")
 
+    def test_multipart_uploads_keep_their_bytes(self, mw_client):
+        """Binary files (gzip, images) contain 0x00; stripping it corrupted every upload."""
+        app = mw_client.app
+
+        @app.post("/upload-echo")
+        async def upload_echo(request: Request):
+            form = await request.form()
+            return {"size": len(await form["file"].read())}
+
+        data = b"\x1f\x8b\x08\x00binary\x00\x00tail"
+        resp = mw_client.post("/upload-echo", files={"file": ("x.gz", data, "application/gzip")})
+        assert resp.status_code == 200 and resp.json()["size"] == len(data)
+
     def test_oversized_payload_rejected(self):
         """Payload exceeding max_request_size returns 413."""
         app = _make_app(max_request_size=100)

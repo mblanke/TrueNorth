@@ -8,6 +8,7 @@ from .ai_config import router as ai_config_router
 from .auth_zones import router as auth_zones_router
 from .competency import certs_router as certifications_router
 from .competency import router as competency_router
+from .course_releases import router as course_releases_router
 from .courses import lp_router as learning_paths_router
 from .courses import router as courses_router
 from .courses import transcript_router
@@ -75,4 +76,5 @@ __all__ = [
     "curriculum_router",
     "qsp_router",
     "quizzes_router",
+    "course_releases_router",
 ]

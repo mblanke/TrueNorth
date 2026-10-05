@@ -85,12 +85,17 @@ def test_every_course_file_records_the_mapping_as_proposed():
         assert "not standards-validated" in notes, name
 
 
-def test_every_module_has_objectives_topics_and_a_lab():
+def test_every_module_has_objectives_topics_and_a_range_lab():
+    """Range activities carry a lab brief; theory and practical ones must not (a module with
+    no declared activity predates activities and is a range activity)."""
     for name, doc in _all_docs():
         for m in doc["modules"]:
             assert m["objectives"], f"{name} module {m['ordinal']} has no objectives"
             assert m["topics"], f"{name} module {m['ordinal']} has no topics"
-            assert m["lab"], f"{name} module {m['ordinal']} has no lab"
+            if m.get("activity", "range") == "range":
+                assert m["lab"], f"{name} module {m['ordinal']} is a range activity with no lab"
+            else:
+                assert not m.get("lab"), f"{name} module {m['ordinal']} is {m['activity']} but has a lab"
 
 
 def test_every_reference_is_in_the_verified_library():
@@ -268,3 +273,54 @@ def test_import_endpoint(client):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["questions"] == 30
+
+
+# -- activities --------------------------------------------------------------
+
+
+def _with_activity(activity: str, *, lab: bool) -> str:
+    doc = _doc()
+    m = doc["modules"][0]
+    m["activity"] = activity
+    m["practice"] = ["Classify the supplied device inventory by exposure"]
+    m["minutes_breakdown"] = {"contact": 30, "practice": 20, "assessment": 10}
+    if not lab:
+        m.pop("lab", None)
+    return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+
+
+def test_a_module_without_an_activity_is_a_range_activity():
+    assert {m["activity"] for m in parse_course_content(_text())["modules"]} == {"range"}
+
+
+@pytest.mark.parametrize("activity", ["theory", "practical"])
+def test_non_range_modules_parse_without_a_lab(activity):
+    m = parse_course_content(_with_activity(activity, lab=False))["modules"][0]
+    assert m["activity"] == activity and m["lab"] == ""
+    assert m["practice"] == ["Classify the supplied device inventory by exposure"]
+
+
+def test_a_non_range_module_with_a_lab_is_refused():
+    with pytest.raises(ValueError, match="theory activity but has a range lab brief"):
+        parse_course_content(_with_activity("theory", lab=True))
+
+
+def test_an_unknown_activity_is_refused():
+    with pytest.raises(ValueError, match="activity 'vr'"):
+        parse_course_content(_with_activity("vr", lab=False))
+
+
+def test_a_module_that_becomes_theory_loses_its_lab_reference(seeded):
+    from app.models import ContentKind, ModuleContent
+
+    import_course_content(seeded, _text())
+    import_course_content(seeded, _with_activity("theory", lab=False))
+    course = seeded.query(Course).filter(Course.name.like("C304%")).one()
+    module = seeded.query(CourseModule).filter_by(course_id=course.id, ordinal=1).one()
+    refs = [
+        r.external_ref
+        for r in seeded.query(ModuleContent).filter_by(module_id=module.id, content_kind=ContentKind.assess)
+    ]
+    assert all("lab" not in (r or "") for r in refs)
+    meta = json.loads(module.content_ref)
+    assert meta["activity"] == "theory" and meta["practice"]

@@ -53,7 +53,7 @@ remain separate.
 | --- | --- |
 | `content/catalogue/cyber_operator_programme.csv`: 44 rows, all `provenance=unsourced`, `status=proposed`, `qsp_code=QSP-TODO`, empty `duration_hours` | Treat these as the production backlog, not an official syllabus. |
 | `content/courses/`: 44 YAML drafts with objectives, topics, one-sentence lab briefs and quizzes | Audit and reuse useful material; a populated file is not evidence of a complete course. |
-| C304 is in the catalogue but has no `content/courses/` file; `iot-security-foundations.yaml` has no catalogue row | Author C304 from its catalogue entry; decide whether the IoT file maps to C304, RMC C204/C211 or is retired. |
+| C304's draft is `iot-security-foundations.yaml` (`course_code: C304`, titled "IoT Security Foundations"); every other draft is named after its code and catalogue title | Keep `course_code` as the identity; reconcile the title with the catalogue's "IoT & Embedded Device Security" at outline review. |
 | `c101-computer-architecture-systems.yaml`: 100 declared hours, six 60-minute modules (the C105, C108 and C208 drafts have the same shape) | Reconcile contact, practice, assessment and independent-study hours; the current metadata accounts for 6 of 100 declared hours. |
 | C206 and C207 share the title Incident Response Foundations | Decide whether these are distinct blocks, a sequence or duplication before producing both. |
 | Course YAML has no fields for instructor material, rubrics or non-quiz assessment | Extend the format (or carry them in the ARC release) before claiming a complete instructor pack. |
@@ -115,7 +115,7 @@ replace it. Hardware and cloud requirements must be decided at module design.
 | 5 | C301 | Advanced Threat Hunting | R | Rich telemetry, hypotheses and repeatable investigations |
 | 5 | C302 | Red-Team Fundamentals | R | Bounded objectives in the shared isolated network |
 | 5 | C303 | Cloud Security (AWS/Azure) | R | Decide provider sandbox versus faithful local exercises |
-| 5 | C304 | IoT & Embedded Device Security | P | Firmware/emulation; identify hardware-only objectives; no draft file yet |
+| 5 | C304 | IoT & Embedded Device Security | P | Firmware/emulation; identify hardware-only objectives; draft titled differently |
 | 5 | C305 | Advanced Malware Reverse-Engineering | R | Extend the isolated analysis workstation |
 | 5 | C306 | Lab: Full-Scale Adversary Emulation | R | Integrated environment with reproducible reset |
 | 6 | C401 | Professional Ethics & Legal Frameworks | T | Jurisdiction-aware cases and specialist review |
@@ -384,7 +384,7 @@ initial release to the first college year rather than thinning all 44 courses.
 | --- | --- | --- |
 | Official outlines, source editions, reuse rights and qualification authority | Curriculum lead, phase 0 | Mark affected objectives blocked; retain draft status; continue unrelated sourced work |
 | C206/C207 overlap and advanced-course progression | Curriculum + subject leads, before affected outlines | Preserve both backlog identities; defer duplicate generation |
-| C304 missing draft; orphan IoT draft | Curriculum lead, before wave 5 | Author C304 from its catalogue row; keep the orphan out of production until mapped |
+| C304 draft title differs from the catalogue | Curriculum lead, before wave 5 | Keep the catalogue code as identity; record the accepted title at outline review |
 | Real teaching hours and term workload | Instructional designer, phase 1/pilot | Rebuild activity budget; do not inherit placeholder hours |
 | Named SMEs and approval turnaround | Programme lead, week 2 | Reduce active queue and reforecast schedule |
 | Supported interpreter and actual serving model | Engineering lead, preflight | Repair/choose a supported environment before claiming engine readiness |

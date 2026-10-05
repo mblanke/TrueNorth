@@ -56,6 +56,8 @@ from .models import (
 from .programme_ingest import catalogue_tags, delivered_qsp_codes
 
 _OPTION_PREFIX_LEN = 3  # "A) "
+# What a module asks of its students: teaching, practice on supplied material, or a live range.
+ACTIVITIES = frozenset({"theory", "practical", "range"})
 
 
 def _option_text(raw: str) -> str:
@@ -114,6 +116,14 @@ def parse_course_content(yaml_text: str) -> dict:
                 }
             )
         ct = str(raw.get("content_type") or "reading").strip()
+        lab = str(raw.get("lab") or "").strip()
+        # A module without a declared activity predates activities: every one of those
+        # carries a lab brief, so it is a range activity. A declared one is checked.
+        activity = str(raw.get("activity") or "range").strip()
+        if activity not in ACTIVITIES:
+            raise ValueError(f"module {raw.get('ordinal')} activity {activity!r} is not one of {sorted(ACTIVITIES)}")
+        if activity != "range" and lab:
+            raise ValueError(f"module {raw.get('ordinal')} is a {activity} activity but has a range lab brief")
         modules.append(
             {
                 "ordinal": int(raw.get("ordinal") or 0),
@@ -126,7 +136,10 @@ def parse_course_content(yaml_text: str) -> dict:
                 "pass_threshold": int(raw.get("pass_threshold") or 70),
                 "objectives": list(raw.get("objectives") or []),
                 "topics": list(raw.get("topics") or []),
-                "lab": str(raw.get("lab") or "").strip(),
+                "lab": lab,
+                "activity": activity,
+                "practice": [str(p).strip() for p in raw.get("practice") or [] if str(p).strip()],
+                "minutes_breakdown": dict(raw.get("minutes_breakdown") or {}),
                 "refs": list(raw.get("refs") or []),
                 "po": _po_ref(raw.get("po")),
                 "quiz_title": (raw.get("quiz") or {}).get("title") or "",
@@ -173,9 +186,7 @@ def _resolve_po(db: Session, ref: dict | None, course_code: str, ordinal: int):
     return po.id
 
 
-def _remove_placeholder(
-    db: Session, course: Course, superseded_by: str, meta: dict, stats: dict
-) -> None:
+def _remove_placeholder(db: Session, course: Course, superseded_by: str, meta: dict, stats: dict) -> None:
     """Delete a spine-generated stub that authored content has replaced.
 
     The stub existed only because no real content did. Once a course delivers the
@@ -244,7 +255,7 @@ def _claim_po(db: Session, module: CourseModule, course_code: str, ordinal: int,
         stats["placeholders_superseded"] = stats.get("placeholders_superseded", 0) + 1
 
 
-def _find_course(db: Session, course_code: str, tenant_id: str | None) -> Course | None:
+def find_catalogue_course(db: Session, course_code: str, tenant_id) -> Course | None:
     """Locate the catalogue course by its course_meta.course_code."""
     for course in db.query(Course).filter_by(tenant_id=tenant_id).all():
         try:
@@ -269,6 +280,8 @@ def _lesson_body(m: dict) -> str:
         parts.append("## Objectives\n" + "\n".join(f"- {o}" for o in m["objectives"]))
     if m["topics"]:
         parts.append("## Topics\n" + "\n".join(f"- {t}" for t in m["topics"]))
+    if m.get("practice"):
+        parts.append("## Practice\n" + "\n".join(f"- {p}" for p in m["practice"]))
     if m["lab"]:
         parts.append("## Lab\n" + m["lab"])
     if m["refs"]:
@@ -296,9 +309,7 @@ def _content_row(db: Session, module: CourseModule, kind: ContentKind, ordinal: 
     return row
 
 
-def _build_module_content(
-    db: Session, module: CourseModule, m: dict, quiz: Quiz | None, tenant_id: str | None
-) -> None:
+def _build_module_content(db: Session, module: CourseModule, m: dict, quiz: Quiz | None, tenant_id: str | None) -> None:
     """Give an authored module the teach -> check -> assess shape.
 
     Spine-generated modules always had this; authored ones carried their content in a
@@ -306,11 +317,7 @@ def _build_module_content(
     an empty shell next to a placeholder.
     """
     teach = _content_row(db, module, ContentKind.teach, 0)
-    lesson = (
-        db.query(Lesson).filter_by(id=teach.lesson_id).one_or_none()
-        if teach.lesson_id
-        else None
-    )
+    lesson = db.query(Lesson).filter_by(id=teach.lesson_id).one_or_none() if teach.lesson_id else None
     if lesson is None:
         # title is NOT NULL, and the row is flushed to get its id — so it has to be set
         # at construction, not after.
@@ -330,13 +337,24 @@ def _build_module_content(
         assess = _content_row(db, module, ContentKind.assess, 2)
         # Never touch `scenario_id`: generate_exercises owns it.
         assess.external_ref = json.dumps({"lab": m["lab"]})
+    else:
+        # A module that became theory or practical keeps no stale lab reference from an
+        # earlier import; its assess row (and any scenario on it) is left for its owner.
+        for row in db.query(ModuleContent).filter_by(module_id=module.id, content_kind=ContentKind.assess):
+            try:
+                ref = json.loads(row.external_ref or "{}")
+            except ValueError:
+                continue
+            if isinstance(ref, dict) and "lab" in ref:
+                row.external_ref = ""
     db.flush()
 
 
-def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = None) -> dict:
-    """Attach authored modules and quizzes to an existing catalogue course."""
+def import_course_content(db: Session, yaml_text: str, tenant_id=None, *, commit: bool = True) -> dict:
+    """Attach authored modules and quizzes to an existing catalogue course. ``commit=False``
+    leaves the transaction to the caller (release acceptance imports and supersedes atomically)."""
     doc = parse_course_content(yaml_text)
-    course = _find_course(db, doc["course_code"], tenant_id)
+    course = find_catalogue_course(db, doc["course_code"], tenant_id)
     if course is None:
         raise ValueError(
             f"no catalogue course with course_code={doc['course_code']!r}; "
@@ -404,6 +422,9 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
                 "objectives": m["objectives"],
                 "topics": m["topics"],
                 "lab": m["lab"],
+                "activity": m["activity"],
+                "practice": m["practice"],
+                "minutes_breakdown": m["minutes_breakdown"],
                 "refs": m["refs"],
             }
         )
@@ -451,5 +472,8 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
     course.tags = json.dumps(catalogue_tags(meta, delivered_qsp_codes(db, course.id)))
     stats["tags"] = json.loads(course.tags)
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return stats

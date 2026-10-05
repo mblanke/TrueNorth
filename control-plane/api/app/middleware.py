@@ -416,6 +416,11 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
                 )
 
         # --- Null-byte stripping (via receive wrapper) --------------------
+        # Text bodies only. A multipart upload carries files whose bytes are their content
+        # (a gzip, an image, a document): stripping 0x00 from them corrupts every binary
+        # upload. Each upload handler decodes and validates its own file.
+        if request.headers.get("content-type", "").split(";")[0].strip().lower() == "multipart/form-data":
+            return await call_next(request)
         original_receive = request._receive  # type: ignore[attr-defined]
 
         async def _sanitised_receive():

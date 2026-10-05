@@ -775,6 +775,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/course-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Course Releases */
+        get: operations["list_course_releases_course_releases_get"];
+        put?: never;
+        /**
+         * Upload Course Release
+         * @description Upload an ARC² release tarball (``python -m arc2.release build``) as a candidate.
+         *     Re-uploading the same release returns the existing candidate with 200.
+         */
+        post: operations["upload_course_release_course_releases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/course-releases/courses/{course_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Course Release Status
+         * @description Which release a course delivers; ``legacy`` when it has none (content that predates
+         *     releases).
+         */
+        get: operations["get_course_release_status_course_releases_courses__course_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/course-releases/{release_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Course Release */
+        get: operations["get_course_release_course_releases__release_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/course-releases/{release_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Course Release
+         * @description Accept a candidate: its content becomes the course's, the previous release is
+         *     superseded, and enrollments made from now on pin to it. Open ARC² actions must each be
+         *     acknowledged by id.
+         */
+        post: operations["accept_course_release_course_releases__release_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/course-releases/{release_id}/instructor-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Course Release Instructor Bundle
+         * @description The instructor pack: rubric, solutions, marking notes. Never a student download.
+         */
+        get: operations["get_course_release_instructor_bundle_course_releases__release_id__instructor_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/course-releases/{release_id}/learner-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Course Release Learner Bundle */
+        get: operations["get_course_release_learner_bundle_course_releases__release_id__learner_bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/courses": {
         parameters: {
             query?: never;
@@ -5283,6 +5402,16 @@ export interface components {
             /** Tags */
             tags?: string | null;
         };
+        /** AcceptIn */
+        AcceptIn: {
+            /** Acknowledge Actions */
+            acknowledge_actions?: string[];
+            /**
+             * Notes
+             * @default
+             */
+            notes?: string;
+        };
         /** AnnotationIn */
         AnnotationIn: {
             /**
@@ -5640,6 +5769,11 @@ export interface components {
             id_token: string;
             /** State */
             state: string;
+        };
+        /** Body_upload_course_release_course_releases_post */
+        Body_upload_course_release_course_releases_post: {
+            /** File */
+            file: string;
         };
         /** Body_upload_documents_curricula__curriculum_id__documents_post */
         Body_upload_documents_curricula__curriculum_id__documents_post: {
@@ -6181,6 +6315,69 @@ export interface components {
             updated_at: string;
             /** Version */
             version: string;
+        };
+        /** CourseReleaseOut */
+        CourseReleaseOut: {
+            /** Accepted At */
+            accepted_at: string | null;
+            /** Accepted By */
+            accepted_by: string | null;
+            /** Acknowledged Actions */
+            acknowledged_actions: string[];
+            /** Activities */
+            activities: {
+                [key: string]: string;
+            };
+            /** Arc2 Code */
+            arc2_code: string;
+            /** Catalogue Code */
+            catalogue_code: string;
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Instructor Digest */
+            instructor_digest: string;
+            /** Learner Digest */
+            learner_digest: string;
+            /** Notes */
+            notes: string;
+            /** Open Actions */
+            open_actions: components["schemas"]["OpenAction"][];
+            /** Platform Digest */
+            platform_digest: string;
+            /** Release Digest */
+            release_digest: string;
+            /** State */
+            state: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /** CourseReleaseStatusOut */
+        CourseReleaseStatusOut: {
+            /** Active Release Id */
+            active_release_id: string | null;
+            /** Active Version */
+            active_version: number | null;
+            /** Candidates */
+            candidates: number;
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Legacy */
+            legacy: boolean;
         };
         /** CourseUpdate */
         CourseUpdate: {
@@ -7734,6 +7931,15 @@ export interface components {
              * @default []
              */
             steps_done?: string[];
+        };
+        /** OpenAction */
+        OpenAction: {
+            /** Category */
+            category: string;
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
         };
         /** OpsStatsOut */
         OpsStatsOut: {
@@ -10999,6 +11205,225 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SkillGapOut"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_course_releases_course_releases_get: {
+        parameters: {
+            query?: {
+                course_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseReleaseOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_course_release_course_releases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_course_release_course_releases_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseReleaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_course_release_status_course_releases_courses__course_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseReleaseStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_course_release_course_releases__release_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseReleaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_course_release_course_releases__release_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseReleaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_course_release_instructor_bundle_course_releases__release_id__instructor_bundle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_course_release_learner_bundle_course_releases__release_id__learner_bundle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

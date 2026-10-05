@@ -52,7 +52,10 @@ All commands run from the repo root with the venv. `$RUN` = `build/arc2/<slug>`.
    `lateral_movement`), `source: crosswalk`, `crosswalk_ref: {qsp_code, po_code}`. Otherwise derive one
    from the objectives, `source: objective`, `crosswalk_ref: null`. Never `TODO`, never blank; every
    `objective_ids` entry must exist. Every CE will need a crit validator and a critical inject downstream.
-6. Course: `code` `ARC2-<2-8 uppercase alnum>` (`grep -c ',ARC2-XXXX,' content/catalogue/cyber_operator_programme.csv`
+6. Course: when the request names an existing catalogue course (e.g. "C105" or "RMC C201"),
+   `catalogue_code` is that `course_code`, byte-equal to its row in
+   `content/catalogue/cyber_operator_programme.csv`; skip step 8 (no new catalogue row) and take
+   `title` and `dp_order` from that row. Otherwise `catalogue_code: null`. Then `code` `ARC2-<2-8 uppercase alnum>` (`grep -c ',ARC2-XXXX,' content/catalogue/cyber_operator_programme.csv`
    must print 0), `title`, `summary` (one sentence; cmi5.xml appends "draft, proposed"), `programme:
    cyber-operator`, `qsp_code: QSP-TODO` (or the candidate's QSP when one clearly fits), `po: null`,
    `po_candidates`, `dp_order` ≥ 1, `provenance: unsourced`, `status: proposed`, `duration_hours`

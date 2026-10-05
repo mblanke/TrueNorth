@@ -507,6 +507,24 @@
         "title": "AIModelRouteUpdate",
         "type": "object"
       },
+      "AcceptIn": {
+        "properties": {
+          "acknowledge_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Acknowledge Actions",
+            "type": "array"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          }
+        },
+        "title": "AcceptIn",
+        "type": "object"
+      },
       "AnnotationIn": {
         "properties": {
           "annotation_type": {
@@ -1350,6 +1368,20 @@
           "state"
         ],
         "title": "Body_lti_launch_lti_launch_post",
+        "type": "object"
+      },
+      "Body_upload_course_release_course_releases_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_course_release_course_releases_post",
         "type": "object"
       },
       "Body_upload_documents_curricula__curriculum_id__documents_post": {
@@ -2481,6 +2513,188 @@
           "updated_at"
         ],
         "title": "CourseOut",
+        "type": "object"
+      },
+      "CourseReleaseOut": {
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "accepted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted By"
+          },
+          "acknowledged_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Acknowledged Actions",
+            "type": "array"
+          },
+          "activities": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Activities",
+            "type": "object"
+          },
+          "arc2_code": {
+            "title": "Arc2 Code",
+            "type": "string"
+          },
+          "catalogue_code": {
+            "title": "Catalogue Code",
+            "type": "string"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "instructor_digest": {
+            "title": "Instructor Digest",
+            "type": "string"
+          },
+          "learner_digest": {
+            "title": "Learner Digest",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "open_actions": {
+            "items": {
+              "$ref": "#/components/schemas/OpenAction"
+            },
+            "title": "Open Actions",
+            "type": "array"
+          },
+          "platform_digest": {
+            "title": "Platform Digest",
+            "type": "string"
+          },
+          "release_digest": {
+            "title": "Release Digest",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "catalogue_code",
+          "arc2_code",
+          "title",
+          "version",
+          "state",
+          "release_digest",
+          "learner_digest",
+          "platform_digest",
+          "instructor_digest",
+          "activities",
+          "open_actions",
+          "acknowledged_actions",
+          "created_at",
+          "accepted_at",
+          "accepted_by",
+          "notes"
+        ],
+        "title": "CourseReleaseOut",
+        "type": "object"
+      },
+      "CourseReleaseStatusOut": {
+        "properties": {
+          "active_release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Release Id"
+          },
+          "active_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Version"
+          },
+          "candidates": {
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "legacy": {
+            "title": "Legacy",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "course_id",
+          "legacy",
+          "active_release_id",
+          "active_version",
+          "candidates"
+        ],
+        "title": "CourseReleaseStatusOut",
         "type": "object"
       },
       "CourseUpdate": {
@@ -6417,6 +6631,29 @@
           "state"
         ],
         "title": "OnboardingStateOut",
+        "type": "object"
+      },
+      "OpenAction": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "text"
+        ],
+        "title": "OpenAction",
         "type": "object"
       },
       "OpsStatsOut": {
@@ -13350,6 +13587,349 @@
         "summary": "Get Skill Gaps",
         "tags": [
           "competency"
+        ]
+      }
+    },
+    "/course-releases": {
+      "get": {
+        "operationId": "list_course_releases_course_releases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "course_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourseReleaseOut"
+                  },
+                  "title": "Response List Course Releases Course Releases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Course Releases",
+        "tags": [
+          "course-releases"
+        ]
+      },
+      "post": {
+        "description": "Upload an ARC\u00b2 release tarball (``python -m arc2.release build``) as a candidate.\nRe-uploading the same release returns the existing candidate with 200.",
+        "operationId": "upload_course_release_course_releases_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_course_release_course_releases_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Course Release",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/courses/{course_id}": {
+      "get": {
+        "description": "Which release a course delivers; ``legacy`` when it has none (content that predates\nreleases).",
+        "operationId": "get_course_release_status_course_releases_courses__course_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseReleaseStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Release Status",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}": {
+      "get": {
+        "operationId": "get_course_release_course_releases__release_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Release",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}/accept": {
+      "post": {
+        "description": "Accept a candidate: its content becomes the course's, the previous release is\nsuperseded, and enrollments made from now on pin to it. Open ARC\u00b2 actions must each be\nacknowledged by id.",
+        "operationId": "accept_course_release_course_releases__release_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accept Course Release",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}/instructor-bundle": {
+      "get": {
+        "description": "The instructor pack: rubric, solutions, marking notes. Never a student download.",
+        "operationId": "get_course_release_instructor_bundle_course_releases__release_id__instructor_bundle_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Release Instructor Bundle",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}/learner-bundle": {
+      "get": {
+        "operationId": "get_course_release_learner_bundle_course_releases__release_id__learner_bundle_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Release Learner Bundle",
+        "tags": [
+          "course-releases"
         ]
       }
     },

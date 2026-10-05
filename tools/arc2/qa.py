@@ -16,6 +16,8 @@ Checks (all ``fail`` unless noted; owner in brackets):
   qa.course_parse / qa.course.<rule>          the course YAML against the ingest rules [code-generator]
   qa.course_code_mismatch, qa.course_manifest_mismatch, qa.course_objectives_verbatim
   qa.catalogue_* [content-architect]           01-blueprint/catalogue_row.csv against programme_ingest
+                                              (a run for an existing course instead names course.catalogue_code,
+                                              which must be in the catalogue: qa.catalogue_identity)
   qa.engine_scenario [sensor-gateway]          05-sensor scenario against scenario-engine's JSON schema
   qa.timeline_* [range-engineer]               the timeline file against the manifest, vm_catalogue and validators
   qa.author_required_marker [range-engineer]   author_required injects carry the AUTHOR-REQUIRED placeholder
@@ -417,6 +419,33 @@ def check_catalogue(run: Path, manifest: dict[str, Any], repo_root: Path, api: d
     return out
 
 
+def check_catalogue_identity(manifest: dict[str, Any], repo_root: Path, api: dict[str, Any]) -> list[dict[str, Any]]:
+    """A run that produces content for an existing catalogue course names it; the release and
+    the importer key on that code, so a typo here would create nothing or the wrong course."""
+    code = manifest["course"]["catalogue_code"]
+    path = repo_root / CATALOGUE_REL
+    if not path.is_file():
+        return [
+            _finding(
+                "qa.catalogue_unavailable",
+                "human",
+                f"{CATALOGUE_REL} could not be read; catalogue_code {code!r} was not checked",
+                ORCHESTRATOR,
+            )
+        ]
+    codes = {r["course_code"] for r in api["programme"].parse_programme(path.read_text(encoding="utf-8-sig"))}
+    if code not in codes:
+        return [
+            _finding(
+                "qa.catalogue_identity",
+                "fail",
+                f"course.catalogue_code {code!r} is not a course in {CATALOGUE_REL}",
+                "content-architect",
+            )
+        ]
+    return []
+
+
 # ── engine scenario ───────────────────────────────────────────────────
 
 
@@ -620,7 +649,10 @@ def check_run(run: Path, manifest: dict[str, Any], repo_root: Path = REPO_ROOT) 
         )
     if "content" in manifest and api is not None:
         out += check_course(run, manifest, repo_root, api)
-        out += check_catalogue(run, manifest, repo_root, api)
+        if (manifest.get("course") or {}).get("catalogue_code"):
+            out += check_catalogue_identity(manifest, repo_root, api)
+        else:
+            out += check_catalogue(run, manifest, repo_root, api)
     if "scenario" in manifest and api is not None:
         out += check_engine_scenario(run, manifest, api)
     if "injects" in manifest:

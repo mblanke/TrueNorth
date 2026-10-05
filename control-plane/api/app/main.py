@@ -203,6 +203,7 @@ from .routers import (
     certifications_router,
     collective_exercises_router,
     competency_router,
+    course_releases_router,
     courses_router,
     curriculum_router,
     detection_rules_router,
@@ -251,6 +252,7 @@ app.include_router(proxmox_router)
 app.include_router(scheduling_router)
 # LMS & Integration routers
 app.include_router(courses_router)
+app.include_router(course_releases_router)
 app.include_router(learning_paths_router)
 app.include_router(transcript_router)
 app.include_router(competency_router)
