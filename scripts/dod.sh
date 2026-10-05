@@ -65,6 +65,7 @@ run "$PY" -m pytest tests/ --tb=short -q --ignore=tests/integration
 if [[ "${DOD_WEB:-0}" == "1" ]]; then
   [[ -f control-plane/web/angular.json ]] || fail "DOD_WEB=1 but no control-plane/web/angular.json"
   pushd control-plane/web >/dev/null
+  run npm run check:api  # schema.d.ts matches docs/interfaces/openapi.json, as CI's build-angular checks
   run npx ng lint
   run npx ng build --configuration=production
   run npx ng test --watch=false --browsers=ChromeHeadless
