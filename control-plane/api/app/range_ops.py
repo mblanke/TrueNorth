@@ -346,7 +346,7 @@ async def redispatch_loop(session_factory, interval: float) -> None:
 def _redispatch_once(session_factory) -> None:
     db = session_factory()
     try:
-        sent = redispatch_pending(db)
+        sent = redispatch_pending(db, min_age=redispatch_min_age())
         if sent:
             logger.info("redispatched %d pending range operation(s)", sent)
     finally:
@@ -355,3 +355,9 @@ def _redispatch_once(session_factory) -> None:
 
 def redispatch_interval() -> float:
     return float(os.getenv("RANGE_OP_REDISPATCH_SECONDS", "30") or 0)
+
+
+def redispatch_min_age() -> timedelta:
+    """How long a pending operation is left to the request that accepted it before the
+    loop sends it (``RANGE_OP_REDISPATCH_MIN_AGE_SECONDS``, default 15)."""
+    return timedelta(seconds=float(os.getenv("RANGE_OP_REDISPATCH_MIN_AGE_SECONDS", "15") or 0))
