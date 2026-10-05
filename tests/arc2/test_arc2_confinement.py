@@ -285,6 +285,8 @@ def test_the_profile_denies_by_default_and_allows_the_job_last(tmp_path):
     assert "(deny network-outbound (remote unix-socket))" in profile
     assert '(allow network-outbound (remote ip "localhost:11434"))' in profile
     assert "(deny signal (target others))" in profile
+    repo = str((tmp_path / "repo").resolve())
+    assert f'(subpath "{repo}/build/arc2") (subpath "{repo}/.claude/worktrees")' in profile
 
 
 def test_the_job_environment_is_an_allow_list(tmp_path, monkeypatch):
@@ -303,3 +305,72 @@ def test_the_engine_ignores_user_settings_and_may_edit_only_its_own_run():
     assert f"Write(./build/arc2/{SLUG}/**)" in cmd and f"Edit(./build/arc2/{SLUG}/**)" in cmd
     assert "Write(./build/arc2/**)" not in cmd and "Edit(./build/arc2/**)" not in cmd
     assert cmd[cmd.index("--setting-sources") + 1] == "project" and "--strict-mcp-config" in cmd
+
+
+PROCARGS_PROBE = r"""#!/usr/bin/python3
+import ctypes, json, os, sys
+libc = ctypes.CDLL(None)
+def procargs(pid):
+    mib = (ctypes.c_int * 3)(1, 49, pid)  # CTL_KERN, KERN_PROCARGS2
+    size = ctypes.c_size_t(1 << 20)
+    buf = ctypes.create_string_buffer(size.value)
+    if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) != 0:
+        return None
+    return buf.raw[: size.value]
+seen = procargs(os.getppid())
+run = os.path.join(os.environ["PROBE_RUNS"], "arc2-mine")
+json.dump({"readable": seen is not None, "secret": seen is not None and b"s3cret-runner-value" in seen,
+           "prompt_on_argv": any("a course" in a for a in sys.argv)}, open(os.path.join(run, "procargs.json"), "w"))
+print(json.dumps({"type": "result", "is_error": False, "result": "probed"}), flush=True)
+"""
+
+
+@needs_seatbelt
+def test_the_runners_own_environment_holds_nothing_a_job_could_read(runs, tmp_path):
+    """macOS lets a process read a same-account process's original environment
+    (KERN_PROCARGS2) and Seatbelt cannot stop it, so the runner re-executes itself with
+    a scrubbed environment and passes prompts on stdin. Run as a real process."""
+    exe = tmp_path / "claude"
+    exe.write_text(PROCARGS_PROBE)
+    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
+    queue_job(runs)
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ["HOME"],
+        "PYTHONPATH": "tools",
+        "ARC2_CONFINE": "seatbelt",
+        "ARC2_FALLBACK": "off",
+        "ARC2_JOB_HOMES": str(tmp_path / "homes"),
+        "ARC2_OAUTH_TOKEN_FILE": str(tmp_path / "none"),
+        "ARC2_JOB_ENV": "PROBE_RUNS",
+        "PROBE_RUNS": str(runs),
+        "DATABASE_URL": "postgresql://user:s3cret-runner-value@db/tn",
+    }
+    done = subprocess.run(
+        [sys.executable, "-m", "arc2.runner", "--runs", str(runs), "--claude", str(exe), "--once"],
+        cwd=runner.REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    seen = json.loads((runs / SLUG / "procargs.json").read_text())
+    assert seen["readable"], "the probe should be able to read the runner (that is the point of the test)"
+    assert seen["secret"] is False, "the runner's original environment still held a secret"
+    assert seen["prompt_on_argv"] is False
+
+
+def test_the_runner_keeps_only_its_own_settings_and_forwarded_names():
+    env = runner.clean_runner_env(
+        {
+            "PATH": "/bin",
+            "DATABASE_URL": "x",
+            "AWS_SECRET_ACCESS_KEY": "y",
+            "ARC2_CONFINE": "auto",
+            "ARC2_JOB_ENV": "FOO",
+            "FOO": "1",
+            "BAR": "2",
+        }
+    )
+    assert env == {"PATH": "/bin", "ARC2_CONFINE": "auto", "ARC2_JOB_ENV": "FOO", "FOO": "1", "ARC2_RUNNER_CLEAN": "1"}

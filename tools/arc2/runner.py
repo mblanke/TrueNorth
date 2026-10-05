@@ -161,8 +161,11 @@ def job_tools(slug: str) -> list[str]:
 
 
 def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
+    """The engine's command line. The prompt (a tenant's request or feedback) is not on
+    it: it goes on stdin (``prompt_for``), because any process of the same account can
+    read another's arguments, and a sandbox cannot stop that on macOS."""
     cmd = [
-        claude, "-p", prompt_for(job),
+        claude, "-p",
         "--output-format", "stream-json", "--verbose",
         "--permission-mode", "dontAsk",
         "--allowedTools", *job_tools(job["slug"]),
@@ -353,20 +356,21 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
     )
     try:
         record = _attempt(record, path, confinement.wrap(command_for(record, claude), jail), env, timeout,
-                          append=False)
+                          append=False, stdin_text=prompt_for(record))
         if fallback and should_fall_back(record) and fallback.reachable():
             record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
                           result=None, exit_code=None, finished_at=None, current_agent=None)
             write_record(path, record)
             record = _attempt(record, path, confinement.wrap(command_for(record, claude, fallback.model), jail),
-                              fallback.env(env), timeout, append=True)
+                              fallback.env(env), timeout, append=True, stdin_text=prompt_for(record))
     finally:
         if home is not None:
             shutil.rmtree(home, ignore_errors=True)
     return record
 
 
-def _attempt(record: dict, path: Path, cmd: list[str], env: dict, timeout: int, append: bool) -> dict:
+def _attempt(record: dict, path: Path, cmd: list[str], env: dict, timeout: int, append: bool,
+             stdin_text: str | None = None) -> dict:
     """One headless run of /arc2, streaming progress into the job record.
 
     The deadline is enforced by the clock, not by the engine's output: a reader thread
@@ -381,11 +385,17 @@ def _attempt(record: dict, path: Path, cmd: list[str], env: dict, timeout: int, 
     deadline = time.monotonic() + timeout
     try:
         proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdout=subprocess.PIPE,
+                                stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
                                 stderr=subprocess.STDOUT, text=True, bufsize=1, start_new_session=True)
     except OSError as exc:
         record.update(state="failed", error=f"could not start claude: {exc}", finished_at=now())
         write_record(path, record)
         return record
+    if stdin_text is not None and proc.stdin is not None:
+        with contextlib.suppress(OSError):  # the prompt is small (MAX_TEXT); an engine that exits early may not read it
+            proc.stdin.write(stdin_text)
+        with contextlib.suppress(OSError):
+            proc.stdin.close()
     assert proc.stdout is not None
     lines: queue.Queue[str | None] = queue.Queue()
     reader = threading.Thread(target=_read_lines, args=(proc.stdout, lines), daemon=True)
@@ -604,5 +614,29 @@ def main(argv: list[str] | None = None) -> int:
         time.sleep(args.poll)
 
 
+# The runner's own environment, as the kernel recorded it at exec. A confined job cannot
+# read the runner's memory, but on macOS it can read any same-account process's original
+# arguments and environment (sysctl KERN_PROCARGS2; Seatbelt has no rule for it). So the
+# runner re-executes itself once with only what it needs; anything else it was started
+# with (DATABASE_URL, cloud keys, ...) is gone before the first job runs.
+RUNNER_ENV = (*JOB_ENV, "HOME", "TMPDIR", "PYTHONPATH", "VIRTUAL_ENV", *AUTH_ENV)
+
+
+def clean_runner_env(environ: dict) -> dict:
+    """What the runner keeps: its own settings (ARC2_*), what jobs need (RUNNER_ENV), and
+    the names the operator forwards to jobs (ARC2_JOB_ENV). Nothing else."""
+    forwarded = set(filter(None, environ.get("ARC2_JOB_ENV", "").split(",")))
+    env = {k: v for k, v in environ.items() if k in RUNNER_ENV or k in forwarded or k.startswith("ARC2_")}
+    env["ARC2_RUNNER_CLEAN"] = "1"
+    return env
+
+
+def _reexec_clean() -> None:
+    if os.environ.get("ARC2_RUNNER_CLEAN") == "1" or os.environ.get("ARC2_CONFINE", "auto").lower() == "none":
+        return
+    os.execve(sys.executable, [sys.executable, "-m", "arc2.runner", *sys.argv[1:]], clean_runner_env(dict(os.environ)))
+
+
 if __name__ == "__main__":
+    _reexec_clean()
     sys.exit(main())

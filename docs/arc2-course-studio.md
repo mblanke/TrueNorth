@@ -329,7 +329,7 @@ the run's own slug. `package.zip` serves only files that resolve inside the call
 **Runner isolation (S1b).** Request and feedback text from any tenant drives the engine,
 and its tools include arbitrary Python, so Claude Code's `--allowedTools` rules are not a
 boundary. The runner runs the whole `claude` process tree for each job in an OS sandbox
-that denies by default (`tools/arc2/confine.py`, Seatbelt via `sandbox-exec` on macOS):
+where file writes are denied by default (`tools/arc2/confine.py`, Seatbelt via `sandbox-exec` on macOS):
 
 | While a job runs | Allowed |
 |---|---|
@@ -337,9 +337,18 @@ that denies by default (`tools/arc2/confine.py`, Seatbelt via `sandbox-exec` on 
 | Write anything else: other runs, `_studio/` (ownership), `_queue/`, `_jobs/`, `_history/`, the repository, the runner account's home (`~/.claude`, `~/.gitconfig`, shell profiles, launch agents), shared temp | no |
 | Read the repository (except `.env*`) and the `claude` installation | yes |
 | Read other runs, `_studio/`, `_queue/`, `_jobs/`, anything else in the runner's home (other jobs' sessions, `~/.ssh`, `~/.docker`), including through symlinks | no |
-| Signal or inspect processes outside the sandbox | no |
+| Read `build/arc2/` or `.claude/worktrees/` anywhere in the repository (other checkouts' runs) | no |
+| Signal processes outside the sandbox | no |
 | Unix sockets (Docker) and localhost (API, Redis, Postgres) | no, except DNS and the local model fallback's port |
 | Internet (the model API) | yes |
+
+A job can still read the original arguments and environment of any process in the same
+account (`sysctl KERN_PROCARGS2`); Seatbelt has no rule for it. So neither may hold
+anything worth reading: the runner re-executes itself with a scrubbed environment (its own
+`ARC2_*` settings, `RUNNER_ENV` and the `ARC2_JOB_ENV` names), and prompts go to `claude`
+on stdin, never on its command line. The API bounds every read of a run file (2 MB; a
+package at 200 MB), refuses YAML aliases (a few hundred bytes of nested aliases expand to
+gigabytes), and lists a run's pages without following links.
 
 Each job gets a fresh `HOME` and `CLAUDE_CONFIG_DIR` (its Claude sessions, memory and temp
 files), deleted when it ends. It also gets an allow-listed environment (`JOB_ENV` plus

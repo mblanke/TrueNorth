@@ -32,7 +32,7 @@ FAKE = r"""#!/usr/bin/env python3
 import json, os, signal, subprocess, sys, time
 pids = os.environ["FAKE_PIDS"]
 open(pids, "a").write(f"{os.getpid()}\n")
-prompt = sys.argv[2]
+prompt = sys.stdin.read()
 def emit(e): print(json.dumps(e), flush=True)
 emit({"type": "system", "subtype": "init"})
 if "silent" in prompt:

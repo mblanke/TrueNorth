@@ -211,3 +211,40 @@ def test_a_folder_in_the_run_linked_to_another_run_is_not_read_or_served(client,
         assert "Capture basics" not in client.get(f"/arc2/runs/{mine}").text
         assert client.get(f"/arc2/runs/{mine}/file", params={"path": "01-blueprint/outline.yaml"}).status_code == 404
         assert client.get(f"/arc2/runs/{mine}/package.zip").status_code == 404
+
+
+def test_a_yaml_alias_bomb_in_a_run_is_not_expanded(client, runs):
+    write_run(runs, "arc2-bomb")
+    levels = ['a0: &a0 ["xxxxxxxxxx"]'] + [f"a{i}: &a{i} [{', '.join([f'*a{i - 1}'] * 10)}]" for i in range(1, 8)]
+    (runs / "arc2-bomb" / "01-blueprint" / "outline.yaml").write_text("\n".join(levels) + "\n")
+    r = client.get("/arc2/runs/arc2-bomb")
+    assert r.status_code == 200
+    assert r.json()["outline"] is None
+    assert len(r.content) < 100_000
+
+
+def test_pages_and_course_files_are_listed_without_following_links(client, runs, foreign_run):
+    (runs / foreign_run / "02-content" / "mod_001" / "content").mkdir(parents=True)
+    (runs / foreign_run / "02-content" / "mod_001" / "content" / "their-case-study.html").write_text("x")
+    (runs / foreign_run / "02-content" / "theirs.yaml").write_text("modules: [{title: Their module}]\n")
+    write_run(runs, "arc2-pages")
+    (runs / "arc2-pages" / "02-content" / "mod_001" / "content").mkdir(parents=True)
+    (runs / "arc2-pages" / "02-content" / "mod_001" / "content" / "page-01.html").write_text("<p>ok</p>")
+    (runs / "arc2-pages" / "02-content" / "c.yaml").write_text("modules: [{title: Mine}]\n")
+    d = client.get("/arc2/runs/arc2-pages").json()
+    assert d["pages"] == ["02-content/mod_001/content/page-01.html"]
+    assert [m["title"] for m in d["modules"]] == ["Mine"]
+
+    write_run(runs, "arc2-linked")
+    (runs / "arc2-linked" / "02-content").symlink_to(runs / foreign_run / "02-content", target_is_directory=True)
+    d = client.get("/arc2/runs/arc2-linked").json()
+    assert d["pages"] == [] and d["modules"] == []
+
+
+def test_an_oversized_run_file_is_not_parsed(client, runs, monkeypatch):
+    from app.routers import arc2_studio
+
+    monkeypatch.setattr(arc2_studio, "MAX_READ_BYTES", 64)
+    write_run(runs, "arc2-big")
+    (runs / "arc2-big" / "01-blueprint" / "outline.yaml").write_text("course: X\n" + "# pad\n" * 50)
+    assert client.get("/arc2/runs/arc2-big").json()["outline"] is None

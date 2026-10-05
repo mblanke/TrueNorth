@@ -3,8 +3,8 @@
 The engine runs request and feedback text from course authors in any tenant, and its
 tools include arbitrary Python. Claude Code's ``--allowedTools`` rules match command
 text and are not a security boundary. So the runner puts the whole ``claude`` process
-tree for a job in an OS sandbox. The sandbox denies by default and then allows only
-what the job needs:
+tree for a job in an OS sandbox. File writes are denied by default; reads, local network
+and other processes are denied where they matter; the job gets only what it needs:
 
 * **Writes**: only the job's run (``<runs>/<slug>/``), its request file
   (``<runs>/<slug>.request.txt``), the job's own home directory (Claude Code's config,
@@ -16,9 +16,13 @@ what the job needs:
 * **Reads**: nothing under the runner account's home except the repository, the
   ``claude`` installation, the job's run and the job's home. That excludes other runs,
   ``_studio``, ``_queue``, ``_jobs``, other jobs' Claude sessions, ``~/.ssh`` and
-  ``~/.docker``. ``.env*`` files in the repository are not readable either.
-* **Processes**: no signals to processes outside the sandbox, and no inspection of them
-  (their arguments carry other tenants' requests).
+  ``~/.docker``. Inside the repository, ``.env*`` files and any ``build/arc2/`` or
+  ``.claude/worktrees/`` path (other checkouts' runs) are not readable either. System
+  locations outside the home (``/etc``, shared temp) stay readable.
+* **Processes**: no signals to processes outside the sandbox. Seatbelt cannot stop a
+  process reading another same-account process's original arguments and environment
+  (``sysctl KERN_PROCARGS2``), so the runner keeps neither secrets nor tenant text there:
+  it re-executes itself with a scrubbed environment and passes prompts on stdin.
 * **Network**: no Unix-domain sockets (the Docker socket) and no localhost (the API,
   Redis, Postgres), except the DNS resolver socket and, when configured, the local
   model fallback's port. Internet access to the model API stays open.
@@ -96,6 +100,9 @@ class Seatbelt(Confinement):
             f"(allow file-read-data {' '.join(reads)})",
             f"(deny file-read-data (subpath {q(jail.runs)}))",
             r'(deny file-read-data (regex #"/\.env[^/]*$"))',
+            # Other checkouts' runs inside the repository (worktrees, a second runs root).
+            f"(deny file-read-data (subpath {q(Path(jail.repo) / 'build' / 'arc2')})"
+            f" (subpath {q(Path(jail.repo) / '.claude' / 'worktrees')}))",
             *(
                 [f"(allow file-read-data {' '.join(f'(subpath {q(p)})' for p in jail.readable_inner)})"]
                 if jail.readable_inner
