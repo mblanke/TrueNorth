@@ -31,6 +31,7 @@ everything combined (green at `78711f4`).
 | 22 | S6: populated-schema upgrade test; CI runs the Postgres tests | #20 |
 | 23 | S7: interruption exercise and browser journeys (evidence) | #22 |
 | 27 | S8: re-score; rollback rehearsal | #23 |
+| 28 | Fix: scenario exercises carry their objectives (they scored 0/0), found by S7 | main |
 
 Merge conflicts to expect, all resolved already on #24, which shows how to resolve them:
 - **#21 vs #18, `worker/tasks.py`:** re-apply the fence on `db_ops.update_range_state`, which already returns the row count. S5b's real-DB tests start from `provisioning`/`destroying`.
