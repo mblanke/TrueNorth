@@ -259,3 +259,16 @@ def test_on_postgres_two_concurrent_provisions_send_one_task():
         engine.dispose()
         with admin.connect() as conn:
             conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+
+
+def test_a_finished_operation_does_not_block_the_next_with_autoflush_off(client, db_session, sent):
+    """Production sessions do not autoflush (app/db.py SessionLocal). reconcile() must
+    write its outcome before the in-flight check queries, or a provision that finished
+    still blocks the destroy that follows (found in a browser run of the candidate)."""
+    db_session.autoflush = False
+    rng = _range(client)
+    assert client.post(f"/ranges/{rng['id']}/provision").status_code == 202
+    db_session.get(Range, uuid.UUID(rng["id"])).state = RangeState.ready  # the worker finished
+    db_session.flush()
+    r = client.post(f"/ranges/{rng['id']}/destroy")
+    assert r.status_code == 202, r.text
