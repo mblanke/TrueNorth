@@ -37,6 +37,7 @@ WORKER_TABLES = (
     "learning_recommendations",
     "network_reservations",
     "objectives",
+    "range_leases",
     "range_snapshots",
     "ranges",
     "scenarios",

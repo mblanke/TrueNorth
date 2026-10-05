@@ -29,7 +29,7 @@ os.environ.setdefault("MOCK_FAILURE_RATE", "0")
 
 import sqlalchemy as sa  # noqa: E402
 from worker import tasks  # noqa: E402
-from worker.tables import network_reservations  # noqa: E402
+from worker.tables import network_reservations, range_leases  # noqa: E402
 
 
 def _sqlite_now(dbapi_conn, _record):
@@ -57,6 +57,7 @@ def _db(tmp_path, monkeypatch):
             )
         )
     network_reservations.create(engine)  # a destroy releases the range's reservations
+    range_leases.create(engine)  # a task holds the range's lease while it runs
     monkeypatch.setattr(tasks, "DATABASE_URL", url)
     monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
     yield engine
