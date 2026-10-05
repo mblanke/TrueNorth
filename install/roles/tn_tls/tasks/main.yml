@@ -19,7 +19,7 @@
 - name: TLS — install the AD CS root CA (PEM) in the host trust store
   community.crypto.x509_certificate_convert:
     src_path: "{{ tn_tls_dir }}/corp-root-ca.supplied"
-    dest: /usr/local/share/ca-certificates/corp-root-ca.crt
+    dest_path: /usr/local/share/ca-certificates/corp-root-ca.crt
     format: pem
     mode: "0644"
   become: true
@@ -35,7 +35,7 @@
 - name: TLS — place the root CA (PEM) in Keycloak's truststore directory
   community.crypto.x509_certificate_convert:
     src_path: "{{ tn_tls_dir }}/corp-root-ca.supplied"
-    dest: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
+    dest_path: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
     format: pem
     mode: "0644"
   notify: Restart Keycloak if running
