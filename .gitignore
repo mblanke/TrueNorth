@@ -52,3 +52,10 @@ install/files/tls/*.pem
 control-plane/web/devtools-shots/
 .ai-refresh/
 .dod-pass
+
+# Site-specific CA certificates and TLS material the installer reads (install/files/README.txt)
+install/files/*.cer
+install/files/*.crt
+install/files/*.pem
+install/files/tls/*
+!install/files/tls/.gitkeep
