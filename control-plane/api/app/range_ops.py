@@ -1,4 +1,4 @@
-"""Accept, dispatch and reconcile range operations (provision, destroy).
+"""Accept, dispatch and reconcile range operations (provision, destroy, stop, start).
 
 The contract (codereview1 S3a):
 
@@ -57,6 +57,18 @@ ACTIONS: dict[str, Action] = {
     ),
     "destroy": Action(
         "destroy_range", RangeState.destroying, {RangeState.destroyed: "succeeded", RangeState.failed: "failed"}
+    ),
+    # Power. A worker that could not do it puts the range back where its VMs still are
+    # (app/state_machines.py), which settles the operation as failed.
+    "stop": Action(
+        "stop_range",
+        RangeState.stopping,
+        {RangeState.stopped: "succeeded", RangeState.ready: "failed", RangeState.failed: "failed"},
+    ),
+    "start": Action(
+        "start_range",
+        RangeState.starting,
+        {RangeState.ready: "succeeded", RangeState.stopped: "failed", RangeState.failed: "failed"},
     ),
 }
 

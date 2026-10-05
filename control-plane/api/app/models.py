@@ -30,6 +30,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from .db import Base
+from .state_machines import _EXERCISE_TRANSITIONS, _RANGE_TRANSITIONS
 
 
 # -- Database-agnostic UUID type ----------------------------------------
@@ -59,26 +60,6 @@ class GUID(TypeDecorator):
         return uuid.UUID(str(value))
 
 
-# -- State-machine transitions (module-level, not inside str enum) ------
-_RANGE_TRANSITIONS: dict[str, list[str]] = {
-    "created": ["provisioning", "destroyed"],
-    "provisioning": ["ready", "failed"],
-    "ready": ["running", "destroying"],
-    "running": ["stopped", "destroying"],
-    "stopped": ["running", "destroying"],
-    "destroying": ["destroyed", "failed"],
-    "failed": ["provisioning", "destroying", "destroyed"],
-}
-
-_EXERCISE_TRANSITIONS: dict[str, list[str]] = {
-    "pending": ["running", "cancelled"],
-    "running": ["paused", "completed", "cancelled"],
-    "paused": ["running", "cancelled"],
-    "completed": [],
-    "cancelled": [],
-}
-
-
 # -- Enums ---------------------------------------------------------------
 class RangeState(str, enum.Enum):
     created = "created"
@@ -89,6 +70,8 @@ class RangeState(str, enum.Enum):
     destroying = "destroying"
     destroyed = "destroyed"
     failed = "failed"
+    stopping = "stopping"  # a stop operation is with the worker (app/range_ops.py)
+    starting = "starting"
 
     def can_transition_to(self, target: RangeState) -> bool:
         return target.value in _RANGE_TRANSITIONS.get(self.value, [])

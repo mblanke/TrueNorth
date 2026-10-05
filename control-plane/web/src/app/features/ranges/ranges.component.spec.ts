@@ -32,6 +32,7 @@ describe('RangesComponent', () => {
       'createRange',
       'provisionRange',
       'stopRange',
+      'startRange',
       'destroyRange',
       'getRangeStats',
       'listRangeOperations',
@@ -43,7 +44,8 @@ describe('RangesComponent', () => {
     mockApi.listTemplates.and.returnValue(of(mockTemplates as Template[]));
     mockApi.createRange.and.returnValue(of({ id: 'r5', name: 'New', state: 'created' } as Range));
     mockApi.provisionRange.and.returnValue(of({ id: 'r2', state: 'provisioning' } as Range));
-    mockApi.stopRange.and.returnValue(of({ id: 'r1', state: 'stopped' } as Range));
+    mockApi.stopRange.and.returnValue(of({ id: 'r1', state: 'stopping' } as Range));
+    mockApi.startRange.and.returnValue(of({ id: 'r1', state: 'starting' } as Range));
     mockApi.destroyRange.and.returnValue(of({ id: 'r1', state: 'destroying' } as Range));
     mockApi.listRangeOperations.and.returnValue(of([]));
     mockApi.getRangeStats.and.returnValue(of({
@@ -123,13 +125,27 @@ describe('RangesComponent', () => {
   });
 
   // ── Stop ─────────────────────────────────────────────────────────
-  it('stop() should call stopRange and show notification', () => {
+  it('stop() requests a power off; it does not claim the VMs are off', () => {
     fixture.detectChanges();
 
     component.stop('r1');
 
     expect(mockApi.stopRange).toHaveBeenCalledWith('r1');
-    expect(mockNotify.success).toHaveBeenCalledWith('Range marked stopped. Its VMs were not powered off.');
+    expect(mockNotify.success).toHaveBeenCalledWith('Power off requested');
+  });
+
+  it('start() requests a power on', () => {
+    fixture.detectChanges();
+
+    component.start('r1');
+
+    expect(mockApi.startRange).toHaveBeenCalledWith('r1');
+    expect(mockNotify.success).toHaveBeenCalledWith('Power on requested');
+  });
+
+  it('a stop the worker is still doing reads as powering off', () => {
+    component.ops.set({ r1: { id: 'o1', action: 'stop', status: 'dispatched', error: null } as never });
+    expect(component.opText({ id: 'r1', state: 'stopping' } as never)).toBe('Powering off…');
   });
 
   // ── Create range ─────────────────────────────────────────────────

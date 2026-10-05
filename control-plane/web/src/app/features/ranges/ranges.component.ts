@@ -22,7 +22,11 @@ import { RangeNotesComponent } from '../../shared/components/range-notes/range-n
 import { CountUpDirective } from '../../shared/motion';
 
 /** States in which the latest operation is still being worked on. */
-const IN_PROGRESS = new Set(['provisioning', 'destroying']);
+const IN_PROGRESS = new Set(['provisioning', 'destroying', 'stopping', 'starting']);
+/** What each operation is doing while it runs. */
+const DOING: Record<string, string> = {
+  provision: 'Provisioning', destroy: 'Destroying', stop: 'Powering off', start: 'Powering on',
+};
 /** How often the list refreshes while any range is in progress. */
 export const POLL_MS = 5000;
 
@@ -156,9 +160,15 @@ export const POLL_MS = 5000;
               </button>
             }
             @if (r.state === 'ready' || r.state === 'running') {
-              <button mat-icon-button (click)="stop(r.id)"
-                      matTooltip="Mark stopped (this backend does not power VMs off)">
+              <button mat-icon-button (click)="stop(r.id)" [disabled]="busy().has(r.id)"
+                      matTooltip="Power off the range's VMs">
                 <mat-icon>stop</mat-icon>
+              </button>
+            }
+            @if (r.state === 'stopped') {
+              <button mat-icon-button color="primary" (click)="start(r.id)" [disabled]="busy().has(r.id)"
+                      matTooltip="Power on the range's VMs">
+                <mat-icon>play_arrow</mat-icon>
               </button>
             }
             @if (r.state === 'ready' || r.state === 'running' || r.state === 'stopped' || r.state === 'failed') {
@@ -317,7 +327,7 @@ export class RangesComponent implements OnInit {
     const op = this.ops()[r.id];
     if (!op) return null;
     const code = String(op.error?.['code'] ?? '');
-    const doing = op.action === 'destroy' ? 'Destroying' : 'Provisioning';
+    const doing = DOING[op.action] ?? op.action;
     if (op.status === 'pending') {
       return code === 'broker_unavailable'
         ? 'Queued: waiting for the task queue to come back'
@@ -385,17 +395,18 @@ export class RangesComponent implements OnInit {
   }
 
   stop(id: string): void {
-    this.api.stopRange(id).subscribe({
-      next: () => { this.notify.success('Range marked stopped. Its VMs were not powered off.'); this.loadRanges(); },
-      error: () => this.notify.error('Stop failed'),
-    });
+    this.request(id, this.api.stopRange(id), 'Power off requested', 'Could not request power off');
+  }
+
+  start(id: string): void {
+    this.request(id, this.api.startRange(id), 'Power on requested', 'Could not request power on');
   }
 
   destroy(id: string): void {
     this.request(id, this.api.destroyRange(id), 'Destroy requested', 'Could not request destroy');
   }
 
-  /** A provision/destroy: 202 means recorded, not done; the row's status follows it. */
+  /** A provision/destroy/stop/start: 202 means recorded, not done; the row's status follows it. */
   private request(id: string, call: ReturnType<ApiService['provisionRange']>, ok: string, failed: string): void {
     this.setBusy(id, true);
     call.subscribe({

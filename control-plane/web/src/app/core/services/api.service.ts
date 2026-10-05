@@ -193,8 +193,15 @@ export class ApiService {
     return this.http.post<Range>(`${this.base}/ranges/${id}/provision`, {},
       { headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }) });
   }
-  stopRange(id: string): Observable<Range> {
-    return this.http.post<Range>(`${this.base}/ranges/${id}/stop`, {});
+  /** Power the range's VMs off: 202, the range is `stopping` until the worker reports. */
+  stopRange(id: string, idempotencyKey: string = crypto.randomUUID()): Observable<Range> {
+    return this.http.post<Range>(`${this.base}/ranges/${id}/stop`, {},
+      { headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }) });
+  }
+  /** Power a stopped range's VMs on: 202, the range is `starting` until the worker reports. */
+  startRange(id: string, idempotencyKey: string = crypto.randomUUID()): Observable<Range> {
+    return this.http.post<Range>(`${this.base}/ranges/${id}/start`, {},
+      { headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }) });
   }
   updateRange(id: string, data: Partial<Range>): Observable<Range> {
     return this.http.put<Range>(`${this.base}/ranges/${id}`, data);

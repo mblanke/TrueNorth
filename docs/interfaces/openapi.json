@@ -25186,9 +25186,78 @@
         ]
       }
     },
+    "/ranges/{range_id}/start": {
+      "post": {
+        "description": "Power a stopped range's VMs on (async worker task). The range is ``starting``\nuntil the worker reports ``ready``.  **Permission: range:provision**",
+        "operationId": "start_range_ranges__range_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOut"
+                }
+              }
+            },
+            "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status."
+          },
+          "409": {
+            "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Range",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/stop": {
       "post": {
-        "description": "Stop a running range.  **Permission: range:provision**",
+        "description": "Power a ready range's VMs off (async worker task). The range is ``stopping`` until\nthe worker reports ``stopped``.  **Permission: range:provision**",
         "operationId": "stop_range_ranges__range_id__stop_post",
         "parameters": [
           {
@@ -25200,10 +25269,27 @@
               "title": "Range Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -25211,7 +25297,10 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status."
+          },
+          "409": {
+            "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
           },
           "422": {
             "content": {

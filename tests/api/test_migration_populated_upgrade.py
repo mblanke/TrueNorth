@@ -183,11 +183,19 @@ def test_a_populated_deployed_database_upgrades_to_head_without_loss():
             s.commit()
             assert made and op.generation == 1 and got == {"ws01": "10.255.0.10"}
             assert s.get(Range, created["id"]).state.value == "provisioning"
+            # The native enum gained the power states (d1e2f3a4b5c6).
+            ready = next(r for r in range_rows if r["state"] == "ready")
+            range_ops.accept(s, ready["id"], user.model_copy(update={"tenant_id": str(ready["tenant_id"])}), "stop")
+            s.commit()
+            assert s.get(Range, ready["id"]).state.value == "stopping"
 
         # The new migrations are additive and reversible: down to the deployed head and back.
         _alembic(url, "downgrade", DEPLOYED_HEAD)
         names = sa.inspect(engine).get_table_names()
         assert not set(NEW_TABLES) & set(names)
+        with engine.connect() as conn:
+            back = conn.execute(sa.text("SELECT CAST(state AS TEXT) FROM ranges WHERE id = :i"), {"i": ready["id"]})
+            assert back.scalar() == "ready", "a range caught stopping goes back to where its VMs were"
         after_down = snapshot()
         assert after_down["tenants"] == before["tenants"] and after_down["templates"] == before["templates"]
         _alembic(url, "upgrade", "head")
