@@ -39,6 +39,8 @@ everything combined (green at `78711f4`).
 | 36 | Ops center: another tenant's exercise is 404 on every endpoint (from #32's review) | #32 |
 | 37 | In-app notification push: correct `send_to_user` call, recipient-only (from #32's review; the notifications package is not yet wired into the API) | #36 |
 | 38 | Exercises page follows a running exercise (it showed running 0/100 after it had scored 100/100), found in the scoring browser journey | #37 |
+| 39 | Range tasks run once: range leases, one sender per operation, a task time limit (from the independent review) | #33 |
+| 40 | Handoff: S5a integrated, lab smoke script, WIP decisions, independent review (`handoff-2026-10-05.md`) | #38 |
 | 28 | Fix: scenario exercises carry their objectives (they scored 0/0), found by S7 | main |
 
 Merge conflicts to expect, all resolved already on #24, which shows how to resolve them:
