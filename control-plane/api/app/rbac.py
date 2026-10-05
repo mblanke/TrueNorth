@@ -168,7 +168,6 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.WIKI_EDIT,
         Permission.TICKET_CREATE,
         Permission.TICKET_WORK,
-
         # White cell: runs the background noise and sees its ground truth.
         Permission.NOISE_READ,
         Permission.NOISE_CONTROL,

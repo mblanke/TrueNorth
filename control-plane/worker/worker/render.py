@@ -109,8 +109,10 @@ def _is_noise_agent(node: dict, block: dict) -> bool:
     if "agent" in opt:
         return bool(opt["agent"])
     vlan = str(node.get("vlan", ""))
-    excluded = (vlan in set(block.get("exclude_vlans") or [])) if "exclude_vlans" in block else bool(
-        _NOISE_DEFAULT_EXCLUDE.search(vlan)
+    excluded = (
+        (vlan in set(block.get("exclude_vlans") or []))
+        if "exclude_vlans" in block
+        else bool(_NOISE_DEFAULT_EXCLUDE.search(vlan))
     )
     return node.get("role") in NOISE_AGENT_ROLES and not excluded
 
