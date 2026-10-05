@@ -107,6 +107,17 @@ class Permission(str, Enum):
     AAR_GENERATE = "aar:generate"
     AAR_READ = "aar:read"
 
+    # Wiki. Space visibility ("all" / "staff") is enforced on top of WIKI_READ.
+    WIKI_READ = "wiki:read"
+    WIKI_EDIT = "wiki:edit"
+    WIKI_ADMIN = "wiki:admin"
+
+    # Trouble tickets. TICKET_CREATE alone sees only the caller's own tickets and
+    # never internal comments; TICKET_WORK is triage across the tenant.
+    TICKET_CREATE = "ticket:create"
+    TICKET_WORK = "ticket:work"
+    TICKET_ADMIN = "ticket:admin"
+
 
 # ── Role → Permission Mapping ─────────────────────────────────────────
 ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
@@ -154,6 +165,11 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.AAR_GENERATE,
         Permission.AAR_READ,
         Permission.TELEMETRY_READ,
+        # Wiki + tickets
+        Permission.WIKI_READ,
+        Permission.WIKI_EDIT,
+        Permission.TICKET_CREATE,
+        Permission.TICKET_WORK,
     },
     # Range-ops: infrastructure-focused, no exercises/scenarios write
     UserRole.range_ops: {
@@ -176,6 +192,11 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_READ,
         Permission.STATS_READ,
         Permission.TELEMETRY_READ,
+        # Wiki + tickets: range ops works the range-support queue.
+        Permission.WIKI_READ,
+        Permission.WIKI_EDIT,
+        Permission.TICKET_CREATE,
+        Permission.TICKET_WORK,
     },
     # Student (trainee): consume ranges, run exercises
     UserRole.student: {
@@ -186,6 +207,8 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_START,
         Permission.EXERCISE_COMPLETE,
         Permission.AAR_READ,
+        Permission.WIKI_READ,
+        Permission.TICKET_CREATE,
     },
     # Observer: read-only plus telemetry
     UserRole.observer: {
@@ -195,6 +218,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_READ,
         Permission.AAR_READ,
         Permission.TELEMETRY_READ,
+        Permission.WIKI_READ,
     },
 }
 

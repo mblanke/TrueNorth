@@ -92,6 +92,7 @@ describe('ApiService', () => {
     const req = httpMock.expectOne(`${base}/ranges/r1/provision`);
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({});
+    expect(req.request.headers.get('Idempotency-Key')).toBeTruthy();
     req.flush(mockResp);
   });
 
@@ -148,6 +149,18 @@ describe('ApiService', () => {
     const req = httpMock.expectOne(`${base}/ranges/r1/destroy`);
     expect(req.request.method).toBe('POST');
     req.flush({ id: 'r1', state: 'destroying' });
+  });
+
+  it('a repeated provision with the same key sends the same Idempotency-Key', () => {
+    service.provisionRange('r1', 'click-1').subscribe();
+    expect(httpMock.expectOne(`${base}/ranges/r1/provision`).request.headers.get('Idempotency-Key')).toBe('click-1');
+  });
+
+  it('listRangeOperations() and abandonRangeOperation() use the operations endpoints', () => {
+    service.listRangeOperations('r1').subscribe();
+    expect(httpMock.expectOne(`${base}/ranges/r1/operations`).request.method).toBe('GET');
+    service.abandonRangeOperation('r1', 'op1').subscribe();
+    expect(httpMock.expectOne(`${base}/ranges/r1/operations/op1/abandon`).request.method).toBe('POST');
   });
 
   // ── Designer topology ──────────────────────────────────────────────

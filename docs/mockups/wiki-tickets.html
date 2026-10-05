@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wiki and Support mockup</title>
+<style>
+  :root {
+    --tn-bg:#f6f7f8; --tn-surface:#fff; --tn-ink:#1b2530; --tn-muted:#5d6b78; --tn-line:#dfe4e8;
+    --tn-red:#c8102e; --tn-red-ink:#fff; --tn-red-soft:#fbe9ec; --tn-internal:#fff7e0; --tn-internal-line:#e9c46a;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--tn-bg); color:var(--tn-ink); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 16px; background:#fff4d6; font-size:12px; border-bottom:1px solid var(--tn-line); }
+  .bar select { font:inherit; padding:3px 6px; }
+  header { display:flex; align-items:center; gap:14px; padding:14px 22px; background:var(--tn-surface); border-bottom:1px solid var(--tn-line); }
+  .brand { font-weight:700; font-size:18px; letter-spacing:-.4px; }
+  .brand b { color:var(--tn-red); }
+  .who { margin-left:auto; color:var(--tn-muted); font-size:13px; }
+  .layout { display:grid; grid-template-columns:180px minmax(0,1fr); min-height:calc(100vh - 92px); }
+  nav.side { background:var(--tn-surface); border-right:1px solid var(--tn-line); padding:18px 10px; }
+  nav.side a { display:block; padding:8px 10px; border-radius:6px; color:var(--tn-ink); text-decoration:none; }
+  nav.side a.on { background:var(--tn-red-soft); color:var(--tn-red); font-weight:600; }
+  nav.side .grp { font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--tn-muted); padding:16px 10px 6px; }
+  main { padding:22px 26px; min-width:0; }
+  h1 { font-size:24px; margin:2px 0 6px; letter-spacing:-.5px; }
+  h2 { font-size:15px; margin:0 0 10px; }
+  .muted { color:var(--tn-muted); } .small { font-size:12px; }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+  .panel { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:8px; padding:16px; min-width:0; }
+  .panel + .panel { margin-top:14px; }
+  .btn { display:inline-block; border:1px solid var(--tn-line); background:var(--tn-surface); border-radius:6px; padding:7px 12px; font:inherit; color:var(--tn-ink); text-decoration:none; cursor:pointer; }
+  .btn.primary { background:var(--tn-red); color:var(--tn-red-ink); border-color:var(--tn-red); }
+  a.link { color:var(--tn-red); text-decoration:none; } a.link:hover { text-decoration:underline; }
+  .row { display:flex; justify-content:space-between; gap:12px; padding:11px 0; border-top:1px solid var(--tn-line); align-items:center; }
+  .row:first-child { border-top:0; padding-top:0; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:4px; border:1px solid var(--tn-line); color:var(--tn-muted); white-space:nowrap; }
+  .tag.crit { border-color:var(--tn-red); color:var(--tn-red); }
+  .tag.high { border-color:#d9822b; color:#a85f13; }
+  .key { font-family:ui-monospace,Menlo,monospace; font-size:12px; color:var(--tn-muted); }
+  input[type=text], textarea, select.f { font:inherit; width:100%; padding:8px 10px; border:1px solid var(--tn-line); border-radius:6px; background:#fff; color:var(--tn-ink); }
+  textarea { min-height:110px; resize:vertical; }
+  label.f { display:block; font-size:12px; color:var(--tn-muted); margin:12px 0 4px; }
+  .split { display:grid; grid-template-columns:230px minmax(0,1fr); gap:18px; align-items:start; }
+  .detail { display:grid; grid-template-columns:minmax(0,1fr) 250px; gap:18px; align-items:start; }
+  .tree a { display:block; padding:4px 6px; border-radius:5px; color:var(--tn-ink); text-decoration:none; }
+  .tree a.on { background:var(--tn-red-soft); color:var(--tn-red); }
+  .tree .kids { margin-left:14px; border-left:1px solid var(--tn-line); padding-left:6px; }
+  .crumbs { font-size:12px; color:var(--tn-muted); margin-bottom:4px; }
+  .doc h3 { font-size:15px; margin:18px 0 6px; }
+  .doc code { background:#f1f3f5; padding:1px 4px; border-radius:3px; font-size:12px; }
+  .doc pre { background:#f1f3f5; padding:10px; border-radius:6px; overflow:auto; font-size:12px; }
+  .kv { display:grid; grid-template-columns:90px minmax(0,1fr); gap:8px 10px; font-size:13px; }
+  .kv dt { color:var(--tn-muted); } .kv dd { margin:0; }
+  .comment { padding:12px 0; border-top:1px solid var(--tn-line); }
+  .comment.internal { background:var(--tn-internal); border:1px solid var(--tn-internal-line); border-radius:6px; padding:10px 12px; margin:10px 0; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--tn-line); margin-bottom:14px; }
+  .tabs a { padding:7px 12px; color:var(--tn-muted); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tabs a.on { color:var(--tn-red); border-color:var(--tn-red); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-weight:500; color:var(--tn-muted); font-size:12px; }
+  th, td { padding:10px 8px; border-bottom:1px solid var(--tn-line); vertical-align:top; }
+  .board { display:grid; grid-template-columns:repeat(5,minmax(170px,1fr)); gap:10px; overflow-x:auto; }
+  .col { background:#eef1f3; border-radius:8px; padding:8px; min-height:300px; }
+  .col h2 { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--tn-muted); margin:4px 4px 8px; }
+  .card { background:#fff; border:1px solid var(--tn-line); border-radius:6px; padding:9px 10px; margin-bottom:8px; font-size:13px; cursor:grab; }
+  .card .meta { display:flex; justify-content:space-between; margin-top:6px; font-size:11px; color:var(--tn-muted); }
+  .editor { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .toolbar { display:flex; gap:4px; margin-bottom:6px; }
+  .toolbar span { border:1px solid var(--tn-line); border-radius:4px; padding:2px 8px; font-size:12px; background:#fff; }
+  .note { border-left:3px solid var(--tn-red); background:var(--tn-red-soft); padding:10px 12px; margin:12px 0; font-size:13px; }
+  @media (max-width:800px) {
+    .layout { grid-template-columns:1fr; } nav.side { display:flex; flex-wrap:wrap; gap:2px; border-right:0; border-bottom:1px solid var(--tn-line); padding:8px; }
+    nav.side .grp { display:none; } .split, .detail, .editor { grid-template-columns:1fr; } main { padding:16px; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <strong>MOCKUP</strong> · fictional data · links switch screens
+  <label>View as <select id="role"><option value="student">Student</option><option value="instructor">Instructor / Range ops</option></select></label>
+  <span id="screens"></span>
+</div>
+<header><div class="brand">True<b>North</b></div><span class="who" id="who"></span></header>
+<div class="layout">
+  <nav class="side" id="nav"></nav>
+  <main id="main"></main>
+</div>
+<script>
+(() => {
+  const S = { role: 'student', page: 'wiki' };
+  const staff = () => S.role === 'instructor';
+  const tickets = [
+    { k: 'TN-42', s: "dc01 won't boot past BIOS", t: 'incident', st: 'open', p: 'high', r: 'Cpl A. Lee', a: '', q: 'Range support', rng: 'DP2 AD Lab', u: '12 min ago' },
+    { k: 'TN-41', s: 'Kali VM has no network on exercise net', t: 'incident', st: 'in_progress', p: 'critical', r: 'Pte J. Roy', a: 'Sgt M. Chen', q: 'Range support', rng: 'Blue Team 3', u: '40 min ago' },
+    { k: 'TN-40', s: 'Request: add Wireshark to analyst image', t: 'request', st: 'waiting', p: 'medium', r: 'Cpl A. Lee', a: 'Sgt M. Chen', q: 'Range support', rng: '', u: '2 h ago' },
+    { k: 'TN-39', s: 'vSphere host esx03 datastore 92% full', t: 'task', st: 'open', p: 'high', r: 'Sgt M. Chen', a: 'MCpl D. Park', q: 'Platform', rng: '', u: '3 h ago' },
+    { k: 'TN-38', s: 'Scoring missed my detection on Q4', t: 'bug', st: 'resolved', p: 'medium', r: 'Pte J. Roy', a: 'Capt R. Shaw', q: 'Range support', rng: 'DP2 AD Lab', u: 'yesterday' },
+    { k: 'TN-35', s: 'Password reset for range console', t: 'request', st: 'closed', p: 'low', r: 'Cpl A. Lee', a: 'Sgt M. Chen', q: 'Range support', rng: '', u: '3 days ago' },
+  ];
+  const mine = t => t.r === 'Cpl A. Lee';
+  const label = { open: 'Open', in_progress: 'In progress', waiting: 'Waiting on reporter', resolved: 'Resolved', closed: 'Closed' };
+  const pri = p => `<span class="tag ${p === 'critical' ? 'crit' : p === 'high' ? 'high' : ''}">${p}</span>`;
+  const go = p => `href="#${p}" data-go="${p}"`;
+
+  function nav() {
+    const items = [['Home', 'home'], ['My learning', 'learning'], ['Ranges', 'ranges']];
+    const kb = [['Wiki', 'wiki'], ['Support', staff() ? 'tickets' : 'tickets']];
+    if (staff()) kb.push(['Support board', 'board']);
+    const on = p => (S.page === p || (p === 'wiki' && S.page.startsWith('wiki')) || (p === 'tickets' && (S.page === 'ticket' || S.page === 'new'))) ? 'on' : '';
+    document.getElementById('nav').innerHTML =
+      items.map(([l, p]) => `<a class="" href="#">${l}</a>`).join('') +
+      '<div class="grp">Help</div>' + kb.map(([l, p]) => `<a class="${on(p)}" ${go(p)}>${l}</a>`).join('');
+    document.getElementById('who').textContent = staff() ? 'Sgt M. Chen · Range ops' : 'Cpl A. Lee · Student';
+  }
+
+  const pages = {
+    wiki: () => `
+      <div class="head"><div><h1>Wiki</h1><p class="muted">How-tos, runbooks and course notes.</p></div>
+      <div style="display:flex;gap:8px"><input type="text" placeholder="Search the wiki" style="width:240px">${staff() ? '<a class="btn" href="#">New space</a>' : ''}</div></div>
+      <div class="panel">
+        <div class="row"><div><a class="link" ${go('wikipage')}><strong>Student handbook</strong></a><p class="small muted">Range rules, getting help, connecting to your VMs</p></div><span class="small muted">14 pages</span></div>
+        <div class="row"><div><a class="link" ${go('wikipage')}><strong>DP2 course notes</strong></a><p class="small muted">Lesson notes and lab walkthroughs</p></div><span class="small muted">31 pages</span></div>
+        ${staff() ? `<div class="row"><div><a class="link" ${go('wikipage')}><strong>Range ops runbooks</strong> <span class="tag">staff only</span></a><p class="small muted">vSphere, golden images, recovery procedures</p></div><span class="small muted">22 pages</span></div>` : ''}
+      </div>`,
+    wikipage: () => `
+      <div class="split">
+        <div class="panel tree small">
+          <strong style="display:block;margin-bottom:8px">Student handbook</strong>
+          <a href="#">Welcome</a>
+          <a href="#">Connecting to your range</a>
+          <div class="kids"><a href="#">Browser console</a><a class="on" href="#">My VM won't start</a><a href="#">Copy and paste</a></div>
+          <a href="#">Range rules of engagement</a>
+          <a href="#">Getting help</a>
+          ${staff() ? '<a href="#" class="muted">Draft: exam week FAQ</a>' : ''}
+        </div>
+        <div>
+          <div class="crumbs">Student handbook › Connecting to your range</div>
+          <div class="head"><div><h1>My VM won't start</h1><p class="small muted">Updated 2 days ago by Sgt M. Chen · revision 4</p></div>
+          ${staff() ? `<div style="display:flex;gap:8px"><a class="btn" ${go('history')}>History</a><a class="btn primary" ${go('edit')}>Edit</a></div>` : ''}</div>
+          <div class="panel doc">
+            <p>Most start-up problems clear with a reset from the range console. Try these in order.</p>
+            <h3>1. Reset from the console</h3><p>Open your range, pick the VM, and choose <code>Power › Reset</code>. Wait two minutes.</p>
+            <h3>2. Check the exercise is running</h3><p>VMs are powered off when the exercise is paused. Your instructor will resume it.</p>
+            <h3>3. Still stuck?</h3><p>Report it so range ops can look. Include the VM name and what you see on screen.</p>
+            <p><a class="btn primary" ${go('new')}>Report a problem</a></p>
+          </div>
+        </div>
+      </div>`,
+    edit: () => `
+      <div class="crumbs">Student handbook › Connecting to your range</div>
+      <div class="head"><div><h1>Editing: My VM won't start</h1><p class="small muted">Started from revision 4</p></div>
+      <div style="display:flex;gap:8px"><a class="btn" ${go('wikipage')}>Cancel</a><a class="btn primary" ${go('wikipage')}>Save</a></div></div>
+      <div class="panel">
+        <label class="f" style="margin-top:0">Title</label><input type="text" value="My VM won't start">
+        <div class="editor" style="margin-top:12px">
+          <div><div class="toolbar"><span><b>B</b></span><span><i>I</i></span><span>H2</span><span>• List</span><span>Code</span><span>Link</span><span>Table</span></div>
+          <textarea style="min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:12px">Most start-up problems clear with a reset from the range console. Try these in order.
+
+### 1. Reset from the console
+Open your range, pick the VM, and choose \`Power › Reset\`. Wait two minutes.
+
+### 2. Check the exercise is running
+VMs are powered off when the exercise is paused.</textarea></div>
+          <div class="doc" style="border:1px dashed var(--tn-line);border-radius:6px;padding:10px"><span class="small muted">Preview</span>
+          <p>Most start-up problems clear with a reset from the range console. Try these in order.</p><h3>1. Reset from the console</h3><p>Open your range, pick the VM, and choose <code>Power › Reset</code>. Wait two minutes.</p><h3>2. Check the exercise is running</h3><p>VMs are powered off when the exercise is paused.</p></div>
+        </div>
+        <label class="f">What changed? (optional)</label><input type="text" placeholder="e.g. added the paused-exercise step">
+      </div>
+      <div class="note">If someone else saves while you're editing, you'll be told before anything is overwritten, and can copy your text across.</div>`,
+    history: () => `
+      <div class="crumbs">Student handbook › My VM won't start</div>
+      <div class="head"><div><h1>History</h1></div><a class="btn" ${go('wikipage')}>Back to page</a></div>
+      <div class="panel"><table><tr><th style="width:60px">Rev</th><th>Change</th><th style="width:140px">By</th><th style="width:110px">When</th><th style="width:80px"></th></tr>
+      <tr><td>4</td><td>Added the paused-exercise step</td><td>Sgt M. Chen</td><td>2 days ago</td><td class="small muted">current</td></tr>
+      <tr><td>3</td><td>Fixed console menu name</td><td>Capt R. Shaw</td><td>last week</td><td><a class="link" href="#">Restore</a></td></tr>
+      <tr><td>2</td><td>—</td><td>Sgt M. Chen</td><td>Sep 12</td><td><a class="link" href="#">Restore</a></td></tr>
+      <tr><td>1</td><td>Created</td><td>Sgt M. Chen</td><td>Sep 10</td><td><a class="link" href="#">Restore</a></td></tr></table></div>`,
+    tickets: () => {
+      const list = staff() ? tickets : tickets.filter(mine);
+      return `
+      <div class="head"><div><h1>Support</h1><p class="muted">${staff() ? 'Every ticket in your organisation.' : 'Problems you have reported.'}</p></div><a class="btn primary" ${go('new')}>Report a problem</a></div>
+      ${staff() ? `<div class="tabs"><a href="#">Assigned to me</a><a class="on" href="#">All open</a><a href="#">Unassigned</a><a href="#">Closed</a></div>` : ''}
+      <div class="panel"><table>
+        <tr><th style="width:70px">Key</th><th>Subject</th>${staff() ? '<th style="width:120px">Reporter</th><th style="width:120px">Assignee</th>' : ''}<th style="width:150px">Status</th><th style="width:80px">Priority</th><th style="width:100px">Updated</th></tr>
+        ${list.map(t => `<tr><td class="key">${t.k}</td><td><a class="link" ${go('ticket')}>${t.s}</a>${t.rng ? `<div class="small muted">${t.rng}</div>` : ''}</td>${staff() ? `<td>${t.r}</td><td>${t.a || '<span class="muted">—</span>'}</td>` : ''}<td>${label[t.st]}</td><td>${pri(t.p)}</td><td class="small muted">${t.u}</td></tr>`).join('')}
+      </table></div>`;
+    },
+    new: () => `
+      <div class="head"><div><h1>Report a problem</h1><p class="muted">Range support will pick this up. You'll see replies on the ticket.</p></div></div>
+      <div class="panel" style="max-width:720px">
+        <label class="f" style="margin-top:0">What's wrong?</label><input type="text" placeholder="e.g. dc01 won't boot past BIOS">
+        <label class="f">Details</label><textarea placeholder="What you were doing, what you see, the VM name. Markdown works."></textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+          <div><label class="f">Type</label><select class="f"><option>Something's broken</option><option>Request</option>${staff() ? '<option>Task</option><option>Bug</option>' : ''}</select></div>
+          <div><label class="f">How urgent?</label><select class="f"><option>Normal</option><option>Low</option><option>High</option><option>Blocking my exercise</option></select></div>
+          <div><label class="f">Range</label><select class="f"><option>DP2 AD Lab</option><option>None</option></select></div>
+        </div>
+        <label class="f">Screenshots or logs</label><input type="file">
+        <p style="margin-top:16px"><a class="btn primary" ${go('ticket')}>Submit</a> <a class="btn" ${go('tickets')}>Cancel</a></p>
+      </div>`,
+    ticket: () => `
+      <div class="crumbs"><a class="link" ${go('tickets')}>Support</a> › TN-42</div>
+      <div class="head"><div><h1>dc01 won't boot past BIOS</h1><p class="small muted"><span class="key">TN-42</span> · reported by Cpl A. Lee · 12 min ago</p></div>
+      ${staff() ? '' : '<a class="btn" href="#">Close ticket</a>'}</div>
+      <div class="detail">
+        <div>
+          <div class="panel doc"><p>During lab 3, dc01 shows the BIOS screen and stops. I tried <code>Power › Reset</code> twice.</p><p>Range: DP2 AD Lab, VM <code>dc01</code>.</p>
+          <p class="small muted">Attachments: <a class="link" href="#">console.png</a> (220 KB)</p></div>
+          <div class="panel">
+            <h2>Conversation</h2>
+            <div class="comment" style="border-top:0;padding-top:0"><strong>Sgt M. Chen</strong> <span class="small muted">· 5 min ago</span><p style="margin:4px 0 0">Thanks. Looking now. Can you tell me if dc02 is up?</p></div>
+            ${staff() ? '<div class="comment internal"><strong>Sgt M. Chen</strong> <span class="tag">Internal note</span> <span class="small muted">· 4 min ago</span><p style="margin:4px 0 0">Boot order on the clone lost the disk. Same as TN-31. Fix the golden image after the exercise.</p></div>' : ''}
+            <div class="comment"><strong>Cpl A. Lee</strong> <span class="small muted">· 2 min ago</span><p style="margin:4px 0 0">dc02 is fine.</p></div>
+            <label class="f">Reply</label><textarea placeholder="Write a reply. Markdown works." style="min-height:80px"></textarea>
+            <p style="margin:10px 0 0;display:flex;gap:12px;align-items:center"><a class="btn primary" href="#">Send</a>${staff() ? '<label class="small"><input type="checkbox"> Internal note (staff only)</label>' : ''}</p>
+          </div>
+          <div class="panel small"><h2>History</h2>
+            <div class="muted">Sgt M. Chen changed status Open → In progress · 5 min ago</div>
+            <div class="muted">Sgt M. Chen assigned to Sgt M. Chen · 5 min ago</div>
+            <div class="muted">Cpl A. Lee created TN-42 · 12 min ago</div></div>
+        </div>
+        <div class="panel">
+          <dl class="kv">
+            <dt>Status</dt><dd>${staff() ? '<select class="f"><option>In progress</option><option>Open</option><option>Waiting on reporter</option><option>Resolved</option><option>Closed</option></select>' : 'In progress'}</dd>
+            <dt>Priority</dt><dd>${staff() ? '<select class="f"><option>High</option></select>' : pri('high')}</dd>
+            <dt>Assignee</dt><dd>${staff() ? '<select class="f"><option>Sgt M. Chen</option><option>Unassigned</option></select>' : 'Sgt M. Chen'}</dd>
+            <dt>Type</dt><dd>Incident</dd>
+            ${staff() ? '<dt>Queue</dt><dd>Range support</dd>' : ''}
+            <dt>Range</dt><dd><a class="link" href="#">DP2 AD Lab</a></dd>
+          </dl>
+        </div>
+      </div>`,
+    board: () => `
+      <div class="head"><div><h1>Support board</h1><p class="muted">Drag cards between columns.</p></div>
+      <div style="display:flex;gap:8px"><select class="f" style="width:160px"><option>All queues</option><option>Range support</option><option>Platform</option></select><select class="f" style="width:150px"><option>Anyone</option><option>Me</option></select></div></div>
+      <div class="board">${['open', 'in_progress', 'waiting', 'resolved', 'closed'].map(st => `
+        <div class="col"><h2>${label[st]} · ${tickets.filter(t => t.st === st).length}</h2>
+        ${tickets.filter(t => t.st === st).map(t => `<a class="card" style="display:block;color:inherit;text-decoration:none" ${go('ticket')}><div>${t.s}</div><div class="meta"><span class="key">${t.k}</span><span>${t.p === 'critical' || t.p === 'high' ? pri(t.p) : ''} ${t.a ? t.a.split(' ').pop() : 'unassigned'}</span></div></a>`).join('')}
+        </div>`).join('')}</div>`,
+    home: () => `<h1>Home</h1><p class="muted">Not part of this mockup.</p>`,
+  };
+
+  function render() {
+    if (!staff() && ['board', 'edit', 'history'].includes(S.page)) S.page = 'wiki';
+    nav();
+    document.getElementById('main').innerHTML = (pages[S.page] || pages.wiki)();
+    const list = staff() ? ['wiki', 'wikipage', 'edit', 'history', 'tickets', 'new', 'ticket', 'board'] : ['wiki', 'wikipage', 'tickets', 'new', 'ticket'];
+    document.getElementById('screens').innerHTML = 'Screens: ' + list.map(p => `<a href="#${p}" data-go="${p}" style="color:inherit;${p === S.page ? 'font-weight:700' : ''}">${p}</a>`).join(' · ');
+  }
+  document.addEventListener('click', e => {
+    const a = e.target.closest('[data-go]');
+    if (a) { e.preventDefault(); S.page = a.dataset.go; history.replaceState(null, '', '#role=' + S.role + '&page=' + S.page); render(); window.scrollTo(0, 0); }
+  });
+  document.getElementById('role').addEventListener('change', e => { S.role = e.target.value; render(); });
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('role')) S.role = h.get('role');
+  if (h.get('page')) S.page = h.get('page');
+  document.getElementById('role').value = S.role;
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 ﻿import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
@@ -26,6 +26,8 @@ export interface InjectorInfo {
 
 /** GET /ranges/stats. `by_state` may be absent. */
 export type RangeStats = components['schemas']['RangeStatsOut'];
+/** A requested range action and its progress (GET /ranges/{id}/operations). */
+export type RangeOperation = components['schemas']['RangeOperationOut'];
 
 /** One row of GET /exercise-forge/history. */
 export interface ForgeHistoryItem {
@@ -186,8 +188,10 @@ export class ApiService {
   createRange(data: { name: string; template_id: string }): Observable<Range> {
     return this.http.post<Range>(`${this.base}/ranges`, data);
   }
-  provisionRange(id: string): Observable<Range> {
-    return this.http.post<Range>(`${this.base}/ranges/${id}/provision`, {});
+  /** 202 = recorded, not done. The key makes a repeated click (or retry) the same request. */
+  provisionRange(id: string, idempotencyKey: string = crypto.randomUUID()): Observable<Range> {
+    return this.http.post<Range>(`${this.base}/ranges/${id}/provision`, {},
+      { headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }) });
   }
   stopRange(id: string): Observable<Range> {
     return this.http.post<Range>(`${this.base}/ranges/${id}/stop`, {});
@@ -195,8 +199,16 @@ export class ApiService {
   updateRange(id: string, data: Partial<Range>): Observable<Range> {
     return this.http.put<Range>(`${this.base}/ranges/${id}`, data);
   }
-  destroyRange(id: string): Observable<Range> {
-    return this.http.post<Range>(`${this.base}/ranges/${id}/destroy`, {});
+  destroyRange(id: string, idempotencyKey: string = crypto.randomUUID()): Observable<Range> {
+    return this.http.post<Range>(`${this.base}/ranges/${id}/destroy`, {},
+      { headers: new HttpHeaders({ 'Idempotency-Key': idempotencyKey }) });
+  }
+  /** Newest first; outcomes are reconciled from the range's state on each read. */
+  listRangeOperations(id: string): Observable<RangeOperation[]> {
+    return this.http.get<RangeOperation[]>(`${this.base}/ranges/${id}/operations`);
+  }
+  abandonRangeOperation(rangeId: string, operationId: string): Observable<RangeOperation> {
+    return this.http.post<RangeOperation>(`${this.base}/ranges/${rangeId}/operations/${operationId}/abandon`, {});
   }
   getRangeDiagram(id: string): Observable<{ range_id: string; diagram_json: any }> {
     return this.http.get<{ range_id: string; diagram_json: any }>(`${this.base}/ranges/${id}/diagram`);

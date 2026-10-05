@@ -882,3 +882,20 @@ alembic downgrade -1
 # 4. Verify
 curl https://api.truenorth.local/healthz
 ```
+
+## Range operations (provision, destroy)
+
+Each provision or destroy request is a durable *operation* (`range_operations`;
+`app/range_ops.py`). `GET /ranges/{id}/operations` shows them, newest first.
+
+| status | meaning | what to do |
+|---|---|---|
+| `pending` + `error.code = broker_unavailable` | accepted and recorded; the task queue was down | nothing: the API re-sends it every `RANGE_OP_REDISPATCH_SECONDS` (30) once Redis is back |
+| `dispatched` | the worker has the task | wait |
+| `dispatched` + `error.code = no_outcome` | no result `RANGE_OP_STALE_AFTER_SECONDS` (6 h) after dispatch: the task may be lost | check the hypervisor. If nothing is running, `POST /ranges/{id}/operations/{op}/abandon` (range:destroy). The range goes to `failed`; destroy or provision it again |
+| `succeeded` / `failed` | the range reached the outcome's state; `failed` carries the worker's message | — |
+
+The worker acts on a task only while the range is still in the state the API put it
+in (`worker/fencing.py`). A duplicate or late delivery logs "duplicate or stale
+delivery, skipped" and touches nothing. Only the last retry of a failing task marks the
+range `failed`.

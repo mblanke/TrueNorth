@@ -77,7 +77,7 @@ class TestRangeLifecycle:
         assert rng["state"] == "created"
         # Provision
         resp = client.post(f"/ranges/{rng['id']}/provision")
-        assert resp.status_code == 200
+        assert resp.status_code == 202  # accepted: durably recorded, not yet done
         assert resp.json()["state"] == "provisioning"
         # Verify persisted state
         got = client.get(f"/ranges/{rng['id']}")

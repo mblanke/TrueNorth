@@ -10,6 +10,7 @@ Production FastAPI application with:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -22,9 +23,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from . import range_ops
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
-from .db import Base, engine, get_db
+from .db import Base, SessionLocal, engine, get_db
 from .models import Tenant, User, UserRole
 from .schemas import HealthOut
 from .search_backends import get_search_backend
@@ -59,8 +61,15 @@ async def lifespan(app: FastAPI):
     # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
     # process at boot instead of turning every authenticated request into a 500.
     logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
+    # Range operations accepted while the broker was down are re-sent from here
+    # (app/range_ops.py). RANGE_OP_REDISPATCH_SECONDS=0 turns it off (tests).
+    interval = range_ops.redispatch_interval()
+    redispatcher = asyncio.create_task(range_ops.redispatch_loop(SessionLocal, interval)) if interval > 0 else None
 
     yield
+
+    if redispatcher:
+        redispatcher.cancel()
 
     # Graceful shutdown of any started subsystems
     ws_mgr = getattr(app.state, "ws_manager", None)
@@ -230,7 +239,9 @@ from .routers import (
     storage_router,
     templates_router,
     threat_intel_router,
+    tickets_router,
     transcript_router,
+    wiki_router,
 )
 
 # Identity intake. Registration is mounted first because /auth/me is the one
@@ -283,6 +294,9 @@ app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
+# Knowledge base + trouble tickets
+app.include_router(wiki_router)
+app.include_router(tickets_router)
 
 # -- API versioning: /api/v1/... -> canonical route (docs/adr/0002) ---------
 # Added last so it is the outermost middleware: rate limiting, metrics and tracing all
