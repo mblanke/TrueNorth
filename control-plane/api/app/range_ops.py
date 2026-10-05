@@ -191,9 +191,11 @@ def refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
     """
     from .models import RangeSnapshot
 
-    if db.query(RangeSnapshot.id).filter(
-        RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring"
-    ).first():
+    if (
+        db.query(RangeSnapshot.id)
+        .filter(RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring")
+        .first()
+    ):
         raise HTTPException(409, "A restore of this range is in progress")
 
 

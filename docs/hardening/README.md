@@ -32,6 +32,7 @@ everything combined (green at `78711f4`).
 | 22 | S6: populated-schema upgrade test; CI runs the Postgres tests | #20 |
 | 23 | S7: interruption exercise and browser journeys (evidence) | #22 |
 | 27 | S8: re-score; rollback rehearsal | #23 |
+| 30 | S3d: stop/start power the range's VMs (the `/stop` defect) | #27 |
 | 28 | Fix: scenario exercises carry their objectives (they scored 0/0), found by S7 | main |
 
 Merge conflicts to expect, all resolved already on #24, which shows how to resolve them:
@@ -39,6 +40,8 @@ Merge conflicts to expect, all resolved already on #24, which shows how to resol
 - **#13 vs #21, worker `Dockerfile`:** keep both the non-root user and the `scenario_engine` build context.
 - **#12 against everything:** re-run `ruff format control-plane/ scenario-engine/ tools/ ai-orchestrator/`. A formatting-only rise in a capped line count follows ADR 0004.
 - **#29 vs #28, `routers/exercises.py` import:** keep both, `from .. import range_ops, scenario_objectives`.
+- **#29 vs #30, Alembic:** both migrations follow `c0d1e2f3a4b5`; whichever merges second sets its `down_revision` to the other (#24 chains `d1e2f3a4b5c6` after `a9b0c1d2e3f4`).
+- **#30 vs #21, worker:** `worker/range_rows.py` reads through `db_ops.range_output_and_backend`; regenerate `tables.py` (`scripts/export_worker_tables.py`) for the new range states.
 - **Generated files (`openapi.json`, `schema.d.ts`):** regenerate, never hand-merge: `.venv/bin/python scripts/export_openapi.py`, then `npm run gen:api`.
 
 ## What needs you
