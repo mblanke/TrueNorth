@@ -47,7 +47,9 @@ All commands run from the repo root with the venv. `$RUN` = `build/arc2/<slug>`.
    `po: null`. Never start with understand / be aware / appreciate / know / be familiar. No PO, EO,
    NICE, DCWF or CSF codes in the text. If exact QSP wording is needed and `provenance.enclave` is
    false → `{"stop": "QSP-READ-REQUIRED: <which QSP/PO>"}`.
-5. Critical events `CE-01`…: when a candidate row fits, `text` is one `;`-separated item of that row's
+5. Critical events `CE-01`… belong to range activities only (decide each module's activity as in
+   step 7 first): a course with no `range` module has `critical_events: []`, and a range course
+   gives each critical event only `objective_ids` of range modules. When a candidate row fits, `text` is one `;`-separated item of that row's
    `critical_events` column, stripped, unchanged (e.g. ALJQ/PO_007 → `scanning` | `exfiltration` |
    `lateral_movement`), `source: crosswalk`, `crosswalk_ref: {qsp_code, po_code}`. Otherwise derive one
    from the objectives, `source: objective`, `crosswalk_ref: null`. Never `TODO`, never blank; every
