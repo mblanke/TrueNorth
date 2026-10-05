@@ -49,7 +49,8 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
    `modules[]`: `ordinal`, `title`, `content_type: reading`, `duration_minutes` (the outline's
    `minutes`; else course hours × 60 split evenly), `is_required`, `pass_threshold`, `objectives`
    (the blueprint `objectives[].text` for that module, in order, byte-for-byte), `topics`,
-   `lab` (`'Lab: ...'`), `refs`, `quiz.{title, pass_threshold, questions[]}` with
+   `lab` (`'Lab: ...'`, range modules only; omit the key for theory and practical modules),
+   `refs`, `quiz.{title, pass_threshold, questions[]}` with
    `question`, exactly four `options` (`A) ...` .. `D) ...`) and `answer` as one letter A-D.
    No `po:` unless `course.po` or that module's `objectives[].po` binds that exact pair.
 6. Per module: `PYTHONPATH=tools .venv/bin/python -m arc2.cmi5 ids <course.code> mod_NNN
@@ -113,6 +114,7 @@ EOF
     "modules": [
       {"id": "mod_001", "ordinal": 1, "title": "Lateral movement", "objective_ids": ["M01-O01"],
        "is_required": true, "pass_threshold": 70, "quiz": {"pass_threshold": 70, "question_count": 5},
+       "activity": {"kind": "range"},
        "config": "02-content/mod_001/course-config.json",
        "pages": ["02-content/mod_001/content/page-01.html", "02-content/mod_001/content/page-02.html"]}
     ]
@@ -126,7 +128,9 @@ EOF
   "human_actions": []
 }
 ```
-All nine module keys, no extras; `quiz` is `null` or exactly `{pass_threshold, question_count}`;
+All ten module keys, no extras; `activity` copies the outline module's `activity` as `kind`, and
+for `theory`/`practical` also its `no_range_reason` (plus `practical_needs[]`: the supplied files
+and tools a practical module uses); `quiz` is `null` or exactly `{pass_threshold, question_count}`;
 `config` must match `^02-content/mod_[0-9]{3}/course-config\.json$`; `pages` ≥ 1.
 
 ## Checks that will fail you
@@ -134,6 +138,8 @@ All nine module keys, no extras; `quiz` is `null` or exactly `{pass_threshold, q
 |---|---|
 | `schema.valid` | a key outside `content`/`files`/`human_actions`; a module key missing or extra; `pages` empty; a `files` entry with empty `objective_ids` |
 | `stage.fragment_missing` | merged without `content` |
+| `content.activity_missing` / `content.activity_mismatch` | a module has no `activity`, or a kind the outline does not give it |
+| `qa.course.module_lab` / `qa.course.module_lab_unexpected` | a range module has no `lab`, or a theory/practical module has one |
 | `trace.objective_module_exists` | an `objectives[].module_id` has no module |
 | `trace.module_objectives_resolve` | a module names an unknown objective id |
 | `trace.objective_has_content` | an objective is in no `content`/`artifact` files entry |

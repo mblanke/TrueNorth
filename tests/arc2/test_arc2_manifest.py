@@ -124,6 +124,7 @@ def full_manifest() -> dict:
                     "is_required": True,
                     "pass_threshold": 70,
                     "quiz": {"pass_threshold": 70, "question_count": 5},
+                    "activity": {"kind": "range"},
                     "config": "02-content/mod_001/course-config.json",
                     "pages": ["02-content/mod_001/content/page-01.html"],
                 }
@@ -133,6 +134,7 @@ def full_manifest() -> dict:
             "mode": "reuse",
             "name": "soc-training",
             "path": "content/ranges/soc-training",
+            "lab_profile": "03-range/lab_profile.yaml",
             "templates": [],
             "port_group": None,
             "terraform_validate": {"status": "not_run", "output": ""},
@@ -210,6 +212,8 @@ def declared_paths(manifest: dict) -> list[str]:
             paths.extend(m["pages"])
     if manifest.get("injects"):
         paths.append(manifest["injects"]["timeline"])
+    if (manifest.get("range") or {}).get("lab_profile"):
+        paths.append(manifest["range"]["lab_profile"])
     art = manifest.get("artifacts")
     if art:
         paths.extend(art[k] for k in ("rubric", "deliverable_template", "variant_b", "xapi_json"))
@@ -219,12 +223,22 @@ def declared_paths(manifest: dict) -> list[str]:
     return paths
 
 
+def outline_yaml(manifest: dict) -> str:
+    """The blueprint outline: each content module with the activity content declares."""
+    lines = ["modules:"]
+    for m in (manifest.get("content") or {}).get("modules") or []:
+        lines += [f"- id: {m['id']}", f"  title: {m['title']}"]
+        if m.get("activity"):
+            lines.append(f"  activity: {m['activity']['kind']}")
+    return "\n".join(lines) + "\n"
+
+
 def make_run(tmp_path: Path, manifest: dict | None = None) -> Path:
     run = tmp_path / "build" / "arc2" / SLUG
     for stage in check.STAGES:
         (run / stage.dir).mkdir(parents=True, exist_ok=True)
     outline = run / "01-blueprint" / "outline.yaml"
-    outline.write_text("modules:\n- id: mod_001\n  title: Lateral movement\n")
+    outline.write_text(outline_yaml(manifest or full_manifest()))
     manifest = manifest or full_manifest()
     for rel in declared_paths(manifest):
         p = run / rel

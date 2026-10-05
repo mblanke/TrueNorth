@@ -26,6 +26,11 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
 - You have no shell: you cannot hash files or run the engine validator. `sha256` is `null`;
   `engine_validate.status` is `not_run`.
 
+You run only when the outline has at least one `activity: range` module; otherwise the
+orchestrator marks this stage `not_applicable` and you are not launched. Validators cover the
+range modules' objectives; theory and practical modules are assessed by their quizzes and the
+artifact-creator's rubric.
+
 ## Steps
 1. Read `$RUN/manifest.json`. You need `slug`, `objectives[]`, `critical_events[]`,
    `injects.items[]`, `injects.noise_floor[]`, `range.name`, `artifacts.deliverable_template`,

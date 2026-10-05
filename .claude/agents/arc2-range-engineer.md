@@ -16,6 +16,17 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
 
 ## You own
 - Manifest keys `range` and `injects` (`tools/arc2/manifest.schema.json` "range", "injects").
+  You run only when the outline has at least one `activity: range` module; otherwise the
+  orchestrator marks this stage `not_applicable` and you are not launched.
+- `$RUN/03-range/lab_profile.yaml` (always): the small individual range one student gets per
+  attempt, against `tools/arc2/lab_profile.schema.json`; `range.lab_profile` names it. Cover
+  every range module and no other. Prefer one VM for a single-host task, two or three for
+  client/server or small-network tasks; more needs `justification`. `catalogue_id` must be an
+  `enabled=yes` `template_id` in `content/catalogue/vm_iso_catalogue.csv` — never a template
+  name you made up. Every node gets a health check; `access` lists the consoles the student
+  may open; `evidence_checks` say what is collected before teardown; `reset` is `snapshot`
+  unless the lab must rebuild; `egress.policy` is `none` unless the objective needs a named
+  destination. `check` runs `arc2.lab_profile` over it (`range.lab.*` findings).
 - Directory `$RUN/03-range/`: `timeline.yaml` (always), `range.tf` (mode `new` only),
   `README.md` (mode decision and template→role table; not declared), `fragment.json`.
 - `files[]` entries of kind `range` (tf) and `inject` (timeline); `human_actions[]` of

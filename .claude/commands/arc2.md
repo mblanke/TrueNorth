@@ -25,7 +25,7 @@ Exit codes: `merge` 1 rejected / 2 STOP; `check` 0 pass / 1 fail / 3 HUMAN-TAKEO
    time, then:
    - `--resume <slug>` alone → `$ARC status $RUN`, stop.
    - `--resume <slug> accept` → outline `pending` → accept at step 4. Preview `pending` and
-     stages 1-5 `done` → accept at step 6. `qa.result` is `human_takeover` → the takeover
+     stages 1-5 complete → accept at step 6. `qa.result` is `human_takeover` → the takeover
      resume (see Resume). Otherwise → step 3.
    - `--resume <slug> <other text>` → a gate `pending` → that gate's feedback, text verbatim.
      No gate pending and `stages.content-architect.stop_reason` starts `request missing:` →
@@ -49,13 +49,16 @@ Exit codes: `merge` 1 rejected / 2 STOP; `check` 0 pass / 1 fail / 3 HUMAN-TAKEO
    exit 1 means accepted inputs were edited by hand and a gate re-opened → `status`, stop.
    Read `$RUN/manifest.json` and go to the first line that matches:
    - `gates.outline.state` is `pending` → step 4.
-   - `gates.preview.state` is `pending` and stages 1-5 are all `done` → step 6.
-   - stages 1-5 all `done` and `qa.result` is not `pass` → step 5.
-   - stages 1-6 `done`, `qa.result` `pass`, preview `accepted`, package-builder not `done`
+   - `gates.preview.state` is `pending` and stages 1-5 are all complete → step 6.
+   - stages 1-5 all complete and `qa.result` is not `pass` → step 5.
+   - stages 1-6 complete, `qa.result` `pass`, preview `accepted`, package-builder not `done`
      → step 7. Package-builder `done` → step 8.
    - Otherwise, for each of content-architect, code-generator, range-engineer,
-     artifact-creator, sensor-gateway whose `stages.<name>.state` is not `done` (pending, or
+     artifact-creator, sensor-gateway whose `stages.<name>.state` is not complete (pending, or
      `failed` after a STOP):
+     - range-engineer or sensor-gateway, and no module in `$RUN/01-blueprint/outline.yaml` has
+       `activity: range` → `$ARC skip $RUN <stage> --reason "no range activity: <module
+       activities>"` instead of launching the agent (exit 1 → print stderr, stop), and continue.
      - Agent tool, `subagent_type: arc2-<stage>`, prompt:
        > Stage <N> <stage> of ARC² run <slug>. Run dir: <$RUN>. Read manifest.json first: the
        > keys upstream stages own, request.txt, gates.outline.feedback[], gates.preview.feedback[]
@@ -134,7 +137,9 @@ Exit codes: `merge` 1 rejected / 2 STOP; `check` 0 pass / 1 fail / 3 HUMAN-TAKEO
 
 ## Resume
 
-`manifest.json` records where a run stopped: `stages.<name>` (`state` pending/done/failed,
+"Complete" means `done`, or `not_applicable` for the two range stages of a run with no range
+module. `manifest.json` records where a run stopped: `stages.<name>` (`state`
+pending/done/failed/not_applicable,
 `attempts`, `stop_reason`), `gates.outline` and `gates.preview` (`state` n/a/pending/accepted/
 feedback, `feedback[]` with `round` and `routed_to`, `rework_count`) and `qa` (`result`,
 `cycle` 0-3, `rework_stage`, `findings[]`). `status` reads it and prints a `next` line.
@@ -143,7 +148,7 @@ feedback, `feedback[]` with `round` and `routed_to`, `rework_count`) and `qa` (`
 - `/arc2 --resume <slug> accept` accepts the pending gate (outline first). With no gate
   pending after a STOP the human has fixed by hand, it continues at step 3.
 - **Takeover resume.** After a HUMAN-TAKEOVER, `accept` relaunches no agent: the human's
-  fixes are on disk. For each stage 1-5 that is not `done`, in order, `$ARC merge $RUN
+  fixes are on disk. For each stage 1-5 that is not complete, in order, `$ARC merge $RUN
   <stage>` on the fragment the human left (exit 1 or 2 → print it, stop); then step 5.
   `qa.cycle` stays at 3 until a pass, so one more failure hands the run back again.
 - `/arc2 --resume <slug> <text>` is feedback for the pending gate. With no gate pending it

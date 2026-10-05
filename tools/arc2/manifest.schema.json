@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ARC2 run manifest",
-  "description": "One run of /arc2. Orchestrator keys are always required; each stage's keys appear once that stage has merged its fragment. Every list that a check walks has minItems so nothing passes vacuously.",
+  "description": "One run of /arc2. Orchestrator keys are always required; each stage's keys appear once that stage has merged its fragment. Every list that a check walks has minItems so nothing passes vacuously; the range lists (critical events, injects, validators) are required by check.py only when a module is a range activity.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "run_id", "slug", "provenance", "stages", "gates", "files", "human_actions"],
@@ -35,12 +35,28 @@
       "additionalProperties": false,
       "required": ["state", "attempts", "started_at", "finished_at", "stop_reason"],
       "properties": {
-        "state": {"enum": ["pending", "running", "done", "failed"]},
+        "state": {"enum": ["pending", "running", "done", "failed", "not_applicable"]},
         "attempts": {"type": "integer", "minimum": 0},
         "started_at": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/timestamp"}]},
         "finished_at": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/timestamp"}]},
         "stop_reason": {"type": ["string", "null"]}
-      }
+      },
+      "if": {"properties": {"state": {"const": "not_applicable"}}},
+      "then": {"properties": {"stop_reason": {"$ref": "#/definitions/nonempty"}}}
+    },
+    "activity_kind": {"enum": ["theory", "practical", "range"]},
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {"$ref": "#/definitions/activity_kind"},
+        "no_range_reason": {"$ref": "#/definitions/nonempty"},
+        "practical_needs": {"type": "array", "items": {"$ref": "#/definitions/nonempty"}}
+      },
+      "if": {"properties": {"kind": {"enum": ["theory", "practical"]}}},
+      "then": {"required": ["no_range_reason"]},
+      "else": {"not": {"required": ["no_range_reason"]}}
     },
     "feedback_entry": {
       "type": "object",
@@ -62,6 +78,11 @@
         "ts": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/timestamp"}]},
         "accepted_sha256": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/sha256"}]},
         "rework_count": {"type": "integer", "minimum": 0},
+        "accepted_activities": {
+          "type": "object",
+          "propertyNames": {"$ref": "#/definitions/module_id"},
+          "additionalProperties": {"$ref": "#/definitions/activity_kind"}
+        },
         "feedback": {"type": "array", "items": {"$ref": "#/definitions/feedback_entry"}}
       }
     },
@@ -79,7 +100,7 @@
     }
   },
   "properties": {
-    "schema_version": {"const": "arc2/manifest/0.1"},
+    "schema_version": {"enum": ["arc2/manifest/0.1", "arc2/manifest/0.2"]},
     "run_id": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
     "slug": {"type": "string", "pattern": "^arc2-[a-z0-9]+(-[a-z0-9]+)*$"},
 
@@ -188,7 +209,6 @@
 
     "critical_events": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -239,6 +259,7 @@
                   }
                 ]
               },
+              "activity": {"$ref": "#/definitions/activity"},
               "config": {"type": "string", "pattern": "^02-content/mod_[0-9]{3}/course-config\\.json$"},
               "pages": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/path"}}
             }
@@ -253,6 +274,7 @@
       "required": ["mode", "name", "path", "templates", "port_group", "terraform_validate"],
       "properties": {
         "mode": {"enum": ["reuse", "new"]},
+        "lab_profile": {"$ref": "#/definitions/path"},
         "name": {"$ref": "#/definitions/nonempty"},
         "path": {"$ref": "#/definitions/path"},
         "templates": {"type": "array", "items": {"$ref": "#/definitions/nonempty"}},
@@ -277,7 +299,6 @@
         "timeline": {"$ref": "#/definitions/path"},
         "items": {
           "type": "array",
-          "minItems": 1,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -298,7 +319,6 @@
         },
         "noise_floor": {
           "type": "array",
-          "minItems": 2,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -341,7 +361,6 @@
 
     "validators": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,

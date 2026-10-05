@@ -11,6 +11,7 @@ records the two human decisions (outline, preview) so a resumed run knows where 
     python -m arc2.check check  <run> [--json] [--dry-run] [--repo-root <dir>]
     python -m arc2.check gate   <run> outline|preview accept|feedback [--text ..] [--route <stage>]
     python -m arc2.check gate   <run> --verify
+    python -m arc2.check skip   <run> range-engineer|sensor-gateway --reason <why>
     python -m arc2.check status <run>
 
 Exit codes: 0 ok / pass, 1 fail or rejected, 2 STOP (a stage refused to continue),
@@ -18,6 +19,13 @@ Exit codes: 0 ok / pass, 1 fail or rejected, 2 STOP (a stage refused to continue
 
 Findings never pass vacuously: a stage that has not run is itself a finding, and a check
 that cannot run (missing tool, missing file) records ``human`` rather than nothing.
+
+Activities (schema 0.2): every module is a ``theory``, ``practical`` or ``range`` activity,
+declared in ``01-blueprint/outline.yaml`` (so the outline gate covers it) and mirrored in
+``content.modules[].activity``. A run with no range module may mark the range-engineer and
+sensor-gateway stages ``not_applicable`` with ``skip``; one with a range module must carry
+range evidence (critical events, crit validators, injects, a validated new range template
+and a lab profile). A 0.1 manifest has no activities and is read as all-range, its old meaning.
 """
 
 from __future__ import annotations
@@ -36,10 +44,11 @@ from typing import Any
 
 import jsonschema
 import yaml
-from arc2 import __version__, cmi5
+from arc2 import __version__, cmi5, lab_profile
 from arc2 import qa as content_qa
 
-SCHEMA_VERSION = "arc2/manifest/0.1"
+SCHEMA_VERSION = "arc2/manifest/0.2"
+LEGACY_SCHEMA_VERSION = "arc2/manifest/0.1"  # no activities: every module is a range activity
 SCHEMA_PATH = Path(__file__).with_name("manifest.schema.json")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CROSSWALK_REL = Path("truenorth-content-pack/truenorth-content/crosswalk.csv")
@@ -60,6 +69,12 @@ PO_BINDABLE_STATUSES = frozenset({"todo", "example"})
 UNOBSERVABLE = re.compile(r"^\s*(understand|be aware|appreciate|know|be familiar)\b", re.IGNORECASE)
 PREVIEW_DIRS = ("02-content", "03-range", "04-artifacts", "05-sensor")
 MAX_QA_CYCLES = 3
+OUTLINE_REL = Path("01-blueprint/outline.yaml")
+RANGE = "range"
+ACTIVITY_KINDS = ("theory", "practical", RANGE)
+# The stages that only a range activity needs; a run without one marks them not_applicable.
+RANGE_STAGES = ("range-engineer", "sensor-gateway")
+COMPLETE = frozenset({"done", "not_applicable"})
 
 
 @dataclass(frozen=True)
@@ -157,6 +172,54 @@ def stage_by_name(name: str) -> Stage:
 
 def load_schema() -> dict[str, Any]:
     return json.loads(SCHEMA_PATH.read_text())
+
+
+def is_legacy(manifest: dict[str, Any]) -> bool:
+    return manifest.get("schema_version") == LEGACY_SCHEMA_VERSION
+
+
+def outline_activities(run: Path) -> dict[str, str]:
+    """module id → activity kind as the outline declares it; tolerant of a hand-broken file
+    (whatever cannot be read is simply absent, and the activity checks report it)."""
+    try:
+        doc = yaml.safe_load((run / OUTLINE_REL).read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+    modules = doc.get("modules") if isinstance(doc, dict) else None
+    out: dict[str, str] = {}
+    for m in modules if isinstance(modules, list) else []:
+        if isinstance(m, dict) and isinstance(m.get("id"), str) and m.get("activity") in ACTIVITY_KINDS:
+            out[m["id"]] = m["activity"]
+    return out
+
+
+def content_activities(manifest: dict[str, Any]) -> dict[str, str]:
+    """module id → activity kind from content; a 0.1 module without one is a range activity."""
+    out: dict[str, str] = {}
+    for m in (manifest.get("content") or {}).get("modules") or []:
+        act = m.get("activity")
+        if act:
+            out[m["id"]] = act["kind"]
+        elif is_legacy(manifest):
+            out[m["id"]] = RANGE
+    return out
+
+
+def run_activities(run: Path, manifest: dict[str, Any]) -> dict[str, str]:
+    """The run's activities: the outline is the design decision, content fills in only what the
+    outline does not say (and a 0.1 run is all range)."""
+    acts = content_activities(manifest)
+    acts.update(outline_activities(run))
+    return acts
+
+
+def has_range(run: Path, manifest: dict[str, Any]) -> bool:
+    """True unless the run positively declares no range module. A 0.2 run whose activities are
+    not declared yet is treated as needing a range: nothing is skipped by omission."""
+    acts = run_activities(run, manifest)
+    if is_legacy(manifest) or not acts:
+        return True
+    return RANGE in acts.values()
 
 
 def manifest_path(run: Path) -> Path:
@@ -314,7 +377,7 @@ def _require_upstream(manifest: dict[str, Any], stage: Stage) -> None:
     are accepted. Without this, a fragment could land ahead of the human decisions."""
     index = STAGE_ORDER.index(stage.name)
     for name in STAGE_ORDER[:index]:
-        if manifest["stages"][name]["state"] != "done":
+        if manifest["stages"][name]["state"] not in COMPLETE:
             raise ContractError(f"{stage.name} cannot merge: {name} has not finished")
     if index >= 1 and manifest["gates"]["outline"]["state"] != "accepted":
         raise ContractError(f"{stage.name} cannot merge: the outline gate is not accepted")
@@ -335,6 +398,38 @@ def _reopen_outline_gate(run: Path, manifest: dict[str, Any]) -> None:
         return
     gate["state"] = "pending"
     gate["ts"] = now()
+
+
+def skip_stage(run: Path, stage_name: str, reason: str) -> dict[str, Any]:
+    """Mark a range stage not_applicable. Only the orchestrator calls this, only for a run whose
+    accepted outline declares no range module, and never over output the stage already wrote:
+    a skipped stage must not leave range keys behind for a check to mistake for evidence."""
+    if stage_name not in RANGE_STAGES:
+        raise ContractError(f"only {', '.join(RANGE_STAGES)} can be not_applicable, not {stage_name}")
+    reason = (reason or "").strip()
+    if not reason:
+        raise ContractError("skip needs --reason")
+    manifest = load_manifest(run)
+    if is_legacy(manifest):
+        raise ContractError(f"{LEGACY_SCHEMA_VERSION} runs have no activities; every module is a range activity")
+    stage = stage_by_name(stage_name)
+    _require_upstream(manifest, stage)
+    acts = outline_activities(run)
+    if not acts:
+        raise ContractError(f"{OUTLINE_REL} declares no module activities; a stage is never skipped by omission")
+    ranged = sorted(m for m, k in acts.items() if k == RANGE)
+    if ranged:
+        raise ContractError(f"{stage_name} is needed: {', '.join(ranged)} are range activities")
+    present = [k for k in stage.keys if k in manifest]
+    if present:
+        raise ContractError(f"{stage_name} already wrote {', '.join(present)}; it cannot be not_applicable")
+    entry = manifest["stages"][stage_name]
+    entry.update({"state": "not_applicable", "finished_at": now(), "stop_reason": reason})
+    entry["started_at"] = entry["started_at"] or entry["finished_at"]
+    if manifest.get("qa"):
+        manifest["qa"]["result"] = "not_run"
+    save_manifest(run, manifest)
+    return manifest
 
 
 # ── check ─────────────────────────────────────────────────────────────
@@ -384,10 +479,41 @@ def _check_schema(manifest: dict[str, Any]) -> list[Finding]:
     return out
 
 
-def _check_stages(manifest: dict[str, Any]) -> list[Finding]:
+def _check_stages(run: Path, manifest: dict[str, Any]) -> list[Finding]:
     out = []
+    ranged = has_range(run, manifest)
+    for stage in STAGES:
+        st = manifest["stages"][stage.name]
+        if st["state"] != "not_applicable":
+            continue
+        if stage.name not in RANGE_STAGES or ranged:
+            why = (
+                "only a range stage of a run with no range module"
+                if stage.name in RANGE_STAGES
+                else "not a range stage"
+            )
+            out.append(
+                Finding(
+                    "stage.not_applicable_invalid",
+                    "fail",
+                    stage.name,
+                    f"{stage.name} is not_applicable but must run ({why} may be skipped)",
+                )
+            )
+        present = [k for k in stage.keys if k in manifest]
+        if present:
+            out.append(
+                Finding(
+                    "stage.not_applicable_has_output",
+                    "fail",
+                    stage.name,
+                    f"{stage.name} is not_applicable yet {', '.join(present)} is present",
+                )
+            )
     for stage in STAGES[:5]:
         st = manifest["stages"][stage.name]
+        if st["state"] == "not_applicable" and stage.name in RANGE_STAGES and not ranged:
+            continue
         if st["state"] != "done":
             msg = f"{stage.name} is {st['state']}" + (f": {st['stop_reason']}" if st.get("stop_reason") else "")
             out.append(Finding("stage.not_done", "fail", stage.name, msg))
@@ -399,6 +525,132 @@ def _check_stages(manifest: dict[str, Any]) -> list[Finding]:
                 out.append(
                     Finding("stage.fragment_missing", "fail", stage.name, f"{stage.name} is done but {key} is absent")
                 )
+    return out
+
+
+def _check_activities(run: Path, manifest: dict[str, Any]) -> list[Finding]:
+    """Every module's activity is declared, in the outline and in content, and they agree."""
+    out: list[Finding] = []
+    if is_legacy(manifest):
+        return out
+    gate = manifest["gates"]["outline"]
+    if gate["state"] == "accepted" and outline_digest(run, manifest) != gate["accepted_sha256"]:
+        # The outline changed after its accept: gate.outline_unchanged sends it back to the
+        # human, and judging content against an unaccepted outline would misroute the rework.
+        return out
+    outline = outline_activities(run)
+    if manifest["stages"]["content-architect"]["state"] == "done" and not outline:
+        out.append(
+            Finding(
+                "outline.activity_missing",
+                "fail",
+                "content-architect",
+                f"{OUTLINE_REL} gives no module an activity (theory, practical or range)",
+                OUTLINE_REL.as_posix(),
+            )
+        )
+    for m in (manifest.get("content") or {}).get("modules") or []:
+        act = m.get("activity")
+        if not act:
+            out.append(
+                Finding("content.activity_missing", "fail", "code-generator", f"module {m['id']} declares no activity")
+            )
+            continue
+        want = outline.get(m["id"])
+        if outline and want is None:
+            out.append(
+                Finding(
+                    "outline.activity_missing",
+                    "fail",
+                    "content-architect",
+                    f"{OUTLINE_REL} gives module {m['id']} no activity",
+                    OUTLINE_REL.as_posix(),
+                )
+            )
+        elif want is not None and want != act["kind"]:
+            out.append(
+                Finding(
+                    "content.activity_mismatch",
+                    "fail",
+                    "code-generator",
+                    f"module {m['id']} is {act['kind']} in content but {want} in the accepted outline",
+                )
+            )
+    return out
+
+
+def _check_range_evidence(run: Path, manifest: dict[str, Any], repo_root: Path) -> list[Finding]:
+    """A range activity needs the environment to exist and to have been checked: critical
+    events with crit validators and injects (the old schema minimums), a validated range
+    template when one is new, and (0.2) a lab profile. The engine scenario is validated by
+    the QA depth checks on every run (``qa.engine_scenario``), not taken from a claim."""
+    out: list[Finding] = []
+    if not has_range(run, manifest):
+        return out
+    stages = manifest["stages"]
+
+    def fail(check_name: str, owner: str, message: str, severity: str = "fail") -> None:
+        out.append(Finding(check_name, severity, owner, message))
+
+    if stages["content-architect"]["state"] == "done" and not manifest.get("critical_events"):
+        fail(
+            "range.evidence_critical_events", "content-architect", "a range activity needs at least one critical event"
+        )
+    if stages["range-engineer"]["state"] == "done":
+        injects = manifest.get("injects") or {}
+        if not injects.get("items"):
+            fail("range.evidence_injects", "range-engineer", "a range activity needs at least one inject")
+        if len(injects.get("noise_floor") or []) < 2:
+            fail("range.evidence_injects", "range-engineer", "a range activity needs at least two noise-floor entries")
+        rng = manifest.get("range") or {}
+        tf = (rng.get("terraform_validate") or {}).get("status")
+        if rng.get("mode") == "new":
+            if tf == "not_installed":
+                fail(
+                    "range.evidence_terraform",
+                    "range-engineer",
+                    "terraform was not installed; the new range template is unvalidated",
+                    "human",
+                )
+            elif tf != "passed":
+                fail(
+                    "range.evidence_terraform",
+                    "range-engineer",
+                    f"the new range template's validation is {tf}, not passed",
+                )
+        if not is_legacy(manifest):
+            out += _check_lab_profile(run, manifest, repo_root)
+    if stages["sensor-gateway"]["state"] == "done" and not manifest.get("validators"):
+        fail("range.evidence_validators", "sensor-gateway", "a range activity needs at least one validator")
+    return out
+
+
+def _check_lab_profile(run: Path, manifest: dict[str, Any], repo_root: Path) -> list[Finding]:
+    out: list[Finding] = []
+    rel = (manifest.get("range") or {}).get("lab_profile")
+    if not rel:
+        return [Finding("range.lab_profile", "fail", "range-engineer", "range.lab_profile names no lab profile file")]
+    path = run / rel
+    if not path.is_file():
+        return out  # trace.file_exists reports it
+    try:
+        doc = lab_profile.load(path)
+    except (OSError, yaml.YAMLError) as exc:
+        return [Finding("range.lab_profile", "fail", "range-engineer", f"{rel}: {exc}", rel)]
+    ranged = {m for m, k in run_activities(run, manifest).items() if k == RANGE}
+    catalogue = lab_profile.catalogue_ids(repo_root)
+    if catalogue is None:
+        out.append(
+            Finding(
+                "range.lab_profile_catalogue",
+                "human",
+                ORCHESTRATOR,
+                "no VM image catalogue found; the lab profile's images could not be checked",
+                rel,
+            )
+        )
+    for check_name, message in lab_profile.findings(doc, range_modules=ranged, catalogue=catalogue):
+        out.append(Finding(f"range.{check_name}", "fail", "range-engineer", f"{rel}: {message}", rel))
     return out
 
 
@@ -619,6 +871,7 @@ def _check_files(run: Path, manifest: dict[str, Any], repo_root: Path) -> list[F
             directory=rng["mode"] == "reuse",
             root=repo_root if rng["mode"] == "reuse" else run,
         )
+        need(rng.get("lab_profile"), "range-engineer", "lab profile")
     injects = manifest.get("injects")
     if injects:
         need(injects["timeline"], "range-engineer", "timeline")
@@ -778,7 +1031,33 @@ def _check_gates(run: Path, manifest: dict[str, Any]) -> list[Finding]:
                 "preview files or stage keys changed after they were accepted; re-open the preview gate",
             )
         )
+    for which in ("outline", "preview"):
+        changed = activity_changes(run, manifest, which)
+        if changed:
+            out.append(
+                Finding(
+                    "gate.activity_changed",
+                    "fail",
+                    ORCHESTRATOR,
+                    f"the {which} gate accepted different activities: {'; '.join(changed)}; re-open the {which} gate",
+                )
+            )
     return out
+
+
+def activity_changes(run: Path, manifest: dict[str, Any], which: str) -> list[str]:
+    """What changed in the module activities since the given gate was accepted, one entry per
+    module, so the reviewer sees why the gate re-opened (a digest alone does not say)."""
+    g = manifest["gates"][which]
+    accepted = g.get("accepted_activities")
+    if g["state"] != "accepted" or accepted is None:
+        return []
+    current = run_activities(run, manifest)
+    return [
+        f"{mid} {accepted.get(mid, 'absent')} → {current.get(mid, 'absent')}"
+        for mid in sorted(set(accepted) | set(current))
+        if accepted.get(mid) != current.get(mid)
+    ]
 
 
 def _safe(fn: Any, *args: Any) -> list[Finding]:
@@ -807,7 +1086,9 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT, write: bool = True) -> tup
     orchestrator's own ``check`` records and routes."""
     manifest = load_manifest(run)
     findings = _check_schema(manifest)
-    findings += _safe(_check_stages, manifest)
+    findings += _safe(_check_stages, run, manifest)
+    findings += _safe(_check_activities, run, manifest)
+    findings += _safe(_check_range_evidence, run, manifest, repo_root)
     findings += _safe(_check_trace, manifest)
     findings += _safe(_check_files, run, manifest, repo_root)
     findings += _safe(_check_po, manifest, repo_root)
@@ -887,7 +1168,11 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT, write: bool = True) -> tup
         qa["rework_stage"] = None
         qa["cycle"] = 0  # a pass closes the loop; the budget is for consecutive failures
         preview = manifest["gates"]["preview"]
-        if preview["state"] != "accepted" or preview["accepted_sha256"] != preview_digest(run, manifest):
+        if (
+            preview["state"] != "accepted"
+            or preview["accepted_sha256"] != preview_digest(run, manifest)
+            or activity_changes(run, manifest, "preview")
+        ):
             preview["state"] = "pending"
             preview["ts"] = now()
     manifest["qa"] = qa
@@ -941,7 +1226,14 @@ def gate(
         if digest is None:
             raise ContractError(f"outline gate: {run / '01-blueprint' / 'outline.yaml'} is missing")
         if action == "accept":
-            g.update({"state": "accepted", "ts": now(), "accepted_sha256": digest})
+            g.update(
+                {
+                    "state": "accepted",
+                    "ts": now(),
+                    "accepted_sha256": digest,
+                    "accepted_activities": run_activities(run, manifest),
+                }
+            )
         else:
             _add_feedback(g, text)
             if manifest.get("qa"):
@@ -949,7 +1241,14 @@ def gate(
             reset_from(manifest, "content-architect")
     else:
         if action == "accept":
-            g.update({"state": "accepted", "ts": now(), "accepted_sha256": preview_digest(run, manifest)})
+            g.update(
+                {
+                    "state": "accepted",
+                    "ts": now(),
+                    "accepted_sha256": preview_digest(run, manifest),
+                    "accepted_activities": run_activities(run, manifest),
+                }
+            )
         else:
             if routed_to not in AGENT_STAGES:
                 raise ContractError(f"preview feedback needs --route <stage>, one of {', '.join(AGENT_STAGES)}")
@@ -979,11 +1278,15 @@ def gate_verify(run: Path) -> list[str]:
     manifest = load_manifest(run)
     flipped = []
     outline_gate = manifest["gates"]["outline"]
-    if outline_gate["state"] == "accepted" and outline_digest(run, manifest) != outline_gate["accepted_sha256"]:
+    if outline_gate["state"] == "accepted" and (
+        outline_digest(run, manifest) != outline_gate["accepted_sha256"] or activity_changes(run, manifest, "outline")
+    ):
         outline_gate.update({"state": "pending", "ts": now()})
         flipped.append("outline")
     preview_gate = manifest["gates"]["preview"]
-    if preview_gate["state"] == "accepted" and preview_digest(run, manifest) != preview_gate["accepted_sha256"]:
+    if preview_gate["state"] == "accepted" and (
+        preview_digest(run, manifest) != preview_gate["accepted_sha256"] or activity_changes(run, manifest, "preview")
+    ):
         preview_gate.update({"state": "pending", "ts": now()})
         flipped.append("preview")
     if flipped:
@@ -1018,6 +1321,8 @@ def status_text(run: Path, manifest: dict[str, Any]) -> str:
             rounds = g.get("rework_count", rounds)
         return f"{name} {g['state'].upper()}{extra} (feedback rounds {rounds})"
 
+    acts = run_activities(run, manifest)
+    kinds = ", ".join(f"{k} {sum(1 for v in acts.values() if v == k)}" for k in ACTIVITY_KINDS)
     lines = [
         f"run {manifest['slug']}  {run}  HEAD {prov['git_head']} dirty:{'yes' if prov['git_dirty'] else 'no'}  enclave:{int(prov['enclave'])}",
         "stages  " + " | ".join(stage_cell(i, s) for i, s in enumerate(STAGES, 1)),
@@ -1026,6 +1331,7 @@ def status_text(run: Path, manifest: dict[str, Any]) -> str:
         f"CE covered {covered}/{len(ces)} | QA {qa.get('result', 'not_run')} cycle {qa.get('cycle', 0)}/{MAX_QA_CYCLES}"
         + (f" rework→{qa['rework_stage']}" if qa.get("rework_stage") else "")
         + f" | human actions {len(open_actions)} | PROMOTE.md {'yes' if promote.is_file() else '-'}",
+        f"modules {kinds}",
     ]
     slug = manifest["slug"]
     if gates["outline"]["state"] == "pending":
@@ -1041,7 +1347,7 @@ def status_text(run: Path, manifest: dict[str, Any]) -> str:
     elif qa.get("result") == "human_takeover":
         lines.append("next    HUMAN-TAKEOVER: three QA cycles failed; fix by hand, then /arc2 --resume " + slug)
     else:
-        pending = [s.name for s in STAGES if stages[s.name]["state"] != "done"]
+        pending = [s.name for s in STAGES if stages[s.name]["state"] not in COMPLETE]
         lines.append(f"next    {'run ' + pending[0] if pending else 'promotion: follow ' + str(promote)}")
     for a in open_actions:
         lines.append(f"  action [{a['category']}] {a['text']}")
@@ -1083,6 +1389,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--verify", action="store_true")
     s.add_argument("--repo-root", type=Path, default=REPO_ROOT)
 
+    s = sub.add_parser("skip", help="mark a range stage not_applicable for a run with no range module")
+    s.add_argument("run", type=Path)
+    s.add_argument("stage", choices=RANGE_STAGES)
+    s.add_argument("--reason", required=True)
+
     s = sub.add_parser("status", help="print the one-screen run status")
     s.add_argument("run", type=Path)
     return p
@@ -1123,6 +1434,10 @@ def main(argv: list[str] | None = None) -> int:
                 raise ContractError("gate needs <outline|preview> <accept|feedback> or --verify")
             m = gate(args.run, args.which, args.action, args.text, args.route, args.repo_root)
             print(f"gate {args.which}: {m['gates'][args.which]['state']}")
+            return 0
+        if args.cmd == "skip":
+            skip_stage(args.run, args.stage, args.reason)
+            print(f"{args.stage}: not_applicable")
             return 0
         if args.cmd == "status":
             print(status_text(args.run, load_manifest(args.run)))

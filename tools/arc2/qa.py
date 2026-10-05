@@ -137,10 +137,13 @@ def course_rules(
     qsp_codes: frozenset[str] = KNOWN_QSPS,
     arc2: bool = True,
     bound_pos: set[tuple[str, str]] | None = None,
+    no_lab: frozenset[int] = frozenset(),
 ) -> list[tuple[str, str]]:
     """(rule, message) pairs. ``references=None`` means the library could not be read and
     the refs rules are skipped (the caller records that). ``arc2=False`` applies only the
-    rules the repo's tests apply to every course file (the parity test uses it)."""
+    rules the repo's tests apply to every course file (the parity test uses it).
+    ``no_lab`` holds the ordinals of theory and practical modules: they must carry no range
+    lab text, where every other module must."""
     out: list[tuple[str, str]] = []
 
     def bad(rule: str, message: str) -> None:
@@ -177,7 +180,10 @@ def course_rules(
             bad("course.module_objectives", f"{where} has no objectives")
         if not m["topics"]:
             bad("course.module_topics", f"{where} has no topics")
-        if not m["lab"]:
+        if m["ordinal"] in no_lab:
+            if m["lab"]:
+                bad("course.module_lab_unexpected", f"{where} is not a range activity but has lab text")
+        elif not m["lab"]:
             bad("course.module_lab", f"{where} has no lab")
         if references is not None:
             if not m["refs"]:
@@ -247,6 +253,9 @@ def check_course(run: Path, manifest: dict[str, Any], repo_root: Path, api: dict
         stems=library_stems(repo_root),
         qsp_codes=known_qsps(repo_root),
         bound_pos=bound,
+        no_lab=frozenset(
+            m["ordinal"] for m in content["modules"] if (m.get("activity") or {}).get("kind", "range") != "range"
+        ),
     ):
         out.append(_finding(f"qa.{rule}", "fail", f"{rel}: {message}", "code-generator", rel))
 

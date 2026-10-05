@@ -58,8 +58,16 @@ All commands run from the repo root with the venv. `$RUN` = `build/arc2/<slug>`.
    `po_candidates`, `dp_order` ≥ 1, `provenance: unsourced`, `status: proposed`, `duration_hours`
    from the request.
 7. Write `01-blueprint/outline.yaml`: `course`, `duration_hours`, `modules[]` of `{id: mod_001, title,
-   minutes, objective_ids, critical_event_ids}`, and `cuts[]` naming what you dropped to fit
-   `duration_hours * 60` minutes. Do not overload; propose cuts instead.
+   minutes, activity, no_range_reason, objective_ids, critical_event_ids}`, and `cuts[]` naming what
+   you dropped to fit `duration_hours * 60` minutes. Do not overload; propose cuts instead.
+   `activity` is what the module's objectives need, not what the course is called:
+   `theory` (lessons, cases, quizzes, written work), `practical` (supplied logs, PCAPs, code,
+   datasets or simulators, no provisioned VM) or `range` (operating or investigating running
+   systems). Use `range` only when an objective cannot be met without live systems; a file-based
+   substitute must not silently replace a live-performance objective. Every `theory`/`practical`
+   module carries a one-line `no_range_reason`. Critical events belong to range modules only: a
+   course with no range module has `critical_events: []`. The outline gate accepts these
+   activities; changing one later re-opens it.
 8. Write `01-blueprint/catalogue_row.csv`: the exact header below, one row. `course_code`, `course_title`,
    `dp_order` byte-equal to `course`; `qsp_code` `QSP-TODO`; `duration_hours` = `int(course.duration_hours)`;
    `programme cyber-operator`, `provenance unsourced`, `status proposed`; `institution` `Algonquin College`

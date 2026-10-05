@@ -77,7 +77,9 @@ QUESTIONS = [
 ]
 
 
-def course_yaml() -> str:
+def course_yaml(no_lab: frozenset[int] = frozenset()) -> str:
+    """The run's course file; modules whose ordinal is in ``no_lab`` (theory, practical) carry
+    no range lab text."""
     doc = {
         "course_code": "ARC2-ADLM",
         "title": "Detecting AD Lateral Movement",
@@ -112,6 +114,9 @@ def course_yaml() -> str:
             }
         ],
     }
+    for m in doc["modules"]:
+        if m["ordinal"] in no_lab:
+            del m["lab"]
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
 
 
@@ -161,6 +166,34 @@ CATALOGUE_ROW = (
 )
 
 
+LAB_PROFILE = """schema_version: arc2/lab-profile/0.1
+id: adlm-workstation
+version: 1
+objective: Investigate lateral movement from one analyst workstation
+module_ids: [mod_001]
+nodes:
+  - name: analyst
+    catalogue_id: win10-22h2
+    vcpu: 2
+    ram_mb: 4096
+    disk_gb: 40
+    networks: [lab]
+networks:
+  - name: lab
+    cidr: 10.10.0.0/24
+health_checks:
+  - {node: analyst, kind: tools, timeout_s: 300}
+access:
+  - {node: analyst, kind: console}
+evidence_checks:
+  - {id: findings-note, node: analyst, description: The student's findings note is saved on the desktop}
+limits: {max_vms: 1, vcpu_total: 2, ram_mb_total: 4096, disk_gb_total: 40}
+reset: {mode: snapshot}
+lifetime: {idle_minutes: 60, max_minutes: 480}
+egress: {policy: none}
+"""
+
+
 def module_config(module: dict, code: str = "ARC2-ADLM") -> dict:
     """A course-config.json that agrees with the derived cmi5 block for this module."""
     from arc2 import cmi5
@@ -193,7 +226,10 @@ def write_run_content(run: Path, manifest: dict) -> None:
     """The files the QA depth checks parse, matching full_manifest() in test_arc2_manifest."""
     content = manifest.get("content")
     if content:
-        (run / content["course_yaml"]).write_text(course_yaml())
+        no_lab = frozenset(
+            m["ordinal"] for m in content["modules"] if (m.get("activity") or {}).get("kind", "range") != "range"
+        )
+        (run / content["course_yaml"]).write_text(course_yaml(no_lab))
         for m in content["modules"]:
             (run / m["config"]).write_text(json.dumps(module_config(m), indent=2))
     (run / "01-blueprint" / "catalogue_row.csv").write_text(CATALOGUE_ROW)
@@ -201,6 +237,8 @@ def write_run_content(run: Path, manifest: dict) -> None:
         (run / manifest["injects"]["timeline"]).write_text(TIMELINE)
     if manifest.get("scenario"):
         (run / manifest["scenario"]["path"]).write_text(SCENARIO)
+    if (manifest.get("range") or {}).get("lab_profile"):
+        (run / manifest["range"]["lab_profile"]).write_text(LAB_PROFILE)
 
 
 @pytest.fixture
