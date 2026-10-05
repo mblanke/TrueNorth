@@ -9,7 +9,9 @@ each event to the sockets of the range's own tenant, on channel ``ranges`` and
 The socket is authenticated (``ws_user``): a browser cannot set an Authorization header
 on a WebSocket, so the access token travels as the second subprotocol
 (``new WebSocket(url, ["bearer", token])``), not in the URL, where proxies log it.
-``authorize`` decides which channels a user may open.
+``authorize`` decides which channels a user may open (closed by default), and
+``room_allowed`` which collaboration rooms. A socket is closed when its token expires
+(``WebSocketManager.close_expired``); the client reconnects with a fresh one.
 """
 
 from __future__ import annotations
@@ -19,15 +21,15 @@ import json
 import logging
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import WebSocket
-from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from . import auth
 from .auth import CurrentUser
-from .models import Range, UserRole
+from .models import Exercise, Range, UserRole
 from .websocket_manager import MessageType, WebSocketManager
 
 logger = logging.getLogger("truenorth.range_events")
@@ -45,31 +47,66 @@ def bearer_token(websocket: WebSocket) -> str | None:
     return None
 
 
-async def ws_user(websocket: WebSocket, db: Session) -> CurrentUser | None:
+@dataclass(frozen=True)
+class WsIdentity:
+    user: CurrentUser
+    expires_at: float | None  # the token's exp; None when AUTH_DISABLED (no token)
+
+
+async def ws_user(websocket: WebSocket, db: Session) -> WsIdentity | None:
     """The signed-in user behind a WebSocket handshake, or None (refuse it)."""
     try:
         if auth.AUTH_DISABLED:
-            return await auth.get_current_user(None, auth._dev_identity(), db)
+            return WsIdentity(await auth.get_current_user(None, auth._dev_identity(), db), None)
         token = bearer_token(websocket)
         if not token:
             return None
-        identity = await auth.get_token_identity(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token))
-        return await auth.get_current_user(None, identity, db)
+        claims = await auth.get_auth_backend().validate_token(token)
+        user = await auth.get_current_user(None, auth.TokenPayload(**claims), db)
+        exp = claims.get("exp")
+        return WsIdentity(user, float(exp) if isinstance(exp, int | float) else None)
     except Exception:  # an invalid token, an unknown or disabled user: no socket
         return None
 
 
+def _owned(db: Session, model, raw_id: str, user: CurrentUser) -> bool:
+    try:
+        oid = uuid.UUID(raw_id)
+    except ValueError:
+        return False
+    tenant = db.query(model.tenant_id).filter(model.id == oid).scalar()
+    return tenant is not None and str(tenant) == user.tenant_id
+
+
 def authorize(channel: str, user: CurrentUser, db: Session) -> bool:
-    """May ``user`` open ``channel``? ``range.<id>`` only for a range of their tenant."""
+    """May ``user`` open ``channel``? Closed unless listed here.
+
+    * ``ranges``: range events, delivered only for the user's tenant (``relay``);
+    * ``range.<id>`` / ``exercise.<id>``: a range / exercise of the user's tenant (the
+      ops center broadcasts injects and commands on ``exercise.<id>``);
+    * ``tenant.<id>``: the user's own tenant; ``system.*``: admins.
+    """
+    if channel == "ranges":
+        return True
     if channel.startswith("range."):
-        try:
-            rid = uuid.UUID(channel[len("range.") :])
-        except ValueError:
-            return False
-        tenant = db.query(Range.tenant_id).filter(Range.id == rid).scalar()
-        return tenant is not None and str(tenant) == user.tenant_id
-    role = user.role.value if isinstance(user.role, UserRole) else str(user.role)
-    return WebSocketManager.authorize_channel(channel, user.tenant_id, role)
+        return _owned(db, Range, channel[len("range.") :], user)
+    if channel.startswith("exercise."):
+        return _owned(db, Exercise, channel[len("exercise.") :], user)
+    if channel.startswith("tenant."):
+        return channel[len("tenant.") :] == user.tenant_id
+    if channel.startswith("system."):
+        return user.role == UserRole.admin
+    return False
+
+
+def room_allowed(room_id: str, user: CurrentUser, db: Session) -> bool:
+    """Collaboration rooms are exercises: only one of the user's tenant."""
+    return _owned(db, Exercise, room_id, user)
+
+
+def room_message_type(requested: object) -> str:
+    """A client may only send room_* frames into a room, never e.g. an inject."""
+    return requested if isinstance(requested, str) and requested.startswith("room_") else "room_chat"
 
 
 def _tenant_of(session_factory: Callable[[], Any], rid: uuid.UUID) -> str | None:

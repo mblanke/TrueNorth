@@ -156,3 +156,94 @@ def test_admin_only_channels_stay_admin_only(client, auth_on):
         client.websocket_connect("/ws/system.alerts", subprotocols=["bearer", "good-kc-a"]),
     ):
         pass
+
+
+# ── From the security review of 1b7618e ────────────────────────────────
+def _exercise(db, tid):
+    from app.models import Exercise, Scenario
+
+    rng = _range(db, tid)
+    sc = Scenario(id=uuid.uuid4(), name="s", yaml="id: s\n", tenant_id=tid)
+    db.add(sc)
+    db.flush()
+    ex = Exercise(id=uuid.uuid4(), name="e", range_id=rng.id, scenario_id=sc.id, tenant_id=tid)
+    db.add(ex)
+    db.commit()
+    return ex
+
+
+@pytest.fixture
+def user_b(auth_on, db_session):
+    _tenant(db_session, TENANT_B)
+    db_session.add(
+        User(
+            id=uuid.uuid4(),
+            email="b@example.test",
+            display_name="b",
+            role=UserRole.instructor,
+            tenant_id=TENANT_B,
+            keycloak_id="kc-b",
+            is_active=True,
+        )
+    )
+    db_session.commit()
+
+
+A = ["bearer", "good-kc-a"]
+B = ["bearer", "good-kc-b"]
+
+
+@pytest.mark.parametrize("channel", ["exercises", "all", "whatever", "tenant.00000000-0000-0000-0000-00000000000b"])
+def test_channels_are_closed_by_default(client, auth_on, channel):
+    with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(f"/ws/{channel}", subprotocols=A):
+        pass
+    assert e.value.code == 1008
+
+
+def test_another_tenants_exercise_channel_is_refused(client, auth_on, db_session):
+    """The ops center broadcasts injects and commands on exercise.<id>."""
+    theirs = _exercise(db_session, TENANT_B)
+    mine = _exercise(db_session, TENANT_A)
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect(f"/ws/exercise.{theirs.id}", subprotocols=A):
+        pass
+    with client.websocket_connect(f"/ws/exercise.{mine.id}", subprotocols=A) as ws:
+        assert ws.accepted_subprotocol == "bearer"
+
+
+def test_rooms_belong_to_a_tenants_exercise_and_need_joining(client, user_b, db_session):
+    ex = _exercise(db_session, TENANT_A)
+    with (
+        client.websocket_connect("/ws/ranges", subprotocols=A) as a,
+        client.websocket_connect("/ws/ranges", subprotocols=B) as b,
+    ):
+        a.send_text(json.dumps({"action": "join_room", "room_id": str(ex.id), "display_name": "A"}))
+        assert a.receive_json()["type"] == "room_member_joined"
+        # B cannot join A's room, list its members, or post into it without joining.
+        for action in ("join_room", "room_members", "room_message"):
+            b.send_text(json.dumps({"action": action, "room_id": str(ex.id), "type": "instructor_inject", "data": {}}))
+            assert b.receive_json() == {"type": "error", "detail": "room not allowed"}
+        # A's own member may post, but only room_* types go out.
+        a.send_text(json.dumps({"action": "room_members", "room_id": str(ex.id)}))
+        assert a.receive_json()["type"] == "room_members"
+
+
+def test_a_room_message_type_is_always_a_room_type():
+    from app.range_events import room_message_type
+
+    assert room_message_type("room_chat") == "room_chat"
+    assert room_message_type("room_cursor") == "room_cursor"
+    assert room_message_type("instructor_inject") == "room_chat"
+    assert room_message_type(None) == "room_chat"
+
+
+@pytest.mark.asyncio
+async def test_a_socket_closes_when_its_token_expires():
+    import time
+
+    m = WebSocketManager()
+    live, expired, forever = FakeSocket(), FakeSocket(), FakeSocket()
+    await m.connect(live, "ranges", user_id="u1", tenant_id="t", expires_at=time.time() + 600)
+    await m.connect(expired, "ranges", user_id="u2", tenant_id="t", expires_at=time.time() - 1)
+    await m.connect(forever, "ranges", user_id="u3", tenant_id="t")  # AUTH_DISABLED: no token
+    assert await m.close_expired() == 1
+    assert {c.user_id for c in m.connections.values()} == {"u1", "u3"}
