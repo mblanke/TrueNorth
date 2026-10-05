@@ -55,6 +55,10 @@ PUBLIC_PREFIXES: tuple[str, ...] = (
     "/xapi",
     "/ws",  # websockets authenticate on the socket, not the route
     "/static",
+    # The lab page reached from a Moodle LTI launch: every route verifies the session's own
+    # access token (X-Lab-Token, signed by the tool key, subject = that session) and opens
+    # only that session (app/lab_sessions/tokens.py; tests/api/test_lab_sessions.py).
+    "/lab-access/",
 )
 
 # Names that indicate a route resolves an identity somewhere in its dependency

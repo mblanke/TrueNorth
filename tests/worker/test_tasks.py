@@ -225,67 +225,25 @@ class TestGenerateAAR:
                 pytest.skip("Worker module not importable in test env")
 
 
-class TestCleanupExpiredRanges:
-    """Tests for cleanup_expired_ranges task."""
+class TestProvisionGuard:
+    """A redelivered provision_range for a range already built must not build it again.
+    (cleanup_expired_ranges was retired: it queried ranges.expires_at, a column that never
+    existed; lab sessions expire through their leases, app/lab_sessions.)"""
 
-    def test_cleanup_expired_ranges(self):
-        """Test periodic cleanup dispatches destroy tasks."""
+    def test_a_ready_range_is_not_provisioned_again(self):
         if not _WORKER_IMPORTABLE:
             pytest.skip("Worker package not installed (celery missing)")
-        from collections import namedtuple
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
-        RangeRow = namedtuple("RangeRow", ["id", "name"])
-        expired_ranges = [
-            RangeRow("r-exp-1", "Expired Range 1"),
-            RangeRow("r-exp-2", "Expired Range 2"),
-        ]
-
-        mock_session = MagicMock()
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
-        result_mock = MagicMock()
-        result_mock.fetchall.return_value = expired_ranges
-        mock_session.execute = MagicMock(return_value=result_mock)
+        from worker.tasks import provision_range
 
         with (
-            patch("worker.tasks._db_session", return_value=mock_session),
-            patch("worker.tasks._notify_api"),
-            patch("worker.tasks.destroy_range") as mock_destroy,
+            patch("worker.tasks._update_range_state", return_value=0) as update,
+            patch("worker.tasks._get_backend") as backend,
         ):
-            mock_destroy.delay = MagicMock()
-            try:
-                from worker.tasks import cleanup_expired_ranges
-
-                result = cleanup_expired_ranges()
-                assert result["status"] == "ok"
-                assert result["expired_count"] == 2
-                assert mock_destroy.delay.call_count == 2
-            except ImportError:
-                pytest.skip("Worker module not importable in test env")
-
-    def test_cleanup_no_expired_ranges(self):
-        """Test cleanup when no ranges are expired."""
-        if not _WORKER_IMPORTABLE:
-            pytest.skip("Worker package not installed (celery missing)")
-        from unittest.mock import MagicMock, patch
-
-        mock_session = MagicMock()
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
-        result_mock = MagicMock()
-        result_mock.fetchall.return_value = []
-        mock_session.execute = MagicMock(return_value=result_mock)
-
-        with patch("worker.tasks._db_session", return_value=mock_session), patch("worker.tasks._notify_api"):
-            try:
-                from worker.tasks import cleanup_expired_ranges
-
-                result = cleanup_expired_ranges()
-                assert result["status"] == "ok"
-                assert result["expired_count"] == 0
-            except ImportError:
-                pytest.skip("Worker module not importable in test env")
+            assert provision_range.run("r-ready") == {"status": "skipped", "range_id": "r-ready"}
+        update.assert_called_once_with("r-ready", "provisioning", only_from=("created", "provisioning", "failed"))
+        backend.assert_not_called()
 
 
 class TestSnapshotRange:

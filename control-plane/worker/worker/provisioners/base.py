@@ -114,3 +114,9 @@ class BaseProvisioner(ABC):
     ) -> HealthResult:
         """Check health of all infrastructure in a range."""
         ...
+
+    async def find_vms(self, name_prefix: str) -> list[dict]:
+        """VMs on the hypervisor whose name starts with ``name_prefix``, as
+        ``[{"vm_id", "name"}]``. Reconciliation uses it to find what a range left behind
+        after its records were lost; a backend that cannot list VMs returns []."""
+        return []

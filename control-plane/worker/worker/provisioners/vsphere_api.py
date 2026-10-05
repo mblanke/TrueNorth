@@ -180,12 +180,22 @@ class VsphereAPIProvisioner(BaseProvisioner):
             raise RuntimeError(f"Datastore not found: {self._datastore!r}")
         return items[0]["datastore"]
 
-    async def _find_network(self, client: httpx.AsyncClient, dc_id: str) -> str:
-        """Return the network MoRef ID for the configured network name."""
-        items = await self._api_get(client, f"/vcenter/network?names={self._network}&datacenters={dc_id}")
+    async def _find_network(self, client: httpx.AsyncClient, dc_id: str, name: str | None = None) -> str:
+        """Return the network MoRef ID for ``name`` (default: the configured network)."""
+        name = name or self._network
+        items = await self._api_get(client, f"/vcenter/network?names={name}&datacenters={dc_id}")
         if not items:
-            raise RuntimeError(f"Network not found: {self._network!r}")
+            raise RuntimeError(f"Network not found: {name!r}")
         return items[0]["network"]
+
+    async def _ovf_networks(self, client: httpx.AsyncClient, library_item_id: str, rp_id: str) -> list[str]:
+        """The network names an OVF template declares (its NICs' sections)."""
+        result = await self._api_post(
+            client,
+            f"/vcenter/ovf/library-item/{library_item_id}?action=filter",
+            json={"target": {"resource_pool_id": rp_id}},
+        )
+        return list(result.get("networks") or []) if isinstance(result, dict) else []
 
     async def _find_library_item(self, client: httpx.AsyncClient, template_name: str) -> str:
         """Return the Content Library item ID for the given OVF template name."""
@@ -217,7 +227,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         folder_id: str,
         resource_pool_id: str,
         datastore_id: str,
-        network_mappings: list[dict] | None = None,
+        network_mappings: dict[str, str] | None = None,
     ) -> str:
         """Deploy a VM from a Content Library OVF item.  Returns the new VM ID."""
         async with self._semaphore:
@@ -465,6 +475,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                             folder_id,
                             rp_id,
                             ds_id,
+                            dc_id,
                         )
                     )
 
@@ -501,9 +512,19 @@ class VsphereAPIProvisioner(BaseProvisioner):
         folder_id: str,
         rp_id: str,
         ds_id: str,
+        dc_id: str = "",
     ) -> dict:
         library_item_id = await self._find_library_item(client, template_name)
-        vm_id = await self._deploy_ovf(client, library_item_id, vm_name, folder_id, rp_id, ds_id)
+        # A VM on a leased, isolated port group (a lab session) has every OVF network
+        # mapped onto it; otherwise the OVF's own default network applies.
+        mappings = None
+        if vm_def.get("port_group"):
+            network_id = await self._find_network(client, dc_id, vm_def["port_group"])
+            ovf_networks = await self._ovf_networks(client, library_item_id, rp_id)
+            mappings = {net: network_id for net in ovf_networks}
+            if not mappings:
+                raise RuntimeError(f"template {template_name!r} declares no network to map onto {vm_def['port_group']!r}")
+        vm_id = await self._deploy_ovf(client, library_item_id, vm_name, folder_id, rp_id, ds_id, mappings)
 
         # Resize hardware to match vm_def
         hw_update: dict = {}
@@ -525,6 +546,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
             "ip": ip or vm_def.get("ip", ""),
             "tools_ready": tools_ready,
         }
+
+    async def find_vms(self, name_prefix: str) -> list[dict]:
+        session = await self._get_session()
+        async with self._client(session) as client:
+            vms = await self._api_get(client, "/vcenter/vm")
+        return [{"vm_id": v["vm"], "name": v["name"]} for v in vms if str(v.get("name", "")).startswith(name_prefix)]
 
     async def destroy(
         self,

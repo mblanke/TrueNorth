@@ -68,10 +68,6 @@ app.conf.update(
 
 # -- Beat schedule for periodic tasks -------------------------------------
 app.conf.beat_schedule = {
-    "cleanup-expired-ranges": {
-        "task": "worker.tasks.cleanup_expired_ranges",
-        "schedule": 300.0,  # every 5 minutes
-    },
     "health-check-ranges": {
         "task": "worker.tasks.health_check_ranges",
         "schedule": 60.0,  # every minute
@@ -90,5 +86,6 @@ app.conf.beat_schedule = {
 # controlled by CHAOS_ENABLED env var.
 from . import (
     chaos,  # noqa: F401, E402
+    lab_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
 )

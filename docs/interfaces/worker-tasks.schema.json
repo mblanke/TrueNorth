@@ -46,16 +46,6 @@
       "description": "",
       "queue": "provision"
     },
-    "worker.tasks.cleanup_expired_ranges": {
-      "args": {
-        "maxItems": 0,
-        "minItems": 0,
-        "prefixItems": [],
-        "type": "array"
-      },
-      "description": "",
-      "queue": "default"
-    },
     "worker.tasks.collect_range_metrics": {
       "args": {
         "maxItems": 0,
@@ -217,6 +207,27 @@
       },
       "description": "Build a range's VMs on its hypervisor.",
       "queue": "provision"
+    },
+    "worker.tasks.reconcile_lab_vms": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "ranges.id of lab sessions that must have no VMs",
+            "title": "range_ids",
+            "type": "array"
+          },
+          {
+            "description": "",
+            "title": "backend",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Delete VMs a torn-down lab session's ranges left on the hypervisor.",
+      "queue": "destroy"
     },
     "worker.tasks.restore_snapshot": {
       "args": {

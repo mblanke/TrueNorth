@@ -25,6 +25,7 @@ from .injectors import router as injectors_router
 from .integrations import lti_router
 from .integrations import router as integrations_router
 from .kit import router as kit_router
+from .lab_sessions import router as lab_sessions_router
 from .network_devices import router as network_devices_router
 from .onboarding import router as onboarding_router
 from .ops_center import router as ops_center_router
@@ -79,4 +80,5 @@ __all__ = [
     "quizzes_router",
     "course_releases_router",
     "course_publications_router",
+    "lab_sessions_router",
 ]

@@ -212,6 +212,24 @@ def _moodle_factory(key, mp):
     return get_moodle_backend(key)
 
 
+def _console_abc():
+    from app.console_backends import BaseConsoleBackend
+
+    return BaseConsoleBackend
+
+
+def _console_registry():
+    from app import console_backends
+
+    return console_backends._REGISTRY
+
+
+def _console_factory(key, mp):
+    from app.console_backends import get_console_backend
+
+    return get_console_backend(key)
+
+
 SEAMS: dict[str, Seam] = {
     s.name: s
     for s in (
@@ -223,6 +241,7 @@ SEAMS: dict[str, Seam] = {
         Seam("provisioners", _prov_abc, _prov_registry, _prov_factory, "mock", ValueError),
         Seam("ai", _ai_abc, _ai_registry, _ai_factory, "mock", ValueError),
         Seam("moodle", _moodle_abc, _moodle_registry, _moodle_factory, "fake", ValueError),
+        Seam("console", _console_abc, _console_registry, _console_factory, "mock", ValueError),
     )
 }
 
@@ -491,3 +510,10 @@ def test_null_moodle(monkeypatch):
         backend.delete_stage(site, "a-live-course")
     assert backend.delete_stage(site, "tn-stage:r1") == {"deleted": True}
     assert backend.describe_course(site, "tn-stage:r1") == {"exists": False}
+
+
+def test_null_console(monkeypatch):
+    console = _build(SEAMS["console"], SEAMS["console"].null_key, monkeypatch)
+    access = console.open({"vm_id": "vm-1", "name": "lab-analyst"})
+    assert access["kind"] == "mock" and access["url"].startswith("mock://console/vm-1") and access["expires_in"] > 0
+    assert console.open({"vm_id": "vm-1"})["url"] != access["url"]  # one-time, not a standing link

@@ -115,9 +115,13 @@ def render_topology(
         except ValueError:
             net = ipaddress.ip_network("10.0.0.0/24")
         gw = str(net.network_address + 1)
+        # port_group: a pre-created, isolated hypervisor network this segment must use
+        # (a lab session's leased network); empty means the provisioner's default.
+        port_group = str(seg.get("port_group") or "")
         networks.append({"name": name, "vlan_id": vid, "cidr": str(net), "gateway": gw,
-                         "description": seg.get("description", "")})
-        net_by_name[name] = {"net": net, "gateway": gw, "next": int(net.network_address) + 10}
+                         "description": seg.get("description", ""), "port_group": port_group})
+        net_by_name[name] = {"net": net, "gateway": gw, "next": int(net.network_address) + 10,
+                             "port_group": port_group}
 
     nodes = _extract_nodes(template)
     vms: list[dict] = []
@@ -154,6 +158,7 @@ def render_topology(
                 "os": os_alias, "template_name": template_name,
                 "vlan_id": vid, "vlan_tag": vid,
                 "ip": ip, "gateway": gateway, "netmask": netmask, "prefix": prefix,
+                "port_group": netinfo["port_group"] if netinfo else "",
                 "cores": specs.get("cores", 2),
                 "memory": specs.get("memory_mb", 4096), "memory_mb": specs.get("memory_mb", 4096),
                 "disk_gb": specs.get("disk_gb", 60),

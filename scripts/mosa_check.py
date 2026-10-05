@@ -33,6 +33,8 @@ ADAPTER_DIRS = (
     "control-plane/api/app/search_backends/",
     "control-plane/api/app/hypervisor_backends/",
     "control-plane/api/app/vector_backends/",
+    "control-plane/api/app/console_backends/",  # browser consoles (vSphere WebMKS)
+    "control-plane/api/app/moodle_backends/",
     "telemetry-pipeline/",
     "scenario-engine/scenario_engine/validators/",
 )

@@ -66,8 +66,17 @@ async def lifespan(app: FastAPI):
         from .course_publishing.runner import resume_on_start
 
         asyncio.get_running_loop().run_in_executor(None, resume_on_start)
+    # Lab sessions advance (readiness, expiry, teardown) without anyone asking.
+    lab_sweep = None
+    if os.getenv("LAB_SESSIONS_SWEEP", "true").lower() == "true":
+        from .lab_sessions.runner import loop as lab_loop
+
+        lab_sweep = asyncio.create_task(lab_loop())
 
     yield
+
+    if lab_sweep is not None:
+        lab_sweep.cancel()
 
     # Graceful shutdown of any started subsystems
     ws_mgr = getattr(app.state, "ws_manager", None)
@@ -223,6 +232,7 @@ from .routers import (
     injectors_router,
     integrations_router,
     kit_router,
+    lab_sessions_router,
     learning_paths_router,
     lti_router,
     network_devices_router,
@@ -262,6 +272,7 @@ app.include_router(scheduling_router)
 app.include_router(courses_router)
 app.include_router(course_releases_router)
 app.include_router(course_publications_router)
+app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)
 app.include_router(transcript_router)
 app.include_router(competency_router)

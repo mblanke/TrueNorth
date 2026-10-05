@@ -64,6 +64,12 @@ TASKS: dict[str, TaskContract] = {
         TaskContract("snapshot_range", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("restore_snapshot", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("delete_snapshot", "provision", (_RANGE, _SNAPSHOT)),
+        TaskContract(
+            "reconcile_lab_vms",
+            "destroy",
+            (Arg("range_ids", "array", description="ranges.id of lab sessions that must have no VMs"), Arg("backend")),
+            "Delete VMs a torn-down lab session's ranges left on the hypervisor.",
+        ),
         # -- Exercises -------------------------------------------------------
         TaskContract("run_scenario", "scenario", (_EXERCISE,)),
         TaskContract(
@@ -92,7 +98,6 @@ TASKS: dict[str, TaskContract] = {
         # -- Telemetry -------------------------------------------------------
         TaskContract("ingest_telemetry_batch", "telemetry", (_RANGE, Arg("events", "array"))),
         # -- Periodic (beat) -------------------------------------------------
-        TaskContract("cleanup_expired_ranges", "default"),
         TaskContract("health_check_ranges", "default"),
         TaskContract("collect_range_metrics", "telemetry"),
     )

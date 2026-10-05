@@ -98,7 +98,7 @@ def _update_range_state(
             # CAST: `state` is a native enum on Postgres and plain text on SQLite.
             sql += f" AND CAST(state AS TEXT) IN ({', '.join(':' + k for k in keys)})"
             params.update(zip(keys, only_from, strict=True))
-        db.execute(text(sql), params)
+        return db.execute(text(sql), params).rowcount
 
 
 def _notify_api(channel: str, message: dict):
@@ -154,7 +154,10 @@ def provision_range(self, range_id: str):
     structured ProvisionResult back to the database.
     """
     logger.info(f"[provision] Starting range {range_id}")
-    _update_range_state(range_id, "provisioning")
+    # A redelivered task for a range that is already ready (or being torn down) must not
+    # build a second set of VMs: only a range still waiting to be built is provisioned.
+    if not _update_range_state(range_id, "provisioning", only_from=("created", "provisioning", "failed")):
+        return {"status": "skipped", "range_id": range_id}
     _notify_api("range", {"id": range_id, "state": "provisioning"})
 
     try:
@@ -649,56 +652,6 @@ def generate_aar(self, exercise_id: str):
             },
         )
         logger.error(f"[aar] AAR generation FAILED for {exercise_id}: {e}")
-        raise
-
-
-# -- Periodic: Cleanup Expired Ranges -------------------------------------
-@app.task(bind=True, name="worker.tasks.cleanup_expired_ranges")
-def cleanup_expired_ranges(self):
-    """Periodic task: destroy ranges past their expiry time.
-
-    Queries ranges where expires_at < now() and state == 'ready',
-    dispatches destroy tasks for each, and logs summary.
-    """
-    logger.info("[cleanup] Checking for expired ranges")
-
-    try:
-        with _db_session() as db:
-            from sqlalchemy import text
-
-            expired = db.execute(
-                text(
-                    "SELECT id, name FROM ranges "
-                    "WHERE state IN ('ready', 'running', 'stopped') "
-                    "AND expires_at IS NOT NULL "
-                    "AND expires_at < NOW()"
-                )
-            ).fetchall()
-
-        if not expired:
-            logger.info("[cleanup] No expired ranges found")
-            return {"status": "ok", "expired_count": 0}
-
-        dispatched = 0
-        for row in expired:
-            range_id, name = row[0], row[1]
-            logger.info(f"[cleanup] Dispatching destroy for expired range {name} ({range_id})")
-            destroy_range.delay(range_id)
-            dispatched += 1
-
-        _notify_api(
-            "system",
-            {
-                "event": "cleanup_expired",
-                "dispatched": dispatched,
-            },
-        )
-
-        logger.info(f"[cleanup] Dispatched destroy for {dispatched} expired ranges")
-        return {"status": "ok", "expired_count": dispatched}
-
-    except Exception as e:
-        logger.error(f"[cleanup] Error checking expired ranges: {e}")
         raise
 
 
