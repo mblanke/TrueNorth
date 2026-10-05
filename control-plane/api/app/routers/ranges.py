@@ -32,6 +32,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, UploadFile, status
 from fastapi.responses import Response
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -590,6 +591,32 @@ def abandon_range_operation(
     _audit(db, user, "abandon_operation", "range", str(rng.id), f"operation {op.id}")
     db.commit()
     return op
+
+
+class NetworkReservationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    domain: str
+    kind: str
+    value: str
+    holder: str
+
+
+@router.get("/{range_id}/network-reservations", response_model=list[NetworkReservationOut])
+def list_network_reservations(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> list:
+    """Addresses and VLANs this range holds on shared networks (app/network_inventory.py)."""
+    rng = _tenant_range(db, range_id, user)
+    from ..models_network import NetworkReservation
+
+    return (
+        db.query(NetworkReservation)
+        .filter(NetworkReservation.range_id == rng.id, NetworkReservation.tenant_id == rng.tenant_id)
+        .order_by(NetworkReservation.kind, NetworkReservation.holder)
+        .all()
+    )
 
 
 @router.post("/{range_id}/stop", response_model=RangeOut)
