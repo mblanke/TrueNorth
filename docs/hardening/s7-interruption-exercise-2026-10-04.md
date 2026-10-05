@@ -43,3 +43,16 @@ in a browser:
 | Destroy after a finished provision | **409 "A provision of this range is still in progress"** | **bug, fixed in #17**: production sessions do not autoflush, so `reconcile()` settled the provision only in memory. Regression test runs with autoflush off. Re-checked: "Destroying…", then `destroyed` |
 
 Neither bug showed up in the unit or karma suites; both did in the browser.
+
+## Course Studio journey (same night)
+
+The candidate with Studio enabled (API :8092, web :4300) ran with the **real runner**:
+Seatbelt sandbox, egress proxy, runner lock. The engine was a stand-in that behaves like
+stage 1 (writes an outline, stops for review), because the runner account and its token
+do not exist yet.
+
+| Step | Seen | Result |
+|---|---|---|
+| New project, describe the course, Send | "Waiting for the runner"; the Pipeline panel says so | pass |
+| Runner picks the job up | about 8 s later: "Outline ready: 2 modules. Accept or send feedback.", both modules on the Outline tab, "Accept Outline" offered | pass |
+| Job record | `confinement: seatbelt`, `egress: ["api.anthropic.com"]`, the owner's `tenant_id`, `runner` identity, `history_commit` in the runner-owned `_history/<slug>.git`; the job's throwaway home removed | pass |
