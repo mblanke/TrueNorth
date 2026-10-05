@@ -53,8 +53,10 @@ def list_annotations(
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """List annotations for an exercise, most recent first."""
+    get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     return (
         db.query(AnalystAnnotation)
         .filter(AnalystAnnotation.exercise_id == exercise_id)
@@ -85,7 +87,7 @@ async def create_annotation(
         id=uuid.uuid4(),
         exercise_id=exercise_id,
         user_id=user.id,
-        user_display_name=user.display_name or user.username,
+        user_display_name=user.display_name or user.email,
         content=body.content,
         annotation_type=body.annotation_type,
         severity=body.severity,
@@ -119,8 +121,10 @@ def delete_annotation(
     exercise_id: uuid.UUID = Path(...),
     annotation_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """Delete an annotation."""
+    get_owned(db, Exercise, exercise_id, user, not_found="Annotation not found")
     a = (
         db.query(AnalystAnnotation)
         .filter(
@@ -147,8 +151,10 @@ def list_shared_commands(
     exercise_id: uuid.UUID = Path(...),
     limit: int = Query(default=50, le=200),
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """List shared commands for an exercise."""
+    get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     return (
         db.query(SharedCommand)
         .filter(SharedCommand.exercise_id == exercise_id)
@@ -172,11 +178,12 @@ async def share_command(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Share a command with other analysts and broadcast to ops channel."""
+    get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     cmd = SharedCommand(
         id=uuid.uuid4(),
         exercise_id=exercise_id,
         user_id=user.id,
-        user_display_name=user.display_name or user.username,
+        user_display_name=user.display_name or user.email,
         command=body.command,
         description=body.description,
         host_tag=body.host_tag,

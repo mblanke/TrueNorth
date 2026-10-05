@@ -35,6 +35,7 @@ everything combined (green at `78711f4`).
 | 30 | S3d: stop/start power the range's VMs (the `/stop` defect) | #27 |
 | 31 | S3a evidence: black-box before-run for "dispatch ignored" | #30 |
 | 32 | S3e: worker range states reach the browser, tenant-scoped; /ws authenticated and closed by default | #31 |
+| 36 | Ops center: another tenant's exercise is 404 on every endpoint (from #32's review) | #32 |
 | 28 | Fix: scenario exercises carry their objectives (they scored 0/0), found by S7 | main |
 
 Merge conflicts to expect, all resolved already on #24, which shows how to resolve them:
