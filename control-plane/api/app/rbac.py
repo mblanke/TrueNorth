@@ -113,6 +113,11 @@ class Permission(str, Enum):
     TICKET_WORK = "ticket:work"
     TICKET_ADMIN = "ticket:admin"
 
+    # Background noise (synthetic personas). NOISE_READ exposes ground truth — which
+    # activity on the wire was synthetic — so it must never reach students.
+    NOISE_READ = "noise:read"
+    NOISE_CONTROL = "noise:control"
+
 
 # ── Role → Permission Mapping ─────────────────────────────────────────
 ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
@@ -163,6 +168,10 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.WIKI_EDIT,
         Permission.TICKET_CREATE,
         Permission.TICKET_WORK,
+
+        # White cell: runs the background noise and sees its ground truth.
+        Permission.NOISE_READ,
+        Permission.NOISE_CONTROL,
     },
     # Range-ops: infrastructure-focused, no exercises/scenarios write
     UserRole.range_ops: {

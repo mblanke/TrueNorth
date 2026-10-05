@@ -90,5 +90,6 @@ app.conf.beat_schedule = {
 # controlled by CHAOS_ENABLED env var.
 from . import (
     chaos,  # noqa: F401, E402
+    noise_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
 )

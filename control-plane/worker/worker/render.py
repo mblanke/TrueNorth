@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import ipaddress
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -89,6 +90,60 @@ def _extract_nodes(t: dict) -> list[dict]:
     return []
 
 
+# -- Background-noise management NIC -------------------------------------
+# Mirror of control-plane/api/app/noise/topology.py (agent_nodes). The API registers an
+# agent for each of these nodes at the address assigned here; tests/api/
+# test_noise_topology.py fails if the two disagree.
+NOISE_AGENT_ROLES = frozenset({"workstation", "usersim", "traffic_generator"})
+_NOISE_DEFAULT_EXCLUDE = re.compile(r"red|blue|soc|mgmt|management", re.I)
+NOISE_DEFAULT_MGMT = {"vlan_id": 4001, "cidr": "10.255.0.0/24"}
+NOISE_MGMT_FIRST_HOST = 10
+
+
+def _noise_block(t: dict) -> dict:
+    return t["noise"] if isinstance(t.get("noise"), dict) else {}
+
+
+def _is_noise_agent(node: dict, block: dict) -> bool:
+    opt = node.get("noise") if isinstance(node.get("noise"), dict) else {}
+    if "agent" in opt:
+        return bool(opt["agent"])
+    vlan = str(node.get("vlan", ""))
+    excluded = (vlan in set(block.get("exclude_vlans") or [])) if "exclude_vlans" in block else bool(
+        _NOISE_DEFAULT_EXCLUDE.search(vlan)
+    )
+    return node.get("role") in NOISE_AGENT_ROLES and not excluded
+
+
+def noise_mgmt_plan(template: dict) -> tuple[dict | None, dict[str, dict]]:
+    """(management network definition, {vm hostname: mgmt nic}) — empty unless noise is on."""
+    block = _noise_block(template)
+    if not block.get("enabled"):
+        return None, {}
+    mgmt = {**NOISE_DEFAULT_MGMT, **(block.get("mgmt") or {})}
+    net = ipaddress.ip_network(mgmt["cidr"], strict=False)
+    nics: dict[str, dict] = {}
+    for node in template.get("nodes") or []:  # noise is a `nodes`-format feature only
+        count = int(node.get("count", 1) or 1)
+        for r in range(count):
+            if not _is_noise_agent(node, block):
+                continue
+            host = f"{node.get('id', 'vm')}-{r}" if count > 1 else str(node.get("id", "vm"))
+            nics[host] = {
+                "vlan_id": int(mgmt["vlan_id"]),
+                "ip": str(net.network_address + NOISE_MGMT_FIRST_HOST + len(nics)),
+                "prefix": net.prefixlen,
+            }
+    network = {
+        "name": "noise_mgmt",
+        "vlan_id": int(mgmt["vlan_id"]),
+        "cidr": str(net),
+        "gateway": "",  # deliberately unrouted: it reaches the controller and nothing else
+        "description": "Background-noise control channel (white cell, out of bounds)",
+    }
+    return network, nics
+
+
 def render_topology(
     template: dict,
     range_id: str,
@@ -160,6 +215,25 @@ def render_topology(
                 "disk_gb": specs.get("disk_gb", 60),
                 "services": node.get("services", []),
             })
+
+    noise_net, noise_nics = noise_mgmt_plan(template)
+    if noise_net:
+        networks.append(noise_net)
+        # Agent VMs get a full guest network config (vSphere guestinfo), so they need
+        # the range's resolvers: its domain controllers / DNS servers.
+        dns = [
+            str(n.get("ip")) for n in template.get("nodes") or []
+            if n.get("ip") and (n.get("role") == "domain_controller"
+                                or "dns" in {str(s).lower() for s in n.get("services") or []})
+        ]
+        domain = str(_noise_block(template).get("domain") or "corp.local")
+        for vm in vms:
+            host = vm["name"][len(range_id[:8]) + 1:]
+            if host in noise_nics:
+                vm["mgmt"] = noise_nics[host]
+                if dns:
+                    vm["dns"] = dns
+                vm["dns_search"] = [domain]
 
     return {
         "range_id": range_id, "range_name": range_name,

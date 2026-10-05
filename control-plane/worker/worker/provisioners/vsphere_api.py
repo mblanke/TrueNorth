@@ -11,6 +11,8 @@ Services API with pyVmomi, VMware's own SDK.
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import logging
 import os
 import time
@@ -55,6 +57,10 @@ VSPHERE_DATACENTER: str = os.environ.get("VSPHERE_DATACENTER", "")
 VSPHERE_CLUSTER: str = os.environ.get("VSPHERE_CLUSTER", "")
 VSPHERE_DATASTORE: str = os.environ.get("VSPHERE_DATASTORE", "")
 VSPHERE_NETWORK: str = os.environ.get("VSPHERE_NETWORK", "VM Network")
+# Portgroup carrying the background-noise management VLAN. One portgroup per vCenter,
+# tagged with the noise VLAN (template default 4001), reachable from the controller and
+# nothing else. Agent VMs get a second VMXNET3 NIC on it.
+VSPHERE_NOISE_NETWORK: str = os.environ.get("VSPHERE_NOISE_NETWORK", "TN-Noise-Mgmt")
 VSPHERE_CONTENT_LIBRARY: str = os.environ.get("VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
 VSPHERE_VERIFY_SSL: bool = os.environ.get("VSPHERE_VERIFY_SSL", "false").lower() == "true"
 VSPHERE_CONCURRENCY: int = int(os.environ.get("VSPHERE_CONCURRENCY", "4"))
@@ -75,6 +81,51 @@ def _named_snapshots(vm, name: str) -> list:
     return sorted(found, key=lambda node: node.createTime)
 
 
+def _is_windows(vm_def: dict) -> bool:
+    return str(vm_def.get("os") or vm_def.get("template_name") or "").lower().startswith("win")
+
+
+def noise_guestinfo(vm_def: dict, instance_id: str, primary_mac: str, mgmt_mac: str) -> dict[str, str]:
+    """cloud-init metadata for an agent VM: both NICs, matched by MAC.
+
+    Read by cloud-init's VMware datasource from ``guestinfo.metadata`` on first boot of
+    the clone (the golden image ran ``cloud-init clean``). A cloud-init network config
+    replaces the whole configuration, so the training NIC is described too: static when
+    the template gave it an address and gateway, DHCP otherwise. The management NIC gets
+    its address and no route: it reaches the controller on-link and nothing else.
+    """
+    mgmt = vm_def["mgmt"]
+    train: dict = {"match": {"macaddress": primary_mac}}
+    if vm_def.get("ip") and vm_def.get("gateway"):
+        train["addresses"] = [f"{vm_def['ip']}/{int(vm_def.get('prefix', 24))}"]
+        train["routes"] = [{"to": "default", "via": vm_def["gateway"]}]
+    else:
+        train["dhcp4"] = True
+    if vm_def.get("dns"):
+        train["nameservers"] = {"addresses": list(vm_def["dns"]), "search": list(vm_def.get("dns_search") or [])}
+    # render.py names VMs "<range id prefix>-<hostname>"; the guest gets the hostname.
+    hostname = str(vm_def.get("name", instance_id)).split("-", 1)[-1]
+    metadata = {
+        "instance-id": instance_id,
+        "local-hostname": hostname,
+        "network": {
+            "version": 2,
+            "ethernets": {
+                "train0": train,
+                "noise0": {
+                    "match": {"macaddress": mgmt_mac},
+                    "dhcp4": False,
+                    "addresses": [f"{mgmt['ip']}/{int(mgmt.get('prefix', 24))}"],
+                },
+            },
+        },
+    }
+    return {
+        "guestinfo.metadata": base64.b64encode(json.dumps(metadata).encode()).decode(),
+        "guestinfo.metadata.encoding": "base64",
+    }
+
+
 class VsphereAPIProvisioner(BaseProvisioner):
     """VMware vSphere REST API provisioner.
 
@@ -92,6 +143,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._cluster = VSPHERE_CLUSTER
         self._datastore = VSPHERE_DATASTORE
         self._network = VSPHERE_NETWORK
+        self._noise_network = VSPHERE_NOISE_NETWORK
         self._content_library = VSPHERE_CONTENT_LIBRARY
         self._verify_ssl = VSPHERE_VERIFY_SSL
         self._semaphore = asyncio.Semaphore(VSPHERE_CONCURRENCY)
@@ -187,6 +239,37 @@ class VsphereAPIProvisioner(BaseProvisioner):
             raise RuntimeError(f"Network not found: {self._network!r}")
         return items[0]["network"]
 
+    async def _find_noise_network(self, client: httpx.AsyncClient, dc_id: str) -> tuple[str, str]:
+        """(network id, backing type) of the noise management portgroup."""
+        items = await self._api_get(client, f"/vcenter/network?names={self._noise_network}&datacenters={dc_id}")
+        if not items:
+            raise RuntimeError(f"noise management portgroup not found: {self._noise_network!r}")
+        return items[0]["network"], items[0].get("type", "STANDARD_PORTGROUP")
+
+    async def _add_mgmt_nic(self, client: httpx.AsyncClient, vm_id: str, network: tuple[str, str]) -> tuple[str, str]:
+        """Add the management NIC (VM powered off). Returns (training MAC, management MAC)."""
+        existing = [n["nic"] for n in await self._api_get(client, f"/vcenter/vm/{vm_id}/hardware/ethernet")]
+        nic = await self._api_post(
+            client,
+            f"/vcenter/vm/{vm_id}/hardware/ethernet",
+            json={
+                "type": "VMXNET3",
+                "backing": {"type": network[1], "network": network[0]},
+                "start_connected": True,
+                "allow_guest_control": False,
+            },
+        )
+        mgmt = await self._api_get(client, f"/vcenter/vm/{vm_id}/hardware/ethernet/{nic}")
+        if not existing:
+            raise RuntimeError("template has no NIC for the training network")
+        train = await self._api_get(client, f"/vcenter/vm/{vm_id}/hardware/ethernet/{existing[0]}")
+        return train["mac_address"], mgmt["mac_address"]
+
+    def _set_extra_config_sync(self, vm_id: str, options: dict[str, str]) -> None:
+        with self._vim() as si:
+            spec = vim.vm.ConfigSpec(extraConfig=[vim.option.OptionValue(key=k, value=v) for k, v in options.items()])
+            WaitForTask(vim.VirtualMachine(vm_id, si._stub).ReconfigVM_Task(spec=spec), si=si, maxWaitTime=300)
+
     async def _find_library_item(self, client: httpx.AsyncClient, template_name: str) -> str:
         """Return the Content Library item ID for the given OVF template name."""
         # Find the library first
@@ -278,13 +361,15 @@ class VsphereAPIProvisioner(BaseProvisioner):
             await asyncio.sleep(5)
         return False
 
-    async def _get_vm_ip(self, client: httpx.AsyncClient, vm_id: str) -> str | None:
-        """Return the primary IPv4 address reported by VMware Tools."""
+    async def _get_vm_ip(self, client: httpx.AsyncClient, vm_id: str, exclude: str = "") -> str | None:
+        """Return the primary IPv4 address reported by VMware Tools (never ``exclude``,
+        the noise management address)."""
         try:
             guest = await self._api_get(client, f"/vcenter/vm/{vm_id}/guest/networking/interfaces")
             for iface in guest:
                 for addr in iface.get("ip", {}).get("ip_addresses", []):
-                    if addr.get("state") == "PREFERRED" and ":" not in addr.get("ip_address", ""):
+                    ip = addr.get("ip_address", "")
+                    if addr.get("state") == "PREFERRED" and ":" not in ip and ip != exclude:
                         return addr["ip_address"]
         except Exception:
             pass
@@ -452,6 +537,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 folder_id = folder_items[0]["folder"] if folder_items else None
 
                 vm_defs = template.get("vms", [])
+                noise_net = None
+                if any(v.get("mgmt") and not _is_windows(v) for v in vm_defs):
+                    try:
+                        noise_net = await self._find_noise_network(client, dc_id)
+                    except Exception as exc:  # the range still comes up; its noise cannot
+                        errors.append(f"{exc}; background-noise agents will be unreachable")
                 tasks = []
                 for vm_def in vm_defs:
                     template_name = vm_def.get("template_name", "ubuntu-2404-cloud")
@@ -465,6 +556,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                             folder_id,
                             rp_id,
                             ds_id,
+                            noise_net,
                         )
                     )
 
@@ -501,9 +593,18 @@ class VsphereAPIProvisioner(BaseProvisioner):
         folder_id: str,
         rp_id: str,
         ds_id: str,
+        noise_net: tuple[str, str] | None = None,
     ) -> dict:
         library_item_id = await self._find_library_item(client, template_name)
         vm_id = await self._deploy_ovf(client, library_item_id, vm_name, folder_id, rp_id, ds_id)
+
+        # Background-noise management NIC, while the VM is still off. Linux only until
+        # the Windows agent exists: an unconfigured NIC is just something odd to find.
+        mgmt = vm_def.get("mgmt") if noise_net and not _is_windows(vm_def) else None
+        if mgmt:
+            train_mac, mgmt_mac = await self._add_mgmt_nic(client, vm_id, noise_net)
+            options = noise_guestinfo(vm_def, vm_name, train_mac, mgmt_mac)
+            await asyncio.to_thread(self._set_extra_config_sync, vm_id, options)
 
         # Resize hardware to match vm_def
         hw_update: dict = {}
@@ -516,15 +617,18 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
         await self._power_action(client, vm_id, "start")
         tools_ready = await self._wait_tools(client, vm_id)
-        ip = await self._get_vm_ip(client, vm_id) if tools_ready else None
+        ip = await self._get_vm_ip(client, vm_id, exclude=mgmt["ip"] if mgmt else "") if tools_ready else None
 
-        return {
+        out = {
             "vm_id": vm_id,
             "name": vm_def["name"],
             "status": "running",
             "ip": ip or vm_def.get("ip", ""),
             "tools_ready": tools_ready,
         }
+        if mgmt:
+            out["mgmt_ip"] = mgmt["ip"]
+        return out
 
     async def destroy(
         self,

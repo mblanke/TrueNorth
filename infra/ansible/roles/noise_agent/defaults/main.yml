@@ -1,0 +1,9 @@
+---
+# tn-noise agent (background-noise personas). White-cell infrastructure: out of bounds.
+noise_agent_dir: /opt/tn-noise
+noise_agent_conf_dir: /etc/tn-noise
+noise_agent_src: /opt/truenorth/noise-agent/tn_noise_agent   # on the controller/worker
+noise_controller_url: ""        # https URL of the API as seen from the management network
+noise_mgmt_cidr: 10.255.0.0/24  # the agent never targets this network
+noise_domain: corp.local
+noise_agent_ca_file: ""         # optional CA bundle path on the controller side

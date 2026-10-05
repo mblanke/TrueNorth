@@ -65,6 +65,10 @@ AUTH_MARKERS = (
     "require_permission",
     "require_role",
     "_check",  # the inner closure require_permission/require_role return
+    # In-VM noise agents hold no user account; each authenticates with its own
+    # per-node token (X-Noise-Agent-Token). Named here rather than exempted by prefix,
+    # so a future /noise/agent route without it still fails this guard.
+    "noise_agent_identity",
 )
 
 
