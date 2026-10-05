@@ -201,3 +201,68 @@ def test_the_provision_contract_takes_the_addresses():
 
     validate_args("provision_range", ("r1",))
     validate_args("provision_range", ("r1", {"lnx01": "10.255.0.10"}))
+
+
+def test_on_postgres_concurrent_provisions_of_noisy_ranges_never_share_an_address():
+    """Two provisions accepted at once from one template: the second waits for the
+    first's domain lock, then takes the next free addresses."""
+    import os
+    import threading
+
+    import sqlalchemy as sa
+    from app.auth import CurrentUser
+    from app.models import Template, Tenant, UserRole
+    from app.sections import Base
+    from sqlalchemy.orm import sessionmaker
+
+    admin_url = os.getenv("TEST_POSTGRES_ADMIN_URL")
+    if not admin_url:
+        pytest.skip("set TEST_POSTGRES_ADMIN_URL to run against Postgres")
+    name = f"tn_noise_{uuid.uuid4().hex[:12]}"
+    admin = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(sa.text(f'CREATE DATABASE "{name}"'))
+    engine = sa.create_engine(sa.engine.make_url(admin_url).set(database=name), pool_size=10)
+    try:
+        Base.metadata.create_all(engine)
+        make = sessionmaker(engine, expire_on_commit=False)
+        tenant = uuid.uuid4()
+        with make() as s:
+            s.add(Tenant(id=tenant, name="t", slug=f"t-{tenant.hex[:8]}"))
+            s.flush()
+            tpl = Template(id=uuid.uuid4(), name="n", yaml=yaml.safe_dump(_noisy()), tenant_id=tenant)
+            s.add(tpl)
+            s.flush()
+            ids = [uuid.uuid4(), uuid.uuid4()]
+            for rid in ids:
+                s.add(Range(id=rid, name="r", template_id=tpl.id, tenant_id=tenant, state=RangeState.created))
+            s.commit()
+        who = CurrentUser(
+            id=str(uuid.uuid4()),
+            email="i@x",
+            display_name="i",
+            role=UserRole.admin,
+            tenant_id=str(tenant),
+            keycloak_id="kc",
+        )
+        sa_, sb = make(), make()
+        range_ops.accept(sa_, ids[0], who, "provision")
+        out: dict = {}
+        t = threading.Thread(target=lambda: out.update(b=range_ops.accept(sb, ids[1], who, "provision")))
+        t.start()
+        t.join(0.5)
+        assert "b" not in out, "the second acceptance did not wait"
+        sa_.commit()
+        t.join(10)
+        sb.commit()
+        with make() as s:
+            rows = s.query(NetworkReservation).filter(NetworkReservation.kind == "noise_mgmt_ip").all()
+            by_range = {rid: {r.value for r in rows if r.range_id == rid} for rid in ids}
+        assert by_range[ids[0]] and len(by_range[ids[0]]) == len(by_range[ids[1]])
+        assert not by_range[ids[0]] & by_range[ids[1]]
+        sa_.close()
+        sb.close()
+    finally:
+        engine.dispose()
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
