@@ -25,3 +25,15 @@ are additive. Two things follow:
 
 Downgrading the schema itself is also tested (`tests/api/test_migration_populated_upgrade.py`)
 but is not needed for a code rollback.
+
+## Rerun it
+
+```
+TEST_POSTGRES_ADMIN_URL=postgresql+psycopg://USER:PASS@127.0.0.1:5433/postgres \
+  .venv/bin/python scripts/rehearse_rollback.py --old github/main --new hardening/integration-candidate
+```
+
+It archives each ref's `control-plane/api`, migrates a scratch database to the new head,
+populates it, runs the old code on it, then the new code again, and drops the database.
+Exit 0 means the five checks passed (2026-10-05: `"failed": []`).
+
