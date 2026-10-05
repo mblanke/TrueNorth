@@ -220,8 +220,10 @@ describe('RangesComponent', () => {
   it('refreshes while a range is in progress, and not otherwise', fakeAsync(() => {
     fixture.detectChanges();
     const calls = mockApi.listRanges.calls.count();
+    const statCalls = mockApi.getRangeStats.calls.count();
     tick(POLL_MS);
     expect(mockApi.listRanges.calls.count()).toBe(calls + 1);
+    expect(mockApi.getRangeStats.calls.count()).toBe(statCalls + 1, 'the counts strip refreshes with the list');
     mockApi.listRanges.and.returnValue(of([{ id: 'r1', name: 'A', state: 'ready' } as Range]));
     tick(POLL_MS);
     const settled = mockApi.listRanges.calls.count();
