@@ -65,6 +65,8 @@ jobs:
         env:
           AUTH_DISABLED: "true"
           DATABASE_URL: "sqlite://"
+          # tests/conftest.py overrides REDIS_URL with an unreachable address; no test
+          # reaches a real broker except through TEST_REDIS_URL.
           REDIS_URL: "redis://localhost:6379/15"
           RATE_LIMIT_ENABLED: "false"
           TEST_POSTGRES_ADMIN_URL: "postgresql+psycopg://tn_ci:tn_ci@localhost:5432/postgres"
