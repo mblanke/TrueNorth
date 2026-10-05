@@ -52,6 +52,13 @@ export const routes: Routes = [
   { path: 'ranges', redirectTo: 'authoring/ranges', pathMatch: 'full' },
   { path: 'templates', redirectTo: 'authoring/content', pathMatch: 'full' },
   { path: 'scenarios', redirectTo: 'authoring/scenarios', pathMatch: 'full' },
+  {
+    // ARC² Course Studio: full screen (BARE_ROUTES in app.component.ts).
+    path: 'arc2',
+    canActivate: [authGuard, instructorGuard],
+    loadComponent: () => import('./features/course-studio/course-studio.component').then(m => m.CourseStudioComponent),
+    title: 'ARC² Course Studio - TrueNorth',
+  },
   // -- Authoring Studio hub (consolidates the design/authoring screens) --
   {
     path: 'authoring',
@@ -60,6 +67,8 @@ export const routes: Routes = [
     data: {
       title: 'Authoring Studio',
       tabs: [
+        // Full screen, so the tab hands over to /arc2 (see the redirect below).
+        { label: 'Course Studio', path: 'studio' },
         { label: 'Ranges', path: 'ranges' },
         { label: 'Scenarios', path: 'scenarios' },
         { label: 'Detections', path: 'detections' },
@@ -70,6 +79,7 @@ export const routes: Routes = [
     },
     children: [
       { path: '', redirectTo: 'ranges', pathMatch: 'full' },
+      { path: 'studio', redirectTo: '/arc2', pathMatch: 'full' },
       {
         // Ranges tab is now the range list; the designer opens per range.
         path: 'ranges',

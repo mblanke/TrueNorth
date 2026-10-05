@@ -3,7 +3,7 @@
 # ------------------------------------------------------------------
 .PHONY: help dev dev-down import-content test lint format build clean migrate \
                 packer-validate tf-plan k6 pre-commit security-scan \
-                prod-config prod-up prod-down prod-ps prod-logs
+                prod-config prod-up prod-down prod-ps prod-logs arc2-runner
 
 SHELL := /bin/bash
 COMPOSE := docker compose -f infra/platform/docker/compose.dev.yml
@@ -46,6 +46,9 @@ DEV_API ?= http://127.0.0.1:8081
 
 import-content: ## Load all content (curriculum, templates, scenarios, detections, demo data)
 	python3 scripts/load_content.py --api $(DEV_API)
+
+arc2-runner: ## Run the ARC² Course Studio runner (on the host with Claude Code, not in Docker)
+	PYTHONPATH=tools .venv/bin/python -m arc2.runner
 
 # ── Production ──────────────────────────────────────────────
 # Normally driven by install/ (Ansible) on the platform host; these targets are
