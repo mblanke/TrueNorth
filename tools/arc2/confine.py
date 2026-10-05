@@ -2,25 +2,36 @@
 
 The engine runs request and feedback text from course authors in any tenant, and its
 tools include arbitrary Python. Claude Code's ``--allowedTools`` rules match command
-text and are not a security boundary. A Bash sandbox would still leave the repository
-(the working directory) writable. So the runner wraps the whole ``claude`` process tree
-in an OS sandbox for the job:
+text and are not a security boundary. So the runner puts the whole ``claude`` process
+tree for a job in an OS sandbox. The sandbox denies by default and then allows only
+what the job needs:
 
-* **write** only inside ``<runs>/<slug>/`` and ``<runs>/<slug>.request.txt``. Nothing
-  else in the repository or the runs root, so no other run, ``_studio/`` (where the API
-  records ownership), ``_queue/`` or ``_jobs/``;
-* **read** none of the runs root except those two paths. The rest of the repository
-  (agent definitions, content, tools) stays readable;
-* writes outside the repository and runs root (Claude Code's own ``~/.claude``, temp
-  files) and the network are left alone. The engine needs them.
+* **Writes**: only the job's run (``<runs>/<slug>/``), its request file
+  (``<runs>/<slug>.request.txt``), the job's own home directory (Claude Code's config,
+  sessions and temp files; created per job and deleted afterwards) and ``/dev`` nodes.
+  It cannot write the repository, other runs, ``_studio/`` (where the API records
+  ownership), ``_queue/``, ``_jobs/``, ``_history/``, the runner's home, or any shared
+  location a later job or the operator would load (``~/.claude``, ``~/.gitconfig``,
+  shell profiles, launch agents, shared temp dirs).
+* **Reads**: nothing under the runner account's home except the repository, the
+  ``claude`` installation, the job's run and the job's home. That excludes other runs,
+  ``_studio``, ``_queue``, ``_jobs``, other jobs' Claude sessions, ``~/.ssh`` and
+  ``~/.docker``. ``.env*`` files in the repository are not readable either.
+* **Processes**: no signals to processes outside the sandbox, and no inspection of them
+  (their arguments carry other tenants' requests).
+* **Network**: no Unix-domain sockets (the Docker socket) and no localhost (the API,
+  Redis, Postgres), except the DNS resolver socket and, when configured, the local
+  model fallback's port. Internet access to the model API stays open.
 
-Paths are checked by the kernel after symlinks are resolved, so a link inside the run
-does not reach out of it.
+The kernel checks paths after resolving symlinks, so a link inside the run reaches
+nothing. The job's credentials are in its environment, so a job can always use them.
+Run the runner under a dedicated account whose token can be revoked (see
+docs/arc2-course-studio.md).
 
 Backends: ``seatbelt`` (macOS ``sandbox-exec``) and ``none``. Selection comes from
 ``ARC2_CONFINE``: ``auto`` (the default) uses Seatbelt where it exists and otherwise
-fails closed. ``none`` runs unconfined; it is for a single-tenant host and must be set
-explicitly. A Linux backend (bubblewrap) is not written yet.
+fails closed. ``none`` runs unconfined, is for a single-tenant host only, and must be
+set explicitly. There is no Linux (bubblewrap) backend yet.
 """
 
 from __future__ import annotations
@@ -29,11 +40,28 @@ import os
 import shutil
 import sys
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
+
+DNS_SOCKET = "/private/var/run/mDNSResponder"
 
 
 class ConfinementError(RuntimeError):
     """No usable sandbox for the configured choice."""
+
+
+@dataclass(frozen=True)
+class Jail:
+    """What one confined process may reach."""
+
+    repo: Path  # readable, never writable
+    runs: Path  # the runs root: unreadable and unwritable except ``writable`` below
+    home: Path  # the runner account's home: unreadable except what is listed
+    writable: tuple[Path, ...]  # read-write subtrees (the job's run, its home)
+    writable_files: tuple[Path, ...] = ()  # read-write single files (the request file)
+    readable: tuple[Path, ...] = ()  # extra read-only subtrees (the claude installation)
+    local_ports: tuple[int, ...] = ()  # localhost ports the job may connect to
+    readable_inner: tuple[Path, ...] = ()  # read-only subtrees inside the runs root
 
 
 class Confinement(ABC):
@@ -43,8 +71,8 @@ class Confinement(ABC):
     def available(self) -> bool: ...
 
     @abstractmethod
-    def wrap(self, cmd: list[str], *, repo: Path, runs: Path, slug: str) -> list[str]:
-        """``cmd`` rewritten to run confined to ``runs/slug``."""
+    def wrap(self, cmd: list[str], jail: Jail) -> list[str]:
+        """``cmd`` rewritten to run inside ``jail``."""
 
 
 class Seatbelt(Confinement):
@@ -53,24 +81,39 @@ class Seatbelt(Confinement):
     def available(self) -> bool:
         return sys.platform == "darwin" and shutil.which("sandbox-exec") is not None
 
-    def profile(self, *, repo: Path, runs: Path, slug: str) -> str:
-        repo_s, runs_s = _sbpl(repo.resolve()), _sbpl(runs.resolve())
-        # Seatbelt applies the last rule that matches, so the narrow allows come last.
-        return "\n".join(
-            [
-                "(version 1)",
-                "(allow default)",
-                f'(deny file-write* (subpath "{repo_s}"))',
-                f'(deny file-write* (subpath "{runs_s}"))',
-                f'(deny file-read-data (subpath "{runs_s}"))',
-                f'(allow file-write* file-read-data (subpath "{runs_s}/{slug}"))',
-                f'(allow file-write* file-read-data (literal "{runs_s}/{slug}.request.txt"))',
-                "",
-            ]
-        )
+    def profile(self, jail: Jail) -> str:
+        q = _quote
+        rw = [f"(subpath {q(p)})" for p in jail.writable] + [f"(literal {q(p)})" for p in jail.writable_files]
+        reads = [f"(subpath {q(p)})" for p in (jail.repo, *jail.readable)]
+        # Seatbelt applies the last rule that matches: broad denials first, exceptions after.
+        rules = [
+            "(version 1)",
+            "(allow default)",
+            "(deny file-write*)",
+            '(allow file-write* (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty")'
+            ' (literal "/dev/dtracehelper") (regex #"^/dev/fd/"))',
+            f"(deny file-read-data (subpath {q(jail.home)}))",
+            f"(allow file-read-data {' '.join(reads)})",
+            f"(deny file-read-data (subpath {q(jail.runs)}))",
+            r'(deny file-read-data (regex #"/\.env[^/]*$"))',
+            *(
+                [f"(allow file-read-data {' '.join(f'(subpath {q(p)})' for p in jail.readable_inner)})"]
+                if jail.readable_inner
+                else []
+            ),
+            f"(allow file-read-data file-write* {' '.join(rw)})",
+            "(deny signal (target others))",
+            "(deny process-info* (target others))",
+            "(deny network-outbound (remote unix-socket))",
+            f'(allow network-outbound (remote unix-socket (path-literal "{DNS_SOCKET}")))',
+            '(deny network-outbound (remote ip "localhost:*"))',
+            *(f'(allow network-outbound (remote ip "localhost:{port}"))' for port in jail.local_ports),
+            "",
+        ]
+        return "\n".join(rules)
 
-    def wrap(self, cmd: list[str], *, repo: Path, runs: Path, slug: str) -> list[str]:
-        return ["sandbox-exec", "-p", self.profile(repo=repo, runs=runs, slug=slug), *cmd]
+    def wrap(self, cmd: list[str], jail: Jail) -> list[str]:
+        return ["sandbox-exec", "-p", self.profile(jail), *cmd]
 
 
 class Unconfined(Confinement):
@@ -79,7 +122,7 @@ class Unconfined(Confinement):
     def available(self) -> bool:
         return True
 
-    def wrap(self, cmd: list[str], *, repo: Path, runs: Path, slug: str) -> list[str]:
+    def wrap(self, cmd: list[str], jail: Jail) -> list[str]:
         return cmd
 
 
@@ -106,6 +149,7 @@ def select(choice: str | None = None) -> Confinement:
     return backend
 
 
-def _sbpl(path: Path) -> str:
-    """A path as an SBPL string literal body."""
-    return str(path).replace("\\", "\\\\").replace('"', '\\"')
+def _quote(path: Path) -> str:
+    """A resolved path as an SBPL string literal."""
+    text = str(Path(path).resolve()).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{text}"'

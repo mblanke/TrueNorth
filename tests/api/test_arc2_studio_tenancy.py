@@ -200,3 +200,14 @@ def test_a_run_directory_that_is_a_symlink_to_another_run_is_not_read(client, ru
         assert client.get(f"/arc2/runs/{mine}/package.zip").status_code == 404
         assert client.get(f"/arc2/runs/{mine}/file", params={"path": "01-blueprint/outline.yaml"}).status_code == 404
     assert "Capture basics" not in body
+
+
+def test_a_folder_in_the_run_linked_to_another_run_is_not_read_or_served(client, runs, foreign_run):
+    with acting_as(UserRole.instructor, DEV_TENANT):
+        mine = client.post("/arc2/runs", json={"name": "Mine", "request": REQUEST}).json()["slug"]
+        (runs / mine).mkdir()
+        (runs / mine / "01-blueprint").symlink_to(runs / foreign_run / "01-blueprint", target_is_directory=True)
+        (runs / mine / "07-bundle").symlink_to(runs / foreign_run / "07-bundle", target_is_directory=True)
+        assert "Capture basics" not in client.get(f"/arc2/runs/{mine}").text
+        assert client.get(f"/arc2/runs/{mine}/file", params={"path": "01-blueprint/outline.yaml"}).status_code == 404
+        assert client.get(f"/arc2/runs/{mine}/package.zip").status_code == 404

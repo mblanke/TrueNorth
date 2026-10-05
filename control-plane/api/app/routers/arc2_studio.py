@@ -26,9 +26,10 @@ import json
 import os
 import re
 import secrets
+import stat
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -80,31 +81,56 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def _contained(path: Path) -> bool:
-    """True when ``path`` resolves inside the runs-root entry it is addressed through.
-
-    Run directories are written by the engine, so a symlink in one (or a run directory
-    that is itself a symlink) must not make this API read another run's files. Every
-    read of a file under the runs root goes through this check.
-    """
-    root = runs_dir()
+def _walk(parts: tuple[str, ...]) -> int:
+    """A directory fd for ``runs_dir()/parts``, opened one component at a time with no
+    symlink followed. The caller closes it. Raises OSError."""
+    fd = os.open(runs_dir(), os.O_RDONLY | os.O_DIRECTORY)
     try:
-        top = root / path.relative_to(root).parts[0]
-    except (ValueError, IndexError):
-        return False
-    real_top = top.resolve()
-    if real_top != root.resolve() / top.name:
-        return False  # the run directory itself is a link
-    real = path.resolve()
-    return real == real_top or real_top in real.parents
+        for part in parts:
+            if part in ("", ".", ".."):
+                raise OSError(f"bad path component {part!r}")
+            nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nfd
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _read_bytes(path: Path, limit: int | None = None) -> bytes | None:
+    """The bytes of a regular file under the runs root, or None.
+
+    Run directories are written by the engine, so no symlink is followed anywhere below
+    the runs root: not the run directory, not a folder in it, not the file. Each step
+    opens relative to the previous one's fd, so swapping a link in while this runs does
+    not redirect it. Every read of a file under the runs root goes through here.
+    """
+    try:
+        rel = path.relative_to(runs_dir())
+    except ValueError:
+        return None
+    if not rel.parts:
+        return None
+    try:
+        dir_fd = _walk(rel.parts[:-1])
+        try:
+            fd = os.open(rel.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+        finally:
+            os.close(dir_fd)
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                return None
+            return f.read() if limit is None else f.read(limit)
+    except OSError:
+        return None
 
 
 def _read_json(path: Path) -> dict | None:
-    if not _contained(path):
-        return None
+    data = _read_bytes(path)
     try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
+        return json.loads(data) if data is not None else None
+    except ValueError:
         return None
 
 
@@ -127,7 +153,7 @@ def _is_owner(slug: str, user: CurrentUser) -> bool:
 def _owned_run(slug: str, user: CurrentUser) -> Path:
     """The run directory for ``slug`` if the caller's tenant owns it, else 404 (never 403)."""
     run = _run_path(slug)
-    if not _is_owner(slug, user) or run.is_symlink():
+    if not _is_owner(slug, user) or run.is_symlink():  # reads below also refuse links
         raise HTTPException(404, "No such run")
     return run
 
@@ -266,20 +292,15 @@ def _mtime(path: Path) -> str | None:
 
 
 def _safe_text(path: Path, limit: int = 4000) -> str | None:
-    if not _contained(path):
-        return None
-    try:
-        return path.read_text()[:limit]
-    except OSError:
-        return None
+    data = _read_bytes(path, limit * 4)
+    return data.decode(errors="replace")[:limit] if data is not None else None
 
 
 def _safe_yaml(path: Path):
-    if not _contained(path):
-        return None
+    data = _read_bytes(path)
     try:
-        return yaml.safe_load(path.read_text())
-    except (OSError, yaml.YAMLError):
+        return yaml.safe_load(data) if data is not None else None
+    except yaml.YAMLError:
         return None
 
 
@@ -468,28 +489,46 @@ def reply(slug: str, body: Reply, user: CurrentUser = Depends(author)):
 
 @router.get("/runs/{slug}/file", response_model=RunFile)
 def get_file(slug: str, path: str = Query(..., max_length=300), user: CurrentUser = Depends(author)):
-    run = _owned_run(slug, user).resolve()
-    target = (run / path).resolve()
-    if run not in target.parents or target.suffix not in TEXT_SUFFIXES or not target.is_file():
+    run = _owned_run(slug, user)
+    rel = PurePosixPath(path)
+    if rel.is_absolute() or not rel.parts or any(p in ("", ".", "..") for p in rel.parts) \
+            or rel.suffix not in TEXT_SUFFIXES:
         raise HTTPException(404, "No such file")
-    if target.stat().st_size > MAX_FILE_BYTES:
+    data = _read_bytes(run.joinpath(*rel.parts), MAX_FILE_BYTES + 1)
+    if data is None:
+        raise HTTPException(404, "No such file")
+    if len(data) > MAX_FILE_BYTES:
         raise HTTPException(413, "File too large to show")
-    rel = target.relative_to(run)
-    return {"path": str(rel), "text": target.read_text(errors="replace"),
-            "instructor_only": "instructor" in rel.parts}
+    return {"path": str(rel), "text": data.decode(errors="replace"), "instructor_only": "instructor" in rel.parts}
 
 
 @router.get("/runs/{slug}/package.zip")
 def package_zip(slug: str, user: CurrentUser = Depends(author)):
-    run = _owned_run(slug, user).resolve()
-    root = (run / "07-bundle" / "cmi5").resolve()
-    if run not in root.parents or not (root / "cmi5.xml").is_file():
-        raise HTTPException(404, "No package yet")
+    _owned_run(slug, user)
+    try:
+        root_fd = _walk((slug, "07-bundle", "cmi5"))
+    except OSError:
+        raise HTTPException(404, "No package yet") from None
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(root.rglob("*")):
-            if f.is_file() and root in f.resolve().parents:
-                z.write(f, f.relative_to(root))
+    try:
+        if not stat.S_ISREG(os.stat("cmi5.xml", dir_fd=root_fd, follow_symlinks=False).st_mode):
+            raise HTTPException(404, "No package yet")
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            # fwalk does not descend into linked folders; files are opened without following links.
+            for top, dirs, files, dir_fd in os.fwalk(".", dir_fd=root_fd, follow_symlinks=False):
+                dirs.sort()
+                for name in sorted(files):
+                    try:
+                        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+                    except OSError:
+                        continue
+                    with os.fdopen(fd, "rb") as f:
+                        if stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                            z.writestr(str(PurePosixPath(top, name)).removeprefix("./"), f.read())
+    except FileNotFoundError:
+        raise HTTPException(404, "No package yet") from None
+    finally:
+        os.close(root_fd)
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/zip",
                              headers={"Content-Disposition": f'attachment; filename="{slug}-cmi5.zip"'})

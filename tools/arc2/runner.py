@@ -56,7 +56,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from arc2.confine import Confinement, ConfinementError, Unconfined, select
+from arc2.confine import Confinement, ConfinementError, Jail, Unconfined, select
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SLUG_RE = re.compile(r"^arc2-[a-z0-9-]{1,60}$")
@@ -166,6 +166,8 @@ def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
         "--output-format", "stream-json", "--verbose",
         "--permission-mode", "dontAsk",
         "--allowedTools", *job_tools(job["slug"]),
+        # No user-level settings, hooks or MCP servers: only this repository's project settings.
+        "--setting-sources", "project", "--strict-mcp-config",
         "--append-system-prompt", RUNNER_GUIDANCE,
     ]
     return cmd + (["--model", model] if model else [])
@@ -275,32 +277,92 @@ def agent_from_event(event: dict) -> str | None:
     return None
 
 
+# Environment a confined job gets: these names from the runner's environment (plus the
+# names in ARC2_JOB_ENV), never the rest, which may hold the runner's own secrets.
+JOB_ENV = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME", "SHELL", "TZ")
+AUTH_ENV = ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
+
+
+def job_homes() -> Path:
+    return Path(os.environ.get("ARC2_JOB_HOMES") or Path.home() / ".arc2" / "jobs")
+
+
+def token_file() -> Path:
+    return Path(os.environ.get("ARC2_OAUTH_TOKEN_FILE") or Path.home() / ".arc2" / "oauth-token")
+
+
+def job_env(home: Path) -> dict:
+    """The confined job's environment: a fresh HOME and Claude config, and an allow-list."""
+    names = (*JOB_ENV, *AUTH_ENV, *filter(None, os.environ.get("ARC2_JOB_ENV", "").split(",")))
+    env = {k: os.environ[k] for k in names if k in os.environ}
+    if not any(env.get(k) for k in AUTH_ENV):
+        with contextlib.suppress(OSError):
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = token_file().read_text().strip()
+    env.update(HOME=str(home), CLAUDE_CONFIG_DIR=str(home / ".claude"), TMPDIR=str(home / "tmp"),
+               XDG_CONFIG_HOME=str(home / ".config"), XDG_CACHE_HOME=str(home / ".cache"),
+               PYTHONPATH="tools", PYTHONDONTWRITEBYTECODE="1")
+    return env
+
+
+def _claude_install(claude: str) -> tuple[Path, ...]:
+    found = shutil.which(claude) or claude
+    paths = {Path(found).parent, Path(os.path.realpath(found)).parent}
+    return tuple(sorted(paths))
+
+
+def _local_ports(fallback: Fallback | None) -> tuple[int, ...]:
+    if not fallback:
+        return ()
+    from urllib.parse import urlparse
+    url = urlparse(fallback.url)
+    if url.hostname in ("localhost", "127.0.0.1", "::1"):
+        return (url.port or (443 if url.scheme == "https" else 80),)
+    return ()
+
+
 def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOUT,
             fallback: Fallback | None = None, confinement: Confinement | None = None,
             runs: Path | None = None) -> dict:
     """Run one job on Claude; if Claude is unavailable, run it again on the local fallback.
 
-    Both attempts run inside ``confinement`` (arc2/confine.py), limited to
-    ``runs/<slug>``. Callers other than ``main`` (tests) may omit it to run unconfined.
+    Both attempts run inside ``confinement`` (arc2/confine.py). Confined, a job gets a
+    fresh home of its own (Claude config, sessions, temp), deleted afterwards, and an
+    allow-listed environment. ``none`` keeps the runner's own environment and config.
+    Callers other than ``main`` (tests) may omit ``confinement`` to run unconfined.
     """
     confinement = confinement or Unconfined()
     runs = runs or path.parent.parent
-    env = {k: v for k, v in os.environ.items() if k not in ("AUTH_DISABLED", "DATABASE_URL")}
-    env["PYTHONPATH"] = "tools"
-    env["PYTHONDONTWRITEBYTECODE"] = "1"  # the repository is read-only to the job
-
-    def confined(cmd: list[str]) -> list[str]:
-        return confinement.wrap(cmd, repo=REPO_ROOT, runs=runs, slug=record["slug"])
-
     record["engine"] = "claude"
     record["confinement"] = confinement.name
-    record = _attempt(record, path, confined(command_for(record, claude)), env, timeout, append=False)
-    if fallback and should_fall_back(record) and fallback.reachable():
-        record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
-                      result=None, exit_code=None, finished_at=None, current_agent=None)
-        write_record(path, record)
-        record = _attempt(record, path, confined(command_for(record, claude, fallback.model)), fallback.env(env),
-                          timeout, append=True)
+    if isinstance(confinement, Unconfined):
+        env = {k: v for k, v in os.environ.items() if k not in ("AUTH_DISABLED", "DATABASE_URL")}
+        env.update(PYTHONPATH="tools", PYTHONDONTWRITEBYTECODE="1")
+        home = None
+    else:
+        home = job_homes() / record["id"]
+        shutil.rmtree(home, ignore_errors=True)
+        for sub in (".claude", "tmp", ".config", ".cache"):
+            (home / sub).mkdir(parents=True, exist_ok=True)
+        home.chmod(0o700)
+        env = job_env(home)
+    jail = Jail(
+        repo=REPO_ROOT, runs=runs, home=Path.home(),
+        writable=tuple(p for p in (runs / record["slug"], home) if p is not None),
+        writable_files=(runs / f"{record['slug']}.request.txt",),
+        readable=_claude_install(claude), local_ports=_local_ports(fallback),
+    )
+    try:
+        record = _attempt(record, path, confinement.wrap(command_for(record, claude), jail), env, timeout,
+                          append=False)
+        if fallback and should_fall_back(record) and fallback.reachable():
+            record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
+                          result=None, exit_code=None, finished_at=None, current_agent=None)
+            write_record(path, record)
+            record = _attempt(record, path, confinement.wrap(command_for(record, claude, fallback.model), jail),
+                              fallback.env(env), timeout, append=True)
+    finally:
+        if home is not None:
+            shutil.rmtree(home, ignore_errors=True)
     return record
 
 
@@ -430,43 +492,63 @@ def _duration(seconds: int) -> str:
 
 
 # ── Per-course history ──────────────────────────────────────────────────
-# Every job ends with a commit in the course's own git repository (<runs>/<slug>/.git,
-# separate from the TrueNorth repo, which /arc2 never commits to). The commit holds the
-# whole run folder as that step left it, plus the step's full transcript under
-# _transcripts/, so any two rounds can be compared and a bad rework rolled back.
-# The engine only reads its stage folders (01-07), so neither .git nor _transcripts/
-# affects its checks or digests.
+# Every job ends with a commit in the course's own history, separate from the TrueNorth
+# repo, which /arc2 never commits to. The git directory is runner-owned,
+# <runs>/_history/<slug>.git, with the run folder as its work tree, so a job cannot plant
+# hooks or config in it. Each step's transcript is kept beside it in
+# <runs>/_history/<slug>.transcripts/. Git runs with hooks, fsmonitor and global/system
+# config disabled, and inside the job's confinement (reading the run, writing only the
+# history), so a link or file the job left in its run cannot make it touch anything else.
+# A run folder that is itself a link is not recorded. Any two rounds can be compared, and
+# a bad rework rolled back.
 
-def _git(run: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(run), *args], capture_output=True, text=True, timeout=60)
+GIT_SAFE = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.symlinks=true",
+            "-c", "user.name=ARC2 runner", "-c", "user.email=arc2-runner@localhost"]
 
 
-def snapshot(runs: Path, record: dict, log_path: Path) -> str | None:
+def _git(git_dir: Path, work: Path, *args: str, confinement: Confinement | None = None,
+         jail: Jail | None = None) -> subprocess.CompletedProcess:
+    cmd = ["git", f"--git-dir={git_dir}", f"--work-tree={work}", *GIT_SAFE, *args]
+    if confinement and jail:
+        cmd = confinement.wrap(cmd, jail)
+    env = {k: os.environ[k] for k in ("PATH", "LANG", "LC_ALL") if k in os.environ}
+    env.update(GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_NOSYSTEM="1", HOME=str(git_dir))
+    return subprocess.run(cmd, cwd=work, env=env, capture_output=True, text=True, timeout=60)
+
+
+def snapshot(runs: Path, record: dict, log_path: Path, confinement: Confinement | None = None) -> str | None:
     """Commit the run folder after a job. Returns the commit id, or None if there was nothing to record."""
-    run = runs / record["slug"]
-    if not run.is_dir():
-        return None  # the step failed before /arc2 created the run
+    slug = record["slug"]
+    run = runs / slug
+    if run.is_symlink() or not run.is_dir() or run.resolve() != runs.resolve() / slug:
+        return None  # never created, or replaced by a link: nothing trustworthy to record
+    history = runs / "_history"
+    git_dir, transcripts = history / f"{slug}.git", history / f"{slug}.transcripts"
+    transcripts.mkdir(parents=True, exist_ok=True)
     stamp = (record.get("started_at") or now()).replace(":", "").replace("-", "").replace(".", "")[:15]
-    transcripts = run / "_transcripts"
-    transcripts.mkdir(exist_ok=True)
     if log_path.is_file():
         shutil.copyfile(log_path, transcripts / f"{stamp}-{record['id']}.jsonl")
-    if not (run / ".git").is_dir():
-        # Checked on the folder itself: without a .git here, git -C would find the TrueNorth repo.
-        if _git(run, "init", "-q").returncode != 0:
-            return None
-        _git(run, "config", "user.name", "ARC2 runner")
-        _git(run, "config", "user.email", "arc2-runner@localhost")
-    _git(run, "add", "-A")
-    if _git(run, "diff", "--cached", "--quiet").returncode == 0:
+    jail = Jail(repo=REPO_ROOT, runs=runs, home=Path.home(), writable=(git_dir,), readable_inner=(run,))
+    confinement = confinement or Unconfined()
+    if not git_dir.is_dir() and subprocess.run(
+        ["git", "init", "-q", "--bare", str(git_dir)], capture_output=True, timeout=60,
+        env={"PATH": os.environ.get("PATH", ""), "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"},
+    ).returncode != 0:
+        return None
+
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return _git(git_dir, run, *args, confinement=confinement, jail=jail)
+
+    git("add", "-A", "--", ".", ":(exclude).git", ":(exclude)_transcripts")
+    if git("diff", "--cached", "--quiet").returncode == 0:
         return None
     what = "start" if record["action"] == "start" else f"resume: {' '.join(record['text'].split())[:60]}"
     message = (f"{what} · {record.get('state')} on {record.get('engine')}\n\n"
                f"Job: {record['id']}\nRequested-by: {record.get('requested_by')}\n"
                + (f"Error: {record['error'][:200]}\n" if record.get("error") else ""))
-    if _git(run, "commit", "-q", "-m", message).returncode != 0:
+    if git("commit", "-q", "-m", message).returncode != 0:
         return None
-    return _git(run, "rev-parse", "--short", "HEAD").stdout.strip() or None
+    return git("rev-parse", "--short", "HEAD").stdout.strip() or None
 
 
 def reap(jobs: Path) -> None:
@@ -496,6 +578,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"arc2 runner: not starting: {exc}", file=sys.stderr, flush=True)
         return 2
     fallback = Fallback.from_env()
+    if confinement.name != "none" and not any(os.environ.get(k) for k in AUTH_ENV) and not token_file().is_file():
+        print(f"arc2 runner: warning: no CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY or {token_file()}; "
+              "confined jobs start with an empty Claude config and cannot sign in", file=sys.stderr, flush=True)
     queue, jobs = dirs(args.runs)
     reap(jobs)
     print(f"arc2 runner: watching {queue} (claude: {claude}; fallback: "
@@ -507,7 +592,7 @@ def main(argv: list[str] | None = None) -> int:
             record, path = claimed
             print(f"{now()} {record['action']} {record['slug']}: running", flush=True)
             record = run_job(record, path, claude, args.timeout, fallback, confinement, args.runs)
-            commit = snapshot(args.runs, record, path.with_suffix(".log"))
+            commit = snapshot(args.runs, record, path.with_suffix(".log"), confinement)
             if commit:
                 record["history_commit"] = commit
                 write_record(path, record)

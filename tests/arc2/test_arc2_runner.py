@@ -201,12 +201,14 @@ def test_each_job_is_committed_to_the_courses_own_history(tmp_path, fake_claude)
     runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
     [rec] = records(runs)
     assert rec["history_commit"]
-    course = runs / "arc2-wireshark-basics"
-    log = subprocess.run(["git", "-C", str(course), "log", "--format=%s"], capture_output=True, text=True).stdout
+    git = ["git", f"--git-dir={runs / '_history' / 'arc2-wireshark-basics.git'}"]
+    log = subprocess.run([*git, "log", "--format=%s"], capture_output=True, text=True).stdout
     assert log.strip() == "start · done on claude"
-    files = subprocess.run(["git", "-C", str(course), "ls-files"], capture_output=True, text=True).stdout.split()
+    files = subprocess.run([*git, "ls-files"], capture_output=True, text=True).stdout.split()
     assert "01-blueprint/outline.yaml" in files
-    assert any(f.startswith("_transcripts/") and f.endswith(f"-{rec['id']}.jsonl") for f in files)
+    assert not (runs / "arc2-wireshark-basics" / ".git").exists(), "the history lives outside the run"
+    [transcript] = (runs / "_history" / "arc2-wireshark-basics.transcripts").glob(f"*-{rec['id']}.jsonl")
+    assert transcript.read_text().count("\n") == 3
 
 
 def test_no_history_when_the_run_was_never_created(tmp_path, fake_claude, monkeypatch):

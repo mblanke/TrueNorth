@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from arc2 import check, confine
+from arc2 import check
 
 CROSSWALK = """qsp_code,nqual,tier,po_id,po_title,eos,conditions,critical_events,assessment_type,duration_min,pass_standard,deliverable,environment,target_role,nice_dcwf_task,component_version,scenario_count,build_hours,status
 ALJQ,ALJQ,core,PO_007,Analyze Malicious Activity in Network Traffic,007.01,pcap,scanning;exfiltration;lateral_movement,PC practical,240,P/F,report,COTE,Cyber Defense Analyst,T0023,SP800-181r1,4,200,todo
@@ -219,9 +219,18 @@ def repo(tmp_path: Path) -> Path:
 
 
 @pytest.fixture(autouse=True)
-def _confinement_where_available(monkeypatch):
-    """runner.main() fails closed without an OS sandbox. On hosts without one (Linux CI)
-    the generic runner tests run unconfined; test_arc2_confinement.py covers the sandbox
-    and the fail-closed start on its own terms."""
-    if not confine.Seatbelt().available():
-        monkeypatch.setenv("ARC2_CONFINE", "none")
+def _runner_tests_run_unconfined(monkeypatch):
+    """runner.main() fails closed without an OS sandbox, and the sandbox confines a fake
+    engine's writes to its run. The generic runner tests check queue, record, deadline and
+    history logic with fake engines that write elsewhere, so they run unconfined;
+    test_arc2_confinement.py selects the sandbox, and the fail-closed start, itself."""
+    monkeypatch.setenv("ARC2_CONFINE", "none")
+
+
+@pytest.fixture(autouse=True)
+def _job_homes_and_env(tmp_path, monkeypatch):
+    """Confined jobs get a fresh home under ARC2_JOB_HOMES and only allow-listed
+    environment variables; the fake engines read their settings from these."""
+    monkeypatch.setenv("ARC2_JOB_HOMES", str(tmp_path / "job-homes"))
+    monkeypatch.setenv("ARC2_OAUTH_TOKEN_FILE", str(tmp_path / "no-token"))
+    monkeypatch.setenv("ARC2_JOB_ENV", "FAKE_ARGS,FAKE_MODE,FAKE_PIDS,PROBE_RUNS,PROBE_REPO,PROBE_NAME")
