@@ -9,6 +9,7 @@ Endpoint                                 Permission(s)
 =======================================  ==========================
 POST   /templates                        TEMPLATE_CREATE
 GET    /templates                        TEMPLATE_READ
+GET    /templates/windows-roles          TEMPLATE_READ
 GET    /templates/{template_id}          TEMPLATE_READ
 PUT    /templates/{template_id}          TEMPLATE_UPDATE
 DELETE /templates/{template_id}          TEMPLATE_DELETE
@@ -25,7 +26,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import engine_bridge, range_topology
+from .. import engine_bridge, range_topology, windows_roles
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Template, UserRole
@@ -51,8 +52,24 @@ def validate_template(
     body: YamlValidateIn,
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
 ) -> dict:
-    """Validate range-template YAML against the engine's canonical schema."""
-    return engine_bridge.validate_yaml("template", body.yaml)
+    """Validate range-template YAML against the engine's canonical schema and the
+    Windows Server role rules (two product images on one VM, conflicting roles)."""
+    result = engine_bridge.validate_yaml("template", body.yaml)
+    doc = result.get("normalized")
+    if isinstance(doc, dict) and isinstance(doc.get("nodes"), list):
+        errors, warnings = windows_roles.check_nodes(doc["nodes"])
+        result["errors"] = result["errors"] + [{"path": "nodes", "message": m} for m in errors]
+        result["valid"] = not result["errors"]
+        result["warnings"] = warnings
+    return result
+
+
+@router.get("/windows-roles")
+def windows_role_catalogue(
+    user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
+) -> dict:
+    """Windows Server roles the designer offers, with minimum sizing and placement rules."""
+    return windows_roles.catalogue()
 
 
 @router.post("/{template_id}/diagram-preview")
@@ -103,6 +120,7 @@ def template_from_diagram(
         "template": out["template"],
         "yaml": pyyaml.safe_dump(out["template"], sort_keys=False),
         "warnings": out["warnings"],
+        "errors": out["errors"],
     }
 
 

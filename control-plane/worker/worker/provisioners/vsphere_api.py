@@ -11,8 +11,10 @@ Services API with pyVmomi, VMware's own SDK.
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import os
+import secrets
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -30,6 +32,7 @@ try:
 except ImportError:  # only the snapshot operations need it
     Disconnect = SmartConnect = WaitForTask = vim = None  # type: ignore[assignment]
 
+from .. import windows_roles
 from .base import BaseProvisioner
 from .results import (
     DestroyResult,
@@ -61,6 +64,47 @@ VSPHERE_CONCURRENCY: int = int(os.environ.get("VSPHERE_CONCURRENCY", "4"))
 VSPHERE_TOOLS_TIMEOUT: int = int(os.environ.get("VSPHERE_TOOLS_TIMEOUT", "120"))
 # Per snapshot task. Keep it under Celery's visibility timeout (celery_app.py, 3600s).
 VSPHERE_SNAPSHOT_TIMEOUT: int = int(os.environ.get("VSPHERE_SNAPSHOT_TIMEOUT", "1800"))
+# Local administrator baked into the Windows golden images (Packer Autounattend). Used only
+# for VMware Tools guest operations that install Windows Server roles; never logged.
+VSPHERE_GUEST_WIN_USER: str = os.environ.get("VSPHERE_GUEST_WIN_USER", "Administrator")
+VSPHERE_GUEST_WIN_PASSWORD: str = os.environ.get("VSPHERE_GUEST_WIN_PASSWORD", "")
+# Per guest step (feature install, forest promotion, reboot). Under Celery's 3600s timeout.
+VSPHERE_ROLE_TIMEOUT: int = int(os.environ.get("VSPHERE_ROLE_TIMEOUT", "1800"))
+
+_POWERSHELL = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+_EXIT_REBOOT = 3010  # the Windows "success, restart required" code
+
+# Grows C: into any space a larger virtual disk added, then installs the features.
+_FEATURE_SCRIPT = """$ErrorActionPreference = 'Stop'
+$max = (Get-PartitionSupportedSize -DriveLetter C).SizeMax
+if ((Get-Partition -DriveLetter C).Size -lt $max) {{ Resize-Partition -DriveLetter C -Size $max }}
+$r = Install-WindowsFeature -Name {features} -IncludeManagementTools
+if (-not $r.Success) {{ exit 1 }}
+if ($r.RestartNeeded -eq 'Yes') {{ exit 3010 }}
+exit 0
+"""
+
+_FOREST_SCRIPT = """$ErrorActionPreference = 'Stop'
+Import-Module ADDSDeployment
+$dsrm = ConvertTo-SecureString '{dsrm}' -AsPlainText -Force
+Install-ADDSForest -DomainName '{domain}' -DomainNetbiosName '{netbios}' -SafeModeAdministratorPassword $dsrm `
+  -InstallDns -Force -NoRebootOnCompletion | Out-Null
+exit 3010
+"""
+
+
+def _encoded(script: str) -> str:
+    """PowerShell -EncodedCommand form: no quoting surprises, no length games."""
+    return base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+
+
+def _ps_quote(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def _netbios(domain: str) -> str:
+    label = "".join(c for c in domain.split(".")[0].upper() if c.isalnum())
+    return (label or "RANGE")[:15]
 
 
 def _named_snapshots(vm, name: str) -> list:
@@ -99,6 +143,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._session_token: str | None = None
         self._concurrency = max(1, VSPHERE_CONCURRENCY)
         self._snapshot_timeout = VSPHERE_SNAPSHOT_TIMEOUT
+        self._guest_user = VSPHERE_GUEST_WIN_USER
+        self._guest_password = VSPHERE_GUEST_WIN_PASSWORD
+        self._role_timeout = VSPHERE_ROLE_TIMEOUT
 
     # ------------------------------------------------------------------ #
     # HTTP helpers
@@ -291,6 +338,119 @@ class VsphereAPIProvisioner(BaseProvisioner):
         return None
 
     # ------------------------------------------------------------------ #
+    # Disk size and Windows Server roles
+    # ------------------------------------------------------------------ #
+
+    def _grow_disk_sync(self, vm_id: str, disk_gb: int) -> bool:
+        """Grow the VM's first virtual disk to ``disk_gb`` (never shrink). True if grown.
+
+        The Automation REST API cannot change a disk's capacity (Disk.UpdateSpec has
+        only ``backing``), so this goes through pyVmomi like the snapshots do.
+        """
+        want_kb = int(disk_gb) * 1024 * 1024
+        with self._vim() as si:
+            vm = vim.VirtualMachine(vm_id, si._stub)
+            disk = next((d for d in vm.config.hardware.device if isinstance(d, vim.vm.device.VirtualDisk)), None)
+            if disk is None:
+                raise LookupError("VM has no virtual disk")
+            if disk.capacityInKB >= want_kb:
+                return False
+            disk.capacityInKB = want_kb
+            change = vim.vm.device.VirtualDeviceSpec(
+                operation=vim.vm.device.VirtualDeviceSpec.Operation.edit, device=disk
+            )
+            WaitForTask(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(deviceChange=[change])),
+                        si=si, maxWaitTime=self._role_timeout)
+            return True
+
+    def _guest_credentials(self) -> dict:
+        return {"interactive_session": False, "type": "USERNAME_PASSWORD",
+                "user_name": self._guest_user, "password": self._guest_password}
+
+    async def _run_guest_ps(self, client: httpx.AsyncClient, vm_id: str, script: str) -> int:
+        """Run a PowerShell script in the guest through VMware Tools; return its exit code.
+
+        Guest operations go through vCenter, so they work although the range VLAN is
+        isolated from the worker.
+        """
+        creds = self._guest_credentials()
+        pid = await self._api_post(
+            client,
+            f"/vcenter/vm/{vm_id}/guest/processes?action=create",
+            json={"credentials": creds,
+                  "spec": {"path": _POWERSHELL,
+                           "arguments": f"-NoProfile -NonInteractive -ExecutionPolicy Bypass "
+                                        f"-EncodedCommand {_encoded(script)}"}},
+        )
+        deadline = time.monotonic() + self._role_timeout
+        while time.monotonic() < deadline:
+            await asyncio.sleep(10)
+            info = await self._api_post(
+                client, f"/vcenter/vm/{vm_id}/guest/processes/{pid}?action=get", json={"credentials": creds}
+            )
+            if isinstance(info, dict) and info.get("finished"):
+                return int(info.get("exit_code", -1))
+        raise TimeoutError(f"guest script still running after {self._role_timeout}s")
+
+    async def _guest_reboot(self, client: httpx.AsyncClient, vm_id: str) -> None:
+        await self._api_post(client, f"/vcenter/vm/{vm_id}/guest/power?action=reboot")
+        await asyncio.sleep(60)  # let Tools drop before waiting for it to come back
+        deadline = time.monotonic() + self._role_timeout
+        while time.monotonic() < deadline:
+            if await self._wait_tools(client, vm_id):
+                return
+        raise TimeoutError("VMware Tools did not come back after the reboot")
+
+    async def _install_roles(self, client: httpx.AsyncClient, vm_id: str, vm_def: dict) -> dict[str, dict]:
+        """Install the VM's Windows feature roles and, on a forest-root DC, promote it.
+
+        Returns ``{role: {"status": ok|failed|skipped, "detail": ...}}`` for every role
+        on the VM. Image roles were built into the template the VM was cloned from.
+        """
+        roles = list(vm_def.get("roles") or [])
+        features = list(vm_def.get("role_features") or [])
+        status: dict[str, dict] = {r: {"status": "ok", "detail": "in role image"} for r in roles}
+        feature_roles = [r for r in roles if windows_roles.BY_ID[r]["install"]["method"] == "feature"]
+        if not feature_roles:
+            return status
+
+        def mark(state: str, detail: str, only: list[str] | None = None) -> dict[str, dict]:
+            for r in only or feature_roles:
+                status[r] = {"status": state, "detail": detail}
+            return status
+
+        if not self._guest_password:
+            return mark("skipped", "VSPHERE_GUEST_WIN_PASSWORD is not set")
+        step = feature_roles  # the roles a failure right now belongs to
+        try:
+            code = await self._run_guest_ps(
+                client, vm_id, _FEATURE_SCRIPT.format(features=",".join(features))
+            )
+            if code not in (0, _EXIT_REBOOT):
+                return mark("failed", f"Install-WindowsFeature exited {code}")
+            if code == _EXIT_REBOOT:
+                await self._guest_reboot(client, vm_id)
+            mark("ok", "installed")
+            if "ad-ds" in roles:
+                if not vm_def.get("ad_forest_root"):
+                    mark("skipped", f"AD DS installed; promotion as an extra DC for "
+                                    f"{vm_def.get('ad_domain')} is not automated", ["ad-ds"])
+                else:
+                    step = ["ad-ds"]
+                    domain = str(vm_def.get("ad_domain") or "range.local")
+                    code = await self._run_guest_ps(client, vm_id, _FOREST_SCRIPT.format(
+                        dsrm=_ps_quote(secrets.token_urlsafe(18) + "aA1!"),
+                        domain=_ps_quote(domain), netbios=_ps_quote(_netbios(domain)),
+                    ))
+                    if code != _EXIT_REBOOT:
+                        return mark("failed", f"Install-ADDSForest exited {code}", ["ad-ds"])
+                    await self._guest_reboot(client, vm_id)
+                    mark("ok", f"forest {domain} created", ["ad-ds"])
+        except Exception as exc:  # noqa: BLE001 - reported per role, never raised past the VM
+            return mark("failed", str(exc)[:300], step)
+        return status
+
+    # ------------------------------------------------------------------ #
     # Snapshots: vSphere Web Services API through pyVmomi
     # ------------------------------------------------------------------ #
     # This used to POST /vcenter/vm/{vm}/snapshot, a path the Automation REST API does
@@ -474,6 +634,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         errors.append(f"VM {vm_def['name']}: {res}")
                     else:
                         vms_out.append(res)
+                        errors.extend(f"VM {vm_def['name']}: {e}" for e in res.get("errors", []))
 
         except Exception as exc:
             errors.append(str(exc))
@@ -513,18 +674,35 @@ class VsphereAPIProvisioner(BaseProvisioner):
             hw_update["memory"] = {"size_MiB": vm_def["memory"], "hot_add_enabled": True}
         if hw_update:
             await self._api_patch(client, f"/vcenter/vm/{vm_id}/hardware", json=hw_update)
+        errors: list[str] = []
+        if vm_def.get("disk_gb"):
+            try:
+                await asyncio.to_thread(self._grow_disk_sync, vm_id, int(vm_def["disk_gb"]))
+            except Exception as exc:  # noqa: BLE001 - the VM still works on its template disk
+                errors.append(f"disk not resized to {vm_def['disk_gb']} GB: {getattr(exc, 'msg', None) or exc}")
 
         await self._power_action(client, vm_id, "start")
         tools_ready = await self._wait_tools(client, vm_id)
         ip = await self._get_vm_ip(client, vm_id) if tools_ready else None
 
-        return {
+        out = {
             "vm_id": vm_id,
             "name": vm_def["name"],
             "status": "running",
             "ip": ip or vm_def.get("ip", ""),
             "tools_ready": tools_ready,
         }
+        if vm_def.get("roles"):
+            if tools_ready:
+                roles = await self._install_roles(client, vm_id, vm_def)
+            else:
+                roles = {r: {"status": "skipped", "detail": "VMware Tools not running"} for r in vm_def["roles"]}
+            out["roles"] = roles
+            errors += [f"role {r}: {v['status']} ({v['detail']})"
+                       for r, v in roles.items() if v["status"] != "ok"]
+        if errors:
+            out["errors"] = errors
+        return out
 
     async def destroy(
         self,

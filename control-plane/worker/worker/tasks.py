@@ -197,6 +197,8 @@ def provision_range(self, range_id: str):
                 resolver = golden_image_resolver(db2, hv)
                 creds = _hypervisor_creds(db2, hv)
             rendered = render_topology(template, range_id, resolver)
+            if rendered["role_errors"]:
+                raise RuntimeError("Windows Server roles: " + "; ".join(rendered["role_errors"]))
             template = {
                 **template,
                 "name": rendered["range_name"],
@@ -226,6 +228,8 @@ def provision_range(self, range_id: str):
                 "range_id": range_id,
                 "vms": result.vms,
                 "networks": result.networks,
+                # A partial result still goes ready; keep what failed (e.g. a role install).
+                **({"errors": result.errors} if result.errors else {}),
             }
         )
 

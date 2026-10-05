@@ -34,7 +34,7 @@ import { Observable } from 'rxjs';
 import * as joint from 'jointjs';
 import { FilterCategoryPipe } from './filter-category.pipe';
 import { GraphHistory } from './graph-history';
-import { ApiService } from '@core/services/api.service';
+import { ApiService, RoleSpecs, WindowsRole, WindowsRoleCatalogue } from '@core/services/api.service';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { Range, Template } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -452,19 +452,32 @@ export class TextPromptDialogComponent {
                 </select>
               </mat-form-field>
 
-              @if (propOs === 'windows-server-2022') {
+              @if (isWindowsServer() && roleCatalogue(); as cat) {
                 <div class="services-section">
-                  <div class="section-label-sm">Windows Server Roles &amp; Services</div>
-                  <div class="services-grid">
-                    @for (svc of windowsServerServices; track svc.id) {
-                      <mat-checkbox [checked]="isServiceSelected(svc.id)"
-                                    (change)="toggleService(svc.id)"
-                                    color="primary"
-                                    class="service-cb">
-                        <span class="svc-label">{{ svc.label }}</span>
-                      </mat-checkbox>
-                    }
-                  </div>
+                  <div class="section-label-sm">Windows Server Roles</div>
+                  @for (group of cat.groups; track group) {
+                    <div class="role-group">{{ group }}</div>
+                    <div class="services-grid">
+                      @for (role of rolesIn(group); track role.id) {
+                        <mat-checkbox [checked]="isServiceSelected(role.id)"
+                                      [disabled]="roleBlockedReason(role) !== ''"
+                                      [matTooltip]="roleTooltip(role)"
+                                      (change)="toggleService(role.id)"
+                                      color="primary"
+                                      class="service-cb">
+                          <span class="svc-label">{{ role.label }}</span>
+                        </mat-checkbox>
+                      }
+                    </div>
+                  }
+                  @if (selectedRoles().length) {
+                    <div class="role-sizing">
+                      Minimum {{ specText(roleMin()) }} &middot; recommended {{ specText(roleRecommended()) }}
+                    </div>
+                  }
+                  @for (w of roleWarnings(); track w) {
+                    <div class="role-warning"><mat-icon inline>warning_amber</mat-icon> {{ w }}</div>
+                  }
                 </div>
               }
 
@@ -472,16 +485,19 @@ export class TextPromptDialogComponent {
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>vCPUs</mat-label>
                   <input matInput type="number" [(ngModel)]="propCpu" (ngModelChange)="updateNodeData('vcpu', $event)">
+                  @if (propCpu < roleMin().vcpu) { <mat-hint class="below-min">Roles need &ge; {{ roleMin().vcpu }}</mat-hint> }
                 </mat-form-field>
                 <mat-form-field appearance="outline" subscriptSizing="dynamic">
                   <mat-label>RAM (MB)</mat-label>
                   <input matInput type="number" [(ngModel)]="propRam" (ngModelChange)="updateNodeData('ram_mb', $event)">
+                  @if (propRam < roleMin().ram_mb) { <mat-hint class="below-min">Roles need &ge; {{ roleMin().ram_mb }}</mat-hint> }
                 </mat-form-field>
               </div>
 
               <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
                 <mat-label>Disk (GB)</mat-label>
                 <input matInput type="number" [(ngModel)]="propDisk" (ngModelChange)="updateNodeData('disk_gb', $event)">
+                @if (propDisk < roleMin().disk_gb) { <mat-hint class="below-min">Roles need &ge; {{ roleMin().disk_gb }}</mat-hint> }
               </mat-form-field>
 
               <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
@@ -808,6 +824,25 @@ export class TextPromptDialogComponent {
       --mdc-checkbox-unselected-icon-color: var(--border-light);
       --mdc-checkbox-unselected-hover-icon-color: var(--text-muted);
     }
+    .role-group {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      margin: 8px 0 2px;
+    }
+    .role-sizing {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .role-warning {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--warning);
+    }
+    .below-min {
+      color: var(--warning);
+    }
     :host ::ng-deep .service-cb .mdc-checkbox__background {
       border-radius: 3px;
     }
@@ -940,23 +975,10 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     firewall: '#FF7043', seconion: '#5C6BC0', subnet: '#29B6F6', dmz: '#FFCA28',
   };
 
-  /* Windows Server role/service options */
-  windowsServerServices = [
-    { id: 'ad-ds', label: 'Active Directory' },
-    { id: 'ad-cs', label: 'AD Certificate Svcs' },
-    { id: 'ad-fs', label: 'AD Federation Svcs' },
-    { id: 'dns', label: 'DNS Server' },
-    { id: 'dhcp', label: 'DHCP Server' },
-    { id: 'iis', label: 'IIS Web Server' },
-    { id: 'sql-server', label: 'SQL Server' },
-    { id: 'exchange', label: 'Exchange Server' },
-    { id: 'sharepoint', label: 'SharePoint' },
-    { id: 'file-print', label: 'File & Print' },
-    { id: 'wsus', label: 'WSUS' },
-    { id: 'hyper-v', label: 'Hyper-V' },
-    { id: 'rds', label: 'Remote Desktop' },
-    { id: 'ca', label: 'Certificate Authority' },
-  ];
+  /* Windows Server roles (GET /templates/windows-roles); null hides the grid. */
+  roleCatalogue = signal<WindowsRoleCatalogue | null>(null);
+  /** Lower-cased service name or alias -> role id. */
+  private roleAlias = new Map<string, string>();
 
   constructor(
     private cdr: ChangeDetectorRef,
@@ -972,6 +994,7 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
     this.initPaper();
     this.bindEvents();
     this.loadOsOptions();
+    this.loadWindowsRoles();
     this.resetHistory();
 
     const id = this.route.snapshot.queryParamMap.get('range');
@@ -1303,31 +1326,131 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
 
   onOsChange(value: string): void {
     this.updateNodeData('os_template', value);
-    if (value !== 'windows-server-2022') {
-      this.propServices = [];
-      const el = this.selectedNode();
-      if (el) el.prop('nodeData/services', '');
+    if (!this.isWindowsServer()) {
+      // Roles only exist on Windows Server; other services (nginx, ssh ...) stay.
+      this.setServices(this.propServices.filter(s => !this.roleOf(s)));
+    } else {
+      this.applyRoleFloor();
     }
     this.scheduleSnapshot();
     this.cdr.detectChanges();
   }
 
-  toggleService(serviceId: string): void {
-    const idx = this.propServices.indexOf(serviceId);
-    if (idx >= 0) {
-      this.propServices = this.propServices.filter(s => s !== serviceId);
+  /** Tick or untick a role. Ticking raises vCPU/RAM/disk to the roles' minimum; unticking never shrinks. */
+  toggleService(roleId: string): void {
+    if (this.isServiceSelected(roleId)) {
+      this.setServices(this.propServices.filter(s => this.roleOf(s) !== roleId));
     } else {
-      this.propServices = [...this.propServices, serviceId];
+      this.setServices([...this.propServices, roleId]);
+      this.applyRoleFloor();
     }
+    this.cdr.detectChanges();
+  }
+
+  isServiceSelected(roleId: string): boolean {
+    return this.propServices.some(s => this.roleOf(s) === roleId);
+  }
+
+  isWindowsServer(os = this.propOs): boolean {
+    return (os || '').toLowerCase().startsWith('windows-server');
+  }
+
+  rolesIn(group: string): WindowsRole[] {
+    return (this.roleCatalogue()?.roles || []).filter(r => r.group === group);
+  }
+
+  /** Role ids the selected node carries, in catalogue order. */
+  selectedRoles(): WindowsRole[] {
+    return this.rolesFor(this.propServices);
+  }
+
+  roleMin(): RoleSpecs {
+    return this.maxSpecs(this.selectedRoles(), 'min');
+  }
+
+  roleRecommended(): RoleSpecs {
+    return this.maxSpecs(this.selectedRoles(), 'recommended');
+  }
+
+  specText(s: RoleSpecs): string {
+    return `${s.vcpu} vCPU / ${Math.round(s.ram_mb / 1024)} GB / ${s.disk_gb} GB`;
+  }
+
+  /** Why a role cannot be ticked on this node, or '' if it can. */
+  roleBlockedReason(role: WindowsRole): string {
+    if (role.method !== 'image' || this.isServiceSelected(role.id)) return '';
+    if (!role.images.includes(this.propOs)) return `No ${role.label} image for ${this.propOs}`;
+    const other = this.selectedRoles().find(r => r.method === 'image');
+    if (other) return `${other.label} is already this VM's product image; one per VM`;
+    return '';
+  }
+
+  roleTooltip(role: WindowsRole): string {
+    const blocked = this.roleBlockedReason(role);
+    if (blocked) return blocked;
+    const how = role.method === 'image' ? 'pre-built image' : 'installed after boot';
+    return `Min ${this.specText(role.min)} · ${how}${role.notes ? ' · ' + role.notes : ''}`;
+  }
+
+  /** Same rules the server applies on save, for the selected node. */
+  roleWarnings(): string[] {
+    const mine = this.selectedRoles();
+    if (!mine.length) return [];
+    const inRange = new Set<string>();
+    for (const el of this.graph?.getElements() || []) {
+      const d = el.prop('nodeData') || {};
+      if (!this.isWindowsServer(d.os_template)) continue;
+      const svc = el === this.selectedNode() ? this.propServices : String(d.services || '').split(',');
+      this.rolesFor(svc).forEach(r => inRange.add(r.id));
+    }
+    const out: string[] = [];
+    const ids = new Set(mine.map(r => r.id));
+    for (const r of mine) {
+      r.conflicts.filter(c => ids.has(c)).forEach(c => out.push(`${r.id} must not share a VM with ${c}`));
+      r.requires.filter(q => !inRange.has(q)).forEach(q => out.push(`${r.id} expects a ${q} server in the range`));
+      if (r.notes) out.push(`${r.id}: ${r.notes}`);
+    }
+    return out;
+  }
+
+  private roleOf(service: string): string | undefined {
+    const key = (service || '').trim().toLowerCase();
+    return this.roleAlias.get(key) || this.roleAlias.get(key.replace(/_/g, '-')) || this.roleAlias.get(key.replace(/-/g, '_'));
+  }
+
+  private rolesFor(services: string[]): WindowsRole[] {
+    const ids = new Set(services.map(s => this.roleOf(s)).filter(Boolean));
+    return (this.roleCatalogue()?.roles || []).filter(r => ids.has(r.id));
+  }
+
+  private maxSpecs(roles: WindowsRole[], key: 'min' | 'recommended'): RoleSpecs {
+    const base = this.roleCatalogue()?.base || { vcpu: 0, ram_mb: 0, disk_gb: 0 };
+    if (!roles.length) return { vcpu: 0, ram_mb: 0, disk_gb: 0 };
+    return roles.reduce((acc, r) => ({
+      vcpu: Math.max(acc.vcpu, r[key].vcpu),
+      ram_mb: Math.max(acc.ram_mb, r[key].ram_mb),
+      disk_gb: Math.max(acc.disk_gb, r[key].disk_gb),
+    }), { ...base });
+  }
+
+  private setServices(services: string[]): void {
+    this.propServices = services;
     const el = this.selectedNode();
     if (el) {
-      el.prop('nodeData/services', this.propServices.join(','));
+      el.prop('nodeData/services', services.join(','));
       this.scheduleSnapshot();
     }
   }
 
-  isServiceSelected(serviceId: string): boolean {
-    return this.propServices.includes(serviceId);
+  private applyRoleFloor(): void {
+    const min = this.roleMin();
+    const raised: string[] = [];
+    if (this.propCpu < min.vcpu) { this.propCpu = min.vcpu; this.updateNodeData('vcpu', min.vcpu); raised.push('vCPU'); }
+    if (this.propRam < min.ram_mb) { this.propRam = min.ram_mb; this.updateNodeData('ram_mb', min.ram_mb); raised.push('RAM'); }
+    if (this.propDisk < min.disk_gb) { this.propDisk = min.disk_gb; this.updateNodeData('disk_gb', min.disk_gb); raised.push('disk'); }
+    if (raised.length) {
+      this.snack.open(`Raised ${raised.join(', ')} to the role minimum (${this.specText(min)})`, '', { duration: 2500 });
+    }
   }
 
   /* --- Toolbar actions --- */
@@ -1630,6 +1753,21 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
    * verified. An empty map or a failed call keeps the fallback: offering no OS
    * at all would be worse than offering one that might not be built yet.
    */
+  private loadWindowsRoles(): void {
+    this.api.getWindowsRoles().subscribe({
+      next: (cat) => {
+        this.roleAlias.clear();
+        for (const r of cat.roles) {
+          this.roleAlias.set(r.id, r.id);
+          r.aliases.forEach(a => this.roleAlias.set(a.toLowerCase(), r.id));
+        }
+        this.roleCatalogue.set(cat);
+        this.cdr.detectChanges();
+      },
+      error: () => { /* no grid: sizing and role checks still run on save */ },
+    });
+  }
+
   private loadOsOptions(): void {
     this.api.getGoldenImageAliasMap().subscribe({
       next: (map) => {
@@ -1780,7 +1918,8 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
       error: (err) => {
         this.savingTopology.set(false);
         const detail = err?.error?.detail;
-        const msg = typeof detail === 'string' ? detail : detail?.message || 'Could not save the topology';
+        const first = Array.isArray(detail?.errors) && detail.errors.length ? `: ${detail.errors[0]}` : '';
+        const msg = typeof detail === 'string' ? detail : (detail?.message || 'Could not save the topology') + first;
         this.snack.open(msg, 'Dismiss', { duration: 5000, panelClass: 'snack-error' });
       },
     });

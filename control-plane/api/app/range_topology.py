@@ -11,6 +11,8 @@ from __future__ import annotations
 import ipaddress
 import json
 
+from . import windows_roles
+
 # JointJS stencil nodeType -> colour (mirrors range-designer nodeColors) so the
 # generated cells match what the 2D designer's own createNodeShape() produces.
 _NODE_COLORS: dict[str, str] = {
@@ -766,8 +768,30 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
             services = [s.strip() for s in services.split(",") if s.strip()]
         if isinstance(services, list) and services:
             node["services"] = [str(s) for s in services]
+        _apply_role_floor(node, label, warnings)
         nodes.append(node)
 
+    role_errors, role_warnings = windows_roles.check_nodes(nodes)
+    warnings.extend(role_warnings)
     template: dict = {"name": name, "version": "1.0", "network": {"vlans": vlans}, "nodes": nodes}
     template["source"] = {"tool": "range-designer", **({"range_id": range_id} if range_id else {})}
-    return {"template": template, "warnings": warnings}
+    return {"template": template, "warnings": warnings, "errors": role_errors}
+
+
+_SPEC_KEYS = (("vcpu", "cores"), ("ram_mb", "memory_mb"), ("disk_gb", "disk_gb"))
+
+
+def _apply_role_floor(node: dict, label: str, warnings: list[str]) -> None:
+    """Raise a Windows Server node's specs to the minimum its roles need."""
+    roles = windows_roles.roles_of(node.get("services"))
+    if not roles or not windows_roles.is_windows_server(node.get("os", "")):
+        return
+    floor = windows_roles.min_specs(roles)
+    specs = node.setdefault("specs", {})
+    raised = []
+    for src, dst in _SPEC_KEYS:
+        if (specs.get(dst) or 0) < floor[src]:
+            specs[dst] = floor[src]
+            raised.append(f"{dst} {floor[src]}")
+    if raised:
+        warnings.append(f"{label}: raised to the minimum for {', '.join(roles)} ({', '.join(raised)})")
