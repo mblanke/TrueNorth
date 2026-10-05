@@ -1706,9 +1706,7 @@ class ForgeRequest(BaseModel):
         default_factory=list, description="Manual indicators (used if feed_id is None)"
     )
     # Curriculum Forge mode: generate from learning objectives instead of threat intel
-    curriculum_id: uuid.UUID | None = Field(
-        None, description="Ground the scenario in this curriculum's RAG index"
-    )
+    curriculum_id: uuid.UUID | None = Field(None, description="Ground the scenario in this curriculum's RAG index")
     learning_objectives: list[str] = Field(
         default_factory=list,
         max_length=15,

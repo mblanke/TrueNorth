@@ -64,10 +64,7 @@ class OpenSearchBackend(BaseSearchBackend):
                 # Count items with no error in the bulk response
                 result = resp.json()
                 items = result.get("items", [])
-                return sum(
-                    1 for item in items
-                    if item.get("index", {}).get("status", 500) < 300
-                )
+                return sum(1 for item in items if item.get("index", {}).get("status", 500) < 300)
         except Exception as exc:
             logger.error("OpenSearch ingest error: %s", exc)
             return 0

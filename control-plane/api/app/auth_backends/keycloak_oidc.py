@@ -99,9 +99,7 @@ class KeycloakOIDCBackend(BaseAuthBackend):
     async def health_check(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.get(
-                    f"{self._url}/realms/{self._realm}/.well-known/openid-configuration"
-                )
+                resp = await client.get(f"{self._url}/realms/{self._realm}/.well-known/openid-configuration")
                 return resp.status_code < 500
         except Exception:
             return False

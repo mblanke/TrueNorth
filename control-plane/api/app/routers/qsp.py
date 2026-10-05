@@ -177,21 +177,14 @@ def _modules_for_pos(db: Session, po_ids: list) -> dict[str, CourseModule]:
     """Map po_id -> its course module (first by ordinal). One query."""
     if not po_ids:
         return {}
-    rows = (
-        db.query(CourseModule)
-        .filter(CourseModule.po_id.in_(po_ids))
-        .order_by(CourseModule.ordinal)
-        .all()
-    )
+    rows = db.query(CourseModule).filter(CourseModule.po_id.in_(po_ids)).order_by(CourseModule.ordinal).all()
     out: dict[str, CourseModule] = {}
     for module in rows:
         out.setdefault(str(module.po_id), module)
     return out
 
 
-def _delivered_by_for_pos(
-    db: Session, modules_by_po: dict[str, CourseModule]
-) -> dict[str, DeliveredBy]:
+def _delivered_by_for_pos(db: Session, modules_by_po: dict[str, CourseModule]) -> dict[str, DeliveredBy]:
     """Map po_id -> the course/module delivering it. One query.
 
     Takes the already-resolved `modules_by_po` so this adds a single `Course` lookup
@@ -203,9 +196,7 @@ def _delivered_by_for_pos(
     # performance objectives, so nothing here widens what the caller could already see.
     courses = {
         str(c.id): c
-        for c in db.query(Course)
-        .filter(Course.id.in_({m.course_id for m in modules_by_po.values()}))
-        .all()
+        for c in db.query(Course).filter(Course.id.in_({m.course_id for m in modules_by_po.values()})).all()
     }
     out: dict[str, DeliveredBy] = {}
     for po_id, module in modules_by_po.items():
@@ -310,8 +301,10 @@ def _po_out(
                 maps_to_critical_event=e.maps_to_critical_event,
                 lessons=[
                     LessonBrief(
-                        id=str(le.id), title=le.title,
-                        duration_minutes=le.duration_minutes, is_published=le.is_published,
+                        id=str(le.id),
+                        title=le.title,
+                        duration_minutes=le.duration_minutes,
+                        is_published=le.is_published,
                     )
                     for le in lessons_by_eo.get(str(e.id), [])
                 ],
@@ -395,8 +388,12 @@ def list_qualifications(
         po_count = db.query(PerformanceObjective).filter_by(qualification_id=q.id).count()
         out.append(
             QualificationOut(
-                id=str(q.id), qsp_code=q.qsp_code, nqual=q.nqual, title=q.title,
-                component_version=q.component_version, po_count=po_count,
+                id=str(q.id),
+                qsp_code=q.qsp_code,
+                nqual=q.nqual,
+                title=q.title,
+                component_version=q.component_version,
+                po_count=po_count,
             )
         )
     return out
@@ -412,10 +409,7 @@ def qualification_objectives(
     if qual is None:
         raise HTTPException(status_code=404, detail=f"qualification {qsp_code} not found")
     pos = (
-        db.query(PerformanceObjective)
-        .filter_by(qualification_id=qual.id)
-        .order_by(PerformanceObjective.po_code)
-        .all()
+        db.query(PerformanceObjective).filter_by(qualification_id=qual.id).order_by(PerformanceObjective.po_code).all()
     )
     return _POContext(db, [po.id for po in pos]).serialise(pos, qual)
 
@@ -430,9 +424,7 @@ class _POContext:
 
     def __init__(self, db: Session, po_ids: list):
         self.eos_by_po = _eos_for_pos(db, po_ids)
-        self.lessons_by_eo = _lessons_for_eos(
-            db, [e.id for eos in self.eos_by_po.values() for e in eos]
-        )
+        self.lessons_by_eo = _lessons_for_eos(db, [e.id for eos in self.eos_by_po.values() for e in eos])
         self.comps_by_po = _competencies_for_pos(db, po_ids)
         self.modules_by_po = _modules_for_pos(db, po_ids)
         self.refs_by_po = _exercise_refs_for_pos(db, po_ids, self.modules_by_po)
@@ -442,12 +434,8 @@ class _POContext:
         result = []
         for po in pos:
             key = str(po.id)
-            out = _po_out(
-                po, self.eos_by_po.get(key, []), self.lessons_by_eo, self.comps_by_po.get(key, [])
-            )
-            out.exercise_id, out.scenario_id, out.range_id = self.refs_by_po.get(
-                key, (None, None, None)
-            )
+            out = _po_out(po, self.eos_by_po.get(key, []), self.lessons_by_eo, self.comps_by_po.get(key, []))
+            out.exercise_id, out.scenario_id, out.range_id = self.refs_by_po.get(key, (None, None, None))
             out.course_code = qsp_paths.course_code(po, qual)
             out.delivered_by = self.delivered_by.get(key)
             out.duration_long = (po.duration_min or 0) >= 480  # 8h+ -> flag for verification
@@ -510,16 +498,14 @@ def attach_template_objectives(
         po = db.query(PerformanceObjective).filter_by(id=po_id).one_or_none()
         if po is None:
             raise HTTPException(status_code=422, detail=f"unknown po_id {po_id}")
-        exists = (
-            db.query(RangeObjectiveMap)
-            .filter_by(template_id=template.id, po_id=po.id)
-            .one_or_none()
-        )
+        exists = db.query(RangeObjectiveMap).filter_by(template_id=template.id, po_id=po.id).one_or_none()
         if exists is None:
             db.add(
                 RangeObjectiveMap(
-                    template_id=template.id, po_id=po.id,
-                    source=body.source, tenant_id=user.tenant_id or None,
+                    template_id=template.id,
+                    po_id=po.id,
+                    source=body.source,
+                    tenant_id=user.tenant_id or None,
                 )
             )
             added += 1
@@ -597,9 +583,7 @@ async def import_competency_crosswalk(
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=422, detail=f"seed files must be UTF-8 CSV: {exc}") from exc
     try:
-        stats = qsp_paths.import_competency_crosswalk(
-            db, tax_text, xwalk_text, tenant_id=user.tenant_id or None
-        )
+        stats = qsp_paths.import_competency_crosswalk(db, tax_text, xwalk_text, tenant_id=user.tenant_id or None)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         logger.exception("competency crosswalk import failed")
@@ -647,8 +631,12 @@ def developmental_progression(
     progression, specialties = [], []
     for q in quals:
         entry = {
-            "qsp_code": q.qsp_code, "nqual": q.nqual, "title": q.title,
-            "dp_order": q.dp_order, "rank_level": q.rank_level, "track": q.track,
+            "qsp_code": q.qsp_code,
+            "nqual": q.nqual,
+            "title": q.title,
+            "dp_order": q.dp_order,
+            "rank_level": q.rank_level,
+            "track": q.track,
             "po_count": db.query(PerformanceObjective).filter_by(qualification_id=q.id).count(),
         }
         (specialties if q.track == "specialty" else progression).append(entry)
@@ -673,19 +661,25 @@ def _stages(quals: list[Qualification]) -> list[dict]:
     stages = []
     for rung in qsp_paths.DP_LADDER:
         dp = rung["dp_order"]
-        stages.append({
-            "dp_order": dp,
-            "rank_level": ranks_by_dp.get(dp, rung["rank_level"]),
-            "label": rung["label"],
-            "planned": dp not in populated,
-        })
+        stages.append(
+            {
+                "dp_order": dp,
+                "rank_level": ranks_by_dp.get(dp, rung["rank_level"]),
+                "label": rung["label"],
+                "planned": dp not in populated,
+            }
+        )
     # A qualification ingested beyond the configured ladder still gets a column.
     for dp in sorted(populated - {r["dp_order"] for r in qsp_paths.DP_LADDER}):
         if dp:
-            stages.append({
-                "dp_order": dp, "rank_level": ranks_by_dp.get(dp, ""),
-                "label": "", "planned": False,
-            })
+            stages.append(
+                {
+                    "dp_order": dp,
+                    "rank_level": ranks_by_dp.get(dp, ""),
+                    "label": "",
+                    "planned": False,
+                }
+            )
     return sorted(stages, key=lambda s: s["dp_order"])
 
 
@@ -714,29 +708,27 @@ def _edges(quals: list[Qualification], stages: list[dict]) -> list[dict]:
       i.e. you earn the core qualification before forking into Red or Malware.
     - `planned`: from the end of the real ladder into the first placeholder column.
     """
-    ladder = sorted(
-        (q for q in quals if q.track != "specialty"), key=lambda q: (q.dp_order, q.qsp_code)
-    )
+    ladder = sorted((q for q in quals if q.track != "specialty"), key=lambda q: (q.dp_order, q.qsp_code))
     edges = [
         {"from": a.qsp_code, "to": b.qsp_code, "kind": "progression"}
         for a, b in zip(ladder, ladder[1:])
         if a.dp_order != b.dp_order
     ]
 
-    for spec in sorted(
-        (q for q in quals if q.track == "specialty"), key=lambda q: (q.dp_order, q.qsp_code)
-    ):
+    for spec in sorted((q for q in quals if q.track == "specialty"), key=lambda q: (q.dp_order, q.qsp_code)):
         parents = [q for q in ladder if q.dp_order < spec.dp_order]
         if parents:
             edges.append({"from": parents[-1].qsp_code, "to": spec.qsp_code, "kind": "branch"})
 
     planned = [s for s in stages if s["planned"] and (not ladder or s["dp_order"] > ladder[-1].dp_order)]
     if ladder and planned:
-        edges.append({
-            "from": ladder[-1].qsp_code,
-            "to": f"planned:{planned[0]['dp_order']}",
-            "kind": "planned",
-        })
+        edges.append(
+            {
+                "from": ladder[-1].qsp_code,
+                "to": f"planned:{planned[0]['dp_order']}",
+                "kind": "planned",
+            }
+        )
     return edges
 
 
@@ -772,9 +764,7 @@ def curriculum_map(
     edges = _edges(quals, stages)
 
     pos = (
-        db.query(PerformanceObjective)
-        .filter(PerformanceObjective.qualification_id.in_([q.id for q in quals]))
-        .all()
+        db.query(PerformanceObjective).filter(PerformanceObjective.qualification_id.in_([q.id for q in quals])).all()
         if quals
         else []
     )
@@ -807,34 +797,36 @@ def curriculum_map(
         node_tuples.append((qual.qsp_code, qual.dp_order, qual.track, po_states))
         track_key = "progression" if qual.track != "specialty" else (qual.nqual or qual.qsp_code)
         node_courses = courses_by_node.get((qual.dp_order, track_key), [])
-        nodes.append({
-            "qsp_code": qual.qsp_code,
-            "nqual": qual.nqual,
-            "title": qual.title or qual.nqual,
-            "dp_order": qual.dp_order,
-            "track": qual.track,
-            "track_key": track_key,
-            "rank_level": qual.rank_level,
-            "po_count": len(qual_pos),
-            "gate_count": sum(1 for po in qual_pos if po.tier == POTier.gate),
-            # Assessment time from the QSP objectives — how long being *tested* takes.
-            # Not the length of the programme, which is `course_hours` below; a node
-            # showing only this read as though three years of study took 36 hours.
-            "total_minutes": sum(po.duration_min or 0 for po in qual_pos),
-            # Taught hours across the programme delivered in this period.
-            "course_hours": sum(c["duration_hours"] for c in node_courses),
-            # How many objectives actually carry a duration. Much of the spine is
-            # still unscoped, so a bare total reads as complete when it is not —
-            # the UI needs to know the sum is a floor, not a figure.
-            "timed_po_count": sum(1 for po in qual_pos if (po.duration_min or 0) > 0),
-            "progress": qsp_progress.aggregate(po_states).as_dict(),
-            "objectives": [o.model_dump() for o in objectives],
-            # The programme taught in this period, in term order. Separate from
-            # `objectives`: most courses teach without delivering an objective, and a
-            # few deliver into a different period than the one teaching them.
-            "course_count": len(node_courses),
-            "courses": node_courses,
-        })
+        nodes.append(
+            {
+                "qsp_code": qual.qsp_code,
+                "nqual": qual.nqual,
+                "title": qual.title or qual.nqual,
+                "dp_order": qual.dp_order,
+                "track": qual.track,
+                "track_key": track_key,
+                "rank_level": qual.rank_level,
+                "po_count": len(qual_pos),
+                "gate_count": sum(1 for po in qual_pos if po.tier == POTier.gate),
+                # Assessment time from the QSP objectives — how long being *tested* takes.
+                # Not the length of the programme, which is `course_hours` below; a node
+                # showing only this read as though three years of study took 36 hours.
+                "total_minutes": sum(po.duration_min or 0 for po in qual_pos),
+                # Taught hours across the programme delivered in this period.
+                "course_hours": sum(c["duration_hours"] for c in node_courses),
+                # How many objectives actually carry a duration. Much of the spine is
+                # still unscoped, so a bare total reads as complete when it is not —
+                # the UI needs to know the sum is a floor, not a figure.
+                "timed_po_count": sum(1 for po in qual_pos if (po.duration_min or 0) > 0),
+                "progress": qsp_progress.aggregate(po_states).as_dict(),
+                "objectives": [o.model_dump() for o in objectives],
+                # The programme taught in this period, in term order. Separate from
+                # `objectives`: most courses teach without delivering an objective, and a
+                # few deliver into a different period than the one teaching them.
+                "course_count": len(node_courses),
+                "courses": node_courses,
+            }
+        )
 
     states = qsp_progress.node_states(node_tuples, [(e["from"], e["to"]) for e in edges])
     for node in nodes:
@@ -849,7 +841,6 @@ def curriculum_map(
         "tracks": tracks,
         "nodes": nodes,
         "edges": edges,
-        "course_edges": qsp_paths.course_prereq_edges(db, on_map_ids,
-                                                     tenant_id=user.tenant_id or None),
+        "course_edges": qsp_paths.course_prereq_edges(db, on_map_ids, tenant_id=user.tenant_id or None),
         "learner": qsp_progress.current_position(node_tuples, states).as_dict(),
     }

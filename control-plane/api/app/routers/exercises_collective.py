@@ -227,9 +227,18 @@ _DELIVERY_METHODS = {"cyber", "white_cell", "email", "radio", "physical", "opfor
 _MESL_STATUSES = {"planned", "staged", "delivered", "responded", "skipped"}
 
 _MESL_EDITABLE = {
-    "title", "description", "phase", "scenario_time", "objective_ref",
-    "attack_technique", "delivery_method", "from_cell", "to_participant",
-    "expected_action", "moe", "status",
+    "title",
+    "description",
+    "phase",
+    "scenario_time",
+    "objective_ref",
+    "attack_technique",
+    "delivery_method",
+    "from_cell",
+    "to_participant",
+    "expected_action",
+    "moe",
+    "status",
 }
 
 

@@ -20,7 +20,9 @@ from ..schemas import AuthZonePolicyIn, AuthZonePolicyOut
 # allow-lists. Changing these changes who can get in.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/auth-zones", tags=["Directory"], dependencies=[Depends(require_permission(Permission.USER_UPDATE))])
+router = APIRouter(
+    prefix="/auth-zones", tags=["Directory"], dependencies=[Depends(require_permission(Permission.USER_UPDATE))]
+)
 
 
 @router.get("", response_model=list[AuthZonePolicyOut])

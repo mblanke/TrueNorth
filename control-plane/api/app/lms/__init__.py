@@ -57,9 +57,7 @@ def get_lms_backend() -> BaseLMSBackend:
         cls = _REGISTRY.get(name)
         if cls is None:
             valid = ", ".join(sorted(_REGISTRY))
-            raise ValueError(
-                f"Unknown LMS_BACKEND={name!r}. Valid options: {valid}"
-            )
+            raise ValueError(f"Unknown LMS_BACKEND={name!r}. Valid options: {valid}")
         _instance = cls()
     return _instance
 

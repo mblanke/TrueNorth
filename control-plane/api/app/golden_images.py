@@ -70,41 +70,40 @@ def parse_catalogue(csv_text: str, hypervisor: str = "vsphere") -> list[dict]:
         if not cid:
             continue
         packer = (raw.get("packer_status") or "").strip()
-        rows.append({
-            "catalogue_id": cid,
-            "os_family": (raw.get("os_family") or "").strip(),
-            "version": (raw.get("version") or "").strip(),
-            "role": (raw.get("role") or "").strip(),
-            "hypervisor": hypervisor,
-            "template_name": cid,  # default; operator or register-back sets the real store name
-            "datastore": "",       # operator sets the NFS datastore
-            "os_aliases": _aliases(raw, cid),
-            "sensor_baked": (raw.get("sensor_baked") or "").strip().lower() in _TRUE,
-            "enabled": (raw.get("enabled") or "").strip().lower() in _TRUE,
-            # Honest default: nothing is 'built' until register-back confirms a real published
-            # template in a reachable hypervisor. packer_status is kept in notes as a hint only.
-            "build_status": "planned",
-            "golden_gb": int(raw["golden_gb"]) if (raw.get("golden_gb") or "").strip().isdigit() else 0,
-            "notes": "; ".join(x for x in [(raw.get("notes") or "").strip(), f"packer_status={packer}"] if x),
-        })
+        rows.append(
+            {
+                "catalogue_id": cid,
+                "os_family": (raw.get("os_family") or "").strip(),
+                "version": (raw.get("version") or "").strip(),
+                "role": (raw.get("role") or "").strip(),
+                "hypervisor": hypervisor,
+                "template_name": cid,  # default; operator or register-back sets the real store name
+                "datastore": "",  # operator sets the NFS datastore
+                "os_aliases": _aliases(raw, cid),
+                "sensor_baked": (raw.get("sensor_baked") or "").strip().lower() in _TRUE,
+                "enabled": (raw.get("enabled") or "").strip().lower() in _TRUE,
+                # Honest default: nothing is 'built' until register-back confirms a real published
+                # template in a reachable hypervisor. packer_status is kept in notes as a hint only.
+                "build_status": "planned",
+                "golden_gb": int(raw["golden_gb"]) if (raw.get("golden_gb") or "").strip().isdigit() else 0,
+                "notes": "; ".join(x for x in [(raw.get("notes") or "").strip(), f"packer_status={packer}"] if x),
+            }
+        )
     return rows
 
 
-def import_catalogue(db: Session, csv_text: str, hypervisor: str = "vsphere",
-                     tenant_id: str | None = None) -> dict:
+def import_catalogue(db: Session, csv_text: str, hypervisor: str = "vsphere", tenant_id: str | None = None) -> dict:
     """Upsert GoldenImage rows from the catalogue for one hypervisor. Idempotent."""
     rows = parse_catalogue(csv_text, hypervisor)
     stats = {"created": 0, "updated": 0, "hypervisor": hypervisor, "total": len(rows)}
     for r in rows:
-        img = (
-            db.query(GoldenImage)
-            .filter_by(catalogue_id=r["catalogue_id"], hypervisor=hypervisor)
-            .one_or_none()
-        )
+        img = db.query(GoldenImage).filter_by(catalogue_id=r["catalogue_id"], hypervisor=hypervisor).one_or_none()
         if img is None:
             img = GoldenImage(
-                catalogue_id=r["catalogue_id"], hypervisor=hypervisor,
-                template_name=r["template_name"], build_status=r["build_status"],
+                catalogue_id=r["catalogue_id"],
+                hypervisor=hypervisor,
+                template_name=r["template_name"],
+                build_status=r["build_status"],
                 tenant_id=tenant_id,
             )
             db.add(img)
@@ -132,11 +131,7 @@ def resolve_template(db: Session, os_alias: str, hypervisor: str = "vsphere") ->
     """Resolve a topology os alias -> hypervisor template name (enabled images only)."""
     if not os_alias or not os_alias.strip():
         return None
-    images = (
-        db.query(GoldenImage)
-        .filter_by(hypervisor=hypervisor, enabled=True, deleted_at=None)
-        .all()
-    )
+    images = db.query(GoldenImage).filter_by(hypervisor=hypervisor, enabled=True, deleted_at=None).all()
     for alias in os_alias_candidates(os_alias):
         for img in images:
             if img.catalogue_id == alias:

@@ -54,9 +54,7 @@ def get_search_backend() -> BaseSearchBackend:
         cls = _REGISTRY.get(name)
         if cls is None:
             valid = ", ".join(sorted(_REGISTRY))
-            raise ValueError(
-                f"Unknown SEARCH_BACKEND={name!r}. Valid options: {valid}"
-            )
+            raise ValueError(f"Unknown SEARCH_BACKEND={name!r}. Valid options: {valid}")
         _instance = cls()
     return _instance
 

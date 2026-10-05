@@ -57,8 +57,10 @@ def upgrade() -> None:
         ("onboarding_data", {"nullable": False, "server_default": "{}"}),
     ):
         if not _has_column("users", col):
-            type_ = sa.DateTime(timezone=True) if col == "onboarded_at" else (
-                sa.String(20) if col == "onboarding_state" else sa.Text()
+            type_ = (
+                sa.DateTime(timezone=True)
+                if col == "onboarded_at"
+                else (sa.String(20) if col == "onboarding_state" else sa.Text())
             )
             with op.batch_alter_table("users") as batch:
                 batch.add_column(sa.Column(col, type_, **kwargs))
@@ -86,12 +88,8 @@ def upgrade() -> None:
         sa.Column("nation_id", GUID(), sa.ForeignKey("nations.id"), nullable=True),
         sa.Column("timezone", sa.String(50), nullable=False, server_default="UTC"),
         # -- What they are joining ---------------------------------------------
-        sa.Column(
-            "requested_qualification_id", GUID(), sa.ForeignKey("qualifications.id"), nullable=True
-        ),
-        sa.Column(
-            "requested_learning_path_id", GUID(), sa.ForeignKey("learning_paths.id"), nullable=True
-        ),
+        sa.Column("requested_qualification_id", GUID(), sa.ForeignKey("qualifications.id"), nullable=True),
+        sa.Column("requested_learning_path_id", GUID(), sa.ForeignKey("learning_paths.id"), nullable=True),
         sa.Column("requested_cohort", sa.String(120), nullable=True),
         sa.Column("justification", sa.Text(), nullable=True),
         # -- Advisory only: derived from AD groups, never grants anything -------

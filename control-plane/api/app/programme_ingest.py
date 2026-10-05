@@ -246,9 +246,7 @@ def import_programme(db: Session, csv_text: str, tenant_id: str | None = None) -
         # import runs before any content import. Re-running the catalogue on its own
         # must not reset every course to `delivers:none`.
         db.flush()
-        course.tags = json.dumps(
-            catalogue_tags(meta, delivered_qsp_codes(db, course.id) if not created else ())
-        )
+        course.tags = json.dumps(catalogue_tags(meta, delivered_qsp_codes(db, course.id) if not created else ()))
         # Unsourced content is never published. This is the guardrail, not a default.
         course.is_published = row["provenance"] in _SOURCED_PROVENANCE
         if course.is_published:

@@ -139,9 +139,13 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
     if row is None:
         return {}
     return {
-        "host": row[0], "port": row[1], "username": row[2],
-        "password": row[3] or "", "api_token": row[4] or "",
-        "verify_ssl": bool(row[5]), "datacenter": row[6] or "",
+        "host": row[0],
+        "port": row[1],
+        "username": row[2],
+        "password": row[3] or "",
+        "api_token": row[4] or "",
+        "verify_ssl": bool(row[5]),
+        "datacenter": row[6] or "",
     }
 
 
@@ -208,7 +212,9 @@ def provision_range(self, range_id: str):
             allocations = {"vlan_map": rendered["vlan_map"]}
             logger.info(
                 "[provision] rendered %d VMs across %d networks (backend=%s)",
-                len(rendered["vm_definitions"]), len(rendered["network_definitions"]), backend,
+                len(rendered["vm_definitions"]),
+                len(rendered["network_definitions"]),
+                backend,
             )
             if rendered["unresolved"]:
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])

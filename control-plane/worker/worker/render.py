@@ -50,7 +50,7 @@ def _extract_vlans(t: dict) -> list[dict]:
     segments: list[dict] = []
     for key, val in (t.get("inputs") or {}).items():
         if key.startswith("cidr_"):
-            name = key[len("cidr_"):]
+            name = key[len("cidr_") :]
             segments.append({"name": name, "cidr": val, "description": name})
     return segments or [{"name": "default", "cidr": "10.0.0.0/24", "description": "Default"}]
 
@@ -79,10 +79,15 @@ def _extract_nodes(t: dict) -> list[dict]:
         return t["nodes"]
     if t.get("assets"):
         return [
-            {"id": a.get("role", "vm"), "role": a.get("role", "generic"),
-             "os": a.get("os", DEFAULT_OS), "type": a.get("type", "vm"),
-             "count": a.get("count", 1), "tags": a.get("tags", []),
-             "services": a.get("services", [])}
+            {
+                "id": a.get("role", "vm"),
+                "role": a.get("role", "generic"),
+                "os": a.get("os", DEFAULT_OS),
+                "type": a.get("type", "vm"),
+                "count": a.get("count", 1),
+                "tags": a.get("tags", []),
+                "services": a.get("services", []),
+            }
             for a in t["assets"]
         ]
     return []
@@ -115,16 +120,16 @@ def render_topology(
         except ValueError:
             net = ipaddress.ip_network("10.0.0.0/24")
         gw = str(net.network_address + 1)
-        networks.append({"name": name, "vlan_id": vid, "cidr": str(net), "gateway": gw,
-                         "description": seg.get("description", "")})
+        networks.append(
+            {"name": name, "vlan_id": vid, "cidr": str(net), "gateway": gw, "description": seg.get("description", "")}
+        )
         net_by_name[name] = {"net": net, "gateway": gw, "next": int(net.network_address) + 10}
 
     nodes = _extract_nodes(template)
     vms: list[dict] = []
     unresolved: list[str] = []
     for node in nodes:
-        if (not node.get("os") and not node.get("os_template")
-                and str(node.get("type", "")) in _DESIGNER_NON_VM_TYPES):
+        if not node.get("os") and not node.get("os_template") and str(node.get("type", "")) in _DESIGNER_NON_VM_TYPES:
             continue
         vlan_name = node.get("vlan", "default")
         vid = vlan_map.get(vlan_name, vlan_base)
@@ -135,9 +140,7 @@ def render_topology(
             name = f"{range_id[:8]}-{suffix}"
             given_os = _node_os(node)
             os_alias = canonical_os(given_os)
-            template_name = next(
-                (t for t in map(resolve_template, os_alias_candidates(given_os)) if t), None
-            )
+            template_name = next((t for t in map(resolve_template, os_alias_candidates(given_os)) if t), None)
             if template_name is None:
                 unresolved.append(os_alias)
                 template_name = os_alias  # best-effort; provisioning will surface the miss
@@ -149,21 +152,34 @@ def render_topology(
             gateway = netinfo["gateway"] if netinfo else ""
             netmask = str(netinfo["net"].netmask) if netinfo else "255.255.255.0"
             prefix = netinfo["net"].prefixlen if netinfo else 24
-            vms.append({
-                "name": name, "node_id": node.get("id", suffix), "role": node.get("role", "generic"),
-                "os": os_alias, "template_name": template_name,
-                "vlan_id": vid, "vlan_tag": vid,
-                "ip": ip, "gateway": gateway, "netmask": netmask, "prefix": prefix,
-                "cores": specs.get("cores", 2),
-                "memory": specs.get("memory_mb", 4096), "memory_mb": specs.get("memory_mb", 4096),
-                "disk_gb": specs.get("disk_gb", 60),
-                "services": node.get("services", []),
-            })
+            vms.append(
+                {
+                    "name": name,
+                    "node_id": node.get("id", suffix),
+                    "role": node.get("role", "generic"),
+                    "os": os_alias,
+                    "template_name": template_name,
+                    "vlan_id": vid,
+                    "vlan_tag": vid,
+                    "ip": ip,
+                    "gateway": gateway,
+                    "netmask": netmask,
+                    "prefix": prefix,
+                    "cores": specs.get("cores", 2),
+                    "memory": specs.get("memory_mb", 4096),
+                    "memory_mb": specs.get("memory_mb", 4096),
+                    "disk_gb": specs.get("disk_gb", 60),
+                    "services": node.get("services", []),
+                }
+            )
 
     return {
-        "range_id": range_id, "range_name": range_name,
-        "vm_definitions": vms, "network_definitions": networks,
-        "vlan_map": vlan_map, "unresolved": sorted(set(unresolved)),
+        "range_id": range_id,
+        "range_name": range_name,
+        "vm_definitions": vms,
+        "network_definitions": networks,
+        "vlan_map": vlan_map,
+        "unresolved": sorted(set(unresolved)),
     }
 
 

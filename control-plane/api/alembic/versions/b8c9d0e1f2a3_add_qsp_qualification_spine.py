@@ -153,14 +153,10 @@ def upgrade() -> None:
     # ORM-created constraints are unnamed — which fails outright.
     if not _has_column("courses", "qualification_id"):
         with op.batch_alter_table("courses") as batch:
-            batch.add_column(
-                sa.Column("qualification_id", GUID(), sa.ForeignKey("qualifications.id"), nullable=True)
-            )
+            batch.add_column(sa.Column("qualification_id", GUID(), sa.ForeignKey("qualifications.id"), nullable=True))
     if not _has_column("course_modules", "po_id"):
         with op.batch_alter_table("course_modules") as batch:
-            batch.add_column(
-                sa.Column("po_id", GUID(), sa.ForeignKey("performance_objectives.id"), nullable=True)
-            )
+            batch.add_column(sa.Column("po_id", GUID(), sa.ForeignKey("performance_objectives.id"), nullable=True))
 
 
 def downgrade() -> None:

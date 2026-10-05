@@ -38,7 +38,9 @@ from ..schemas import (
 # students and observers, which is the intent.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/directory", tags=["Directory"], dependencies=[Depends(require_permission(Permission.USER_READ))])
+router = APIRouter(
+    prefix="/directory", tags=["Directory"], dependencies=[Depends(require_permission(Permission.USER_READ))]
+)
 
 
 # -- Nations -------------------------------------------------------------

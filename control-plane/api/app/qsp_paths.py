@@ -44,14 +44,20 @@ from .models import (
 # Developmental progression derived from the QSP rank titles (see qsp_source/INDEX.md).
 # Not a fixed DP1-5 scale — a rank ladder (progression) plus parallel specialty streams.
 DP_PROGRESSION: dict[str, dict] = {
-    "ALJQ":   {"dp_order": 1, "track": "progression", "rank_level": "Pte",
-               "title": "Cyber Operator — Cyber Defence Analyst (Pte RQ)"},
-    "TEMP67": {"dp_order": 2, "track": "progression", "rank_level": "Cpl",
-               "title": "Cyber Operator — Senior Cyber Defense Analyst (Cpl RQ)"},
-    "TEMP64": {"dp_order": 2, "track": "specialty", "rank_level": "Cpl",
-               "title": "Red Analyst — Adversary Emulation"},
-    "ALRA":   {"dp_order": 2, "track": "specialty", "rank_level": "Cpl",
-               "title": "Malware Analyst — Reverse Engineer"},
+    "ALJQ": {
+        "dp_order": 1,
+        "track": "progression",
+        "rank_level": "Pte",
+        "title": "Cyber Operator — Cyber Defence Analyst (Pte RQ)",
+    },
+    "TEMP67": {
+        "dp_order": 2,
+        "track": "progression",
+        "rank_level": "Cpl",
+        "title": "Cyber Operator — Senior Cyber Defense Analyst (Cpl RQ)",
+    },
+    "TEMP64": {"dp_order": 2, "track": "specialty", "rank_level": "Cpl", "title": "Red Analyst — Adversary Emulation"},
+    "ALRA": {"dp_order": 2, "track": "specialty", "rank_level": "Cpl", "title": "Malware Analyst — Reverse Engineer"},
 }
 
 # The developmental-period ladder the career map draws. Periods with no ingested
@@ -74,12 +80,17 @@ DP_LADDER: list[dict] = [
 
 # NICE work-role -> short catalog abbreviation for course codes.
 _ROLE_ABBREV: dict[str, str] = {
-    "cyber defense analyst": "CDA", "cyber defence analyst": "CDA",
-    "senior cyber defense analyst": "SCDA", "senior cyber defence analyst": "SCDA",
-    "cyber defense incident responder": "CIR", "cyber defence incident responder": "CIR",
-    "cyber defense forensics analyst": "CFA", "cyber defence forensics analyst": "CFA",
+    "cyber defense analyst": "CDA",
+    "cyber defence analyst": "CDA",
+    "senior cyber defense analyst": "SCDA",
+    "senior cyber defence analyst": "SCDA",
+    "cyber defense incident responder": "CIR",
+    "cyber defence incident responder": "CIR",
+    "cyber defense forensics analyst": "CFA",
+    "cyber defence forensics analyst": "CFA",
     "malware reverse engineer": "MRE",
-    "adversary emulation (dcwf)": "ADV", "adversary emulation": "ADV",
+    "adversary emulation (dcwf)": "ADV",
+    "adversary emulation": "ADV",
 }
 
 
@@ -89,7 +100,7 @@ def course_code(po, qual) -> str:
     abbrev = _ROLE_ABBREV.get(role)
     if not abbrev:
         if role in ("", "-", "n/a", "todo"):
-            abbrev = (qual.nqual.replace("-", "")[:5].upper() if qual else "GEN")
+            abbrev = qual.nqual.replace("-", "")[:5].upper() if qual else "GEN"
         else:
             abbrev = "".join(w[0] for w in role.split() if w)[:4].upper() or "GEN"
     num = po.po_code.replace("PO_", "")
@@ -111,13 +122,16 @@ def course_meta_of(course: Course) -> dict:
 
 
 def _get_or_create_competency(
-    db: Session, framework: CompetencyFramework, code: str, name: str,
-    category: str = "", parent_code: str | None = None,
+    db: Session,
+    framework: CompetencyFramework,
+    code: str,
+    name: str,
+    category: str = "",
+    parent_code: str | None = None,
 ) -> Competency:
     comp = db.query(Competency).filter_by(framework=framework, code=code).one_or_none()
     if comp is None:
-        comp = Competency(framework=framework, code=code, name=name or code,
-                           category=category, parent_code=parent_code)
+        comp = Competency(framework=framework, code=code, name=name or code, category=category, parent_code=parent_code)
         db.add(comp)
         db.flush()
     else:
@@ -141,8 +155,12 @@ def seed_nist_csf(db: Session, taxonomy_csv: str) -> int:
         kind = (row.get("kind") or "").strip()
         parent = None if kind == "function" else (row.get("function_code") or "").strip() or None
         _get_or_create_competency(
-            db, CompetencyFramework.nist_csf, code, (row.get("name") or "").strip(),
-            category=kind, parent_code=parent,
+            db,
+            CompetencyFramework.nist_csf,
+            code,
+            (row.get("name") or "").strip(),
+            category=kind,
+            parent_code=parent,
         )
         n += 1
     db.flush()
@@ -150,11 +168,7 @@ def seed_nist_csf(db: Session, taxonomy_csv: str) -> int:
 
 
 def _link(db: Session, po: PerformanceObjective, comp: Competency, relation: str) -> bool:
-    exists = (
-        db.query(ObjectiveCompetencyMap)
-        .filter_by(po_id=po.id, competency_id=comp.id)
-        .one_or_none()
-    )
+    exists = db.query(ObjectiveCompetencyMap).filter_by(po_id=po.id, competency_id=comp.id).one_or_none()
     if exists is None:
         db.add(ObjectiveCompetencyMap(po_id=po.id, competency_id=comp.id, relation_type=relation))
         return True
@@ -179,11 +193,7 @@ def import_competency_crosswalk(
         if qual is None:
             stats["unmatched"].append(f"{qsp_code}/{po_code} (no qualification)")
             continue
-        po = (
-            db.query(PerformanceObjective)
-            .filter_by(qualification_id=qual.id, po_code=po_code)
-            .one_or_none()
-        )
+        po = db.query(PerformanceObjective).filter_by(qualification_id=qual.id, po_code=po_code).one_or_none()
         if po is None:
             stats["unmatched"].append(f"{qsp_code}/{po_code} (no PO)")
             continue
@@ -192,8 +202,11 @@ def import_competency_crosswalk(
         role_code = (row.get("nice_work_role") or "").strip()
         if role_code:
             role = _get_or_create_competency(
-                db, CompetencyFramework.nice, role_code,
-                (row.get("nice_work_role_name") or role_code).strip(), category="work_role",
+                db,
+                CompetencyFramework.nice,
+                role_code,
+                (row.get("nice_work_role_name") or role_code).strip(),
+                category="work_role",
             )
             nice_codes_seen.add(role_code)
             if _link(db, po, role, "primary"):
@@ -237,6 +250,7 @@ def import_competency_crosswalk(
 
 # ── Learning-plan generation ──────────────────────────────────────────────
 
+
 def tier_rank(po: PerformanceObjective) -> tuple:
     """Order key: gate first, core next, capstones last, then by po_code."""
     tier_v = po.tier.value if po.tier else "core"
@@ -249,11 +263,16 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
     """Get-or-create the reusable per-PO course (module + placeholder EO lessons + scenario link)."""
     code = course_code(po, qual)
     display_name = f"{code} — {po.title}"
-    meta = json.dumps({
-        "po_code": po.po_code, "qsp_code": qual.qsp_code, "course_code": code,
-        "work_role": po.target_role, "environment": po.environment.value,
-        "duration_min": po.duration_min,
-    })
+    meta = json.dumps(
+        {
+            "po_code": po.po_code,
+            "qsp_code": qual.qsp_code,
+            "course_code": code,
+            "work_role": po.target_role,
+            "environment": po.environment.value,
+            "duration_min": po.duration_min,
+        }
+    )
 
     # Whatever already delivers this objective wins. Authored content
     # (content/courses/*.yaml) binds modules to POs too, and it is the real delivery
@@ -263,9 +282,7 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
     # every resolver would prefer, silently shadowing the authored module.
     authored: Course | None = None
     stub_mod: CourseModule | None = None
-    for candidate in (
-        db.query(CourseModule).filter_by(po_id=po.id).order_by(CourseModule.ordinal).all()
-    ):
+    for candidate in db.query(CourseModule).filter_by(po_id=po.id).order_by(CourseModule.ordinal).all():
         cand_course = db.query(Course).filter_by(id=candidate.course_id).one_or_none()
         if cand_course is None:
             continue
@@ -292,12 +309,7 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
     if course is not None:
         course.course_meta = meta  # drops `retired`/`superseded_by`
         course.duration_hours = max(1, round((po.duration_min or 0) / 60))
-        existing_mod = (
-            db.query(CourseModule)
-            .filter_by(course_id=course.id)
-            .order_by(CourseModule.ordinal)
-            .first()
-        )
+        existing_mod = db.query(CourseModule).filter_by(course_id=course.id).order_by(CourseModule.ordinal).first()
         if existing_mod is not None:
             existing_mod.po_id = po.id
             db.flush()
@@ -316,9 +328,13 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
     db.flush()
 
     module = CourseModule(
-        course_id=course.id, ordinal=0, title=f"{po.po_code} — {po.title}",
-        description=po.conditions or "", content_type=ModuleContentType.scenario,
-        po_id=po.id, duration_minutes=po.duration_min or 0,
+        course_id=course.id,
+        ordinal=0,
+        title=f"{po.po_code} — {po.title}",
+        description=po.conditions or "",
+        content_type=ModuleContentType.scenario,
+        po_id=po.id,
+        duration_minutes=po.duration_min or 0,
     )
     db.add(module)
     db.flush()
@@ -330,26 +346,34 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
         lesson = Lesson(
             title=f"EO {eo.eo_code} — {eo.title or po.title}",
             body_markdown="",  # placeholder: generated on-box by GLM/Taz
-            duration_minutes=30, is_published=False, tenant_id=tenant_id,
+            duration_minutes=30,
+            is_published=False,
+            tenant_id=tenant_id,
         )
         db.add(lesson)
         db.flush()
         db.add(LessonObjective(lesson_id=lesson.id, eo_id=eo.id))
-        db.add(ModuleContent(module_id=module.id, ordinal=ordinal,
-                             content_kind="teach", lesson_id=lesson.id))
+        db.add(ModuleContent(module_id=module.id, ordinal=ordinal, content_kind="teach", lesson_id=lesson.id))
         ordinal += 1
 
     # assess: link the PO's assessment scenario if one exists (by po_code in the name)
     scenario = db.query(Scenario).filter(Scenario.name.ilike(f"%{po.po_code}%")).first()
-    db.add(ModuleContent(module_id=module.id, ordinal=ordinal, content_kind="assess",
-                         scenario_id=scenario.id if scenario else None,
-                         external_ref=json.dumps({"po_code": po.po_code})))
+    db.add(
+        ModuleContent(
+            module_id=module.id,
+            ordinal=ordinal,
+            content_kind="assess",
+            scenario_id=scenario.id if scenario else None,
+            external_ref=json.dumps({"po_code": po.po_code}),
+        )
+    )
     db.flush()
     return course
 
 
-def _get_or_create_path(db: Session, name: str, description: str, course_ids: list[str],
-                        prereq: dict, tenant_id: str | None) -> tuple[LearningPath, bool]:
+def _get_or_create_path(
+    db: Session, name: str, description: str, course_ids: list[str], prereq: dict, tenant_id: str | None
+) -> tuple[LearningPath, bool]:
     lp = db.query(LearningPath).filter_by(name=name).one_or_none()
     created = lp is None
     if created:
@@ -410,8 +434,7 @@ def drop_course_from_paths(db: Session, course_id: str) -> None:
     db.flush()
 
 
-def course_prereq_edges(db: Session, course_ids: set[str],
-                        tenant_id: str | None = None) -> list[dict]:
+def course_prereq_edges(db: Session, course_ids: set[str], tenant_id: str | None = None) -> list[dict]:
     """Course-to-course prerequisite edges, restricted to courses on the career map.
 
     Every learning path carries a `prerequisite_graph`, but most entries reference
@@ -501,9 +524,12 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
         course_ids = _ordered_unique([po_course[str(po.id)] for po in pos])
         title = qual.title or f"{qual.nqual} qualification"
         _get_or_create_path(
-            db, name=f"{qual.qsp_code} — {title}",
+            db,
+            name=f"{qual.qsp_code} — {title}",
             description=f"Qualification learning path for {qual.nqual} ({qual.qsp_code}).",
-            course_ids=course_ids, prereq=_linear_prereq(course_ids), tenant_id=tenant_id,
+            course_ids=course_ids,
+            prereq=_linear_prereq(course_ids),
+            tenant_id=tenant_id,
         )
         stats["qualification_paths"] += 1
 
@@ -517,9 +543,12 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
         ordered = sorted(pos, key=tier_rank)
         course_ids = _ordered_unique([po_course[str(po.id)] for po in ordered])
         _get_or_create_path(
-            db, name=f"Role: {role}",
+            db,
+            name=f"Role: {role}",
             description=f"Career-progression path toward the {role} role across qualifications.",
-            course_ids=course_ids, prereq=_linear_prereq(course_ids), tenant_id=tenant_id,
+            course_ids=course_ids,
+            prereq=_linear_prereq(course_ids),
+            tenant_id=tenant_id,
         )
         stats["role_paths"] += 1
 
@@ -535,9 +564,12 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
     prog_course_ids = _ordered_unique(prog_course_ids)
     if prog_course_ids:
         _get_or_create_path(
-            db, name="Developmental Progression — Cyber Operator",
+            db,
+            name="Developmental Progression — Cyber Operator",
             description="Rank-ladder progression derived from the QSPs (foundational Pte → senior Cpl).",
-            course_ids=prog_course_ids, prereq=_linear_prereq(prog_course_ids), tenant_id=tenant_id,
+            course_ids=prog_course_ids,
+            prereq=_linear_prereq(prog_course_ids),
+            tenant_id=tenant_id,
         )
         stats["progression_paths"] += 1
     for qual in [q for q in quals if q.track == "specialty"]:
@@ -547,9 +579,12 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
         )
         course_ids = _ordered_unique([po_course[str(po.id)] for po in pos])
         _get_or_create_path(
-            db, name=f"Specialty Stream — {qual.title or qual.nqual}",
+            db,
+            name=f"Specialty Stream — {qual.title or qual.nqual}",
             description=f"Specialty developmental stream ({qual.qsp_code}).",
-            course_ids=course_ids, prereq=_linear_prereq(course_ids), tenant_id=tenant_id,
+            course_ids=course_ids,
+            prereq=_linear_prereq(course_ids),
+            tenant_id=tenant_id,
         )
         stats["progression_paths"] += 1
 
@@ -561,6 +596,7 @@ def generate_learning_paths(db: Session, tenant_id: str | None = None) -> dict:
 
 
 # ── Exercise scaffolding (one assessment exercise per PO-course) ───────────
+
 
 def _slug(text: str) -> str:
     return "".join(c if c.isalnum() else "-" for c in text.lower()).strip("-")
@@ -651,14 +687,17 @@ def _scenario_yaml(po: PerformanceObjective, crit: list[str]) -> str:
             f'    description: "Adversary activity: {tname} ({ev})."',
         ]
     if not crit:
-        lines += ['  - t: "0:00"', "    action: inject.activity",
-                  '    description: "Foundational skills assessment activity."']
+        lines += [
+            '  - t: "0:00"',
+            "    action: inject.activity",
+            '    description: "Foundational skills assessment activity."',
+        ]
     # Noise floor — benign lookalikes the analyst must not mis-attribute.
     lines += [
         "noise_floor:",
-        '  - id: nf-01',
+        "  - id: nf-01",
         '    description: "Scheduled backup producing large outbound transfer (benign)."',
-        '  - id: nf-02',
+        "  - id: nf-02",
         '    description: "Administrator remote-management session across hosts (benign)."',
     ]
     return "\n".join(lines) + "\n"
@@ -688,7 +727,9 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
         template = db.query(Template).filter_by(name=tmpl_name).one_or_none()
         if template is None:
             template = Template(
-                name=tmpl_name, tenant_id=tenant_id, is_public=False,
+                name=tmpl_name,
+                tenant_id=tenant_id,
+                is_public=False,
                 yaml=f"name: {tmpl_name}\nenvironment: {po.environment.value}\n",
             )
             db.add(template)
@@ -697,8 +738,12 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
         rng = db.query(Range).filter_by(name=tmpl_name).one_or_none()
         if rng is None:
             rng = Range(
-                name=tmpl_name, template_id=template.id, tenant_id=tenant_id,
-                state=RangeState.created, provisioner_backend="mock", diagram_json=diagram,
+                name=tmpl_name,
+                template_id=template.id,
+                tenant_id=tenant_id,
+                state=RangeState.created,
+                provisioner_backend="mock",
+                diagram_json=diagram,
             )
             db.add(rng)
             db.flush()
@@ -732,21 +777,17 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
             scenario.yaml = _scenario_yaml(po, crit)  # refresh with enriched timeline
 
         # wire the delivering module's assess ModuleContent to this scenario
-        assess = (
-            db.query(ModuleContent)
-            .filter_by(module_id=module.id, content_kind="assess")
-            .first()
-        )
+        assess = db.query(ModuleContent).filter_by(module_id=module.id, content_kind="assess").first()
         if assess is None:
             # Authored modules arrive with no ModuleContent at all, so there is nothing
             # to rewire. Without this the exercise/scenario/range deep links vanish from
             # the career map the moment authored content supersedes a stub: the stub kept
             # the assess row, but the stub no longer claims the objective.
-            next_ordinal = (
-                db.query(ModuleContent).filter_by(module_id=module.id).count()
-            )
+            next_ordinal = db.query(ModuleContent).filter_by(module_id=module.id).count()
             assess = ModuleContent(
-                module_id=module.id, ordinal=next_ordinal, content_kind="assess",
+                module_id=module.id,
+                ordinal=next_ordinal,
+                content_kind="assess",
                 scenario_id=scenario.id,
                 external_ref=json.dumps({"po_code": po.po_code}),
             )
@@ -763,8 +804,11 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
         exercise = db.query(Exercise).filter_by(scenario_id=scenario.id).one_or_none()
         if exercise is None:
             exercise = Exercise(
-                name=ex_name, range_id=rng.id, scenario_id=scenario.id,
-                state=ExerciseState.pending, tenant_id=tenant_id,
+                name=ex_name,
+                range_id=rng.id,
+                scenario_id=scenario.id,
+                state=ExerciseState.pending,
+                tenant_id=tenant_id,
             )
             db.add(exercise)
             db.flush()
@@ -775,22 +819,31 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
             per = (100 - deliverable_pts) // len(crit) if crit else 0
             remainder = (100 - deliverable_pts) - per * len(crit) if crit else 0
             for i, ev in enumerate(crit):
-                db.add(Objective(
-                    exercise_id=exercise.id, ref_id=f"crit-{i + 1}",
-                    objective_type=ObjectiveType.detection,
-                    validator="validate.opensearch_query",
-                    points=per + (remainder if i == 0 else 0), achieved=False,
-                    evidence=ev, competency_code=po.nice_dcwf_task or "",
-                ))
+                db.add(
+                    Objective(
+                        exercise_id=exercise.id,
+                        ref_id=f"crit-{i + 1}",
+                        objective_type=ObjectiveType.detection,
+                        validator="validate.opensearch_query",
+                        points=per + (remainder if i == 0 else 0),
+                        achieved=False,
+                        evidence=ev,
+                        competency_code=po.nice_dcwf_task or "",
+                    )
+                )
                 stats["objectives"] += 1
-            db.add(Objective(
-                exercise_id=exercise.id, ref_id="deliverable-report",
-                objective_type=ObjectiveType.deliverable,
-                validator="validate.deliverable_check",
-                points=deliverable_pts, achieved=False,
-                evidence=po.deliverable or "technical report",
-                competency_code=po.nice_dcwf_task or "",
-            ))
+            db.add(
+                Objective(
+                    exercise_id=exercise.id,
+                    ref_id="deliverable-report",
+                    objective_type=ObjectiveType.deliverable,
+                    validator="validate.deliverable_check",
+                    points=deliverable_pts,
+                    achieved=False,
+                    evidence=po.deliverable or "technical report",
+                    competency_code=po.nice_dcwf_task or "",
+                )
+            )
             stats["objectives"] += 1
         elif exercise.name != ex_name:
             exercise.name = ex_name  # refresh title on re-run
@@ -817,14 +870,9 @@ def po_coverage(db: Session, tenant_id: str | None = None) -> dict:
     qual_by_id = {str(q.id): q for q in quals}
 
     if not quals:
-        return {"objective_count": 0, "covered": 0, "uncovered": 0,
-                "unbound_modules": 0, "objectives": []}
+        return {"objective_count": 0, "covered": 0, "uncovered": 0, "unbound_modules": 0, "objectives": []}
 
-    pos = (
-        db.query(PerformanceObjective)
-        .filter(PerformanceObjective.qualification_id.in_([q.id for q in quals]))
-        .all()
-    )
+    pos = db.query(PerformanceObjective).filter(PerformanceObjective.qualification_id.in_([q.id for q in quals])).all()
     # Retired stubs no longer deliver anything — they released their `po_id` when
     # authored content superseded them — so counting them would overstate coverage.
     courses = [c for c in course_q.all() if not course_meta_of(c).get("retired")]
@@ -837,30 +885,33 @@ def po_coverage(db: Session, tenant_id: str | None = None) -> dict:
         modules_by_po.setdefault(str(module.po_id), []).append(module)
 
     objectives = []
-    for po in sorted(pos, key=lambda p: (qual_by_id.get(str(p.qualification_id)).dp_order
-                                         if qual_by_id.get(str(p.qualification_id)) else 0,
-                                         p.po_code)):
+    for po in sorted(
+        pos,
+        key=lambda p: (
+            qual_by_id.get(str(p.qualification_id)).dp_order if qual_by_id.get(str(p.qualification_id)) else 0,
+            p.po_code,
+        ),
+    ):
         qual = qual_by_id.get(str(po.qualification_id))
         delivering = modules_by_po.get(str(po.id), [])
-        objectives.append({
-            "qsp_code": qual.qsp_code if qual else "",
-            "dp_order": qual.dp_order if qual else 0,
-            "po_code": po.po_code,
-            "title": po.title,
-            "tier": po.tier.value if po.tier else "",
-            "status": po.status.value if po.status else "",
-            "module_count": len(delivering),
-            "delivered_by": [
-                {"course": course_names.get(str(m.course_id), ""), "module": m.title}
-                for m in delivering
-            ],
-        })
+        objectives.append(
+            {
+                "qsp_code": qual.qsp_code if qual else "",
+                "dp_order": qual.dp_order if qual else 0,
+                "po_code": po.po_code,
+                "title": po.title,
+                "tier": po.tier.value if po.tier else "",
+                "status": po.status.value if po.status else "",
+                "module_count": len(delivering),
+                "delivered_by": [
+                    {"course": course_names.get(str(m.course_id), ""), "module": m.title} for m in delivering
+                ],
+            }
+        )
 
     covered = sum(1 for o in objectives if o["module_count"] > 0)
     unbound_modules = (
-        db.query(CourseModule)
-        .filter(CourseModule.course_id.in_(course_ids), CourseModule.po_id.is_(None))
-        .count()
+        db.query(CourseModule).filter(CourseModule.course_id.in_(course_ids), CourseModule.po_id.is_(None)).count()
     )
     return {
         "objective_count": len(objectives),
@@ -922,14 +973,16 @@ def programme_courses(db: Session, tenant_id: str | None = None) -> dict[tuple, 
     )
     for module, po in rows:
         qual = quals.get(str(po.qualification_id))
-        delivers.setdefault(str(module.course_id), []).append({
-            "qsp_code": qual.qsp_code if qual else "",
-            "dp_order": qual.dp_order if qual else 0,
-            "po_code": po.po_code,
-            "po_title": po.title,
-            "module_id": str(module.id),
-            "module_title": module.title,
-        })
+        delivers.setdefault(str(module.course_id), []).append(
+            {
+                "qsp_code": qual.qsp_code if qual else "",
+                "dp_order": qual.dp_order if qual else 0,
+                "po_code": po.po_code,
+                "po_title": po.title,
+                "module_id": str(module.id),
+                "module_title": module.title,
+            }
+        )
 
     grouped: dict[tuple, list[dict]] = {}
     for course, meta in courses:
@@ -943,24 +996,24 @@ def programme_courses(db: Session, tenant_id: str | None = None) -> dict[tuple, 
         else:
             track_key = "progression"
 
-        entries = sorted(
-            delivers.get(str(course.id), []), key=lambda d: (d["dp_order"], d["po_code"])
+        entries = sorted(delivers.get(str(course.id), []), key=lambda d: (d["dp_order"], d["po_code"]))
+        grouped.setdefault((dp_order, track_key), []).append(
+            {
+                "course_id": str(course.id),
+                "course_code": meta.get("course_code") or "",
+                "name": course.name,
+                "institution": meta.get("institution") or "",
+                "term_code": meta.get("term_code") or "",
+                "term_label": meta.get("term_label") or "",
+                "term_start": meta.get("term_start") or "",
+                "duration_hours": course.duration_hours or 0,
+                "difficulty": course.difficulty or "",
+                "is_published": bool(course.is_published),
+                "delivers": entries,
+                # True when the course is taught in one DP but delivers into another.
+                "delivers_cross_dp": any(d["dp_order"] != dp_order for d in entries),
+            }
         )
-        grouped.setdefault((dp_order, track_key), []).append({
-            "course_id": str(course.id),
-            "course_code": meta.get("course_code") or "",
-            "name": course.name,
-            "institution": meta.get("institution") or "",
-            "term_code": meta.get("term_code") or "",
-            "term_label": meta.get("term_label") or "",
-            "term_start": meta.get("term_start") or "",
-            "duration_hours": course.duration_hours or 0,
-            "difficulty": course.difficulty or "",
-            "is_published": bool(course.is_published),
-            "delivers": entries,
-            # True when the course is taught in one DP but delivers into another.
-            "delivers_cross_dp": any(d["dp_order"] != dp_order for d in entries),
-        })
 
     for key in grouped:
         grouped[key].sort(key=lambda c: (c["term_start"], c["term_code"], c["course_code"]))

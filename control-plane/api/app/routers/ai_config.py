@@ -37,7 +37,11 @@ logger = logging.getLogger("truenorth.api.ai_config")
 # Router-level authentication. AI backend endpoints, model routing and fleet nodes.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/ai-config", tags=["AI Orchestrator"], dependencies=[Depends(require_permission(Permission.AI_CONFIG_WRITE))])
+router = APIRouter(
+    prefix="/ai-config",
+    tags=["AI Orchestrator"],
+    dependencies=[Depends(require_permission(Permission.AI_CONFIG_WRITE))],
+)
 
 
 # -- Backends CRUD -------------------------------------------------------
@@ -205,7 +209,13 @@ def update_model_route(route_id: uuid.UUID, payload: AIModelRouteUpdate, db: Ses
 # host :4000), not Ollama. This discovery path is dormant; the entry below
 # describes the real R7725 GPU node for reference only.
 KNOWN_OLLAMA_NODES = [
-    {"node_name": "r7725", "host": "133.1.14.240", "port": 11434, "gpu_model": "2x NVIDIA H200 NVL (144GB ea)", "gpu_vram_gb": 288},
+    {
+        "node_name": "r7725",
+        "host": "133.1.14.240",
+        "port": 11434,
+        "gpu_model": "2x NVIDIA H200 NVL (144GB ea)",
+        "gpu_vram_gb": 288,
+    },
 ]
 
 
@@ -478,7 +488,9 @@ def test_generate(
             result["node"] = node_label
         elif primary.backend_type in ("openai", "azure_openai", "anthropic", "vllm", "litellm"):
             req_model = model if model and model != "llama3.1:latest" else ""
-            result = _call_openai(primary.base_url, primary.api_key_encrypted, prompt, primary.timeout_seconds, req_model)
+            result = _call_openai(
+                primary.base_url, primary.api_key_encrypted, prompt, primary.timeout_seconds, req_model
+            )
         elif primary.backend_type == "mock":
             result = _call_mock(prompt)
         else:

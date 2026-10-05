@@ -146,9 +146,7 @@ def build_login_redirect(
 
 
 def find_platform(db: Session, iss: str, client_id: str | None = None) -> ExternalPlatform | None:
-    q = db.query(ExternalPlatform).filter(
-        ExternalPlatform.lti_issuer == iss, ExternalPlatform.is_active.is_(True)
-    )
+    q = db.query(ExternalPlatform).filter(ExternalPlatform.lti_issuer == iss, ExternalPlatform.is_active.is_(True))
     if client_id:
         by_client = q.filter(ExternalPlatform.lti_client_id == client_id).first()
         if by_client:
@@ -297,9 +295,7 @@ def build_deep_link_response(
     }
     if deep_link_return_data:
         payload["https://purl.imsglobal.org/spec/lti-dl/claim/data"] = deep_link_return_data
-    return jwt.encode(
-        payload, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid}
-    )
+    return jwt.encode(payload, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid})
 
 
 def content_item_for(kind: str, resource_id: str, title: str, max_score: int = 100) -> dict:

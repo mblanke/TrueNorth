@@ -30,8 +30,17 @@ _ZONE_W, _ZONE_H = 640, 150
 _NODE_W, _NODE_H = 120, 80
 
 
-def _cell_zone(cid: str, label: str, cidr: str, x: int, y: int, dmz: bool = False,
-               width: int = _ZONE_W, height: int = _ZONE_H, vlan: int | None = None) -> dict:
+def _cell_zone(
+    cid: str,
+    label: str,
+    cidr: str,
+    x: int,
+    y: int,
+    dmz: bool = False,
+    width: int = _ZONE_W,
+    height: int = _ZONE_H,
+    vlan: int | None = None,
+) -> dict:
     color = _NODE_COLORS["dmz" if dmz else "subnet"]
     data: dict = {"label": label, "cidr": cidr}
     if vlan is not None:
@@ -365,7 +374,12 @@ def build_template_diagram(template_yaml: str) -> dict:
             hosts.append((f"{role}{i + 1}" if count > 1 else role, role))
     for node in doc.get("nodes", []) or []:
         if isinstance(node, dict):
-            hosts.append((str(node.get("label") or node.get("name") or "node"), str(node.get("role") or node.get("type") or "server")))
+            hosts.append(
+                (
+                    str(node.get("label") or node.get("name") or "node"),
+                    str(node.get("role") or node.get("type") or "server"),
+                )
+            )
         elif isinstance(node, str):
             hosts.append((node, "server"))
 
@@ -378,7 +392,9 @@ def build_template_diagram(template_yaml: str) -> dict:
     cells.append(_cell_zone("zone-0", name, cidr, 40, 130, dmz=False))
     for i, (label, role) in enumerate(hosts[:24]):  # cap so a huge template stays legible
         node_type, os_t = _ROLE_STENCIL.get(role.lower(), ("server", "ubuntu-24.04"))
-        cells.append(_cell_node(f"n-{i}", label, node_type, os_t, f"10.0.0.{10 + i}", 70 + (i % 4) * 150, 175 + (i // 4) * 95))
+        cells.append(
+            _cell_node(f"n-{i}", label, node_type, os_t, f"10.0.0.{10 + i}", 70 + (i % 4) * 150, 175 + (i // 4) * 95)
+        )
     return {"cells": cells}
 
 
@@ -424,7 +440,6 @@ def count_template_hosts(template_yaml: str | None) -> int | None:
 # Round trip is lossless for templates: keys the designer has no field for ride along
 # in `nodeData.template_extra`, zones keep their exact VLAN name and id, and nodes keep
 # their template order. Only `count` is not preserved: each instance becomes a node.
-
 
 
 MAX_DIAGRAM_CELLS = 2000
@@ -507,8 +522,15 @@ def template_to_diagram(doc: dict) -> dict:
         rows = max(1, -(-members // _GRID_COLS))
         vid = _int_or_none(meta.get("id"))
         cell = _cell_zone(
-            f"zone-{zi}", zname, str(meta.get("cidr") or ""), 40, y,
-            dmz="dmz" in zname.lower(), width=zone_w, height=50 + rows * _CELL_H, vlan=vid,
+            f"zone-{zi}",
+            zname,
+            str(meta.get("cidr") or ""),
+            40,
+            y,
+            dmz="dmz" in zname.lower(),
+            width=zone_w,
+            height=50 + rows * _CELL_H,
+            vlan=vid,
         )
         extra = {k: v for k, v in meta.items() if k not in _VLAN_FIELDS}
         if extra:
@@ -526,8 +548,13 @@ def template_to_diagram(doc: dict) -> dict:
         role = str(node.get("role") or "")
         ip = str(node.get("ip") or "") if int(node.get("count", 1) or 1) == 1 else ""
         cell = _cell_node(
-            nid, str(node.get("name") or nid), _node_type_for(role, os_name), os_name, ip,
-            60 + (idx % _GRID_COLS) * _CELL_W, top + 40 + (idx // _GRID_COLS) * _CELL_H,
+            nid,
+            str(node.get("name") or nid),
+            _node_type_for(role, os_name),
+            os_name,
+            ip,
+            60 + (idx % _GRID_COLS) * _CELL_W,
+            top + 40 + (idx // _GRID_COLS) * _CELL_H,
         )
         data = cell["nodeData"]
         data["hostname"] = nid
@@ -752,12 +779,21 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
                     default_vlan = vlan_name
                 warnings.append(f"{label}: outside every zone; placed on VLAN {vid} ({cidr})")
             if ntype in _MULTI_HOMED_TYPES:
-                warnings.append(f"{label}: a {ntype} outside the zones has a single NIC and will not route between them")
+                warnings.append(
+                    f"{label}: a {ntype} outside the zones has a single NIC and will not route between them"
+                )
 
         extra = data.get("template_extra")
         node: dict = {k: v for k, v in extra.items() if k not in _NODE_FIELDS} if isinstance(extra, dict) else {}
-        node.update({"id": nid, "name": label, "role": str(data.get("role") or _TYPE_ROLE.get(ntype, ntype)),
-                     "os": os_name, "vlan": vlan_name})
+        node.update(
+            {
+                "id": nid,
+                "name": label,
+                "role": str(data.get("role") or _TYPE_ROLE.get(ntype, ntype)),
+                "os": os_name,
+                "vlan": vlan_name,
+            }
+        )
 
         ip_raw = str(data.get("ip") or "").strip()
         if ip_raw:

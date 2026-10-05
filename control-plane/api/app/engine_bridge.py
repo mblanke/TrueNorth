@@ -114,10 +114,12 @@ def injector_catalogue() -> list[dict[str, Any]]:
         if inst is None:
             continue
         technique_map = getattr(inst, "_TECHNIQUE_MAP", None) or {}
-        catalogue.append({
-            "name": action,
-            "description": getattr(inst, "description", "") or "",
-            "required_params": list(getattr(inst, "required_params", []) or []),
-            "mitre_techniques": sorted(set(technique_map.values())),
-        })
+        catalogue.append(
+            {
+                "name": action,
+                "description": getattr(inst, "description", "") or "",
+                "required_params": list(getattr(inst, "required_params", []) or []),
+                "mitre_techniques": sorted(set(technique_map.values())),
+            }
+        )
     return catalogue

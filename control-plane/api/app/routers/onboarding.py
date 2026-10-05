@@ -150,19 +150,13 @@ def select_path(
     if body.learning_path_id:
         # Scoped: a trainee must not be able to enrol on another tenant's path
         # by guessing its id. Shared catalogue rows (tenant_id NULL) are allowed.
-        get_owned_or_global(
-            db, LearningPath, body.learning_path_id, user, not_found="Learning path not found"
-        )
+        get_owned_or_global(db, LearningPath, body.learning_path_id, user, not_found="Learning path not found")
         enrolled += len(
-            ensure_path_enrollment(
-                db, user_id=row.id, learning_path_id=body.learning_path_id, tenant_id=tenant_id
-            )
+            ensure_path_enrollment(db, user_id=row.id, learning_path_id=body.learning_path_id, tenant_id=tenant_id)
         )
 
     if body.qualification_id:
-        get_owned_or_global(
-            db, Qualification, body.qualification_id, user, not_found="Qualification not found"
-        )
+        get_owned_or_global(db, Qualification, body.qualification_id, user, not_found="Qualification not found")
         # tenant-safe: reached only through a qualification already scoped above.
         courses = db.query(Course).filter(Course.qualification_id == body.qualification_id).all()
         for course in courses:

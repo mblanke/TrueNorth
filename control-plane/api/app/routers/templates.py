@@ -144,9 +144,7 @@ def list_templates(
     )
     rows = q.order_by(Template.created_at.desc()).offset(offset).limit(limit).all()
     return [
-        TemplateListOut.model_validate(t).model_copy(
-            update={"host_count": range_topology.count_template_hosts(t.yaml)}
-        )
+        TemplateListOut.model_validate(t).model_copy(update={"host_count": range_topology.count_template_hosts(t.yaml)})
         for t in rows
     ]
 

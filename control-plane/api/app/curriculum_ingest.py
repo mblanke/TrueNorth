@@ -25,7 +25,7 @@ logger = logging.getLogger("truenorth.api.curriculum")
 
 AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 
-CHUNK_CHARS = 3200      # ~800 tokens
+CHUNK_CHARS = 3200  # ~800 tokens
 CHUNK_OVERLAP = 400
 
 # Embedding width is a property of the served model, not a preference, so it is
@@ -45,10 +45,10 @@ CHUNK_OVERLAP = 400
 EMBED_DIM_FALLBACK = 1024
 _EMBED_DIM_PIN = int(os.environ["EMBED_DIM"]) if os.getenv("EMBED_DIM") else None
 
-_dim_cache: dict[str, int] = {}          # index name -> resolved vector width
-_probed_dim: int | None = None           # width reported by the served model
-_probe_done = False                      # probe is attempted at most once
-_warned_mismatch: set[tuple[str, int, int]] = set()   # (index, got, want)
+_dim_cache: dict[str, int] = {}  # index name -> resolved vector width
+_probed_dim: int | None = None  # width reported by the served model
+_probe_done = False  # probe is attempted at most once
+_warned_mismatch: set[tuple[str, int, int]] = set()  # (index, got, want)
 
 
 def index_name(curriculum_id: uuid.UUID | str) -> str:
@@ -224,7 +224,10 @@ async def _probe_embedding_dim() -> int | None:
         logger.warning(
             "EMBED_DIM=%d contradicts the served model (%s returns %d). Using %d — "
             "correct EMBED_DIM, or new indexes will be built at a width the model cannot fill.",
-            _EMBED_DIM_PIN, model or "unknown", _probed_dim, _probed_dim,
+            _EMBED_DIM_PIN,
+            model or "unknown",
+            _probed_dim,
+            _probed_dim,
         )
     return _probed_dim
 
@@ -239,7 +242,10 @@ def _warn_mismatch(index: str, got: int, want: int) -> None:
         "Embedding width mismatch on %s: the model returned %d, the index expects %d. "
         "Chunks are indexed text-only and retrieval has fallen back to BM25. Rebuild the "
         "index (delete it and re-ingest) to restore semantic search at %d dimensions.",
-        index, got, want, got,
+        index,
+        got,
+        want,
+        got,
     )
 
 

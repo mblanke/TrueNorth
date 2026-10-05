@@ -13,20 +13,53 @@ import io
 
 # header alias -> canonical field
 _MESL_ALIASES: dict[str, str] = {
-    "serial": "serial", "ser": "serial", "no": "serial", "num": "serial", "#": "serial", "event_no": "serial",
-    "phase": "phase", "day": "phase",
-    "time": "scenario_time", "dtg": "scenario_time", "scenario_time": "scenario_time", "when": "scenario_time",
-    "title": "title", "inject": "title", "event": "title", "summary": "title",
-    "description": "description", "detail": "description", "narrative": "description",
-    "objective": "objective_ref", "obj": "objective_ref", "objective_ref": "objective_ref", "obj_ref": "objective_ref",
-    "technique": "attack_technique", "attack_technique": "attack_technique", "mitre": "attack_technique",
-    "delivery": "delivery_method", "method": "delivery_method", "means": "delivery_method",
+    "serial": "serial",
+    "ser": "serial",
+    "no": "serial",
+    "num": "serial",
+    "#": "serial",
+    "event_no": "serial",
+    "phase": "phase",
+    "day": "phase",
+    "time": "scenario_time",
+    "dtg": "scenario_time",
+    "scenario_time": "scenario_time",
+    "when": "scenario_time",
+    "title": "title",
+    "inject": "title",
+    "event": "title",
+    "summary": "title",
+    "description": "description",
+    "detail": "description",
+    "narrative": "description",
+    "objective": "objective_ref",
+    "obj": "objective_ref",
+    "objective_ref": "objective_ref",
+    "obj_ref": "objective_ref",
+    "technique": "attack_technique",
+    "attack_technique": "attack_technique",
+    "mitre": "attack_technique",
+    "delivery": "delivery_method",
+    "method": "delivery_method",
+    "means": "delivery_method",
     "delivery_method": "delivery_method",
-    "from": "from_cell", "from_cell": "from_cell", "source": "from_cell", "cell": "from_cell",
-    "to": "to_participant", "to_participant": "to_participant", "target": "to_participant", "audience": "to_participant",
-    "expected": "expected_action", "expected_action": "expected_action", "response": "expected_action",
-    "action": "expected_action", "expected_response": "expected_action",
-    "moe": "moe", "assessment": "moe", "measure": "moe", "mop": "moe",
+    "from": "from_cell",
+    "from_cell": "from_cell",
+    "source": "from_cell",
+    "cell": "from_cell",
+    "to": "to_participant",
+    "to_participant": "to_participant",
+    "target": "to_participant",
+    "audience": "to_participant",
+    "expected": "expected_action",
+    "expected_action": "expected_action",
+    "response": "expected_action",
+    "action": "expected_action",
+    "expected_response": "expected_action",
+    "moe": "moe",
+    "assessment": "moe",
+    "measure": "moe",
+    "mop": "moe",
 }
 
 _DELIVERY = {"cyber", "white_cell", "email", "radio", "physical", "opfor"}
@@ -63,20 +96,22 @@ def parse_mesl(csv_text: str) -> list[dict]:
             delivery = "white_cell" if "white" in delivery else ("cyber" if delivery in ("", "network") else delivery)
             if delivery not in _DELIVERY:
                 delivery = "cyber"
-        out.append({
-            "serial": serial,
-            "phase": rec.get("phase", ""),
-            "scenario_time": rec.get("scenario_time", ""),
-            "title": rec.get("title", ""),
-            "description": rec.get("description", ""),
-            "objective_ref": rec.get("objective_ref", ""),
-            "attack_technique": rec.get("attack_technique", ""),
-            "delivery_method": delivery,
-            "from_cell": rec.get("from_cell", ""),
-            "to_participant": rec.get("to_participant", ""),
-            "expected_action": rec.get("expected_action", ""),
-            "moe": rec.get("moe", ""),
-        })
+        out.append(
+            {
+                "serial": serial,
+                "phase": rec.get("phase", ""),
+                "scenario_time": rec.get("scenario_time", ""),
+                "title": rec.get("title", ""),
+                "description": rec.get("description", ""),
+                "objective_ref": rec.get("objective_ref", ""),
+                "attack_technique": rec.get("attack_technique", ""),
+                "delivery_method": delivery,
+                "from_cell": rec.get("from_cell", ""),
+                "to_participant": rec.get("to_participant", ""),
+                "expected_action": rec.get("expected_action", ""),
+                "moe": rec.get("moe", ""),
+            }
+        )
     return out
 
 
@@ -89,11 +124,13 @@ def parse_objectives(csv_text: str) -> list[dict]:
         text = row.get("text") or row.get("objective") or row.get("description") or ""
         if not text and not row.get("ref"):
             continue
-        out.append({
-            "ref": row.get("ref") or row.get("obj") or str(i),
-            "text": text,
-            "moe": row.get("moe") or row.get("assessment") or "",
-            "competency_code": row.get("competency_code") or row.get("nice") or "",
-            "ordinal": i,
-        })
+        out.append(
+            {
+                "ref": row.get("ref") or row.get("obj") or str(i),
+                "text": text,
+                "moe": row.get("moe") or row.get("assessment") or "",
+                "competency_code": row.get("competency_code") or row.get("nice") or "",
+                "ordinal": i,
+            }
+        )
     return out

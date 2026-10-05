@@ -149,9 +149,7 @@ def list_courses(
         rows = [c for c in rows if wanted <= set(_course_tags(c))]
 
     total = len(rows)
-    return PaginatedResponse(
-        items=rows[offset : offset + limit], total=total, limit=limit, offset=offset
-    )
+    return PaginatedResponse(items=rows[offset : offset + limit], total=total, limit=limit, offset=offset)
 
 
 def _course_tags(course: Course) -> list[str]:
@@ -194,20 +192,11 @@ def course_outline(
     can show what each module teaches, the quiz that checks it, the lab that assesses
     it, and the performance objective it satisfies.
     """
-    course = (
-        db.query(Course)
-        .filter(Course.id == course_id, Course.tenant_id == tenant_uuid(user))
-        .one_or_none()
-    )
+    course = db.query(Course).filter(Course.id == course_id, Course.tenant_id == tenant_uuid(user)).one_or_none()
     if course is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
 
-    modules = (
-        db.query(CourseModule)
-        .filter(CourseModule.course_id == course.id)
-        .order_by(CourseModule.ordinal)
-        .all()
-    )
+    modules = db.query(CourseModule).filter(CourseModule.course_id == course.id).order_by(CourseModule.ordinal).all()
     module_ids = [m.id for m in modules]
 
     contents: dict[str, list[ModuleContent]] = {}
@@ -225,15 +214,11 @@ def course_outline(
         lesson_ids = [r.lesson_id for r in rows if r.lesson_id]
         if lesson_ids:
             # tenant-safe: reached only through this course's own modules.
-            lessons = {
-                str(x.id): x for x in db.query(Lesson).filter(Lesson.id.in_(lesson_ids)).all()
-            }
+            lessons = {str(x.id): x for x in db.query(Lesson).filter(Lesson.id.in_(lesson_ids)).all()}
         quiz_ids = [r.quiz_id for r in rows if r.quiz_id]
         if quiz_ids:
             # tenant-safe: reached only through this course's own modules.
-            quizzes = {
-                str(x.id): x for x in db.query(Quiz).filter(Quiz.id.in_(quiz_ids)).all()
-            }
+            quizzes = {str(x.id): x for x in db.query(Quiz).filter(Quiz.id.in_(quiz_ids)).all()}
 
     # Which performance objective each module satisfies, if any.
     po_by_module: dict[str, dict] = {}
@@ -271,29 +256,31 @@ def course_outline(
             except (TypeError, ValueError):
                 lab = ""
 
-        out_modules.append({
-            "id": str(m.id),
-            "ordinal": m.ordinal,
-            "title": m.title,
-            "content_type": m.content_type.value if m.content_type else "",
-            "duration_minutes": m.duration_minutes,
-            "is_required": m.is_required,
-            "pass_threshold": m.pass_threshold,
-            "body_markdown": lesson.body_markdown if lesson else "",
-            "quiz": (
-                {
-                    "id": str(quiz.id),
-                    "title": quiz.title,
-                    "pass_pct": quiz.pass_pct,
-                    "question_count": len(quiz.questions),
-                }
-                if quiz
-                else None
-            ),
-            "lab": lab,
-            "scenario_id": str(assess.scenario_id) if assess and assess.scenario_id else None,
-            "delivers": po_by_module.get(str(m.id)),
-        })
+        out_modules.append(
+            {
+                "id": str(m.id),
+                "ordinal": m.ordinal,
+                "title": m.title,
+                "content_type": m.content_type.value if m.content_type else "",
+                "duration_minutes": m.duration_minutes,
+                "is_required": m.is_required,
+                "pass_threshold": m.pass_threshold,
+                "body_markdown": lesson.body_markdown if lesson else "",
+                "quiz": (
+                    {
+                        "id": str(quiz.id),
+                        "title": quiz.title,
+                        "pass_pct": quiz.pass_pct,
+                        "question_count": len(quiz.questions),
+                    }
+                    if quiz
+                    else None
+                ),
+                "lab": lab,
+                "scenario_id": str(assess.scenario_id) if assess and assess.scenario_id else None,
+                "delivers": po_by_module.get(str(m.id)),
+            }
+        )
 
     return {
         "id": str(course.id),
@@ -461,9 +448,7 @@ def enroll_user(
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "User already enrolled in this course")
 
-    enrollment = ensure_enrollment(
-        db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id
-    )
+    enrollment = ensure_enrollment(db, user_id=body.user_id, course_id=course_id, tenant_id=user.tenant_id)
     db.commit()
     db.refresh(enrollment)
     logger.info("User %s enrolled in course %s", body.user_id, course_id)
@@ -574,9 +559,7 @@ def create_learning_path(
 ):
     """Create a learning path (ordered sequence of courses)."""
     duplicate = (
-        db.query(LearningPath)
-        .filter(LearningPath.tenant_id == user.tenant_id, LearningPath.name == body.name)
-        .first()
+        db.query(LearningPath).filter(LearningPath.tenant_id == user.tenant_id, LearningPath.name == body.name).first()
     )
     if duplicate:
         raise HTTPException(
@@ -631,11 +614,7 @@ def update_learning_path(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Update a learning path."""
-    lp = (
-        db.query(LearningPath)
-        .filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id)
-        .first()
-    )
+    lp = db.query(LearningPath).filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id).first()
     if not lp:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning path not found")
     if body.name is not None and body.name != lp.name:
@@ -649,9 +628,7 @@ def update_learning_path(
             .first()
         )
         if clash:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT, f"A learning path named '{body.name}' already exists."
-            )
+            raise HTTPException(status.HTTP_409_CONFLICT, f"A learning path named '{body.name}' already exists.")
         lp.name = body.name
     if body.description is not None:
         lp.description = body.description
@@ -671,11 +648,7 @@ def delete_learning_path(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Delete a learning path."""
-    lp = (
-        db.query(LearningPath)
-        .filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id)
-        .first()
-    )
+    lp = db.query(LearningPath).filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id).first()
     if not lp:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning path not found")
     db.delete(lp)
@@ -782,10 +755,7 @@ def assign_learning_path_to_group(
 
     # tenant-safe: reached only through a security group already scoped above.
     member_ids = [
-        row.user_id
-        for row in db.query(SecurityGroupMembership).filter(
-            SecurityGroupMembership.group_id == group.id
-        )
+        row.user_id for row in db.query(SecurityGroupMembership).filter(SecurityGroupMembership.group_id == group.id)
     ]
     if not member_ids:
         return {
@@ -798,11 +768,7 @@ def assign_learning_path_to_group(
 
     # Members must be in the caller's tenant — a group could in principle name a
     # user from elsewhere, and enrolment writes a tenant-scoped row.
-    members = (
-        db.query(User)
-        .filter(User.id.in_(member_ids), User.tenant_id == tenant_uuid(user))
-        .all()
-    )
+    members = db.query(User).filter(User.id.in_(member_ids), User.tenant_id == tenant_uuid(user)).all()
 
     enrolled = 0
     for member in members:

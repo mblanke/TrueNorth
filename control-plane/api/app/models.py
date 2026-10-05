@@ -309,9 +309,7 @@ class Range(SoftDeleteMixin, TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="")
     template: Mapped[Template] = relationship()
     snapshots: Mapped[list[RangeSnapshot]] = relationship(back_populates="range_", cascade="all, delete-orphan")
-    documents: Mapped[list[RangeDocument]] = relationship(
-        back_populates="range_", cascade="all, delete-orphan"
-    )
+    documents: Mapped[list[RangeDocument]] = relationship(back_populates="range_", cascade="all, delete-orphan")
 
 
 class RangeSnapshot(TimestampMixin, Base):
@@ -1427,9 +1425,7 @@ class RegistrationRequest(TimestampMixin, Base):
 
     # -- Advisory only: derived from AD groups, never grants anything --------
     suggested_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    suggested_tenant_id: Mapped[uuid.UUID | None] = mapped_column(
-        GUID(), ForeignKey("tenants.id"), nullable=True
-    )
+    suggested_tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)
 
     # -- Decision ------------------------------------------------------------
     status: Mapped[RegistrationStatus] = mapped_column(
