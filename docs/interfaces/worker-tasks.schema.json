@@ -296,6 +296,38 @@
       },
       "description": "",
       "queue": "provision"
+    },
+    "worker.tasks.start_range": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Power on a range's VMs (range is starting).",
+      "queue": "provision"
+    },
+    "worker.tasks.stop_range": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "ranges.id (UUID)",
+            "title": "range_id",
+            "type": "string"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Power off a range's VMs (range is stopping).",
+      "queue": "provision"
     }
   },
   "title": "TrueNorth worker task contract"

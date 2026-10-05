@@ -119,6 +119,19 @@ Each `tn_vsphere_*` variable maps to a `VSPHERE_*` environment variable in
 puts VMs in folder `truenorth/ranges/<range8>`, and records the VLANs it uses in the
 range's `provisioner_output`.
 
+**Who holds which VLAN and uplink address** is the `network_reservations` table, the
+same one the API uses for other shared networks (`GET /api/ranges/{id}/network-reservations`
+shows a range's). Before a build the worker reserves the range's physical VLANs and its
+edge firewall's WAN address there, unique per vCenter and switch across all tenants,
+under a PostgreSQL advisory lock (Redis is not involved, and a Redis outage does not
+weaken it). The provisioner refuses a VLAN or address nobody reserved. A destroy releases
+them. Set `VSPHERE_ALLOCATION_DOMAIN` (default `vsphere:<vCenter host>`) to the same value
+on two vCenters that share one switch fabric, so they share one VLAN space.
+
+Ranges built by the pre-S5a vmware branch kept their VLANs only in `provisioner_output`;
+the table does not know them. Destroy them (or provision them again) before building new
+ranges, or a new range can be given one of their VLANs.
+
 > Windows range VMs are sysprepped at deploy with a **random local Administrator password
 > that is not stored anywhere**. Range accounts must come from the template, a role
 > snapshot, or post-deploy Ansible, not from that password.
@@ -203,7 +216,7 @@ With the uplink set, the range's **edge firewall** gets an extra NIC **first** (
 WAN) on `dPG-TN-SVC`; the zone NICs follow. The edge is a node with `edge: true` (or
 `wan: true`) in the topology, else the first firewall (role `firewall`, or a
 pfSense/OPNsense image), else the first router. Its WAN address is reserved from the
-pool before the build (under the same lock as the VLANs), stored in the range's
+pool before the build (in `network_reservations`, like the VLANs), stored in the range's
 `provisioner_output.uplink`, and released when the range is destroyed. `dPG-TN-SVC`
 itself is never created or removed by TrueNorth.
 
@@ -321,8 +334,12 @@ govc library.create -ds esx01-local TrueNorth-Templates
    - [ ] a port group `tn-<range>-v1xx` appears on `vDS-10G` with a VLAN from 100–199
    - [ ] the VM's NIC is on that port group, **not** `dPG-TN-MGMT`
    - [ ] the guest has the IP TrueNorth rendered (cloud-init `guestinfo`)
-   - [ ] stop and start, then snapshot and revert, all work
-   - [ ] destroy removes the VM, the port group and the range folder
+   - [ ] stop: the range shows `stopping`, then `stopped` once the VMs are off in vCenter;
+         start: `starting`, then `running` (both are range operations: `GET /api/ranges/{id}/operations`)
+   - [ ] snapshot and revert work
+   - [ ] `GET /api/ranges/{id}/network-reservations` lists the range's VLANs (and uplink address)
+   - [ ] destroy removes the VM, the port group and the range folder, and the range's
+         network reservations are gone
 3. Record the result in `RESUME.md`. If the result is 403, the role from §4.2 is missing
    a privilege; the error names it.
 

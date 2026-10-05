@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from .results import (
     DestroyResult,
@@ -22,8 +23,34 @@ from .results import (
 )
 
 
+@dataclass(frozen=True)
+class AllocationNeed:
+    """Values on shared infrastructure a build needs reserved first (``allocation_needs``).
+
+    The worker reserves ``holders`` out of ``pool`` on the ``network_reservations`` table
+    (unique per domain and kind across all tenants) and hands the result to ``provision``
+    as ``allocations[key]``: ``{holder: value}``, or the one value when ``single``.
+    """
+
+    key: str  # where provision() finds the result in ``allocations``
+    kind: str  # a network_reservations kind: "vlan", "uplink_ip", ...
+    domain: str  # the shared network the values must be unique in
+    pool: list[str]  # candidate values, in the order they are handed out
+    holders: list[str]  # what in the range holds a value (a logical VLAN, "edge")
+    single: bool = False
+
+
 class BaseProvisioner(ABC):
     """Abstract base class for range provisioning backends."""
+
+    def allocation_needs(self, range_id: str, template: dict) -> list[AllocationNeed]:
+        """Shared values (VLANs, addresses) to reserve before ``provision``. Default: none."""
+        return []
+
+    def planned_output(self, range_id: str, allocations: dict) -> dict:
+        """What to record in provisioner_output before the build, so a destroy after a
+        build that died half-way still finds what was reserved. Default: nothing."""
+        return {}
 
     @abstractmethod
     async def provision(

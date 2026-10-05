@@ -19,6 +19,7 @@ import re
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from urllib.parse import urlparse
 
 import httpx
 import pytest
@@ -37,6 +38,35 @@ MGMT = "dPG-TN-MGMT"
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+@pytest.fixture(autouse=True)
+def worker_reserves(monkeypatch):
+    """Play the worker's part before every build: reserve what ``allocation_needs`` declares.
+
+    The provisioner no longer picks VLANs or addresses itself (worker/range_alloc.py
+    reserves them on network_reservations first). Here the lowest free pool values are
+    given, skipping ``used_vlans`` / ``used_uplink_ips``, which stand for what other
+    ranges hold; values a test passes in are kept. Going through allocation_needs also
+    checks it declares every VLAN and address the build then uses.
+    """
+    real = mod.VsphereAPIProvisioner.provision
+
+    async def provision(self, range_id, template, allocations):
+        allocations = dict(allocations)
+        taken = {"vlan": {str(v) for v in allocations.pop("used_vlans", ())},
+                 "uplink_ip": {str(v) for v in allocations.pop("used_uplink_ips", ())}}
+        for need in self.allocation_needs(range_id, template):
+            if need.key in allocations:
+                continue
+            free = [v for v in need.pool if v not in taken[need.kind]]
+            if len(free) < len(need.holders):
+                raise AssertionError(f"test pool too small for {need}")
+            got = dict(zip(need.holders, free, strict=False))
+            allocations[need.key] = got[need.holders[0]] if need.single else got
+        return await real(self, range_id, template, allocations)
+
+    monkeypatch.setattr(mod.VsphereAPIProvisioner, "provision", provision)
 
 
 # --------------------------------------------------------------------------- #
@@ -904,16 +934,28 @@ class TestVlanPool:
         with pytest.raises(ValueError):
             vlan_pool.parse_pool("0-5")
 
-    def test_two_ranges_do_not_collide(self):
-        pool = vlan_pool.parse_pool("100-199")
-        first = vlan_pool.allocate([200, 201, 202], set(), pool)
-        second = vlan_pool.allocate([200, 201], set(first.values()), pool)
-        assert first == {200: 100, 201: 101, 202: 102}
-        assert set(second.values()) == {103, 104}
+    def test_a_build_declares_its_vlans_and_uplink_for_the_worker_to_reserve(self, vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_RANGE_UPLINK_NETWORK", "dPG-TN-SVC")
+        monkeypatch.setattr(mod, "VSPHERE_RANGE_UPLINK_POOL", "10.30.32.100-101")
+        needs = {n.key: n for n in _prov(vc).allocation_needs(RANGE_ID, _rendered())}
+        vlans, up = needs["physical_vlans"], needs["uplink_ip"]
+        assert (vlans.kind, vlans.holders, vlans.pool[:2], vlans.single) == ("vlan", ["200", "201", "203"],
+                                                                             ["100", "101"], False)
+        assert vlans.domain == f"vsphere:{urlparse(mod.VSPHERE_URL).hostname}:{mod.VSPHERE_RANGE_DVS}"
+        assert (up.kind, up.holders, up.pool, up.single) == ("uplink_ip", ["edge"], ["10.30.32.100", "10.30.32.101"],
+                                                             True)
+        assert up.domain.endswith(":dPG-TN-SVC")
 
-    def test_exhaustion_raises(self):
-        with pytest.raises(vlan_pool.VlanPoolExhaustedError, match="needs 3 VLANs but only 2"):
-            vlan_pool.allocate([1, 2, 3], {100}, [100, 101, 102])
+    def test_one_allocation_domain_for_vcenters_sharing_a_switch_fabric(self, vc, monkeypatch):
+        monkeypatch.setenv("VSPHERE_ALLOCATION_DOMAIN", "lab-fabric")
+        [vlans] = _prov(vc).allocation_needs(RANGE_ID, _rendered())
+        assert vlans.domain == f"lab-fabric:{mod.VSPHERE_RANGE_DVS}"
+
+    def test_an_unreserved_vlan_is_refused_not_picked(self, vc):
+        # 200 reserved, 201 and 203 not (the fixture fills only keys that are missing altogether)
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(), {"physical_vlans": {200: 100}}))
+        assert result.status == "failed" and "no reservation" in result.errors[0]
+        assert not vc.vms and vc.dvs.portgroup == []
 
 
 # --------------------------------------------------------------------------- #
@@ -1019,10 +1061,9 @@ class TestUplink:
         assert "management network" in result.errors[0]
         assert not uplink.vms and uplink.dvs.portgroup == []
 
-    def test_exhausted_pool_fails_before_building(self, uplink):
-        used = ["10.30.32.100", "10.30.32.101", "10.30.32.102"]
-        result = _run(_prov(uplink).provision(RANGE_ID, _rendered(), {"used_uplink_ips": used}))
-        assert result.status == "failed" and "uplink pool" in result.errors[0]
+    def test_an_unreserved_uplink_address_is_refused_not_picked(self, uplink):
+        result = _run(_prov(uplink).provision(RANGE_ID, _rendered(), {"uplink_ip": ""}))
+        assert result.status == "failed" and "no reservation" in result.errors[0]
         assert not uplink.vms
 
     def test_no_uplink_when_unset(self, vc):

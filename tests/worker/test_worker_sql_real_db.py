@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from app import models as m
-from app.db import Base
+from app.sections import Base  # every model, network_reservations included
 from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -36,6 +36,7 @@ from worker.detection import DetectionScorer  # noqa: E402
 from worker.provisioners.results import (  # noqa: E402
     DestroyResult,
     HealthResult,
+    MetricsResult,
     ProvisionResult,
     RestoreResult,
     SnapshotDeleteResult,
@@ -213,7 +214,8 @@ class TestRanges:
         stopped = m.Range(name="r2", template_id=world.template.id, state=m.RangeState.stopped)
         _add(db, stopped)
         before = _fresh(db, world.range).updated_at
-        backend = _fake_backend(health_check=HealthResult(healthy=False, status="degraded", vm_statuses=[{}]))
+        backend = _fake_backend(health_check=HealthResult(healthy=False, status="degraded", vm_statuses=[{}]),
+                                collect_metrics=MetricsResult(status="ok", source="fake"))
         monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
 
         summary = tasks.health_check_ranges()
@@ -696,10 +698,12 @@ class _PgRecorder:
     def get_bind(self):
         return SimpleNamespace(dialect=self.dialect)
 
-    def execute(self, stmt, *_):
-        self.sql.append(str(stmt.compile(dialect=self.dialect)))
+    def execute(self, stmt, *params):
+        rows = params[0] if params and isinstance(params[0], list) else None  # executemany: compile with its keys
+        keys = list(rows[0]) if rows else None
+        self.sql.append(str(stmt.compile(dialect=self.dialect, column_keys=keys)))
         return MagicMock(first=MagicMock(return_value=None), fetchall=MagicMock(return_value=[]), rowcount=1,
-                         scalar_one=MagicMock(return_value=uuid.uuid4()))
+                         scalar_one=MagicMock(return_value=uuid.uuid4()), scalar=MagicMock(return_value=None))
 
 
 ID = str(uuid.uuid4())
@@ -711,6 +715,11 @@ PG_CALLS = {
     "range_output_and_backend": lambda db: db_ops.range_output_and_backend(db, ID),
     "active_ranges": db_ops.active_ranges,
     "touch_range": lambda db: db_ops.touch_range(db, ID),
+    "touch_ranges": lambda db: db_ops.touch_ranges(db, [ID, ID]),
+    "range_output": lambda db: db_ops.range_output(db, ID),
+    "merge_range_output": lambda db: db_ops.merge_range_output(db, ID, {"networks": []}),
+    "reserve_values": lambda db: db_ops.reserve_values(db, ID, domain="d", kind="vlan", pool=["100"], holders=["200"]),
+    "release_reservations": lambda db: db_ops.release_reservations(db, ID),
     "first_range_for_tenant": lambda db: db_ops.first_range_for_tenant(db, ID),
     "hypervisor_connection": lambda db: db_ops.hypervisor_connection(db, "vsphere"),
     "enabled_golden_images": lambda db: db_ops.enabled_golden_images(db, "vsphere"),
@@ -754,14 +763,14 @@ class TestPostgresRendering:
         PG_CALLS[name](db)
         assert db.sql, f"{name} executed nothing"
         for sql in db.sql:
-            assert "now()" in sql.lower() or sql.lstrip().upper().startswith("SELECT"), sql
+            assert "now()" in sql.lower() or sql.lstrip().upper().startswith(("SELECT", "DELETE")), sql
 
     def test_every_public_helper_is_covered(self):
         public = {n for n, f in vars(db_ops).items() if callable(f) and getattr(f, "__module__", "") == db_ops.__name__
-                  and not n.startswith("_") and n != "aar_upsert_statement"}
+                  and not n.startswith("_") and n != "aar_upsert_statement" and not isinstance(f, type)}
         # expired_ranges executes nothing until ranges has an expires_at column (tested below);
-        # range_expiry_supported runs no SQL.
-        assert public == set(PG_CALLS) | {"expired_ranges", "range_expiry_supported"}
+        # range_expiry_supported and reservation_lock_key run no SQL.
+        assert public == set(PG_CALLS) | {"expired_ranges", "range_expiry_supported", "reservation_lock_key"}
 
     def test_expired_ranges_query_runs_once_the_column_exists(self, monkeypatch):
         import sqlalchemy as sa

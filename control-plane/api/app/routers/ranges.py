@@ -1,6 +1,6 @@
 """TrueNorth Range — Ranges router.
 
-Handles range CRUD, provision/destroy/stop lifecycle actions, batch
+Handles range CRUD, provision/destroy/stop/start lifecycle actions, batch
 provisioning (70k-VM scale), and range statistics.
 
 Permissions required per endpoint (enforced via ``rbac.require_permission``):
@@ -470,7 +470,7 @@ def _range_operation(
     action: str, range_id: uuid.UUID, idempotency_key: str | None, db: Session, user: CurrentUser,
     response: Response,
 ) -> Range:
-    """Accept a provision/destroy: operation + state change in one commit, then dispatch.
+    """Accept a provision/destroy/stop/start: operation + state change in one commit, then dispatch.
 
     202 means accepted, not done: the body is the range as it is now (``provisioning`` /
     ``destroying``), and the operation (headers) carries the request's progress. A
@@ -620,45 +620,32 @@ def list_network_reservations(
     )
 
 
-@router.post("/{range_id}/stop", response_model=RangeOut)
+@router.post("/{range_id}/stop", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
 async def stop_range(
+    response: Response,
     range_id: uuid.UUID = Path(...),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key", max_length=255),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
-    """Stop a running range.  **Permission: range:provision**"""
-    rng = _tenant_range(db, range_id, user)
-    if not rng.state.can_transition_to(RangeState.stopped):
-        raise HTTPException(409, f"Cannot stop range in state {rng.state.value}")
-    _refuse_while_restoring(db, range_id)
-    rng.state = RangeState.stopped
-    db.commit()
-    # The state used to be all this did: the VMs kept running. The worker powers them off.
-    _dispatch_task("stop_range", str(rng.id))
-    _audit(db, user, "stop", "range", str(rng.id))
-    db.commit()
-    db.refresh(rng)
-    return rng
+    """Power off a range's VMs (an operation; the range is ``stopping`` until the worker
+    reports ``stopped``).  **Permission: range:provision**"""
+    _refuse_while_restoring(db, _tenant_range(db, range_id, user).id)
+    return _range_operation("stop", range_id, idempotency_key, db, user, response)
 
 
-@router.post("/{range_id}/start", response_model=RangeOut)
+@router.post("/{range_id}/start", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
 async def start_range(
+    response: Response,
     range_id: uuid.UUID = Path(...),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key", max_length=255),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
-    """Power a stopped range back on (async Celery task).  **Permission: range:provision**"""
-    rng = _tenant_range(db, range_id, user)
-    if rng.state != RangeState.stopped:
-        raise HTTPException(409, f"Cannot start range in state {rng.state.value}")
-    _refuse_while_restoring(db, range_id)
-    rng.state = RangeState.running
-    db.commit()
-    _dispatch_task("start_range", str(rng.id))
-    _audit(db, user, "start", "range", str(rng.id))
-    db.commit()
-    db.refresh(rng)
-    return rng
+    """Power a stopped range's VMs back on (an operation; the range is ``starting`` until
+    the worker reports ``running``).  **Permission: range:provision**"""
+    _refuse_while_restoring(db, _tenant_range(db, range_id, user).id)
+    return _range_operation("start", range_id, idempotency_key, db, user, response)
 
 
 @router.post("/batch-provision", response_model=BatchProvisionOut, status_code=202)

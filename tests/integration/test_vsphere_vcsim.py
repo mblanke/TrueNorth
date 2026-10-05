@@ -335,6 +335,17 @@ def prov(vcsim, monkeypatch):
     bridge.close()
 
 
+def _reserved(prov, template: dict, used=()) -> dict:
+    """What the worker would reserve for this build (worker/range_alloc.py): the lowest pool
+    values per ``allocation_needs``, past ``used`` (VLANs other ranges hold)."""
+    out: dict = {}
+    for need in prov.allocation_needs(RANGE_ID, template):
+        free = [v for v in need.pool if v not in {str(u) for u in used}]
+        got = dict(zip(need.holders, free, strict=False))
+        out[need.key] = got[need.holders[0]] if need.single else got
+    return out
+
+
 def _run(coro):
     return asyncio.run(coro)
 
@@ -375,7 +386,7 @@ def test_range_lifecycle(vcsim, si, prov):
     expected = {f"{R8}-{v['node_id']}": host.name
                 for v, (host, _) in zip(rendered["vms"], infra.place(capacity, rendered["vms"], "spread", 4.0),
                                         strict=True)}
-    result = _run(prov.provision(RANGE_ID, rendered, {"used_vlans": used}))
+    result = _run(prov.provision(RANGE_ID, rendered, _reserved(prov, rendered, used)))
     print("REST calls:", sorted({(m, re.sub(r"vm-\d+", "{vm}", p), how) for m, p, how in prov.bridge.log}))
     assert result.status == "ok", result.errors
 
@@ -555,7 +566,7 @@ def test_failed_build_leaves_nothing_behind(vcsim, si, prov):
     rendered = _rendered()
     for vm in rendered["vms"]:
         vm["template_name"] = "tmpl-does-not-exist"
-    result = _run(prov.provision(RANGE_ID, rendered, {}))
+    result = _run(prov.provision(RANGE_ID, rendered, _reserved(prov, rendered)))
     assert result.status == "failed"
     assert all("neither a Content Library item nor an inventory VM template" in e for e in result.errors), \
         result.errors
@@ -577,7 +588,7 @@ def test_unreachable_vcenter_fails_cleanly(vcsim, prov):
     """Nothing listening at VSPHERE_URL: a failed result, not a hang or an exception."""
     prov._base_url = f"https://127.0.0.1:{_free_port()}"
     started = time.monotonic()
-    result = _run(prov.provision(RANGE_ID, _rendered(), {}))
+    result = _run(prov.provision(RANGE_ID, _rendered(), _reserved(prov, _rendered())))
     assert result.status == "failed" and result.errors
     assert time.monotonic() - started < 60
 
@@ -600,7 +611,7 @@ def test_mirror_rules_vcsim_gap(vcsim, si, prov):
     out = render.render_topology(tpl, RANGE_ID, IMAGES.get)
     built = {"name": tpl["name"], "vms": out["vm_definitions"], "networks": out["network_definitions"],
              "network": tpl["network"]}
-    result = _run(prov.provision(RANGE_ID, built, {"used_vlans": [100]}))
+    result = _run(prov.provision(RANGE_ID, built, _reserved(prov, built, [100])))
     assert result.status == "ok", result.errors
     dvs = _by_name(si, vim.DistributedVirtualSwitch, DVS)
     rspan = next(n for n in result.networks if n.get("rspan"))

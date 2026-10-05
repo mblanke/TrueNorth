@@ -1,4 +1,4 @@
-"""Accept, dispatch and reconcile range operations (provision, destroy).
+"""Accept, dispatch and reconcile range operations (provision, destroy, stop, start).
 
 The contract (codereview1 S3a):
 
@@ -58,6 +58,9 @@ ACTIONS: dict[str, Action] = {
     "destroy": Action(
         "destroy_range", RangeState.destroying, {RangeState.destroyed: "succeeded", RangeState.failed: "failed"}
     ),
+    # Power (S5a). The worker writes stopped/running only once the VMs are; the API never claims it.
+    "stop": Action("stop_range", RangeState.stopping, {RangeState.stopped: "succeeded", RangeState.failed: "failed"}),
+    "start": Action("start_range", RangeState.starting, {RangeState.running: "succeeded", RangeState.failed: "failed"}),
 }
 
 BROKER_UNAVAILABLE = {

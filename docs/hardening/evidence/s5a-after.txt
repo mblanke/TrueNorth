@@ -1,0 +1,64 @@
+______ test_a_duplicate_or_stale_power_task_touches_nothing[failed-stop] _______
+______ test_a_duplicate_or_stale_power_task_touches_nothing[failed-start] ______
+_ test_a_failed_attempt_that_will_be_retried_leaves_the_range_in_progress[stop] _
+2026-10-05 09:53:29,735 [ERROR] truenorth.worker: [stop] Range a25c0c53-5c8a-4f2e-82f0-a52d3ae8247f FAILED: stop failed: vm-1: host down
+2026-10-05 09:53:29,737 [ERROR] truenorth.worker: [stop] Range a25c0c53-5c8a-4f2e-82f0-a52d3ae8247f FAILED: stop failed: vm-1: host down
+ERROR    truenorth.worker:tasks.py:317 [stop] Range a25c0c53-5c8a-4f2e-82f0-a52d3ae8247f FAILED: stop failed: vm-1: host down
+ERROR    truenorth.worker:tasks.py:317 [stop] Range a25c0c53-5c8a-4f2e-82f0-a52d3ae8247f FAILED: stop failed: vm-1: host down
+_ test_a_failed_attempt_that_will_be_retried_leaves_the_range_in_progress[start] _
+2026-10-05 09:53:29,814 [ERROR] truenorth.worker: [start] Range 6d499829-122e-498a-985a-e4eb047830b7 FAILED: start failed: vm-1: host down
+2026-10-05 09:53:29,818 [ERROR] truenorth.worker: [start] Range 6d499829-122e-498a-985a-e4eb047830b7 FAILED: start failed: vm-1: host down
+ERROR    truenorth.worker:tasks.py:317 [start] Range 6d499829-122e-498a-985a-e4eb047830b7 FAILED: start failed: vm-1: host down
+ERROR    truenorth.worker:tasks.py:317 [start] Range 6d499829-122e-498a-985a-e4eb047830b7 FAILED: start failed: vm-1: host down
+__ test_a_failed_power_operation_can_be_retried_without_destroying_the_range ___
+________________ test_an_abandoned_stop_leaves_the_range_failed ________________
+PASSED tests/worker/test_range_allocation.py::test_a_vsphere_build_reserves_its_vlans_and_uplink_on_the_shared_table
+PASSED tests/worker/test_range_allocation.py::test_values_a_live_range_holds_are_skipped_and_a_destroyed_ranges_are_free
+PASSED tests/worker/test_range_allocation.py::test_a_retry_gets_the_same_values
+PASSED tests/worker/test_range_allocation.py::test_an_exhausted_pool_fails_the_range_before_anything_is_built
+PASSED tests/worker/test_range_allocation.py::test_destroy_releases_what_the_range_held
+PASSED tests/worker/test_range_allocation.py::test_the_provisioner_does_not_allocate_vlans_or_addresses_on_its_own
+PASSED tests/worker/test_range_allocation.py::test_the_api_and_the_worker_take_the_same_lock_for_a_domain
+PASSED tests/worker/test_range_allocation.py::test_on_postgres_concurrent_builds_never_share_a_vlan_or_an_uplink_address
+PASSED tests/worker/test_range_allocation.py::test_on_postgres_with_redis_down_a_reservation_still_waits_for_the_domain_lock
+PASSED tests/worker/test_range_power_tasks.py::test_a_recorded_power_operation_powers_the_vms_and_reaches_its_state[stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_recorded_power_operation_powers_the_vms_and_reaches_its_state[start]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[ready-stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[ready-start]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[running-stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[running-start]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[stopped-stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[stopped-start]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[destroying-stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[destroying-start]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[destroyed-stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[destroyed-start]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[failed-stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_duplicate_or_stale_power_task_touches_nothing[failed-start]
+PASSED tests/worker/test_range_power_tasks.py::test_a_failed_attempt_that_will_be_retried_leaves_the_range_in_progress[stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_failed_attempt_that_will_be_retried_leaves_the_range_in_progress[start]
+PASSED tests/worker/test_range_power_tasks.py::test_a_failure_does_not_overwrite_a_range_that_moved_on[stop]
+PASSED tests/worker/test_range_power_tasks.py::test_a_failure_does_not_overwrite_a_range_that_moved_on[start]
+PASSED tests/api/test_range_power.py::test_a_power_request_is_a_recorded_operation_and_the_state_says_it_is_in_progress[stop-ready]
+PASSED tests/api/test_range_power.py::test_a_power_request_is_a_recorded_operation_and_the_state_says_it_is_in_progress[stop-running]
+PASSED tests/api/test_range_power.py::test_a_power_request_is_a_recorded_operation_and_the_state_says_it_is_in_progress[start-stopped]
+PASSED tests/api/test_range_power.py::test_the_outcome_is_reconciled_from_what_the_worker_observed[stop]
+PASSED tests/api/test_range_power.py::test_the_outcome_is_reconciled_from_what_the_worker_observed[start]
+PASSED tests/api/test_range_power.py::test_a_failed_power_operation_can_be_retried_without_destroying_the_range
+PASSED tests/api/test_range_power.py::test_the_same_idempotency_key_replays_the_original_stop
+PASSED tests/api/test_range_power.py::test_a_second_power_request_while_one_is_in_flight_is_refused
+PASSED tests/api/test_range_power.py::test_with_the_broker_down_the_stop_is_kept_and_sent_later
+PASSED tests/api/test_range_power.py::test_an_abandoned_stop_leaves_the_range_failed
+PASSED tests/api/test_range_power.py::test_wrong_state_is_refused_and_nothing_is_recorded_or_sent[stop-created]
+PASSED tests/api/test_range_power.py::test_wrong_state_is_refused_and_nothing_is_recorded_or_sent[stop-stopped]
+PASSED tests/api/test_range_power.py::test_wrong_state_is_refused_and_nothing_is_recorded_or_sent[stop-destroyed]
+PASSED tests/api/test_range_power.py::test_wrong_state_is_refused_and_nothing_is_recorded_or_sent[stop-provisioning]
+PASSED tests/api/test_range_power.py::test_wrong_state_is_refused_and_nothing_is_recorded_or_sent[start-running]
+PASSED tests/api/test_range_power.py::test_wrong_state_is_refused_and_nothing_is_recorded_or_sent[start-ready]
+PASSED tests/api/test_range_power.py::test_wrong_state_is_refused_and_nothing_is_recorded_or_sent[start-created]
+PASSED tests/api/test_range_power.py::test_wrong_state_is_refused_and_nothing_is_recorded_or_sent[start-stopping]
+PASSED tests/api/test_range_power.py::test_a_power_request_during_a_snapshot_restore_is_refused[stop]
+PASSED tests/api/test_range_power.py::test_a_power_request_during_a_snapshot_restore_is_refused[start]
+PASSED tests/api/test_range_power.py::test_another_tenant_gets_404_and_a_student_403[stop]
+PASSED tests/api/test_range_power.py::test_another_tenant_gets_404_and_a_student_403[start]
+======================== 49 passed, 5 warnings in 4.76s ========================

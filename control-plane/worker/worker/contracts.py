@@ -64,6 +64,8 @@ TASKS: dict[str, TaskContract] = {
         TaskContract("snapshot_range", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("restore_snapshot", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("delete_snapshot", "provision", (_RANGE, _SNAPSHOT)),
+        TaskContract("stop_range", "provision", (_RANGE,), "Power off a range's VMs (range is stopping)."),
+        TaskContract("start_range", "provision", (_RANGE,), "Power on a range's VMs (range is starting)."),
         # -- Exercises -------------------------------------------------------
         TaskContract("run_scenario", "scenario", (_EXERCISE,)),
         TaskContract(

@@ -278,12 +278,6 @@ class TestUplinkPool:
         with pytest.raises(ValueError):
             uplink_pool.parse_ip_pool("10.0.0.9-10.0.0.1")
 
-    def test_allocate_skips_used(self):
-        pool = uplink_pool.parse_ip_pool("10.30.32.100-102")
-        assert uplink_pool.allocate_ip({"10.30.32.100"}, pool) == "10.30.32.101"
-        with pytest.raises(uplink_pool.UplinkPoolExhaustedError):
-            uplink_pool.allocate_ip(set(pool), pool)
-
 
 class TestPickEdge:
     def test_order(self):

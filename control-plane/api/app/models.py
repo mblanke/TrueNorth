@@ -30,6 +30,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import CHAR, TypeDecorator
 
 from .db import Base
+from .range_states import RANGE_TRANSITIONS as _RANGE_TRANSITIONS
 
 
 # -- Database-agnostic UUID type ----------------------------------------
@@ -60,18 +61,7 @@ class GUID(TypeDecorator):
 
 
 # -- State-machine transitions (module-level, not inside str enum) ------
-_RANGE_TRANSITIONS: dict[str, list[str]] = {
-    "created": ["provisioning", "destroyed"],
-    "provisioning": ["ready", "failed"],
-    # A provisioned range's VMs are already powered on, so it can be stopped
-    # straight from ready.
-    "ready": ["running", "stopped", "destroying"],
-    "running": ["stopped", "destroying"],
-    "stopped": ["running", "destroying"],
-    "destroying": ["destroyed", "failed"],
-    "failed": ["provisioning", "destroying", "destroyed"],
-}
-
+# Ranges: app/range_states.py
 _EXERCISE_TRANSITIONS: dict[str, list[str]] = {
     "pending": ["running", "cancelled"],
     "running": ["paused", "completed", "cancelled"],
@@ -87,7 +77,9 @@ class RangeState(str, enum.Enum):
     provisioning = "provisioning"
     ready = "ready"
     running = "running"
+    stopping = "stopping"
     stopped = "stopped"
+    starting = "starting"
     destroying = "destroying"
     destroyed = "destroyed"
     failed = "failed"

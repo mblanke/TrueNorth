@@ -11,7 +11,6 @@ Designed for 70,000-VM scale:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import os
@@ -21,12 +20,14 @@ from datetime import UTC, datetime
 
 from celery import Task, group
 
-from . import db_ops
+from . import db_ops, periodic
 from .aar import build_report as build_aar_report
 from .celery_app import app
 from .detection import DetectionScorer, range_index
 from .fencing import skipped
+from .periodic import HEALTH_CHECK_BUDGET, METRICS_BUDGET
 from .provisioners import get_provisioner
+from .range_alloc import reserve_for_build
 from .render import load_template
 
 logger = logging.getLogger("truenorth.worker")
@@ -136,138 +137,6 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
     }
 
 
-@contextmanager
-def _vlan_lock():
-    """Serialise VLAN reservations across workers (Redis lock; skipped if Redis is down)."""
-    lock = None
-    try:
-        import redis
-
-        lock = redis.Redis.from_url(REDIS_URL).lock("truenorth:vsphere-vlan-alloc", timeout=60, blocking_timeout=30)
-        if not lock.acquire():
-            raise RuntimeError("timed out waiting for the VLAN allocation lock")
-    except RuntimeError:
-        raise
-    except Exception as e:  # noqa: BLE001 — no Redis (tests, single worker): carry on unlocked
-        logger.warning(f"VLAN allocation lock unavailable, allocating without it: {e}")
-        lock = None
-    try:
-        yield
-    finally:
-        if lock is not None:
-            with contextlib.suppress(Exception):
-                lock.release()
-
-
-def _physical_vlans(output: str | None) -> dict[int, int]:
-    """{logical VLAN: physical VLAN} a range's stored provisioner_output holds."""
-    try:
-        nets = (json.loads(output) if output else {}).get("networks") or []
-    except (ValueError, AttributeError):
-        return {}
-    return {
-        int(n["vlan_id"]): int(n["physical_vlan"])
-        for n in nets
-        if isinstance(n, dict) and n.get("vlan_id") is not None and n.get("physical_vlan") is not None
-    }
-
-
-def _reserve_vlans(range_id: str, logical: list[int]) -> dict[int, int]:
-    """Give each of the range's logical VLANs a physical VLAN of its own, and record it now.
-
-    Every range that is not destroyed keeps its VLANs (a failed one may still have its
-    port groups), so the pool is what is left after all of them. The reservation is
-    written to provisioner_output before the build starts, under a lock, so a second
-    range provisioning at the same moment cannot pick the same VLANs, and a destroy
-    after a failed build still finds the port groups to remove. A retry reuses it.
-    """
-    from sqlalchemy import text
-
-    from .provisioners.vsphere_infra import portgroup_name
-    from .vlan_pool import allocate, parse_pool
-
-    pool = parse_pool(os.getenv("VSPHERE_VLAN_POOL", "100-199"))
-    with _vlan_lock(), _db_session() as db:
-        others = db.execute(
-            text(
-                "SELECT provisioner_output FROM ranges WHERE id <> :rid "
-                "AND CAST(state AS TEXT) <> 'destroyed' AND provisioner_output IS NOT NULL"
-            ),
-            {"rid": range_id},
-        ).fetchall()
-        used = {v for (out,) in others for v in _physical_vlans(out).values()}
-        row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
-        try:
-            current = json.loads(row[0]) if row and row[0] else {}
-        except ValueError:
-            current = {}
-        mine = {k: v for k, v in _physical_vlans(row[0] if row else None).items() if v not in used}
-        missing = [v for v in logical if v not in mine]
-        if missing:
-            mine.update(allocate(missing, used | set(mine.values()), pool))
-        current.setdefault("provider", "vsphere_api")
-        current.setdefault("range_id", range_id)
-        current.setdefault("vms", [])
-        mode = os.getenv("VSPHERE_RANGE_SWITCH_MODE", "vds").lower()
-        current["networks"] = [
-            {"vlan_id": k, "physical_vlan": v, "portgroup": portgroup_name(range_id, v), "switch_mode": mode}
-            for k, v in sorted(mine.items())
-        ]
-        db.execute(
-            text("UPDATE ranges SET provisioner_output = :out WHERE id = :rid"),
-            {"out": json.dumps(current), "rid": range_id},
-        )
-    return mine
-
-
-def _uplink_ip(output: str | None) -> str | None:
-    """The edge-firewall WAN address a range's stored provisioner_output holds."""
-    try:
-        up = (json.loads(output) if output else {}).get("uplink") or {}
-    except (ValueError, AttributeError):
-        return None
-    return str(up["ip"]) if isinstance(up, dict) and up.get("ip") else None
-
-
-def _reserve_uplink_ip(range_id: str) -> str:
-    """Give the range's edge firewall a WAN address of its own on the uplink network.
-
-    Same rules as _reserve_vlans: under the same lock, every range that is not destroyed
-    keeps its address, the reservation is written before the build, a retry reuses it.
-    """
-    from sqlalchemy import text
-
-    from .uplink_pool import allocate_ip, parse_ip_pool
-
-    pool = parse_ip_pool(os.getenv("VSPHERE_RANGE_UPLINK_POOL", ""))
-    with _vlan_lock(), _db_session() as db:
-        others = db.execute(
-            text(
-                "SELECT provisioner_output FROM ranges WHERE id <> :rid "
-                "AND CAST(state AS TEXT) <> 'destroyed' AND provisioner_output IS NOT NULL"
-            ),
-            {"rid": range_id},
-        ).fetchall()
-        used = {ip for (out,) in others if (ip := _uplink_ip(out))}
-        row = db.execute(text("SELECT provisioner_output FROM ranges WHERE id = :rid"), {"rid": range_id}).first()
-        try:
-            current = json.loads(row[0]) if row and row[0] else {}
-        except ValueError:
-            current = {}
-        mine = _uplink_ip(row[0] if row else None)
-        if not mine or mine in used or mine not in pool:
-            mine = allocate_ip(used, pool)
-        current.setdefault("provider", "vsphere_api")
-        current.setdefault("range_id", range_id)
-        current.setdefault("vms", [])
-        current["uplink"] = {"network": os.getenv("VSPHERE_RANGE_UPLINK_NETWORK", ""), "ip": mine}
-        db.execute(
-            text("UPDATE ranges SET provisioner_output = :out WHERE id = :rid"),
-            {"out": json.dumps(current), "rid": range_id},
-        )
-    return mine
-
-
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
 def provision_range(self, range_id: str):
     """Provision a single range using the configured backend.
@@ -315,27 +184,8 @@ def provision_range(self, range_id: str):
             if rendered["unresolved"]:
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
-        if backend == "vsphere_api":
-            logical = {
-                nic.get("vlan") if "nics" in vm else vm.get("vlan_id")
-                for vm in template.get("vms", [])
-                for nic in (vm.get("nics") or [{}])
-            }
-            if os.getenv("VSPHERE_RANGE_SWITCH_MODE", "vds").lower() != "vss":
-                # Mirror rules: one RSPAN VLAN per destination zone, from the same pool
-                # (vsphere_infra, "Port mirroring").
-                from .provisioners.vsphere_infra import mirror_rules, plan_mirrors
-
-                plans, _ = plan_mirrors(mirror_rules(template), template.get("networks") or [])
-                logical |= {p["rspan_key"] for p in plans}
-            allocations["physical_vlans"] = _reserve_vlans(range_id, sorted(v for v in logical if v is not None))
-            if os.getenv("VSPHERE_RANGE_UPLINK_NETWORK", "").strip():
-                from .provisioners.vsphere_infra import os_family
-
-                if any(os_family(vm) == "appliance" for vm in template.get("vms", [])):
-                    allocations["uplink_ip"] = _reserve_uplink_ip(range_id)
-
         provisioner = _get_backend(backend)
+        allocations.update(reserve_for_build(_db_session, range_id, provisioner, template))  # network_reservations
 
         result = asyncio.run(provisioner.provision(range_id, template, allocations))
 
@@ -423,7 +273,9 @@ def destroy_range(self, range_id: str):
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
-        _update_range_state(range_id, "destroyed", only_from=("destroying",))
+        with _db_session() as db:  # the range's VLANs and addresses go back to their pools with it
+            if db_ops.update_range_state(db, range_id, "destroyed", only_from=("destroying",)):
+                db_ops.release_reservations(db, range_id)
         _notify_api("range", {"id": range_id, "state": "destroyed"})
         logger.info(f"[destroy] Range {range_id} destroyed ({result.resources_removed} resources)")
         return {"status": "destroyed", "range_id": range_id}
@@ -436,34 +288,31 @@ def destroy_range(self, range_id: str):
         raise
 
 
-def _power_range(task, range_id: str, action: str, state: str):
-    """Power every VM of a range off (``stop``) or on (``start``).
+def _power_range(task, range_id: str, action: str, claim: str, done: str):
+    """Power every VM of a range off (``stop``) or on (``start``), for the recorded operation.
 
-    The API has already moved the range to ``state`` (stopped/running); this makes the
-    hypervisor match. Powering a VM already in that state is a no-op, so a retry is
-    safe. When the last attempt fails the range is marked failed, unless it has moved
-    on meanwhile (destroyed, say).
+    The API accepted the operation and moved the range to ``claim`` (stopping/starting);
+    this acts only while the range is still there (fencing.py), and only it writes
+    ``done`` (stopped/running), once the hypervisor has done it. Powering a VM already in
+    that state is a no-op, so a retry is safe; only the last attempt records ``failed``.
     """
     logger.info(f"[{action}] Range {range_id}")
+    if not _update_range_state(range_id, claim, only_from=(claim,)):
+        return skipped(action, range_id, claim)
     try:
         with _db_session() as db:
-            from sqlalchemy import text
-
-            row = db.execute(
-                text("SELECT provisioner_output, provisioner_backend FROM ranges WHERE id = :rid"),
-                {"rid": range_id},
-            ).first()
+            row = db_ops.range_output_and_backend(db, range_id)
         prov_output = json.loads(row[0]) if row and row[0] else {}
         provisioner = _get_backend((row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock"))
-        op = provisioner.stop if action == "stop" else provisioner.start
-        result = asyncio.run(op(range_id, prov_output))
+        result = asyncio.run(getattr(provisioner, action)(range_id, prov_output))
         if result.status != "ok":
             raise RuntimeError(f"{action} {result.status}: {'; '.join(result.errors) or 'no detail'}")
-        _notify_api("range", {"id": range_id, "state": state})
-        return {"status": state, "range_id": range_id}
+        _update_range_state(range_id, done, only_from=(claim,), clear_error=True)
+        _notify_api("range", {"id": range_id, "state": done})
+        return {"status": done, "range_id": range_id}
     except Exception as e:
-        if _last_attempt(task):
-            _update_range_state(range_id, "failed", error=str(e), only_from=(state,))
+        if _last_attempt(task):  # a retry must still find the range in `claim`
+            _update_range_state(range_id, "failed", error=str(e), only_from=(claim,))
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[{action}] Range {range_id} FAILED: {e}")
         raise
@@ -471,14 +320,14 @@ def _power_range(task, range_id: str, action: str, state: str):
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.stop_range")
 def stop_range(self, range_id: str):
-    """Power off every VM of a range (POST /ranges/{id}/stop)."""
-    return _power_range(self, range_id, "stop", "stopped")
+    """Power off every VM of a range (a stop operation: POST /ranges/{id}/stop)."""
+    return _power_range(self, range_id, "stop", "stopping", "stopped")
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.start_range")
 def start_range(self, range_id: str):
-    """Power on every VM of a stopped range (POST /ranges/{id}/start)."""
-    return _power_range(self, range_id, "start", "running")
+    """Power on every VM of a range (a start operation: POST /ranges/{id}/start)."""
+    return _power_range(self, range_id, "start", "starting", "running")
 
 
 # -- Scenario Execution --------------------------------------------------
@@ -784,112 +633,7 @@ def cleanup_expired_ranges(self):
         raise
 
 
-# -- Periodic: health and metrics over the active ranges --------------------
-# Every range is read through the backend that built it (provisioner_backend), not the
-# worker's PROVISIONER_BACKEND: a vSphere range on a worker whose env says proxmox_api
-# used to be asked about by the Proxmox provisioner.
-#
-# Each run is bounded three ways: a Redis lock skips a run while the previous one still
-# holds it; a budget stops starting ranges once spent (the rest are counted `skipped`,
-# not unhealthy) and caps each range's call at what is left of it; Celery's time limits
-# end a run stuck past both (prefork pool only). The beat entries also expire, so runs
-# queued behind a busy worker are dropped rather than run late, one after another.
-HEALTH_CHECK_BUDGET = int(os.getenv("TN_HEALTH_CHECK_BUDGET", "45"))  # runs every 60s
-METRICS_BUDGET = int(os.getenv("TN_METRICS_BUDGET", "20"))  # runs every 30s
-
-_SKIPPED = object()  # a range the run's budget did not reach
-
-
-@contextmanager
-def _run_lock(name: str, ttl: int):
-    """Yield True when this run may go ahead, False while another run holds ``name``.
-
-    Non-blocking: a run that finds the lock taken is skipped, not queued. The lock expires
-    after ``ttl`` seconds, so a worker killed mid-run holds it no longer than that.
-    Without Redis the run goes ahead unlocked, as _vlan_lock does.
-    """
-    lock = None
-    acquired = True
-    try:
-        import redis
-
-        client = redis.Redis.from_url(REDIS_URL, socket_timeout=5, socket_connect_timeout=5)
-        lock = client.lock(f"truenorth:periodic:{name}", timeout=ttl)
-        acquired = bool(lock.acquire(blocking=False))
-    except Exception as e:  # noqa: BLE001 — no Redis (tests, single worker): carry on unlocked
-        logger.warning(f"[{name}] run lock unavailable, running without it: {e}")
-        lock = None
-    if not acquired:
-        yield False
-        return
-    try:
-        yield True
-    finally:
-        if lock is not None:
-            with contextlib.suppress(Exception):  # expired meanwhile: nothing to release
-                lock.release()
-
-
-def _active_ranges() -> list:
-    """(id, name, provisioner_output, provisioner_backend) of every ready or running range."""
-    with _db_session() as db:
-        from sqlalchemy import text
-
-        return db.execute(
-            text(
-                "SELECT id, name, provisioner_output, provisioner_backend FROM ranges "
-                "WHERE state IN ('ready', 'running')"
-            )
-        ).fetchall()
-
-
-def _group_by_backend(rows) -> dict[str, list]:
-    """Active-range rows keyed by each range's own backend (_range_backend: the env is the fallback)."""
-    groups: dict[str, list] = {}
-    for row in rows:
-        backend = _range_backend((None, row[2], row[3] if len(row) > 3 else None))
-        groups.setdefault(backend, []).append(row)
-    return groups
-
-
-async def _run_group(provisioner, rows, op, deadline: float) -> list[tuple]:
-    """``op(provisioner, range_id, provision_output)`` over ``rows``, inside one provisioner session."""
-    results: list[tuple] = []
-    async with provisioner.session():
-        for row in rows:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                results.append((row, _SKIPPED))
-                continue
-            try:
-                prov = json.loads(row[2]) if row[2] else {}
-                res = await asyncio.wait_for(op(provisioner, str(row[0]), prov), timeout=remaining)
-            except TimeoutError:
-                res = TimeoutError("no answer before the run's time budget ran out")
-            except Exception as e:  # noqa: BLE001 — one range's failure is that range's result
-                res = e
-            results.append((row, res))
-    return results
-
-
-def _over_ranges(rows, op, deadline: float) -> dict[str, list[tuple]]:
-    """Run ``op`` for every range through its own backend: {backend: [(row, result)]}.
-
-    One provisioner instance and one session() per backend, so one hypervisor login per
-    run however many ranges it covers. A result is the op's return value, the exception
-    it raised, or _SKIPPED.
-    """
-    out: dict[str, list[tuple]] = {}
-    for backend, members in _group_by_backend(rows).items():
-        try:
-            provisioner = _get_backend(backend)
-            out[backend] = asyncio.run(_run_group(provisioner, members, op, deadline))
-        except Exception as e:  # noqa: BLE001 — unknown backend, or its session could not open
-            logger.error(f"[periodic] backend {backend!r} unavailable for {len(members)} ranges: {e}")
-            out[backend] = [(row, e) for row in members]
-    return out
-
-
+# -- Periodic: health and metrics over the active ranges (worker/periodic.py) ----
 # -- Periodic: Health Check Ranges ----------------------------------------
 @app.task(
     bind=True,
@@ -906,144 +650,11 @@ def health_check_ranges(self):
     """
     logger.info("[health] Starting health check for active ranges")
 
-    with _run_lock("health_check_ranges", HEALTH_CHECK_BUDGET + 20) as mine:
+    with periodic.run_lock("health_check_ranges", HEALTH_CHECK_BUDGET + 20) as mine:
         if not mine:
             logger.info("[health] The previous run is still going; skipping this one")
             return {"status": "skipped", "reason": "previous run still in progress"}
-        return _health_check_run(time.monotonic() + HEALTH_CHECK_BUDGET)
-
-
-def _health_check_run(deadline: float) -> dict:
-    try:
-        active_ranges = _active_ranges()
-
-        if not active_ranges:
-            logger.info("[health] No active ranges to check")
-            return {"status": "ok", "checked": 0, "healthy": 0, "unhealthy": 0}
-
-        healthy = 0
-        unhealthy = 0
-        skipped = 0
-        unhealthy_ids = []
-        by_backend = {}
-
-        grouped = _over_ranges(active_ranges, lambda p, rid, out: p.health_check(rid, out), deadline)
-        for backend, results in grouped.items():
-            by_backend[backend] = len(results)
-            for row, result in results:
-                range_id, name = str(row[0]), row[1]
-                if result is _SKIPPED:
-                    skipped += 1
-                elif isinstance(result, Exception):
-                    unhealthy += 1
-                    unhealthy_ids.append(range_id)
-                    logger.error(f"[health] Error checking range {name} ({backend}): {result}")
-                elif result.healthy:
-                    healthy += 1
-                else:
-                    unhealthy += 1
-                    unhealthy_ids.append(range_id)
-                    logger.warning(f"[health] Range {name} ({range_id}) is UNHEALTHY")
-                    _notify_api(
-                        "range",
-                        {
-                            "id": range_id,
-                            "event": "health_check_failed",
-                        },
-                    )
-
-        if skipped:
-            logger.warning(f"[health] Budget of {HEALTH_CHECK_BUDGET}s spent; {skipped} ranges not checked this run")
-
-        summary = {
-            "status": "ok",
-            "checked": healthy + unhealthy,
-            "healthy": healthy,
-            "unhealthy": unhealthy,
-            "unhealthy_ids": unhealthy_ids,
-            "skipped": skipped,
-            "by_backend": by_backend,
-        }
-
-        if unhealthy > 0:
-            _notify_api(
-                "system",
-                {
-                    "event": "health_check_alert",
-                    "unhealthy_count": unhealthy,
-                    "unhealthy_ids": unhealthy_ids,
-                },
-            )
-
-        logger.info(
-            f"[health] Check complete: {healthy} healthy, {unhealthy} unhealthy, {skipped} skipped "
-            f"out of {len(active_ranges)} ranges"
-        )
-        return summary
-
-    except Exception as e:
-        logger.error(f"[health] Health check error: {e}")
-        raise
-
-
-# -- Periodic: Collect Range Metrics ---------------------------------------
-def _usage(vms: list[dict], used_key: str, cap_key: str) -> tuple[float | None, int | None, int | None]:
-    """(percent, used, capacity) over the VMs that report both numbers; all None when none do."""
-    pairs = [
-        (v[used_key], v[cap_key])
-        for v in vms
-        if isinstance(v.get(used_key), int | float) and isinstance(v.get(cap_key), int | float) and v[cap_key] > 0
-    ]
-    if not pairs:
-        return None, None, None
-    used, cap = sum(u for u, _ in pairs), sum(c for _, c in pairs)
-    return round(100.0 * used / cap, 1), used, cap
-
-
-def _recorded_vm_count(prov_output: str | None) -> int:
-    try:
-        return len((json.loads(prov_output) if prov_output else {}).get("vms") or [])
-    except (ValueError, AttributeError):
-        return 0
-
-
-def _range_metrics_event(range_id: str, name: str, backend: str, now: str, result, recorded_vms: int) -> dict:
-    """The ``range_metrics`` telemetry event for one range (index ``range-<id>``).
-
-    The keys the random-number version sent are all kept. cpu_pct and memory_pct are
-    measured now (CPU in use over the VMs' ceilings; active over configured guest
-    memory; powered-on VMs only); the disk and network rates no backend reads yet are
-    null, never an estimate. ``synthetic`` is True for mock numbers.
-    """
-    on = [v for v in result.vms if v.get("power_state") == "poweredOn"]
-    cpu_pct, cpu_used, cpu_cap = _usage(on, "cpu_usage_mhz", "cpu_capacity_mhz")
-    mem_pct, mem_used, mem_cfg = _usage(on, "memory_active_mb", "memory_configured_mb")
-    return {
-        "@timestamp": now,
-        "event_type": "range_metrics",
-        "range_id": range_id,
-        "range_name": name,
-        "timestamp": now,
-        "cpu_pct": cpu_pct,
-        "memory_pct": mem_pct,
-        "disk_read_mbps": None,
-        "disk_write_mbps": None,
-        "network_in_mbps": None,
-        "network_out_mbps": None,
-        "vm_count": len(result.vms) or recorded_vms,
-        "vms_powered_on": len(on),
-        "vms_tools_running": sum(1 for v in result.vms if v.get("tools_status") == "guestToolsRunning"),
-        "cpu_usage_mhz": cpu_used,
-        "cpu_capacity_mhz": cpu_cap,
-        "memory_active_mb": mem_used,
-        "memory_configured_mb": mem_cfg,
-        "backend": backend,
-        "metrics_source": result.source or backend,
-        "metrics_status": result.status,
-        "synthetic": bool(result.synthetic),
-        "metrics_errors": list(result.errors)[:20],
-        "vm_metrics": result.vms,
-    }
+        return periodic.health_check_run(time.monotonic() + HEALTH_CHECK_BUDGET)
 
 
 @app.task(
@@ -1062,72 +673,11 @@ def collect_range_metrics(self):
     """
     logger.info("[metrics] Collecting range metrics")
 
-    with _run_lock("collect_range_metrics", METRICS_BUDGET + 10) as mine:
+    with periodic.run_lock("collect_range_metrics", METRICS_BUDGET + 10) as mine:
         if not mine:
             logger.info("[metrics] The previous run is still going; skipping this one")
             return {"status": "skipped", "reason": "previous run still in progress"}
-        return _collect_metrics_run(time.monotonic() + METRICS_BUDGET)
-
-
-def _collect_metrics_run(deadline: float) -> dict:
-    from .provisioners.results import MetricsResult
-
-    try:
-        active_ranges = _active_ranges()
-
-        if not active_ranges:
-            logger.info("[metrics] No active ranges for metrics collection")
-            return {"status": "ok", "ranges_collected": 0}
-
-        now = datetime.now(UTC).isoformat()
-        collected = []  # ids as the database returned them, for the updated_at bump
-        failed = unsupported = skipped = 0
-
-        grouped = _over_ranges(active_ranges, lambda p, rid, out: p.collect_metrics(rid, out), deadline)
-        for backend, results in grouped.items():
-            for row, result in results:
-                range_id = str(row[0])
-                if result is _SKIPPED:
-                    skipped += 1
-                    continue
-                if isinstance(result, Exception):
-                    result = MetricsResult(status="failed", source=backend, errors=[str(result) or type(result).__name__])
-                if result.status == "unsupported":
-                    unsupported += 1
-                    continue
-                if result.status in ("ok", "partial"):
-                    collected.append(row[0])
-                else:
-                    failed += 1
-                    logger.warning(f"[metrics] Range {row[1]} ({backend}): {'; '.join(result.errors)}")
-
-                event = _range_metrics_event(range_id, row[1], backend, now, result, _recorded_vm_count(row[2]))
-                try:
-                    ingest_telemetry_batch.delay(range_id, [event])
-                except Exception as ingest_err:
-                    logger.warning(f"[metrics] Failed to queue telemetry for {range_id}: {ingest_err}")
-
-        if collected:
-            with _db_session() as db:
-                db_ops.touch_ranges(db, collected)
-
-        if skipped:
-            logger.warning(f"[metrics] Budget of {METRICS_BUDGET}s spent; {skipped} ranges not read this run")
-        logger.info(
-            f"[metrics] Collected metrics for {len(collected)} ranges "
-            f"({failed} failed, {unsupported} unsupported, {skipped} skipped)"
-        )
-        return {
-            "status": "ok",
-            "ranges_collected": len(collected),
-            "failed": failed,
-            "unsupported": unsupported,
-            "skipped": skipped,
-        }
-
-    except Exception as e:
-        logger.error(f"[metrics] Metrics collection error: {e}")
-        raise
+        return periodic.collect_metrics_run(time.monotonic() + METRICS_BUDGET)
 
 
 # -- Range Snapshots ----------------------------------------------------

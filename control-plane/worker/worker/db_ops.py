@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import uuid
+import zlib
 from collections.abc import Iterable, Sequence
 from typing import Any
 
@@ -32,6 +33,7 @@ from .tables import (
     golden_images,
     hypervisor_connections,
     learning_recommendations,
+    network_reservations,
     objectives,
     range_snapshots,
     ranges,
@@ -86,8 +88,8 @@ def range_output_and_backend(db, range_id: str):
 
 
 def active_ranges(db) -> list:
-    """(id, name, provisioner_output) of every range that is ready or running."""
-    stmt = sa.select(ranges.c.id, ranges.c.name, ranges.c.provisioner_output).where(
+    """(id, name, provisioner_output, provisioner_backend) of every range that is ready or running."""
+    stmt = sa.select(ranges.c.id, ranges.c.name, ranges.c.provisioner_output, ranges.c.provisioner_backend).where(
         ranges.c.state.in_(["ready", "running"])
     )
     return db.execute(stmt).fetchall()
@@ -130,6 +132,76 @@ def touch_ranges(db, range_ids: Iterable) -> None:
 
 def first_range_for_tenant(db, tenant_id: str):
     return db.execute(sa.select(ranges.c.id).where(ranges.c.tenant_id == tenant_id).limit(1)).first()
+
+
+def range_output(db, range_id: str) -> dict:
+    """A range's provisioner_output as a dict ({} when empty or not JSON)."""
+    raw = db.execute(sa.select(ranges.c.provisioner_output).where(ranges.c.id == range_id)).scalar()
+    try:
+        out = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    return out if isinstance(out, dict) else {}
+
+
+def merge_range_output(db, range_id: str, updates: dict) -> None:
+    """Merge ``updates`` into the range's provisioner_output; keys not in it are kept."""
+    out = {**range_output(db, range_id), **updates}
+    db.execute(sa.update(ranges).where(ranges.c.id == range_id).values(provisioner_output=json.dumps(out), updated_at=_now()))
+
+
+# -- network reservations ------------------------------------------------------
+# The worker's half of app/network_inventory.py (the API's reserve/release; the worker
+# cannot import it). Both must behave the same and take the same lock, which
+# tests/worker/test_range_allocation.py checks.
+class PoolExhaustedError(RuntimeError):
+    """The pool cannot hold every holder that needs a value."""
+
+
+def reservation_lock_key(domain: str, kind: str) -> int:
+    """The advisory-lock key for one (kind, domain); equals app.network_inventory.lock_key."""
+    return zlib.crc32(f"{kind}:{domain}".encode()) - (1 << 31)  # signed 32-bit
+
+
+def reserve_values(db, range_id: str, *, domain: str, kind: str, pool: list[str], holders: list[str]) -> dict:
+    """{holder: value} for every holder, reserving the lowest free pool values as needed.
+
+    Idempotent per (range, kind, holder). Values are unique per (domain, kind) across all
+    tenants (a unique constraint). Concurrent reservations in one domain are serialised by
+    a transaction-scoped PostgreSQL advisory lock, held until the caller's session commits;
+    no Redis. Raises PoolExhaustedError, reserving nothing, when the pool is too small.
+    """
+    nr = network_reservations
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(sa.select(sa.func.pg_advisory_xact_lock(reservation_lock_key(domain, kind))))
+    held = sa.select(nr.c.holder, nr.c.value).where(nr.c.range_id == range_id, nr.c.kind == kind)
+    mine = {h: v for h, v in db.execute(held)}
+    needed = [h for h in dict.fromkeys(holders) if h not in mine]
+    if not needed:
+        return {h: mine[h] for h in holders}
+    same = (nr.c.domain == domain, nr.c.kind == kind)
+    gone = sa.select(ranges.c.id).where(sa.cast(ranges.c.state, sa.Text) == "destroyed")
+    db.execute(sa.delete(nr).where(*same, nr.c.range_id.in_(gone)))  # a destroyed range holds nothing
+    taken = set(db.execute(sa.select(nr.c.value).where(*same)).scalars())
+    free = [v for v in pool if v not in taken]
+    if len(free) < len(needed):
+        raise PoolExhaustedError(
+            f"{kind} pool for {domain} has {len(free)} free of {len(pool)}; this range needs {len(needed)} more"
+        )
+    tenant = db.execute(sa.select(ranges.c.tenant_id).where(ranges.c.id == range_id)).scalar_one()
+    rows = [
+        {"id": uuid.uuid4(), "tenant_id": tenant, "range_id": range_id, "domain": domain, "kind": kind,
+         "value": value, "holder": holder}
+        for holder, value in zip(needed, free, strict=False)
+    ]
+    db.execute(sa.insert(nr).values(created_at=_now(), updated_at=_now()), rows)  # the constraints have the last word
+    mine.update({r["holder"]: r["value"] for r in rows})
+    return {h: mine[h] for h in holders}
+
+
+def release_reservations(db, range_id: str) -> int:
+    """Free everything the range holds. Returns how many were freed."""
+    return db.execute(sa.delete(network_reservations).where(network_reservations.c.range_id == range_id)).rowcount
 
 
 # -- hypervisor connections / golden images ---------------------------------

@@ -4604,6 +4604,115 @@
         "title": "ForgeResultOut",
         "type": "object"
       },
+      "GoldenImageCreate": {
+        "description": "A custom (non-catalogue) image, e.g. a Packer variant from infra/vsphere/packer/variants/.",
+        "properties": {
+          "build_status": {
+            "default": "planned",
+            "enum": [
+              "planned",
+              "building",
+              "built",
+              "failed"
+            ],
+            "title": "Build Status",
+            "type": "string"
+          },
+          "catalogue_id": {
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "title": "Catalogue Id",
+            "type": "string"
+          },
+          "datastore": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datastore"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "golden_gb": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Golden Gb"
+          },
+          "hypervisor": {
+            "default": "vsphere",
+            "enum": [
+              "vsphere",
+              "proxmox",
+              "hyperv"
+            ],
+            "title": "Hypervisor",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Notes",
+            "type": "string"
+          },
+          "os_aliases": {
+            "items": {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Os Aliases",
+            "type": "array"
+          },
+          "os_family": {
+            "enum": [
+              "windows",
+              "linux",
+              "appliance"
+            ],
+            "title": "Os Family",
+            "type": "string"
+          },
+          "role": {
+            "default": "",
+            "maxLength": 160,
+            "title": "Role",
+            "type": "string"
+          },
+          "template_name": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Template Name",
+            "type": "string"
+          },
+          "version": {
+            "default": "",
+            "maxLength": 60,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalogue_id",
+          "os_family"
+        ],
+        "title": "GoldenImageCreate",
+        "type": "object"
+      },
       "GoldenImageOut": {
         "properties": {
           "build_status": {
@@ -9746,6 +9855,64 @@
           "name"
         ],
         "title": "SnapshotRequest",
+        "type": "object"
+      },
+      "SoftwareCatalogueOut": {
+        "properties": {
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "software": {
+            "items": {
+              "$ref": "#/components/schemas/SoftwareEntryOut"
+            },
+            "title": "Software",
+            "type": "array"
+          }
+        },
+        "required": [
+          "software",
+          "roles"
+        ],
+        "title": "SoftwareCatalogueOut",
+        "type": "object"
+      },
+      "SoftwareEntryOut": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "offline": {
+            "title": "Offline",
+            "type": "boolean"
+          },
+          "os_families": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Os Families",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "aliases",
+          "os_families",
+          "offline"
+        ],
+        "title": "SoftwareEntryOut",
         "type": "object"
       },
       "SpaceIn": {
@@ -18341,6 +18508,51 @@
         "tags": [
           "golden-images"
         ]
+      },
+      "post": {
+        "description": "Register a custom image (a Packer variant) so ranges and the designer can use it.\n\nCreates (201) or updates (200) the image keyed on (catalogue_id, hypervisor). It is\nmarked as a variant, so catalogue re-imports leave it alone. A catalogue image's\nslot is refused with 409; change those through PATCH.\n\n**Permission: infra:write**: the registry is platform-wide, like PATCH below.",
+        "operationId": "upsert_custom_image_golden_images_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoldenImageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoldenImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upsert Custom Image",
+        "tags": [
+          "golden-images"
+        ]
       }
     },
     "/golden-images/alias-map": {
@@ -25186,9 +25398,78 @@
         ]
       }
     },
+    "/ranges/{range_id}/start": {
+      "post": {
+        "description": "Power a stopped range's VMs back on (an operation; the range is ``starting`` until\nthe worker reports ``running``).  **Permission: range:provision**",
+        "operationId": "start_range_ranges__range_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOut"
+                }
+              }
+            },
+            "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status."
+          },
+          "409": {
+            "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Range",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/stop": {
       "post": {
-        "description": "Stop a running range.  **Permission: range:provision**",
+        "description": "Power off a range's VMs (an operation; the range is ``stopping`` until the worker\nreports ``stopped``).  **Permission: range:provision**",
         "operationId": "stop_range_ranges__range_id__stop_post",
         "parameters": [
           {
@@ -25200,10 +25481,27 @@
               "title": "Range Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -25211,7 +25509,10 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status."
+          },
+          "409": {
+            "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
           },
           "422": {
             "content": {
@@ -26506,6 +26807,33 @@
         "summary": "Resource timeline for capacity planning",
         "tags": [
           "scheduling"
+        ]
+      }
+    },
+    "/software-catalogue": {
+      "get": {
+        "description": "Software names a node's ``services`` can use, with aliases and OS families.",
+        "operationId": "get_software_catalogue_software_catalogue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SoftwareCatalogueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Software Catalogue",
+        "tags": [
+          "software-catalogue"
         ]
       }
     },

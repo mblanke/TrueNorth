@@ -170,8 +170,9 @@ describe('ApiService', () => {
     const req = httpMock.expectOne(`${base}/ranges/r1/start`);
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({});
-    req.flush({ id: 'r1', state: 'running' });
-    expect(got?.state).toBe('running');
+    expect(req.request.headers.get('Idempotency-Key')).toBeTruthy();
+    req.flush({ id: 'r1', state: 'starting' });
+    expect(got?.state).toBe('starting');
   });
 
   it('startRange() should surface a 409 as an error, not a range', () => {
@@ -183,10 +184,11 @@ describe('ApiService', () => {
   });
 
   it('stopRange() should POST to /api/ranges/{id}/stop', () => {
-    service.stopRange('r1').subscribe();
+    service.stopRange('r1', 'click-2').subscribe();
     const req = httpMock.expectOne(`${base}/ranges/r1/stop`);
     expect(req.request.method).toBe('POST');
-    req.flush({ id: 'r1', state: 'stopped' });
+    expect(req.request.headers.get('Idempotency-Key')).toBe('click-2');
+    req.flush({ id: 'r1', state: 'stopping' });
   });
 
   it('getSoftwareCatalogue() should GET /api/software-catalogue', () => {

@@ -5,7 +5,7 @@ import { provideRouter } from '@angular/router';
 import { POLL_MS, RangesComponent } from './ranges.component';
 import { ApiService, RangeOperation } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
-import { Range, Template } from '@core/models';
+import { Range, RangeSummary, Template } from '@core/models';
 
 describe('RangesComponent', () => {
   let component: RangesComponent;
@@ -124,65 +124,79 @@ describe('RangesComponent', () => {
     expect(mockNotify.error).toHaveBeenCalledWith('Could not request destroy');
   });
 
-  // ── Stop ─────────────────────────────────────────────────────────
-  it('stop() should call stopRange and show notification', () => {
+  // ── Stop / start: operations, like provision ─────────────────────
+  it('stop() requests a stop operation and reloads; nothing claims the VMs are off yet', () => {
     fixture.detectChanges();
 
     component.stop('r1');
 
     expect(mockApi.stopRange).toHaveBeenCalledWith('r1');
-    expect(mockNotify.success).toHaveBeenCalledWith('Range marked stopped. Its VMs were not powered off.');
+    expect(mockNotify.success).toHaveBeenCalledWith('Stop requested');
+    expect(mockApi.listRanges).toHaveBeenCalledTimes(2);
+    expect(component.busy().has('r1')).toBeFalse();
   });
 
-  // ── Start ────────────────────────────────────────────────────────
-  it('start() should call startRange, notify and reload', () => {
+  it('start() requests a start operation and reloads', () => {
     fixture.detectChanges();
 
     component.start('r5');
 
     expect(mockApi.startRange).toHaveBeenCalledWith('r5');
-    expect(mockNotify.success).toHaveBeenCalledWith('Range starting');
+    expect(mockNotify.success).toHaveBeenCalledWith('Start requested');
     expect(mockApi.listRanges).toHaveBeenCalledTimes(2);
-    expect(component.powerPending()).toBeNull();
   });
 
-  it('start() should show the server detail on a 409 and not reload', () => {
+  it('start() shows the server detail on a 409', () => {
     mockApi.startRange.and.returnValue(throwError(() => ({
-      status: 409, error: { detail: 'Cannot start range in state running' },
+      status: 409, error: { detail: 'A stop of this range is still in progress' },
     })));
     fixture.detectChanges();
 
     component.start('r5');
 
-    expect(mockNotify.error).toHaveBeenCalledWith('Cannot start range in state running');
+    expect(mockNotify.error).toHaveBeenCalledWith('A stop of this range is still in progress');
     expect(mockNotify.success).not.toHaveBeenCalled();
-    expect(mockApi.listRanges).toHaveBeenCalledTimes(1);
-    expect(component.powerPending()).toBeNull();
+    expect(component.busy().has('r5')).toBeFalse();
   });
 
-  it('enables Start only when stopped and Stop when running or ready', () => {
+  it('enables Start for stopped/failed and Stop for running/ready/failed; in progress disables both', () => {
     mockApi.listRanges.and.returnValue(of([
       { id: 'a', name: 'Stopped', state: 'stopped', created_at: '2026-01-15T10:00:00Z' },
       { id: 'b', name: 'Running', state: 'running', created_at: '2026-01-15T10:00:00Z' },
       { id: 'c', name: 'Ready', state: 'ready', created_at: '2026-01-15T10:00:00Z' },
       { id: 'd', name: 'Created', state: 'created', created_at: '2026-01-15T10:00:00Z' },
+      { id: 'e', name: 'Stopping', state: 'stopping', created_at: '2026-01-15T10:00:00Z' },
+      { id: 'f', name: 'Failed', state: 'failed', created_at: '2026-01-15T10:00:00Z' },
     ] as Range[]));
+    mockApi.listRangeOperations.and.returnValue(of([]));
     fixture.detectChanges();
     const rows = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('tr.mat-mdc-row'));
     const btn = (row: Element, cls: string) => row.querySelector<HTMLButtonElement>('button.' + cls);
+    const enabled = (row: Element) => [!btn(row, 'power-start')!.disabled, !btn(row, 'power-stop')!.disabled];
 
-    expect(btn(rows[0], 'power-start')!.disabled).toBeFalse();
-    expect(btn(rows[0], 'power-stop')!.disabled).toBeTrue();
-    expect(btn(rows[1], 'power-start')!.disabled).toBeTrue();
-    expect(btn(rows[1], 'power-stop')!.disabled).toBeFalse();
-    expect(btn(rows[2], 'power-start')!.disabled).toBeTrue();
-    expect(btn(rows[2], 'power-stop')!.disabled).toBeFalse();
+    expect(enabled(rows[0])).toEqual([true, false]);
+    expect(enabled(rows[1])).toEqual([false, true]);
+    expect(enabled(rows[2])).toEqual([false, true]);
     expect(btn(rows[3], 'power-start')).toBeNull();
     expect(btn(rows[3], 'power-stop')).toBeNull();
+    expect(enabled(rows[4])).toEqual([false, false]);
+    expect(enabled(rows[5])).toEqual([true, true]);
     expect(btn(rows[0], 'power-start')!.getAttribute('aria-label')).toBe('Start Stopped');
 
     btn(rows[0], 'power-start')!.click();
     expect(mockApi.startRange).toHaveBeenCalledWith('a');
+  });
+
+  it('describes an in-flight stop in words', () => {
+    mockApi.listRanges.and.returnValue(of([
+      { id: 'e', name: 'Stopping', state: 'stopping', created_at: '2026-01-15T10:00:00Z' },
+    ] as Range[]));
+    mockApi.listRangeOperations.and.returnValue(of([
+      { id: 'op1', range_id: 'e', action: 'stop', status: 'dispatched', generation: 1, dispatch_attempts: 1 },
+    ] as RangeOperation[]));
+    fixture.detectChanges();
+
+    expect(component.opText({ id: 'e', state: 'stopping' } as RangeSummary)).toBe('Stopping…');
   });
 
   // ── Create range ─────────────────────────────────────────────────

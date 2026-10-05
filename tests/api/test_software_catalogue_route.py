@@ -103,7 +103,10 @@ def test_malformed_file_is_503(client, tmp_path, monkeypatch):
 def test_requires_an_authenticated_user():
     from app.auth import get_current_user
     from app.main import app
+    from fastapi.routing import iter_route_contexts
 
-    route = next(r for r in app.routes if isinstance(r, APIRoute) and r.path == "/software-catalogue")
+    # FastAPI 0.141 nests included routers; walk the effective routes (test_router_registration.py).
+    route = next(c.route for c in iter_route_contexts(app.routes)
+                 if isinstance(c.route, APIRoute) and c.path == "/software-catalogue")
     assert route.methods == {"GET"}
     assert any(d.call is get_current_user for d in route.dependant.dependencies)

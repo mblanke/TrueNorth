@@ -22,7 +22,11 @@ import { RangeNotesComponent } from '../../shared/components/range-notes/range-n
 import { CountUpDirective } from '../../shared/motion';
 
 /** States in which the latest operation is still being worked on. */
-const IN_PROGRESS = new Set(['provisioning', 'destroying']);
+const IN_PROGRESS = new Set(['provisioning', 'destroying', 'stopping', 'starting']);
+/** What each operation is doing while it is in flight. */
+const DOING: Record<string, string> = {
+  provision: 'Provisioning', destroy: 'Destroying', stop: 'Stopping', start: 'Starting',
+};
 /** How often the list refreshes while any range is in progress. */
 export const POLL_MS = 5000;
 
@@ -156,18 +160,20 @@ export const POLL_MS = 5000;
               </button>
             }
             @if (hasPowerControls(r)) {
-              <!-- The API starts only a stopped range and stops only a running one;
-                   anything else is a 409, so the button is disabled rather than hidden. -->
+              <!-- Start/stop are operations like provision: the range shows stopping/starting
+                   until the worker has powered the VMs. The API refuses (409) a start unless
+                   the range is stopped or failed, and a stop unless it is ready, running or
+                   failed, so the buttons are disabled rather than hidden. -->
               <button mat-icon-button color="primary" class="power-start"
                       (click)="start(r.id)"
-                      [disabled]="r.state !== 'stopped' || powerPending() === r.id"
+                      [disabled]="!canStart(r) || busy().has(r.id)"
                       [attr.aria-label]="'Start ' + r.name"
                       matTooltip="Start">
                 <mat-icon>play_arrow</mat-icon>
               </button>
               <button mat-icon-button class="power-stop"
                       (click)="stop(r.id)"
-                      [disabled]="(r.state !== 'running' && r.state !== 'ready') || powerPending() === r.id"
+                      [disabled]="!canStop(r) || busy().has(r.id)"
                       [attr.aria-label]="'Stop ' + r.name"
                       matTooltip="Stop">
                 <mat-icon>stop</mat-icon>
@@ -284,8 +290,6 @@ export class RangesComponent implements OnInit {
   displayedColumns = ['name', 'state', 'created', 'actions'];
   /** The range whose description panel is open, if any. */
   notesFor = signal<RangeSummary | null>(null);
-  /** Id of the range whose start/stop request is in flight; its buttons stay disabled. */
-  powerPending = signal<string | null>(null);
 
   ngOnInit(): void {
     this.loadRanges();
@@ -333,7 +337,7 @@ export class RangesComponent implements OnInit {
     const op = this.ops()[r.id];
     if (!op) return null;
     const code = String(op.error?.['code'] ?? '');
-    const doing = op.action === 'destroy' ? 'Destroying' : 'Provisioning';
+    const doing = DOING[op.action] ?? op.action;
     if (op.status === 'pending') {
       return code === 'broker_unavailable'
         ? 'Queued: waiting for the task queue to come back'
@@ -401,34 +405,31 @@ export class RangesComponent implements OnInit {
   }
 
   /** Ranges that have (or had) powered VMs get the Start/Stop pair. */
-  hasPowerControls(r: Range): boolean {
-    return r.state === 'ready' || r.state === 'running' || r.state === 'stopped';
+  hasPowerControls(r: RangeSummary): boolean {
+    return ['ready', 'running', 'stopping', 'stopped', 'starting', 'failed'].includes(r.state);
+  }
+
+  canStart(r: RangeSummary): boolean {
+    return r.state === 'stopped' || r.state === 'failed';
+  }
+
+  canStop(r: RangeSummary): boolean {
+    return r.state === 'ready' || r.state === 'running' || r.state === 'failed';
   }
 
   start(id: string): void {
-    this.powerPending.set(id);
-    this.api.startRange(id).subscribe({
-      next: () => { this.powerPending.set(null); this.notify.success('Range starting'); this.loadRanges(); },
-      error: (err) => {
-        this.powerPending.set(null);
-        this.notify.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'Start failed');
-      },
-    });
+    this.request(id, this.api.startRange(id), 'Start requested', 'Could not request start');
   }
 
   stop(id: string): void {
-    this.powerPending.set(id);
-    this.api.stopRange(id).subscribe({
-      next: () => { this.powerPending.set(null); this.notify.success('Range stopped'); this.loadRanges(); },
-      error: () => { this.powerPending.set(null); this.notify.error('Stop failed'); },
-    });
+    this.request(id, this.api.stopRange(id), 'Stop requested', 'Could not request stop');
   }
 
   destroy(id: string): void {
     this.request(id, this.api.destroyRange(id), 'Destroy requested', 'Could not request destroy');
   }
 
-  /** A provision/destroy: 202 means recorded, not done; the row's status follows it. */
+  /** A provision/destroy/start/stop: 202 means recorded, not done; the row's status follows it. */
   private request(id: string, call: ReturnType<ApiService['provisionRange']>, ok: string, failed: string): void {
     this.setBusy(id, true);
     call.subscribe({

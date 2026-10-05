@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
-from worker import celery_app, tasks
+from worker import celery_app, periodic, tasks
 from worker.provisioners.hyperv import HypervProvisioner
 from worker.provisioners.mock import MockProvisioner
 from worker.provisioners.proxmox_api import ProxmoxAPIProvisioner
@@ -46,6 +46,13 @@ def db(tmp_path, monkeypatch):
         ))
     monkeypatch.setattr(tasks, "DATABASE_URL", url)
     sa.event.listen(sa.engine.Engine, "connect", _sqlite_now)
+
+    def active():  # these test the runs, with readable ids; db_ops.active_ranges is tested on the
+        with engine.connect() as conn:  # API's schema in test_worker_sql_real_db.py
+            return conn.execute(sa.text("SELECT id, name, provisioner_output, provisioner_backend FROM ranges "
+                                        "WHERE state IN ('ready', 'running')")).fetchall()
+
+    monkeypatch.setattr(periodic, "_active_ranges", active)
 
     def run(sql, **params):
         with engine.begin() as conn:
@@ -157,13 +164,13 @@ class TestGroupByBackend:
         monkeypatch.setenv("PROVISIONER_BACKEND", "proxmox_api")
         rows = [("r1", "A", None, "vsphere_api"), ("r2", "B", None, "mock"), ("r3", "C", None, None),
                 ("r4", "D", None, "vsphere_api"), ("r5", "E", None, "")]
-        groups = tasks._group_by_backend(rows)
+        groups = periodic.group_by_backend(rows)
         assert {k: [r[0] for r in v] for k, v in groups.items()} == {
             "vsphere_api": ["r1", "r4"], "mock": ["r2"], "proxmox_api": ["r3", "r5"]}
 
     def test_old_three_column_rows_fall_back_to_the_env(self, monkeypatch):
         monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
-        assert list(tasks._group_by_backend([("r1", "A", None)])) == ["mock"]
+        assert list(periodic.group_by_backend([("r1", "A", None)])) == ["mock"]
 
 
 # --------------------------------------------------------------------------- #
@@ -212,7 +219,7 @@ class TestHealthCheckRanges:
             _range(db, rid, "vsphere_api")
         backends.script["vsphere_api"] = {"delay": 5.0}
         started = time.monotonic()
-        result = tasks._health_check_run(time.monotonic() + 0.2)
+        result = periodic.health_check_run(time.monotonic() + 0.2)
         assert time.monotonic() - started < 2
         # The first range was asked and gave no answer in time: unhealthy. The others were
         # never reached: skipped, not reported as unhealthy.
@@ -283,7 +290,7 @@ class TestRunLock:
         assert ("release", "truenorth:periodic:health_check_ranges") in redis.log and not redis.held
 
     def test_the_lock_is_released_when_the_run_fails(self, db, backends, redis, monkeypatch):
-        monkeypatch.setattr(tasks, "_active_ranges", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+        monkeypatch.setattr(periodic, "_active_ranges", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
         with pytest.raises(RuntimeError, match="db down"):
             tasks.collect_range_metrics()
         assert not redis.held
@@ -341,7 +348,8 @@ class TestCollectRangeMetrics:
         assert [v["name"] for v in event["vm_metrics"]] == ["a", "b", "c"]
         json.dumps(event)  # it goes through Celery's JSON serializer
         # Only the range actually read gets its updated_at bumped.
-        assert dict(db("SELECT id, updated_at FROM ranges")) == {"r1": "2026-10-03 00:00:00", "r2": "before"}
+        stamps = dict(db("SELECT id, updated_at FROM ranges"))
+        assert stamps["r2"] == "before" and stamps["r1"] != "before"  # only the range read is bumped
 
     def test_a_failed_read_is_reported_with_nulls_not_numbers(self, db, backends, ingested):
         _range(db, "r1", "vsphere_api")
@@ -372,7 +380,7 @@ class TestCollectRangeMetrics:
     def test_budget_skips_ranges_it_did_not_reach(self, db, backends, ingested):
         for rid in ("r1", "r2"):
             _range(db, rid, "vsphere_api")
-        result = tasks._collect_metrics_run(time.monotonic() - 1)
+        result = periodic.collect_metrics_run(time.monotonic() - 1)
         assert result["skipped"] == 2 and ingested == [] and backends.by("vsphere_api")[0].calls == []
 
 

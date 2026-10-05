@@ -15,8 +15,9 @@ nobody in the same ``domain`` holds, across all tenants. It is:
 ``release_range`` frees everything a range holds; ``range_ops.reconcile`` calls it when a
 destroy succeeds. Rows also go with the range (ON DELETE CASCADE).
 
-Consumers (noise deploy, vSphere uplink/VLAN allocation) adopt this in S4b/S5a; until
-then the table is unused.
+Consumers: the worker's vSphere VLAN and uplink allocation (S5a) reserves on the same table
+with the same lock and rules (worker/db_ops.reserve_values; the worker cannot import this
+module). The noise engine adopts it in S4b.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ def parse_ip_pool(spec: str) -> list[str]:
     """A CIDR (``10.255.0.0/24``: its hosts), a range (``10.30.32.100-199`` or
     ``10.30.32.100-10.30.32.199``) or a comma list of those, as sorted addresses.
 
-    Same forms as worker/uplink_pool.py (vmware branch), which the API may not import.
+    Same forms as worker/uplink_pool.py, which the API may not import.
     """
     out: set[ipaddress.IPv4Address] = set()
     for part in (spec or "").split(","):
@@ -83,11 +84,16 @@ def vlan_pool(spec: str) -> list[str]:
     return [str(i) for i in sorted(ids)]
 
 
+def lock_key(domain: str, kind: str) -> int:
+    """The advisory-lock key for one (kind, domain). The worker takes the same lock
+    (worker/db_ops.reservation_lock_key) when it reserves vSphere VLANs and uplinks."""
+    return zlib.crc32(f"{kind}:{domain}".encode()) - (1 << 31)  # signed 32-bit
+
+
 def _lock_domain(db: Session, domain: str, kind: str) -> None:
     """Serialise reservations in one domain until this transaction ends (PostgreSQL)."""
     if db.get_bind().dialect.name == "postgresql":
-        key = zlib.crc32(f"{kind}:{domain}".encode()) - (1 << 31)  # signed 32-bit
-        db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": key})
+        db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key(domain, kind)})
 
 
 def reserve(db: Session, rng: Range, *, domain: str, kind: str, pool: list[str], holders: list[str]) -> dict[str, str]:

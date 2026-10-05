@@ -52,7 +52,7 @@ except ImportError:  # only the snapshot operations need it
 from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
-from .base import BaseProvisioner
+from .base import AllocationNeed, BaseProvisioner
 from .results import (
     DestroyResult,
     HealthResult,
@@ -910,13 +910,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
         allocations: dict,
     ) -> ProvisionResult:
         """Build the range. ``allocations["physical_vlans"]`` maps each template (logical)
-        VLAN to the physical VLAN worker.tasks reserved for it; without it, VLANs are
-        allocated here from the pool, avoiding ``allocations["used_vlans"]``.
+        VLAN to the physical VLAN the worker reserved for it (``allocation_needs``). A VLAN
+        with no reservation is refused, never picked here: only the reservation table,
+        under its lock, decides who holds a VLAN.
 
         With VSPHERE_RANGE_UPLINK_NETWORK set, the edge firewall gets a WAN NIC first, at
-        ``allocations["uplink_ip"]`` (reserved by worker.tasks) or the lowest pool address
-        not in ``allocations["used_uplink_ips"]``. Software in the nodes' ``services`` is
-        installed after power-on (``_install_software``).
+        ``allocations["uplink_ip"]``, reserved the same way. Software in the nodes'
+        ``services`` is installed after power-on (``_install_software``).
 
         Nothing is left behind on failure: when no VM could be built, the VMs and port
         groups this call made are removed again, so a retry starts clean.
@@ -942,8 +942,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             rspan_keys = [p["rspan_key"] for p in mirror_plans]
             physical = {int(k): int(v) for k, v in (allocations.get("physical_vlans") or {}).items()}
             if missing := [v for v in logical + rspan_keys if v not in physical]:
-                used = {int(v) for v in allocations.get("used_vlans") or ()} | set(physical.values())
-                physical.update(vlan_pool.allocate(missing, used, vlan_pool.parse_pool(self._vlan_pool)))
+                raise RuntimeError(f"VLANs {missing} have no reservation (worker: allocation_needs, network_reservations)")
             for plan in mirror_plans:  # an RSPAN VLAN: reserved like the zones', but no port group
                 plan["rspan_vlan"] = physical[plan["rspan_key"]]
                 networks.append({"name": f"rspan-{plan['dst']}", "vlan_id": plan["rspan_key"],
@@ -990,7 +989,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
         built = {v["name"] for v in vms_out}
         if uplink and uplink["vm"] not in built:
-            uplink = None  # the edge firewall was not built; its address goes back to the pool
+            uplink = None  # the edge firewall was not built (its address stays reserved until destroy)
         return ProvisionResult(
             status=outcome(len(vms_out), errors) if vm_defs else ("failed" if errors else "ok"),
             vms=vms_out,
@@ -1012,6 +1011,46 @@ class VsphereAPIProvisioner(BaseProvisioner):
         text = str(exc) or getattr(exc, "msg", None) or type(exc).__name__
         return guest.redact(text, *(v.get("_guest") for v in vm_defs))
 
+    def _domain(self, network: str) -> str:
+        """The shared network a reservation must be unique in: ``vsphere:<vCenter>:<network>``.
+
+        VSPHERE_ALLOCATION_DOMAIN replaces ``vsphere:<vCenter>`` for vCenters that share
+        one physical switch fabric (and so one VLAN space)."""
+        site = os.getenv("VSPHERE_ALLOCATION_DOMAIN", "").strip()
+        return f"{site or 'vsphere:' + (urlparse(self._base_url).hostname or self._base_url)}:{network}"
+
+    def allocation_needs(self, range_id: str, template: dict) -> list[AllocationNeed]:
+        """Physical VLANs for every logical VLAN (and RSPAN VLAN) the build will use, and
+        the edge firewall's uplink address: the same planning ``provision`` does."""
+        vm_defs = [self._vm_plan(range_id, v) for v in template.get("vms", [])]
+        logical = sorted({int(n["vlan"]) for v in vm_defs for n in v["nics"] if n.get("vlan") is not None})
+        rules = infra.mirror_rules(template) if self._switch_mode != "vss" else []  # as _plan_mirrors
+        plans = infra.plan_mirrors(rules, [dict(n) for n in template.get("networks", [])])[0] if rules else []
+        keys = logical + [p["rspan_key"] for p in plans if p["rspan_key"] not in logical]
+        switch = self._dvs_name if self._switch_mode != "vss" else f"vss:{self._vswitch}"
+        needs = []
+        if keys:
+            pool = [str(v) for v in vlan_pool.parse_pool(self._vlan_pool)]
+            needs.append(AllocationNeed("physical_vlans", "vlan", self._domain(switch), pool, [str(k) for k in keys]))
+        if self._uplink_network and infra.pick_edge(vm_defs) is not None:
+            pool = uplink_pool.parse_ip_pool(self._uplink_pool)
+            needs.append(AllocationNeed("uplink_ip", "uplink_ip", self._domain(self._uplink_network), pool, ["edge"],
+                                        single=True))
+        return needs
+
+    def planned_output(self, range_id: str, allocations: dict) -> dict:
+        """The port groups and uplink address the build will use, recorded before it starts."""
+        out: dict = {"provider": "vsphere_api", "range_id": range_id}
+        if vlans := allocations.get("physical_vlans"):
+            out["networks"] = [
+                {"vlan_id": int(k), "physical_vlan": int(v), "portgroup": infra.portgroup_name(range_id, int(v)),
+                 "switch_mode": self._switch_mode}
+                for k, v in sorted(vlans.items(), key=lambda kv: int(kv[0]))
+            ]
+        if ip := allocations.get("uplink_ip"):
+            out["uplink"] = {"network": self._uplink_network, "ip": ip}
+        return out
+
     def _plan_uplink(self, vm_defs: list[dict], allocations: dict) -> dict | None:
         """Put the edge firewall's WAN NIC (NIC 0) on the uplink network, with its address."""
         if not self._uplink_network:
@@ -1026,8 +1065,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             return None
         ip = allocations.get("uplink_ip")
         if not ip:
-            pool = uplink_pool.parse_ip_pool(self._uplink_pool)
-            ip = uplink_pool.allocate_ip({str(a) for a in allocations.get("used_uplink_ips") or ()}, pool)
+            raise RuntimeError("the edge firewall's uplink address has no reservation (worker: allocation_needs)")
         prefix = self._uplink_prefix
         netmask = str(ipaddress.IPv4Network(f"0.0.0.0/{prefix}").netmask)
         edge["nics"].insert(0, {
