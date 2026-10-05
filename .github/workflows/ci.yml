@@ -25,7 +25,7 @@ jobs:
       - run: bash scripts/ruff-gate.sh
         env:
           PY: python
-      # Report-only until the 44-file reformat lands; then drop continue-on-error.
+      # Blocking: the tree is formatted (ADR 0004) and scripts/dod.sh runs the same check.
       - run: ruff format --check control-plane/ scenario-engine/ tools/ ai-orchestrator/
 
   test-python:
