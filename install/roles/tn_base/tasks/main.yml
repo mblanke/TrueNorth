@@ -57,7 +57,15 @@
 # OpenSearch sets bootstrap.memory_lock=true and mmaps its indices. The Ubuntu
 # default (65530) is far below what it needs, and the container exits during
 # startup with a message that does not point at the host.
+- name: Base — current vm.max_map_count
+  ansible.builtin.command: sysctl -n vm.max_map_count
+  register: tn_map_count
+  changed_when: false
+  check_mode: false
+
+# Raise only: a host already set higher (TN-MGMT01 runs 1048576) must not be lowered.
 - name: Base — raise vm.max_map_count for OpenSearch
+  when: tn_map_count.stdout | int < 262144
   ansible.posix.sysctl:
     name: vm.max_map_count
     value: "262144"

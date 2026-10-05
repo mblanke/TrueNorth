@@ -92,7 +92,15 @@
     path: "{{ tn_compose_file }}"
   register: tn_compose_stat
 
+- name: App source — check mode stops being meaningful here
+  ansible.builtin.debug:
+    msg: >-
+      --check does not clone or copy the application, so the stages after this one
+      have nothing to inspect. Everything up to here is what a real run would change.
+  when: ansible_check_mode and not tn_compose_stat.stat.exists
+
 - name: App source — assert the expected layout
+  when: not (ansible_check_mode and not tn_compose_stat.stat.exists)
   ansible.builtin.assert:
     that: tn_compose_stat.stat.exists
     fail_msg: >-
