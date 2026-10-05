@@ -1,6 +1,22 @@
 ---
 # Host preparation. Everything here is idempotent and safe to re-run.
 
+# The index is refreshed with apt-get rather than the apt module's update_cache, which
+# fails the whole install when ANY configured source does, including ones this
+# installer does not use (on TN-MGMT01: a HashiCorp source with a rotated signing key).
+# apt-get exits non-zero on real failures; a broken unrelated source is a warning,
+# reported below.
+- name: Base — refresh the package index  # noqa command-instead-of-module (see above)
+  ansible.builtin.command: apt-get update
+  become: true
+  register: tn_apt_update
+  changed_when: false
+
+- name: Base — report sources apt could not use
+  ansible.builtin.debug:
+    msg: "{{ tn_apt_update.stdout_lines | select('match', '^(W|Err):') | list }}"
+  when: tn_apt_update.stdout_lines | select('match', '^(W|Err):') | list | length > 0
+
 - name: Base — packages the installer and the stack rely on
   ansible.builtin.apt:
     name:
@@ -13,8 +29,6 @@
       - python3-cryptography # community.crypto (self-signed TLS, CA conversion)
       - acl # become_user on a non-root target
     state: present
-    update_cache: true
-    cache_valid_time: 3600
   become: true
 
 # Resolve corp.tnrange.lab through AD (tn_dns_servers). A global systemd-resolved
