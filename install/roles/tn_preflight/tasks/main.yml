@@ -153,42 +153,28 @@
     port: "{{ tn_ldap_port }}"
     timeout: 10
 
-# A port probe proves a socket, not a working directory. This proves the TLS
-# handshake AND that the bind account still works — the two things that actually
-# break Keycloak federation later.
-- name: Preflight — real LDAPS bind as the Keycloak service account
-  ansible.builtin.command:
-    argv:
-      - ldapsearch
-      - -x
-      - -LLL
-      - -H
-      - "ldaps://{{ tn_dc_host }}:{{ tn_ldap_port }}"
-      - -D
-      - "{{ tn_ldap_bind_dn }}"
-      - -w
-      - "{{ vault_ldap_bind_password }}"
-      - -b
-      - "{{ tn_ldap_base_dn }}"
-      - -s
-      - base
-      - "(objectClass=*)"
-      - dn
-  register: tn_ldap_bind
-  changed_when: false
-  failed_when: false
-  no_log: true
+# The real LDAPS bind (TLS handshake against the AD CS CA, plus the bind account) runs
+# in 40-tls, once ldap-utils (10-base) and that CA are on the host. Here only the port.
 
-- name: Preflight — assert the LDAPS bind succeeded
+- name: Preflight — the app repository is reachable (git mode)
+  ansible.builtin.uri:
+    url: "{{ tn_app_git_repo | regex_replace('\\.git$', '') }}"
+    method: HEAD
+    status_code: [200, 301, 302]
+    timeout: 10
+  register: tn_git_probe
+  failed_when: false
+  when: tn_app_source_mode == 'git'
+
+- name: Preflight — assert the repository is reachable
   ansible.builtin.assert:
-    that: tn_ldap_bind.rc == 0
+    that: tn_git_probe.status | default(0) in [200, 301, 302]
     fail_msg: >-
-      LDAPS bind to {{ tn_dc_host }} failed (rc={{ tn_ldap_bind.rc }}).
-      Check vault_ldap_bind_password, that svc-keycloak-bind is not locked out,
-      and that the AD CS certificate on the DC is still valid.
-      Failing here is deliberate — the alternative is discovering it at step 60,
-      after the whole stack is up.
-    success_msg: "LDAPS bind OK as {{ tn_ldap_bind_dn | regex_search('^CN=[^,]+') }}"
+      {{ tn_app_git_repo }} is not reachable from {{ inventory_hostname }}
+      ({{ tn_git_probe.msg | default('no answer') }}). TN-MGMT01 may have no route
+      out; deploy a checkout from this machine instead:
+      -e tn_app_source_mode=local -e tn_app_local_path=/path/to/TrueNorth
+  when: tn_app_source_mode == 'git'
 
 - name: Preflight — AI inference endpoint reachable
   ansible.builtin.uri:
@@ -227,5 +213,5 @@
       - "vm.max_map_count: {{ tn_max_map_count.stdout }}"
       - "ntp             : {{ tn_ntp.stdout | trim }}"
       - "vcenter         : {{ tn_vcenter_host }}:443 reachable"
-      - "ldaps bind      : OK"
+      - "ldaps port      : open (the bind itself is checked in 40-tls)"
       - "app source      : {{ tn_app_source_mode }} ({{ tn_app_git_repo if tn_app_source_mode == 'git' else (tn_app_local_path or tn_app_tarball) }})"

@@ -35,6 +35,7 @@ vault_minio_secret_key: "" # generated on target if empty
 # ── Application secrets ───────────────────────────────────────────────
 vault_jwt_secret: "" # generated on target if empty
 vault_csrf_secret: "" # generated on target if empty
+vault_keycloak_api_client_secret: "" # generated on target if empty
 vault_lrs_admin_user: lrsadmin
 vault_lrs_admin_password: "" # generated on target if empty
 vault_lrs_api_key: "" # generated on target if empty

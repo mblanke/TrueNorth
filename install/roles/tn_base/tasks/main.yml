@@ -7,8 +7,9 @@
       - ca-certificates
       - curl
       - jq
-      - ldap-utils # the preflight LDAPS bind
-      - python3-psycopg2 # community.postgresql
+      - git # ansible.builtin.git (tn_app_source, git mode)
+      - ldap-utils # the LDAPS bind check in 40-tls
+      - python3-cryptography # community.crypto (self-signed TLS, CA conversion)
       - acl # become_user on a non-root target
     state: present
     update_cache: true

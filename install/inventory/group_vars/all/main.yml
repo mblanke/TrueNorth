@@ -8,10 +8,13 @@
 # THIS IS THE BLOCKER RECORDED THROUGHOUT THE DEPLOYMENT REPO
 # ("TrueNorth app Git URL — required at M4 install"). Now answered.
 tn_app_source_mode: git # git | local | tarball
-tn_app_git_repo: "https://git.guapo613.beer/soadmin/truenorth.git"
-# Pin a tag or commit SHA. A bare branch name makes re-runs non-deterministic:
-# the same playbook would deploy different code on different days.
-tn_app_git_version: "main"
+# mblanke/TrueNorth is public: no credentials on the host. (The old default,
+# git.guapo613.beer/soadmin/truenorth, has no `main` branch.) TN-MGMT01 needs HTTPS out
+# to github.com for this; preflight checks it. Without it, use `local` mode.
+tn_app_git_repo: "https://github.com/mblanke/TrueNorth.git"
+# Pin a commit SHA. A branch name makes re-runs non-deterministic: the same playbook
+# would deploy different code on different days. 083aeb7 is main on 2026-10-05.
+tn_app_git_version: "083aeb750bbf8ff1c25c6efb0ac03489e708af99"
 tn_app_local_path: "" # air-gapped: rsync a checkout from the control node
 tn_app_tarball: "" # air-gapped: a release archive
 
@@ -47,6 +50,11 @@ tn_domain_fqdn: tn-mgmt01.corp.tnrange.lab
 # ── Keycloak ──────────────────────────────────────────────────────────
 tn_keycloak_realm: truenorth
 tn_keycloak_base: "https://{{ tn_domain_fqdn }}/auth"
+# Tokens are checked against this issuer (KEYCLOAK_ISSUER in the API).
+tn_keycloak_issuer: "{{ tn_keycloak_base }}/realms/{{ tn_keycloak_realm }}"
+# Keycloak's port on the host's loopback only, for the installer's Admin REST calls
+# (compose.prod.yml publishes 127.0.0.1:KEYCLOAK_ADMIN_PORT).
+tn_keycloak_admin_port: 8180
 tn_keycloak_web_client: truenorth-web
 tn_keycloak_api_client: truenorth-api
 # AD security groups. These are the groups the Keycloak group mapper exposes as
@@ -103,7 +111,9 @@ tn_ai_base_url: "http://133.1.14.240:4000/v1"
 # There is deliberately no `adcs` mode: nothing on TN-DC01 today (no WinRM
 # listener, no CES/CEP web enrolment) lets Ansible drive certreq. Claiming
 # otherwise would be a mode that never works.
-tn_tls_mode: provided
+# Self-signed for the first bring-up (2026-10-05); switch to `provided` once the AD CS
+# certificate is in install/files/tls/, then re-run playbooks/40-tls.yml.
+tn_tls_mode: selfsigned
 
 # ── Preflight thresholds ──────────────────────────────────────────────
 tn_min_free_gb: 200

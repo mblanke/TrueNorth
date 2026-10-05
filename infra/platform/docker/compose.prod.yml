@@ -75,7 +75,8 @@ services:
       - tn-backend
 
   pgbouncer:
-    image: edoburu/pgbouncer:1.22.0
+    # 1.22.0 was never published (only -pN builds are); this is the tag dev runs.
+    image: edoburu/pgbouncer:v1.25.1-p0
     restart: always
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -196,7 +197,12 @@ services:
       - cluster.name=tn-production
       - node.name=os-node-1
       - discovery.type=single-node
-      - DISABLE_SECURITY_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-false}
+      # Security plugin OFF by default: OpenSearch is reachable only on tn-backend
+      # (internal: true), and everything here talks plain http to it. With the plugin
+      # on, 2.12+ refuses to start without OPENSEARCH_INITIAL_ADMIN_PASSWORD and every
+      # client would need TLS and credentials. Turning it on is a separate change.
+      - DISABLE_SECURITY_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-true}
+      - DISABLE_INSTALL_DEMO_CONFIG=${OPENSEARCH_DISABLE_SECURITY:-true}
       - OPENSEARCH_JAVA_OPTS=-Xms${OPENSEARCH_HEAP:-4g} -Xmx${OPENSEARCH_HEAP:-4g}
       - bootstrap.memory_lock=true
     ulimits:
@@ -235,7 +241,7 @@ services:
     restart: always
     environment:
       - OPENSEARCH_HOSTS=["http://opensearch:9200"]
-      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-false}
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-true}
     depends_on:
       opensearch:
         condition: service_healthy
@@ -287,13 +293,21 @@ services:
       # Trusts the AD CS root CA (corp-TN-DC01-CA) so LDAPS federation to
       # corp.tnrange.lab validates. Without it the bind fails: PKIX path building failed.
       KC_TRUSTSTORE_PATHS: /opt/keycloak/conf/truststores
+    # Loopback only, for the installer's Admin REST calls (install/roles/tn_keycloak),
+    # which must not depend on nginx and TLS being right first. Users reach Keycloak
+    # through nginx (/auth/).
+    ports:
+      - "127.0.0.1:${KEYCLOAK_ADMIN_PORT:-8180}:8080"
     volumes:
       - ${TRUSTSTORE_PATH:-./truststores}:/opt/keycloak/conf/truststores:ro
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080; echo -e 'GET /auth/health/ready HTTP/1.1\r\nHost: localhost\r\n\r\n' >&3; cat <&3 | grep -q '200'"]
+      # No curl in the image. `Connection: close` plus grep reading the socket itself:
+      # `cat <&3` waited for a keep-alive connection to close and always hit the timeout,
+      # so Keycloak never became healthy and the api (which waits for it) never started.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /auth/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q '200 OK' <&3"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -330,8 +344,17 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       OPENSEARCH_URL: http://opensearch:9200
-      KEYCLOAK_URL: http://keycloak:8080
+      # Keycloak serves under /auth (KC_HTTP_RELATIVE_PATH). Without it the JWKS URL
+      # 404s and every authenticated request fails.
+      KEYCLOAK_URL: http://keycloak:8080/auth
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-truenorth}
+      # /ad-sync and the bootstrap admin call Keycloak's admin API with these.
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER:-}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-}
+      LDAP_BIND_DN: ${LDAP_BIND_DN:-}
+      # Public URLs LTI 1.3 platforms are given (tool launch) and sent back to.
+      LTI_TOOL_BASE_URL: ${LTI_TOOL_BASE_URL:-https://${DOMAIN}/api}
+      LTI_WEB_BASE_URL: ${LTI_WEB_BASE_URL:-https://${DOMAIN}}
       # Empty = off. See docs/identity.md before setting either.
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
@@ -472,6 +495,7 @@ services:
         max-file: "5"
     networks:
       - tn-backend
+      - tn-egress # vCenter (VSPHERE_URL) is off-host; tn-backend is internal
 
   worker-scenario:
     build:
@@ -573,7 +597,8 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:5555/healthcheck || exit 1"]
+      # The image has python but no curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5555/healthcheck', timeout=4)"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -618,7 +643,8 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       LOG_LEVEL: ${LOG_LEVEL:-info}
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6000/health || exit 1"]
+      # python:3.11-slim has no curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:6000/health', timeout=4)"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -638,6 +664,7 @@ services:
         max-file: "5"
     networks:
       - tn-backend
+      - tn-egress # the LiteLLM router is off-host; tn-backend is internal
     # Reaches the host's LiteLLM router via OPENAI_BASE_URL (host LAN IP).
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -1048,6 +1075,12 @@ volumes:
 networks:
   tn-frontend:
     name: tn-frontend
+    driver: bridge
+  # Outbound only, for the services that must leave the host: worker-provision
+  # (vCenter) and ai-orchestrator (the LLM endpoint). Nothing publishes a port on it.
+  # tn-backend stays internal so the datastores have no route out.
+  tn-egress:
+    name: tn-egress
     driver: bridge
   tn-backend:
     name: tn-backend

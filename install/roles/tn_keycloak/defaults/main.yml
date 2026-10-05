@@ -1,12 +1,31 @@
 ---
-# Keycloak is reached over the container network from the platform host. Going
-# via the public URL would depend on nginx and TLS being correct first, which
-# makes a TLS problem look like an identity problem.
-tn_kc_internal: "http://localhost:8080/auth"
+# Keycloak is reached on the host's loopback (compose.prod.yml publishes
+# 127.0.0.1:KEYCLOAK_ADMIN_PORT), not via nginx: going through the public URL would
+# depend on nginx and TLS being right first, making a TLS problem look like an identity
+# problem.
+tn_kc_internal: "http://127.0.0.1:{{ tn_keycloak_admin_port }}/auth"
 tn_kc_realm_url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}"
 tn_kc_components_url: "{{ tn_kc_realm_url }}/components"
 tn_kc_provider_type: org.keycloak.storage.UserStorageProvider
 tn_kc_mapper_type: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+
+# What this deployment's clients must say, enforced on every run (not only at import).
+# infra/keycloak/realm-truenorth.json is a development realm: its web client knows only
+# localhost and example hosts, and the api client's secret is CHANGE_ME_IN_PRODUCTION.
+tn_kc_client_settings:
+  truenorth-web:
+    redirectUris: ["https://{{ tn_domain_fqdn }}/*"]
+    webOrigins: ["https://{{ tn_domain_fqdn }}"]
+  truenorth-api:
+    redirectUris: []
+    webOrigins: []
+
+# The development realm's sample accounts (admin@truenorth.local / admin and friends).
+# Never imported here, and removed if an earlier install imported them.
+tn_kc_sample_users:
+  - admin@truenorth.local
+  - instructor@truenorth.local
+  - trainee@truenorth.local
 
 # AD user federation. editMode READ_ONLY on purpose: Active Directory is the
 # system of record for identity, and TrueNorth never writes back to it.

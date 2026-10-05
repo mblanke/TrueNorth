@@ -23,6 +23,10 @@ cleanup_on_error() {
 trap cleanup_on_error ERR
 
 COMPLETED=()
+COMPOSE_FILE="${COMPOSE_FILE:-infra/platform/docker/compose.prod.yml}"
+ENV_FILE="${ENV_FILE:-infra/platform/docker/.env.production}"
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # ── Validate ─────────────────────────────────────────────────────────────────
 if [[ ! -d "${BACKUP_PATH}" ]]; then
@@ -59,10 +63,17 @@ fi
 
 # ── 1. PostgreSQL ────────────────────────────────────────────────────────────
 CURRENT_STEP="PostgreSQL"
-PG_DUMP="${BACKUP_PATH}/postgresql.sql.gz"
-if [[ -f "${PG_DUMP}" ]]; then
-    log "INFO" "Restoring PostgreSQL..."
-    gunzip -c "${PG_DUMP}" | docker exec -i truenorth-postgres psql -U truenorth -d truenorth_range
+PG_USER="$(envval POSTGRES_USER)"
+restore_db() {  # <dump> <database>
+    log "INFO" "Restoring PostgreSQL database $2..."
+    gunzip -c "$1" | dc exec -T postgres psql -v ON_ERROR_STOP=1 -U "${PG_USER}" -d "$2" > /dev/null
+}
+if [[ -f "${BACKUP_PATH}/postgresql.sql.gz" ]]; then
+    restore_db "${BACKUP_PATH}/postgresql.sql.gz" "$(envval POSTGRES_DB)"
+    for dump in "${BACKUP_PATH}"/postgresql-*.sql.gz; do
+        [[ -f "${dump}" ]] || continue
+        db="${dump##*/postgresql-}"; restore_db "${dump}" "${db%.sql.gz}"
+    done
     COMPLETED+=("PostgreSQL")
     log "INFO" "PostgreSQL restore complete"
 else
@@ -74,9 +85,10 @@ CURRENT_STEP="Redis"
 REDIS_DUMP="${BACKUP_PATH}/redis-dump.rdb"
 if [[ -f "${REDIS_DUMP}" ]]; then
     log "INFO" "Restoring Redis..."
-    docker stop truenorth-redis 2>/dev/null || true
-    docker cp "${REDIS_DUMP}" truenorth-redis:/data/dump.rdb
-    docker start truenorth-redis
+    REDIS_ID="$(cid redis)"
+    docker stop "${REDIS_ID}" > /dev/null
+    docker cp "${REDIS_DUMP}" "${REDIS_ID}:/data/dump.rdb"
+    docker start "${REDIS_ID}" > /dev/null
     sleep 3
     COMPLETED+=("Redis")
     log "INFO" "Redis restore complete"
@@ -86,55 +98,27 @@ fi
 
 # ── 3. MinIO ─────────────────────────────────────────────────────────────────
 CURRENT_STEP="MinIO"
-MINIO_DIR="${BACKUP_PATH}/minio"
-if [[ -d "${MINIO_DIR}" ]]; then
+if [[ -f "${BACKUP_PATH}/minio.tar.gz" ]]; then
     log "INFO" "Restoring MinIO..."
-    docker run --rm --network host \
-        -v "${MINIO_DIR}:/backup" \
-        minio/mc:latest sh -c \
-        'mc alias set dst http://minio:9000 minioadmin minioadmin && mc mirror /backup/ dst/'
+    DATA_ROOT="$(envval TN_DATA_ROOT)"
+    PG_IMAGE="$(dc config --images | grep -m1 '^postgres')"
+    dc stop minio > /dev/null
+    docker run --rm -i -v "${DATA_ROOT:-/srv/truenorth}/minio:/data" --entrypoint sh "${PG_IMAGE}" \
+        -c 'find /data -mindepth 1 -delete && tar -C /data -xzf -' < "${BACKUP_PATH}/minio.tar.gz"
+    dc start minio > /dev/null
     COMPLETED+=("MinIO")
     log "INFO" "MinIO restore complete"
 else
     log "WARN" "No MinIO backup found — skipping"
 fi
 
-# ── 4. OpenSearch ────────────────────────────────────────────────────────────
-CURRENT_STEP="OpenSearch"
-OS_DIR="${BACKUP_PATH}/opensearch-snapshots"
-if [[ -d "${OS_DIR}" ]]; then
-    log "INFO" "Restoring OpenSearch..."
-    docker cp "${OS_DIR}/." truenorth-opensearch:/mnt/snapshots/
-
-    # Register repo
-    docker exec truenorth-opensearch curl -s -X PUT \
-        "http://localhost:9200/_snapshot/truenorth_backup" \
-        -H "Content-Type: application/json" \
-        -d '{"type":"fs","settings":{"location":"/mnt/snapshots"}}' > /dev/null
-
-    # Find latest snapshot
-    LATEST_SNAP=$(docker exec truenorth-opensearch curl -s \
-        "http://localhost:9200/_snapshot/truenorth_backup/_all" \
-        | jq -r '.snapshots | sort_by(.start_time_in_millis) | last | .snapshot')
-
-    if [[ -n "${LATEST_SNAP}" && "${LATEST_SNAP}" != "null" ]]; then
-        docker exec truenorth-opensearch curl -s -X POST \
-            "http://localhost:9200/_all/_close" > /dev/null
-        docker exec truenorth-opensearch curl -s -X POST \
-            "http://localhost:9200/_snapshot/truenorth_backup/${LATEST_SNAP}/_restore?wait_for_completion=true" > /dev/null
-        COMPLETED+=("OpenSearch")
-        log "INFO" "OpenSearch restore complete (snapshot: ${LATEST_SNAP})"
-    else
-        log "WARN" "No snapshots found in backup — skipping OpenSearch restore"
-    fi
-else
-    log "WARN" "No OpenSearch backup found — skipping"
-fi
+# ── 4. OpenSearch: not in the backup set (see backup.sh) ─────────────────────
+log "WARN" "OpenSearch telemetry is not part of the backup set; indexes start empty"
 
 # ── 5. Alembic migrations ───────────────────────────────────────────────────
 CURRENT_STEP="Alembic"
 log "INFO" "Running Alembic migrations..."
-docker exec truenorth-api alembic upgrade head
+dc exec -T api alembic -c alembic.ini upgrade head
 COMPLETED+=("Alembic")
 log "INFO" "Alembic migrations complete"
 
@@ -144,7 +128,7 @@ log "INFO" "Running post-restore health check..."
 MAX_RETRIES=10
 HEALTHY=false
 for i in $(seq 1 ${MAX_RETRIES}); do
-    if curl -sf --max-time 5 "http://localhost:8080/health" > /dev/null 2>&1; then
+    if dc exec -T api curl -sf --max-time 5 "http://localhost:8080/health" > /dev/null 2>&1; then
         HEALTHY=true
         break
     fi

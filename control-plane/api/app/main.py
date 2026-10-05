@@ -32,7 +32,7 @@ from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
 
 logger = logging.getLogger("truenorth.api")
 logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),  # compose and the installer write "info"
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
