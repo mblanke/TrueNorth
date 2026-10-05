@@ -21,6 +21,7 @@ from fastapi import HTTPException, status
 
 from .. import jwks as jwks_verify
 from .base import BaseAuthBackend
+from .jwks_cache import JWKSCache
 
 logger = logging.getLogger("truenorth.auth.generic_oidc")
 
@@ -47,25 +48,26 @@ class GenericOIDCBackend(BaseAuthBackend):
             algorithms or [a.strip() for a in raw_algs.split(",") if a.strip()]
         )
         self._issuer = issuer or os.getenv("OIDC_ISSUER", "") or None
-        self._jwks_cache: dict | None = None
+        self._jwks_cache = JWKSCache(self._fetch_jwks)
 
-    async def _get_jwks(self) -> dict:
-        if self._jwks_cache is None:
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    resp = await client.get(self._jwks_url)
-                    resp.raise_for_status()
-                    self._jwks_cache = resp.json()
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Authentication service temporarily unavailable",
-                ) from exc
-        return self._jwks_cache
+    async def _fetch_jwks(self) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(self._jwks_url)
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication service temporarily unavailable",
+            ) from exc
+
+    async def _get_jwks(self, kid: str | None = None) -> dict:
+        return await self._jwks_cache.get(kid)
 
     async def validate_token(self, raw_token: str) -> dict:
         try:
-            jwks = await self._get_jwks()
+            jwks = await self._get_jwks(jwks_verify.unverified_kid(raw_token))
             return jwks_verify.decode(
                 raw_token,
                 jwks,
