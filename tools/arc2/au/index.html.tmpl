@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 46rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.55; }
+  header p { opacity: .75; font-size: .9rem; }
+  nav { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0; }
+  button { font: inherit; padding: .5rem 1rem; }
+  fieldset { margin: 1rem 0; }
+  #log { font-family: ui-monospace, monospace; font-size: .85rem; white-space: pre-wrap; border: 1px solid #8884; padding: .5rem; }
+</style>
+</head>
+<body data-module="{{MODULE_ID}}">
+  <header>
+    <h1 id="title">{{TITLE}}</h1>
+    <p id="status" aria-live="polite">Starting…</p>
+  </header>
+  <main>
+    <article id="page"></article>
+    <nav>
+      <button id="prev" disabled>Previous</button>
+      <span id="nav-pos"></span>
+      <button id="next">Next</button>
+    </nav>
+    <section id="quiz" hidden></section>
+    <p><button id="exit">Exit</button></p>
+    <pre id="log" hidden aria-live="polite"></pre>
+  </main>
+  <script src="../cmi5.js"></script>
+  <script src="../course.js"></script>
+</body>
+</html>

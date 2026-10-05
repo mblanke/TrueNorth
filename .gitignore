@@ -52,3 +52,6 @@ install/files/tls/*.pem
 control-plane/web/devtools-shots/
 .ai-refresh/
 .dod-pass
+
+# ARC² staging: every /arc2 run writes here and only here; promotion is a human PR
+build/arc2/

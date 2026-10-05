@@ -56,6 +56,9 @@ scripts
 SKILLS
 telemetry
 
+# ── ARC² staging ──
+build
+
 # ── Misc ──
 Makefile
 docker-compose*.yml
