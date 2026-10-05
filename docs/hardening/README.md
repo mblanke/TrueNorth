@@ -34,6 +34,7 @@ everything combined (green at `78711f4`).
 | 27 | S8: re-score; rollback rehearsal | #23 |
 | 30 | S3d: stop/start power the range's VMs (the `/stop` defect) | #27 |
 | 31 | S3a evidence: black-box before-run for "dispatch ignored" | #30 |
+| 32 | S3e: worker range states reach the browser, tenant-scoped; /ws authenticated and closed by default | #31 |
 | 28 | Fix: scenario exercises carry their objectives (they scored 0/0), found by S7 | main |
 
 Merge conflicts to expect, all resolved already on #24, which shows how to resolve them:
@@ -43,6 +44,7 @@ Merge conflicts to expect, all resolved already on #24, which shows how to resol
 - **#29 vs #28, `routers/exercises.py` import:** keep both, `from .. import range_ops, scenario_objectives`.
 - **#29 vs #30, Alembic:** both migrations follow `c0d1e2f3a4b5`; whichever merges second sets its `down_revision` to the other (#24 chains `d1e2f3a4b5c6` after `a9b0c1d2e3f4`).
 - **#30 vs #21, worker:** `worker/range_rows.py` reads through `db_ops.range_output_and_backend`; regenerate `tables.py` (`scripts/export_worker_tables.py`) for the new range states.
+- **#32, CI:** adds a Redis service on 6380 (`TEST_REDIS_URL`) to `test-python`; `REDIS_URL` stays unreachable.
 - **Generated files (`openapi.json`, `schema.d.ts`):** regenerate, never hand-merge: `.venv/bin/python scripts/export_openapi.py`, then `npm run gen:api`.
 
 ## What needs you
