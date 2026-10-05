@@ -890,9 +890,9 @@ Each provision or destroy request is a durable *operation* (`range_operations`;
 
 | status | meaning | what to do |
 |---|---|---|
-| `pending` + `error.code = broker_unavailable` | accepted and recorded; the task queue was down | nothing: the API re-sends it every `RANGE_OP_REDISPATCH_SECONDS` (30) once Redis is back |
+| `pending` + `error.code = broker_unavailable` | accepted and recorded; the task queue was down | nothing: the API re-sends it every `RANGE_OP_REDISPATCH_SECONDS` (30) once Redis is back, once it is `RANGE_OP_REDISPATCH_MIN_AGE_SECONDS` (15) old |
 | `dispatched` | the worker has the task | wait |
-| `dispatched` + `error.code = no_outcome` | no result `RANGE_OP_STALE_AFTER_SECONDS` (6 h) after dispatch: the task may be lost | check the hypervisor. If nothing is running, `POST /ranges/{id}/operations/{op}/abandon` (range:destroy). The range goes to `failed`; destroy or provision it again |
+| `dispatched` + `error.code = no_outcome` | no result `RANGE_OP_STALE_AFTER_SECONDS` (6 h) after dispatch: the task may be lost | check the hypervisor. If nothing is running, `POST /ranges/{id}/operations/{op}/abandon` (range:destroy). A provision or destroy leaves the range `failed` (destroy or provision it again); a stop or start returns it to `ready` / `stopped` with the error |
 | `succeeded` / `failed` | the range reached the outcome's state; `failed` carries the worker's message | — |
 
 The worker acts on a task only while the range is still in the state the API put it
