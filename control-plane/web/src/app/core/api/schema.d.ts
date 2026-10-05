@@ -4473,6 +4473,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Range
+         * @description Power a stopped range's VMs on (async worker task). The range is ``starting``
+         *     until the worker reports ``ready``.  **Permission: range:provision**
+         */
+        post: operations["start_range_ranges__range_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/stop": {
         parameters: {
             query?: never;
@@ -4484,7 +4505,8 @@ export interface paths {
         put?: never;
         /**
          * Stop Range
-         * @description Stop a running range.  **Permission: range:provision**
+         * @description Power a ready range's VMs off (async worker task). The range is ``stopping`` until
+         *     the worker reports ``stopped``.  **Permission: range:provision**
          */
         post: operations["stop_range_ranges__range_id__stop_post"];
         delete?: never;
@@ -19873,10 +19895,12 @@ export interface operations {
             };
         };
     };
-    stop_range_ranges__range_id__stop_post: {
+    start_range_ranges__range_id__start_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 range_id: string;
             };
@@ -19884,14 +19908,61 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RangeOut"];
                 };
+            };
+            /** @description Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_range_ranges__range_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeOut"];
+                };
+            };
+            /** @description Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

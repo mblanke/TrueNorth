@@ -4,7 +4,8 @@ Runs the API (in this process, with its lifespan and redispatch loop), a real Ce
 worker (a separate process, mock provisioner), a throwaway Redis container and a
 scratch PostgreSQL database, then interrupts them on purpose:
 
-1. journey: provision -> ready, destroy -> destroyed (reservations released)
+1. journey: provision -> ready, stop -> stopped, start -> ready, stop, destroy ->
+   destroyed (reservations released)
 2. broker downtime: Redis stopped; a provision is still accepted (202), shows
    ``broker_unavailable``; Redis back; the API's own loop sends it; the range reaches ready
 3. worker killed mid-provision: the task never reports; the operation shows
@@ -150,7 +151,14 @@ def main() -> int:
             note("journey.provision.accepted", status=r.status_code, op=latest_op(rid)["status"])
             note("journey.provision.done", state=wait(rid, {"ready", "failed"}), secs=round(time.monotonic() - t0, 1),
                  op=latest_op(rid)["status"])
-            r = client.post(f"/ranges/{rid}/destroy")
+            # Power: stop and start reach the worker and come back (S0's /stop defect)
+            for action, doing, done in (("stop", "stopping", "stopped"), ("start", "starting", "ready"),
+                                        ("stop", "stopping", "stopped")):
+                r = client.post(f"/ranges/{rid}/{action}")
+                note(f"journey.{action}.accepted", status=r.status_code, state=r.json()["state"])
+                assert r.json()["state"] == doing
+                note(f"journey.{action}.done", state=wait(rid, {done, "failed"}), op=latest_op(rid)["status"])
+            r = client.post(f"/ranges/{rid}/destroy")  # from stopped
             note("journey.destroy.accepted", status=r.status_code)
             note("journey.destroy.done", state=wait(rid, {"destroyed", "failed"}), op=latest_op(rid)["status"])
 

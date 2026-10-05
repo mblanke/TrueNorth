@@ -276,6 +276,8 @@ ranges = sa.Table(
             "destroying",
             "destroyed",
             "failed",
+            "stopping",
+            "starting",
             name="rangestate",
         ),
         nullable=False,

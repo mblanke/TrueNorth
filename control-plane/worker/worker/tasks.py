@@ -240,12 +240,9 @@ def destroy_range(self, range_id: str):
         return skipped("destroy", range_id, "destroying")
 
     try:
-        # Get provisioner output and backend from DB
-        with _db_session() as db:
-            row = db_ops.range_output_and_backend(db, range_id)
+        from .range_rows import provisioner_output
 
-        prov_output = json.loads(row[0]) if row and row[0] else {}
-        backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
+        prov_output, backend = provisioner_output(range_id)
         provisioner = _get_backend(backend)
 
         result = asyncio.run(provisioner.destroy(range_id, prov_output))

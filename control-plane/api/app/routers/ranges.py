@@ -483,11 +483,11 @@ def _range_operation(
     user: CurrentUser,
     response: Response,
 ) -> Range:
-    """Accept a provision/destroy: operation + state change in one commit, then dispatch.
+    """Accept a provision/destroy/stop/start: operation + state change in one commit, then dispatch.
 
-    202 means accepted, not done: the body is the range as it is now (``provisioning`` /
-    ``destroying``), and the operation (headers) carries the request's progress. A
-    failed commit accepts nothing. Broker downtime leaves the operation pending and
+    202 means accepted, not done: the body is the range as it is now (``provisioning``,
+    ``destroying``, ``stopping``, ``starting``), and the operation (headers) carries the
+    request's progress. A failed commit accepts nothing. Broker downtime leaves the operation pending and
     visibly delayed; it is re-sent when the broker is back (app/range_ops.py).
     """
     try:
@@ -633,20 +633,30 @@ def list_network_reservations(
     )
 
 
-@router.post("/{range_id}/stop", response_model=RangeOut)
+@router.post("/{range_id}/stop", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
 async def stop_range(
+    response: Response,
     range_id: uuid.UUID = Path(...),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key", max_length=255),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
-    """Stop a running range.  **Permission: range:provision**"""
-    rng = _tenant_range(db, range_id, user)
-    if not rng.state.can_transition_to(RangeState.stopped):
-        raise HTTPException(409, f"Cannot stop range in state {rng.state.value}")
-    rng.state = RangeState.stopped
-    db.commit()
-    db.refresh(rng)
-    return rng
+    """Power a ready range's VMs off (async worker task). The range is ``stopping`` until
+    the worker reports ``stopped``.  **Permission: range:provision**"""
+    return _range_operation("stop", range_id, idempotency_key, db, user, response)
+
+
+@router.post("/{range_id}/start", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
+async def start_range(
+    response: Response,
+    range_id: uuid.UUID = Path(...),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key", max_length=255),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
+) -> Range:
+    """Power a stopped range's VMs on (async worker task). The range is ``starting``
+    until the worker reports ``ready``.  **Permission: range:provision**"""
+    return _range_operation("start", range_id, idempotency_key, db, user, response)
 
 
 @router.post("/batch-provision", response_model=BatchProvisionOut, status_code=202)
