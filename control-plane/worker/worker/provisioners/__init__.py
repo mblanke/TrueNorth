@@ -44,7 +44,17 @@ def get_provisioner(backend: str) -> BaseProvisioner:
     return factory()
 
 
+def discard_built(provisioner, range_id: str, result) -> dict:
+    """Destroy VMs a provision built for a range that is no longer waiting for them (it was
+    torn down mid-build). Recording them would put live VMs under a destroyed range."""
+    import asyncio
+
+    asyncio.run(provisioner.destroy(range_id, {"vms": result.vms, "networks": result.networks}))
+    return {"status": "discarded", "range_id": range_id, "vm_count": len(result.vms)}
+
+
 __all__ = [
+    "discard_built",
     "MockProvisioner",
     "TerraformProvisioner",
     "ProxmoxAPIProvisioner",

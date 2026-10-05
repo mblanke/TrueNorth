@@ -19,19 +19,21 @@ import httpx
 TIMEOUT = 3.0
 
 
-def vm_for(node: str, vms: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """The provisioned VM for a profile node: render_topology names it ``<range8>-<node>``."""
+def vm_for(node: str, vms: list[dict[str, Any]], range_id: Any = None) -> dict[str, Any] | None:
+    """The provisioned VM for a profile node: render_topology names it ``<range8>-<node>``,
+    exactly (a suffix match let node ``dc`` resolve to ``<range8>-victim-dc``)."""
+    want = f"{str(range_id)[:8]}-{node}" if range_id is not None else None
     for vm in vms:
         name = str(vm.get("name", ""))
-        if name == node or name.endswith(f"-{node}"):
+        if name == want or (want is None and name == node):
             return vm
     return None
 
 
-def run(checks: list[dict[str, Any]], vms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def run(checks: list[dict[str, Any]], vms: list[dict[str, Any]], range_id: Any = None) -> list[dict[str, Any]]:
     out = []
     for check in checks:
-        vm = vm_for(check["node"], vms)
+        vm = vm_for(check["node"], vms, range_id)
         result = {"node": check["node"], "kind": check["kind"], "ok": False, "detail": ""}
         if vm is None:
             result["detail"] = "no VM for this node"

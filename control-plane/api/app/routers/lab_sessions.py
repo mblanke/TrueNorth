@@ -110,24 +110,22 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None) -> Lab
     if not token:
         raise HTTPException(401, "X-Lab-Token is required")
     try:
-        tokens.verify(db, token, session_id)
+        claims = tokens.verify(db, token, session_id)
     except tokens.LabTokenError as exc:
         raise HTTPException(401, str(exc)) from exc
     s = db.get(LabSession, session_id)
-    if s is None:
+    if s is None or claims.get("uid") != str(s.user_id):
         raise HTTPException(404, "lab session not found")
     return s
 
 
-def _do(db: Session, fn, *args, **kwargs) -> Any:
-    """Run one operation in a savepoint: a refusal undoes only what it started."""
+def _do(db: Session, fn, session: LabSession, *args, busy_ok: bool = False, **kwargs) -> Any:
+    """Run one operation on a session under its lease; its worker tasks go out after the
+    commit. A refusal is the API's answer, nothing is half-written."""
     try:
-        with db.begin_nested():
-            result = fn(db, *args, **kwargs)
+        return service.run_locked(db, session, fn, *args, busy_ok=busy_ok, **kwargs)
     except service.LabRefusedError as exc:
         raise _refused(exc) from exc
-    db.commit()
-    return result
 
 
 # ── signed-in users ──────────────────────────────────────────────────
@@ -140,16 +138,25 @@ def launch_lab_session(
     """Start (or return) the caller's lab for a range activity of a course. Launching again,
     refreshing or retrying returns the same session; never a second range."""
 
-    def go(db: Session) -> LabSession:
-        release = service.release_for_student(
-            db, tenant_id=tenant_uuid(user), user_id=_uuid(user.id), course_id=body.course_id
-        )
-        session, _ = service.launch(
-            db, tenant_id=tenant_uuid(user), user_id=_uuid(user.id), release_id=release.id, activity_id=body.activity_id
-        )
-        return session
-
-    return _out(_do(db, go))
+    staff = user_has_permission(user, Permission.LEARNING_RECORD_WRITE)
+    try:
+        with db.begin_nested():
+            release = service.release_for_student(
+                db, tenant_id=tenant_uuid(user), user_id=_uuid(user.id), course_id=body.course_id, auto_enroll=staff
+            )
+            session, _ = service.launch(
+                db,
+                tenant_id=tenant_uuid(user),
+                user_id=_uuid(user.id),
+                release_id=release.id,
+                activity_id=body.activity_id,
+            )
+    except service.LabRefusedError as exc:
+        db.info.pop(service.OUTBOX, None)
+        raise _refused(exc) from exc
+    db.commit()
+    service.flush_outbox(db)
+    return _out(session)
 
 
 @router.get("/lab-sessions", response_model=list[LabSessionOut])
@@ -168,7 +175,7 @@ def get_lab_session(
     session_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ) -> LabSessionOut:
     s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_READ)
-    return _out(_do(db, service.advance, s))
+    return _out(_do(db, service.advance, s, busy_ok=True))
 
 
 @router.post("/lab-sessions/{session_id}/heartbeat", response_model=LabSessionOut)
@@ -215,6 +222,9 @@ def add_lab_evidence(
 ) -> LabSessionOut:
     """Keep a submission or validator result with the session; it outlives the VMs."""
     s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE)
+    staff = user_has_permission(user, Permission.LEARNING_RECORD_WRITE)
+    if body.kind != "submission" and not staff:
+        raise HTTPException(403, "students submit work (kind 'submission'); results come from staff and validators")
     item = {"kind": body.kind, "data": body.data, "by": str(user.id)}
     return _out(_do(db, service.add_evidence, s, item))
 
@@ -223,8 +233,8 @@ def add_lab_evidence(
 def reconcile_lab_sessions(
     db: Session = Depends(get_db), user: CurrentUser = Depends(require_permission(Permission.INFRA_CONTROL))
 ) -> dict[str, int]:
-    """Ask the worker to remove anything finished labs left on the hypervisor."""
-    return {"ranges_checked": service.reconcile_all(db)}
+    """Ask the worker to remove anything this tenant's finished labs left on the hypervisor."""
+    return {"ranges_checked": service.reconcile_all(db, tenant_uuid(user))}
 
 
 # ── the lab page after an LTI launch ─────────────────────────────────
@@ -234,7 +244,7 @@ def reconcile_lab_sessions(
 def get_lab_by_token(
     session_id: uuid.UUID, x_lab_token: str | None = Header(None), db: Session = Depends(get_db)
 ) -> LabSessionOut:
-    return _out(_do(db, service.advance, _token_session(db, session_id, x_lab_token)))
+    return _out(_do(db, service.advance, _token_session(db, session_id, x_lab_token), busy_ok=True))
 
 
 @router.post("/lab-access/{session_id}/heartbeat", response_model=LabSessionOut)

@@ -52,6 +52,11 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
           @if (s.error) {
             <p [class.error]="s.state === 'failed'" [class.muted]="s.state !== 'failed'">{{ s.error }}</p>
           }
+          @if (s.state === 'queued') {
+            <div class="buttons">
+              <button mat-stroked-button (click)="act('end')"><mat-icon>close</mat-icon> Leave the queue</button>
+            </div>
+          }
           @if (usable()) {
             <div class="buttons">
               <button mat-raised-button color="primary" (click)="openConsole()">

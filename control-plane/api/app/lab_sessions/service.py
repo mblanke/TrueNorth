@@ -10,9 +10,12 @@
     reset      snapshot restore (profile reset: snapshot) or a rebuild (reset: rebuild)
     end        evidence kept, VMs destroyed
 
-Every step reads the current state and moves it forward at most once, so the runner, a
-page poll and a retried request can all call ``advance`` without doubling anything.
-Worker tasks are the existing range tasks; this module writes no hypervisor state itself.
+Every operation runs under the session's lease (run_locked), so the sweep in every API
+process, page polls and relaunches never act on one session at once; worker tasks are
+sent only after the transaction that asked for them commits, and one the broker refuses
+is kept on the session and sent again by the sweep. Networks return to the pool only
+after the VMs are destroyed and leftovers were looked for. Worker tasks are the existing
+range tasks; this module writes no hypervisor state itself.
 """
 
 from __future__ import annotations
@@ -26,7 +29,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import yaml
-from sqlalchemy import func
+from sqlalchemy import func, or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..course_releases import lab_profile as profile_rules
@@ -49,7 +53,9 @@ from .models import (
     QUEUED,
     READY,
     RECONCILE,
+    RECONCILE_WAIT,
     RESETTING,
+    RUNS_RESOURCES,
     TERMINAL,
     LabNetworkLease,
     LabSession,
@@ -57,6 +63,9 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 BASELINE = "lab-baseline"
+OUTBOX = "lab_outbox"  # tasks queued on a DB session, sent after its commit
+MAX_EVIDENCE_BYTES = 64 * 1024
+MAX_EVIDENCE_ITEMS = 200
 
 
 class LabRefusedError(ValueError):
@@ -117,6 +126,14 @@ def check_profile(db: Session, profile: dict[str, Any], activity_id: str) -> Non
     problems = profile_rules.findings(
         profile, range_modules=set(profile["module_ids"]), catalogue=_catalogue(db, hypervisor)
     )
+    # A profile's own limits are the author's; the platform sets the ceiling.
+    if len(profile["nodes"]) > _int_env("LAB_MAX_VMS_PER_LAB", 6):
+        problems.append(("lab.size", f"{len(profile['nodes'])} VMs is above this platform's limit per lab"))
+    for node in profile["nodes"]:
+        if node["ram_mb"] > _int_env("LAB_MAX_VM_RAM_MB", 16384) or node["disk_gb"] > _int_env(
+            "LAB_MAX_VM_DISK_GB", 200
+        ):
+            problems.append(("lab.size", f"node {node['name']} asks for more RAM or disk than this platform allows"))
     if problems:
         raise LabRefusedError("this lab cannot be built here: " + "; ".join(m for _, m in problems), 422)
 
@@ -157,6 +174,72 @@ def range_template(profile: dict[str, Any], port_groups: dict[str, str], name: s
     }
 
 
+# ── dispatch: after commit, never lost ────────────────────────────────
+#
+# Tasks are queued on the session's database session and sent only by flush_outbox(),
+# which callers run after their commit: a worker must never look for rows the API has not
+# committed yet. A task the broker refuses is kept on the session (``pending``) and the
+# sweep sends it again, so a broker blip never leaves a lab stuck mid-step.
+
+
+def _send(db: Session, session: LabSession, task: str, *args: Any) -> None:
+    db.info.setdefault(OUTBOX, []).append((session.id, task, list(args)))
+
+
+def flush_outbox(db: Session) -> int:
+    """Send what this transaction queued. Call after commit. Returns tasks not sent."""
+    outbox = db.info.pop(OUTBOX, [])
+    unsent = 0
+    for session_id, task, args in outbox:
+        if _dispatch(task, *args) is not None:
+            continue
+        unsent += 1
+        session = db.get(LabSession, session_id)
+        if session is not None:
+            session.pending = json.dumps(json.loads(session.pending or "[]") + [[task, args]])
+    if unsent:
+        db.commit()
+    return unsent
+
+
+def _resend_pending(db: Session, session: LabSession) -> None:
+    for task, args in json.loads(session.pending or "[]"):
+        _send(db, session, task, *args)
+    session.pending = "[]"
+
+
+def _set_state(session: LabSession, state: str) -> None:
+    if session.state != state:
+        session.state = state
+        session.state_since = _now()
+        session.step_attempts = 0
+
+
+def _in_state_for(session: LabSession, now: datetime) -> timedelta:
+    return now - _aware(session.state_since or session.created_at or now)
+
+
+def claim(db: Session, session: LabSession, seconds: int = 120) -> bool:
+    """Take the session's lease, so one process advances it at a time (sweeps in every API
+    process, page polls and launches all meet here). False if another holds it."""
+    now = _now()
+    taken = db.execute(
+        update(LabSession)
+        .where(
+            LabSession.id == session.id,
+            or_(LabSession.lease_until.is_(None), LabSession.lease_until < now),
+        )
+        .values(lease_until=now + timedelta(seconds=seconds))
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    db.refresh(session)
+    return taken == 1
+
+
+def release(session: LabSession) -> None:
+    session.lease_until = None
+
+
 # ── capacity ──────────────────────────────────────────────────────────
 
 
@@ -166,20 +249,31 @@ def _pool(db: Session) -> list[str]:
     known = {row.port_group for row in db.query(LabNetworkLease).all()}
     for name in names:
         if name not in known:
-            db.add(LabNetworkLease(port_group=name))
-    db.flush()
+            try:
+                with db.begin_nested():
+                    db.add(LabNetworkLease(port_group=name))
+            except IntegrityError:  # another process added it first
+                pass
     return names
 
 
 def _lease_networks(db: Session, session: LabSession, profile: dict[str, Any]) -> dict[str, str] | None:
-    """One free isolated port group per profile network, or None if the pool is short.
-    The mock backend needs no real networks and leases nothing."""
-    if backend() == "mock":
+    """One free isolated port group per profile network, or None if the pool (or this
+    tenant's share of it) is short. The mock backend needs no real networks."""
+    if session.backend == "mock":
         return {}
     pool = _pool(db)
     if not pool:
         raise LabRefusedError("no lab networks are configured (LAB_PORT_GROUPS)", 503)
     wanted = [n["name"] for n in profile["networks"]]
+    tenant_held = (
+        db.query(LabNetworkLease)
+        .join(LabSession, LabSession.id == LabNetworkLease.session_id)
+        .filter(LabSession.tenant_id == session.tenant_id)
+        .count()
+    )
+    if tenant_held + len(wanted) > _int_env("LAB_MAX_NETWORKS_PER_TENANT", 20):
+        return None
     free = (
         db.query(LabNetworkLease)
         .filter(LabNetworkLease.session_id.is_(None), LabNetworkLease.port_group.in_(pool))
@@ -198,15 +292,23 @@ def _lease_networks(db: Session, session: LabSession, profile: dict[str, Any]) -
     return out
 
 
+def _session_networks(db: Session, session: LabSession) -> dict[str, str]:
+    return {
+        lease.network_name: lease.port_group
+        for lease in db.query(LabNetworkLease).filter(LabNetworkLease.session_id == session.id).all()
+    }
+
+
 def _release_networks(db: Session, session: LabSession) -> None:
     for lease in db.query(LabNetworkLease).filter(LabNetworkLease.session_id == session.id).all():
         lease.session_id, lease.network_name, lease.leased_at = None, "", None
 
 
 def _quota_problem(db: Session, session: LabSession) -> str | None:
-    holding = db.query(LabSession).filter(LabSession.state.in_(HOLDS_RESOURCES), LabSession.id != session.id)
-    mine = holding.filter(LabSession.user_id == session.user_id).count()
-    if mine >= _int_env("LAB_MAX_SESSIONS_PER_USER", 1):
+    """Room for this lab among labs that hold machines. Queued labs hold nothing, so they
+    never count against each other (counting them deadlocked the queue)."""
+    holding = db.query(LabSession).filter(LabSession.state.in_(RUNS_RESOURCES), LabSession.id != session.id)
+    if holding.filter(LabSession.user_id == session.user_id).count() >= _int_env("LAB_MAX_SESSIONS_PER_USER", 1):
         return "you already have a lab running; end it before starting another"
     tenant = holding.filter(LabSession.tenant_id == session.tenant_id)
     if tenant.count() >= _int_env("LAB_MAX_SESSIONS_PER_TENANT", 20):
@@ -214,6 +316,18 @@ def _quota_problem(db: Session, session: LabSession) -> str | None:
     vcpu = tenant.with_entities(func.coalesce(func.sum(LabSession.vcpu), 0)).scalar() or 0
     if vcpu + session.vcpu > _int_env("LAB_MAX_VCPU_PER_TENANT", 64):
         return "the lab capacity for your organisation is in use; this lab starts when some is free"
+    older = (
+        db.query(LabSession)
+        .filter(
+            LabSession.state == QUEUED,
+            LabSession.tenant_id == session.tenant_id,
+            LabSession.created_at < session.created_at,
+            LabSession.id != session.id,
+        )
+        .count()
+    )
+    if older:
+        return "other labs are waiting; this lab starts in turn"
     return None
 
 
@@ -221,19 +335,28 @@ def _quota_problem(db: Session, session: LabSession) -> str | None:
 
 
 def release_for_student(
-    db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID, course_id: uuid.UUID
+    db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID, course_id: uuid.UUID, auto_enroll: bool = False
 ) -> CourseRelease:
     """The release a student's lab comes from: the one their enrollment is pinned to (the
     release they started on), else the course's accepted release. A Moodle lab link names
-    the course, so publishing a new release never moves a student's lab under them."""
+    the course, so publishing a new release never moves a student's lab under them.
+
+    A Moodle launch (``auto_enroll``) enrols the student, as Moodle membership is the
+    control there; a TrueNorth launch needs an existing, current enrollment."""
     from ..course_releases.service import active_release, pin_enrollment
     from ..enrollment import ensure_enrollment
-    from ..models import Course
+    from ..models import Course, Enrollment, EnrollmentStatus
 
     course = db.query(Course).filter(Course.id == course_id, Course.tenant_id == tenant_id).one_or_none()
     if course is None:
         raise LabRefusedError("course not found", 404)
-    enrollment = ensure_enrollment(db, user_id=user_id, course_id=course_id, tenant_id=tenant_id)
+    enrollment = db.query(Enrollment).filter_by(user_id=user_id, course_id=course_id).one_or_none()
+    if enrollment is None and auto_enroll:
+        enrollment = ensure_enrollment(db, user_id=user_id, course_id=course_id, tenant_id=tenant_id)
+    if enrollment is None:
+        raise LabRefusedError("you are not enrolled in this course", 403)
+    if enrollment.status in (EnrollmentStatus.withdrawn, EnrollmentStatus.failed):
+        raise LabRefusedError("your enrollment in this course is closed", 403)
     pin = pin_enrollment(db, enrollment)
     release = db.get(CourseRelease, pin.release_id) if pin else active_release(db, course_id)
     if release is None:
@@ -245,7 +368,9 @@ def launch(
     db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID, release_id: uuid.UUID, activity_id: str
 ) -> tuple[LabSession, bool]:
     """The student's session for this activity: the live one if there is one, else a new
-    attempt. Never a second range for the same attempt."""
+    attempt. Never a second range for the same attempt. Tasks go out on flush_outbox()."""
+    from ..models import User
+
     release = (
         db.query(CourseRelease)
         .filter(CourseRelease.id == release_id, CourseRelease.tenant_id == tenant_id)
@@ -255,6 +380,8 @@ def launch(
         raise LabRefusedError("release not found", 404)
     if release.state not in (ACCEPTED, SUPERSEDED):
         raise LabRefusedError("this release has not been accepted")
+    # One launch per student at a time: their own row is the lock.
+    db.query(User).filter(User.id == user_id).with_for_update().one_or_none()
     key = (
         LabSession.tenant_id == tenant_id,
         LabSession.user_id == user_id,
@@ -264,9 +391,13 @@ def launch(
     latest = db.query(LabSession).filter(*key).order_by(LabSession.attempt.desc()).first()
     if latest is not None and latest.state not in TERMINAL:
         return latest, False
+    other = db.query(LabSession).filter(LabSession.user_id == user_id, LabSession.state.in_(HOLDS_RESOURCES)).first()
+    if other is not None:
+        raise LabRefusedError("you already have a lab running or waiting; end it before starting another")
 
     profile = release_profile(db, release, activity_id)
     check_profile(db, profile, activity_id)
+    now = _now()
     session = LabSession(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -274,29 +405,43 @@ def launch(
         activity_id=activity_id,
         attempt=(latest.attempt + 1) if latest else 1,
         state=QUEUED,
+        state_since=now,
+        created_at=now,
         profile_id=profile["id"],
         profile_digest=profile_digest(profile),
         backend=backend(),
         vcpu=sum(n["vcpu"] for n in profile["nodes"]),
         ram_mb=sum(n["ram_mb"] for n in profile["nodes"]),
     )
-    db.add(session)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(session)
+            db.flush()
+    except IntegrityError:  # a double click got there first
+        existing = db.query(LabSession).filter(*key).order_by(LabSession.attempt.desc()).first()
+        if existing is None:
+            raise
+        return existing, False
     _start(db, session, profile)
     db.flush()
     return session, True
 
 
-def _start(db: Session, session: LabSession, profile: dict[str, Any]) -> None:
-    """queued -> provisioning when there is room; stays queued (with why) otherwise."""
-    problem = _quota_problem(db, session)
-    if problem:
-        session.error = problem
-        return
-    networks = _lease_networks(db, session, profile)
-    if networks is None:
-        session.error = "all isolated lab networks are in use; this lab starts when one is free"
-        return
+def _start(
+    db: Session, session: LabSession, profile: dict[str, Any], *, networks: dict[str, str] | None = None
+) -> None:
+    """queued -> provisioning when there is room (a rebuild passes the networks it keeps and
+    keeps its lifetime); stays queued, with why, otherwise."""
+    rebuild = networks is not None
+    if not rebuild:
+        problem = _quota_problem(db, session)
+        if problem:
+            session.error = problem
+            return
+        networks = _lease_networks(db, session, profile)
+        if networks is None:
+            session.error = "all isolated lab networks are in use; this lab starts when one is free"
+            return
     name = f"lab-{profile['id']}-{str(session.id)[:8]}"
     template = Template(
         name=name,
@@ -317,18 +462,17 @@ def _start(db: Session, session: LabSession, profile: dict[str, Any]) -> None:
     )
     db.add(rng)
     db.flush()
-    lifetime = profile["lifetime"]
     now = _now()
     session.range_id = rng.id
-    session.state = PROVISIONING
+    _set_state(session, PROVISIONING)
     session.error = ""
     session.provisioning_at = now
-    session.max_expires_at = now + timedelta(minutes=lifetime["max_minutes"])
-    session.idle_expires_at = now + timedelta(minutes=lifetime["idle_minutes"])
+    if not rebuild:
+        lifetime = profile["lifetime"]
+        session.max_expires_at = now + timedelta(minutes=lifetime["max_minutes"])
+        session.idle_expires_at = now + timedelta(minutes=lifetime["idle_minutes"])
     db.flush()
-    if _dispatch("provision_range", str(rng.id)) is None:
-        # Broker down: the Range is waiting in `provisioning`; the runner re-sends.
-        session.error = "the provisioning service did not take the request; retrying"
+    _send(db, session, "provision_range", str(rng.id))
 
 
 # ── advance ───────────────────────────────────────────────────────────
@@ -345,41 +489,40 @@ def _vms(rng: Range | None) -> list[dict[str, Any]]:
         return []
 
 
-def advance(db: Session, session: LabSession, *, redispatch: bool = False) -> LabSession:
-    """One step forward. ``redispatch`` (the background sweep only) re-sends a provision the
-    broker did not take; a page read never waits on the broker."""
+def _step_timeout() -> timedelta:
+    return timedelta(seconds=_int_env("LAB_STEP_TIMEOUT", 1800))
+
+
+def advance(db: Session, session: LabSession) -> LabSession:
+    """One step forward from whatever the session is waiting on. Callers hold its lease
+    (claim) and send the queued tasks after commit (flush_outbox)."""
     now = _now()
     rng = db.get(Range, session.range_id) if session.range_id else None
     state = session.state
+    if session.pending and session.pending != "[]":
+        _resend_pending(db, session)
 
     if state == QUEUED:
-        _start(db, session, _profile(db, session))
+        if _in_state_for(session, now) > timedelta(seconds=_int_env("LAB_QUEUE_TIMEOUT", 7200)):
+            end(db, session, reason="queue_timeout")
+        else:
+            _start(db, session, _profile(db, session))
     elif state == PROVISIONING:
-        _advance_provisioning(db, session, rng, now, redispatch=redispatch)
+        _advance_provisioning(db, session, rng, now)
     elif state == BASELINING:
-        snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
-        if snap is not None and snap.snapshot_state == "ready":
-            session.state = READY
-        elif snap is None or snap.snapshot_state == "failed":
-            _fail(db, session, "the reset point (baseline snapshot) could not be taken")
+        _advance_baselining(db, session, rng, now)
     elif state == RESETTING:
-        snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
-        if snap is not None and snap.snapshot_state == "ready":
-            session.state = ACTIVE
-        elif snap is not None and snap.snapshot_state == "failed":
-            _fail(db, session, "reset failed")
+        _advance_resetting(db, session, rng, now)
     elif state in (READY, ACTIVE):
         if now >= _aware(session.max_expires_at) or now >= _aware(session.idle_expires_at):
             end(db, session, reason="expired")
-    elif state in (COMPLETED, EXPIRED, CLEANING, RECONCILE):
-        _advance_cleaning(db, session, rng)
+    elif state in ENDING:
+        _advance_cleaning(db, session, rng, now)
     db.flush()
     return session
 
 
-def _advance_provisioning(
-    db: Session, session: LabSession, rng: Range | None, now: datetime, *, redispatch: bool = False
-) -> None:
+def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
     if rng is None:
         return _fail(db, session, "the lab's range record is missing")
     if rng.state == RangeState.failed:
@@ -388,14 +531,8 @@ def _advance_provisioning(
     if now - _aware(session.provisioning_at or now) > timeout:
         return _fail(db, session, f"the lab was not ready within {int(timeout.total_seconds() // 60)} minutes")
     if rng.state != RangeState.ready:
-        if (
-            redispatch
-            and session.error.startswith("the provisioning service")
-            and _dispatch("provision_range", str(rng.id))
-        ):
-            session.error = ""
         return None
-    results = probes.run(_profile(db, session)["health_checks"], _vms(rng))
+    results = probes.run(_profile(db, session)["health_checks"], _vms(rng), range_id=rng.id)
     session.probes = json.dumps(results)
     if not all(r["ok"] for r in results):
         return None  # built but not usable yet: keep probing until the timeout
@@ -413,43 +550,96 @@ def _advance_provisioning(
         db.add(snap)
         db.flush()
         session.baseline_snapshot_id = snap.id
-        session.state = BASELINING
-        _dispatch("snapshot_range", str(rng.id), str(snap.id))
+        _set_state(session, BASELINING)
+        _send(db, session, "snapshot_range", str(rng.id), str(snap.id))
     else:
-        session.state = READY
+        _set_state(session, READY)
     return None
 
 
-def _advance_cleaning(db: Session, session: LabSession, rng: Range | None) -> None:
-    if rng is None or rng.state == RangeState.destroyed:
+def _advance_baselining(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
+    snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
+    if snap is not None and snap.snapshot_state == "ready":
+        _set_state(session, READY)
+    elif snap is None or (rng is not None and rng.state == RangeState.failed):
+        _fail(db, session, "the reset point (baseline snapshot) could not be taken")
+    elif snap.snapshot_state == "failed" or _in_state_for(session, now) > _step_timeout():
+        # A snapshot attempt can fail transiently; try again a few times before giving up.
+        if session.step_attempts >= 2:
+            _fail(db, session, "the reset point (baseline snapshot) could not be taken")
+        else:
+            session.step_attempts += 1
+            session.state_since = now
+            snap.snapshot_state = "creating"
+            _send(db, session, "snapshot_range", str(rng.id), str(snap.id))
+
+
+def _advance_resetting(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
+    profile = _profile(db, session)
+    if profile["reset"]["mode"] == "snapshot":
+        snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
+        if rng is None or rng.state == RangeState.failed:
+            return _fail(db, session, "the reset did not complete; the lab has been shut down")
+        if snap is not None and snap.snapshot_state == "ready" and rng.state != RangeState.destroying:
+            _set_state(session, ACTIVE)
+        elif _in_state_for(session, now) > _step_timeout():
+            _fail(db, session, "the reset did not complete in time; the lab has been shut down")
+        return None
+    # Rebuild: the old range must be gone before a new one is built on the same networks.
+    if rng is not None and rng.state == RangeState.destroyed:
+        session.retired_ranges = json.dumps(json.loads(session.retired_ranges or "[]") + [str(rng.id)])
+        _send(db, session, "reconcile_lab_vms", [str(rng.id)], session.backend)
+        _start(db, session, profile, networks=_session_networks(db, session))
+    elif rng is None or rng.state == RangeState.failed or _in_state_for(session, now) > _step_timeout():
+        _fail(db, session, "the rebuild did not complete; the lab has been shut down")
+    return None
+
+
+def _advance_cleaning(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
+    """Networks go back to the pool only once the VMs are gone and leftovers were looked
+    for, so no other student's lab ever shares a network with this one's machines."""
+    if rng is None or (rng.state == RangeState.destroyed and session.state == RECONCILE_WAIT):
+        if rng is not None and _in_state_for(session, now) < timedelta(seconds=_int_env("LAB_RECONCILE_GRACE", 120)):
+            return
         _release_networks(db, session)
-        if rng is not None:
-            _dispatch("reconcile_lab_vms", [str(rng.id)], session.backend)
-            session.reconciled_at = _now()
-        session.state = DESTROYED
-    elif rng.state == RangeState.failed:
-        # The destroy failed part-way: find and remove whatever is left by name, then
-        # try the destroy again so the range record ends where its VMs are.
+        session.reconciled_at = now
+        _set_state(session, DESTROYED)
+    elif rng.state == RangeState.destroyed:
+        ids = json.loads(session.retired_ranges or "[]") + [str(rng.id)]
+        _send(db, session, "reconcile_lab_vms", ids, session.backend)
+        _set_state(session, RECONCILE_WAIT)
+    elif rng.state == RangeState.failed or (
+        rng.state == RangeState.destroying and _in_state_for(session, now) > _step_timeout()
+    ):
+        if session.step_attempts >= _int_env("LAB_TEARDOWN_ATTEMPTS", 5):
+            # Its networks stay reserved: machines may still be on them. An operator clears it.
+            session.error = "the lab could not be shut down cleanly; an operator has been asked to clear it"
+            session.state = FAILED
+            logger.error("lab session %s needs an operator: teardown kept failing", session.id)
+            return
         session.state = RECONCILE
-        _dispatch("reconcile_lab_vms", [str(rng.id)], session.backend)
+        session.state_since = now
+        session.step_attempts += 1
+        _send(db, session, "reconcile_lab_vms", [str(rng.id)], session.backend)
         rng.state = RangeState.destroying
-        _dispatch("destroy_range", str(rng.id))
-    else:
-        session.state = CLEANING
+        _send(db, session, "destroy_range", str(rng.id))
+    elif session.state in (COMPLETED, EXPIRED):
+        _set_state(session, CLEANING)
 
 
 def _fail(db: Session, session: LabSession, error: str) -> None:
     session.error = error[:2000]
+    session.end_reason = session.end_reason or "failed"
     logger.warning("lab session %s failed: %s", session.id, error)
     rng = db.get(Range, session.range_id) if session.range_id else None
-    if rng is not None and rng.state not in (RangeState.destroyed, RangeState.destroying):
-        rng.state = RangeState.destroying
-        _dispatch("destroy_range", str(rng.id))
-        session.state = CLEANING
-        session.end_reason = "failed"
+    if rng is not None and rng.state != RangeState.destroyed:
+        if rng.state != RangeState.destroying:
+            rng.state = RangeState.destroying
+            _send(db, session, "destroy_range", str(rng.id))
+        _set_state(session, CLEANING)
         return
     _release_networks(db, session)
-    session.state = FAILED
+    _set_state(session, FAILED)
 
 
 # ── student actions ───────────────────────────────────────────────────
@@ -462,7 +652,7 @@ def touch(db: Session, session: LabSession) -> LabSession:
     idle = timedelta(minutes=_profile(db, session)["lifetime"]["idle_minutes"])
     session.last_seen_at = now
     session.idle_expires_at = min(now + idle, _aware(session.max_expires_at))
-    session.state = ACTIVE
+    _set_state(session, ACTIVE)
     db.flush()
     return session
 
@@ -477,19 +667,16 @@ def reset(db: Session, session: LabSession) -> LabSession:
         if snap is None or snap.snapshot_state != "ready":
             raise LabRefusedError("this lab has no reset point")
         snap.snapshot_state = "restoring"
-        session.state = RESETTING
+        _set_state(session, RESETTING)
         db.flush()
-        _dispatch("restore_snapshot", str(rng.id), str(snap.id))
+        _send(db, session, "restore_snapshot", str(rng.id), str(snap.id))
         return session
-    # rebuild: tear this range down and build a fresh one for the same session.
+    # Rebuild: destroy this range; advance builds the new one on the same networks once the
+    # old machines are gone. The lab's end times do not move.
     rng.state = RangeState.destroying
-    _dispatch("destroy_range", str(rng.id))
-    _release_networks(db, session)
-    session.range_id = None
-    session.state = QUEUED
+    _set_state(session, RESETTING)
     db.flush()
-    _start(db, session, profile)
-    db.flush()
+    _send(db, session, "destroy_range", str(rng.id))
     return session
 
 
@@ -497,7 +684,11 @@ def add_evidence(db: Session, session: LabSession, item: dict[str, Any]) -> LabS
     """Keep a submission or validator result on the session; it outlives the VMs."""
     if session.state in TERMINAL:
         raise LabRefusedError("this lab has ended")
+    if len(json.dumps(item)) > MAX_EVIDENCE_BYTES:
+        raise LabRefusedError("that submission is too large", 413)
     evidence = json.loads(session.evidence or "[]")
+    if len(evidence) >= MAX_EVIDENCE_ITEMS:
+        raise LabRefusedError("this lab has too many submissions", 413)
     evidence.append({**item, "received_at": _now().isoformat()})
     session.evidence = json.dumps(evidence)
     db.flush()
@@ -511,51 +702,88 @@ def end(db: Session, session: LabSession, *, reason: str = "completed") -> LabSe
     session.ended_at = _now()
     session.end_reason = reason
     rng = db.get(Range, session.range_id) if session.range_id else None
-    if rng is None or session.state == QUEUED:
+    if rng is None:
         _release_networks(db, session)
-        session.state = DESTROYED
+        _set_state(session, DESTROYED)
     else:
-        session.state = EXPIRED if reason == "expired" else COMPLETED
+        _set_state(session, EXPIRED if reason == "expired" else COMPLETED)
         if rng.state not in (RangeState.destroyed, RangeState.destroying):
             rng.state = RangeState.destroying
-            _dispatch("destroy_range", str(rng.id))
+            _send(db, session, "destroy_range", str(rng.id))
     db.flush()
     return session
+
+
+def run_locked(db: Session, session: LabSession, fn, *args: Any, busy_ok: bool = False, **kwargs: Any) -> Any:
+    """Run one operation under the session's lease and send its tasks after commit. If
+    another process holds the lease: a read (``busy_ok``) gets the session as it stands,
+    an action is refused so the caller can try again."""
+    if not claim(db, session):
+        if busy_ok:
+            return session
+        raise LabRefusedError("the lab is busy with another request; try again in a moment")
+    try:
+        with db.begin_nested():  # a refusal undoes this operation only, never earlier work
+            result = fn(db, session, *args, **kwargs)
+    except Exception:
+        db.info.pop(OUTBOX, None)
+        release(session)
+        db.commit()
+        raise
+    release(session)
+    db.commit()
+    flush_outbox(db)
+    return result
 
 
 # ── the runner's sweep ────────────────────────────────────────────────
 
 
 def sweep(db: Session) -> int:
-    """Advance every session that holds resources; returns how many changed state."""
+    """Advance every session that holds resources, oldest first; returns how many changed
+    state. Each session is advanced under its own lease and its own transaction."""
     changed = 0
-    for session in db.query(LabSession).filter(LabSession.state.in_(LIVE + ENDING)).all():
+    for session in (
+        db.query(LabSession).filter(LabSession.state.in_(LIVE + ENDING)).order_by(LabSession.created_at).all()
+    ):
         before = session.state
         try:
-            advance(db, session, redispatch=True)
-            db.commit()
+            run_locked(db, session, advance, busy_ok=True)
         except Exception:  # noqa: BLE001 — one bad session must not stop the sweep
-            db.rollback()
             logger.exception("lab session %s could not advance", session.id)
             continue
         changed += session.state != before
     return changed
 
 
-def reconcile_all(db: Session) -> int:
-    """Ask the worker to remove anything finished lab ranges left on the hypervisor."""
+def reconcile_all(db: Session, tenant_id: uuid.UUID) -> int:
+    """Ask the worker to look again for VMs this tenant's finished labs might have left."""
     rows = (
-        db.query(LabSession.range_id, LabSession.backend)
-        .filter(LabSession.state.in_(TERMINAL), LabSession.range_id.isnot(None))
+        db.query(LabSession.range_id, LabSession.backend, LabSession.retired_ranges)
+        .filter(
+            LabSession.tenant_id == tenant_id,
+            LabSession.state.in_(TERMINAL),
+            LabSession.range_id.isnot(None),
+        )
         .all()
     )
     by_backend: dict[str, list[str]] = {}
-    for range_id, kind in rows:
-        by_backend.setdefault(kind, []).append(str(range_id))
+    for range_id, kind, retired in rows:
+        by_backend.setdefault(kind, []).extend([str(range_id), *json.loads(retired or "[]")])
     for kind, ids in by_backend.items():
-        for i in range(0, len(ids), 100):
-            _dispatch("reconcile_lab_vms", ids[i : i + 100], kind)
+        for i in range(0, len(ids), 200):
+            _dispatch("reconcile_lab_vms", ids[i : i + 200], kind)
     return sum(len(v) for v in by_backend.values())
+
+
+def lab_range_ids(db: Session, range_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    """Which of these ranges belong to lab sessions (current or rebuilt-away)."""
+    if not range_ids:
+        return set()
+    found = {r for (r,) in db.query(LabSession.range_id).filter(LabSession.range_id.in_(range_ids)).all()}
+    for (retired,) in db.query(LabSession.retired_ranges).filter(LabSession.retired_ranges != "[]").all():
+        found |= {uuid.UUID(r) for r in json.loads(retired) if uuid.UUID(r) in set(range_ids)}
+    return found
 
 
 def console(db: Session, session: LabSession, node: str | None = None) -> dict[str, Any]:
@@ -567,7 +795,7 @@ def console(db: Session, session: LabSession, node: str | None = None) -> dict[s
     target = node or (allowed[0] if allowed else None)
     if target not in allowed:
         raise LabRefusedError(f"no console on {target}", 403)
-    vm = probes.vm_for(target, _vms(db.get(Range, session.range_id)))
+    vm = probes.vm_for(target, _vms(db.get(Range, session.range_id)), range_id=session.range_id)
     if vm is None:
         raise LabRefusedError(f"{target} has no VM yet")
     try:

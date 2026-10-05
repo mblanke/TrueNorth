@@ -26,8 +26,10 @@ def reconcile_lab_vms(self, range_ids: list, backend: str):
     """
     provisioner = _get_backend(backend)
     removed: dict[str, int] = {}
+    # One inventory listing for the whole batch, then match each range's name prefix.
+    inventory = asyncio.run(provisioner.find_vms(""))
     for range_id in range_ids:
-        leftovers = asyncio.run(provisioner.find_vms(f"{range_id}-"))
+        leftovers = [vm for vm in inventory if str(vm.get("name", "")).startswith(f"{range_id}-")]
         if not leftovers:
             continue
         result = asyncio.run(provisioner.destroy(range_id, {"vms": leftovers}))

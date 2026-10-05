@@ -19779,7 +19779,7 @@
     },
     "/lab-sessions/reconcile": {
       "post": {
-        "description": "Ask the worker to remove anything finished labs left on the hypervisor.",
+        "description": "Ask the worker to remove anything this tenant's finished labs left on the hypervisor.",
         "operationId": "reconcile_lab_sessions_lab_sessions_reconcile_post",
         "responses": {
           "200": {

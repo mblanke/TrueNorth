@@ -273,7 +273,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 await asyncio.sleep(5)
         except Exception:
             pass
-        await self._api_delete(client, f"/vcenter/vm/{vm_id}")
+        try:
+            await self._api_delete(client, f"/vcenter/vm/{vm_id}")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 404:  # already gone counts as deleted: a retry is safe
+                raise
 
     async def _wait_tools(self, client: httpx.AsyncClient, vm_id: str) -> bool:
         """Wait for VMware Tools to report running inside the VM."""
@@ -519,11 +523,18 @@ class VsphereAPIProvisioner(BaseProvisioner):
         # mapped onto it; otherwise the OVF's own default network applies.
         mappings = None
         if vm_def.get("port_group"):
+            # Only the configured lab pool, whatever a template says: a range must never be
+            # able to name an arbitrary datacenter network (management, another tenant's).
+            allowed = {p.strip() for p in os.environ.get("LAB_PORT_GROUPS", "").split(",") if p.strip()}
+            if vm_def["port_group"] not in allowed:
+                raise RuntimeError(f"port group {vm_def['port_group']!r} is not a lab network (LAB_PORT_GROUPS)")
             network_id = await self._find_network(client, dc_id, vm_def["port_group"])
             ovf_networks = await self._ovf_networks(client, library_item_id, rp_id)
             mappings = {net: network_id for net in ovf_networks}
             if not mappings:
-                raise RuntimeError(f"template {template_name!r} declares no network to map onto {vm_def['port_group']!r}")
+                raise RuntimeError(
+                    f"template {template_name!r} declares no network to map onto {vm_def['port_group']!r}"
+                )
         vm_id = await self._deploy_ovf(client, library_item_id, vm_name, folder_id, rp_id, ds_id, mappings)
 
         # Resize hardware to match vm_def

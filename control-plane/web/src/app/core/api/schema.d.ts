@@ -2578,7 +2578,7 @@ export interface paths {
         put?: never;
         /**
          * Reconcile Lab Sessions
-         * @description Ask the worker to remove anything finished labs left on the hypervisor.
+         * @description Ask the worker to remove anything this tenant's finished labs left on the hypervisor.
          */
         post: operations["reconcile_lab_sessions_lab_sessions_reconcile_post"];
         delete?: never;

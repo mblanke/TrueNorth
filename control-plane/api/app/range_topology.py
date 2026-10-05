@@ -803,3 +803,25 @@ def diagram_to_template(diagram: dict, name: str = "Range Design", *, range_id: 
     template: dict = {"name": name, "version": "1.0", "network": {"vlans": vlans}, "nodes": nodes}
     template["source"] = {"tool": "range-designer", **({"range_id": range_id} if range_id else {})}
     return {"template": template, "warnings": warnings}
+
+
+def network_placement_keys(template: object) -> list[str]:
+    """Paths of every ``port_group`` in a template. Only a lab session may say which
+    hypervisor network a range's VMs join (its leased, isolated port group); a template a
+    person writes must not, or it could put VMs on another student's or the management
+    network. Callers refuse templates for which this is not empty."""
+    found: list[str] = []
+
+    def walk(node: object, path: str) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                here = f"{path}.{key}" if path else str(key)
+                if key == "port_group":
+                    found.append(here)
+                walk(value, here)
+        elif isinstance(node, list):
+            for i, value in enumerate(node):
+                walk(value, f"{path}[{i}]")
+
+    walk(template, "")
+    return found

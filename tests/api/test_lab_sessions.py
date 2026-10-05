@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import yaml
 from _release_kit import CATALOGUE, CROSSWALK, build
+from app.enrollment import ensure_enrollment
 from app.lab_sessions import service, tokens
 from app.lab_sessions.models import LabNetworkLease, LabSession
 from app.models import GoldenImage, Range, RangeSnapshot, RangeState, Template, User, UserRole
@@ -34,8 +35,12 @@ class FakeWorker:
         self.queue: list[tuple] = []
         self.hold = False
         self.fail_provision: set[str] = set()
+        self.down: set[str] = set()  # tasks the broker refuses
+        self.fail_destroy = False
 
     def dispatch(self, task, *args):
+        if task in self.down:
+            return None
         self.calls.append((task, *args))
         self.queue.append((task, *args))
         if not self.hold:
@@ -74,7 +79,7 @@ class FakeWorker:
         self.db.get(RangeSnapshot, uuid.UUID(snapshot_id)).snapshot_state = "ready"
 
     def destroy_range(self, range_id):
-        self.db.get(Range, uuid.UUID(range_id)).state = RangeState.destroyed
+        self.db.get(Range, uuid.UUID(range_id)).state = RangeState.failed if self.fail_destroy else RangeState.destroyed
 
     def reconcile_lab_vms(self, range_ids, backend):
         pass
@@ -86,6 +91,7 @@ def worker(db_session, monkeypatch):
 
     w = FakeWorker(db_session)
     monkeypatch.setattr(service, "_dispatch", w.dispatch)
+    monkeypatch.setenv("LAB_RECONCILE_GRACE", "0")
     w.reachable = True
     monkeypatch.setattr(probes, "_probe", lambda check, vm: (w.reachable, "fake network"))
     return w
@@ -121,16 +127,23 @@ def student(db, tenant=DEV_TENANT) -> User:
 
 
 def launch(db, user, release_id, activity="mod_006"):
+    """As the API does it: launch, commit, then send the queued worker tasks."""
     session, created = service.launch(
         db, tenant_id=user.tenant_id, user_id=user.id, release_id=release_id, activity_id=activity
     )
-    db.flush()
+    db.commit()
+    service.flush_outbox(db)
     return session, created
+
+
+def act(db, fn, session, *args, **kwargs):
+    """One operation as the API runs it: under the session's lease, tasks after commit."""
+    return service.run_locked(db, session, fn, *args, **kwargs)
 
 
 def until(db, session, state, steps=6):
     for _ in range(steps):
-        service.advance(db, session)
+        act(db, service.advance, session)
         if session.state == state:
             return session
     raise AssertionError(f"session stuck in {session.state}: {session.error}")
@@ -150,10 +163,10 @@ class TestLaunch:
         worker.hold = True
         session, _ = launch(db_session, student(db_session), rid)
         assert session.state == "provisioning"
-        service.advance(db_session, session)
+        act(db_session, service.advance, session)
         assert session.state == "provisioning"  # the provisioner has not finished
         worker.run()
-        service.advance(db_session, session)
+        act(db_session, service.advance, session)
         assert session.state == "baselining", (
             session.error,
             session.probes,
@@ -161,17 +174,17 @@ class TestLaunch:
         )
         assert json.loads(session.probes)[0]["ok"] is True
         worker.run()
-        service.advance(db_session, session)
+        act(db_session, service.advance, session)
         assert session.state == "ready" and session.readiness_seconds is not None
 
     def test_unreachable_services_keep_it_provisioning_then_fail_it(self, lab, db_session, worker, monkeypatch):
         _, rid, _ = lab
         worker.reachable = False
         session, _ = launch(db_session, student(db_session), rid)
-        service.advance(db_session, session)
+        act(db_session, service.advance, session)
         assert session.state == "provisioning" and json.loads(session.probes)[0]["ok"] is False
         session.provisioning_at = datetime.now(UTC) - timedelta(hours=2)
-        service.advance(db_session, session)
+        act(db_session, service.advance, session)
         assert session.state in ("cleaning", "destroyed") and "not ready within" in session.error
 
     def test_a_profile_image_missing_from_the_catalogue_is_refused(self, lab, db_session):
@@ -213,7 +226,7 @@ class TestIsolation:
         c, _ = launch(db_session, student(db_session), rid)
         assert c.state == "queued" and "networks are in use" in c.error and c.range_id is None
         until(db_session, a, "ready")
-        service.end(db_session, a)
+        act(db_session, service.end, a)
         until(db_session, a, "destroyed")
         assert db_session.query(LabNetworkLease).filter_by(session_id=a.id).count() == 0
         service.sweep(db_session)
@@ -227,7 +240,7 @@ class TestIsolation:
         until(db_session, b, "ready")
         worker.calls.clear()
         worker.hold = True
-        service.reset(db_session, a)
+        act(db_session, service.reset, a)
         assert a.state == "resetting" and b.state == "ready"
         assert worker.calls == [("restore_snapshot", str(a.range_id), str(a.baseline_snapshot_id))]
         worker.run()
@@ -242,7 +255,7 @@ class TestFailureAndExpiry:
         first, _ = launch(db_session, s, rid)
         worker.fail_provision.add(str(first.range_id))
         worker.run()
-        service.advance(db_session, first)
+        act(db_session, service.advance, first)
         assert first.state == "cleaning" and "could not be built" in first.error
         worker.run()
         until(db_session, first, "destroyed")
@@ -257,9 +270,9 @@ class TestFailureAndExpiry:
         b, _ = launch(db_session, student(db_session), rid)
         until(db_session, a, "ready")
         until(db_session, b, "ready")
-        service.add_evidence(db_session, a, {"kind": "submission", "data": {"flag": "abc"}})
+        act(db_session, service.add_evidence, a, {"kind": "submission", "data": {"flag": "abc"}})
         a.max_expires_at = datetime.now(UTC) - timedelta(seconds=1)
-        service.advance(db_session, a)
+        act(db_session, service.advance, a)
         assert a.state in ("expired", "destroyed") and a.end_reason == "expired"
         until(db_session, a, "destroyed")
         assert db_session.get(Range, a.range_id).state == RangeState.destroyed
@@ -307,6 +320,10 @@ class TestApi:
                 )
             )
             db_session.flush()
+            refused = client.post("/lab-sessions", json={"course_id": str(course_id), "activity_id": "mod_006"})
+            assert refused.status_code == 403 and "not enrolled" in refused.json()["detail"]
+            ensure_enrollment(db_session, user_id=uuid.UUID(who.id), course_id=course_id, tenant_id=DEV_TENANT)
+            db_session.commit()
             mine = client.post("/lab-sessions", json={"course_id": str(course_id), "activity_id": "mod_006"})
             assert mine.status_code == 201, mine.text
             again = client.post("/lab-sessions", json={"course_id": str(course_id), "activity_id": "mod_006"})
@@ -350,17 +367,184 @@ class TestApi:
     def test_a_course_lab_follows_the_students_pinned_release(self, lab, db_session, tmp_path):
         client, rid, course_id = lab
         s = student(db_session)
-        first = service.release_for_student(db_session, tenant_id=DEV_TENANT, user_id=s.id, course_id=course_id)
+        first = service.release_for_student(
+            db_session, tenant_id=DEV_TENANT, user_id=s.id, course_id=course_id, auto_enroll=True
+        )
         assert first.id == rid
         newer = upload(
             client, build(tmp_path / "v2", range_ordinals=frozenset({6}), title_suffix=" (rev)", slug="arc2-iot-b")
         )
         assert client.post(f"/course-releases/{newer.json()['id']}/accept", json={}).status_code == 200
         assert (
-            service.release_for_student(db_session, tenant_id=DEV_TENANT, user_id=s.id, course_id=course_id).id == rid
+            service.release_for_student(
+                db_session, tenant_id=DEV_TENANT, user_id=s.id, course_id=course_id, auto_enroll=True
+            ).id
+            == rid
         )
         late = student(db_session)
         assert (
-            str(service.release_for_student(db_session, tenant_id=DEV_TENANT, user_id=late.id, course_id=course_id).id)
+            str(
+                service.release_for_student(
+                    db_session, tenant_id=DEV_TENANT, user_id=late.id, course_id=course_id, auto_enroll=True
+                ).id
+            )
             == newer.json()["id"]
         )
+
+
+# -- review findings (2026-10-05) ---------------------------------------------
+
+
+class TestQueue:
+    def test_queued_labs_do_not_block_each_other_and_start_in_order(self, lab, db_session, monkeypatch):
+        _, rid, _ = lab
+        monkeypatch.setenv("LAB_MAX_SESSIONS_PER_TENANT", "1")
+        a, _ = launch(db_session, student(db_session), rid)
+        b, _ = launch(db_session, student(db_session), rid)
+        c, _ = launch(db_session, student(db_session), rid)
+        assert b.state == "queued" and c.state == "queued"
+        until(db_session, a, "ready")
+        act(db_session, service.end, a)
+        until(db_session, a, "destroyed")
+        service.sweep(db_session)
+        assert b.state != "queued"  # the oldest waiter starts
+        assert c.state == "queued" and c.error
+
+    def test_a_queued_lab_gives_up_after_the_queue_timeout(self, lab, db_session, monkeypatch):
+        _, rid, _ = lab
+        monkeypatch.setenv("LAB_MAX_SESSIONS_PER_TENANT", "1")
+        launch(db_session, student(db_session), rid)
+        b, _ = launch(db_session, student(db_session), rid)
+        b.state_since = datetime.now(UTC) - timedelta(hours=3)
+        db_session.commit()
+        act(db_session, service.advance, b)
+        assert b.state == "destroyed" and b.end_reason == "queue_timeout"
+
+    def test_a_student_has_one_lab_at_a_time_across_activities(self, lab, db_session):
+        _, rid, _ = lab
+        s = student(db_session)
+        launch(db_session, s, rid)
+        with pytest.raises(service.LabRefusedError, match="already have a lab running or waiting"):
+            service.launch(db_session, tenant_id=s.tenant_id, user_id=s.id, release_id=rid, activity_id="mod_007")
+
+
+class TestDispatch:
+    def test_a_task_the_broker_refuses_is_kept_and_sent_again(self, lab, db_session, worker):
+        _, rid, _ = lab
+        worker.down.add("provision_range")
+        s, _ = launch(db_session, student(db_session), rid)
+        assert json.loads(s.pending) == [["provision_range", [str(s.range_id)]]]
+        worker.down.clear()
+        service.sweep(db_session)
+        assert ("provision_range", str(s.range_id)) in worker.calls and s.pending == "[]"
+
+    def test_tasks_go_out_only_after_the_transaction_commits(self, lab, db_session, worker):
+        _, rid, _ = lab
+        s = student(db_session)
+        service.launch(db_session, tenant_id=s.tenant_id, user_id=s.id, release_id=rid, activity_id="mod_006")
+        assert worker.calls == []  # nothing sent before the caller commits and flushes
+        db_session.commit()
+        service.flush_outbox(db_session)
+        assert [c[0] for c in worker.calls] == ["provision_range"]
+
+    def test_an_action_on_a_lab_another_process_holds_is_refused_not_doubled(self, lab, db_session, worker):
+        _, rid, _ = lab
+        a, _ = launch(db_session, student(db_session), rid)
+        until(db_session, a, "ready")
+        assert service.claim(db_session, a)
+        db_session.commit()
+        with pytest.raises(service.LabRefusedError, match="busy"):
+            service.run_locked(db_session, a, service.reset)
+        assert service.run_locked(db_session, a, service.advance, busy_ok=True) is a
+
+
+class TestTeardown:
+    def test_a_teardown_that_keeps_failing_stops_and_keeps_its_networks(self, lab, db_session, worker, monkeypatch):
+        _, rid, _ = lab
+        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        monkeypatch.setenv("LAB_PORT_GROUPS", "pg-lab-01")
+        a, _ = launch(db_session, student(db_session), rid)
+        until(db_session, a, "ready")
+        worker.fail_destroy = True
+        act(db_session, service.end, a)
+        for _ in range(12):
+            act(db_session, service.advance, a)
+        assert a.state == "failed" and "operator" in a.error
+        assert db_session.query(LabNetworkLease).filter_by(session_id=a.id).count() == 1  # not handed on
+
+    def test_a_rebuild_reset_keeps_its_networks_and_lifetime(self, lab, db_session, worker, monkeypatch):
+        _, rid, _ = lab
+        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        monkeypatch.setenv("LAB_PORT_GROUPS", "pg-lab-01,pg-lab-02")
+        monkeypatch.setattr(
+            service,
+            "_profile",
+            lambda db, s: {
+                **service.release_profile(db, db.get(service.CourseRelease, s.release_id), s.activity_id),
+                "reset": {"mode": "rebuild"},
+            },
+        )
+        a, _ = launch(db_session, student(db_session), rid)
+        until(db_session, a, "ready")
+        nets, ends, old = service._session_networks(db_session, a), a.max_expires_at, a.range_id
+        act(db_session, service.reset, a)
+        until(db_session, a, "ready")
+        assert a.range_id != old and service._session_networks(db_session, a) == nets
+        assert a.max_expires_at == ends and str(old) in json.loads(a.retired_ranges)
+
+
+class TestBoundaries:
+    def test_a_template_may_not_pin_a_network(self, client):
+        yml = "name: t\nnetwork:\n  vlans:\n    - name: lab\n      cidr: 10.0.0.0/24\n      port_group: Management Network\n"
+        resp = client.post("/templates", json={"name": "t", "version": "1.0", "yaml": yml, "is_public": False})
+        assert resp.status_code == 422 and "port_group" in resp.json()["detail"]
+
+    def test_lab_ranges_are_hidden_from_students_and_driven_only_by_their_session(self, lab, db_session):
+        client, rid, _ = lab
+        a, _ = launch(db_session, student(db_session), rid)
+        assert client.post(f"/ranges/{a.range_id}/destroy").status_code == 409
+        with acting_as(UserRole.student):
+            assert str(a.range_id) not in {r["id"] for r in client.get("/ranges").json()}
+            assert client.get(f"/ranges/{a.range_id}").status_code == 404
+
+    def test_a_token_must_be_a_lab_token_for_this_student(self, lab, db_session):
+        import jwt as pyjwt
+        from app import lti13
+
+        client, rid, _ = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        key = lti13.get_tool_key(db_session)
+        now = int(datetime.now(UTC).timestamp())
+        base = {"iss": "truenorth", "aud": "truenorth-lab", "sub": str(a.id), "iat": now, "exp": now + 60}
+        untyped = pyjwt.encode({**base, "uid": str(s.id)}, key.private_key_pem, algorithm="RS256")
+        stranger = pyjwt.encode(
+            {**base, "typ": "lab", "uid": str(uuid.uuid4())}, key.private_key_pem, algorithm="RS256"
+        )
+        assert client.get(f"/lab-access/{a.id}", headers={"X-Lab-Token": untyped}).status_code == 401
+        assert client.get(f"/lab-access/{a.id}", headers={"X-Lab-Token": stranger}).status_code == 404
+
+    def test_students_submit_work_but_not_results(self, lab, db_session):
+        client, rid, course_id = lab
+        with acting_as(UserRole.student) as who:
+            db_session.add(
+                User(
+                    id=uuid.UUID(who.id),
+                    email=who.email,
+                    display_name="x",
+                    role=UserRole.student,
+                    tenant_id=DEV_TENANT,
+                    keycloak_id=who.keycloak_id,
+                )
+            )
+            ensure_enrollment(db_session, user_id=uuid.UUID(who.id), course_id=course_id, tenant_id=DEV_TENANT)
+            db_session.commit()
+            sid = client.post("/lab-sessions", json={"course_id": str(course_id), "activity_id": "mod_006"}).json()[
+                "id"
+            ]
+            ok = client.post(f"/lab-sessions/{sid}/evidence", json={"kind": "submission", "data": {"note": "done"}})
+            assert ok.status_code == 200
+            forged = client.post(f"/lab-sessions/{sid}/evidence", json={"kind": "validator", "data": {"pass": True}})
+            assert forged.status_code == 403
+            big = client.post(f"/lab-sessions/{sid}/evidence", json={"kind": "submission", "data": {"x": "a" * 70000}})
+            assert big.status_code == 413

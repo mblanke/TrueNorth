@@ -42,6 +42,25 @@ class YamlValidateIn(BaseModel):
     yaml: str
 
 
+def _refuse_network_placement(text: str | None) -> None:
+    """A template a person writes may not pin VMs to a hypervisor network (port_group):
+    that is how a lab session isolates a student's lab, and how a crafted template could
+    reach another student's or the management network."""
+    import yaml as pyyaml
+
+    from ..range_topology import network_placement_keys
+
+    try:
+        doc = pyyaml.safe_load(text or "")
+    except pyyaml.YAMLError:
+        return  # not YAML at all: validation reports it, nothing can be placed
+    keys = network_placement_keys(doc)
+    if keys:
+        raise HTTPException(
+            422, f"templates may not set port_group ({', '.join(keys)}); lab networks are assigned by the platform"
+        )
+
+
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
     db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid))
 
@@ -113,6 +132,7 @@ def create_template(
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_CREATE)),
 ) -> Template:
     """Create a new template.  **Permission: template:create**"""
+    _refuse_network_placement(body.yaml)
     tmpl = Template(
         name=body.name,
         version=body.version,
@@ -175,6 +195,8 @@ def update_template(
     if tmpl.tenant_id and tmpl.tenant_id != uuid.UUID(user.tenant_id) and user.role != UserRole.admin:
         raise HTTPException(403, "Not authorized to update this template")
     update_data = body.model_dump(exclude_unset=True)
+    if "yaml" in update_data:
+        _refuse_network_placement(update_data["yaml"])
     for key, value in update_data.items():
         setattr(tmpl, key, value)
     db.commit()

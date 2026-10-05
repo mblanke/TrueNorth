@@ -27,14 +27,18 @@ RESETTING = "resetting"
 COMPLETED = "completed"  # ended by the student or an instructor
 EXPIRED = "expired"  # idle or maximum lifetime reached
 CLEANING = "cleaning"  # VMs being destroyed
+RECONCILE_WAIT = "reconciling"  # VMs destroyed; leftovers being looked for before networks go back
 DESTROYED = "destroyed"
 FAILED = "failed"
 RECONCILE = "reconcile_required"  # teardown did not finish cleanly; leftovers being removed
 
 LIVE = (QUEUED, PROVISIONING, BASELINING, READY, ACTIVE, RESETTING)
-ENDING = (COMPLETED, EXPIRED, CLEANING, RECONCILE)
+ENDING = (COMPLETED, EXPIRED, CLEANING, RECONCILE, RECONCILE_WAIT)
 TERMINAL = (DESTROYED, FAILED)
 HOLDS_RESOURCES = LIVE + ENDING
+# What counts against capacity: everything that has (or is getting) machines. A queued
+# lab holds nothing; counting queued labs against each other deadlocked the queue.
+RUNS_RESOURCES = tuple(s for s in HOLDS_RESOURCES if s != QUEUED)
 
 
 class LabSession(Base):
@@ -74,7 +78,11 @@ class LabSession(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_reason: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # runner lease
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # who advances it
+    state_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    step_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pending: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # tasks the broker refused (JSON)
+    retired_ranges: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # ranges a rebuild replaced
 
 
 class LabNetworkLease(Base):

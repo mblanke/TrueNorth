@@ -49,7 +49,7 @@ from ..models import (
     ScheduledEvent,
     Template,
 )
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
     BatchProvisionIn,
     BatchProvisionOut,
@@ -105,6 +105,37 @@ def _tenant_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
     if not rng:
         raise HTTPException(404, "Range not found")
     return rng
+
+
+def _changeable_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
+    """_tenant_range, for handlers that change a range. A lab session's range is driven only
+    by its session (app/lab_sessions): provisioning it again from here could put its VMs on
+    a network another student now leases, and destroying it would strand the session."""
+    rng = _tenant_range(db, range_id, user)
+    from ..lab_sessions.service import lab_range_ids
+
+    if rng.id in lab_range_ids(db, [rng.id]):
+        raise HTTPException(409, "This range belongs to a student's lab session; manage it from the lab session")
+    return rng
+
+
+def _readable_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
+    """_tenant_range, for handlers that read one; a student's lab reads as not found to
+    people without infrastructure rights."""
+    rng = _tenant_range(db, range_id, user)
+    if not _hide_lab_ranges(db, user, [rng]):
+        raise HTTPException(404, "Range not found")
+    return rng
+
+
+def _hide_lab_ranges(db: Session, user: CurrentUser, ranges: list[Range]) -> list[Range]:
+    """Students' labs are not listed to people without infrastructure rights."""
+    if user_has_permission(user, Permission.INFRA_READ):
+        return ranges
+    from ..lab_sessions.service import lab_range_ids
+
+    labs = lab_range_ids(db, [r.id for r in ranges])
+    return [r for r in ranges if r.id not in labs]
 
 
 # Snapshot states in which a worker task still owns the row.
@@ -170,7 +201,7 @@ def list_ranges(
     offset: int = Query(0, ge=0),
 ) -> list[Range]:
     """List ranges for the user's tenant.  **Permission: range:read**"""
-    return (
+    rows = (
         db.query(Range)
         .filter(Range.tenant_id == uuid.UUID(user.tenant_id))
         .order_by(Range.created_at.desc())
@@ -178,6 +209,7 @@ def list_ranges(
         .limit(limit)
         .all()
     )
+    return _hide_lab_ranges(db, user, rows)
 
 
 @router.get("/stats", response_model=RangeStatsOut)
@@ -210,8 +242,7 @@ def get_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> Range:
     """Retrieve a single range.  **Permission: range:read**"""
-    rng = _tenant_range(db, range_id, user)
-    return rng
+    return _readable_range(db, range_id, user)
 
 
 @router.put("/{range_id}", response_model=RangeOut)
@@ -222,7 +253,7 @@ def update_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
 ) -> Range:
     """Update a range.  **Permission: range:update**"""
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(rng, field, value)
     db.commit()
@@ -244,7 +275,7 @@ def delete_range(
     `_DELETABLE_RANGE_STATES`). This used to let the database refuse instead, so a
     range with an exercise or a scheduled event came back as a 500.
     """
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     if rng.state not in _DELETABLE_RANGE_STATES:
         raise HTTPException(
             409, f"Range is {rng.state.value}; destroy it first so its VMs are torn down, then delete it"
@@ -290,7 +321,7 @@ def get_range_diagram(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> dict:
     """Retrieve persisted JointJS diagram for a range.  **Permission: range:read**"""
-    rng = _tenant_range(db, range_id, user)
+    rng = _readable_range(db, range_id, user)
     return {"range_id": str(rng.id), "diagram_json": rng.diagram_json or {"cells": []}}
 
 
@@ -305,7 +336,7 @@ def save_range_diagram(
 
     Accepts the raw output of ``joint.dia.Graph.toJSON()``.
     """
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     if not isinstance(body, dict):
         raise HTTPException(400, "Diagram body must be a JSON object")
     rng.diagram_json = body
@@ -355,7 +386,7 @@ def save_range_topology(
     from .. import range_topology
     from ..models import RangeObjectiveMap
 
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     if not _topology_editable(rng):
         raise HTTPException(409, f"Range is {rng.state.value} with VMs; destroy it before changing its topology")
     diagram = body.get("diagram_json") if isinstance(body, dict) else None
@@ -398,6 +429,10 @@ def save_range_topology(
         for key, value in parsed["network"].items():
             if key != "vlans":
                 template["network"].setdefault(key, value)
+    from ..range_topology import network_placement_keys
+
+    if network_placement_keys(template):
+        raise HTTPException(422, "a topology may not set port_group; lab networks are assigned by the platform")
     text = pyyaml.safe_dump(template, sort_keys=False)
 
     # Claim the range first: a conditional UPDATE that only matches while the range is
@@ -462,7 +497,7 @@ async def provision_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
     """Provision a range (async Celery task).  **Permission: range:provision**"""
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.provisioning):
         raise HTTPException(409, f"Cannot provision range in state {rng.state.value}")
     rng.state = RangeState.provisioning
@@ -481,7 +516,7 @@ async def destroy_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_DESTROY)),
 ) -> Range:
     """Destroy a range (async Celery task).  **Permission: range:destroy**"""
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.destroying):
         raise HTTPException(409, f"Cannot destroy range in state {rng.state.value}")
     rng.state = RangeState.destroying
@@ -500,7 +535,7 @@ async def stop_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
     """Stop a running range.  **Permission: range:provision**"""
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.stopped):
         raise HTTPException(409, f"Cannot stop range in state {rng.state.value}")
     rng.state = RangeState.stopped
@@ -539,7 +574,7 @@ def list_snapshots(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> list[SnapshotOut]:
-    rng = _tenant_range(db, range_id, user)
+    rng = _readable_range(db, range_id, user)
     return (
         db.query(RangeSnapshot)
         .filter(RangeSnapshot.range_id == range_id)
@@ -556,7 +591,7 @@ def create_snapshot(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> SnapshotOut:
     """Create a snapshot of the current range state."""
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.stopped):
         raise HTTPException(409, f"Cannot snapshot range in state '{rng.state.value}'")
     _refuse_while_restoring(db, range_id)
@@ -588,7 +623,7 @@ def restore_snapshot(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> RangeOut:
     """Restore a range from a snapshot."""
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
     _refuse_while_restoring(db, range_id)
@@ -625,7 +660,7 @@ def delete_snapshot(
     # The comment below was here without the call it describes, so any tenant could
     # delete any other tenant's snapshot given the two ids. That only flipped a row
     # while the worker's delete was broken; now it removes the hypervisor copy.
-    _tenant_range(db, range_id, user)
+    _changeable_range(db, range_id, user)
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
     # caller, so filtering snapshots by that same range_id is transitively scoped.
     snap = (
@@ -674,7 +709,7 @@ async def import_description(
     stays editable and searchable afterwards. Use the documents endpoints when
     the original file itself needs to be kept.
     """
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     filename = file.filename or "upload"
     if not filename.lower().endswith(DESCRIPTION_SUFFIXES):
         raise HTTPException(415, f"Expected a text or markdown file, got: {filename}")
@@ -728,7 +763,7 @@ def list_range_documents(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> list[RangeDocument]:
     """Supporting documents attached to a range."""
-    _tenant_range(db, range_id, user)
+    _readable_range(db, range_id, user)
     return (
         db.query(RangeDocument)
         .filter(RangeDocument.range_id == range_id)
@@ -745,7 +780,7 @@ async def upload_range_documents(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
 ) -> list[RangeDocument]:
     """Attach one or more supporting files to a range."""
-    rng = _tenant_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     created: list[RangeDocument] = []
     for file in files:
         filename = file.filename or "upload"
@@ -784,7 +819,7 @@ def download_range_document(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> Response:
     """Download an attached document in its original form."""
-    _tenant_range(db, range_id, user)
+    _readable_range(db, range_id, user)
     doc = _tenant_document(db, range_id, document_id, user)
     try:
         data = object_store.get_object(doc.minio_key, bucket=RANGE_BUCKET)
@@ -806,7 +841,7 @@ def delete_range_document(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
 ):
     """Detach a document and remove its stored bytes."""
-    _tenant_range(db, range_id, user)
+    _changeable_range(db, range_id, user)
     doc = _tenant_document(db, range_id, document_id, user)
     with contextlib.suppress(Exception):
         # A missing object must not block detaching the row it points at.

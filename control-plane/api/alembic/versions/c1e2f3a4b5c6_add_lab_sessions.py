@@ -58,6 +58,10 @@ def upgrade() -> None:
             sa.Column("end_reason", sa.String(32), nullable=False),
             sa.Column("reconciled_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("lease_until", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("state_since", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("step_attempts", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("pending", sa.Text(), nullable=False, server_default="[]"),
+            sa.Column("retired_ranges", sa.Text(), nullable=False, server_default="[]"),
             sa.UniqueConstraint(
                 "tenant_id", "user_id", "release_id", "activity_id", "attempt", name="uq_lab_session_key"
             ),

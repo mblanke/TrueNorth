@@ -33,6 +33,7 @@ def mint(db: Session, session_id: uuid.UUID, user_id: uuid.UUID, expires_at: dat
     key = lti13.get_tool_key(db)
     claims = {
         "iss": "truenorth",
+        "typ": "lab",  # never accepted as any other kind of TrueNorth-signed token
         "aud": AUDIENCE,
         "sub": str(session_id),
         "uid": str(user_id),
@@ -49,6 +50,6 @@ def verify(db: Session, token: str, session_id: uuid.UUID) -> dict:
         claims = jwt.decode(token, public, algorithms=["RS256"], audience=AUDIENCE, issuer="truenorth")
     except jwt.PyJWTError as exc:
         raise LabTokenError(f"lab token refused: {exc}") from exc
-    if claims.get("sub") != str(session_id):
+    if claims.get("typ") != "lab" or claims.get("sub") != str(session_id):
         raise LabTokenError("this token is for another lab")
     return claims

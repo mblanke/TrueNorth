@@ -382,14 +382,18 @@ def _launch_lab(db: Session, user: User, rid: str) -> str:
     except ValueError as exc:
         raise HTTPException(400, "malformed lab link") from exc
     try:
-        release = labs.release_for_student(db, tenant_id=user.tenant_id, user_id=user.id, course_id=course_id)
-        session, _ = labs.launch(
-            db, tenant_id=user.tenant_id, user_id=user.id, release_id=release.id, activity_id=activity_id
-        )
+        with db.begin_nested():
+            # Moodle course membership is the control on this path, so the launch enrols.
+            release = labs.release_for_student(
+                db, tenant_id=user.tenant_id, user_id=user.id, course_id=course_id, auto_enroll=True
+            )
+            session, _ = labs.launch(
+                db, tenant_id=user.tenant_id, user_id=user.id, release_id=release.id, activity_id=activity_id
+            )
     except labs.LabRefusedError as exc:
-        db.rollback()
         raise HTTPException(exc.status, str(exc)) from exc
     db.commit()
+    labs.flush_outbox(db)
     token = lab_tokens.mint(db, session.id, user.id, session.max_expires_at)
     return f"{WEB_BASE_URL}/labs/{session.id}?lti=1#token={token}"
 
