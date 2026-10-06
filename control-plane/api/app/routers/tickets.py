@@ -68,7 +68,7 @@ TYPE_RE = r"^(incident|bug|task|request)$"
 STATUS_RE = r"^(open|in_progress|waiting|resolved|closed)$"
 PRIORITY_RE = r"^(low|medium|high|critical)$"
 STAFF_ROLES = (UserRole.admin, UserRole.instructor, UserRole.range_ops)
-TRACKED_FIELDS = ("status", "priority", "type", "assignee_id", "queue_id", "subject")
+TRACKED_FIELDS = ("status", "priority", "type", "assignee_id", "queue_id", "subject", "range_id", "exercise_id")
 
 
 # ── Schemas ─────────────────────────────────────────────────────────────
@@ -635,7 +635,9 @@ def create_ticket(
     if data["range_id"]:
         get_owned(db, Range, data["range_id"], user, not_found="Range not found")
     if data["exercise_id"]:
-        get_owned(db, Exercise, data["exercise_id"], user, not_found="Exercise not found")
+        ex = get_owned(db, Exercise, data["exercise_id"], user, not_found="Exercise not found")
+        # Filed from an exercise: the range it runs on is the one with the problem.
+        data["range_id"] = data["range_id"] or ex.range_id
     if data["queue_id"]:
         get_owned(db, SupportQueue, data["queue_id"], user, not_found="Queue not found")
     else:
@@ -903,25 +905,28 @@ def list_activity(
                     found.add(uuid.UUID(v))
         return found
 
+    def _labels(model, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        if not ids:
+            return {}
+        rows_ = db.query(model.id, model.name).filter(model.id.in_(ids), model.tenant_id == t.tenant_id).all()
+        return {r.id: r.name for r in rows_}
+
     names = _names(db, user, {a.actor_id for a in rows} | _ids("assignee_id"))
-    qids = _ids("queue_id")
-    queues = {}
-    if qids:
-        queues = {
-            r.id: r.name
-            for r in db.query(SupportQueue.id, SupportQueue.name)
-            .filter(SupportQueue.id.in_(qids), SupportQueue.tenant_id == t.tenant_id)
-            .all()
-        }
+    lookups = {
+        "assignee_id": names,
+        "queue_id": _labels(SupportQueue, _ids("queue_id")),
+        "range_id": _labels(Range, _ids("range_id")),
+        "exercise_id": _labels(Exercise, _ids("exercise_id")),
+    }
 
     def _show(field: str, value: str) -> str:
-        if field not in ("assignee_id", "queue_id") or not value:
+        if field not in lookups or not value:
             return value
         try:
             key = uuid.UUID(value)
         except ValueError:
             return value
-        return (names if field == "assignee_id" else queues).get(key, "someone")
+        return lookups[field].get(key, "something deleted")
 
     out = []
     for a in rows:

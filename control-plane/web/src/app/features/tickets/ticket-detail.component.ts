@@ -17,6 +17,7 @@ import {
 
 const FIELD_LABELS: Record<string, string> = {
   status: 'status', priority: 'priority', type: 'type', assignee_id: 'assignee', queue_id: 'queue', subject: 'subject',
+  range_id: 'range', exercise_id: 'exercise',
 };
 
 @Component({

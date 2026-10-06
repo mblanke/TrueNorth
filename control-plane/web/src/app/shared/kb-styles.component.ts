@@ -35,7 +35,7 @@ import { ChangeDetectionStrategy, Component, ViewEncapsulation } from '@angular/
     .tn-kb-tag.high { border-color: var(--warning); color: var(--warning); }
     .tn-kb-key { font-family: var(--font-mono, ui-monospace, monospace); font-size: .78rem; color: var(--text-secondary); white-space: nowrap; }
     .tn-kb-split { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 18px; align-items: start; }
-    .tn-kb-detail { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 18px; align-items: start; }
+    .tn-kb-detail { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 18px; align-items: start; }
     .tn-kb-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
     .tn-kb-table th { text-align: left; font-weight: 500; color: var(--text-secondary); font-size: .78rem; }
     .tn-kb-table th, .tn-kb-table td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -58,7 +58,7 @@ import { ChangeDetectionStrategy, Component, ViewEncapsulation } from '@angular/
     .tn-kb-comment { padding: 12px 0; border-top: 1px solid var(--border); }
     .tn-kb-comment:first-child { border-top: 0; padding-top: 0; }
     .tn-kb-comment.internal { border: 1px solid var(--warning); border-radius: 6px; padding: 10px 12px; margin: 10px 0; background: var(--warn-soft, transparent); }
-    .tn-kb-kv { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: center; font-size: .88rem; }
+    .tn-kb-kv { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: center; font-size: .88rem; }
     .tn-kb-kv dt { color: var(--text-secondary); }
     .tn-kb-kv dd { margin: 0; min-width: 0; }
     .tn-kb-board { display: grid; grid-template-columns: repeat(5, minmax(190px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 6px; }

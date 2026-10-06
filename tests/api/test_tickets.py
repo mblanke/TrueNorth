@@ -418,3 +418,26 @@ class TestAdversarialReviewFixes:
         with acting_as(student):
             t = _file(client, range_id=str(rng.id))
             assert client.patch(f"/tickets/{t['id']}", json={"unlink_range": True}).status_code == 403
+
+
+class TestBrowserTourFixes:
+    @pytest.fixture
+    def exercise(self, db_session, rng):
+        from app.models import Exercise
+
+        e = Exercise(name="IR Drill #1", range_id=rng.id, tenant_id=uuid.UUID(DEV_TENANT))
+        db_session.add(e)
+        db_session.commit()
+        return e
+
+    def test_filing_from_an_exercise_links_its_range(self, client, exercise, rng):
+        t = _file(client, exercise_id=str(exercise.id))
+        assert t["range_id"] == str(rng.id)
+        assert t["range_name"] == "DP2 AD Lab" and t["exercise_name"] == "IR Drill #1"
+
+    def test_unlinking_is_in_the_history_by_name(self, client, exercise):
+        t = _file(client, exercise_id=str(exercise.id))
+        client.patch(f"/tickets/{t['id']}", json={"unlink_exercise": True, "unlink_range": True})
+        changes = {a["field"]: (a["old_value"], a["new_value"]) for a in client.get(f"/tickets/{t['id']}/activity").json()}
+        assert changes["exercise_id"] == ("IR Drill #1", "")
+        assert changes["range_id"] == ("DP2 AD Lab", "")

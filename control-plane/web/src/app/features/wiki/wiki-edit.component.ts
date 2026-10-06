@@ -39,10 +39,11 @@ interface ParentOption { id: string; label: string }
       @if (conflict(); as theirs) {
         <div class="tn-kb-error" role="alert">
           <strong>{{ theirs.last_editor_name || 'Someone' }} saved this page while you were editing (now revision {{ theirs.revision_number }}).</strong>
-          <p class="tn-kb-small" style="margin:6px 0">Your text is still below. Copy anything you need, then either keep your version
-            (it replaces theirs, and theirs stays in History) or load theirs and start again.</p>
+          <p class="tn-kb-small" style="margin:6px 0">Your text is still below. Copy anything you need, then either save your
+            text over theirs (theirs stays in History; their publish setting, tags and position are kept) or load theirs
+            and start again.</p>
           <div class="tn-kb-actions">
-            <button mat-stroked-button type="button" (click)="keepMine(theirs)">Save my version anyway</button>
+            <button mat-stroked-button type="button" (click)="keepMine(theirs)">Save my text over theirs</button>
             <button mat-button type="button" (click)="loadTheirs(theirs)">Discard mine, load theirs</button>
           </div>
         </div>
@@ -155,8 +156,16 @@ export class WikiEditComponent implements OnInit {
     });
   }
 
+  /**
+   * Keep my title and text over theirs, but take their publish state, tags and place
+   * in the tree. My copies of those are stale, so sending them back would quietly undo
+   * what they changed (re-publish a page they had just hidden).
+   */
   keepMine(theirs: WikiPage): void {
     this.base.set(theirs.revision_number);
+    this.published = theirs.is_published;
+    this.tags = theirs.tags;
+    this.parentId = theirs.parent_id;
     this.originalParent = theirs.parent_id;
     this.conflict.set(null);
     this.save(true);
