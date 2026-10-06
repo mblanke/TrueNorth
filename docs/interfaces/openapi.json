@@ -17544,7 +17544,7 @@
     },
     "/exercises/{exercise_id}/objectives/{ref_id}/ack": {
       "post": {
-        "description": "Acknowledge (achieve) an objective.  **Permission: exercise:complete**",
+        "description": "Acknowledge (achieve) an objective on a running or paused exercise in the caller's\ntenant, recording who acknowledged it, and re-total the exercise score.\n\n**Permission: objective:ack** (instructors and admins; never Students).\n404 if the exercise is not in the caller's tenant or the objective does not exist;\n409 if the exercise is not running/paused or the objective is already achieved.",
         "operationId": "acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post",
         "parameters": [
           {

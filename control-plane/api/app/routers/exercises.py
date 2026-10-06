@@ -15,7 +15,7 @@ POST   /exercises/{id}/start               EXERCISE_START
 POST   /exercises/{id}/pause               EXERCISE_PAUSE
 POST   /exercises/{id}/complete            EXERCISE_COMPLETE
 GET    /exercises/{id}/objectives           EXERCISE_READ
-POST   /exercises/{id}/objectives/{ref}/ack EXERCISE_COMPLETE
+POST   /exercises/{id}/objectives/{ref}/ack OBJECTIVE_ACK
 POST   /exercises/{id}/aar/generate        AAR_GENERATE
 GET    /exercises/{id}/aar                  AAR_READ
 GET    /exercises/{id}/aar/html            AAR_READ
@@ -404,24 +404,32 @@ async def acknowledge_objective(
     body: ObjectiveAck = Depends(),
     background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
+    user: CurrentUser = Depends(require_permission(Permission.OBJECTIVE_ACK)),
 ) -> Objective:
-    """Acknowledge (achieve) an objective.  **Permission: exercise:complete**"""
-    obj = (
-        db.query(Objective)
-        .filter(
-            Objective.exercise_id == exercise_id,
-            Objective.ref_id == ref_id,
-        )
-        .first()
-    )
+    """Acknowledge (achieve) an objective on a running or paused exercise in the caller's
+    tenant, recording who acknowledged it, and re-total the exercise score.
+
+    **Permission: objective:ack** (instructors and admins; never Students).
+    404 if the exercise is not in the caller's tenant or the objective does not exist;
+    409 if the exercise is not running/paused or the objective is already achieved.
+    """
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    if ex.state not in (ExerciseState.running, ExerciseState.paused):
+        raise HTTPException(409, f"Exercise is {ex.state.value}, expected running or paused")
+    obj = db.query(Objective).filter(Objective.exercise_id == ex.id, Objective.ref_id == ref_id).first()
     if not obj:
         raise HTTPException(404, "Objective not found")
     if obj.achieved:
         raise HTTPException(409, "Objective already achieved")
+    who = user.display_name or user.email or user.id
     obj.achieved = True
-    obj.evidence = body.evidence or f"Acknowledged by {user.display_name}"
+    obj.evidence = f"Acknowledged by {who}: {body.evidence}" if body.evidence else f"Acknowledged by {who}"
     obj.achieved_at = datetime.now(UTC)
+    db.flush()
+    # Same tally as complete_exercise, so the live score is right before completion.
+    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
+    ex.total_score = sum(o.points for o in objectives if o.achieved)
+    _audit(db, user, "ack_objective", "exercise", str(ex.id), detail=obj.ref_id)
     db.commit()
     db.refresh(obj)
     if background_tasks is not None:

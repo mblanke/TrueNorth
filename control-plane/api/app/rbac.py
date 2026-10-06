@@ -53,6 +53,9 @@ class Permission(str, Enum):
     EXERCISE_START = "exercise:start"
     EXERCISE_COMPLETE = "exercise:complete"
     EXERCISE_PAUSE = "exercise:pause"
+    # Awarding an objective by hand. Deliberately separate from EXERCISE_COMPLETE, which
+    # Students hold: a Student must never be able to award themselves points (ADR 0005 §4).
+    OBJECTIVE_ACK = "objective:ack"
 
     # User management
     USER_CREATE = "user:create"
@@ -135,6 +138,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_START,
         Permission.EXERCISE_COMPLETE,
         Permission.EXERCISE_PAUSE,
+        Permission.OBJECTIVE_ACK,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
