@@ -118,3 +118,24 @@ def test_another_tenants_event_is_404(client, db_session):
     with acting_as(UserRole.instructor):
         assert client.get(f"/schedule/events/{theirs.id}").status_code == 404
         assert client.delete(f"/schedule/events/{theirs.id}").status_code == 404
+
+
+def test_event_list_filters_to_a_window(client, db_session):
+    inside = _event(db_session, DEV_TENANT, "inside")
+    window_start = inside.start_time - timedelta(hours=1)
+    later = ScheduledEvent(
+        name="later",
+        state=EventState.scheduled,
+        tenant_id=uuid.UUID(DEV_TENANT),
+        start_time=inside.start_time + timedelta(days=10),
+        end_time=inside.start_time + timedelta(days=10, hours=1),
+    )
+    db_session.add(later)
+    db_session.flush()
+    with acting_as(UserRole.observer):
+        r = client.get(
+            "/schedule/events",
+            params={"start": window_start.isoformat(), "end": (window_start + timedelta(days=7)).isoformat()},
+        )
+    names = {e["name"] for e in r.json()["items"]}
+    assert "inside" in names and "later" not in names

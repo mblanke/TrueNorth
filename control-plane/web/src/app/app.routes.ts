@@ -5,6 +5,7 @@ import {
   instructorGuard,
   onboardingGuard,
   pendingGuard,
+  scheduleGuard,
   registrationGuard,
 } from './core/guards/auth.guard';
 
@@ -213,6 +214,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/exercises/exercises.component').then(m => m.ExercisesComponent),
     title: 'Exercises - TrueNorth Range',
+  },
+  {
+    // Bookings, capacity and the calendar feed (docs/adr/0004-scheduler-module.md). Staff only.
+    path: 'schedule',
+    canActivate: [authGuard, onboardingGuard, scheduleGuard],
+    loadComponent: () =>
+      import('./features/schedule/schedule.component').then(m => m.ScheduleComponent),
+    title: 'Schedule - TrueNorth Range',
   },
   {
     path: 'scoring',

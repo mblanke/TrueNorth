@@ -286,9 +286,25 @@ What users need:
      for create, move and schedule, `cancel` for cancellations.
    - It runs after the response and is best effort.
    - `microsoft_graph` later, as one file plus one `_REGISTRY` line.
-8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button. A mockup
-   for approval comes first: `docs/mockups/scheduler.html`, in the redesign's style,
-   with one view per role. Angular follows once it is approved.
+8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button. The
+   mockup (`docs/mockups/scheduler.html`) was approved on 2026-10-06 and built as
+   `features/schedule/` on `/schedule` (done).
+   - Access: the nav item and `scheduleGuard` hide it from Students.
+   - Client: `core/services/scheduler-api.service.ts`, typed from the generated
+     OpenAPI schema.
+   - Week grid: overlapping sessions sit side by side, with load bars from
+     `/timeline?resolution_minutes=15`.
+   - Booking: the form runs the live `/check`, previews conflicts, and converts the
+     API's UTC windows to local time.
+   - Panels: draft, move and cancel actions; the admin policy; the calendar feed;
+     and a Capacity view for Range Ops (heatmap plus the clock's queue).
+   - Phones show one day at a time.
+   - The page is styled with the redesign's tokens scoped to the page, so it moves
+     unchanged into the new shell. The dashboard's old planner is gone; the dashboard
+     links here instead.
+   - API additions: `/timeline` takes `start` and `resolution_minutes` and reports
+     lead and grace; `/events` takes a `start`/`end` window; `/check` returns
+     `vm_count_needed`; and the event endpoints have typed responses.
 
 ## Decisions log
 

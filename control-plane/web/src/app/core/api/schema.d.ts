@@ -4355,7 +4355,8 @@ export interface paths {
         };
         /**
          * List scheduled events
-         * @description List the caller's tenant's scheduled events, optionally filtered by state.
+         * @description List the caller's tenant's scheduled events, optionally filtered by state and by a
+         *     window they overlap (the calendar's week).
          */
         get: operations["list_events_schedule_events_get"];
         put?: never;
@@ -4573,8 +4574,9 @@ export interface paths {
         };
         /**
          * Resource timeline for capacity planning
-         * @description Return hourly resource commitment buckets for the next N days.
-         *     Used to render the capacity timeline chart in the dashboard.
+         * @description Committed capacity per slot, build and teardown time included, so back-to-back
+         *     sessions are not counted as concurrent at a fine enough resolution. Feeds the
+         *     scheduler's load bars and the Range Ops heatmap.
          */
         get: operations["resource_timeline_schedule_timeline_get"];
         put?: never;
@@ -5931,6 +5933,11 @@ export interface components {
             vcpu_needed?: number;
             /** Vcpu Total */
             vcpu_total: number;
+            /**
+             * Vm Count Needed
+             * @default 0
+             */
+            vm_count_needed?: number;
         };
         /** CertificationIn */
         CertificationIn: {
@@ -6743,6 +6750,67 @@ export interface components {
              * @default 0
              */
             vm_count?: number;
+        };
+        /** EventListOut */
+        EventListOut: {
+            /** Items */
+            items: components["schemas"]["EventOut"][];
+            /** Total */
+            total: number;
+        };
+        /** EventOut */
+        EventOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by?: string | null;
+            /** Description */
+            description: string | null;
+            /** Disk Gb Total */
+            disk_gb_total: number;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /** Id */
+            id: string;
+            /** Instructor Id */
+            instructor_id?: string | null;
+            /** Name */
+            name: string;
+            /** Ram Mb Total */
+            ram_mb_total: number;
+            /** Range Id */
+            range_id: string | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
+            /** Template Id */
+            template_id: string | null;
+            /** Tenant Id */
+            tenant_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Vcpu Total */
+            vcpu_total: number;
+            /** Vm Count */
+            vm_count: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings?: string[];
         };
         /** ExerciseIn */
         ExerciseIn: {
@@ -9406,6 +9474,41 @@ export interface components {
             poll_interval_minutes?: number;
             /** Url */
             url?: string | null;
+        };
+        /** TimelineBucket */
+        TimelineBucket: {
+            /** Disk Gb Committed */
+            disk_gb_committed: number;
+            /** Event Count */
+            event_count: number;
+            /** Ram Mb Committed */
+            ram_mb_committed: number;
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+            /** Vcpu Committed */
+            vcpu_committed: number;
+        };
+        /** TimelineOut */
+        TimelineOut: {
+            /** Buckets */
+            buckets: components["schemas"]["TimelineBucket"][];
+            /** Cluster Disk Gb */
+            cluster_disk_gb: number;
+            /** Cluster Ram Mb */
+            cluster_ram_mb: number;
+            /** Cluster Vcpu */
+            cluster_vcpu: number;
+            /** Grace Minutes */
+            grace_minutes: number;
+            /** Lead Minutes */
+            lead_minutes: number;
+            /** Resolution Minutes */
+            resolution_minutes: number;
+            /** Supply Source */
+            supply_source: string;
         };
         /**
          * TranscriptEntry
@@ -18035,6 +18138,10 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string | null;
+                /** @description Only events ending after this */
+                start?: string | null;
+                /** @description Only events starting before this */
+                end?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -18050,7 +18157,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventListOut"];
                 };
             };
             /** @description Validation Error */
@@ -18083,7 +18190,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -18114,7 +18221,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -18149,7 +18256,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -18209,7 +18316,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -18240,7 +18347,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -18271,7 +18378,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -18302,7 +18409,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -18489,6 +18596,10 @@ export interface operations {
         parameters: {
             query?: {
                 days?: number;
+                /** @description First slot (default: the current hour) */
+                start?: string | null;
+                /** @description Slot length: 15, 30 or 60 */
+                resolution_minutes?: number;
             };
             header?: never;
             path?: never;
@@ -18502,7 +18613,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TimelineOut"];
                 };
             };
             /** @description Validation Error */

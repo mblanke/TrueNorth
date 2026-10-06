@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "scheduler-api",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd control-plane/api && AUTH_DISABLED=true DATABASE_URL=sqlite:////private/tmp/claude-501/-Users-guapo-Documents-Projects-TrueNorth--claude-worktrees-app-folder-storage-optimization-d42945/0484cb44-74e6-4912-9b41-d19bc5f4acdb/scratchpad/preview.db REDIS_URL=redis://localhost:6379/15 RATE_LIMIT_ENABLED=false SCHEDULER_CLOCK_ENABLED=false ../../.venv/bin/python -m uvicorn app.main:app --port 8093"],
+      "port": 8093
+    },
+    {
+      "name": "scheduler-web",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd control-plane/web && npx ng serve --port 4300 --proxy-config /private/tmp/claude-501/-Users-guapo-Documents-Projects-TrueNorth--claude-worktrees-app-folder-storage-optimization-d42945/0484cb44-74e6-4912-9b41-d19bc5f4acdb/scratchpad/proxy.preview.json"],
+      "port": 4300
+    }
+  ]
+}

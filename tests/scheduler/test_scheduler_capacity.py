@@ -187,6 +187,7 @@ def test_check_sizes_from_the_template_and_names_its_sources(client, db_session,
     assert r.status_code == 200, r.text
     res = r.json()
     assert (res["vcpu_needed"], res["ram_mb_needed"], res["disk_gb_needed"]) == (T_VCPU, T_RAM_MB, T_DISK_GB)
+    assert res["vm_count_needed"] == T_VMS
     assert res["fits"] is True and res["reasons"] == []
     assert res["supply_source"] == "env"
     assert res["policy"] == "block"
@@ -220,6 +221,40 @@ def test_a_time_without_a_zone_is_taken_as_utc(client, small_cluster):
             },
         )
     assert r.status_code == 201, r.text
+
+
+def test_timeline_at_15_minutes_does_not_count_back_to_back_sessions_as_concurrent(client, db_session, small_cluster):
+    morning = DAY + timedelta(hours=9)
+    _hold(db_session, morning, morning + timedelta(hours=3), ram_mb=30 * 1024)  # held 08:30-12:15
+    afternoon = DAY + timedelta(hours=13)
+    _hold(db_session, afternoon, afternoon + timedelta(hours=3), ram_mb=30 * 1024)  # held 12:30-16:15
+    with acting_as(UserRole.observer):
+        hourly = client.get("/schedule/timeline", params={"start": DAY.isoformat(), "days": 1}).json()
+        fine = client.get(
+            "/schedule/timeline", params={"start": DAY.isoformat(), "days": 1, "resolution_minutes": 15}
+        ).json()
+    peak = lambda t: max(b["ram_mb_committed"] for b in t["buckets"])  # noqa: E731
+    assert peak(hourly) == 60 * 1024  # the 12:00 hour touches both
+    assert peak(fine) == 30 * 1024  # no 15-minute slot does
+    assert len(fine["buckets"]) == 96
+    assert (fine["lead_minutes"], fine["grace_minutes"], fine["resolution_minutes"]) == (30, 15, 15)
+
+
+def test_timeline_series_matches_committed_slot_by_slot(db_session, small_cluster):
+    from app.scheduler.capacity import EnvCapacity
+
+    _hold(db_session, DAY + timedelta(hours=9), DAY + timedelta(hours=11), ram_mb=1024)
+    _hold(db_session, DAY + timedelta(hours=10), DAY + timedelta(hours=14), ram_mb=2048)
+    p, step = EnvCapacity(), timedelta(minutes=30)
+    series = p.committed_series(db_session, DAY, DAY + timedelta(hours=18), step)
+    for i, c in enumerate(series):
+        assert c == p.committed(db_session, DAY + i * step, DAY + (i + 1) * step), i
+
+
+@pytest.mark.parametrize("params", [{"resolution_minutes": 7}, {"days": 90, "resolution_minutes": 15}])
+def test_timeline_refuses_bad_resolutions(client, params):
+    with acting_as(UserRole.observer):
+        assert client.get("/schedule/timeline", params=params).status_code == 422
 
 
 def test_times_with_an_offset_are_stored_and_returned_in_utc(client, db_session, small_cluster):

@@ -1603,6 +1603,11 @@
           "vcpu_total": {
             "title": "Vcpu Total",
             "type": "integer"
+          },
+          "vm_count_needed": {
+            "default": 0,
+            "title": "Vm Count Needed",
+            "type": "integer"
           }
         },
         "required": [
@@ -3485,6 +3490,165 @@
           "end_time"
         ],
         "title": "EventIn",
+        "type": "object"
+      },
+      "EventListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "EventListOut",
+        "type": "object"
+      },
+      "EventOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "disk_gb_total": {
+            "title": "Disk Gb Total",
+            "type": "integer"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructor Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ram_mb_total": {
+            "title": "Ram Mb Total",
+            "type": "integer"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "vcpu_total": {
+            "title": "Vcpu Total",
+            "type": "integer"
+          },
+          "vm_count": {
+            "title": "Vm Count",
+            "type": "integer"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "state",
+          "tenant_id",
+          "range_id",
+          "template_id",
+          "start_time",
+          "end_time",
+          "vm_count",
+          "vcpu_total",
+          "ram_mb_total",
+          "disk_gb_total",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EventOut",
         "type": "object"
       },
       "ExerciseIn": {
@@ -10180,6 +10344,91 @@
           }
         },
         "title": "ThreatIntelFeedUpdate",
+        "type": "object"
+      },
+      "TimelineBucket": {
+        "properties": {
+          "disk_gb_committed": {
+            "title": "Disk Gb Committed",
+            "type": "integer"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "ram_mb_committed": {
+            "title": "Ram Mb Committed",
+            "type": "integer"
+          },
+          "time": {
+            "format": "date-time",
+            "title": "Time",
+            "type": "string"
+          },
+          "vcpu_committed": {
+            "title": "Vcpu Committed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "vcpu_committed",
+          "ram_mb_committed",
+          "disk_gb_committed",
+          "event_count"
+        ],
+        "title": "TimelineBucket",
+        "type": "object"
+      },
+      "TimelineOut": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "cluster_disk_gb": {
+            "title": "Cluster Disk Gb",
+            "type": "integer"
+          },
+          "cluster_ram_mb": {
+            "title": "Cluster Ram Mb",
+            "type": "integer"
+          },
+          "cluster_vcpu": {
+            "title": "Cluster Vcpu",
+            "type": "integer"
+          },
+          "grace_minutes": {
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "lead_minutes": {
+            "title": "Lead Minutes",
+            "type": "integer"
+          },
+          "resolution_minutes": {
+            "title": "Resolution Minutes",
+            "type": "integer"
+          },
+          "supply_source": {
+            "title": "Supply Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "buckets",
+          "cluster_vcpu",
+          "cluster_ram_mb",
+          "cluster_disk_gb",
+          "supply_source",
+          "resolution_minutes",
+          "lead_minutes",
+          "grace_minutes"
+        ],
+        "title": "TimelineOut",
         "type": "object"
       },
       "TranscriptEntry": {
@@ -24420,7 +24669,7 @@
     },
     "/schedule/events": {
       "get": {
-        "description": "List the caller's tenant's scheduled events, optionally filtered by state.",
+        "description": "List the caller's tenant's scheduled events, optionally filtered by state and by a\nwindow they overlap (the calendar's week).",
         "operationId": "list_events_schedule_events_get",
         "parameters": [
           {
@@ -24437,6 +24686,44 @@
                 }
               ],
               "title": "State"
+            }
+          },
+          {
+            "description": "Only events ending after this",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events ending after this",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Only events starting before this",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events starting before this",
+              "title": "End"
             }
           },
           {
@@ -24466,7 +24753,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventListOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24509,7 +24798,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24593,7 +24884,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24647,7 +24940,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24693,7 +24988,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24739,7 +25036,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24785,7 +25084,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -24831,7 +25132,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -25066,7 +25369,7 @@
     },
     "/schedule/timeline": {
       "get": {
-        "description": "Return hourly resource commitment buckets for the next N days.\nUsed to render the capacity timeline chart in the dashboard.",
+        "description": "Committed capacity per slot, build and teardown time included, so back-to-back\nsessions are not counted as concurrent at a fine enough resolution. Feeds the\nscheduler's load bars and the Range Ops heatmap.",
         "operationId": "resource_timeline_schedule_timeline_get",
         "parameters": [
           {
@@ -25080,13 +25383,46 @@
               "title": "Days",
               "type": "integer"
             }
+          },
+          {
+            "description": "First slot (default: the current hour)",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First slot (default: the current hour)",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Slot length: 15, 30 or 60",
+            "in": "query",
+            "name": "resolution_minutes",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "description": "Slot length: 15, 30 or 60",
+              "title": "Resolution Minutes",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineOut"
+                }
               }
             },
             "description": "Successful Response"

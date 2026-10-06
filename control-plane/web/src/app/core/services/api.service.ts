@@ -552,39 +552,6 @@ export class ApiService {
     if (end) params = params.set('end_time', end);
     return this.http.get<any>(`${this.base}/schedule/capacity`, { params });
   }
-  checkCapacity(body: { start_time: string; end_time: string; vcpu_needed: number; ram_mb_needed: number; disk_gb_needed: number }): Observable<any> {
-    return this.http.post<any>(`${this.base}/schedule/check`, body);
-  }
-  listScheduledEvents(state?: string, limit = 50): Observable<any> {
-    let params = new HttpParams().set('limit', limit);
-    if (state) params = params.set('state', state);
-    return this.http.get<any>(`${this.base}/schedule/events`, { params });
-  }
-  createScheduledEvent(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/schedule/events`, data);
-  }
-  deleteScheduledEvent(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/schedule/events/${id}`);
-  }
-  updateScheduledEvent(id: string, data: any): Observable<any> {
-    return this.http.put<any>(`${this.base}/schedule/events/${id}`, data);
-  }
-  getResourceTimeline(days = 7): Observable<any> {
-    const params = new HttpParams().set('days', days);
-    return this.http.get<any>(`${this.base}/schedule/timeline`, { params });
-  }
-  /** Your calendar-feed status. The URL itself is only ever returned by issueFeedToken. */
-  getFeedToken(): Observable<{ active: boolean; issued_at: string | null }> {
-    return this.http.get<{ active: boolean; issued_at: string | null }>(`${this.base}/schedule/feed-token`);
-  }
-  /** Create or regenerate your feed URL (the previous one stops working). Shown once. */
-  issueFeedToken(): Observable<{ url: string; webcal_url: string; issued_at: string }> {
-    return this.http.post<{ url: string; webcal_url: string; issued_at: string }>(`${this.base}/schedule/feed-token`, {});
-  }
-  revokeFeedToken(): Observable<void> {
-    return this.http.delete<void>(`${this.base}/schedule/feed-token`);
-  }
-
 
   // ── Helpdesk / Support Tickets ───────────────────────────
   listQueues(): Observable<any[]> {

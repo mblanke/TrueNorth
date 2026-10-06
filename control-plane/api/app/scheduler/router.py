@@ -21,16 +21,20 @@ from ..db import get_db
 from ..rbac import Permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
 from . import calendar_backends, clock, feed, invites, lifecycle, service
-from .capacity import Resources, available, get_capacity_provider
+from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, Resources, available, get_capacity_provider
 from .models import EventState, ScheduledEvent
 from .schemas import (
     CapacityCheck,
     CapacityResult,
     EventIn,
+    EventListOut,
+    EventOut,
     FeedTokenIssued,
     FeedTokenStatus,
     PolicyIn,
     PolicyOut,
+    TimelineOut,
+    UtcDateTime,
 )
 from .service import to_out as _to_out
 
@@ -98,7 +102,8 @@ def check_capacity(body: CapacityCheck, db: Session = Depends(get_db), user: Cur
     if body.end_time <= body.start_time:
         raise HTTPException(400, "end_time must be after start_time")
     typed = Resources(body.vcpu_needed, body.ram_mb_needed, body.disk_gb_needed)
-    need = service.demand_for(db, user, body.template_id, typed).resources
+    demand = service.demand_for(db, user, body.template_id, typed)
+    need = demand.resources
     provider = get_capacity_provider()
     a = service.assess(db, provider, body.start_time, body.end_time, need)
     c = a.committed.resources
@@ -116,6 +121,7 @@ def check_capacity(body: CapacityCheck, db: Session = Depends(get_db), user: Cur
         disk_gb_total=a.supply.disk_gb,
         overlapping_events=a.committed.events,
         message="Resources available" if a.fits else "; ".join(a.reasons),
+        vm_count_needed=demand.vm_count,
         vcpu_needed=need.vcpu,
         ram_mb_needed=need.ram_mb,
         disk_gb_needed=need.disk_gb,
@@ -145,15 +151,18 @@ def put_policy(body: PolicyIn, db: Session = Depends(get_db), user: CurrentUser 
     return PolicyOut(overcapacity=service.get_policy(db))
 
 
-@router.get("/events", summary="List scheduled events")
+@router.get("/events", response_model=EventListOut, summary="List scheduled events")
 def list_events(
     state: str | None = Query(None),
+    start: UtcDateTime | None = Query(None, description="Only events ending after this"),
+    end: UtcDateTime | None = Query(None, description="Only events starting before this"),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """List the caller's tenant's scheduled events, optionally filtered by state."""
+    """List the caller's tenant's scheduled events, optionally filtered by state and by a
+    window they overlap (the calendar's week)."""
     q = (
         db.query(ScheduledEvent)
         .filter(ScheduledEvent.tenant_id == tenant_uuid(user))
@@ -161,12 +170,18 @@ def list_events(
     )
     if state:
         q = q.filter(ScheduledEvent.state == state)
+    if start:
+        q = q.filter(ScheduledEvent.end_time > start)
+    if end:
+        q = q.filter(ScheduledEvent.start_time < end)
     total = q.count()
     events = q.offset(offset).limit(limit).all()
     return {"items": [_to_out(e) for e in events], "total": total}
 
 
-@router.post("/events", status_code=201, summary="Create a scheduled event", dependencies=_WRITE)
+@router.post(
+    "/events", status_code=201, response_model=EventOut, summary="Create a scheduled event", dependencies=_WRITE
+)
 def create_event(
     body: EventIn,
     background: BackgroundTasks,
@@ -266,12 +281,12 @@ def _owned(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent:
     return get_owned(db, ScheduledEvent, lifecycle.event_id(event_id), user, not_found="Event not found")
 
 
-@router.get("/events/{event_id}", summary="Get a scheduled event")
+@router.get("/events/{event_id}", response_model=EventOut, summary="Get a scheduled event")
 def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     return _to_out(_owned(db, event_id, user))
 
 
-@router.put("/events/{event_id}", summary="Update a scheduled event", dependencies=_WRITE)
+@router.put("/events/{event_id}", response_model=EventOut, summary="Update a scheduled event", dependencies=_WRITE)
 def update_event(
     event_id: str,
     body: EventIn,
@@ -321,7 +336,7 @@ def update_event(
     return _to_out(evt, warnings)
 
 
-@router.post("/events/{event_id}/schedule", summary="Schedule a draft", dependencies=_WRITE)
+@router.post("/events/{event_id}/schedule", response_model=EventOut, summary="Schedule a draft", dependencies=_WRITE)
 def schedule_event(
     event_id: str,
     background: BackgroundTasks,
@@ -339,19 +354,23 @@ def schedule_event(
     return _move(db, user, evt, EventState.scheduled, warnings, background)
 
 
-@router.post("/events/{event_id}/activate", summary="Mark event as active", dependencies=_WRITE)
+@router.post(
+    "/events/{event_id}/activate", response_model=EventOut, summary="Mark event as active", dependencies=_WRITE
+)
 def activate_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """scheduled or provisioning -> active."""
     return _move(db, user, _owned(db, event_id, user), EventState.active)
 
 
-@router.post("/events/{event_id}/complete", summary="Mark event as completed", dependencies=_WRITE)
+@router.post(
+    "/events/{event_id}/complete", response_model=EventOut, summary="Mark event as completed", dependencies=_WRITE
+)
 def complete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """active -> completed."""
     return _move(db, user, _owned(db, event_id, user), EventState.completed)
 
 
-@router.post("/events/{event_id}/cancel", summary="Cancel an event", dependencies=_WRITE)
+@router.post("/events/{event_id}/cancel", response_model=EventOut, summary="Cancel an event", dependencies=_WRITE)
 def cancel_event(
     event_id: str,
     background: BackgroundTasks,
@@ -420,32 +439,36 @@ async def run_tick(db: Session = Depends(get_db)):
     return result.summary()
 
 
-@router.get("/timeline", summary="Resource timeline for capacity planning")
+@router.get("/timeline", response_model=TimelineOut, summary="Resource timeline for capacity planning")
 def resource_timeline(
     days: int = Query(7, ge=1, le=90),
+    start: UtcDateTime | None = Query(None, description="First slot (default: the current hour)"),
+    resolution_minutes: int = Query(60, description="Slot length: 15, 30 or 60"),
     db: Session = Depends(get_db),
 ):
-    """Return hourly resource commitment buckets for the next N days.
-    Used to render the capacity timeline chart in the dashboard."""
+    """Committed capacity per slot, build and teardown time included, so back-to-back
+    sessions are not counted as concurrent at a fine enough resolution. Feeds the
+    scheduler's load bars and the Range Ops heatmap."""
     from datetime import timedelta
 
+    if resolution_minutes not in (15, 30, 60):
+        raise HTTPException(422, "resolution_minutes must be 15, 30 or 60")
+    if days * 24 * 60 // resolution_minutes > 2880:
+        raise HTTPException(422, "Too many slots: shorten `days` or use a coarser resolution")
     provider = get_capacity_provider()
-    now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
-    buckets = []
-    for h in range(0, days * 24, 1):
-        t_start = now + timedelta(hours=h)
-        t_end = t_start + timedelta(hours=1)
-        committed = provider.committed(db, t_start, t_end)
-        c = committed.resources
-        buckets.append(
-            {
-                "time": t_start.isoformat(),
-                "vcpu_committed": c.vcpu,
-                "ram_mb_committed": c.ram_mb,
-                "disk_gb_committed": c.disk_gb,
-                "event_count": committed.events,
-            }
-        )
+    first = start or datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
+    step = timedelta(minutes=resolution_minutes)
+    series = provider.committed_series(db, first, first + timedelta(days=days), step)
+    buckets = [
+        {
+            "time": (first + i * step).isoformat(),
+            "vcpu_committed": c.resources.vcpu,
+            "ram_mb_committed": c.resources.ram_mb,
+            "disk_gb_committed": c.resources.disk_gb,
+            "event_count": c.events,
+        }
+        for i, c in enumerate(series)
+    ]
     supply = provider.supply()
     return {
         "buckets": buckets,
@@ -453,6 +476,9 @@ def resource_timeline(
         "cluster_ram_mb": supply.ram_mb,
         "cluster_disk_gb": supply.disk_gb,
         "supply_source": provider.supply_source,
+        "resolution_minutes": resolution_minutes,
+        "lead_minutes": int(PROVISION_LEAD.total_seconds() // 60),
+        "grace_minutes": int(TEARDOWN_GRACE.total_seconds() // 60),
     }
 
 

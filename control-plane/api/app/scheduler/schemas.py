@@ -89,6 +89,7 @@ class CapacityResult(BaseModel):
     overlapping_events: int
     message: str
     # What was asked for (from the template when one was given) and why it does not fit.
+    vm_count_needed: int = 0
     vcpu_needed: int = 0
     ram_mb_needed: int = 0
     disk_gb_needed: int = 0
@@ -116,3 +117,27 @@ class FeedTokenIssued(BaseModel):
     url: str = Field(description="HTTPS subscription URL; paste into Outlook 'Subscribe from web'")
     webcal_url: str = Field(description="The same URL as webcal://, for one-click subscribe")
     issued_at: datetime
+
+
+class EventListOut(BaseModel):
+    items: list[EventOut]
+    total: int
+
+
+class TimelineBucket(BaseModel):
+    time: datetime
+    vcpu_committed: int
+    ram_mb_committed: int
+    disk_gb_committed: int
+    event_count: int
+
+
+class TimelineOut(BaseModel):
+    buckets: list[TimelineBucket]
+    cluster_vcpu: int
+    cluster_ram_mb: int
+    cluster_disk_gb: int
+    supply_source: str
+    resolution_minutes: int
+    lead_minutes: int
+    grace_minutes: int

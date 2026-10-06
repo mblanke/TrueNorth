@@ -50,26 +50,12 @@ describe('DashboardComponent', () => {
       'listExercises',
       'hypervisorNodes',
       'getCapacity',
-      'listScheduledEvents',
-      'checkCapacity',
-      'createScheduledEvent',
-      'deleteScheduledEvent',
-      'getFeedToken',
-      'issueFeedToken',
-      'revokeFeedToken',
     ]);
     mockApi.health.and.returnValue(of(mockHealth));
     mockApi.listRanges.and.returnValue(of(mockRanges as Range[]));
     mockApi.listExercises.and.returnValue(of(mockExercises as Exercise[]));
     mockApi.hypervisorNodes.and.returnValue(of([]));
     mockApi.getCapacity.and.returnValue(of({}));
-    mockApi.listScheduledEvents.and.returnValue(of([]));
-    mockApi.checkCapacity.and.returnValue(of({}));
-    mockApi.createScheduledEvent.and.returnValue(of({}));
-    mockApi.deleteScheduledEvent.and.returnValue(of(void 0));
-    mockApi.getFeedToken.and.returnValue(of({ active: false, issued_at: null }));
-    mockApi.issueFeedToken.and.returnValue(of({ url: 'https://h/api/v1/schedule/feed/T.ics', webcal_url: 'webcal://h/api/v1/schedule/feed/T.ics', issued_at: '' }));
-    mockApi.revokeFeedToken.and.returnValue(of(void 0));
 
     await TestBed.configureTestingModule({
       imports: [
@@ -197,31 +183,17 @@ describe('DashboardComponent', () => {
     expect(empty.querySelector('a[href="/infrastructure"]')).not.toBeNull();
   });
 
-  it('does not show or fetch the schedule for a Student (ADR 0004)', () => {
+  it('neither fetches capacity nor offers the schedule to a Student (ADR 0004)', () => {
     canViewSchedule.set(false);
     fixture.detectChanges();
     expect(mockApi.getCapacity).not.toHaveBeenCalled();
-    expect(mockApi.listScheduledEvents).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).not.toContain('Schedule & resources');
+    expect(fixture.nativeElement.querySelector('a[href="/schedule"]')).toBeNull();
   });
 
-  it('shows and fetches the schedule for staff', () => {
+  it('links staff to the schedule', () => {
     fixture.detectChanges();
     expect(mockApi.getCapacity).toHaveBeenCalled();
-    expect(mockApi.listScheduledEvents).toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).toContain('Schedule & resources');
-  });
-
-  it('shows the calendar link once, after it is issued', () => {
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).not.toContain('schedule/feed/T.ics');
-    component.issueFeed();
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('https://h/api/v1/schedule/feed/T.ics');
-    expect(component.feedActive()).toBeTrue();
-    component.revokeFeed();
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).not.toContain('schedule/feed/T.ics');
+    expect(fixture.nativeElement.querySelector('a[href="/schedule"]')?.textContent).toContain('Plan the schedule');
   });
 
   it('usagePct() is null when a figure is not reported', () => {

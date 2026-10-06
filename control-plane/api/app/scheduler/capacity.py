@@ -60,6 +60,11 @@ class CapacityProvider(Protocol):
         """
         ...
 
+    def committed_series(self, db: Session, start: datetime, end: datetime, step: timedelta) -> list[Committed]:
+        """``committed`` for each slot [start + i*step, start + (i+1)*step) up to ``end``,
+        in one pass (the timeline and the scheduler's load bars)."""
+        ...
+
 
 class EnvCapacity:
     """Interim provider: supply from ``CLUSTER_TOTAL_*`` env vars, commitments from bookings only."""
@@ -94,6 +99,40 @@ class EnvCapacity:
             ),
             len(events),
         )
+
+    def committed_series(self, db: Session, start: datetime, end: datetime, step: timedelta) -> list[Committed]:
+        events = (
+            db.query(ScheduledEvent)
+            .filter(
+                ScheduledEvent.state.in_(COMMITTING_STATES),
+                ScheduledEvent.start_time < end + PROVISION_LEAD,
+                ScheduledEvent.end_time > start - TEARDOWN_GRACE,
+            )
+            .all()
+        )
+        held = [(_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, e) for e in events]
+        out: list[Committed] = []
+        t = _utc(start)
+        while t < _utc(end):
+            nxt = t + step
+            now = [e for a, z, e in held if a < nxt and z > t]
+            out.append(
+                Committed(
+                    Resources(
+                        sum(e.vcpu_total for e in now),
+                        sum(e.ram_mb_total for e in now),
+                        sum(e.disk_gb_total for e in now),
+                    ),
+                    len(now),
+                )
+            )
+            t = nxt
+        return out
+
+
+def _utc(dt: datetime) -> datetime:
+    """SQLite hands back naive datetimes; they are UTC (ADR 0004 §8)."""
+    return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def get_capacity_provider() -> CapacityProvider:
