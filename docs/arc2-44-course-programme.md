@@ -422,8 +422,13 @@ pattern for no-VM course production, not a bulk run of 44 unreviewed packages.
 
 Execution note (2026-10-05): the build carried out from this plan goes beyond the
 first slice. It covers E0–E3R and E5 as stacked branches from main, the three pilots
-produced end to end, and the remaining 41 courses as unreviewed drafts that are
-published only hidden. Draft status and SME review remain as described above.
+produced end to end, and the remaining 41 courses as unreviewed drafts. Drafts go
+through outline (accepted per wave), content and QA only: no instructor pack, sensors,
+range build or package. The register is `content/catalogue/production_register.csv`.
+Decisions taken on 2026-10-05: C206 is IR concepts and process (T) and C207 an
+evidence-based tabletop (P) that builds on it; C304 is drafted from
+`iot-security-foundations.yaml` under the catalogue title. Draft status and SME review
+remain as described above.
 
 ## 11. Verification of this plan
 
