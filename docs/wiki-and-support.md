@@ -64,10 +64,10 @@ reopen it. Their reply to a "Waiting on reporter" ticket moves it back to Open.
 ## Reviews
 
 Security and adversarial reviews ran on 2026-10-05. Every confirmed finding was fixed
-with a regression test. Two were deliberately left alone: a student can link a ticket to
-any range in their tenant, as they can already list them all through `GET /ranges`; and a
-NaN in any JSON float field makes FastAPI's 422 response itself fail with a 500, which is
-an app-wide issue outside this section.
+with a regression test. One was deliberately left alone: a student can link a ticket to
+any range in their tenant, as they can already list them all through `GET /ranges`. The
+app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
+`app/validation_errors.py`.
 
 ## Not in this version
 

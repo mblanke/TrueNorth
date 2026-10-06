@@ -145,6 +145,11 @@ app = FastAPI(
     servers=[{"url": SERVER_PREFIX}],
 )
 
+# -- 422s that survive NaN/Infinity input (app/validation_errors.py) --------
+from .validation_errors import install as install_validation_errors
+
+install_validation_errors(app)
+
 # -- CORS ------------------------------------------------------------------
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:4200,http://localhost:3000").split(",")
 app.add_middleware(

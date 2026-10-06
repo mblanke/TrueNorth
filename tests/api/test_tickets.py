@@ -347,21 +347,17 @@ class TestSecurityReviewFixes:
         assert len(client.get("/tickets", params={"q": "%"}).json()) == 1
         assert client.get("/tickets", params={"q": "_"}).json() == []
 
-    def test_nan_board_position_is_never_stored(self, client, instructor):
-        """NaN is refused. (FastAPI's default 422 body echoes the NaN and cannot encode it,
-        so the refusal itself surfaces as a 500 app-wide; what matters here is that the
-        value never reaches the database, where it would break every board load.)"""
-        from fastapi.testclient import TestClient
-
+    def test_nan_board_position_is_refused_and_never_stored(self, client, instructor):
+        """NaN is a 422 (app/validation_errors.py keeps the echoed input encodable) and never
+        reaches the database, where it would break every board load."""
         t = _file(client)
         with acting_as(instructor):
-            lenient = TestClient(client.app, raise_server_exceptions=False)
-            r = lenient.post(
+            r = client.post(
                 f"/tickets/{t['id']}/move",
                 content='{"status": "in_progress", "board_order": NaN}',
                 headers={"Content-Type": "application/json"},
             )
-            assert r.status_code >= 400
+            assert r.status_code == 422
             board = client.get("/tickets/board")
             assert board.status_code == 200
             card = next(c for col in board.json() for c in col["tickets"] if c["id"] == t["id"])
