@@ -24,7 +24,8 @@ from celery import Task, group
 from . import db_ops
 from .aar import build_report as build_aar_report
 from .celery_app import app
-from .detection import detection_scorer, range_index
+from . import telemetry
+from .detection import detection_scorer
 from .provisioners import discard_built, get_provisioner
 
 logger = logging.getLogger("truenorth.worker")
@@ -314,42 +315,18 @@ def run_scenario(self, exercise_id: str):
 # -- Telemetry Batch Ingest ----------------------------------------------
 @app.task(bind=True, name="worker.tasks.ingest_telemetry_batch")
 def ingest_telemetry_batch(self, range_id: str, events: list[dict]):
-    """Batch-ingest telemetry events into OpenSearch.
+    """Batch-ingest telemetry events into the range's index (worker/telemetry.py).
 
     At scale, the API buffers events and dispatches to this task
     to avoid blocking request threads on OpenSearch I/O.
     """
-    import httpx
-
-    os_url = os.getenv("OPENSEARCH_URL", "http://opensearch:9200")
-    index = range_index(range_id)
-
-    bulk_body = ""
-    for event in events:
-        event.setdefault("range_id", range_id)
-        event.setdefault("@timestamp", datetime.now(UTC).isoformat())
-        bulk_body += json.dumps({"index": {"_index": index}}) + "\n"
-        bulk_body += json.dumps(event) + "\n"
-
     try:
-        with httpx.Client(timeout=30) as client:
-            resp = client.post(
-                f"{os_url}/_bulk",
-                content=bulk_body,
-                headers={"Content-Type": "application/x-ndjson"},
-            )
-            resp.raise_for_status()
-            result = resp.json()
-            errors = result.get("errors", False)
-            if errors:
-                failed = [item for item in result.get("items", []) if item.get("index", {}).get("error")]
-                logger.warning(f"[telemetry] {len(failed)} events failed indexing")
+        indexed = telemetry.bulk_ingest(range_id, events)
     except Exception as e:
         logger.error(f"[telemetry] OpenSearch ingest error: {e}")
         raise
-
-    logger.info(f"[telemetry] Ingested {len(events)} events for range {range_id}")
-    return {"indexed": len(events), "range_id": range_id}
+    logger.info(f"[telemetry] Ingested {indexed} events for range {range_id}")
+    return {"indexed": indexed, "range_id": range_id}
 
 
 # ========================================================================

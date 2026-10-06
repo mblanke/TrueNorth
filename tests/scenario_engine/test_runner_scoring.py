@@ -49,3 +49,18 @@ def test_shipped_scenario_scores_against_the_range_index():
 
 def test_no_objectives_scores_nothing():
     assert evaluate_objectives({"objectives": []}, RANGE, event_store=NullEventStore()) == []
+
+
+def test_objective_without_a_query_is_unscored_not_match_all():
+    # Before 2026-10-06 the runner fell back to match_all: any event passed it.
+    scenario = {"objectives": [{"id": "o1", "validator": "opensearch_query", "params": {"min_hits": 0}, "points": 5}]}
+    [result] = evaluate_objectives(scenario, RANGE, event_store=NullEventStore([{"a": "b"}]))
+    assert result["passed"] is None and result["points_earned"] == 0
+    assert "no query" in result["unscored"]
+
+
+def test_min_hits_zero_does_not_pass_on_zero_hits():
+    scenario = {"objectives": [{"id": "o1", "validator": "opensearch_query",
+                                "params": {"query": "a:nothing", "min_hits": 0}, "points": 5}]}
+    [result] = evaluate_objectives(scenario, RANGE, event_store=NullEventStore([{"a": "b"}]))
+    assert result["passed"] is False and result["points_earned"] == 0

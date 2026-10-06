@@ -91,6 +91,7 @@ class ScoringResult:
     objectives: list[ObjectiveResult]
     time_elapsed: int  # seconds
     bonuses: list[dict[str, Any]]
+    unscored: dict[str, str] = field(default_factory=dict)  # objective id -> why it was not judged
 
 
 # ── Scoring Engine ──────────────────────────────────────────
@@ -136,15 +137,22 @@ class ScoringEngine:
 
     async def evaluate(self) -> ScoringResult:
         """Evaluate **all** objectives and return the aggregate result."""
+        from scenario_engine.scoring.validators import Unscored
+
         tasks = [self.evaluate_objective(oid) for oid in self.objectives]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         objective_results: list[ObjectiveResult] = []
-        for res in results:
-            if isinstance(res, Exception):
-                logger.error("Objective evaluation failed: %s", res)
-                continue
-            objective_results.append(res)
+        unscored: dict[str, str] = {}
+        for oid, res in zip(self.objectives, results, strict=True):
+            if isinstance(res, Unscored):
+                logger.warning("Objective %s not scored: %s", oid, res)
+                unscored[oid] = str(res)
+            elif isinstance(res, Exception):
+                logger.error("Objective %s evaluation failed: %s", oid, res)
+                unscored[oid] = f"evaluation failed: {res}"
+            else:
+                objective_results.append(res)
 
         self.total_score = sum(r.points_awarded for r in objective_results)
         percentage = (self.total_score / self.max_score * 100) if self.max_score else 0.0
@@ -164,6 +172,7 @@ class ScoringEngine:
             objectives=objective_results,
             time_elapsed=elapsed,
             bonuses=list(self._bonuses),
+            unscored=unscored,
         )
 
     async def evaluate_objective(self, objective_id: str) -> ObjectiveResult:

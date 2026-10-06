@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from app.search_backends import (
@@ -99,6 +101,22 @@ class TestOpenSearchBackend:
         )
         await self._make_backend().ingest("idx", _SAMPLE_EVENTS)
         assert route.calls.last.request.headers["Content-Type"] == "application/x-ndjson"
+
+    @pytest.mark.asyncio
+    async def test_ingest_stamps_server_time_over_anything_sent(self, respx_mock):
+        # Detection credit trusts truenorth.ingested_at (ADR 0005); a sender cannot set it.
+        route = respx_mock.post("http://mock-os:9200/_bulk").mock(
+            return_value=httpx.Response(200, json=_MOCK_BULK_RESPONSE)
+        )
+        forged = {"a": 1, "truenorth": {"ingested_at": "1999-01-01T00:00:00+00:00"},
+                  "truenorth.ingested_at": "1999-01-01T00:00:00+00:00", "@timestamp": "1999-01-01T00:00:00Z"}
+        await self._make_backend().ingest("idx", [forged])
+        lines = route.calls.last.request.content.decode().splitlines()
+        doc = json.loads(lines[1])
+        assert "truenorth.ingested_at" not in doc
+        assert doc["truenorth"]["ingested_at"] > "2026"
+        assert doc["@timestamp"] == "1999-01-01T00:00:00Z"  # the sender's claim, kept for display
+        assert forged["truenorth"]["ingested_at"].startswith("1999")  # the caller's dict is not mutated
 
     @pytest.mark.asyncio
     async def test_search_success(self, respx_mock):

@@ -69,12 +69,15 @@ instructor can see every attempt.
 
 ### 3. The exercise window is server time
 
-- Ingest (API `POST /telemetry/...` and worker `ingest_telemetry_batch`) stamps
-  `event.ingested` with the server's own clock and overwrites any value the sender sent.
-  `@timestamp` stays the sensor's claim, for display only.
-- The window is `exercise.started_at <= event.ingested <= (completed_at or now)`.
-  Telemetry from before this change has no `event.ingested`, so it is excluded, and so is
-  telemetry from earlier exercises on a reused range.
+- Ingest stamps `truenorth.ingested_at` with the server's own clock and drops anything
+  the sender put under `truenorth`. That covers the API's search backend
+  (`OpenSearchBackend.ingest`) and the worker's `ingest_telemetry_batch`
+  (`worker/telemetry.py`). It is not ECS `event.ingested` because many feeds send `event`
+  as a string, and the two would clash in the mapping. `@timestamp` stays the sensor's
+  claim, for display only.
+- The window is `exercise.started_at <= truenorth.ingested_at <= (completed_at or now)`.
+  Telemetry from before this change has no `truenorth.ingested_at`, so it is excluded, and
+  so is telemetry from earlier exercises on a reused range.
 
 ### 4. Only instructors acknowledge objectives
 

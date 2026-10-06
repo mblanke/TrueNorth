@@ -168,6 +168,8 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
     engine = ScoringEngine(range_ctx["range_id"], objectives, event_store=store)
     scored = asyncio.run(engine.evaluate())
     validators = {o.get("id", "unknown"): o.get("validator", "") for o in scenario.get("objectives", [])}
+    # An objective the engine could not judge (no query, store down) is reported as
+    # unscored with its reason, never as failed.
     return [
         {
             "id": r.objective_id,
@@ -177,6 +179,9 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
             "points_earned": r.points_awarded,
         }
         for r in scored.objectives
+    ] + [
+        {"id": oid, "validator": validators.get(oid, ""), "passed": None, "unscored": why, "points_earned": 0}
+        for oid, why in scored.unscored.items()
     ]
 
 

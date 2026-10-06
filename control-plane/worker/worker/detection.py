@@ -33,16 +33,12 @@ from typing import Any
 import yaml
 
 from . import db_ops
+from .telemetry import range_index
 
 logger = logging.getLogger("truenorth.worker.detection")
 
 QUERY_VALIDATORS = frozenset({"opensearch_query", "validate.opensearch_query"})
 EVIDENCE_EVENTS = 5  # matched events kept on the objective row
-
-
-def range_index(range_id: str) -> str:
-    """The event index a range's telemetry is ingested into."""
-    return f"range-{range_id}"
 
 
 def detection_scorer(exercise_id: str, session: Callable, backend: str) -> DetectionScorer | None:

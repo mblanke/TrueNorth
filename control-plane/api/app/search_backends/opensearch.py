@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import HTTPException
@@ -20,6 +21,18 @@ from fastapi import HTTPException
 from .base import BaseSearchBackend
 
 logger = logging.getLogger("truenorth.search.opensearch")
+
+
+def stamp_ingested(event: dict, now: str) -> dict:
+    """The event as stored, with ``truenorth.ingested_at`` set from this server's clock.
+
+    Detection credit matches the exercise window on this field, never on the sender's
+    ``@timestamp`` (ADR 0005). Any ``truenorth`` field the sender supplied is dropped first,
+    so no sender can place an event inside a window.
+    """
+    out = {k: v for k, v in event.items() if k != "truenorth" and not k.startswith("truenorth.")}
+    out["truenorth"] = {"ingested_at": now}
+    return out
 
 
 class OpenSearchBackend(BaseSearchBackend):
@@ -49,10 +62,11 @@ class OpenSearchBackend(BaseSearchBackend):
     async def ingest(self, index: str, events: list[dict]) -> int:
         if not events:
             return 0
+        now = datetime.now(UTC).isoformat()
         bulk_body = ""
         for event in events:
             bulk_body += json.dumps({"index": {"_index": index}}) + "\n"
-            bulk_body += json.dumps(event) + "\n"
+            bulk_body += json.dumps(stamp_ingested(event, now), default=str) + "\n"
         try:
             async with httpx.AsyncClient(**self._client_kwargs()) as client:
                 resp = await client.post(
