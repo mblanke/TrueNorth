@@ -46,8 +46,9 @@ What users need:
   must be ready when the session starts.
 - **Staff** see the calendar. Admins, Instructors, range-ops and observers can view it.
 - **Students do not see the calendar** (decided 2026-10-04). They don't see other
-  bookings, capacity, the timeline or anyone else's schedule. The one exception: a
-  Student may get their *own* sessions, and nothing else, in a personal feed (slice 5).
+  bookings, capacity, the timeline or anyone else's schedule. They do get their *own*
+  sessions, and nothing else, in the app, in a personal feed and by email (confirmed
+  2026-10-06, slice 10).
 
 ## Decision
 1. **One package:** `control-plane/api/app/scheduler/`. It contains `models.py`,
@@ -291,7 +292,17 @@ What users need:
 9. Platform administrator for platform-wide settings (done: `rbac.is_platform_admin`;
    `GET /schedule/policy` reports `can_change`).
 10. Students: bookings name a course; its active Students get their own sessions in a
-    feed, invites and reminders.
+    feed, invites and reminders (done: `scheduled_events.course_id`, migration
+    `e8f9a0b1c2d3`).
+    - The class is the course's active enrolments (`enrollment.active_students`),
+      read at send time, so it never drifts.
+    - Students see their sessions at `GET /schedule/mine` (no capacity, no other
+      people) and in a feed of their own. They manage the feed through the
+      `/schedule/feed-token` endpoints, which now need only sign-in.
+    - Each recipient gets their own invite and reminder. Changing a booking's course
+      cancels it for the previous class.
+    - The dashboard shows Students "Your sessions" with "Add to my calendar".
+    - Students still get 403 on the calendar, capacity and timeline.
 11. A booking creates its range (from the template) and its exercise (from a
     scenario) when none is linked.
 8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button. The

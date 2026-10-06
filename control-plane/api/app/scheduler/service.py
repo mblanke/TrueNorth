@@ -9,17 +9,18 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from .. import range_lifecycle
 from ..auth import CurrentUser
-from ..models import AuditLog, Range, RangeState, Template, User, UserRole
+from ..enrollment import active_course_ids
+from ..models import AuditLog, Course, Range, RangeState, Template, User, UserRole
 from ..range_topology import template_demand
-from ..tenancy import get_owned, tenant_uuid
+from ..tenancy import get_owned, get_owned_or_global, tenant_uuid
 from .capacity import (
     PROVISION_LEAD,
     TEARDOWN_GRACE,
@@ -149,6 +150,13 @@ def resolve_instructor(db: Session, user: CurrentUser, instructor_id: str | None
     return iid
 
 
+def resolve_course(db: Session, user: CurrentUser, course_id: str | None) -> uuid.UUID | None:
+    """The class: a course of the caller's tenant, or a shared catalogue course."""
+    if not course_id:
+        return None
+    return get_owned_or_global(db, Course, course_id, user, not_found="Course not found").id
+
+
 def resolve_range(db: Session, user: CurrentUser, range_id: str | None) -> uuid.UUID | None:
     """A booked range must be the caller's tenant's (404 otherwise, as for any range),
     and must still be buildable: a destroyed range cannot be provisioned again."""
@@ -237,6 +245,29 @@ def audit(db: Session, user: CurrentUser, action: str, resource_id: str, detail:
     )
 
 
+def my_sessions(db: Session, user: CurrentUser) -> list[ScheduledEvent]:
+    """Upcoming (and today's) sessions that are yours: ones you teach, and for a Student
+    the sessions of courses you are enrolled in. Drafts and cancellations are left out."""
+    me = user_uuid(user)
+    mine = [ScheduledEvent.instructor_id == me]
+    if user.role == UserRole.student and me:
+        courses = active_course_ids(db, me)
+        if courses:
+            mine.append(ScheduledEvent.course_id.in_(courses))
+    return (
+        db.query(ScheduledEvent)
+        .filter(
+            ScheduledEvent.tenant_id == tenant_uuid(user),
+            ScheduledEvent.state.in_(HOLDING),
+            ScheduledEvent.end_time > datetime.now(UTC) - timedelta(hours=12),
+            or_(*mine),
+        )
+        .order_by(ScheduledEvent.start_time)
+        .limit(50)
+        .all()
+    )
+
+
 def release_range(db: Session, evt: ScheduledEvent) -> str | None:
     """Tear down the range this booking built, if it still holds one.
 
@@ -300,6 +331,7 @@ def to_out(e: ScheduledEvent, warnings: list[str] | None = None) -> dict:
         template_id=str(e.template_id) if e.template_id else None,
         instructor_id=str(e.instructor_id) if e.instructor_id else None,
         created_by=str(e.created_by) if e.created_by else None,
+        course_id=str(e.course_id) if e.course_id else None,
         start_time=as_utc(e.start_time),
         end_time=as_utc(e.end_time),
         vm_count=e.vm_count,

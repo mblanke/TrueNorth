@@ -31,6 +31,7 @@ from .schemas import (
     EventOut,
     FeedTokenIssued,
     FeedTokenStatus,
+    MySessionOut,
     PolicyIn,
     PolicyOut,
     TimelineOut,
@@ -196,6 +197,7 @@ def create_event(
     service.serialize_bookings(db)
     range_id = service.resolve_range(db, user, body.range_id)
     instructor_id = service.resolve_instructor(db, user, body.instructor_id)
+    course_id = service.resolve_course(db, user, body.course_id)
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
     demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
     warnings = [] if body.draft else _admit(db, body, demand.resources, range_id, instructor_id)
@@ -208,6 +210,7 @@ def create_event(
         range_id=range_id,
         template_id=uuid.UUID(body.template_id) if body.template_id else None,
         instructor_id=instructor_id,
+        course_id=course_id,
         created_by=service.user_uuid(user),
         start_time=body.start_time,
         end_time=body.end_time,
@@ -233,10 +236,14 @@ def _announce(
     evt: ScheduledEvent,
     method: str,
     previous_instructor: uuid.UUID | None = None,
+    previous_course: uuid.UUID | None = None,
 ) -> None:
     """After the response: email the invite (slice 6) and sync any external calendar
     (CALENDAR_BACKEND, slice 7). Both are built now, while the session is open."""
-    background.add_task(invites.send, invites.plan(db, evt, method, previous_instructor=previous_instructor))
+    background.add_task(
+        invites.send,
+        invites.plan(db, evt, method, previous_instructor=previous_instructor, previous_course=previous_course),
+    )
     background.add_task(calendar_backends.push, invites.neutral_event(db, evt), method == "CANCEL")
 
 
@@ -311,7 +318,8 @@ def update_event(
         else _admit(db, body, demand.resources, range_id, instructor_id, exclude_id=evt.id)
     )
 
-    previous_instructor = evt.instructor_id
+    previous_instructor, previous_course = evt.instructor_id, evt.course_id
+    course_id = service.resolve_course(db, user, body.course_id)
     if not _same_instant(evt.start_time, body.start_time):
         evt.reminded_at = None  # moved: remind again for the new time
     evt.name = body.name
@@ -325,6 +333,7 @@ def update_event(
     evt.range_id = range_id
     evt.template_id = uuid.UUID(body.template_id) if body.template_id else None
     evt.instructor_id = instructor_id
+    evt.course_id = course_id
     if evt.state != EventState.draft:  # a draft was never sent to a calendar
         evt.sequence = (evt.sequence or 0) + 1  # calendars replace their copy
     service.audit(db, user, "update", str(evt.id))
@@ -332,7 +341,7 @@ def update_event(
     db.commit()
     db.refresh(evt)
     if evt.state == EventState.scheduled:  # an updated invite: same UID, higher SEQUENCE
-        _announce(background, db, evt, "REQUEST", previous_instructor)
+        _announce(background, db, evt, "REQUEST", previous_instructor, previous_course)
     return _to_out(evt, warnings)
 
 
@@ -482,14 +491,28 @@ def resource_timeline(
     }
 
 
-# -- Calendar feed (ADR 0004 §6) ----------------------------------------------
-@router.get("/feed-token", response_model=FeedTokenStatus, summary="Whether you have a calendar feed")
+# -- Your own: sessions and calendar feed (every signed-in user, Students included) --
+# Students hold no schedule:read (ADR 0004): they never see the calendar, capacity or
+# anyone else. They do get their own sessions, here and in their feed.
+me_router = APIRouter(prefix="/schedule", tags=["scheduling"], dependencies=[Depends(get_current_user)])
+
+
+@me_router.get("/mine", response_model=list[MySessionOut], summary="Your upcoming sessions")
+def my_sessions(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Sessions you teach, and for Students the sessions of courses they are enrolled in."""
+    return [
+        MySessionOut(**{k: v for k, v in _to_out(e).items() if k in MySessionOut.model_fields})
+        for e in service.my_sessions(db, user)
+    ]
+
+
+@me_router.get("/feed-token", response_model=FeedTokenStatus, summary="Whether you have a calendar feed")
 def feed_token_status(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     issued = feed.issued_at(db, user)
     return FeedTokenStatus(active=issued is not None, issued_at=issued)
 
 
-@router.post("/feed-token", response_model=FeedTokenIssued, summary="Create or regenerate your calendar feed URL")
+@me_router.post("/feed-token", response_model=FeedTokenIssued, summary="Create or regenerate your calendar feed URL")
 def feed_token_issue(request: Request, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """Returns the subscription URL once. Regenerating stops the previous URL working."""
     token = feed.issue(db, user)
@@ -499,7 +522,7 @@ def feed_token_issue(request: Request, db: Session = Depends(get_db), user: Curr
     return FeedTokenIssued(url=url, webcal_url=feed.webcal(url), issued_at=feed.issued_at(db, user))
 
 
-@router.delete("/feed-token", status_code=204, response_class=Response, summary="Revoke your calendar feed URL")
+@me_router.delete("/feed-token", status_code=204, response_class=Response, summary="Revoke your calendar feed URL")
 def feed_token_revoke(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     if feed.revoke(db, user):
         service.audit(db, user, "feed_token_revoked", str(user.id))

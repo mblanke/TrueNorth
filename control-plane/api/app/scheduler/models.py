@@ -43,6 +43,8 @@ class ScheduledEvent(TimestampMixin, Base):
     # Who teaches it (one session per instructor at a time) and who booked it.
     instructor_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    # The class: its course's active Students attend (feed, invites, reminders).
+    course_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("courses.id"), nullable=True)
 
     # Schedule
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

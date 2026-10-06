@@ -28,8 +28,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from .. import range_lifecycle
-from ..models import User
-from . import lifecycle, service
+from . import invites, lifecycle, service
 from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, window_label
 from .models import EventState, ScheduledEvent
 
@@ -125,13 +124,13 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
             res.torn_down += 1
         db.commit()
 
-    # 4. Reminders, once per booking, to its instructor.
+    # 4. Reminders, once per booking, to its Instructor and its course's Students.
     if timedelta(0) < REMINDER_LEAD:
         for evt in _due(
             db,
             ScheduledEvent.state.in_([S.scheduled, S.provisioning]),
             ScheduledEvent.reminded_at.is_(None),
-            ScheduledEvent.instructor_id.isnot(None),
+            ScheduledEvent.instructor_id.isnot(None) | ScheduledEvent.course_id.isnot(None),
             ScheduledEvent.start_time > now,
             ScheduledEvent.start_time <= now + REMINDER_LEAD,
         ):
@@ -143,10 +142,13 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
             if claimed != 1:
                 db.rollback()
                 continue
-            teacher = db.get(User, evt.instructor_id)
-            if teacher and teacher.email and teacher.is_active and teacher.deleted_at is None:
-                res.reminders.append(_reminder(evt, teacher.email))
-                service.audit_system(db, evt, "reminder", "instructor emailed")
+            people = invites.recipients(db, evt)
+            res.reminders += [_reminder(evt, to, attending) for to, attending in people]
+            if people:
+                students = sum(1 for _, attending in people if attending)
+                service.audit_system(
+                    db, evt, "reminder", f"emailed {len(people) - students} instructor, {students} student(s)"
+                )
             db.commit()
     return res
 
@@ -163,18 +165,18 @@ def _claim(db: Session, evt: ScheduledEvent, to: EventState) -> bool:
         return False
 
 
-def _reminder(evt: ScheduledEvent, to: str) -> Reminder:
+def _reminder(evt: ScheduledEvent, to: str, attending: bool = False) -> Reminder:
     when = window_label(evt.start_time, evt.end_time)
-    return Reminder(
-        event_id=str(evt.id),
-        to=to,
-        subject=f"Reminder: {evt.name}, {when}",
-        body=(
+    body = (
+        f"You are attending '{evt.name}' {when}.\n"
+        if attending
+        else (
             f"You are teaching '{evt.name}' {when}.\n\n"
             f"The range is built {int(PROVISION_LEAD.total_seconds() // 60)} minutes before the start "
             f"and torn down {int(TEARDOWN_GRACE.total_seconds() // 60)} minutes after the end.\n"
-        ),
+        )
     )
+    return Reminder(event_id=str(evt.id), to=to, subject=f"Reminder: {evt.name}, {when}", body=body)
 
 
 async def send_reminders(reminders: list[Reminder]) -> None:

@@ -188,12 +188,14 @@ describe('DashboardComponent', () => {
     fixture.detectChanges();
     expect(mockApi.getCapacity).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('a[href="/schedule"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('tn-my-sessions')).not.toBeNull();
   });
 
   it('links staff to the schedule', () => {
     fixture.detectChanges();
     expect(mockApi.getCapacity).toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('a[href="/schedule"]')?.textContent).toContain('Plan the schedule');
+    expect(fixture.nativeElement.querySelector('tn-my-sessions')).toBeNull();
   });
 
   it('usagePct() is null when a figure is not reported', () => {

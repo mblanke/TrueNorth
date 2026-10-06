@@ -11,8 +11,8 @@ cannot sign in to Keycloak, so the feed URL carries a long random per-user token
   nginx ``access_log off``);
 - the feed holds only what its owner may see: their tenant's bookings.
 
-Students hold no ``schedule:read`` and so get no feed. Their own-sessions feed waits
-for bookings to know their attendees (an open question in the ADR).
+Students hold no ``schedule:read``: their feed holds only the sessions of courses they
+are enrolled in (decided 2026-10-06), with no capacity and no other people.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from fastapi import Request
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..models import User
+from ..models import User, UserRole
 from ..rbac import Permission, user_has_permission
 from . import ics
 from .models import EventState, FeedToken, ScheduledEvent
@@ -79,18 +79,24 @@ def owner_for(db: Session, token: str) -> User | None:
     owner = db.get(User, row.user_id)
     if owner is None or not owner.is_active or owner.deleted_at is not None:
         return None
-    if not user_has_permission(owner, Permission.SCHEDULE_READ):
+    if not (user_has_permission(owner, Permission.SCHEDULE_READ) or owner.role == UserRole.student):
         return None
     return owner
 
 
 def render(db: Session, owner: User, now: datetime | None = None) -> str:
-    """The owner's feed: their tenant's bookings from 30 days back to a year ahead."""
+    """The owner's feed, from 30 days back to a year ahead: staff see their tenant's
+    bookings; a Student sees only the sessions of courses they are enrolled in."""
     now = now or datetime.now(UTC)
+    scope = [ScheduledEvent.tenant_id == owner.tenant_id]
+    if not user_has_permission(owner, Permission.SCHEDULE_READ):
+        from ..enrollment import active_course_ids
+
+        scope.append(ScheduledEvent.course_id.in_(active_course_ids(db, owner.id) or [None]))
     events = (
         db.query(ScheduledEvent)
         .filter(
-            ScheduledEvent.tenant_id == owner.tenant_id,
+            *scope,
             ScheduledEvent.state.in_(FEED_STATES),
             ScheduledEvent.end_time >= now - HISTORY,
             ScheduledEvent.start_time <= now + HORIZON,

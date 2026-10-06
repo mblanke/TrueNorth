@@ -4519,6 +4519,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedule/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your upcoming sessions
+         * @description Sessions you teach, and for Students the sessions of courses they are enrolled in.
+         */
+        get: operations["my_sessions_schedule_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedule/policy": {
         parameters: {
             query?: never;
@@ -6698,6 +6718,11 @@ export interface components {
         };
         /** EventIn */
         EventIn: {
+            /**
+             * Course Id
+             * @description The class: this course's active Students attend
+             */
+            course_id?: string | null;
             /** Description */
             description?: string | null;
             /**
@@ -6760,6 +6785,8 @@ export interface components {
         };
         /** EventOut */
         EventOut: {
+            /** Course Id */
+            course_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -7747,6 +7774,30 @@ export interface components {
             score: number;
             /** Status */
             status: string;
+        };
+        /**
+         * MySessionOut
+         * @description A session as a Student sees it: no capacity, no other people.
+         */
+        MySessionOut: {
+            /** Description */
+            description: string | null;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
         };
         /** NationOut */
         NationOut: {
@@ -18521,6 +18572,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_sessions_schedule_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MySessionOut"][];
                 };
             };
         };

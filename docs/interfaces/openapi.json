@@ -3391,6 +3391,18 @@
       },
       "EventIn": {
         "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The class: this course's active Students attend",
+            "title": "Course Id"
+          },
           "description": {
             "anyOf": [
               {
@@ -3515,6 +3527,17 @@
       },
       "EventOut": {
         "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -5961,6 +5984,54 @@
           "attempts"
         ],
         "title": "ModuleProgressOut",
+        "type": "object"
+      },
+      "MySessionOut": {
+        "description": "A session as a Student sees it: no capacity, no other people.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "state",
+          "start_time",
+          "end_time"
+        ],
+        "title": "MySessionOut",
         "type": "object"
       },
       "NationOut": {
@@ -25271,6 +25342,37 @@
           }
         },
         "summary": "Calendar feed (iCalendar)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/mine": {
+      "get": {
+        "description": "Sessions you teach, and for Students the sessions of courses they are enrolled in.",
+        "operationId": "my_sessions_schedule_mine_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MySessionOut"
+                  },
+                  "title": "Response My Sessions Schedule Mine Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Your upcoming sessions",
         "tags": [
           "scheduling"
         ]

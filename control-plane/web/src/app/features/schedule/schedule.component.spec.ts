@@ -54,8 +54,9 @@ describe('ScheduleComponent', () => {
 
   beforeEach(async () => {
     scheduler = jasmine.createSpyObj('SchedulerApiService',
-      ['list', 'create', 'update', 'schedule', 'cancel', 'check', 'timeline', 'getPolicy', 'setPolicy', 'feedStatus', 'issueFeed', 'revokeFeed']);
+      ['list', 'create', 'update', 'schedule', 'cancel', 'check', 'timeline', 'getPolicy', 'setPolicy', 'feedStatus', 'issueFeed', 'revokeFeed', 'courses']);
     scheduler.timeline.and.returnValue(of(TIMELINE));
+    scheduler.courses.and.returnValue(of({ items: [{ id: 'c204', name: 'C204 Security Monitoring' }], total: 1, limit: 200, offset: 0 } as any));
     scheduler.getPolicy.and.returnValue(of({ overcapacity: 'block', can_change: true }));
     scheduler.setPolicy.and.callFake(p => of({ overcapacity: p, can_change: true }));
     scheduler.feedStatus.and.returnValue(of({ active: false, issued_at: null }));
@@ -119,6 +120,7 @@ describe('ScheduleComponent', () => {
     expect(text()).toContain('Fits.');
     button('Book it')!.click();
     const body = scheduler.create.calls.mostRecent().args[0];
+    expect(body.course_id).toBeNull();
     expect(body.template_id).toBe('tpl-soc');
     expect(body.instructor_id).toBe('me');
     expect(new Date(body.start_time).getHours()).toBe(9);
@@ -146,6 +148,17 @@ describe('ScheduleComponent', () => {
     fixture.detectChanges();
     expect(text()).toContain('Can’t book: double-booked');
     expect(button('Book it')!.disabled).toBeTrue();
+  }));
+
+  it('books for a class, whose Students are then invited', fakeAsync(() => {
+    as('instructor');
+    component.startBooking();
+    component.patch({ name: 'Cohort 3', templateId: 'tpl-soc', courseId: 'c204' });
+    tick(300);
+    fixture.detectChanges();
+    expect(text()).toContain('C204 Security Monitoring');
+    button('Book it')!.click();
+    expect(scheduler.create.calls.mostRecent().args[0].course_id).toBe('c204');
   }));
 
   it('offers only ranges that can still be built', () => {

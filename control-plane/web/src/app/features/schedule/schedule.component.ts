@@ -7,7 +7,7 @@ import { forkJoin, of, catchError } from 'rxjs';
 import { ApiService } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
 import {
-  Booking, BookingIn, CapacityResult, OvercapacityPolicy, SchedulerApiService, Timeline,
+  Booking, BookingIn, CapacityResult, CourseOption, OvercapacityPolicy, SchedulerApiService, Timeline,
 } from '@core/services/scheduler-api.service';
 import type { RangeSummary, TemplateSummary, User } from '@core/models';
 import {
@@ -17,7 +17,7 @@ import {
 
 interface Form {
   id?: string; name: string; templateId: string; date: string; from: string; to: string;
-  rangeId: string; instructorId: string; draft: boolean;
+  rangeId: string; instructorId: string; courseId: string; draft: boolean;
 }
 
 const ROW = 46; // px per hour
@@ -84,6 +84,12 @@ const ROW = 46; // px per hour
           <div class="three"><label class="field"><span>Day</span><input class="input" type="date" [ngModel]="f.date" (ngModelChange)="patch({ date: $event })"></label>
             <label class="field"><span>From</span><input class="input" type="time" step="900" [ngModel]="f.from" (ngModelChange)="patch({ from: $event })"></label>
             <label class="field"><span>To</span><input class="input" type="time" step="900" [ngModel]="f.to" (ngModelChange)="patch({ to: $event })"></label></div>
+          <label class="field"><span>Class</span>
+            <select class="input" [ngModel]="f.courseId" (ngModelChange)="patch({ courseId: $event })">
+              <option value="">No class</option>
+              @for (c of courses(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }
+            </select>
+            <small>Its enrolled Students get the session in their calendar, an invite and a reminder.</small></label>
           <div class="two"><label class="field"><span>Range</span>
               <select class="input" [ngModel]="f.rangeId" (ngModelChange)="patch({ rangeId: $event })">
                 <option value="">None yet</option>
@@ -189,6 +195,7 @@ const ROW = 46; // px per hour
       <dl class="kv"><dt>When</dt><dd>{{ hhmm(b.start_time) }}–{{ hhmm(b.end_time) }}</dd>
         <dt>Instructor</dt><dd>{{ b.instructor_id ? personName(b.instructor_id) : 'Nobody yet' }}</dd>
         <dt>Range</dt><dd>{{ b.range_id ? rangeName(b.range_id) : 'none yet' }}</dd>
+        @if (b.course_id) { <dt>Class</dt><dd>{{ courseName(b.course_id) }}</dd> }
         <dt>Size</dt><dd>{{ b.vm_count }} VMs · {{ b.vcpu_total }} vCPU · {{ gb(b.ram_mb_total) }} GB · {{ disk(b.disk_gb_total) }}</dd>
         @if (b.range_id && b.state !== 'draft') { <dt>Range builds</dt><dd>{{ buildAt(b) }} · torn down {{ teardownAt(b) }}</dd> }
         @if (b.state !== 'draft' && b.instructor_id) { <dt>Reminder</dt><dd>Emailed to the instructor 24 h before</dd> }</dl>
@@ -324,6 +331,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   readonly templates = signal<TemplateSummary[]>([]);
   readonly ranges = signal<RangeSummary[]>([]);
   readonly people = signal<User[]>([]);
+  readonly courses = signal<CourseOption[]>([]);
   readonly policy = signal<OvercapacityPolicy>('block');
   readonly canChangePolicy = signal(false);
   readonly selected = signal<Booking | null>(null);
@@ -475,7 +483,10 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.load();
     this.api.listTemplates(200).subscribe({ next: t => this.templates.set(t), error: () => {} });
     this.api.listRanges(200).subscribe({ next: r => this.ranges.set(r), error: () => {} });
-    if (this.canBook()) this.api.listUsers().subscribe({ next: u => this.people.set(u), error: () => {} });
+    if (this.canBook()) {
+      this.api.listUsers().subscribe({ next: u => this.people.set(u), error: () => {} });
+      this.scheduler.courses().subscribe({ next: c => this.courses.set(c.items), error: () => {} });
+    }
     this.scheduler.getPolicy().subscribe({
       next: p => { this.policy.set(p.overcapacity); this.canChangePolicy.set(!!p.can_change); },
       error: () => {},
@@ -527,7 +538,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.submitError.set(null);
     this.check.set(null);
     this.form.set({
-      name: '', templateId: '', date: isoDate(day), from: '09:00', to: '12:00', rangeId: '',
+      name: '', templateId: '', date: isoDate(day), from: '09:00', to: '12:00', rangeId: '', courseId: '',
       instructorId: this.role() === 'instructor' && me ? me.id : '', draft: false,
     });
   }
@@ -537,7 +548,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.submitError.set(null);
     this.form.set({
       id: b.id, name: b.name, templateId: b.template_id ?? '', date: isoDate(s), from: hhmm(s), to: hhmm(e),
-      rangeId: b.range_id ?? '', instructorId: b.instructor_id ?? '', draft: b.state === 'draft',
+      rangeId: b.range_id ?? '', instructorId: b.instructor_id ?? '', courseId: b.course_id ?? '', draft: b.state === 'draft',
     });
     this.selected.set(null);
     this.runCheck();
@@ -566,7 +577,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const f = this.form(); if (!f) return;
     const body: BookingIn = {
       name: f.name, start_time: at(f.date, f.from).toISOString(), end_time: at(f.date, f.to).toISOString(),
-      template_id: f.templateId || null, range_id: f.rangeId || null, instructor_id: this.formInstructor(f), draft,
+      template_id: f.templateId || null, range_id: f.rangeId || null, instructor_id: this.formInstructor(f),
+      course_id: f.courseId || null, draft,
     };
     this.busy.set(true);
     const call = f.id ? this.scheduler.update(f.id, body) : this.scheduler.create(body);
@@ -661,6 +673,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const src = t.supply_source === 'env' ? 'env fallback' : t.supply_source;
     return `${src} (${t.cluster_vcpu} vCPU · ${gb(t.cluster_ram_mb)} GB · ${diskLabel(t.cluster_disk_gb)})`;
   }
+  courseName(id: string): string { return this.courses().find(c => c.id === id)?.name ?? 'a course'; }
   rangeName(id: string): string { return this.ranges().find(r => r.id === id)?.name ?? 'a range'; }
   templateName(id: string): string { return this.templates().find(t => t.id === id)?.name ?? 'template'; }
   personName(id: string): string {

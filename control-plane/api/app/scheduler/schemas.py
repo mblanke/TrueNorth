@@ -36,6 +36,7 @@ class EventIn(BaseModel):
     instructor_id: str | None = Field(
         None, description="Who teaches it; defaults to the caller when they are an instructor"
     )
+    course_id: str | None = Field(None, description="The class: this course's active Students attend")
     draft: bool = Field(False, description="Create as a draft: holds nothing and is not checked until scheduled")
 
 
@@ -49,6 +50,7 @@ class EventOut(BaseModel):
     template_id: str | None
     instructor_id: str | None = None
     created_by: str | None = None
+    course_id: str | None = None
     start_time: datetime
     end_time: datetime
     vm_count: int
@@ -142,3 +144,14 @@ class TimelineOut(BaseModel):
     resolution_minutes: int
     lead_minutes: int
     grace_minutes: int
+
+
+class MySessionOut(BaseModel):
+    """A session as a Student sees it: no capacity, no other people."""
+
+    id: str
+    name: str
+    description: str | None
+    state: str
+    start_time: datetime
+    end_time: datetime

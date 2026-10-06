@@ -14,6 +14,8 @@ export type Timeline = S['TimelineOut'];
 export type OvercapacityPolicy = S['PolicyOut']['overcapacity'];
 export type FeedIssued = S['FeedTokenIssued'];
 export type FeedStatus = S['FeedTokenStatus'];
+export type MySession = S['MySessionOut'];
+export type CourseOption = S['CourseListOut'];
 
 /**
  * The scheduler's HTTP contract (docs/adr/0004-scheduler-module.md), typed from the
@@ -42,6 +44,16 @@ export class SchedulerApiService {
   }
   cancel(id: string): Observable<Booking> {
     return this.http.post<Booking>(`${this.base}/events/${id}/cancel`, {});
+  }
+
+  /** Your own upcoming sessions: ones you teach, or for a Student, your courses'. */
+  mine(): Observable<MySession[]> {
+    return this.http.get<MySession[]>(`${this.base}/mine`);
+  }
+  /** Courses a booking can be for (its class). */
+  courses(): Observable<S['PaginatedResponse_CourseListOut_']> {
+    const params = new HttpParams().set('limit', 200).set('include_retired', false);
+    return this.http.get<S['PaginatedResponse_CourseListOut_']>(`${environment.apiUrl}/courses`, { params });
   }
 
   // ── Capacity ─────────────────────────────────────────────

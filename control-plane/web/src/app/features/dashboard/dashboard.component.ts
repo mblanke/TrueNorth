@@ -16,6 +16,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
+import { MySessionsComponent } from '../schedule/my-sessions.component';
 import { DirectoryApiService } from '@core/services/directory-api.service';
 import { RangeSummary, ExerciseSummary, HealthResponse, HypervisorNode } from '@core/models';
 import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective, MotionService } from '../../shared/motion';
@@ -57,7 +58,7 @@ interface DeploymentProfile {
   imports: [
     CommonModule, RouterModule, FormsModule, MatCardModule, MatIconModule,
     MatButtonModule, MatChipsModule, MatProgressBarModule, MatTooltipModule,
-    MatDividerModule, MatFormFieldModule, MatInputModule, MatSnackBarModule,
+    MatDividerModule, MatFormFieldModule, MatInputModule, MatSnackBarModule, MySessionsComponent,
     MatDialogModule, CountUpDirective, EnterStaggerDirective, HoverLiftDirective,
   ],
   template: `
@@ -72,6 +73,10 @@ interface DeploymentProfile {
         </div>
       </div>
 
+      @if (!auth.canViewSchedule()) {
+        <!-- Students: their own sessions and calendar link (ADR 0004); never the schedule itself -->
+        <tn-my-sessions />
+      }
       <section class="workspace-launcher" aria-label="Choose your next task">
         <a class="workspace-primary" routerLink="/learning/career-path">
           <span class="workspace-eyebrow">Learn & develop</span>

@@ -44,8 +44,9 @@ def organizer() -> str:
     return os.getenv("SCHEDULER_ORGANIZER_EMAIL") or os.getenv("SMTP_FROM") or "scheduler@truenorth.local"
 
 
-def build(evt: ScheduledEvent, method: str, to: str) -> Invite:
-    """One invite for one recipient, for the booking as it is now."""
+def build(evt: ScheduledEvent, method: str, to: str, attending: bool = False) -> Invite:
+    """One invite for one recipient, for the booking as it is now. ``attending``: a
+    Student of the class rather than its Instructor."""
     when = window_label(evt.start_time, evt.end_time)
     cancelled = method == "CANCEL"
     event = ics.IcsEvent(
@@ -65,7 +66,9 @@ def build(evt: ScheduledEvent, method: str, to: str) -> Invite:
         to=to,
         subject=f"{verb}: {evt.name}, {when}",
         body=(
-            f"'{evt.name}' has been cancelled ({when}).\n" if cancelled else f"You are teaching '{evt.name}' {when}.\n"
+            f"'{evt.name}' has been cancelled ({when}).\n"
+            if cancelled
+            else f"You are {'attending' if attending else 'teaching'} '{evt.name}' {when}.\n"
         ),
         method=method,
         calendar=ics.calendar([event], method=method, name="TrueNorth Range"),
@@ -89,18 +92,47 @@ def instructor_email(db: Session, instructor_id: uuid.UUID | None) -> str | None
     return u.email
 
 
+def recipients(db: Session, evt: ScheduledEvent) -> list[tuple[str, bool]]:
+    """(email, attending) for everyone a booking concerns: its Instructor, and the active
+    Students of its course. Each gets only their own invite, never the others' names."""
+    out: list[tuple[str, bool]] = []
+    teacher = instructor_email(db, evt.instructor_id)
+    if teacher:
+        out.append((teacher, False))
+    out += [(e, True) for e in student_emails(db, evt.course_id) if e != teacher]
+    return out
+
+
+def student_emails(db: Session, course_id: uuid.UUID | None) -> list[str]:
+    if not course_id:
+        return []
+    from ..enrollment import active_students
+
+    return sorted({u.email for u in active_students(db, course_id) if u.email})
+
+
 def plan(
-    db: Session, evt: ScheduledEvent, method: str, *, previous_instructor: uuid.UUID | None = None
+    db: Session,
+    evt: ScheduledEvent,
+    method: str,
+    *,
+    previous_instructor: uuid.UUID | None = None,
+    previous_course: uuid.UUID | None = None,
 ) -> list[Invite]:
-    """The invites a change to ``evt`` calls for. Built now, while the session is open."""
-    out: list[Invite] = []
-    to = instructor_email(db, evt.instructor_id)
-    if to:
-        out.append(build(evt, method, to))
+    """The invites a change to ``evt`` calls for. Built now, while the session is open.
+    People it no longer concerns (a previous Instructor, the Students of a previous
+    course) get a cancellation."""
+    now = recipients(db, evt)
+    out = [build(evt, method, to, attending) for to, attending in now]
+    current = {to for to, _ in now}
+    gone: list[tuple[str, bool]] = []
     if previous_instructor and previous_instructor != evt.instructor_id:
         old = instructor_email(db, previous_instructor)
         if old:
-            out.append(build(evt, "CANCEL", old))
+            gone.append((old, False))
+    if previous_course and previous_course != evt.course_id:
+        gone += [(e, True) for e in student_emails(db, previous_course)]
+    out += [build(evt, "CANCEL", to, attending) for to, attending in gone if to not in current]
     return out
 
 

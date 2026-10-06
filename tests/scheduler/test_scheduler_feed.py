@@ -113,17 +113,22 @@ def test_regenerating_kills_the_old_url_and_revoking_kills_the_new_one(client, d
     assert client.get(new).status_code == 404
 
 
-def test_students_cannot_have_a_feed(client, db_session):
+def test_a_student_can_have_a_feed_of_their_own_sessions(client, db_session):
+    """Decided 2026-10-06: Students get their own sessions in Outlook (see test_scheduler_students)."""
     with signed_in(_user(db_session, UserRole.student)):
-        assert client.post("/schedule/feed-token").status_code == 403
+        assert client.post("/schedule/feed-token").status_code == 200
 
 
-def test_losing_the_role_closes_the_feed_at_the_next_fetch(client, db_session):
+def test_losing_staff_access_narrows_the_feed_to_your_own_sessions(client, db_session):
     u = _user(db_session)
+    _booking(db_session, "Someone else's class")
     url = _path(_issue(client, u)["url"])
+    assert "Someone else's class" in client.get(url).text
     u.role = UserRole.student
     db_session.flush()
-    assert client.get(url).status_code == 404
+    r = client.get(url)
+    assert r.status_code == 200
+    assert "Someone else's class" not in r.text
 
 
 def test_a_deactivated_account_closes_the_feed(client, db_session):
