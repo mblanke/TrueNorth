@@ -55,6 +55,7 @@ from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Exercise, Range, User, UserRole
 from ..models_tickets import SupportQueue, Ticket, TicketActivity, TicketAttachment, TicketComment
+from ..notify import existing_user_ids, notify, staff_ids
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import get_owned, tenant_uuid
 
@@ -378,6 +379,28 @@ def _log(db: Session, t: Ticket, user: CurrentUser, field: str, old, new) -> Non
     )
 
 
+def _tell(
+    db: Session, t: Ticket, user: CurrentUser, recipients, title: str, message: str = "", kind: str = "ticket"
+) -> None:
+    """Notify `recipients` (user ids) about ticket `t`, never the actor, only real users of the tenant."""
+    notify(
+        db,
+        tenant_id=t.tenant_id,
+        user_ids=existing_user_ids(db, t.tenant_id, recipients),
+        actor_id=uuid.UUID(user.id),
+        title=f"TN-{t.number}: {title}",
+        message=message or t.subject,
+        link=f"/support/{t.id}",
+        kind=kind,
+    )
+
+
+def _tell_status(db: Session, t: Ticket, user: CurrentUser, old_status: str) -> None:
+    """The reporter hears when someone else moves their ticket to a new status."""
+    if t.status != old_status:
+        _tell(db, t, user, [t.reporter_id], f"now {t.status.replace('_', ' ')}", kind="ticket_status")
+
+
 def _set_status(t: Ticket, status: str) -> None:
     t.status = status
     if status == "resolved":
@@ -698,6 +721,9 @@ def create_ticket(
         raise HTTPException(503, "Could not allocate a ticket number, please retry")
 
     _log(db, t, user, "created", "", f"TN-{t.number}")
+    _tell(db, t, user, staff_ids(db, tid), "new ticket", kind="ticket_new")
+    if t.assignee_id:
+        _tell(db, t, user, [t.assignee_id], "assigned to you", kind="ticket_assigned")
     _audit(db, user, "ticket_create", str(t.id))
     db.commit()
     db.refresh(t)
@@ -754,7 +780,11 @@ def update_ticket(
             if drop:
                 data[field] = None
 
+    old_status, old_assignee = t.status, t.assignee_id
     _apply(db, t, user, data)
+    _tell_status(db, t, user, old_status)
+    if t.assignee_id and t.assignee_id != old_assignee:
+        _tell(db, t, user, [t.assignee_id], "assigned to you", kind="ticket_assigned")
     _audit(db, user, "ticket_update", str(t.id))
     db.commit()
     db.refresh(t)
@@ -793,7 +823,9 @@ def move_ticket(
         )
         db.expire(t)
     else:
+        old_status = t.status
         _apply(db, t, user, {"status": body.status, "board_order": body.board_order})
+        _tell_status(db, t, user, old_status)
     _audit(db, user, "ticket_move", str(t.id))
     db.commit()
     db.refresh(t)
@@ -841,9 +873,19 @@ def add_comment(
     db.add(c)
     # The reporter answering puts the ticket back in the queue: a "waiting on you" ticket,
     # and also a resolved or closed one ("still broken"), which no staff view lists as
-    # open work. There are no notifications, so leaving the status would bury the reply.
-    if t.status in ("waiting", "resolved", "closed") and str(t.reporter_id) == user.id and not body.is_internal:
+    # open work, so leaving the status would bury the reply.
+    from_reporter = str(t.reporter_id) == user.id
+    if t.status in ("waiting", "resolved", "closed") and from_reporter and not body.is_internal:
         _apply(db, t, user, {"status": "open"})
+    preview = body.body.strip().splitlines()[0][:200] if body.body.strip() else ""
+    if body.is_internal:
+        _tell(db, t, user, [t.assignee_id], "internal note", preview, kind="ticket_note")
+    elif from_reporter:
+        # Whoever owns it; if nobody does yet, every staff member.
+        who = [t.assignee_id] if t.assignee_id else staff_ids(db, t.tenant_id)
+        _tell(db, t, user, who, "reporter replied", preview, kind="ticket_reply")
+    else:
+        _tell(db, t, user, [t.reporter_id], "new reply", preview, kind="ticket_reply")
     if not body.is_internal:
         # An internal note must leave no trace the reporter can see, not even a
         # newer "updated" time or a re-sorted list.

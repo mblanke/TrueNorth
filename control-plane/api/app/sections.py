@@ -7,7 +7,7 @@ migration-completeness checks. Code that needs a section's models imports that m
 """
 
 # Core models first (alphabetical order happens to give that): the sections refer to them.
-from . import models, models_network, models_range_ops, models_tickets, models_wiki  # noqa: F401
+from . import models, models_network, models_notifications, models_range_ops, models_tickets, models_wiki  # noqa: F401
 from .db import Base
 from .noise import models as noise_models  # noqa: F401
 

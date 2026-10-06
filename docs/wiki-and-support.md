@@ -34,8 +34,27 @@ Approved mockup: `docs/mockups/wiki-tickets.html` (PNGs in `docs/mockups/wiki-ti
 
 A reporter can edit their ticket's subject and details ("Edit subject and details" on the
 ticket), close it once resolved, and reopen it. Their reply to a ticket that is waiting on
-them, resolved or closed moves it back to Open: there are no notifications, and no staff
-view lists finished tickets as work, so a "still broken" reply would otherwise be missed.
+them, resolved or closed moves it back to Open, because no staff view lists finished
+tickets as work.
+
+## Notifications
+
+The bell in the toolbar shows the signed-in user's unread count (refreshed every minute
+and on each page change) and their latest notifications; clicking one marks it read and
+opens the ticket. Nobody is told about their own action.
+
+| Event | Who is told |
+|---|---|
+| New ticket | every staff member of the tenant |
+| Ticket assigned | the assignee |
+| Staff reply, or status change by someone else | the reporter |
+| Reporter reply | the assignee, or every staff member if unassigned |
+| Internal note | the assignee (never the reporter) |
+
+Rows live in the `notifications` table (`app/models_notifications.py`), written by
+`app/notify.py` in the same transaction as the change; `/notifications` serves only the
+caller's own. In-app only for now: no email, and no live push (the WebSocket
+`send_to_user` path exists but the bell polls).
 
 ## Behaviour worth knowing
 
@@ -85,9 +104,7 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 
 ## Not in this version
 
-- Notifications. TrueNorth has no persistent in-app notification store yet (the
-  `notifications` service keeps them in memory, and no router uses it). Staff use the
-  "Assigned to me" tab.
+- Email notifications, and live push for the bell (it polls once a minute).
 - AI triage ("ask AI", "run diagnostics") from the March design.
 - Images inside wiki pages, and full-text search through OpenSearch (search is
   title/body/tags matching in the database today).

@@ -10,6 +10,7 @@ import {
 } from '@angular/router';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { NotificationBellComponent } from './shared/notification-bell.component';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -50,7 +51,8 @@ const isBareRoute = (url: string): boolean =>
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
-    MatExpansionModule
+    MatExpansionModule,
+    NotificationBellComponent,
 ],
   template: `
     @if (isBareRoute()) {
@@ -109,6 +111,8 @@ const isBareRoute = (url: string): boolean =>
             <span class="toolbar-kicker">Workspace <span class="kicker-sep">/</span> <strong>{{ workspaceTitle() }}</strong></span>
 
             <span class="spacer"></span>
+
+            <tn-notification-bell />
 
             <details class="appearance-menu">
               <summary>Appearance</summary>
