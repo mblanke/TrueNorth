@@ -161,9 +161,17 @@ def claim(session_factory, in_state, range_id: str, state: str | None) -> str | 
     ``in_state(range_id, state)`` says whether the range is in ``state``; a ``state`` of
     None means the lease alone (a restore, which has no in-progress range state)."""
     holder = uuid.uuid4().hex
-    with session_factory() as db:
-        leased = _claim_lease(db, range_id, holder)
-    matches = state is None or bool(in_state(range_id, state))
+    try:
+        with session_factory() as db:
+            leased = _claim_lease(db, range_id, holder)
+    except sa.exc.IntegrityError:  # the range row is gone (deleted): a late copy
+        return None
+    try:
+        matches = state is None or bool(in_state(range_id, state))
+    except BaseException:  # never leave the lease behind on a failed check
+        if leased:
+            release(session_factory, range_id, holder)
+        raise
     if leased and matches:
         return holder
     if leased:

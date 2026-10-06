@@ -259,8 +259,11 @@ def test_the_task_time_limit_ends_a_task_before_the_broker_redelivers_it():
     from worker.celery_app import app
 
     visibility = app.conf.broker_transport_options["visibility_timeout"]
-    assert app.conf.task_soft_time_limit < app.conf.task_time_limit < visibility
-    assert app.conf.task_time_limit < fencing.LEASE_SECONDS
+    for task in (tasks.provision_range, tasks.destroy_range, tasks.snapshot_range, tasks.restore_snapshot):
+        assert task.soft_time_limit < task.time_limit < visibility, task.name
+        assert task.time_limit < fencing.LEASE_SECONDS, task.name
+    # Only range tasks: a health check over every range must not be cut off at 55 minutes.
+    assert tasks.health_check_ranges.soft_time_limit is None
 
 
 def test_the_soft_limit_is_final_not_retried():
@@ -311,7 +314,11 @@ def test_after_the_soft_limit_the_range_is_failed_and_stays_leased(db, requeued)
     rid = _range(db, "destroying", OUTPUT)
     restore = _soft_limit_after(0.3)
     try:
-        with patch.object(tasks, "_get_backend", return_value=StuckBackend()), pytest.raises(SoftTimeLimitExceeded):
+        with (
+            patch.object(tasks, "_get_backend", return_value=StuckBackend()),
+            patch.object(tasks, "_last_attempt", return_value=False),  # final because of the limit, not the count
+            pytest.raises(SoftTimeLimitExceeded),
+        ):
             tasks.destroy_range.run(rid)
     finally:
         restore()
@@ -375,3 +382,57 @@ def test_on_postgres_a_second_copy_while_the_first_runs_does_nothing(postgres_en
     with factory() as s:
         assert s.get(m.Range, rng.id).state == m.RangeState.ready
         assert s.execute(sa.text("select count(*) from range_leases")).scalar() == 0
+
+
+# ── From the adversarial review of 2ab83f0 ──────────────────────────────
+
+
+def test_a_failed_state_check_gives_the_lease_back(db):
+    rid = _range(db, "provisioning")
+    with patch.object(tasks, "_in_state", side_effect=RuntimeError("database went away")), pytest.raises(RuntimeError):
+        tasks.provision_range.run(rid)
+    assert _leases(db, rid) == 0, "a lab would wait out the whole lease for its build"
+    assert tasks.provision_range.run(rid)["status"] == "ready"
+
+
+def test_a_late_copy_for_a_deleted_range_is_skipped_not_retried(db):
+    """range_leases.range_id references ranges.id: on PostgreSQL the lease insert for a
+    deleted range raises IntegrityError, which ReliableTask would retry three times."""
+    rid = _range(db, "destroyed")
+
+    def gone(*a, **k):
+        raise sa.exc.IntegrityError("INSERT INTO range_leases", {}, Exception("violates foreign key"))
+
+    with patch.object(fencing, "_claim_lease", gone), patch.object(tasks, "_get_backend") as backend:
+        assert tasks.destroy_range.run(rid)["status"] == "skipped"
+    backend.assert_not_called()
+
+
+def test_a_restore_cut_off_by_the_soft_limit_marks_the_range_failed(db, monkeypatch):
+    """The revert may still be running in a thread: the range is not as it was."""
+    rid = _range(db, "ready", OUTPUT)
+    sid = str(uuid.uuid4())
+    with db.begin() as conn:
+        conn.execute(
+            sa.text(
+                "INSERT INTO range_snapshots (id, range_id, snapshot_state, snapshot_data, range_state_at_snapshot) "
+                "VALUES (:i, :r, 'restoring', '{\"snapshot_name\": \"tnx\"}', 'ready')"
+            ),
+            {"i": sid, "r": rid},
+        )
+
+    class StuckBackend:
+        async def restore(self, *a, **k):
+            await asyncio.to_thread(time.sleep, 2)
+
+    restore = _soft_limit_after(0.3)
+    try:
+        with (
+            patch.object(tasks, "_get_backend", return_value=StuckBackend()),
+            patch.object(tasks, "_last_attempt", return_value=False),
+            pytest.raises(SoftTimeLimitExceeded),
+        ):
+            tasks.restore_snapshot.run(rid, sid)
+    finally:
+        restore()
+    assert _state(db, rid)[0] == "failed" and _leases(db, rid) == 1

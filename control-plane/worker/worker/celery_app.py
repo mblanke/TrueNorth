@@ -17,6 +17,8 @@ from kombu import Exchange, Queue
 from .contracts import QUEUES, route_table
 from .fencing import SOFT_TIME_LIMIT, TASK_TIME_LIMIT
 
+RANGE_TASK_LIMITS = {"soft_time_limit": SOFT_TIME_LIMIT, "time_limit": TASK_TIME_LIMIT}
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 app = Celery("truenorth", broker=REDIS_URL, backend=REDIS_URL)
@@ -42,19 +44,19 @@ app.conf.update(
     task_acks_late=True,  # Don't ack until task completes
     worker_prefetch_multiplier=1,  # One task at a time per worker thread
     worker_max_tasks_per_child=100,  # Recycle workers to prevent memory leaks
-    # worker/fencing.py: the soft limit is raised inside the task (it records `failed` and
-    # keeps the range's lease); the hard limit kills the process, below the broker's
-    # visibility timeout, so a running task is never redelivered alongside itself.
-    task_soft_time_limit=SOFT_TIME_LIMIT,
-    task_time_limit=TASK_TIME_LIMIT,
     # Result backend
     result_expires=3600,
     # Rate limiting (applied per worker)
     # Provisioning: max 10 per minute per worker to avoid Proxmox overload
     # With 8 workers: 80 provisions/min = ~4,800/hr
+    # Range tasks (worker/fencing.py): the soft limit is raised inside the task (it records
+    # `failed` and keeps the range's lease); the hard limit kills the process, below the
+    # broker's visibility timeout, so a running task is never redelivered alongside itself.
     task_annotations={
-        "worker.tasks.provision_range": {"rate_limit": "10/m"},
-        "worker.tasks.destroy_range": {"rate_limit": "15/m"},
+        "worker.tasks.provision_range": {"rate_limit": "10/m", **RANGE_TASK_LIMITS},
+        "worker.tasks.destroy_range": {"rate_limit": "15/m", **RANGE_TASK_LIMITS},
+        "worker.tasks.snapshot_range": RANGE_TASK_LIMITS,
+        "worker.tasks.restore_snapshot": RANGE_TASK_LIMITS,
         "worker.tasks.ingest_telemetry_batch": {"rate_limit": "100/m"},
     },
     # Retry

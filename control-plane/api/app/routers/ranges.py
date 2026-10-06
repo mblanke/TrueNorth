@@ -90,6 +90,22 @@ def _dispatch_task(task_name: str, *args: Any) -> str | None:
     return dispatch(task_name, *args)
 
 
+def _send_or_undo(db: Session, moved: list[tuple[Range, RangeState]], task_name: str, *args: Any) -> str:
+    """Send a range task after its state change committed. If the broker refuses it, put
+    each range back where it was (only if it is still where this request moved it) and
+    answer 503: the worker builds or tears down only a range left in that state
+    (worker/fencing.py), so an unsent task otherwise left it there for good."""
+    task_id = _dispatch_task(task_name, *args)
+    if task_id is None:
+        for rng, previous in moved:
+            db.query(Range).filter(Range.id == rng.id, Range.state == rng.state).update(
+                {Range.state: previous}, synchronize_session=False
+            )
+        db.commit()
+        raise HTTPException(503, "The task queue is not reachable; nothing was started. Try again shortly.")
+    return task_id
+
+
 # ── CRUD ───────────────────────────────────────────────────────────────
 def _tenant_range(db: Session, range_id: uuid.UUID, user: CurrentUser) -> Range:
     """Fetch a range scoped to the caller's tenant, or 404.
@@ -500,9 +516,9 @@ async def provision_range(
     rng = _changeable_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.provisioning):
         raise HTTPException(409, f"Cannot provision range in state {rng.state.value}")
-    rng.state = RangeState.provisioning
+    previous, rng.state = rng.state, RangeState.provisioning
     db.commit()
-    _dispatch_task("provision_range", str(rng.id))
+    _send_or_undo(db, [(rng, previous)], "provision_range", str(rng.id))
     _audit(db, user, "provision", "range", str(rng.id))
     db.commit()
     db.refresh(rng)
@@ -519,9 +535,9 @@ async def destroy_range(
     rng = _changeable_range(db, range_id, user)
     if not rng.state.can_transition_to(RangeState.destroying):
         raise HTTPException(409, f"Cannot destroy range in state {rng.state.value}")
-    rng.state = RangeState.destroying
+    previous, rng.state = rng.state, RangeState.destroying
     db.commit()
-    _dispatch_task("destroy_range", str(rng.id))
+    _send_or_undo(db, [(rng, previous)], "destroy_range", str(rng.id))
     _audit(db, user, "destroy", "range", str(rng.id))
     db.commit()
     db.refresh(rng)
@@ -560,12 +576,13 @@ def batch_provision_ranges(
             raise HTTPException(409, f"Range {rng.id} in state {rng.state.value} cannot be provisioned")
     # As a single provision: recorded (provisioning) and committed before the task is sent.
     # The worker builds only a range in provisioning (worker/fencing.py).
+    moved = [(rng, rng.state) for rng in ranges_found]
     for rng in ranges_found:
         rng.state = RangeState.provisioning
+    db.commit()
+    task_id = _send_or_undo(db, moved, "batch_provision", range_ids)
     _audit(db, user, "batch_provision", "range", f"{len(range_ids)} ranges")
     db.commit()
-    task = _dispatch_task("batch_provision", range_ids)
-    task_id = task if isinstance(task, str) else "mock-batch"
     return BatchProvisionOut(dispatched=len(range_ids), task_id=task_id)
 
 

@@ -235,12 +235,10 @@ def provision_range(self, range_id: str):
         raise
 
 
-@app.task(bind=True, name="worker.tasks.batch_provision")
+@app.task(base=ReliableTask, bind=True, name="worker.tasks.batch_provision")
 def batch_provision(self, range_ids: list[str]):
-    """Provision multiple ranges in parallel using a Celery group.
-
-    At 70k-VM scale, ranges are queued with rate limiting.
-    The group dispatches individual provision tasks.
+    """Provision multiple ranges in parallel using a Celery group, rate limited. Retried
+    on a failure: the API moved every range to provisioning, and re-sent copies are fenced.
     """
     logger.info(f"[batch] Dispatching {len(range_ids)} ranges for provisioning")
 
@@ -999,7 +997,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
         return {"status": "restored", "range_id": range_id, "state": original_state}
 
     except Exception as e:
-        if changed:
+        if changed or isinstance(e, FINAL_ERRORS):  # cut off by the time limit: the revert may still be running
             # Some VMs reverted and some did not, so the range matches neither its old
             # state nor the snapshot. Guarded, because this runs on every failed attempt,
             # retries included: the old unconditional write stamped `failed` over a
