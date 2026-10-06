@@ -3,18 +3,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 from .models import OvercapacityPolicy
+
+# A time without a zone is taken as UTC (ADR 0004 §8), so naive and aware values compare.
+UtcDateTime = Annotated[datetime, AfterValidator(lambda v: v.replace(tzinfo=UTC) if v.tzinfo is None else v)]
 
 
 class EventIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
-    start_time: datetime
-    end_time: datetime
+    start_time: UtcDateTime
+    end_time: UtcDateTime
     # Ignored when template_id is set: the template's VM specs decide the size.
     vm_count: int = Field(0, ge=0)
     vcpu_total: int = Field(0, ge=0)
@@ -54,8 +58,8 @@ class EventOut(BaseModel):
 
 
 class CapacityCheck(BaseModel):
-    start_time: datetime
-    end_time: datetime
+    start_time: UtcDateTime
+    end_time: UtcDateTime
     vcpu_needed: int = 0
     ram_mb_needed: int = 0
     disk_gb_needed: int = 0
