@@ -12,8 +12,9 @@
 
 Every operation runs under the session's lease (run_locked), so the sweep in every API
 process, page polls and relaunches never act on one session at once; worker tasks are
-sent only after the transaction that asked for them commits, and one the broker refuses
-is kept on the session and sent again by the sweep. Networks return to the pool only
+written to the session in the transaction that asks for them and sent only after it
+commits, still under the lease. One the broker refuses, or one whose process died before
+sending it, stays on the session and the sweep sends it again. Networks return to the pool only
 after the VMs are destroyed and leftovers were looked for. Worker tasks are the existing
 range tasks; this module writes no hypervisor state itself.
 """
@@ -63,9 +64,10 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 BASELINE = "lab-baseline"
-OUTBOX = "lab_outbox"  # tasks queued on a DB session, sent after its commit
+OUTBOX = "lab_outbox"  # sessions (under our lease) whose pending tasks go out after commit
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_EVIDENCE_ITEMS = 200
+LEASE_SECONDS = 120
 
 
 class LabRefusedError(ValueError):
@@ -176,36 +178,44 @@ def range_template(profile: dict[str, Any], port_groups: dict[str, str], name: s
 
 # ── dispatch: after commit, never lost ────────────────────────────────
 #
-# Tasks are queued on the session's database session and sent only by flush_outbox(),
-# which callers run after their commit: a worker must never look for rows the API has not
-# committed yet. A task the broker refuses is kept on the session (``pending``) and the
-# sweep sends it again, so a broker blip never leaves a lab stuck mid-step.
+# A task is written to the session (``pending``) in the transaction that asks for it, so
+# it commits with the state change or not at all. flush_outbox() sends it after the
+# commit, while the caller still holds the session's lease, and only then removes it: a
+# worker never looks for rows the API has not committed, and a process that dies between
+# the commit and the send leaves the task on the session for the sweep, once the dead
+# process's lease runs out. A task the broker refuses stays too. Delivery is at least
+# once: a crash after the send and before its removal sends it again.
+
+
+def _hold(db: Session, session: LabSession) -> None:
+    """This transaction holds the session's lease and sends its pending tasks after commit."""
+    held = db.info.setdefault(OUTBOX, [])
+    if session.id not in held:
+        held.append(session.id)
 
 
 def _send(db: Session, session: LabSession, task: str, *args: Any) -> None:
-    db.info.setdefault(OUTBOX, []).append((session.id, task, list(args)))
+    session.pending = json.dumps(json.loads(session.pending or "[]") + [[task, list(args)]])
+    _hold(db, session)
 
 
 def flush_outbox(db: Session) -> int:
-    """Send what this transaction queued. Call after commit. Returns tasks not sent."""
-    outbox = db.info.pop(OUTBOX, [])
+    """Send the pending tasks of the sessions this transaction held, then let their leases
+    go. Call after commit. Returns tasks not sent (kept, in order, for the sweep)."""
     unsent = 0
-    for session_id, task, args in outbox:
-        if _dispatch(task, *args) is not None:
-            continue
-        unsent += 1
+    for session_id in db.info.pop(OUTBOX, []):
         session = db.get(LabSession, session_id)
-        if session is not None:
-            session.pending = json.dumps(json.loads(session.pending or "[]") + [[task, args]])
-    if unsent:
-        db.commit()
+        if session is None:
+            continue
+        kept: list[list[Any]] = []
+        for task, args in json.loads(session.pending or "[]"):
+            if kept or _dispatch(task, *args) is None:  # never send past a refused task
+                kept.append([task, args])
+        session.pending = json.dumps(kept)
+        unsent += len(kept)
+        release(session)
+    db.commit()
     return unsent
-
-
-def _resend_pending(db: Session, session: LabSession) -> None:
-    for task, args in json.loads(session.pending or "[]"):
-        _send(db, session, task, *args)
-    session.pending = "[]"
 
 
 def _set_state(session: LabSession, state: str) -> None:
@@ -219,7 +229,7 @@ def _in_state_for(session: LabSession, now: datetime) -> timedelta:
     return now - _aware(session.state_since or session.created_at or now)
 
 
-def claim(db: Session, session: LabSession, seconds: int = 120) -> bool:
+def claim(db: Session, session: LabSession, seconds: int = LEASE_SECONDS) -> bool:
     """Take the session's lease, so one process advances it at a time (sweeps in every API
     process, page polls and launches all meet here). False if another holds it."""
     now = _now()
@@ -412,6 +422,9 @@ def launch(
         backend=backend(),
         vcpu=sum(n["vcpu"] for n in profile["nodes"]),
         ram_mb=sum(n["ram_mb"] for n in profile["nodes"]),
+        # Held by this launch until flush_outbox() has sent its tasks: a sweep must not
+        # send them a second time in between.
+        lease_until=now + timedelta(seconds=LEASE_SECONDS),
     )
     try:
         with db.begin_nested():
@@ -422,6 +435,7 @@ def launch(
         if existing is None:
             raise
         return existing, False
+    _hold(db, session)
     _start(db, session, profile)
     db.flush()
     return session, True
@@ -500,7 +514,7 @@ def advance(db: Session, session: LabSession) -> LabSession:
     rng = db.get(Range, session.range_id) if session.range_id else None
     state = session.state
     if session.pending and session.pending != "[]":
-        _resend_pending(db, session)
+        _hold(db, session)  # left by a refusal or a process that died before sending
 
     if state == QUEUED:
         if _in_state_for(session, now) > timedelta(seconds=_int_env("LAB_QUEUE_TIMEOUT", 7200)):
@@ -730,9 +744,9 @@ def run_locked(db: Session, session: LabSession, fn, *args: Any, busy_ok: bool =
         release(session)
         db.commit()
         raise
-    release(session)
-    db.commit()
-    flush_outbox(db)
+    _hold(db, session)
+    db.commit()  # the lease is still ours: no sweep sends these tasks in between
+    flush_outbox(db)  # sends, then releases the lease
     return result
 
 

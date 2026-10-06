@@ -447,6 +447,59 @@ class TestDispatch:
         service.flush_outbox(db_session)
         assert [c[0] for c in worker.calls] == ["provision_range"]
 
+    # F19 (docs/review/codereview1.md): the process dies after the commit, before the send.
+
+    def _later(self, monkeypatch, minutes=5):
+        """The restarted process's clock: past any lease the dead one held."""
+        later = service._now() + timedelta(minutes=minutes)
+        monkeypatch.setattr(service, "_now", lambda: later)
+
+    def test_a_launch_task_lost_with_its_process_is_sent_after_restart(self, lab, db_session, worker, monkeypatch):
+        _, rid, _ = lab
+        s = student(db_session)
+        session, _ = service.launch(
+            db_session, tenant_id=s.tenant_id, user_id=s.id, release_id=rid, activity_id="mod_006"
+        )
+        db_session.commit()
+        db_session.info.pop(service.OUTBOX, None)  # the process dies here: the send never happens
+        assert worker.calls == []
+        self._later(monkeypatch)
+        service.sweep(db_session)
+        assert worker.calls == [("provision_range", str(session.range_id))]
+
+    def test_a_reset_task_lost_with_its_process_is_sent_after_restart(self, lab, db_session, worker, monkeypatch):
+        _, rid, _ = lab
+        session, _ = launch(db_session, student(db_session), rid)
+        until(db_session, session, "ready")
+        sent = len(worker.calls)
+
+        def die(db):
+            db.info.pop(service.OUTBOX, None)
+            raise SystemExit("process died after the commit")
+
+        monkeypatch.setattr(service, "flush_outbox", die)
+        with pytest.raises(SystemExit):
+            act(db_session, service.reset, session)
+        assert session.state == "resetting" and len(worker.calls) == sent
+        monkeypatch.undo()  # restarted process: real flush, real workers' fakes
+        monkeypatch.setattr(service, "_dispatch", worker.dispatch)
+        self._later(monkeypatch)
+        service.sweep(db_session)
+        assert [c[0] for c in worker.calls[sent:]] == ["restore_snapshot"]
+
+    def test_a_sweep_between_the_commit_and_the_send_does_not_send_twice(self, lab, db_session, worker):
+        _, rid, _ = lab
+        s = student(db_session)
+        session, _ = service.launch(
+            db_session, tenant_id=s.tenant_id, user_id=s.id, release_id=rid, activity_id="mod_006"
+        )
+        db_session.commit()
+        outbox = db_session.info.pop(service.OUTBOX, None)  # another process sweeps meanwhile
+        service.sweep(db_session)
+        db_session.info[service.OUTBOX] = outbox
+        service.flush_outbox(db_session)
+        assert worker.calls == [("provision_range", str(session.range_id))]
+
     def test_an_action_on_a_lab_another_process_holds_is_refused_not_doubled(self, lab, db_session, worker):
         _, rid, _ = lab
         a, _ = launch(db_session, student(db_session), rid)
