@@ -4,6 +4,8 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { EXERCISE_POLL_MS, ExercisesComponent } from './exercises.component';
 import { ApiService } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
+import { signal } from '@angular/core';
 import { NotificationService } from '@core/services/notification.service';
 import { Exercise, Range, Scenario } from '@core/models';
 
@@ -55,6 +57,7 @@ describe('ExercisesComponent', () => {
       providers: [
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
+        { provide: AuthService, useValue: { user: signal({ id: 'u1', role: 'instructor' }) } },
         { provide: NotificationService, useValue: mockNotify },
       ],
     }).compileComponents();

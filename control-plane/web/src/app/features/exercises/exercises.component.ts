@@ -1,4 +1,4 @@
-﻿import { Component, DestroyRef, OnInit, signal, inject } from '@angular/core';
+﻿import { Component, DestroyRef, OnInit, computed, signal, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { interval } from 'rxjs';
 import { CommonModule } from '@angular/common';
@@ -14,9 +14,11 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import { ExerciseSummary, RangeSummary, ScenarioSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { canFileTickets } from '@shared/kb-roles';
 
 /** How often the list refreshes while an exercise is running. */
 export const EXERCISE_POLL_MS = 5000;
@@ -159,10 +161,12 @@ export const EXERCISE_POLL_MS = 5000;
                 <mat-icon>picture_as_pdf</mat-icon>
               </button>
             }
-            <a mat-icon-button matTooltip="Report a problem" aria-label="Report a problem with this exercise"
-               routerLink="/support/new" [queryParams]="{ exercise_id: e.id }">
-              <mat-icon>support_agent</mat-icon>
-            </a>
+            @if (canFile()) {
+              <a mat-icon-button matTooltip="Report a problem" aria-label="Report a problem with this exercise"
+                 routerLink="/support/new" [queryParams]="{ exercise_id: e.id }">
+                <mat-icon>support_agent</mat-icon>
+              </a>
+            }
           </td>
         </ng-container>
         <tr mat-header-row *matHeaderRowDef="columns"></tr>
@@ -214,6 +218,9 @@ export const EXERCISE_POLL_MS = 5000;
 })
 export class ExercisesComponent implements OnInit {
   private api = inject(ApiService);
+  private auth = inject(AuthService);
+  /** Observers can't file tickets (no TICKET_CREATE), so they get no "Report a problem". */
+  readonly canFile = computed(() => canFileTickets(this.auth.user()?.role));
   private notify = inject(NotificationService);
   private destroyRef = inject(DestroyRef);
 

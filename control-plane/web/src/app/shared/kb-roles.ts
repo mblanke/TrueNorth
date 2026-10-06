@@ -6,13 +6,15 @@ import { AuthService, UserRole } from '@core/services/auth.service';
 /**
  * Who does what in the Wiki and Support sections. Mirrors ROLE_PERMISSIONS in
  * control-plane/api/app/rbac.py (WIKI_EDIT / TICKET_WORK: admin, instructor,
- * range_ops; WIKI_ADMIN / TICKET_ADMIN: admin). The API enforces it; this only
- * decides what to show.
+ * range_ops; WIKI_ADMIN / TICKET_ADMIN: admin; TICKET_CREATE: all but observer).
+ * The API enforces it; this only decides what to show.
  */
 const STAFF: UserRole[] = ['admin', 'instructor', 'range_ops'];
 
 export const isStaffRole = (role: UserRole | undefined | null): boolean => !!role && STAFF.includes(role);
 export const isAdminRole = (role: UserRole | undefined | null): boolean => role === 'admin';
+/** TICKET_CREATE: every role except observer, which may read the wiki but not file tickets. */
+export const canFileTickets = (role: UserRole | undefined | null): boolean => !!role && role !== 'observer';
 
 /** Staff-only route (range ops counts as staff); anyone else lands on `fallback`. */
 export function kbStaffGuard(fallback: string): CanActivateFn {

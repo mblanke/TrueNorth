@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { HttpErrorResponse } from '@angular/common/http';
 import { NotificationService } from '@core/services/notification.service';
+import { apiErrorMessage } from '@shared/kb-errors';
 import { MarkdownEditorComponent } from '@shared/markdown/markdown-editor.component';
 import { WikiPage, WikiApiService, WikiTreeNode } from '@core/services/wiki-api.service';
 
@@ -150,7 +151,7 @@ export class WikiEditComponent implements OnInit {
         if (err.status === 409 && err.error?.current) {
           this.conflict.set(err.error.current as WikiPage);
         } else {
-          this.notify.error(typeof err.error?.detail === 'string' ? err.error.detail : 'Could not save the page');
+          this.notify.error(apiErrorMessage(err, 'Could not save the page'));
         }
       },
     });

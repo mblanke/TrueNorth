@@ -31,11 +31,11 @@ import { WikiRevision, WikiApiService } from '@core/services/wiki-api.service';
               <td>{{ r.editor_name || '—' }}</td>
               <td class="tn-kb-small">{{ r.created_at | date: 'medium' }}</td>
               <td>
-                <a class="tn-kb-link tn-kb-small" role="button" tabindex="0" (click)="view(r)" (keydown.enter)="view(r)">View</a>
+                <button type="button" class="tn-kb-linkbtn tn-kb-small" (click)="view(r)">View</button>
                 @if (first) {
                   <span class="tn-kb-small tn-kb-muted"> · current</span>
                 } @else {
-                  · <a class="tn-kb-link tn-kb-small" role="button" tabindex="0" (click)="restore(r)" (keydown.enter)="restore(r)">Restore</a>
+                  · <button type="button" class="tn-kb-linkbtn tn-kb-small" (click)="restore(r)">Restore</button>
                 }
               </td>
             </tr>

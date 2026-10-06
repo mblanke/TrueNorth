@@ -32,8 +32,10 @@ Approved mockup: `docs/mockups/wiki-tickets.html` (PNGs in `docs/mockups/wiki-ti
 | Triage, assign, the board | no | yes | yes |
 | Queues, delete tickets | no | no | yes |
 
-A reporter can edit their ticket's subject and description, close it once resolved, and
-reopen it. Their reply to a "Waiting on reporter" ticket moves it back to Open.
+A reporter can edit their ticket's subject and details ("Edit subject and details" on the
+ticket), close it once resolved, and reopen it. Their reply to a ticket that is waiting on
+them, resolved or closed moves it back to Open: there are no notifications, and no staff
+view lists finished tickets as work, so a "still broken" reply would otherwise be missed.
 
 ## Behaviour worth knowing
 
@@ -45,11 +47,18 @@ reopen it. Their reply to a "Waiting on reporter" ticket moves it back to Open.
 - **History is never rewritten.** Restoring an old revision creates a new one, and also
   names the revision it was decided against. History is editors-only: old revisions can
   predate publication (an unpublished draft holding an answer key).
-- **Deleting a page** soft-deletes everything under it; archiving a space hides it.
+- **Deleting a page** soft-deletes everything under it.
+- **Archiving a space** hides it from the wiki list and from students entirely, and makes
+  its pages read-only for staff. Admins find it again with "Show archived" on the wiki
+  list and can unarchive it from the space page. Its address stays reserved meanwhile.
 - **Ticket numbers** (`TN-n`) are per tenant; on Postgres an advisory lock queues
-  concurrent filings (a class reporting the same outage) instead of letting them collide. Every change to status, priority, type,
-  assignee, queue or subject, and every attachment, is recorded in the ticket's history.
-- **Attachments** are stored in MinIO bucket `tickets`, 25 MB each, and are always
+  concurrent filings (a class reporting the same outage) instead of letting them collide.
+  Every change to status, priority, type, assignee, queue, subject, details, range or
+  exercise link, and every attachment, is recorded in the ticket's history. Reordering a
+  card within its column is not, and doesn't change "last updated" either.
+- **Attachments** are stored in MinIO bucket `tickets`: up to 25 MB each and 10 files per
+  upload (the API accepts file uploads up to 50 MB per request, `MAX_UPLOAD_SIZE`; other
+  requests stay at 10 MB, `MAX_REQUEST_SIZE`). They keep their exact bytes, are always
   downloaded as files (`application/octet-stream`, UTF-8 filenames), never rendered in the
   browser. Internal notes never change what the reporter sees, including "last updated".
 - **Queues.** The last queue can't be deleted; a deleted queue's slug can be reused.
@@ -59,12 +68,17 @@ reopen it. Their reply to a "Waiting on reporter" ticket moves it back to Open.
   handlers, `javascript:` links, iframes, forms, or `style`/`class`/`id` attributes, and
   rendered text cannot draw outside its box.
 - **"Report a problem"** appears on the Exercises list, the exercise page and the Ranges
-  list, and opens `/support/new` with the range/exercise filled in.
+  list (for roles that may file tickets), and opens `/support/new` with the exercise and
+  its range filled in.
+- **Labels and category** exist on tickets (search matches labels) but have no screen yet.
 
 ## Reviews
 
-Security and adversarial reviews ran on 2026-10-05. Every confirmed finding was fixed
-with a regression test. One was deliberately left alone: a student can link a ticket to
+Security and adversarial reviews ran on 2026-10-05, a browser walkthrough and a third
+review on 2026-10-06. Every confirmed finding was fixed with a regression test. The third
+review found an app-wide bug outside this section: the input-sanitising middleware
+stripped zero bytes from every request body, so every binary upload (ticket attachments,
+range documents) was stored corrupted; it now leaves file uploads alone. One was deliberately left alone: a student can link a ticket to
 any range in their tenant, as they can already list them all through `GET /ranges`. The
 app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 `app/validation_errors.py`.

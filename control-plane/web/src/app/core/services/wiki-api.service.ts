@@ -26,6 +26,8 @@ export class WikiApiService {
 
   /** Fires when pages are added, renamed, moved or removed, so the tree reloads. */
   readonly treeChanged = new Subject<void>();
+  /** Fires when a space's own settings change (archived / unarchived). */
+  readonly spaceChanged = new Subject<void>();
 
   listSpaces(includeArchived = false): Observable<WikiSpace[]> {
     const params = new HttpParams().set('include_archived', includeArchived);

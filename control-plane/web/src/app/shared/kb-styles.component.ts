@@ -23,6 +23,13 @@ import { ChangeDetectionStrategy, Component, ViewEncapsulation } from '@angular/
     .tn-kb-small { font-size: .82rem; }
     .tn-kb-crumbs { font-size: .8rem; color: var(--text-secondary); margin-bottom: 2px; }
     .tn-kb-crumbs a, .tn-kb a.tn-kb-link { color: var(--accent); text-decoration: none; cursor: pointer; }
+    /* A real <button> that looks like a link: keyboard and screen readers get a button. */
+    .tn-kb .tn-kb-linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+    .tn-kb .tn-kb-linkbtn:hover { text-decoration: underline; }
+    .tn-kb .tn-kb-linkbtn.muted { color: var(--text-secondary); }
+    .tn-kb-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    .tn-kb-scroll { overflow-x: auto; }
+    .tn-kb-banner { border: 1px solid var(--warning); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; font-size: .88rem; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
     .tn-kb-crumbs a:hover, .tn-kb a.tn-kb-link:hover { text-decoration: underline; }
     .tn-kb-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); padding: 16px; min-width: 0; }
     .tn-kb-panel + .tn-kb-panel { margin-top: 14px; }

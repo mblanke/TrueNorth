@@ -223,6 +223,37 @@ class TestInputSanitization:
         )
         assert resp.status_code == 413
 
+    def test_file_uploads_keep_their_zero_bytes(self):
+        """multipart bodies are binary: stripping NULs corrupted every PNG/PDF/pcap upload."""
+        app = FastAPI()
+
+        @app.post("/up")
+        async def up(request: Request):
+            return {"zeros": (await request.body()).count(b"\x00")}
+
+        app.add_middleware(InputSanitizationMiddleware)
+        c = TestClient(app)
+        png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00"
+        assert c.post("/up", files={"f": ("shot.png", png, "image/png")}).json()["zeros"] == png.count(b"\x00")
+        # Text bodies are still cleaned.
+        assert c.post("/up", content=b'{"a": "x\x00y"}', headers={"Content-Type": "application/json"}).json()["zeros"] == 0
+
+    def test_uploads_get_the_larger_upload_cap(self):
+        """JSON stays at max_request_size; multipart may go up to max_upload_size."""
+        app = FastAPI()
+
+        @app.post("/up")
+        async def up(request: Request):
+            return {"size": len(await request.body())}
+
+        app.add_middleware(InputSanitizationMiddleware, max_request_size=100, max_upload_size=10_000)
+        c = TestClient(app)
+        big = b"x" * 2_000
+        assert c.post("/up", files={"f": ("a.bin", big, "application/octet-stream")}).status_code == 200
+        assert c.post("/up", content=b"{" + b" " * 500 + b"}", headers={"Content-Type": "application/json"}).status_code == 413
+        too_big = c.post("/up", files={"f": ("b.bin", b"x" * 20_000, "application/octet-stream")})
+        assert too_big.status_code == 413
+
     def test_invalid_content_type(self, mw_client):
         """Unsupported Content-Type on POST returns 415."""
         resp = mw_client.post(

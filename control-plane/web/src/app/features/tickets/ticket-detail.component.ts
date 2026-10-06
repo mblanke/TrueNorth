@@ -1,12 +1,14 @@
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
-import { catchError, forkJoin, of } from 'rxjs';
+import { catchError, forkJoin, map, of, switchMap } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import { KbStylesComponent } from '@shared/kb-styles.component';
+import { apiErrorMessage } from '@shared/kb-errors';
 import { isAdminRole } from '@shared/kb-roles';
 import { MarkdownEditorComponent } from '@shared/markdown/markdown-editor.component';
 import { MarkdownViewComponent } from '@shared/markdown/markdown-view.component';
@@ -32,7 +34,12 @@ const FIELD_LABELS: Record<string, string> = {
       @if (ticket(); as t) {
         <div class="tn-kb-head">
           <div>
-            <h1>{{ t.subject }}</h1>
+            @if (editing()) {
+              <label class="tn-kb-field" for="tk-edit-subject" style="margin-top:0">Subject</label>
+              <input id="tk-edit-subject" class="tn-kb-input" maxlength="500" [(ngModel)]="editSubject">
+            } @else {
+              <h1>{{ t.subject }}</h1>
+            }
             <p class="tn-kb-small tn-kb-muted">
               <span class="tn-kb-key">{{ t.key }}</span> · reported by {{ t.reporter_name || 'unknown' }} · {{ t.created_at | date: 'medium' }}
             </p>
@@ -48,20 +55,32 @@ const FIELD_LABELS: Record<string, string> = {
         <div class="tn-kb-detail">
           <div style="min-width:0">
             <section class="tn-kb-panel">
-              @if (t.description.trim()) { <tn-markdown-view [source]="t.description" /> }
-              @else { <p class="tn-kb-muted">No details given.</p> }
+              @if (editing()) {
+                <tn-markdown-editor label="Details" [minHeight]="150" [showPreview]="false" [(value)]="editDescription" />
+                <div class="tn-kb-actions" style="margin-top:10px">
+                  <button mat-flat-button color="primary" type="button" [disabled]="!editSubject.trim()" (click)="saveEdit()">Save</button>
+                  <button mat-button type="button" (click)="editing.set(false)">Cancel</button>
+                </div>
+              } @else {
+                @if (t.description.trim()) { <tn-markdown-view [source]="t.description" /> }
+                @else { <p class="tn-kb-muted">No details given.</p> }
+                @if (canEdit()) {
+                  <p style="margin:8px 0 0"><button type="button" class="tn-kb-linkbtn tn-kb-small" (click)="startEdit(t)">Edit subject and details</button></p>
+                }
+              }
               <div class="tn-kb-small" style="margin-top:12px">
                 @for (a of attachments(); track a.id) {
                   <div style="display:flex;gap:8px;align-items:center">
-                    <a class="tn-kb-link" role="button" tabindex="0" (click)="download(a)" (keydown.enter)="download(a)">{{ a.filename }}</a>
+                    <button type="button" class="tn-kb-linkbtn" (click)="download(a)">{{ a.filename }}</button>
                     <span class="tn-kb-muted">{{ size(a.size_bytes) }}</span>
-                    <a class="tn-kb-link tn-kb-muted" role="button" tabindex="0" aria-label="Remove attachment"
-                       (click)="removeAttachment(a)" (keydown.enter)="removeAttachment(a)">remove</a>
+                    @if (canRemove(a)) {
+                      <button type="button" class="tn-kb-linkbtn muted" [attr.aria-label]="'Remove ' + a.filename"
+                              (click)="removeAttachment(a)">remove</button>
+                    }
                   </div>
                 }
-                <label class="tn-kb-link" style="cursor:pointer;display:inline-block;margin-top:6px">
-                  + Attach files <input type="file" multiple hidden (change)="attach($event)">
-                </label>
+                <button type="button" class="tn-kb-linkbtn" style="margin-top:6px" (click)="filePicker.click()">+ Attach files</button>
+                <input #filePicker type="file" multiple class="tn-kb-sr-only" tabindex="-1" aria-hidden="true" (change)="attach($event)">
               </div>
             </section>
 
@@ -103,41 +122,41 @@ const FIELD_LABELS: Record<string, string> = {
               <dt>Status</dt>
               <dd>
                 @if (t.can_work) {
-                  <select class="tn-kb-input" aria-label="Status" [ngModel]="t.status" (ngModelChange)="patch({ status: $event })">
-                    @for (s of statuses; track s) { <option [value]="s">{{ statusLabels[s] }}</option> }
+                  <select #st class="tn-kb-input" aria-label="Status" (change)="patchField('status', st)">
+                    @for (s of statuses; track s) { <option [value]="s" [selected]="s === t.status">{{ statusLabels[s] }}</option> }
                   </select>
                 } @else { {{ statusLabels[t.status] }} }
               </dd>
               <dt>Priority</dt>
               <dd>
                 @if (t.can_work) {
-                  <select class="tn-kb-input" aria-label="Priority" [ngModel]="t.priority" (ngModelChange)="patch({ priority: $event })">
-                    @for (p of priorities; track p) { <option [value]="p">{{ p }}</option> }
+                  <select #pr class="tn-kb-input" aria-label="Priority" (change)="patchField('priority', pr)">
+                    @for (p of priorities; track p) { <option [value]="p" [selected]="p === t.priority">{{ p }}</option> }
                   </select>
                 } @else { <span class="tn-kb-tag" [class]="t.priority">{{ t.priority }}</span> }
               </dd>
               <dt>Assignee</dt>
               <dd>
                 @if (t.can_work) {
-                  <select class="tn-kb-input" aria-label="Assignee" [ngModel]="t.assignee_id ?? ''" (ngModelChange)="assign($event)">
-                    <option value="">Unassigned</option>
-                    @for (a of assignees(); track a.id) { <option [value]="a.id">{{ a.display_name }}</option> }
+                  <select #asg class="tn-kb-input" aria-label="Assignee" (change)="patchField('assignee_id', asg)">
+                    <option value="" [selected]="!t.assignee_id">Unassigned</option>
+                    @for (a of assignees(); track a.id) { <option [value]="a.id" [selected]="a.id === t.assignee_id">{{ a.display_name }}</option> }
                   </select>
                 } @else { {{ t.assignee_name || 'Not yet assigned' }} }
               </dd>
               <dt>Type</dt>
               <dd>
                 @if (t.can_work) {
-                  <select class="tn-kb-input" aria-label="Type" [ngModel]="t.type" (ngModelChange)="patch({ type: $event })">
-                    @for (k of typeKeys; track k) { <option [value]="k">{{ typeLabels[k] }}</option> }
+                  <select #ty class="tn-kb-input" aria-label="Type" (change)="patchField('type', ty)">
+                    @for (k of typeKeys; track k) { <option [value]="k" [selected]="k === t.type">{{ typeLabels[k] }}</option> }
                   </select>
                 } @else { {{ typeLabels[t.type] }} }
               </dd>
               @if (t.can_work) {
                 <dt>Queue</dt>
                 <dd>
-                  <select class="tn-kb-input" aria-label="Queue" [ngModel]="t.queue_id" (ngModelChange)="patch({ queue_id: $event })">
-                    @for (q of queues(); track q.id) { <option [value]="q.id">{{ q.name }}</option> }
+                  <select #qu class="tn-kb-input" aria-label="Queue" (change)="patchField('queue_id', qu)">
+                    @for (q of queues(); track q.id) { <option [value]="q.id" [selected]="q.id === t.queue_id">{{ q.name }}</option> }
                   </select>
                 </dd>
               }
@@ -145,8 +164,8 @@ const FIELD_LABELS: Record<string, string> = {
                 <dt>Range</dt>
                 <dd>{{ t.range_name }}
                   @if (t.can_work) {
-                    <a class="tn-kb-link tn-kb-small" role="button" tabindex="0" aria-label="Remove the range link"
-                       (click)="patch({ unlink_range: true })" (keydown.enter)="patch({ unlink_range: true })">remove</a>
+                    <button type="button" class="tn-kb-linkbtn tn-kb-small" aria-label="Remove the range link"
+                            (click)="patch({ unlink_range: true })">remove</button>
                   }
                 </dd>
               }
@@ -154,8 +173,8 @@ const FIELD_LABELS: Record<string, string> = {
                 <dt>Exercise</dt>
                 <dd>{{ t.exercise_name }}
                   @if (t.can_work) {
-                    <a class="tn-kb-link tn-kb-small" role="button" tabindex="0" aria-label="Remove the exercise link"
-                       (click)="patch({ unlink_exercise: true })" (keydown.enter)="patch({ unlink_exercise: true })">remove</a>
+                    <button type="button" class="tn-kb-linkbtn tn-kb-small" aria-label="Remove the exercise link"
+                            (click)="patch({ unlink_exercise: true })">remove</button>
                   }
                 </dd>
               }
@@ -180,6 +199,7 @@ export class TicketDetailComponent implements OnInit {
   private readonly notify = inject(NotificationService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly statuses = STATUSES;
   readonly statusLabels = STATUS_LABELS;
@@ -197,38 +217,77 @@ export class TicketDetailComponent implements OnInit {
   readonly sending = signal(false);
   readonly admin = computed(() => isAdminRole(this.auth.user()?.role));
   readonly isReporter = computed(() => this.ticket()?.reporter_id === this.auth.user()?.id);
+  /** The reporter may edit the subject and details; staff may edit any ticket's. */
+  readonly canEdit = computed(() => !!this.ticket() && (this.ticket()!.can_work || this.isReporter()));
+  readonly editing = signal(false);
 
   reply = '';
   internal = false;
+  editSubject = '';
+  editDescription = '';
   private id = '';
+  private staffListsLoaded = false;
 
   ngOnInit(): void {
-    this.id = this.route.snapshot.paramMap.get('id') ?? '';
-    this.api.get(this.id).subscribe({
-      next: t => {
+    // Follow the route, not a one-time snapshot: a link from one ticket to another
+    // reuses this component, and every request must go to the ticket now shown.
+    this.route.paramMap
+      .pipe(
+        map(p => p.get('id') ?? ''),
+        switchMap(id => {
+          this.reset(id);
+          return this.api.get(id).pipe(catchError(() => of(null)));
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(t => {
+        if (!t) {
+          this.missing.set(true);
+          return;
+        }
         this.ticket.set(t);
         this.refreshSide();
-        if (t.can_work) {
+        if (t.can_work && !this.staffListsLoaded) {
+          this.staffListsLoaded = true;
           this.api.assignees().pipe(catchError(() => of([]))).subscribe(a => this.assignees.set(a));
           this.api.queues().pipe(catchError(() => of([]))).subscribe(q => this.queues.set(q));
         }
-      },
-      error: () => this.missing.set(true),
+      });
+  }
+
+  canRemove(a: TicketAttachment): boolean {
+    return !!this.ticket()?.can_work || a.uploaded_by === this.auth.user()?.id;
+  }
+
+  startEdit(t: Ticket): void {
+    this.editSubject = t.subject;
+    this.editDescription = t.description;
+    this.editing.set(true);
+  }
+
+  saveEdit(): void {
+    this.patch({ subject: this.editSubject.trim(), description: this.editDescription }, () => this.editing.set(false));
+  }
+
+  patch(body: TicketUpdate, done?: () => void): void {
+    this.api.update(this.id, body).subscribe({
+      next: t => { this.ticket.set(t); this.loadActivity(); done?.(); },
+      error: err => this.notify.error(apiErrorMessage(err, 'Could not update the ticket')),
     });
   }
 
-  patch(body: TicketUpdate): void {
+  /** A sidebar select changed. If the server refuses, put the select back to the saved value. */
+  patchField(field: 'status' | 'priority' | 'type' | 'queue_id' | 'assignee_id', el: HTMLSelectElement): void {
+    const value = el.value;
+    const body: TicketUpdate =
+      field === 'assignee_id' ? (value ? { assignee_id: value } : { unassign: true }) : ({ [field]: value } as TicketUpdate);
     this.api.update(this.id, body).subscribe({
       next: t => { this.ticket.set(t); this.loadActivity(); },
       error: err => {
-        this.notify.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'Could not update the ticket');
-        this.ticket.update(t => (t ? { ...t } : t)); // re-render selects back to the saved value
+        this.notify.error(apiErrorMessage(err, 'Could not update the ticket'));
+        el.value = (this.ticket()?.[field] as string | null) ?? '';
       },
     });
-  }
-
-  assign(userId: string): void {
-    this.patch(userId ? { assignee_id: userId } : { unassign: true });
   }
 
   send(): void {
@@ -252,7 +311,7 @@ export class TicketDetailComponent implements OnInit {
     if (!files.length) return;
     this.api.upload(this.id, files).subscribe({
       next: () => this.refreshSide(),
-      error: err => this.notify.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'Upload failed'),
+      error: err => this.notify.error(apiErrorMessage(err, 'Upload failed')),
     });
   }
 
@@ -274,7 +333,7 @@ export class TicketDetailComponent implements OnInit {
     if (!confirm(`Remove ${a.filename}?`)) return;
     this.api.removeAttachment(a.id).subscribe({
       next: () => this.refreshSide(),
-      error: err => this.notify.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'Could not remove it'),
+      error: err => this.notify.error(apiErrorMessage(err, 'Could not remove it')),
     });
   }
 
@@ -294,10 +353,23 @@ export class TicketDetailComponent implements OnInit {
     const who = a.actor_name || 'Someone';
     if (a.field === 'created') return `${who} created ${a.new_value}`;
     if (a.field === 'attachment') return a.new_value ? `${who} attached ${a.new_value}` : `${who} removed ${a.old_value}`;
+    if (a.field === 'description') return `${who} edited the details`;
     const label = FIELD_LABELS[a.field] ?? a.field;
     // The API already turns assignee / queue ids into names.
     const show = (v: string) => (!v ? 'none' : a.field === 'status' ? STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v : v);
     return `${who} changed ${label} from ${show(a.old_value)} to ${show(a.new_value)}`;
+  }
+
+  private reset(id: string): void {
+    this.id = id;
+    this.ticket.set(null);
+    this.missing.set(false);
+    this.comments.set([]);
+    this.attachments.set([]);
+    this.activity.set([]);
+    this.editing.set(false);
+    this.reply = '';
+    this.internal = false;
   }
 
   private refreshSide(): void {

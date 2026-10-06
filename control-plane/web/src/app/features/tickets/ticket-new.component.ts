@@ -7,6 +7,7 @@ import { ApiService } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import { ExerciseSummary, RangeSummary } from '@core/models';
+import { apiErrorMessage } from '@shared/kb-errors';
 import { KbStylesComponent } from '@shared/kb-styles.component';
 import { isStaffRole } from '@shared/kb-roles';
 import { MarkdownEditorComponent } from '@shared/markdown/markdown-editor.component';
@@ -170,7 +171,7 @@ export class TicketNewComponent implements OnInit {
         },
         error: err => {
           this.busy.set(false);
-          this.notify.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'Could not file the ticket');
+          this.notify.error(apiErrorMessage(err, 'Could not file the ticket'));
         },
       });
   }

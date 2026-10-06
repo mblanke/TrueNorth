@@ -9043,6 +9043,11 @@ export interface components {
             /** Slug */
             slug: string;
             /**
+             * Space Archived
+             * @default false
+             */
+            space_archived?: boolean;
+            /**
              * Space Id
              * Format: uuid
              */

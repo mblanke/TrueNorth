@@ -230,3 +230,40 @@ class TestSecurityReviewFixes:
         _space(client)
         client.delete("/wiki/spaces/runbooks")
         assert client.post("/wiki/spaces/runbooks/pages", json={"title": "x"}).status_code == 409
+
+
+
+class TestArchivedSpaces:
+    @pytest.fixture
+    def archived(self, client):
+        _space(client, "old")
+        page = _page(client, "old", title="Legacy runbook")
+        assert client.delete("/wiki/spaces/old").status_code == 204
+        return page
+
+    def test_students_cannot_see_an_archived_space(self, client, archived):
+        with acting_as(UserRole.student):
+            assert client.get("/wiki/spaces/old").status_code == 404
+            assert client.get(f"/wiki/pages/{archived['id']}").status_code == 404
+            assert client.get("/wiki/spaces?include_archived=true").json() == []
+
+    def test_staff_can_read_but_not_change_it(self, client, archived):
+        with acting_as(UserRole.instructor):
+            assert client.get(f"/wiki/pages/{archived['id']}").status_code == 200
+            r = client.put(f"/wiki/pages/{archived['id']}", json={"base_revision": 1, "body": "x"})
+            assert r.status_code == 409
+            assert client.delete(f"/wiki/pages/{archived['id']}").status_code == 409
+
+    def test_unarchive_brings_it_back(self, client, archived):
+        assert client.put("/wiki/spaces/old", json={"is_archived": False}).status_code == 200
+        assert [s["slug"] for s in client.get("/wiki/spaces").json()] == ["old"]
+        assert client.put(f"/wiki/pages/{archived['id']}", json={"base_revision": 1, "body": "x"}).status_code == 200
+
+    def test_reusing_an_archived_address_says_so(self, client, archived):
+        r = client.post("/wiki/spaces", json={"name": "Old", "slug": "old"})
+        assert r.status_code == 409 and "archived" in r.json()["detail"]
+
+    def test_blank_titles_refused(self, client):
+        _space(client)
+        assert client.post("/wiki/spaces/runbooks/pages", json={"title": "   "}).status_code == 422
+        assert client.post("/wiki/spaces", json={"name": " ", "slug": "x"}).status_code == 422
