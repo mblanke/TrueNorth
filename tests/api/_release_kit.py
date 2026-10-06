@@ -105,7 +105,8 @@ def write_run(
         files[f"02-content/{m['id']}/content/page-01.html"] = f"<h2>{m['id']}</h2><p>Lesson.</p>"
         files[f"02-content/{m['id']}/course-config.json"] = "{}"
     for name, text in (evidence or {}).items():
-        files[f"02-content/mod_001/content/evidence/{name}"] = text
+        where = name if name.startswith("templates/") else f"evidence/{name}"
+        files[f"02-content/mod_001/content/{where}"] = text
     ranged = sorted(k for k, v in activities.items() if v == "range")
     if ranged and lab_profile:
         profile = dict(LAB_PROFILE if lab_profile is True else lab_profile)

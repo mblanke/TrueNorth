@@ -106,8 +106,11 @@ def test_cli(tmp_path, repo, capsys):
         ("02-content/mod_007/content/evidence/host-info.txt", "learner"),
         ("02-content/mod_007/content/evidence/ntuser/ntuser-t.nakamura.reg", "learner"),
         ("02-content/mod_003/content/page-01.html", "learner"),
+        ("02-content/mod_003/content/templates/approved-scope.template.yaml", "learner"),
+        ("02-content/EVIDENCE.md", None),
+        ("02-content/_evidence-src/generate.py", None),
         ("04-artifacts/instructor/answer_key.md", "instructor"),
     ],
 )
-def test_supplied_evidence_in_subfolders_is_released(rel, part):
+def test_everything_under_a_module_content_folder_is_released_and_nothing_else(rel, part):
     assert release.part_for(rel) == part

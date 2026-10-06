@@ -38,8 +38,7 @@ ACTIVITY_KINDS = ("theory", "practical", "range")
 PATH_RE = re.compile(r"^(?!.*(^|/)\.\.(/|$))[A-Za-z0-9_][A-Za-z0-9_./ -]*$")
 ALLOWED: dict[str, tuple[re.Pattern[str], ...]] = {
     "learner": (
-        re.compile(r"^02-content/mod_[0-9]{3}/content/[^/]+$"),
-        re.compile(r"^02-content/mod_[0-9]{3}/content/evidence/.+$"),  # subfolders allowed
+        re.compile(r"^02-content/mod_[0-9]{3}/content/.+$"),  # pages, evidence and templates, any depth
         re.compile(r"^07-bundle/cmi5/.+$"),
     ),
     "platform": (

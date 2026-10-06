@@ -36,8 +36,7 @@ from arc2 import check
 RELEASE_SCHEMA = "arc2/release/0.1"
 # Ordered: the first matching rule decides a file's part; unmatched files are not released.
 PART_RULES: tuple[tuple[str, str], ...] = (
-    ("02-content/mod_*/content/*", "learner"),
-    ("02-content/mod_*/content/evidence/**", "learner"),  # supplied material, subfolders included
+    ("02-content/mod_*/content/**", "learner"),  # pages, supplied evidence and templates, any depth
     ("07-bundle/cmi5/**", "learner"),
     ("manifest.json", "platform"),
     ("01-blueprint/outline.yaml", "platform"),

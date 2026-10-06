@@ -2,7 +2,8 @@
 
     release module mod_NNN       -> section "N. <title>", summary = its objectives
       learner page page-NN.html  -> page     tn:mod_NNN:page:NN   (HTML as authored)
-      supplied evidence file     -> resource tn:mod_NNN:file:<hash of its name and bytes>
+      any other file in content/ -> resource tn:mod_NNN:file:<hash of its name and bytes>
+                                    (supplied evidence, templates; evidence/ is dropped from the name)
       quiz                       -> quiz     tn:mod_NNN:quiz:<hash of the questions>
       range activity             -> LTI link tn:mod_NNN:lab, resource lab:<course>:mod_NNN
 
@@ -85,16 +86,16 @@ def build(
                     "format": "html",
                 }
             )
-        for path in sorted(p for p in learner if p.startswith(prefix + "evidence/")):
+        for path in sorted(p for p in learner if p.startswith(prefix) and "/" in p[len(prefix) :]):
             data = learner[path]
-            name = path[len(prefix + "evidence/") :]
+            name = path[len(prefix) :].removeprefix("evidence/")
             named = hashlib.sha256(name.encode() + b"\0" + data).hexdigest()[:12]
             activities.append(
                 {
                     "idnumber": f"tn:{m['id']}:file:{named}",
                     "type": "resource",
                     "name": name[:250],
-                    "intro": "Evidence for this module, supplied for the course (synthetic).",
+                    "intro": "Supplied for this module (course-made material).",
                     "filename": name.replace("/", "_"),
                     "content_b64": base64.b64encode(data).decode(),
                     "sha1": hashlib.sha1(data).hexdigest(),  # noqa: S324 - Moodle's content hash, not security

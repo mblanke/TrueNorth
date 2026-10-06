@@ -265,6 +265,7 @@ def test_supplied_evidence_becomes_a_download_and_a_wrong_file_fails_verificatio
         "security-events.json": '{"EventID": 4624}\n',
         "index.html": "<p>not a page</p>",
         "ntuser/ntuser-a.reg": "Windows Registry Editor Version 5.00\n",
+        "templates/scope.template.yaml": "nodes: []\n",
     }
     bundle = parse(build(tmp_path, evidence=evidence))
     built = payload_mod.build(
@@ -274,7 +275,7 @@ def test_supplied_evidence_becomes_a_download_and_a_wrong_file_fails_verificatio
     first = built["sections"][0]["activities"]
     assert [a["type"] for a in first].count("page") == 1  # evidence HTML is a file, not a page
     files = {a["name"]: a for a in first if a["type"] == "resource"}
-    assert set(files) == set(evidence)
+    assert set(files) == set(evidence)  # evidence/ is dropped from the name; templates/ is kept
     assert files["security-events.json"]["idnumber"].startswith("tn:mod_001:file:")
     assert files["ntuser/ntuser-a.reg"]["filename"] == "ntuser_ntuser-a.reg"  # subfolders are released too
 
