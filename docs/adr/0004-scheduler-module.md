@@ -269,7 +269,17 @@ What users need:
      for the GUI redesign (mockups first).
    - Staff only. Students' own-sessions feed waits for bookings to know their
      attendees.
-6. Emailed invites (`REQUEST`/`CANCEL`) through the SMTP channel.
+6. Emailed invites (`REQUEST`/`CANCEL`) through the SMTP channel (done:
+   `scheduler/invites.py`, plus a `text/calendar; method=…` part in
+   `notifications/smtp.py`).
+   - `REQUEST` goes out when a booking is created or scheduled, and again when it
+     moves (same `UID`, higher `SEQUENCE`).
+   - `CANCEL` goes out when it is cancelled, or to the previous Instructor when it
+     changes hands.
+   - Recipients are the Instructor only, until attendees exist.
+   - The organizer is `SCHEDULER_ORGANIZER_EMAIL`, else `SMTP_FROM`. Replies go to
+     that mailbox and are not read back.
+   - Sending is a background task and best effort.
 7. `calendar_backends/` seam with `null`, plus contract tests. `microsoft_graph` later.
 8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button.
 
@@ -317,7 +327,6 @@ What users need:
   - `schedule:admin` is held by the `admin` role. If admins are per tenant, any
     tenant's admin can change the platform-wide policy. It needs a platform-admin
     notion.
-  - A cancelled booking sends no calendar cancellation yet (slice 6).
 
 ## Open questions
 

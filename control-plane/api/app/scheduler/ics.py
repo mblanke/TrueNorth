@@ -31,6 +31,8 @@ class IcsEvent:
     description: str = ""
     status: str = "CONFIRMED"  # CONFIRMED | TENTATIVE | CANCELLED
     last_modified: datetime | None = None
+    organizer: str = ""  # email; required with METHOD:REQUEST/CANCEL
+    attendees: tuple[str, ...] = ()  # emails
 
 
 def booking_uid(booking_id: object) -> str:
@@ -97,6 +99,10 @@ def calendar(
             lines.append(f"DESCRIPTION:{escape_text(e.description)}")
         if e.last_modified:
             lines.append(f"LAST-MODIFIED:{utc(e.last_modified)}")
+        if e.organizer:
+            lines.append(f"ORGANIZER;CN=TrueNorth Range:mailto:{e.organizer}")
+        for who in e.attendees:
+            lines.append(f"ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{who}")
         lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
     return CRLF.join(fold(line) for line in lines) + CRLF
