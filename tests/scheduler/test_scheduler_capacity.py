@@ -206,3 +206,17 @@ def test_a_template_that_declares_no_vms_cannot_size_a_booking(client, db_sessio
     with acting_as(UserRole.instructor):
         r = client.post("/schedule/events", json=_book(DAY, template_id=str(t.id)))
     assert r.status_code == 422
+
+
+def test_a_time_without_a_zone_is_taken_as_utc(client, small_cluster):
+    naive_start = (DAY + timedelta(hours=9)).replace(tzinfo=None)
+    with acting_as(UserRole.instructor):
+        r = client.post(
+            "/schedule/events",
+            json={
+                "name": "naive",
+                "start_time": naive_start.isoformat(),
+                "end_time": (DAY + timedelta(hours=11)).isoformat(),
+            },
+        )
+    assert r.status_code == 201, r.text
