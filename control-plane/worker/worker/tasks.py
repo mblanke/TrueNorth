@@ -10,7 +10,6 @@ Designed for 70,000-VM scale:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -24,7 +23,7 @@ from . import db_ops, fencing, periodic
 from .aar import build_report as build_aar_report
 from .celery_app import app
 from .detection import DetectionScorer, range_index
-from .fencing import FINAL_ERRORS, PermanentError, fenced, skipped
+from .fencing import FINAL_ERRORS, PermanentError, fenced, run_async, skipped
 from .periodic import HEALTH_CHECK_BUDGET, METRICS_BUDGET
 from .provisioners import get_provisioner
 from .range_alloc import reserve_for_build
@@ -137,7 +136,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
     """Provision a single range using the configured backend.
 
     Fetches the range template from the database, delegates to the
-    provisioner class hierarchy via asyncio.run(), and stores the
+    provisioner class hierarchy via fencing.run_async(), and stores the
     structured ProvisionResult back to the database.
     """
     logger.info(f"[provision] Starting range {range_id}")
@@ -182,7 +181,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
         provisioner = _get_backend(backend)
         allocations.update(reserve_for_build(_db_session, range_id, provisioner, template))  # network_reservations
 
-        result = asyncio.run(provisioner.provision(range_id, template, allocations))
+        result = run_async(provisioner.provision(range_id, template, allocations))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
@@ -259,7 +258,7 @@ def destroy_range(self, range_id: str):
         prov_output, backend = provisioner_output(range_id)
         provisioner = _get_backend(backend)
 
-        result = asyncio.run(provisioner.destroy(range_id, prov_output))
+        result = run_async(provisioner.destroy(range_id, prov_output))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
@@ -272,7 +271,7 @@ def destroy_range(self, range_id: str):
         return {"status": "destroyed", "range_id": range_id}
 
     except Exception as e:
-        if _last_attempt(self):  # a retry must still find the range in destroying
+        if isinstance(e, FINAL_ERRORS) or _last_attempt(self):  # a retry must still find the range in destroying
             _update_range_state(range_id, "failed", error=str(e), only_from=("destroying",))
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[destroy] Range {range_id} FAILED: {e}")
@@ -293,7 +292,7 @@ def _power_range(task, range_id: str, action: str, claim: str, done: str):
         if not prov_output.get("vms"):  # a build that failed with nothing built is not "running"
             raise PermanentError(f"{action}: the range has no VMs recorded; nothing to power")
         provisioner = _get_backend((row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock"))
-        result = asyncio.run(getattr(provisioner, action)(range_id, prov_output))
+        result = run_async(getattr(provisioner, action)(range_id, prov_output))
         if result.status != "ok":
             raise RuntimeError(f"{action} {result.status}: {'; '.join(result.errors) or 'no detail'}")
         _update_range_state(range_id, done, only_from=(claim,), clear_error=True)
@@ -693,7 +692,7 @@ def _backend_snapshot_name(snapshot_id: str) -> str:
 def _discard_snapshot(provisioner, range_id: str, prov_output: dict, name: str) -> None:
     """Best-effort removal of a snapshot no row will stand behind."""
     try:
-        result = asyncio.run(provisioner.delete_snapshot(range_id, prov_output, name))
+        result = run_async(provisioner.delete_snapshot(range_id, prov_output, name))
         if result.status != "ok":
             logger.warning(f"[snapshot] Could not discard snapshot {name}: {result.errors}")
     except Exception as e:
@@ -761,7 +760,7 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
         # attempt's complete snapshot.
         _discard_snapshot(provisioner, range_id, prov_output, name)
 
-        result = asyncio.run(provisioner.snapshot(range_id, prov_output, name))
+        result = run_async(provisioner.snapshot(range_id, prov_output, name))
         if result.status != "ok":
             # Until this check, a failed or partial snapshot was stored as `ready`. A
             # partial one cannot restore the range as a whole, so take back what was
@@ -821,7 +820,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
         name = snapshot_data.get("snapshot_name") or snapshot_id
 
         provisioner = _get_backend(_range_backend(rng))
-        result = asyncio.run(provisioner.restore(range_id, prov_output, name, power_on=original_state == "ready"))
+        result = run_async(provisioner.restore(range_id, prov_output, name, power_on=original_state == "ready"))
         changed = result.vms_reverted > 0
         if result.status != "ok":
             raise RuntimeError(f"restore {result.status}: {'; '.join(result.errors) or 'no detail'}")
@@ -847,7 +846,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
             # a backend without restore), so the range is exactly as it was and keeps
             # its state. Marking it `failed` blocked stop, start and expiry cleanup.
             _notify_api("range", {"id": range_id, "restore_failed": snapshot_id, "error": str(e)})
-        if _last_attempt(self):
+        if isinstance(e, FINAL_ERRORS) or _last_attempt(self):
             # Until then a retry still owns the snapshot, and `restoring` keeps the API
             # from starting another restore or deleting it underneath the retry.
             _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))
@@ -870,7 +869,7 @@ def delete_snapshot(self, range_id: str, snapshot_id: str):
             snapshot_data = json.loads(snap[1])
             prov_output = json.loads(rng[1]) if rng and rng[1] else {}
             name = snapshot_data.get("snapshot_name") or snapshot_id
-            result = asyncio.run(_get_backend(_range_backend(rng)).delete_snapshot(range_id, prov_output, name))
+            result = run_async(_get_backend(_range_backend(rng)).delete_snapshot(range_id, prov_output, name))
             if result.status != "ok":
                 raise RuntimeError(f"delete {result.status}: {'; '.join(result.errors) or 'no detail'}")
 

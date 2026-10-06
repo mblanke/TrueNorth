@@ -126,6 +126,17 @@ _DELETABLE_RANGE_STATES = (RangeState.created, RangeState.destroyed)
 _RESERVING_EVENT_STATES = (EventState.draft, EventState.scheduled, EventState.active)
 
 
+def _release_stale_restores(db: Session, range_id: uuid.UUID) -> None:
+    """Give back a snapshot left `restoring` by a worker that died: `ready` again, so it
+    can be restored or deleted. Without this it was stuck for good (restore: "not ready",
+    delete: "is restoring")."""
+    db.query(RangeSnapshot).filter(
+        RangeSnapshot.range_id == range_id,
+        RangeSnapshot.snapshot_state == "restoring",
+        RangeSnapshot.updated_at <= range_ops._now() - range_ops.RESTORE_STALE_AFTER,
+    ).update({"snapshot_state": "ready"}, synchronize_session="fetch")
+
+
 def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
     # tenant-safe: callers pass a range_id they already resolved through _tenant_range().
     range_ops.refuse_while_restoring(db, range_id)
@@ -753,6 +764,7 @@ def restore_snapshot(
     range_ops.reconcile(db, rng)
     if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
+    _release_stale_restores(db, range_id)
     _refuse_while_restoring(db, range_id)
 
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
@@ -788,6 +800,7 @@ def delete_snapshot(
     # delete any other tenant's snapshot given the two ids. That only flipped a row
     # while the worker's delete was broken; now it removes the hypervisor copy.
     _tenant_range(db, range_id, user)
+    _release_stale_restores(db, range_id)
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
     # caller, so filtering snapshots by that same range_id is transitively scoped.
     snap = (

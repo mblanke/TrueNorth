@@ -57,11 +57,12 @@ class RangeOperation(TimestampMixin, Base):
 class RangeLease(Base):
     """Which worker execution is acting on a range right now (worker/fencing.py).
 
-    A task claims the range's in-progress state *and* this lease; a second copy of the
-    task arriving while the first runs finds the lease held and does nothing. The holder
+    A task claims the range's in-progress state *and* this lease. A second copy arriving
+    while the first holds it is re-queued (``fencing.defer``) and comes back to find the
+    range finished (it then skips) or the lease expired (it then takes over). The holder
     is one execution (a random token, not the Celery task id, which a redelivered copy
-    shares). Released when the task ends, so a retry can claim it; ``expires_at`` lets a
-    copy redelivered after its worker died take over.
+    shares). Released when the task ends, however it ends; ``expires_at`` bounds how long a
+    worker that died can hold it.
     """
 
     __tablename__ = "range_leases"
