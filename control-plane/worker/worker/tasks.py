@@ -24,7 +24,7 @@ from celery import Task, group
 from . import db_ops
 from .aar import build_report as build_aar_report
 from .celery_app import app
-from .detection import DetectionScorer, range_index
+from .detection import detection_scorer, range_index
 from .provisioners import get_provisioner
 
 logger = logging.getLogger("truenorth.worker")
@@ -373,7 +373,7 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     try:
         timeline = scenario_definition.get("timeline", [])
         objectives = scenario_definition.get("objectives", [])
-        detections = None if backend == "mock" else DetectionScorer(exercise_id, _db_session)
+        detections = detection_scorer(exercise_id, _db_session, backend)  # None unless DETECTION_SCORING=on
 
         # â”€â”€ Update exercise state to running â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         with _db_session() as db:
@@ -414,11 +414,11 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
         # â”€â”€ Track objective completion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if detections:  # final pass against the range's telemetry (worker/detection.py)
             completed_objectives = detections.score()
-        else:  # mock: auto-complete every objective
+        else:  # mock auto-completes every objective; a real backend with scoring off achieves none
             with _db_session() as db:
-                for obj in objectives:
+                for obj in objectives if backend == "mock" else []:
                     db_ops.achieve_objective(db, exercise_id, obj.get("ref_id", ""))
-            completed_objectives = len(objectives)
+            completed_objectives = len(objectives) if backend == "mock" else 0
 
         # â”€â”€ Mark exercise complete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         with _db_session() as db:

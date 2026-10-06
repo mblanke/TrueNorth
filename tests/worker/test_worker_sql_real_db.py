@@ -323,8 +323,25 @@ def store(monkeypatch):
 class TestDetectionScoring:
     """Non-mock runs score query objectives against the range's telemetry (was: never evaluated)."""
 
+    def test_detection_scoring_is_off_by_default(self, world, store, monkeypatch):
+        # It matches the scenario's own attack telemetry, so on by default it would credit a
+        # Student who did nothing. Off, a real backend achieves nothing, as before slice 8.
+        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        monkeypatch.delenv("DETECTION_SCORING", raising=False)
+        ex = world.exercise
+        _add(world.db, _detection(ex, "phish", 10, 'event_type:email AND attachment.name:"briefing.docm"'))
+
+        out = tasks.run_scenario_v2(str(ex.id), {"timeline": [{"t": "0:01", "action": "phish"}], "objectives": []})
+
+        assert out["objectives_completed"] == 0
+        assert store.searches == []
+        assert world.db.scalars(select(m.Objective.achieved)).one() is False
+        e = _fresh(world.db, ex)
+        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.completed, 0, 10)
+
     def test_real_backend_run_achieves_matching_objectives_with_evidence(self, world, store, monkeypatch):
         monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        monkeypatch.setenv("DETECTION_SCORING", "on")
         ex = world.exercise
         world.scenario.yaml = (
             "timeline:\n  - t: '0:01'\n    action: phish\n"
@@ -390,6 +407,7 @@ class TestDetectionScoring:
 
     def test_without_scenario_engine_the_run_completes_unscored(self, world, monkeypatch):
         monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        monkeypatch.setenv("DETECTION_SCORING", "on")
         monkeypatch.setitem(sys.modules, "scenario_engine.scoring", None)  # import raises ImportError
         _add(world.db, _detection(world.exercise, "phish", 10, "event_type:email"))
 

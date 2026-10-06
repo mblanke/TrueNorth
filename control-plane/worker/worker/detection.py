@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from typing import Any
@@ -42,6 +43,19 @@ EVIDENCE_EVENTS = 5  # matched events kept on the objective row
 def range_index(range_id: str) -> str:
     """The event index a range's telemetry is ingested into."""
     return f"range-{range_id}"
+
+
+def detection_scorer(exercise_id: str, session: Callable, backend: str) -> DetectionScorer | None:
+    """A scorer for a real-backend run, or None: scoring is off unless DETECTION_SCORING=on.
+
+    Off by default because it is not yet a measure of the Student: the scenario queries
+    describe the attack itself and there is no time window, so the inject's own telemetry
+    (or an earlier exercise's on the same range) would achieve the objective for a Student
+    who did nothing. Turn it on only once objectives credit what the Student did.
+    """
+    if backend == "mock" or os.getenv("DETECTION_SCORING", "off").strip().lower() not in ("1", "on", "true", "yes"):
+        return None
+    return DetectionScorer(exercise_id, session)
 
 
 def _scenario_params(scenario_yaml: str | None) -> dict[str, dict]:
