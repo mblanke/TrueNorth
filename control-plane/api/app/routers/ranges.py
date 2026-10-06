@@ -558,10 +558,14 @@ def batch_provision_ranges(
     for rng in ranges_found:
         if not rng.state.can_transition_to(RangeState.provisioning):
             raise HTTPException(409, f"Range {rng.id} in state {rng.state.value} cannot be provisioned")
-    task = _dispatch_task("batch_provision", range_ids)
-    task_id = task if isinstance(task, str) else "mock-batch"
+    # As a single provision: recorded (provisioning) and committed before the task is sent.
+    # The worker builds only a range in provisioning (worker/fencing.py).
+    for rng in ranges_found:
+        rng.state = RangeState.provisioning
     _audit(db, user, "batch_provision", "range", f"{len(range_ids)} ranges")
     db.commit()
+    task = _dispatch_task("batch_provision", range_ids)
+    task_id = task if isinstance(task, str) else "mock-batch"
     return BatchProvisionOut(dispatched=len(range_ids), task_id=task_id)
 
 

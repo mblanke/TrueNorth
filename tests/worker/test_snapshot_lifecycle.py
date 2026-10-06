@@ -513,6 +513,10 @@ class TestSnapshotRangeTask:
 
 
 class TestRestoreSnapshotTask:
+    @pytest.fixture(autouse=True)
+    def _lease(self, lease_always_free):
+        """A restore takes the range's lease (worker/fencing.py); these stub the database."""
+
     def _rows(self, range_state: str = "ready", snapshot_data: dict | None = None, at_snapshot: str = "ready", **kw):
         data = snapshot_data if snapshot_data is not None else {"snapshot_name": "tnabc"}
         return _rows("restoring", data, at_snapshot, range_state, **kw)

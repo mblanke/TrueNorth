@@ -230,7 +230,7 @@ class TestProvisionGuard:
     (cleanup_expired_ranges was retired: it queried ranges.expires_at, a column that never
     existed; lab sessions expire through their leases, app/lab_sessions.)"""
 
-    def test_a_ready_range_is_not_provisioned_again(self):
+    def test_a_ready_range_is_not_provisioned_again(self, lease_always_free):
         if not _WORKER_IMPORTABLE:
             pytest.skip("Worker package not installed (celery missing)")
         from unittest.mock import patch
@@ -242,7 +242,8 @@ class TestProvisionGuard:
             patch("worker.tasks._get_backend") as backend,
         ):
             assert provision_range.run("r-ready") == {"status": "skipped", "range_id": "r-ready"}
-        update.assert_called_once_with("r-ready", "provisioning", only_from=("created", "provisioning", "failed"))
+        # Only a range its sender moved to provisioning is built (worker/fencing.py).
+        update.assert_called_once_with("r-ready", "provisioning", only_from=("provisioning",))
         backend.assert_not_called()
 
 

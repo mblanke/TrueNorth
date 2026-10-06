@@ -10,7 +10,8 @@ import asyncio
 import logging
 
 from .celery_app import app
-from .tasks import ReliableTask, _get_backend
+from .provisioners import get_provisioner as _get_backend  # the API always names the backend
+from .reliable import ReliableTask
 
 logger = logging.getLogger(__name__)
 
