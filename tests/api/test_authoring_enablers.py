@@ -25,7 +25,7 @@ VALID_SCENARIO = textwrap.dedent("""
     objectives:
       - id: obj-1
         type: detection
-        validator: validate.opensearch_query
+        validator: opensearch_query
         points: 10
 """)
 

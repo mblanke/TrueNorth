@@ -421,9 +421,9 @@ class TestScoringValidator:
 
     @pytest.mark.asyncio
     async def test_opensearch_no_url(self):
-        from scenario_engine.scoring.validators import Unscored
+        from scenario_engine.scoring.validators import UnscoredError
 
-        with pytest.raises(Unscored, match="no event store"):
+        with pytest.raises(UnscoredError, match="no event store"):
             await ScoringValidator.validate(
                 method="opensearch_query",
                 config={"index": "test-*", "query": {"match_all": {}}, "threshold": 1},

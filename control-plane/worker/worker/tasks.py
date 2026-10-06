@@ -21,10 +21,9 @@ from datetime import UTC, datetime
 
 from celery import Task, group
 
-from . import db_ops
+from . import db_ops, telemetry
 from .aar import build_report as build_aar_report
 from .celery_app import app
-from . import telemetry
 from .detection import detection_scorer
 from .provisioners import discard_built, get_provisioner
 

@@ -38,12 +38,8 @@ export interface ScenarioModel {
 
 export const OBJECTIVE_TYPES: ObjectiveType[] = ['detection', 'response', 'deliverable'];
 
-/** Validators the engine ships; free text is still allowed for custom ones. */
-export const COMMON_VALIDATORS = [
-  'validate.opensearch_query',
-  'validate.manual_ack',
-  'validate.deliverable_check',
-];
+/** The validators the engine ships; the scenario schema accepts only these spellings. */
+export const COMMON_VALIDATORS = ['opensearch_query', 'manual_ack', 'deliverable_check'];
 
 export function emptyScenario(): ScenarioModel {
   return {

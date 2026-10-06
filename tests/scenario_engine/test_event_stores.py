@@ -21,7 +21,7 @@ from scenario_engine.event_stores import (
     get_event_store,
 )
 from scenario_engine.scoring.engine import ScoringEngine
-from scenario_engine.scoring.validators import ScoringValidator, Unscored
+from scenario_engine.scoring.validators import ScoringValidator, UnscoredError
 from scenario_engine.validators.opensearch_query import OpenSearchQueryValidator
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -115,7 +115,7 @@ class _Down(BaseEventStore):
 
 def test_store_outage_is_unscored_not_failed():
     # An outage must never read as "the Student did not detect it".
-    with pytest.raises(Unscored, match="unavailable"):
+    with pytest.raises(UnscoredError, match="unavailable"):
         asyncio.run(ScoringValidator.validate("opensearch_query", {"query": "a:b"}, event_store=_Down()))
 
 
@@ -140,7 +140,7 @@ def test_engine_reports_an_outage_as_unscored():
     ],
 )
 def test_unjudgeable_objectives_are_unscored(config, reason):
-    with pytest.raises(Unscored, match=reason):
+    with pytest.raises(UnscoredError, match=reason):
         asyncio.run(ScoringValidator.validate("opensearch_query", config, event_store=NullEventStore(EVENTS)))
 
 

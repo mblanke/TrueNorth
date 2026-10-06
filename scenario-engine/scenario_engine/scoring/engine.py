@@ -18,14 +18,20 @@ from ..event_stores import BaseEventStore
 logger = logging.getLogger(__name__)
 
 
-# Scenario content says ``validator: opensearch_query``; objective rows may carry the
-# ``validate.`` prefix. Both name a ScoringValidator method.
-_VALIDATOR_METHODS = {"manual_ack": "manual"}
+# Scenario content says ``validator: opensearch_query``; older objective rows and content
+# say ``validate.opensearch_query``, ``validate.opensearch.query`` or
+# ``validate_opensearch_query``. All name the same ScoringValidator method.
+_VALIDATOR_METHODS = {"manual_ack": "manual", "deliverable_check": "deliverable"}
 
 
 def validation_method(validator: str) -> str:
     """The ScoringValidator method for a scenario/objective-row validator name."""
-    name = (validator or "manual").removeprefix("validate.")
+    name = (validator or "manual").strip().lower()
+    for prefix in ("validate.", "validate_"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+    name = name.replace(".", "_")
     return _VALIDATOR_METHODS.get(name, name)
 
 
@@ -137,7 +143,7 @@ class ScoringEngine:
 
     async def evaluate(self) -> ScoringResult:
         """Evaluate **all** objectives and return the aggregate result."""
-        from scenario_engine.scoring.validators import Unscored
+        from scenario_engine.scoring.validators import UnscoredError
 
         tasks = [self.evaluate_objective(oid) for oid in self.objectives]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -145,7 +151,7 @@ class ScoringEngine:
         objective_results: list[ObjectiveResult] = []
         unscored: dict[str, str] = {}
         for oid, res in zip(self.objectives, results, strict=True):
-            if isinstance(res, Unscored):
+            if isinstance(res, UnscoredError):
                 logger.warning("Objective %s not scored: %s", oid, res)
                 unscored[oid] = str(res)
             elif isinstance(res, Exception):

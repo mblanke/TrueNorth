@@ -37,7 +37,14 @@ from .telemetry import range_index
 
 logger = logging.getLogger("truenorth.worker.detection")
 
-QUERY_VALIDATORS = frozenset({"opensearch_query", "validate.opensearch_query"})
+def is_query_validator(name: str | None) -> bool:
+    """``opensearch_query`` in any of the spellings content and older rows use."""
+    raw = (name or "").strip().lower()
+    for prefix in ("validate.", "validate_"):
+        if raw.startswith(prefix):
+            raw = raw[len(prefix):]
+            break
+    return raw.replace(".", "_") == "opensearch_query"
 EVIDENCE_EVENTS = 5  # matched events kept on the objective row
 
 
@@ -88,7 +95,7 @@ def pending_objectives(range_id: str, scenario_yaml: str | None, rows: Sequence)
     from_yaml = _scenario_params(scenario_yaml)
     out = []
     for ref_id, validator, raw_params, points, achieved in rows:
-        if achieved or validator not in QUERY_VALIDATORS:
+        if achieved or not is_query_validator(validator):
             continue
         params = _row_params(raw_params)
         if not params.get("query"):

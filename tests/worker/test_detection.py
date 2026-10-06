@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from worker.detection import pending_objectives, range_index
 
 RANGE = "r-1"
@@ -55,3 +56,13 @@ def test_prefixed_validator_name_and_bad_params_are_tolerated():
     assert [(o["id"], o["validation_config"]["threshold"], o["partial_credit"]) for o in got] == [
         ("prefixed", 1, False)
     ]
+
+
+@pytest.mark.parametrize(
+    "name", ["opensearch_query", "validate.opensearch_query", "validate.opensearch.query", "validate_opensearch_query"]
+)
+def test_every_spelling_of_the_query_validator_is_scored(name):
+    from worker.detection import is_query_validator
+
+    assert is_query_validator(name)
+    assert not is_query_validator("manual_ack")

@@ -156,7 +156,9 @@ timeline:
 objectives:
   - id: M01-O01
     type: detection
-    validator: crit_ce01
+    validator: opensearch_query
+    params:
+      query: "event.code:4624 AND winlog.event_data.LogonType:3"
     points: 1
 """
 

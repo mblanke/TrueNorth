@@ -63,7 +63,12 @@
             ]
           },
           "validator": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "opensearch_query",
+              "manual_ack",
+              "deliverable_check"
+            ]
           },
           "params": {
             "type": "object"

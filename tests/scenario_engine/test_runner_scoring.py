@@ -31,6 +31,9 @@ def test_validator_names_map_to_scoring_methods():
     assert validation_method("opensearch_query") == "opensearch_query"
     assert validation_method("validate.opensearch_query") == "opensearch_query"
     assert validation_method("validate.manual_ack") == "manual"
+    assert validation_method("validate.opensearch.query") == "opensearch_query"  # ransomware-lite's old spelling
+    assert validation_method("validate_opensearch_query") == "opensearch_query"
+    assert validation_method("deliverable_check") == "deliverable"
     assert validation_method("") == "manual"
 
 
