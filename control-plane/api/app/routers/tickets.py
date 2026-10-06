@@ -890,6 +890,7 @@ def list_activity(
         .order_by(TicketActivity.created_at)
         .all()
     )
+
     # Assignee / queue changes are stored as ids; show names, which a student
     # cannot otherwise look up.
     def _ids(field: str) -> set[uuid.UUID]:
