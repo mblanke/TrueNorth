@@ -441,3 +441,83 @@ class TestBrowserTourFixes:
         changes = {a["field"]: (a["old_value"], a["new_value"]) for a in client.get(f"/tickets/{t['id']}/activity").json()}
         assert changes["exercise_id"] == ("IR Drill #1", "")
         assert changes["range_id"] == ("DP2 AD Lab", "")
+
+
+
+class TestThirdReviewFixes:
+    BINARY = bytes(range(256)) * 4  # every byte value, zeros included
+
+    @pytest.fixture
+    def fake_store(self, monkeypatch):
+        from app import object_store
+
+        store: dict[str, bytes] = {}
+        monkeypatch.setattr(object_store, "put_object", lambda k, d, c, bucket=None: store.__setitem__(k, d))
+        monkeypatch.setattr(object_store, "get_object", lambda k, bucket=None: store[k])
+        monkeypatch.setattr(object_store, "delete_object", lambda k, bucket=None: store.pop(k, None))
+        return store
+
+    def test_binary_attachment_downloads_byte_identical(self, client, fake_store):
+        """Through the full middleware stack: the sanitiser used to strip every zero byte."""
+        t = _file(client)
+        att = client.post(
+            f"/tickets/{t['id']}/attachments", files=[("files", ("capture.pcap", io.BytesIO(self.BINARY), "x/pcap"))]
+        ).json()[0]
+        assert att["size_bytes"] == len(self.BINARY)
+        assert client.get(f"/tickets/attachments/{att['id']}").content == self.BINARY
+
+    def test_binary_range_document_downloads_byte_identical(self, client, fake_store, rng):
+        up = client.post(
+            f"/ranges/{rng.id}/documents", files=[("files", ("diagram.png", io.BytesIO(self.BINARY), "image/png"))]
+        )
+        assert up.status_code == 201
+        doc = up.json()[0]
+        assert client.get(f"/ranges/{rng.id}/documents/{doc['id']}").content == self.BINARY
+
+    def test_too_many_files_at_once(self, client, fake_store):
+        t = _file(client)
+        files = [("files", (f"f{i}.txt", io.BytesIO(b"x"), "text/plain")) for i in range(11)]
+        assert client.post(f"/tickets/{t['id']}/attachments", files=files).status_code == 413
+        assert fake_store == {}
+
+    @pytest.mark.parametrize("status", ["resolved", "closed"])
+    def test_reporter_reply_reopens_a_finished_ticket(self, client, student, instructor, status):
+        with acting_as(student):
+            t = _file(client)
+        with acting_as(instructor):
+            client.patch(f"/tickets/{t['id']}", json={"status": status})
+        with acting_as(student):
+            client.post(f"/tickets/{t['id']}/comments", json={"body": "still broken"})
+            assert client.get(f"/tickets/{t['id']}").json()["status"] == "open"
+
+    def test_staff_reply_does_not_reopen(self, client, instructor):
+        t = _file(client)
+        client.patch(f"/tickets/{t['id']}", json={"status": "resolved"})
+        with acting_as(instructor):
+            client.post(f"/tickets/{t['id']}/comments", json={"body": "fixed, closing soon"})
+        assert client.get(f"/tickets/{t['id']}").json()["status"] == "resolved"
+
+    def test_reordering_within_a_column_leaves_updated_at(self, client):
+        a, b = _file(client, subject="a"), _file(client, subject="b")
+        before = client.get(f"/tickets/{b['id']}").json()["updated_at"]
+        client.post(f"/tickets/{b['id']}/move", json={"status": "open", "board_order": a["board_order"] - 1})
+        after = client.get(f"/tickets/{b['id']}").json()
+        assert after["updated_at"] == before
+        assert after["board_order"] == a["board_order"] - 1
+
+    def test_description_edits_are_in_the_history(self, client, student):
+        with acting_as(student):
+            t = _file(client)
+            client.patch(f"/tickets/{t['id']}", json={"description": "rewritten after staff replied"})
+            fields = [x["field"] for x in client.get(f"/tickets/{t['id']}/activity").json()]
+        assert "description" in fields
+
+    def test_blank_subject_refused(self, client):
+        assert client.post("/tickets", json={"subject": "   "}).status_code == 422
+        t = _file(client)
+        assert client.patch(f"/tickets/{t['id']}", json={"subject": " "}).status_code == 422
+        assert client.post("/tickets", json={"subject": "  padded  "}).json()["subject"] == "padded"
+
+    def test_the_default_queue_cannot_be_switched_off_directly(self, client):
+        q = next(x for x in client.get("/tickets/queues").json() if x["is_default"])
+        assert client.put(f"/tickets/queues/{q['id']}", json={"is_default": False}).status_code == 409

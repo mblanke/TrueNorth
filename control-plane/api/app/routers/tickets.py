@@ -45,8 +45,8 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, or_, text
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import func, or_, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -68,15 +68,38 @@ TYPE_RE = r"^(incident|bug|task|request)$"
 STATUS_RE = r"^(open|in_progress|waiting|resolved|closed)$"
 PRIORITY_RE = r"^(low|medium|high|critical)$"
 STAFF_ROLES = (UserRole.admin, UserRole.instructor, UserRole.range_ops)
-TRACKED_FIELDS = ("status", "priority", "type", "assignee_id", "queue_id", "subject", "range_id", "exercise_id")
+TRACKED_FIELDS = (
+    "status",
+    "priority",
+    "type",
+    "assignee_id",
+    "queue_id",
+    "subject",
+    "description",
+    "range_id",
+    "exercise_id",
+)
+MAX_FILES_PER_UPLOAD = 10
 
 
 # ── Schemas ─────────────────────────────────────────────────────────────
+def _not_blank(v: str | None) -> str | None:
+    """Subjects and names are trimmed; one made only of spaces is refused."""
+    if v is None:
+        return v
+    v = v.strip()
+    if not v:
+        raise ValueError("must not be blank")
+    return v
+
+
 class QueueIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     slug: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9-]*$")
     description: str = ""
     is_default: bool = False
+
+    _name = field_validator("name")(_not_blank)
 
 
 class QueueUpdate(BaseModel):
@@ -84,6 +107,8 @@ class QueueUpdate(BaseModel):
     name: str = Field(default=None, min_length=1, max_length=255)
     description: str = Field(default=None)
     is_default: bool = Field(default=None)
+
+    _name = field_validator("name")(_not_blank)
 
 
 class QueueOut(BaseModel):
@@ -107,6 +132,8 @@ class TicketIn(BaseModel):
     exercise_id: uuid.UUID | None = None
     assignee_id: uuid.UUID | None = None  # staff only
 
+    _subject = field_validator("subject")(_not_blank)
+
 
 class TicketUpdate(BaseModel):
     subject: str | None = Field(None, min_length=1, max_length=500)
@@ -123,6 +150,8 @@ class TicketUpdate(BaseModel):
     exercise_id: uuid.UUID | None = None
     unlink_range: bool = False
     unlink_exercise: bool = False
+
+    _subject = field_validator("subject")(_not_blank)
 
 
 class MoveIn(BaseModel):
@@ -368,7 +397,9 @@ def _apply(db: Session, t: Ticket, user: CurrentUser, changes: dict) -> None:
         old = getattr(t, field)
         if old == new:
             continue
-        if field in TRACKED_FIELDS:
+        if field == "description":
+            _log(db, t, user, field, "", "")  # "edited the description"; the text itself is too long to diff here
+        elif field in TRACKED_FIELDS:
             _log(db, t, user, field, old, new)
         if field == "status":
             _set_status(t, new)
@@ -451,6 +482,8 @@ def update_queue(
 ) -> SupportQueue:
     q = get_owned(db, SupportQueue, queue_id, user, not_found="Queue not found")
     data = body.model_dump(exclude_unset=True)
+    if data.get("is_default") is False and q.is_default:
+        raise HTTPException(409, "Make another queue the default instead; new tickets need a default queue")
     if data.get("is_default"):
         db.query(SupportQueue).filter(SupportQueue.tenant_id == q.tenant_id).update({"is_default": False})
     for k, v in data.items():
@@ -749,7 +782,18 @@ def move_ticket(
 ) -> TicketListOut:
     """Drag-and-drop on the board: change column and/or position within it."""
     t = _ticket(db, ticket_id, user)
-    _apply(db, t, user, {"status": body.status, "board_order": body.board_order})
+    if body.status == t.status:
+        # Reordering within a column is staff housekeeping: keep updated_at as it is, so
+        # the reporter's list doesn't re-sort and claim an update nobody can see.
+        db.execute(
+            update(Ticket)
+            .where(Ticket.id == t.id, Ticket.tenant_id == t.tenant_id)
+            .values(board_order=body.board_order, updated_at=Ticket.updated_at)
+            .execution_options(synchronize_session=False)
+        )
+        db.expire(t)
+    else:
+        _apply(db, t, user, {"status": body.status, "board_order": body.board_order})
     _audit(db, user, "ticket_move", str(t.id))
     db.commit()
     db.refresh(t)
@@ -795,8 +839,10 @@ def add_comment(
         is_internal=body.is_internal,
     )
     db.add(c)
-    # The reporter answering a "waiting on you" ticket puts it back in the queue.
-    if t.status == "waiting" and str(t.reporter_id) == user.id and not body.is_internal:
+    # The reporter answering puts the ticket back in the queue: a "waiting on you" ticket,
+    # and also a resolved or closed one ("still broken"), which no staff view lists as
+    # open work. There are no notifications, so leaving the status would bury the reply.
+    if t.status in ("waiting", "resolved", "closed") and str(t.reporter_id) == user.id and not body.is_internal:
         _apply(db, t, user, {"status": "open"})
     if not body.is_internal:
         # An internal note must leave no trace the reporter can see, not even a
@@ -834,6 +880,8 @@ async def upload_attachments(
     user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
 ) -> list[TicketAttachment]:
     t = _ticket(db, ticket_id, user)
+    if len(files) > MAX_FILES_PER_UPLOAD:
+        raise HTTPException(413, f"Attach at most {MAX_FILES_PER_UPLOAD} files at a time")
     # Validate every file before storing any, and never read more than the limit + 1
     # byte, so an oversized upload neither fills memory nor leaves orphaned objects.
     staged: list[tuple[str, str, bytes]] = []

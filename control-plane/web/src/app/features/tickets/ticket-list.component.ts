@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { AuthService } from '@core/services/auth.service';
 import { KbStylesComponent } from '@shared/kb-styles.component';
-import { isAdminRole, isStaffRole } from '@shared/kb-roles';
+import { canFileTickets, isAdminRole, isStaffRole } from '@shared/kb-roles';
 import { STATUS_LABELS, TicketFilters, TicketSummary, TicketsApiService } from '@core/services/tickets-api.service';
 
 interface Tab { key: string; label: string; filters: TicketFilters }
@@ -40,7 +40,7 @@ const STUDENT_TABS: Tab[] = [
         <div class="tn-kb-actions">
           @if (staff()) { <a mat-button routerLink="/support/board">Board</a> }
           @if (admin()) { <a mat-button routerLink="/support/queues">Queues</a> }
-          @if (!forbidden()) { <a mat-flat-button color="primary" routerLink="/support/new">Report a problem</a> }
+          @if (canFile()) { <a mat-flat-button color="primary" routerLink="/support/new">Report a problem</a> }
         </div>
       </div>
 
@@ -54,6 +54,7 @@ const STUDENT_TABS: Tab[] = [
 
       <section class="tn-kb-panel">
         @if (tickets().length) {
+          <div class="tn-kb-scroll">
           <table class="tn-kb-table">
             <thead>
               <tr>
@@ -81,6 +82,7 @@ const STUDENT_TABS: Tab[] = [
               }
             </tbody>
           </table>
+          </div>
         } @else if (forbidden()) {
           <p class="tn-kb-muted">Your role can read the wiki but can't file or view support tickets. Ask an instructor for help.</p>
         } @else {
@@ -97,6 +99,7 @@ export class TicketListComponent implements OnInit {
   readonly labels = STATUS_LABELS;
   readonly staff = computed(() => isStaffRole(this.auth.user()?.role));
   readonly admin = computed(() => isAdminRole(this.auth.user()?.role));
+  readonly canFile = computed(() => canFileTickets(this.auth.user()?.role));
   readonly tabs = computed(() => (this.staff() ? STAFF_TABS : STUDENT_TABS));
   readonly tab = signal('');
   readonly tickets = signal<TicketSummary[]>([]);

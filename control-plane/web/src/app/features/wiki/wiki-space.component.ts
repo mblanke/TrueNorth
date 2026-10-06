@@ -34,15 +34,20 @@ import { WikiApiService, WikiSpace, WikiTreeNode } from '@core/services/wiki-api
           @if (!loading() && tree().length === 0) {
             <p class="tn-kb-small tn-kb-muted">No pages yet.</p>
           }
-          @if (canEdit()) {
+          @if (canEdit() && !space()?.is_archived) {
             <p style="margin:12px 0 0"><a class="tn-kb-link tn-kb-small" [routerLink]="['/wiki', slug, 'new']">+ New page</a></p>
           }
-          @if (isAdmin() && space()) {
-            <p style="margin:6px 0 0"><a class="tn-kb-link tn-kb-small" role="button" tabindex="0"
-               (click)="archive()" (keydown.enter)="archive()">Archive this space</a></p>
+          @if (isAdmin() && space() && !space()!.is_archived) {
+            <p style="margin:6px 0 0"><button type="button" class="tn-kb-linkbtn tn-kb-small" (click)="archive()">Archive this space</button></p>
           }
         </nav>
         <div style="min-width:0">
+          @if (space()?.is_archived) {
+            <div class="tn-kb-banner" role="status">
+              <span>This space is archived: it is hidden from the wiki list and from students, and its pages are read-only.</span>
+              @if (isAdmin()) { <button type="button" class="tn-kb-linkbtn" (click)="unarchive()">Unarchive</button> }
+            </div>
+          }
           @if (missing()) {
             <div class="tn-kb-panel"><p>This space doesn't exist, or you don't have access to it.</p></div>
           } @else {
@@ -78,10 +83,17 @@ export class WikiSpaceComponent implements OnInit {
   }
 
   archive(): void {
-    if (!confirm(`Archive “${this.space()?.name}”? Its pages are kept and it can be restored by an administrator.`)) return;
+    if (!confirm(`Archive “${this.space()?.name}”? It disappears from the wiki list and from students; its pages are kept, read-only, and an administrator can unarchive it from the wiki list.`)) return;
     this.wiki.archiveSpace(this.slug).subscribe({
       next: () => { this.notify.success('Space archived'); this.router.navigate(['/wiki']); },
       error: () => this.notify.error('Could not archive the space'),
+    });
+  }
+
+  unarchive(): void {
+    this.wiki.updateSpace(this.slug, { is_archived: false }).subscribe({
+      next: s => { this.space.set(s); this.wiki.spaceChanged.next(); this.notify.success('Space restored'); },
+      error: () => this.notify.error('Could not unarchive the space'),
     });
   }
 

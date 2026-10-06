@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { NotificationService } from '@core/services/notification.service';
+import { apiErrorMessage } from '@shared/kb-errors';
 import { KbStylesComponent } from '@shared/kb-styles.component';
 import { SupportQueue, TicketsApiService } from '@core/services/tickets-api.service';
 
@@ -69,10 +70,13 @@ export class TicketQueuesComponent implements OnInit {
   }
 
   create(): void {
-    const slug = this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'queue';
+    // A name with no Latin letters or digits (e.g. Cyrillic) still needs a unique address.
+    const slug =
+      this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90) ||
+      `queue-${Date.now().toString(36)}`;
     this.api.createQueue({ name: this.name.trim(), slug, description: this.description, is_default: false }).subscribe({
       next: () => { this.name = ''; this.description = ''; this.load(); },
-      error: err => this.notify.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'Could not add the queue'),
+      error: err => this.notify.error(apiErrorMessage(err, 'Could not add the queue')),
     });
   }
 
@@ -84,7 +88,7 @@ export class TicketQueuesComponent implements OnInit {
     if (!confirm(`Delete the ${q.name} queue?`)) return;
     this.api.deleteQueue(q.id).subscribe({
       next: () => this.load(),
-      error: err => this.notify.error(typeof err?.error?.detail === 'string' ? err.error.detail : 'Could not delete the queue'),
+      error: err => this.notify.error(apiErrorMessage(err, 'Could not delete the queue')),
     });
   }
 

@@ -7,6 +7,7 @@ import { Subject, catchError, debounceTime, distinctUntilChanged, of, switchMap 
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import { KbStylesComponent } from '@shared/kb-styles.component';
+import { apiErrorMessage } from '@shared/kb-errors';
 import { isAdminRole } from '@shared/kb-roles';
 import { WikiSearchHit, WikiApiService, WikiSpace, WikiVisibility } from '@core/services/wiki-api.service';
 
@@ -27,6 +28,9 @@ import { WikiSearchHit, WikiApiService, WikiSpace, WikiVisibility } from '@core/
           <input class="tn-kb-input" style="width:260px" type="search" placeholder="Search the wiki"
                  aria-label="Search the wiki" [ngModel]="query()" (ngModelChange)="onQuery($event)">
           @if (isAdmin()) {
+            <label class="tn-kb-small" style="display:flex;gap:6px;align-items:center">
+              <input type="checkbox" [ngModel]="showArchived()" (ngModelChange)="toggleArchived($event)"> Show archived
+            </label>
             <button mat-stroked-button type="button" (click)="creating.set(!creating())">New space</button>
           }
         </div>
@@ -74,6 +78,7 @@ import { WikiSearchHit, WikiApiService, WikiSpace, WikiVisibility } from '@core/
               <div>
                 <a class="tn-kb-link" [routerLink]="['/wiki', s.slug]"><strong>{{ s.name }}</strong></a>
                 @if (s.visibility === 'staff') { <span class="tn-kb-tag" style="margin-left:6px">staff only</span> }
+                @if (s.is_archived) { <span class="tn-kb-tag" style="margin-left:6px">archived</span> }
                 @if (s.description) { <p class="tn-kb-small tn-kb-muted">{{ s.description }}</p> }
               </div>
             </div>
@@ -97,6 +102,7 @@ export class WikiHomeComponent implements OnInit {
   readonly loading = signal(true);
   readonly searching = signal(false);
   readonly creating = signal(false);
+  readonly showArchived = signal(false);
   readonly isAdmin = computed(() => isAdminRole(this.auth.user()?.role));
 
   draft = { name: '', slug: '', description: '', visibility: 'all' as WikiVisibility };
@@ -137,13 +143,18 @@ export class WikiHomeComponent implements OnInit {
         this.slugTouched = false;
         this.load();
       },
-      error: err => this.notify.error(err?.error?.detail ?? 'Could not create the space'),
+      error: err => this.notify.error(apiErrorMessage(err, 'Could not create the space')),
     });
+  }
+
+  toggleArchived(on: boolean): void {
+    this.showArchived.set(on);
+    this.load();
   }
 
   private load(): void {
     this.loading.set(true);
-    this.wiki.listSpaces().subscribe({
+    this.wiki.listSpaces(this.showArchived()).subscribe({
       next: s => { this.spaces.set(s); this.loading.set(false); },
       error: () => { this.loading.set(false); this.notify.error('Could not load the wiki'); },
     });

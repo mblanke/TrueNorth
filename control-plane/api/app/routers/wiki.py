@@ -41,7 +41,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -60,12 +60,24 @@ SLUG_RE = r"^[a-z0-9][a-z0-9-]*$"
 
 
 # ── Schemas ─────────────────────────────────────────────────────────────
+def _not_blank(v: str | None) -> str | None:
+    """Titles and names are trimmed; one made only of spaces is refused."""
+    if v is None:
+        return v
+    v = v.strip()
+    if not v:
+        raise ValueError("must not be blank")
+    return v
+
+
 class SpaceIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     slug: str = Field(..., min_length=1, max_length=100, pattern=SLUG_RE)
     description: str = ""
     icon: str = Field("folder", max_length=50)
     visibility: str = Field("all", pattern=r"^(all|staff)$")
+
+    _name = field_validator("name")(_not_blank)
 
 
 class SpaceUpdate(BaseModel):
@@ -75,6 +87,8 @@ class SpaceUpdate(BaseModel):
     icon: str = Field(default=None, max_length=50)
     visibility: str = Field(default=None, pattern=r"^(all|staff)$")
     is_archived: bool = Field(default=None)
+
+    _name = field_validator("name")(_not_blank)
 
 
 class SpaceOut(BaseModel):
@@ -97,6 +111,8 @@ class PageIn(BaseModel):
     tags: str = Field("", max_length=500)
     is_published: bool = True
 
+    _title = field_validator("title")(_not_blank)
+
 
 class PageUpdate(BaseModel):
     base_revision: int = Field(..., ge=1, description="revision_number the edit started from")
@@ -108,6 +124,8 @@ class PageUpdate(BaseModel):
     is_published: bool | None = None
     ordinal: int | None = None
     edit_summary: str = Field("", max_length=500)
+
+    _title = field_validator("title")(_not_blank)
 
 
 class RestoreRequest(BaseModel):
@@ -126,6 +144,7 @@ class PageOut(BaseModel):
     id: uuid.UUID
     space_id: uuid.UUID
     space_slug: str = ""
+    space_archived: bool = False
     parent_id: uuid.UUID | None = None
     title: str
     slug: str
@@ -208,15 +227,22 @@ def _space(db: Session, slug: str, user: CurrentUser) -> WikiSpace:
         )
         .first()
     )
-    if not space or (space.visibility == "staff" and not _staff(user)):
+    hidden = space is not None and (space.visibility == "staff" or space.is_archived)
+    if not space or (hidden and not _staff(user)):
         raise HTTPException(404, "Space not found")
     return space
+
+
+def _writable(space: WikiSpace) -> None:
+    """An archived space is read-only (for staff; students cannot see it at all)."""
+    if space.is_archived:
+        raise HTTPException(409, "This space is archived. Unarchive it to make changes.")
 
 
 def _page(db: Session, page_id: uuid.UUID, user: CurrentUser) -> tuple[WikiPage, WikiSpace]:
     page = get_owned(db, WikiPage, page_id, user, not_found="Page not found")
     space = get_owned(db, WikiSpace, page.space_id, user, not_found="Page not found")
-    if not _staff(user) and (space.visibility == "staff" or not page.is_published):
+    if not _staff(user) and (space.visibility == "staff" or space.is_archived or not page.is_published):
         raise HTTPException(404, "Page not found")
     return page, space
 
@@ -243,6 +269,7 @@ def _page_out(db: Session, page: WikiPage, space: WikiSpace, user: CurrentUser) 
     children = sorted((p for p in siblings if p.parent_id == page.id), key=lambda p: (p.ordinal, p.title.lower()))
     out = PageOut.model_validate(page)
     out.space_slug = space.slug
+    out.space_archived = space.is_archived
     out.breadcrumbs = crumbs
     out.children = [PageRef(id=c.id, title=c.title) for c in children]
     out.last_editor_name = _names(db, user, {page.last_editor_id}).get(page.last_editor_id, "")
@@ -331,7 +358,7 @@ def list_spaces(
     q = db.query(WikiSpace).filter(WikiSpace.tenant_id == tenant_uuid(user), WikiSpace.deleted_at.is_(None))
     if not _staff(user):
         q = q.filter(WikiSpace.visibility == "all")
-    if not include_archived:
+    if not include_archived or not _staff(user):
         q = q.filter(WikiSpace.is_archived.is_(False))
     return q.order_by(WikiSpace.name).all()
 
@@ -343,8 +370,12 @@ def create_space(
     user: CurrentUser = Depends(require_permission(Permission.WIKI_ADMIN)),
 ) -> WikiSpace:
     tid = tenant_uuid(user)
-    clash = db.query(WikiSpace.id).filter(WikiSpace.tenant_id == tid, WikiSpace.slug == body.slug).first()
+    clash = db.query(WikiSpace).filter(WikiSpace.tenant_id == tid, WikiSpace.slug == body.slug).first()
     if clash:
+        if clash.is_archived:
+            raise HTTPException(
+                409, f"An archived space uses the address '{body.slug}'. Unarchive it, or pick another."
+            )
         raise HTTPException(409, f"A space with slug '{body.slug}' already exists")
     space = WikiSpace(tenant_id=tid, created_by=uuid.UUID(user.id), **body.model_dump())
     db.add(space)
@@ -419,8 +450,7 @@ def create_page(
     user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
 ) -> PageOut:
     space = _space(db, slug, user)
-    if space.is_archived:
-        raise HTTPException(409, "This space is archived")
+    _writable(space)
     if body.parent_id:
         _check_parent(db, None, space, body.parent_id, user)
     uid = uuid.UUID(user.id)
@@ -471,6 +501,7 @@ def update_page(
     user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
 ):
     page, space = _page(db, page_id, user)
+    _writable(space)
     if body.base_revision != page.revision_number:
         return _conflict(db, page.id, user)
 
@@ -534,6 +565,7 @@ def delete_page(
 ):
     """Soft-delete the page and everything under it; revisions are kept."""
     page, space = _page(db, page_id, user)
+    _writable(space)
     pages = _visible_pages(db, space, user).all()
     doomed, frontier = {page.id}, [page.id]
     while frontier:
@@ -617,6 +649,7 @@ def restore_revision(
     since. A stale base is a 409 with the current page.
     """
     page, space = _page(db, page_id, user)
+    _writable(space)
     rev = _revision(db, page, n, user)
     if body.base_revision != page.revision_number or not _claim(db, page, body.base_revision, bump=True):
         return _conflict(db, page.id, user)

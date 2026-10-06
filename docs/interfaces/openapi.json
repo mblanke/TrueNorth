@@ -7348,6 +7348,11 @@
             "title": "Slug",
             "type": "string"
           },
+          "space_archived": {
+            "default": false,
+            "title": "Space Archived",
+            "type": "boolean"
+          },
           "space_id": {
             "format": "uuid",
             "title": "Space Id",
