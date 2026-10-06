@@ -516,6 +516,18 @@ class TestSnapshotRangeTask:
 
 
 class TestRestoreSnapshotTask:
+    @pytest.fixture(autouse=True)
+    def _leased(self):
+        """The restore logic under test, not the range lease (test_range_task_single_delivery)."""
+        from worker import fencing
+
+        with (
+            patch.object(fencing, "claim", return_value="holder"),
+            patch.object(fencing, "release"),
+            patch.object(fencing, "keep"),
+        ):
+            yield
+
     def _rows(self, range_state: str = "ready", snapshot_data: dict | None = None, at_snapshot: str = "ready", **kw):
         data = snapshot_data if snapshot_data is not None else {"snapshot_name": "tnabc"}
         return _rows("restoring", data, at_snapshot, range_state, **kw)
@@ -575,6 +587,8 @@ class TestRestoreSnapshotTask:
         ):
             tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)
         spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready", only_from=("restoring",))
+        # Cut off mid-revert: the VMs may be partly reverted, so the range cannot be "as it was".
+        assert spies.range_state.call_args.args[:2] == ("r1", "failed")
 
     def test_a_half_done_restore_marks_the_range_failed(self, backend, spies):
         backend.restore.return_value = RestoreResult(

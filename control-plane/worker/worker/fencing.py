@@ -41,6 +41,7 @@ SOFT_TIME_LIMIT = 3300
 TASK_TIME_LIMIT = 3500  # below the broker's visibility_timeout (3600)
 LEASE_SECONDS = 3600
 LEASE_RETRY_SECONDS = 60
+CLEANUP_GRACE = 30  # seconds a cancelled hypervisor call gets to close its sessions
 LEASE_HELD = "lease-held"  # claim(): the state matches but another execution holds the lease
 
 
@@ -64,8 +65,11 @@ def run_async(coro):
 
     ``asyncio.run`` waits for every thread the call started (``to_thread``: vSphere clones,
     guest installs) before re-raising, so the soft time limit's cleanup could be held past
-    the hard limit, which kills the process with nothing recorded. Here a failure leaves
-    those threads behind (the executor is shut down without waiting) and propagates at once.
+    the hard limit, which kills the process with nothing recorded. Here a failure cancels
+    the call and gives it ``CLEANUP_GRACE`` seconds to run its own cleanup (``finally``,
+    ``async with``: vCenter sessions, HTTP clients), then propagates without waiting for
+    those threads. A thread may keep running after that; the range's lease covers it
+    (``fenced``: kept, not released, after a soft limit).
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -74,12 +78,19 @@ def run_async(coro):
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.run_until_complete(loop.shutdown_default_executor())  # finished: nothing to wait for
         return result
+    except BaseException:
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        for t in pending:
+            t.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.wait(pending, timeout=CLEANUP_GRACE))
+        raise
     finally:
         asyncio.set_event_loop(None)
-        loop.close()  # after a failure: shuts the executor down without waiting for its threads
+        loop.close()  # shuts the executor down without waiting for its threads
 
 
-def claim(session_factory, range_id: str, state: str) -> str | None:
+def claim(session_factory, range_id: str, state: str | None) -> str | None:
     """Claim ``range_id`` for this execution. Returns the holder token to ``release`` with;
     ``LEASE_HELD`` when the range is still ``state`` but another execution holds its lease
     (``defer``); None when the range is no longer ``state`` (``skipped``)."""
@@ -88,7 +99,8 @@ def claim(session_factory, range_id: str, state: str) -> str | None:
     holder = uuid.uuid4().hex
     with session_factory() as db:
         leased = db_ops.claim_lease(db, range_id, holder, LEASE_SECONDS)
-        in_state = db_ops.update_range_state(db, range_id, state, only_from=(state,))
+        # state None: the lease alone (a restore, which has no in-progress range state).
+        in_state = state is None or db_ops.update_range_state(db, range_id, state, only_from=(state,))
         if leased and in_state:
             return holder
         if leased:
@@ -109,6 +121,19 @@ def defer(task, action: str, range_id: str, state: str, *args, **kwargs) -> dict
     return {"status": "deferred", "range_id": range_id, "reason": "another execution holds the range's lease"}
 
 
+def keep(session_factory, range_id: str, holder: str) -> None:
+    """After a soft time limit: the hypervisor call may still be running in a thread, so
+    hold the lease for another ``LEASE_SECONDS`` instead of releasing it. Nothing else acts
+    on the range until then (a retry is deferred), longer than any one vSphere wait."""
+    from . import db_ops
+
+    try:
+        with session_factory() as db:
+            db_ops.extend_lease(db, range_id, holder, LEASE_SECONDS)
+    except Exception:
+        logger.warning("could not extend the lease on range %s", range_id, exc_info=True)
+
+
 def release(session_factory, range_id: str, holder: str) -> None:
     """Give the range's lease back (the task ended, or will be retried)."""
     from . import db_ops
@@ -120,9 +145,10 @@ def release(session_factory, range_id: str, holder: str) -> None:
         logger.warning("could not release the lease on range %s", range_id, exc_info=True)
 
 
-def fenced(action: str, state: str):
+def fenced(action: str, state: str | None):
     """Decorate a bound range task ``fn(task, range_id, ...)``: ``claim`` first (``skipped``
-    or ``defer`` when it cannot), ``release`` when it ends, however it ends."""
+    or ``defer`` when it cannot); when it ends, ``release`` the lease, except after a soft
+    time limit, when the call may still run in a thread and the lease is ``keep``-ed."""
 
     def wrap(fn):
         @functools.wraps(fn)
@@ -135,9 +161,15 @@ def fenced(action: str, state: str):
             if holder == LEASE_HELD:
                 return defer(task, action, range_id, state, *args, **kwargs)
             try:
-                return fn(task, range_id, *args, **kwargs)
-            finally:
+                result = fn(task, range_id, *args, **kwargs)
+            except SoftTimeLimitExceeded:
+                keep(_db_session, range_id, holder)
+                raise
+            except BaseException:
                 release(_db_session, range_id, holder)
+                raise
+            release(_db_session, range_id, holder)
+            return result
 
         return run
 

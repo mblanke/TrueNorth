@@ -130,6 +130,8 @@ def _release_stale_restores(db: Session, range_id: uuid.UUID) -> None:
     """Give back a snapshot left `restoring` by a worker that died: `ready` again, so it
     can be restored or deleted. Without this it was stuck for good (restore: "not ready",
     delete: "is restoring")."""
+    if range_ops.range_leased(db, range_id):  # a worker is acting on the range right now
+        return
     db.query(RangeSnapshot).filter(
         RangeSnapshot.range_id == range_id,
         RangeSnapshot.snapshot_state == "restoring",

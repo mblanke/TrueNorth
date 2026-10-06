@@ -205,27 +205,31 @@ def _check(db: Session, rng: Range, action: str) -> None:
 RESTORE_STALE_AFTER = timedelta(hours=5)
 
 
+def range_leased(db: Session, range_id: uuid.UUID) -> bool:
+    """A worker holds the range's lease (worker/fencing.py): it is acting on the range."""
+    from .models_range_ops import RangeLease
+
+    held = db.query(RangeLease.range_id).filter(RangeLease.range_id == range_id, RangeLease.expires_at > _now())
+    return held.first() is not None
+
+
 def refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
     """409 while any snapshot of the range is being restored.
 
     A restore is not a range operation and does not move the range out of its state, so
     without this a power action, a second restore or a new snapshot could run over the
-    VMs mid-revert (and the restore task, finding the range moved, would skip).
+    VMs mid-revert (and the restore task, finding the range moved, would skip). A running
+    restore holds the range's lease; a `restoring` row untouched for RESTORE_STALE_AFTER
+    (counted from the dispatch, so queue time included) with no lease held belongs to a
+    worker that died and no longer blocks the range.
     """
     from .models import RangeSnapshot
 
-    if (
-        db.query(RangeSnapshot.id)
-        .filter(
-            RangeSnapshot.range_id == range_id,
-            RangeSnapshot.snapshot_state == "restoring",
-            # A restore runs at most 4 attempts of up to 3500 s (the worker's hard limit)
-            # plus backoff, writing nothing in between: one untouched this long belongs to
-            # a worker that died and no longer blocks the range.
-            RangeSnapshot.updated_at > _now() - RESTORE_STALE_AFTER,
-        )
-        .first()
-    ):
+    restoring = db.query(RangeSnapshot.id).filter(
+        RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring"
+    )
+    fresh = restoring.filter(RangeSnapshot.updated_at > _now() - RESTORE_STALE_AFTER)
+    if fresh.first() or (range_leased(db, range_id) and restoring.first()):
         raise HTTPException(409, "A restore of this range is in progress")
 
 

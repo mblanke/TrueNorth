@@ -2,9 +2,10 @@
 
 Re-review of #39: while a snapshot is ``restoring`` every operation on the range is
 refused (409). A restore whose worker was killed never sets it back, so the range could
-never be stopped, started, destroyed or restored again, with no API way out. A restore
-cannot run longer than the worker's hard time limit, so a ``restoring`` row older than
-``RESTORE_STALE_AFTER`` no longer blocks anything.
+never be stopped, started, destroyed or restored again, with no API way out. A running
+restore holds the range's lease (worker/fencing.py); a ``restoring`` row untouched for
+``RESTORE_STALE_AFTER`` with no lease held belongs to a worker that died: it no longer
+blocks anything, and restoring or deleting it gives it back first.
 """
 
 from __future__ import annotations
@@ -75,4 +76,17 @@ def test_a_snapshot_stuck_restoring_can_be_deleted(client, db_session, sent):
 def test_a_live_restore_is_not_taken_for_stuck(client, db_session, sent):
     rng = _range_restoring(client, db_session, timedelta(hours=3))  # a retry may still be running
     snap = _snapshot(db_session, rng)
+    assert client.delete(f"/ranges/{rng.id}/snapshots/{snap.id}").status_code == 409
+
+
+def test_an_old_restore_still_holding_the_range_lease_is_live(client, db_session, sent):
+    """The time counts from the dispatch (queue wait included); a restore that is running
+    holds the range's lease, and that alone keeps it from being taken for stuck."""
+    from app.models_range_ops import RangeLease
+
+    rng = _range_restoring(client, db_session, timedelta(hours=6))
+    db_session.add(RangeLease(range_id=rng.id, holder="worker", expires_at=datetime.now(UTC) + timedelta(minutes=30)))
+    db_session.commit()
+    snap = _snapshot(db_session, rng)
+    assert client.post(f"/ranges/{rng.id}/stop").status_code == 409
     assert client.delete(f"/ranges/{rng.id}/snapshots/{snap.id}").status_code == 409

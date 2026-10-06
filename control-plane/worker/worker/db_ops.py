@@ -92,6 +92,15 @@ def claim_lease(db, range_id: str, holder: str, seconds: int) -> bool:
     return db.execute(stmt.returning(range_leases.c.holder)).first() is not None
 
 
+def extend_lease(db, range_id: str, holder: str, seconds: int) -> None:
+    """Hold the range's lease ``seconds`` from now, if ``holder`` still has it."""
+    db.execute(
+        sa.update(range_leases)
+        .where(range_leases.c.range_id == range_id, range_leases.c.holder == holder)
+        .values(expires_at=datetime.now(UTC) + timedelta(seconds=seconds))
+    )
+
+
 def release_lease(db, range_id: str, holder: str) -> None:
     """Give the lease back, if ``holder`` still has it."""
     db.execute(sa.delete(range_leases).where(range_leases.c.range_id == range_id, range_leases.c.holder == holder))

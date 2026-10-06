@@ -19,11 +19,11 @@ from datetime import UTC, datetime
 
 from celery import group
 
-from . import db_ops, fencing, periodic
+from . import db_ops, periodic
 from .aar import build_report as build_aar_report
 from .celery_app import app
 from .detection import DetectionScorer, range_index
-from .fencing import FINAL_ERRORS, PermanentError, fenced, run_async, skipped
+from .fencing import FINAL_ERRORS, PermanentError, SoftTimeLimitExceeded, fenced, run_async
 from .periodic import HEALTH_CHECK_BUDGET, METRICS_BUDGET
 from .provisioners import get_provisioner
 from .range_alloc import reserve_for_build
@@ -280,11 +280,9 @@ def destroy_range(self, range_id: str):
 
 def _power_range(task, range_id: str, action: str, claim: str, done: str):
     """Power a range's VMs off (``stop``) or on (``start``) for the operation the API recorded
-    by moving it to ``claim``: act only while it is there (fencing.py), write ``done`` only
-    once the hypervisor did it; a retry is safe, and only the last attempt records failed."""
+    by moving it to ``claim`` (stop_range/start_range are ``@fenced`` on it), write ``done``
+    only once the hypervisor did it; a retry is safe, and only the last attempt records failed."""
     logger.info(f"[{action}] Range {range_id}")
-    if (lease := fencing.claim(_db_session, range_id, claim)) in (None, fencing.LEASE_HELD):
-        return skipped(action, range_id, claim) if lease is None else fencing.defer(task, action, range_id, claim)
     try:
         with _db_session() as db:
             row = db_ops.range_output_and_backend(db, range_id)
@@ -304,17 +302,17 @@ def _power_range(task, range_id: str, action: str, claim: str, done: str):
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[{action}] Range {range_id} FAILED: {e}")
         raise
-    finally:
-        fencing.release(_db_session, range_id, lease)
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.stop_range")
+@fenced("stop", "stopping")
 def stop_range(self, range_id: str):
     """Power off every VM of a range (a stop operation: POST /ranges/{id}/stop)."""
     return _power_range(self, range_id, "stop", "stopping", "stopped")
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.start_range")
+@fenced("start", "starting")
 def start_range(self, range_id: str):
     """Power on every VM of a range (a start operation: POST /ranges/{id}/start)."""
     return _power_range(self, range_id, "start", "starting", "running")
@@ -795,6 +793,7 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.restore_snapshot")
+@fenced("restore", None)  # the range's lease only: one restore (or other range task) at a time
 def restore_snapshot(self, range_id: str, snapshot_id: str):
     """Restore a range from a snapshot."""
     logger.info(f"[restore] Restoring range {range_id} from snapshot {snapshot_id}")
@@ -832,8 +831,9 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
         return {"status": "restored", "range_id": range_id, "state": original_state}
 
     except Exception as e:
-        if changed:
-            # Some VMs reverted and some did not, so the range matches neither its old
+        if changed or isinstance(e, SoftTimeLimitExceeded):
+            # Some VMs reverted and some did not (or, cut off by the soft limit, we cannot
+            # tell, and the call may still be reverting), so the range matches neither its old
             # state nor the snapshot. Guarded, because this runs on every failed attempt,
             # retries included: the old unconditional write stamped `failed` over a
             # range destroyed meanwhile.
