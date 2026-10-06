@@ -31,7 +31,9 @@ export type RangeState =
   | 'provisioning'
   | 'ready'
   | 'running'
+  | 'stopping'
   | 'stopped'
+  | 'starting'
   | 'destroying'
   | 'destroyed'
   | 'failed';

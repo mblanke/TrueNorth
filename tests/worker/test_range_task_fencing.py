@@ -37,45 +37,8 @@ OUTPUT = '{"vms": [{"name": "r-dc01", "vm_id": "vm-1"}]}'
 
 
 @pytest.fixture(autouse=True)
-def requeued(monkeypatch):
-    """Every re-queue (fencing.defer) is recorded here; none reaches a broker."""
-    from celery.app.task import Task
-
-    calls: list[dict] = []
-    monkeypatch.setattr(Task, "apply_async", lambda self, *a, **k: calls.append({"task": self.name, **k}))
-    return calls
-
-
-def _sqlite_now(dbapi_conn, _record):
-    """The worker's SQL is written for PostgreSQL (NOW()); give SQLite one."""
-    if type(dbapi_conn).__module__.startswith("sqlite3"):
-        dbapi_conn.create_function("NOW", 0, lambda: datetime.now(UTC).isoformat())
-
-
-@pytest.fixture
-def db(tmp_path, monkeypatch):
-    sa.event.listen(sa.engine.Engine, "connect", _sqlite_now)
-    url = f"sqlite:///{tmp_path / 'worker.db'}"
-    engine = sa.create_engine(url, connect_args={"timeout": 30})
-    with engine.begin() as conn:
-        conn.execute(sa.text("CREATE TABLE templates (id TEXT PRIMARY KEY, yaml TEXT)"))
-        conn.execute(
-            sa.text(
-                "CREATE TABLE ranges (id TEXT PRIMARY KEY, template_id TEXT, state TEXT, provisioner_backend TEXT, "
-                "provisioner_output TEXT, error_message TEXT, updated_at TIMESTAMP)"
-            )
-        )
-        conn.execute(
-            sa.text(
-                "CREATE TABLE range_snapshots (id TEXT PRIMARY KEY, range_id TEXT, snapshot_state TEXT, "
-                "snapshot_data TEXT, range_state_at_snapshot TEXT, size_bytes INTEGER, updated_at TIMESTAMP)"
-            )
-        )
-    fencing.range_leases.create(engine)
-    monkeypatch.setattr(tasks, "DATABASE_URL", url)
-    monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
-    yield engine
-    sa.event.remove(sa.engine.Engine, "connect", _sqlite_now)
+def _requeue_recorded(requeued):
+    """Every re-queue (fencing.defer) is recorded (tests/worker/conftest.py); none is sent."""
 
 
 def _range(db, state: str, output: str | None = None) -> str:

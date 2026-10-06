@@ -32,6 +32,7 @@ describe('RangesComponent', () => {
       'createRange',
       'provisionRange',
       'stopRange',
+      'startRange',
       'destroyRange',
       'getRangeStats',
     ]);
@@ -41,7 +42,8 @@ describe('RangesComponent', () => {
     mockApi.listTemplates.and.returnValue(of(mockTemplates as Template[]));
     mockApi.createRange.and.returnValue(of({ id: 'r5', name: 'New', state: 'created' } as Range));
     mockApi.provisionRange.and.returnValue(of({ id: 'r2', state: 'provisioning' } as Range));
-    mockApi.stopRange.and.returnValue(of({ id: 'r1', state: 'stopped' } as Range));
+    mockApi.stopRange.and.returnValue(of({ id: 'r1', state: 'stopping' } as Range));
+    mockApi.startRange.and.returnValue(of({ id: 'r1', state: 'starting' } as Range));
     mockApi.destroyRange.and.returnValue(of({ id: 'r1', state: 'destroying' } as Range));
     mockApi.getRangeStats.and.returnValue(of({
       total_ranges: 4, by_state: { ready: 1, created: 1 }, total_vms: 12, active_exercises: 2,
@@ -126,7 +128,17 @@ describe('RangesComponent', () => {
     component.stop('r1');
 
     expect(mockApi.stopRange).toHaveBeenCalledWith('r1');
-    expect(mockNotify.success).toHaveBeenCalledWith('Range stopped');
+    // Asynchronous: the VMs are not off yet when the request is accepted.
+    expect(mockNotify.success).toHaveBeenCalledWith('Stopping range');
+  });
+
+  it('start() should call startRange and show notification', () => {
+    fixture.detectChanges();
+
+    component.start('r1');
+
+    expect(mockApi.startRange).toHaveBeenCalledWith('r1');
+    expect(mockNotify.success).toHaveBeenCalledWith('Starting range');
   });
 
   // ── Create range ─────────────────────────────────────────────────

@@ -25,6 +25,7 @@ POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import uuid
@@ -544,20 +545,48 @@ async def destroy_range(
     return rng
 
 
-@router.post("/{range_id}/stop", response_model=RangeOut)
+def _power(db: Session, user: CurrentUser, range_id: uuid.UUID, action: str, claim: RangeState) -> Range:
+    """Record a power request (``stopping`` / ``starting``) and send it to the worker,
+    which writes ``stopped`` / ``running`` once the VMs are (worker/power_tasks.py). Until
+    CR1-05 /stop set ``stopped`` and sent nothing: the VMs kept running."""
+    rng = _changeable_range(db, range_id, user)
+    if not rng.state.can_transition_to(claim):
+        raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
+    try:
+        vms = json.loads(rng.provisioner_output or "{}").get("vms") or []
+    except (ValueError, AttributeError):
+        vms = []
+    if not vms:
+        raise HTTPException(409, f"Cannot {action}: the range has no VMs recorded")
+    previous, rng.state = rng.state, claim
+    db.commit()
+    _send_or_undo(db, [(rng, previous)], f"{action}_range", str(rng.id))
+    _audit(db, user, action, "range", str(rng.id))
+    db.commit()
+    db.refresh(rng)
+    return rng
+
+
+@router.post("/{range_id}/stop", response_model=RangeOut, status_code=202)
 async def stop_range(
     range_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
-    """Stop a running range.  **Permission: range:provision**"""
-    rng = _changeable_range(db, range_id, user)
-    if not rng.state.can_transition_to(RangeState.stopped):
-        raise HTTPException(409, f"Cannot stop range in state {rng.state.value}")
-    rng.state = RangeState.stopped
-    db.commit()
-    db.refresh(rng)
-    return rng
+    """Power a range's VMs off (async: ``stopping`` until the worker reports ``stopped``).
+    **Permission: range:provision**"""
+    return _power(db, user, range_id, "stop", RangeState.stopping)
+
+
+@router.post("/{range_id}/start", response_model=RangeOut, status_code=202)
+async def start_range(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
+) -> Range:
+    """Power a stopped range's VMs on (async: ``starting`` until the worker reports
+    ``running``).  **Permission: range:provision**"""
+    return _power(db, user, range_id, "start", RangeState.starting)
 
 
 @router.post("/batch-provision", response_model=BatchProvisionOut, status_code=202)

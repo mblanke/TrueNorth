@@ -4439,6 +4439,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Range
+         * @description Power a stopped range's VMs on (async: ``starting`` until the worker reports
+         *     ``running``).  **Permission: range:provision**
+         */
+        post: operations["start_range_ranges__range_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/stop": {
         parameters: {
             query?: never;
@@ -4450,7 +4471,8 @@ export interface paths {
         put?: never;
         /**
          * Stop Range
-         * @description Stop a running range.  **Permission: range:provision**
+         * @description Power a range's VMs off (async: ``stopping`` until the worker reports ``stopped``).
+         *     **Permission: range:provision**
          */
         post: operations["stop_range_ranges__range_id__stop_post"];
         delete?: never;
@@ -18639,6 +18661,37 @@ export interface operations {
             };
         };
     };
+    start_range_ranges__range_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     stop_range_ranges__range_id__stop_post: {
         parameters: {
             query?: never;
@@ -18651,7 +18704,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

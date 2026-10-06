@@ -149,6 +149,11 @@ import { CountUpDirective } from '../../shared/motion';
                 <mat-icon>stop</mat-icon>
               </button>
             }
+            @if (r.state === 'stopped') {
+              <button mat-icon-button color="primary" (click)="start(r.id)" matTooltip="Start">
+                <mat-icon>play_arrow</mat-icon>
+              </button>
+            }
             @if (r.state === 'ready' || r.state === 'running' || r.state === 'stopped') {
               <button mat-icon-button color="warn" (click)="destroy(r.id)" matTooltip="Destroy">
                 <mat-icon>delete</mat-icon>
@@ -307,10 +312,18 @@ export class RangesComponent implements OnInit {
     });
   }
 
+  // Power is asynchronous: the range shows stopping / starting until the VMs are.
   stop(id: string): void {
     this.api.stopRange(id).subscribe({
-      next: () => { this.notify.success('Range stopped'); this.loadRanges(); },
+      next: () => { this.notify.success('Stopping range'); this.loadRanges(); },
       error: () => this.notify.error('Stop failed'),
+    });
+  }
+
+  start(id: string): void {
+    this.api.startRange(id).subscribe({
+      next: () => { this.notify.success('Starting range'); this.loadRanges(); },
+      error: () => this.notify.error('Start failed'),
     });
   }
 

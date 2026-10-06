@@ -25207,9 +25207,58 @@
         ]
       }
     },
+    "/ranges/{range_id}/start": {
+      "post": {
+        "description": "Power a stopped range's VMs on (async: ``starting`` until the worker reports\n``running``).  **Permission: range:provision**",
+        "operationId": "start_range_ranges__range_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Range",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/stop": {
       "post": {
-        "description": "Stop a running range.  **Permission: range:provision**",
+        "description": "Power a range's VMs off (async: ``stopping`` until the worker reports ``stopped``).\n**Permission: range:provision**",
         "operationId": "stop_range_ranges__range_id__stop_post",
         "parameters": [
           {
@@ -25224,7 +25273,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {

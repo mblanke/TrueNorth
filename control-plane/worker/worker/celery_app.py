@@ -55,6 +55,8 @@ app.conf.update(
     task_annotations={
         "worker.tasks.provision_range": {"rate_limit": "10/m", **RANGE_TASK_LIMITS},
         "worker.tasks.destroy_range": {"rate_limit": "15/m", **RANGE_TASK_LIMITS},
+        "worker.tasks.stop_range": RANGE_TASK_LIMITS,
+        "worker.tasks.start_range": RANGE_TASK_LIMITS,
         "worker.tasks.snapshot_range": RANGE_TASK_LIMITS,
         "worker.tasks.restore_snapshot": RANGE_TASK_LIMITS,
         "worker.tasks.ingest_telemetry_batch": {"rate_limit": "100/m"},
@@ -95,5 +97,6 @@ app.conf.beat_schedule = {
 from . import (
     chaos,  # noqa: F401, E402
     lab_tasks,  # noqa: F401, E402
+    power_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
 )

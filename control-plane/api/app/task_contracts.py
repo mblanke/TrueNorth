@@ -63,6 +63,8 @@ TASKS: dict[str, TaskContract] = {
         TaskContract("provision_range", "provision", (_RANGE,), "Build a range's VMs on its hypervisor."),
         TaskContract("batch_provision", "provision", (Arg("range_ids", "array", description="ranges.id list"),)),
         TaskContract("destroy_range", "destroy", (_RANGE,), "Tear down a range's VMs."),
+        TaskContract("stop_range", "provision", (_RANGE,), "Power off a range's VMs (POST /ranges/{id}/stop)."),
+        TaskContract("start_range", "provision", (_RANGE,), "Power on a range's VMs (POST /ranges/{id}/start)."),
         TaskContract("snapshot_range", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("restore_snapshot", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("delete_snapshot", "provision", (_RANGE, _SNAPSHOT)),

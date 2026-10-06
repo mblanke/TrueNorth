@@ -192,6 +192,9 @@ export class ApiService {
   stopRange(id: string): Observable<Range> {
     return this.http.post<Range>(`${this.base}/ranges/${id}/stop`, {});
   }
+  startRange(id: string): Observable<Range> {
+    return this.http.post<Range>(`${this.base}/ranges/${id}/start`, {});
+  }
   updateRange(id: string, data: Partial<Range>): Observable<Range> {
     return this.http.put<Range>(`${this.base}/ranges/${id}`, data);
   }
