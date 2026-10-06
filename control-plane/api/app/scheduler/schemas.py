@@ -37,6 +37,10 @@ class EventIn(BaseModel):
         None, description="Who teaches it; defaults to the caller when they are an instructor"
     )
     course_id: str | None = Field(None, description="The class: this course's active Students attend")
+    scenario_id: str | None = Field(
+        None, description="Run this scenario: a pending exercise is created when the range is built"
+    )
+    exercise_id: str | None = Field(None, description="Use this existing exercise (and its range) instead")
     draft: bool = Field(False, description="Create as a draft: holds nothing and is not checked until scheduled")
 
 
@@ -51,6 +55,8 @@ class EventOut(BaseModel):
     instructor_id: str | None = None
     created_by: str | None = None
     course_id: str | None = None
+    scenario_id: str | None = None
+    exercise_id: str | None = None
     start_time: datetime
     end_time: datetime
     vm_count: int

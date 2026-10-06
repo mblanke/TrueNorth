@@ -15,10 +15,10 @@ from fastapi import HTTPException
 from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
-from .. import range_lifecycle
+from .. import exercise_lifecycle, range_lifecycle
 from ..auth import CurrentUser
 from ..enrollment import active_course_ids
-from ..models import AuditLog, Course, Range, RangeState, Template, User, UserRole
+from ..models import AuditLog, Course, Exercise, Range, RangeState, Scenario, Template, User, UserRole
 from ..range_topology import template_demand
 from ..tenancy import get_owned, get_owned_or_global, tenant_uuid
 from .capacity import (
@@ -155,6 +155,37 @@ def resolve_course(db: Session, user: CurrentUser, course_id: str | None) -> uui
     if not course_id:
         return None
     return get_owned_or_global(db, Course, course_id, user, not_found="Course not found").id
+
+
+def resolve_scenario(db: Session, user: CurrentUser, scenario_id: str | None) -> uuid.UUID | None:
+    """A scenario of the caller's tenant, or a public one (as GET /scenarios lists them)."""
+    if not scenario_id:
+        return None
+    try:
+        sid = uuid.UUID(scenario_id)
+    except ValueError:
+        raise HTTPException(404, "Scenario not found") from None
+    found = (
+        db.query(Scenario.id)
+        .filter(Scenario.id == sid, (Scenario.tenant_id == tenant_uuid(user)) | (Scenario.is_public == True))  # noqa: E712
+        .first()
+    )
+    if not found:
+        raise HTTPException(404, "Scenario not found")
+    return sid
+
+
+def resolve_exercise(
+    db: Session, user: CurrentUser, exercise_id: str | None, range_id: uuid.UUID | None
+) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    """A linked exercise brings its range. Returns (exercise_id, range_id); 422 when the
+    booking names a different range than the exercise runs on."""
+    if not exercise_id:
+        return None, range_id
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    if range_id and range_id != ex.range_id:
+        raise HTTPException(422, "The exercise runs on a different range than the one booked")
+    return ex.id, ex.range_id
 
 
 def resolve_range(db: Session, user: CurrentUser, range_id: str | None) -> uuid.UUID | None:
@@ -299,6 +330,13 @@ def release_range(db: Session, evt: ScheduledEvent) -> str | None:
     return what
 
 
+def withdraw_exercise(db: Session, evt: ScheduledEvent) -> str | None:
+    """Cancel the exercise this booking created, if it never started. Does not commit."""
+    if evt.auto_exercise and evt.exercise_id and exercise_lifecycle.withdraw_if_unstarted(db, evt.exercise_id):
+        return "unstarted exercise cancelled"
+    return None
+
+
 def audit_system(db: Session, evt: ScheduledEvent, action: str, detail: str = "") -> None:
     """An entry for something the clock did: no user, the booking's tenant."""
     db.add(
@@ -332,6 +370,8 @@ def to_out(e: ScheduledEvent, warnings: list[str] | None = None) -> dict:
         instructor_id=str(e.instructor_id) if e.instructor_id else None,
         created_by=str(e.created_by) if e.created_by else None,
         course_id=str(e.course_id) if e.course_id else None,
+        scenario_id=str(e.scenario_id) if e.scenario_id else None,
+        exercise_id=str(e.exercise_id) if e.exercise_id else None,
         start_time=as_utc(e.start_time),
         end_time=as_utc(e.end_time),
         vm_count=e.vm_count,

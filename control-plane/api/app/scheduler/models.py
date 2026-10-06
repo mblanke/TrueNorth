@@ -45,6 +45,12 @@ class ScheduledEvent(TimestampMixin, Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
     # The class: its course's active Students attend (feed, invites, reminders).
     course_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("courses.id"), nullable=True)
+    # What runs on the range. A linked exercise is used as it is; otherwise, with a
+    # scenario, the clock creates a pending exercise when it builds the range
+    # (auto_exercise), and cancelling the booking cancels that exercise if unstarted.
+    scenario_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("scenarios.id"), nullable=True)
+    exercise_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("exercises.id"), nullable=True)
+    auto_exercise: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     # Schedule
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { NgTemplateOutlet } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { forkJoin, of, catchError } from 'rxjs';
@@ -9,7 +10,7 @@ import { AuthService } from '@core/services/auth.service';
 import {
   Booking, BookingIn, CapacityResult, CourseOption, OvercapacityPolicy, SchedulerApiService, Timeline,
 } from '@core/services/scheduler-api.service';
-import type { RangeSummary, TemplateSummary, User } from '@core/models';
+import type { RangeSummary, ScenarioSummary, TemplateSummary, User } from '@core/models';
 import {
   DAY_MS, HOLDING_STATES, Level, addDays, at, diskLabel, gb, hhmm, hourOf, isoDate, layoutLanes, level,
   localizeUtcWindows, peakLoad, previewConflicts, sameDay, slotLoads, weekStart,
@@ -17,7 +18,7 @@ import {
 
 interface Form {
   id?: string; name: string; templateId: string; date: string; from: string; to: string;
-  rangeId: string; instructorId: string; courseId: string; draft: boolean;
+  rangeId: string; instructorId: string; courseId: string; scenarioId: string; draft: boolean;
 }
 
 const ROW = 46; // px per hour
@@ -29,7 +30,7 @@ const ROW = 46; // px per hour
 @Component({
   selector: 'tn-schedule',
   standalone: true,
-  imports: [FormsModule, MatSnackBarModule, NgTemplateOutlet],
+  imports: [FormsModule, MatSnackBarModule, NgTemplateOutlet, RouterLink],
   template: `
   @if (isRangeOps()) {
     <!-- ── Range Ops: capacity ─────────────────────────────── -->
@@ -84,6 +85,12 @@ const ROW = 46; // px per hour
           <div class="three"><label class="field"><span>Day</span><input class="input" type="date" [ngModel]="f.date" (ngModelChange)="patch({ date: $event })"></label>
             <label class="field"><span>From</span><input class="input" type="time" step="900" [ngModel]="f.from" (ngModelChange)="patch({ from: $event })"></label>
             <label class="field"><span>To</span><input class="input" type="time" step="900" [ngModel]="f.to" (ngModelChange)="patch({ to: $event })"></label></div>
+          <label class="field"><span>Scenario</span>
+            <select class="input" [ngModel]="f.scenarioId" (ngModelChange)="patch({ scenarioId: $event })">
+              <option value="">None: the range only</option>
+              @for (sc of scenarios(); track sc.id) { <option [value]="sc.id">{{ sc.name }}</option> }
+            </select>
+            <small>An exercise is created on the range when it is built; you start it.</small></label>
           <label class="field"><span>Class</span>
             <select class="input" [ngModel]="f.courseId" (ngModelChange)="patch({ courseId: $event })">
               <option value="">No class</option>
@@ -111,7 +118,7 @@ const ROW = 46; // px per hour
             <div class="note"><strong>{{ p.title }}</strong>@for (r of p.reasons; track r) {<br>{{ r }}}
               @if (p.hint) {<br><span class="small muted">{{ p.hint }}</span>}</div>
           } @else if (check()?.fits) {
-            <div class="note ok"><strong>Fits.</strong> {{ f.rangeId ? 'The range builds at ' + formBuildAt() + ' and is torn down at ' + formTeardownAt() + '.' : 'No range yet: the capacity is held, and nothing is built until a range is assigned.' }}</div>
+            <div class="note ok"><strong>Fits.</strong> {{ f.rangeId ? 'The range builds at ' + formBuildAt() : 'A range is created from the template and built at ' + formBuildAt() }}; it is torn down at {{ formTeardownAt() }}.</div>
           }
           <div class="actions">
             <button class="action primary" [disabled]="!canSubmit() || busy()" (click)="submit(false)">{{ overButWarn() ? 'Book anyway' : (f.id ? 'Save changes' : 'Book it') }}</button>
@@ -196,8 +203,10 @@ const ROW = 46; // px per hour
         <dt>Instructor</dt><dd>{{ b.instructor_id ? personName(b.instructor_id) : 'Nobody yet' }}</dd>
         <dt>Range</dt><dd>{{ b.range_id ? rangeName(b.range_id) : 'none yet' }}</dd>
         @if (b.course_id) { <dt>Class</dt><dd>{{ courseName(b.course_id) }}</dd> }
+        @if (b.exercise_id) { <dt>Exercise</dt><dd><a [routerLink]="['/exercises', b.exercise_id]">Open the exercise</a></dd> }
+        @else if (b.scenario_id) { <dt>Scenario</dt><dd>{{ scenarioName(b.scenario_id) }} · its exercise is created when the range is built</dd> }
         <dt>Size</dt><dd>{{ b.vm_count }} VMs · {{ b.vcpu_total }} vCPU · {{ gb(b.ram_mb_total) }} GB · {{ disk(b.disk_gb_total) }}</dd>
-        @if (b.range_id && b.state !== 'draft') { <dt>Range builds</dt><dd>{{ buildAt(b) }} · torn down {{ teardownAt(b) }}</dd> }
+        @if (b.state !== 'draft' && (b.range_id || b.template_id)) { <dt>Range builds</dt><dd>{{ buildAt(b) }}{{ b.range_id ? '' : ' (created from the template)' }} · torn down {{ teardownAt(b) }}</dd> }
         @if (b.state !== 'draft' && b.instructor_id) { <dt>Reminder</dt><dd>Emailed to the instructor 24 h before</dd> }</dl>
       @if (actionError(); as err) { <div class="note"><strong>Can’t do that</strong><br>{{ err }}</div> }
       @if (canEdit(b)) {
@@ -332,6 +341,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   readonly ranges = signal<RangeSummary[]>([]);
   readonly people = signal<User[]>([]);
   readonly courses = signal<CourseOption[]>([]);
+  readonly scenarios = signal<ScenarioSummary[]>([]);
   readonly policy = signal<OvercapacityPolicy>('block');
   readonly canChangePolicy = signal(false);
   readonly selected = signal<Booking | null>(null);
@@ -486,6 +496,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     if (this.canBook()) {
       this.api.listUsers().subscribe({ next: u => this.people.set(u), error: () => {} });
       this.scheduler.courses().subscribe({ next: c => this.courses.set(c.items), error: () => {} });
+      this.api.listScenarios(200).subscribe({ next: sc => this.scenarios.set(sc), error: () => {} });
     }
     this.scheduler.getPolicy().subscribe({
       next: p => { this.policy.set(p.overcapacity); this.canChangePolicy.set(!!p.can_change); },
@@ -538,7 +549,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.submitError.set(null);
     this.check.set(null);
     this.form.set({
-      name: '', templateId: '', date: isoDate(day), from: '09:00', to: '12:00', rangeId: '', courseId: '',
+      name: '', templateId: '', date: isoDate(day), from: '09:00', to: '12:00', rangeId: '', courseId: '', scenarioId: '',
       instructorId: this.role() === 'instructor' && me ? me.id : '', draft: false,
     });
   }
@@ -548,7 +559,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.submitError.set(null);
     this.form.set({
       id: b.id, name: b.name, templateId: b.template_id ?? '', date: isoDate(s), from: hhmm(s), to: hhmm(e),
-      rangeId: b.range_id ?? '', instructorId: b.instructor_id ?? '', courseId: b.course_id ?? '', draft: b.state === 'draft',
+      rangeId: b.range_id ?? '', instructorId: b.instructor_id ?? '', courseId: b.course_id ?? '', scenarioId: b.scenario_id ?? '', draft: b.state === 'draft',
     });
     this.selected.set(null);
     this.runCheck();
@@ -578,7 +589,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const body: BookingIn = {
       name: f.name, start_time: at(f.date, f.from).toISOString(), end_time: at(f.date, f.to).toISOString(),
       template_id: f.templateId || null, range_id: f.rangeId || null, instructor_id: this.formInstructor(f),
-      course_id: f.courseId || null, draft,
+      course_id: f.courseId || null, scenario_id: f.scenarioId || null, draft,
     };
     this.busy.set(true);
     const call = f.id ? this.scheduler.update(f.id, body) : this.scheduler.create(body);
@@ -673,6 +684,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     const src = t.supply_source === 'env' ? 'env fallback' : t.supply_source;
     return `${src} (${t.cluster_vcpu} vCPU · ${gb(t.cluster_ram_mb)} GB · ${diskLabel(t.cluster_disk_gb)})`;
   }
+  scenarioName(id: string): string { return this.scenarios().find(sc => sc.id === id)?.name ?? 'a scenario'; }
   courseName(id: string): string { return this.courses().find(c => c.id === id)?.name ?? 'a course'; }
   rangeName(id: string): string { return this.ranges().find(r => r.id === id)?.name ?? 'a range'; }
   templateName(id: string): string { return this.templates().find(t => t.id === id)?.name ?? 'template'; }

@@ -9,6 +9,7 @@ itself (ADR 0004 §5).
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from collections.abc import Callable
 
@@ -47,6 +48,21 @@ def begin_destroy(db: Session, rng: Range) -> str | None:
 
 
 # -- For the scheduler ----------------------------------------------------------
+def create_for_booking(db: Session, *, tenant_id: uuid.UUID, template_id: uuid.UUID, name: str) -> Range:
+    """A new range from a booking's template, in the booking's tenant, ready to build.
+    As POST /ranges does. Does not commit."""
+    rng = Range(
+        name=name[:255],
+        template_id=template_id,
+        tenant_id=tenant_id,
+        state=RangeState.created,
+        provisioner_backend=os.getenv("PROVISIONER_BACKEND", "mock"),
+    )
+    db.add(rng)
+    db.flush()
+    return rng
+
+
 def provision_for_booking(
     db: Session, range_id: uuid.UUID, before_build: Callable[[], None] | None = None
 ) -> tuple[bool, str]:

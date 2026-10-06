@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of } from 'rxjs';
 import { ApiService } from '@core/services/api.service';
@@ -66,7 +67,8 @@ describe('ScheduleComponent', () => {
     scheduler.cancel.and.returnValue(of(booking({ state: 'cancelled' })));
     scheduler.issueFeed.and.returnValue(of({ url: 'https://h/api/v1/schedule/feed/T.ics', webcal_url: 'webcal://h/api/v1/schedule/feed/T.ics', issued_at: '' }));
     scheduler.revokeFeed.and.returnValue(of(void 0));
-    api = jasmine.createSpyObj('ApiService', ['listTemplates', 'listRanges', 'listUsers']);
+    api = jasmine.createSpyObj('ApiService', ['listTemplates', 'listRanges', 'listUsers', 'listScenarios']);
+    api.listScenarios.and.returnValue(of([{ id: 'sc1', name: 'Phishing triage' }] as any));
     api.listTemplates.and.returnValue(of([{ id: 'tpl-soc', name: 'SOC Training' }] as any));
     api.listRanges.and.returnValue(of([{ id: 'r1', name: 'SOC Training A', state: 'created' }, { id: 'r2', name: 'Old', state: 'destroyed' }] as any));
     api.listUsers.and.returnValue(of([{ id: 'me', display_name: 'WO Morgan Roy', role: 'instructor' }, { id: 'chen', display_name: 'Lt Sam Chen', role: 'instructor' }] as any));
@@ -77,6 +79,7 @@ describe('ScheduleComponent', () => {
         { provide: SchedulerApiService, useValue: scheduler },
         { provide: ApiService, useValue: api },
         { provide: AuthService, useValue: { user, canViewSchedule: signal(true) } },
+        provideRouter([]),
       ],
     }).compileComponents();
   });
@@ -159,6 +162,21 @@ describe('ScheduleComponent', () => {
     expect(text()).toContain('C204 Security Monitoring');
     button('Book it')!.click();
     expect(scheduler.create.calls.mostRecent().args[0].course_id).toBe('c204');
+  }));
+
+  it('books a scenario, and links to the exercise once it exists', fakeAsync(() => {
+    as('instructor', 'me', [booking({ id: 'x', instructor_id: 'me', exercise_id: 'ex1', scenario_id: 'sc1' } as any)]);
+    component.startBooking();
+    component.patch({ name: 'With a scenario', templateId: 'tpl-soc', scenarioId: 'sc1' });
+    tick(300);
+    fixture.detectChanges();
+    expect(text()).toContain('A range is created from the template');
+    button('Book it')!.click();
+    expect(scheduler.create.calls.mostRecent().args[0].scenario_id).toBe('sc1');
+    component.form.set(null);
+    component.select(component.bookings()[0]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[href="/exercises/ex1"]')).not.toBeNull();
   }));
 
   it('offers only ranges that can still be built', () => {

@@ -198,6 +198,10 @@ def create_event(
     range_id = service.resolve_range(db, user, body.range_id)
     instructor_id = service.resolve_instructor(db, user, body.instructor_id)
     course_id = service.resolve_course(db, user, body.course_id)
+    scenario_id = service.resolve_scenario(db, user, body.scenario_id)
+    exercise_id, range_id = service.resolve_exercise(db, user, body.exercise_id, range_id)
+    if range_id:
+        service.resolve_range(db, user, str(range_id))  # an exercise's range must still be buildable
     typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
     demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
     warnings = [] if body.draft else _admit(db, body, demand.resources, range_id, instructor_id)
@@ -211,6 +215,8 @@ def create_event(
         template_id=uuid.UUID(body.template_id) if body.template_id else None,
         instructor_id=instructor_id,
         course_id=course_id,
+        scenario_id=scenario_id,
+        exercise_id=exercise_id,
         created_by=service.user_uuid(user),
         start_time=body.start_time,
         end_time=body.end_time,
@@ -307,6 +313,8 @@ def update_event(
     evt = _owned(db, event_id, user)
     lifecycle.lock_editable(db, evt)
     range_id = service.resolve_range(db, user, body.range_id)
+    scenario_id = service.resolve_scenario(db, user, body.scenario_id)
+    exercise_id, range_id = service.resolve_exercise(db, user, body.exercise_id, range_id)
     instructor_id = (
         service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id
     )
@@ -334,6 +342,8 @@ def update_event(
     evt.template_id = uuid.UUID(body.template_id) if body.template_id else None
     evt.instructor_id = instructor_id
     evt.course_id = course_id
+    evt.scenario_id = scenario_id
+    evt.exercise_id = exercise_id
     if evt.state != EventState.draft:  # a draft was never sent to a calendar
         evt.sequence = (evt.sequence or 0) + 1  # calendars replace their copy
     service.audit(db, user, "update", str(evt.id))
@@ -419,8 +429,9 @@ def _move(
         # Cancelling after the clock built the range: take down what we built.
         if to == EventState.cancelled:
             evt.sequence = (evt.sequence or 0) + 1
-            if what := service.release_range(db, evt):
-                detail += f"; {what}"
+            for what in (service.release_range(db, evt), service.withdraw_exercise(db, evt)):
+                if what:
+                    detail += f"; {what}"
         service.audit(db, user, "transition", str(evt.id), detail)
         _audit_warnings(db, user, evt, warnings or [])
         db.commit()

@@ -3431,6 +3431,18 @@
             "title": "End Time",
             "type": "string"
           },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Use this existing exercise (and its range) instead",
+            "title": "Exercise Id"
+          },
           "instructor_id": {
             "anyOf": [
               {
@@ -3465,6 +3477,18 @@
               }
             ],
             "title": "Range Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Run this scenario: a pending exercise is created when the range is built",
+            "title": "Scenario Id"
           },
           "start_time": {
             "format": "date-time",
@@ -3574,6 +3598,17 @@
             "title": "End Time",
             "type": "string"
           },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Id"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -3607,6 +3642,17 @@
               }
             ],
             "title": "Range Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
           },
           "start_time": {
             "format": "date-time",

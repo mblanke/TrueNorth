@@ -304,7 +304,18 @@ What users need:
     - The dashboard shows Students "Your sessions" with "Add to my calendar".
     - Students still get 403 on the calendar, capacity and timeline.
 11. A booking creates its range (from the template) and its exercise (from a
-    scenario) when none is linked.
+    scenario) when none is linked (done: migration `f9a0b1c2d3e4`,
+    `range_lifecycle.create_for_booking`, `app/exercise_lifecycle.py`).
+    - At the provisioning lead, the clock creates the range in the booking's tenant
+      and claims it onto the booking with a guarded update (a losing replica
+      discards its own). It then builds the range in the same tick. The range is
+      torn down after the session like any range the clock built.
+    - With a scenario, a **pending** exercise is created on the range as it is
+      built; the Instructor starts it. Cancelling the booking cancels that exercise
+      only if it never started.
+    - A linked `exercise_id` is used as it is and brings its range; naming a
+      different range is a 422.
+    - Scenarios must be the tenant's own or public.
 8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button. The
    mockup (`docs/mockups/scheduler.html`) was approved on 2026-10-06 and built as
    `features/schedule/` on `/schedule` (done).

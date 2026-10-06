@@ -245,7 +245,7 @@ def test_only_admins_can_run_the_clock_by_hand(client, role, code):
         r = client.post("/schedule/tick")
     assert r.status_code == code
     if code == 200:
-        assert set(r.json()) == {"provisioning", "activated", "completed", "torn_down", "reminders"}
+        assert set(r.json()) == {"ranges_created", "provisioning", "activated", "completed", "torn_down", "reminders"}
 
 
 def _second_booking(db, rng: Range, start: datetime) -> ScheduledEvent:

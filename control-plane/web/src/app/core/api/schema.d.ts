@@ -6742,6 +6742,11 @@ export interface components {
              */
             end_time: string;
             /**
+             * Exercise Id
+             * @description Use this existing exercise (and its range) instead
+             */
+            exercise_id?: string | null;
+            /**
              * Instructor Id
              * @description Who teaches it; defaults to the caller when they are an instructor
              */
@@ -6755,6 +6760,11 @@ export interface components {
             ram_mb_total?: number;
             /** Range Id */
             range_id?: string | null;
+            /**
+             * Scenario Id
+             * @description Run this scenario: a pending exercise is created when the range is built
+             */
+            scenario_id?: string | null;
             /**
              * Start Time
              * Format: date-time
@@ -6803,6 +6813,8 @@ export interface components {
              * Format: date-time
              */
             end_time: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
             /** Id */
             id: string;
             /** Instructor Id */
@@ -6813,6 +6825,8 @@ export interface components {
             ram_mb_total: number;
             /** Range Id */
             range_id: string | null;
+            /** Scenario Id */
+            scenario_id?: string | null;
             /**
              * Start Time
              * Format: date-time

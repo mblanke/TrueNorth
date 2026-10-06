@@ -27,7 +27,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from .. import range_lifecycle
+from .. import exercise_lifecycle, range_lifecycle
 from . import invites, lifecycle, service
 from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, window_label
 from .models import EventState, ScheduledEvent
@@ -50,6 +50,7 @@ class Reminder:
 
 @dataclass
 class TickResult:
+    ranges_created: int = 0
     provisioning: int = 0
     activated: int = 0
     completed: int = 0
@@ -58,6 +59,7 @@ class TickResult:
 
     def summary(self) -> dict:
         return {
+            "ranges_created": self.ranges_created,
             "provisioning": self.provisioning,
             "activated": self.activated,
             "completed": self.completed,
@@ -70,6 +72,32 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
     """One pass. Commits after each booking, so one failure does not undo the rest."""
     now = now or datetime.now(UTC)
     res = TickResult()
+
+    # 0. A booking with a template but no range: create its range now, so step 1 builds
+    #    it in this same tick (decided 2026-10-06). The range is claimed onto the
+    #    booking with a guarded update; a replica that loses discards its range.
+    for evt in _due(
+        db,
+        ScheduledEvent.state == S.scheduled,
+        ScheduledEvent.range_id.is_(None),
+        ScheduledEvent.template_id.isnot(None),
+        ScheduledEvent.start_time <= now + PROVISION_LEAD,
+        ScheduledEvent.end_time > now,
+    ):
+        rng = range_lifecycle.create_for_booking(
+            db, tenant_id=evt.tenant_id, template_id=evt.template_id, name=f"{evt.name} ({evt.start_time:%Y-%m-%d})"
+        )
+        won = (
+            db.query(ScheduledEvent)
+            .filter(ScheduledEvent.id == evt.id, ScheduledEvent.range_id.is_(None), ScheduledEvent.state == S.scheduled)
+            .update({ScheduledEvent.range_id: rng.id}, synchronize_session=False)
+        )
+        if won != 1:
+            db.rollback()
+            continue
+        service.audit_system(db, evt, "range_created", f"range {rng.id} from the booking's template")
+        db.commit()
+        res.ranges_created += 1
 
     # 1. Provisioning lead reached, session not over: build the range.
     for evt in _due(
@@ -86,6 +114,12 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
                 evt.auto_provisioned = True
 
             _, what = range_lifecycle.provision_for_booking(db, evt.range_id, before_build=owned)
+            if evt.scenario_id and not evt.exercise_id:
+                ex = exercise_lifecycle.create_for_booking(
+                    db, tenant_id=evt.tenant_id, range_id=evt.range_id, scenario_id=evt.scenario_id, name=evt.name
+                )
+                evt.exercise_id, evt.auto_exercise = ex.id, True
+                what += f"; exercise {ex.id} created (pending)"
             service.audit_system(db, evt, "transition", f"scheduled -> provisioning; {what}")
             db.commit()
             res.provisioning += 1
