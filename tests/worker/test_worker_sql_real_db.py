@@ -373,17 +373,33 @@ class TestDetectionScoring:
 
     def test_mid_run_score_moves_and_achieved_objectives_are_not_requeried(self, world, store):
         ex = world.exercise
+        ex.state = m.ExerciseState.running
         _add(world.db, _detection(ex, "phish", 10, "event_type:email"), _detection(ex, "later", 90, "host:dc01"))
         scorer = DetectionScorer(str(ex.id), tasks._db_session)
 
         assert scorer.score() == 1
         e = _fresh(world.db, ex)
-        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.pending, 10, 100)
+        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.running, 10, 100)
 
         store.events.append({"host": "dc01"})  # telemetry arrives later in the exercise
         assert scorer.score() == 2
         assert _fresh(world.db, ex).total_score == 100
         assert [q for _, q in store.searches] == ["event_type:email", "host:dc01", "host:dc01"]
+
+    @pytest.mark.parametrize("closed", [m.ExerciseState.completed, m.ExerciseState.cancelled])
+    def test_a_closed_exercise_keeps_its_objectives_score_and_state(self, world, closed):
+        # Review finding 6: results (LTI, xAPI, AAR) may have gone out when an instructor
+        # closed it; a worker still running must not move them.
+        ex = world.exercise
+        ex.state, ex.total_score = closed, 0
+        _add(world.db, _detection(ex, "phish", 10, "event_type:email"))
+        with tasks._db_session() as db:
+            db_ops.achieve_objective(db, str(ex.id), "phish", evidence="late")
+            db_ops.refresh_exercise_score(db, str(ex.id))
+            db_ops.complete_exercise(db, str(ex.id))
+        assert world.db.scalars(select(m.Objective.achieved)).one() is False
+        e = _fresh(world.db, ex)
+        assert (e.state, e.total_score) == (closed, 0)
 
     def test_already_achieved_objective_keeps_its_evidence(self, world, store):
         ex = world.exercise

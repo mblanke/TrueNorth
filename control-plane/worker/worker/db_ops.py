@@ -176,15 +176,32 @@ def objectives_to_score(db, exercise_id: str) -> list:
     return db.execute(stmt.where(o.c.exercise_id == exercise_id)).fetchall()
 
 
+LIVE_EXERCISE = ("running", "paused")
+
+
+def _exercise_is_live(exercise_id: str):
+    """True while the exercise is running or paused. Once an instructor has completed or
+    cancelled it, results (LTI, xAPI, the AAR) may already have gone out, so a worker still
+    running must not move its objectives or score."""
+    # CAST: `state` is a native enum on Postgres and plain text on SQLite.
+    return sa.exists().where(
+        exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(LIVE_EXERCISE)
+    )
+
+
 def achieve_objective(db, exercise_id: str, ref_id: str, evidence: str | None = None) -> None:
-    """Mark an objective achieved, once: an already-achieved row keeps its time and evidence."""
+    """Mark an objective achieved, once, while the exercise is live: an already-achieved row
+    keeps its time and evidence."""
     values: dict[str, Any] = {"achieved": True, "achieved_at": _now(), "updated_at": _now()}
     if evidence is not None:
         values["evidence"] = evidence
     db.execute(
         sa.update(objectives)
         .where(
-            objectives.c.exercise_id == exercise_id, objectives.c.ref_id == ref_id, objectives.c.achieved == sa.false()
+            objectives.c.exercise_id == exercise_id,
+            objectives.c.ref_id == ref_id,
+            objectives.c.achieved == sa.false(),
+            _exercise_is_live(exercise_id),
         )
         .values(**values)
     )
@@ -203,19 +220,23 @@ def _score_values(exercise_id: str) -> dict[str, Any]:
 
 
 def refresh_exercise_score(db, exercise_id: str) -> None:
-    """Re-total a running exercise's score, so the scoreboard moves as objectives are achieved."""
+    """Re-total a live exercise's score, so the scoreboard moves as objectives are achieved.
+
+    A completed or cancelled exercise keeps the score it was closed with.
+    """
     db.execute(
         sa.update(exercises)
-        .where(exercises.c.id == exercise_id)
+        .where(exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(LIVE_EXERCISE))
         .values(updated_at=_now(), **_score_values(exercise_id))
     )
 
 
 def complete_exercise(db, exercise_id: str) -> None:
-    """Mark complete and total the score from its objectives."""
+    """Mark complete and total the score from its objectives, unless an instructor already
+    completed or cancelled it (that close stands)."""
     db.execute(
         sa.update(exercises)
-        .where(exercises.c.id == exercise_id)
+        .where(exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(LIVE_EXERCISE))
         .values(state="completed", completed_at=_now(), updated_at=_now(), **_score_values(exercise_id))
     )
 
