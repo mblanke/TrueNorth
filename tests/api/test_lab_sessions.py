@@ -477,12 +477,12 @@ class TestDispatch:
             db.info.pop(service.OUTBOX, None)
             raise SystemExit("process died after the commit")
 
+        flush = service.flush_outbox
         monkeypatch.setattr(service, "flush_outbox", die)
         with pytest.raises(SystemExit):
             act(db_session, service.reset, session)
         assert session.state == "resetting" and len(worker.calls) == sent
-        monkeypatch.undo()  # restarted process: real flush, real workers' fakes
-        monkeypatch.setattr(service, "_dispatch", worker.dispatch)
+        monkeypatch.setattr(service, "flush_outbox", flush)  # the restarted process
         self._later(monkeypatch)
         service.sweep(db_session)
         assert [c[0] for c in worker.calls[sent:]] == ["restore_snapshot"]
@@ -499,6 +499,68 @@ class TestDispatch:
         db_session.info[service.OUTBOX] = outbox
         service.flush_outbox(db_session)
         assert worker.calls == [("provision_range", str(session.range_id))]
+
+    # From the adversarial review of bee0ff1.
+
+    def _reconciling_with_a_lost_check(self, lab, db_session, monkeypatch):
+        """An ended lab whose leftover-VM check was written, then its process died."""
+        _, rid, _ = lab
+        monkeypatch.setenv("LAB_RECONCILE_GRACE", "120")  # the production default
+        session, _ = launch(db_session, student(db_session), rid)
+        until(db_session, session, "ready")
+        act(db_session, service.end, session, reason="completed")
+        until(db_session, session, "reconciling")
+        session.pending = json.dumps([["reconcile_lab_vms", [[str(session.range_id)], session.backend]]])
+        session.lease_until = service._now() + timedelta(seconds=service.LEASE_SECONDS)
+        db_session.commit()
+        return session
+
+    def test_after_a_crash_the_networks_wait_a_full_grace_after_the_leftover_check(
+        self, lab, db_session, worker, monkeypatch
+    ):
+        session = self._reconciling_with_a_lost_check(lab, db_session, monkeypatch)
+        order = []
+        release_networks, dispatch = service._release_networks, worker.dispatch
+        monkeypatch.setattr(
+            service, "_release_networks", lambda db, s: (order.append("networks"), release_networks(db, s))
+        )
+        monkeypatch.setattr(service, "_dispatch", lambda t, *a: (order.append(t), dispatch(t, *a))[1])
+        self._later(monkeypatch, minutes=3)  # the lease and the grace have both run out
+        service.sweep(db_session)
+        assert order == ["reconcile_lab_vms"] and session.state == "reconciling"
+        self._later(monkeypatch, minutes=1)  # one minute after the check went out (clocks add up)
+        service.sweep(db_session)
+        assert order == ["reconcile_lab_vms"]
+        self._later(monkeypatch, minutes=2)
+        service.sweep(db_session)
+        assert order == ["reconcile_lab_vms", "networks"] and session.state == "destroyed"
+
+    def test_a_task_left_on_an_ended_lab_is_still_sent(self, lab, db_session, worker, monkeypatch):
+        session = self._reconciling_with_a_lost_check(lab, db_session, monkeypatch)
+        session.state = "failed"  # e.g. teardown gave up with the check still refused
+        db_session.commit()
+        self._later(monkeypatch, minutes=3)
+        service.sweep(db_session)
+        assert worker.calls[-1][0] == "reconcile_lab_vms" and session.pending == "[]"
+
+    def test_a_task_the_contract_refuses_is_dropped_and_does_not_wedge_the_lab(
+        self, lab, db_session, worker, monkeypatch
+    ):
+        from app.task_contracts import validate_args
+
+        _, rid, _ = lab
+        session, _ = launch(db_session, student(db_session), rid)
+        until(db_session, session, "ready")
+        session.pending = json.dumps([["destroy_range", []], ["reconcile_lab_vms", [[str(session.range_id)], "mock"]]])
+        db_session.commit()
+        dispatch = worker.dispatch
+        monkeypatch.setattr(service, "_dispatch", lambda t, *a: (validate_args(t, a), dispatch(t, *a))[1])
+        self._later(monkeypatch)
+        service.sweep(db_session)
+        assert session.lease_until is None and session.pending == "[]"
+        assert worker.calls[-1][0] == "reconcile_lab_vms" and "destroy_range" in session.error
+        act(db_session, service.end, session, reason="completed")  # not "busy"
+        assert session.state != "ready"
 
     def test_an_action_on_a_lab_another_process_holds_is_refused_not_doubled(self, lab, db_session, worker):
         _, rid, _ = lab

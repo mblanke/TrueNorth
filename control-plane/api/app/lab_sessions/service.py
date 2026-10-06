@@ -65,6 +65,7 @@ from .models import (
 logger = logging.getLogger(__name__)
 BASELINE = "lab-baseline"
 OUTBOX = "lab_outbox"  # sessions (under our lease) whose pending tasks go out after commit
+RESENT = "lab_resent"  # of those, sessions sending tasks a refusal or a crash left behind
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_EVIDENCE_ITEMS = 200
 LEASE_SECONDS = 120
@@ -185,6 +186,12 @@ def range_template(profile: dict[str, Any], port_groups: dict[str, str], name: s
 # the commit and the send leaves the task on the session for the sweep, once the dead
 # process's lease runs out. A task the broker refuses stays too. Delivery is at least
 # once: a crash after the send and before its removal sends it again.
+#
+# A session with tasks left behind does nothing else until they are sent, and its step
+# clock restarts at the send: a grace period (e.g. for leftover VMs to be found before
+# the networks go back) counts from when the task really went out, not from the crash.
+# Known limit (CR1-11): the lease has no owner, so a process stalled past its lease can
+# still release one another process took since.
 
 
 def _hold(db: Session, session: LabSession) -> None:
@@ -203,18 +210,35 @@ def flush_outbox(db: Session) -> int:
     """Send the pending tasks of the sessions this transaction held, then let their leases
     go. Call after commit. Returns tasks not sent (kept, in order, for the sweep)."""
     unsent = 0
-    for session_id in db.info.pop(OUTBOX, []):
-        session = db.get(LabSession, session_id)
-        if session is None:
-            continue
-        kept: list[list[Any]] = []
-        for task, args in json.loads(session.pending or "[]"):
-            if kept or _dispatch(task, *args) is None:  # never send past a refused task
-                kept.append([task, args])
-        session.pending = json.dumps(kept)
-        unsent += len(kept)
-        release(session)
-    db.commit()
+    resent = db.info.pop(RESENT, set())
+    try:
+        for session_id in db.info.pop(OUTBOX, []):
+            session = db.get(LabSession, session_id)
+            if session is None:
+                continue
+            kept: list[list[Any]] = []
+            sent = False
+            for task, args in json.loads(session.pending or "[]"):
+                if kept:  # never send past a refused task
+                    kept.append([task, args])
+                    continue
+                try:
+                    if _dispatch(task, *args) is None:
+                        kept.append([task, args])
+                    else:
+                        sent = True
+                except Exception as exc:  # noqa: BLE001 — a call the task contract refuses
+                    # A bug, not an outage: sending it again can never work, and keeping it
+                    # would block every task behind it. Dropped, and said on the session.
+                    logger.exception("lab session %s: task %s dropped", session.id, task)
+                    session.error = f"internal error: the {task} task was refused ({exc})"[:2000]
+            session.pending = json.dumps(kept)
+            if sent and session.id in resent:
+                session.state_since = _now()
+            unsent += len(kept)
+            release(session)
+    finally:
+        db.commit()
     return unsent
 
 
@@ -514,7 +538,11 @@ def advance(db: Session, session: LabSession) -> LabSession:
     rng = db.get(Range, session.range_id) if session.range_id else None
     state = session.state
     if session.pending and session.pending != "[]":
-        _hold(db, session)  # left by a refusal or a process that died before sending
+        # Left by a refusal or a process that died before sending: send them first, and
+        # take no step that assumes they went out (flush_outbox restarts the step clock).
+        _hold(db, session)
+        db.info.setdefault(RESENT, set()).add(session.id)
+        return session
 
     if state == QUEUED:
         if _in_state_for(session, now) > timedelta(seconds=_int_env("LAB_QUEUE_TIMEOUT", 7200)):
@@ -741,11 +769,17 @@ def run_locked(db: Session, session: LabSession, fn, *args: Any, busy_ok: bool =
             result = fn(db, session, *args, **kwargs)
     except Exception:
         db.info.pop(OUTBOX, None)
+        db.info.pop(RESENT, None)
         release(session)
         db.commit()
         raise
     _hold(db, session)
-    db.commit()  # the lease is still ours: no sweep sends these tasks in between
+    try:
+        db.commit()  # the lease is still ours: no sweep sends these tasks in between
+    except Exception:
+        db.info.pop(OUTBOX, None)
+        db.info.pop(RESENT, None)
+        raise
     flush_outbox(db)  # sends, then releases the lease
     return result
 
@@ -758,7 +792,11 @@ def sweep(db: Session) -> int:
     state. Each session is advanced under its own lease and its own transaction."""
     changed = 0
     for session in (
-        db.query(LabSession).filter(LabSession.state.in_(LIVE + ENDING)).order_by(LabSession.created_at).all()
+        db.query(LabSession)
+        # An ended session can still have tasks left to send (a cleanup check refused).
+        .filter(or_(LabSession.state.in_(LIVE + ENDING), LabSession.pending != "[]"))
+        .order_by(LabSession.created_at)
+        .all()
     ):
         before = session.state
         try:
