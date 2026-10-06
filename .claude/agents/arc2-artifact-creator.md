@@ -29,7 +29,9 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
 When no module in `content.modules[]` has `activity.kind: range`, `range`, `injects` and
 `critical_events` are legitimately absent or empty: do not stop for them. Then:
 - `rubric.md` marks the course's summative written and practical work against its objectives
-  (criterion, evidence, objective ids, standard), not critical events.
+  (criterion, evidence, objective ids, standard), not critical events. There is no sensor stage,
+  so nothing may reference `05-sensor/`: the summative line reads `Summative: acknowledged by the
+  instructor on this marking sheet (no sensor stage); Standards confirms the route.`
 - `deliverable.md` is the student's submission template for that work (for practical modules:
   findings, evidence cited, method, tool output excerpts).
 - `variant_b` is `04-artifacts/variant_B/assessment.md`: an alternate form of the summative task

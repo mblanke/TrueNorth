@@ -261,7 +261,11 @@ def test_supplied_evidence_becomes_a_download_and_a_wrong_file_fails_verificatio
     from app.course_publishing.service import _verify
     from app.course_releases.bundle import parse
 
-    evidence = {"security-events.json": '{"EventID": 4624}\n', "index.html": "<p>not a page</p>"}
+    evidence = {
+        "security-events.json": '{"EventID": 4624}\n',
+        "index.html": "<p>not a page</p>",
+        "ntuser/ntuser-a.reg": "Windows Registry Editor Version 5.00\n",
+    }
     bundle = parse(build(tmp_path, evidence=evidence))
     built = payload_mod.build(
         bundle, release_id=uuid.uuid4(), course_id=uuid.uuid4(), idnumber=str(uuid.uuid4()),
@@ -272,6 +276,7 @@ def test_supplied_evidence_becomes_a_download_and_a_wrong_file_fails_verificatio
     files = {a["name"]: a for a in first if a["type"] == "resource"}
     assert set(files) == set(evidence)
     assert files["security-events.json"]["idnumber"].startswith("tn:mod_001:file:")
+    assert files["ntuser/ntuser-a.reg"]["filename"] == "ntuser_ntuser-a.reg"  # subfolders are released too
 
     want = payload_mod.expected(built)
     described = {

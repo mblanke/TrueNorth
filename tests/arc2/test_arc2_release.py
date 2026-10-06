@@ -98,3 +98,16 @@ def test_cli(tmp_path, repo, capsys):
     assert release.main(["build", str(run), "--out", str(tmp_path / "r.tar.gz")]) == 0
     assert "C101" in capsys.readouterr().out
     assert release.main(["build", str(make_run(tmp_path / "x", catalogued()))]) == 1
+
+
+@pytest.mark.parametrize(
+    ("rel", "part"),
+    [
+        ("02-content/mod_007/content/evidence/host-info.txt", "learner"),
+        ("02-content/mod_007/content/evidence/ntuser/ntuser-t.nakamura.reg", "learner"),
+        ("02-content/mod_003/content/page-01.html", "learner"),
+        ("04-artifacts/instructor/answer_key.md", "instructor"),
+    ],
+)
+def test_supplied_evidence_in_subfolders_is_released(rel, part):
+    assert release.part_for(rel) == part
