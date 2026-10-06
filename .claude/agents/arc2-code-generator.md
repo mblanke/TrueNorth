@@ -42,8 +42,9 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
 3. Before writing a stem: `grep -h 'question:' content/courses/*.yaml` (1320 today) and
    avoid every one. Refs only from `grep -E '^  [a-z0-9-]+:$' content/catalogue/references.yaml`.
 4. YAML `qsp_code`: `course.qsp_code` when it is a real code; when it is `QSP-TODO`, the one
-   `qsp_code` every `course.po_candidates[]` row shares; else `ALJQ` for `dp_order` 1, with a
-   `standards` human action saying the qualification was defaulted; else stop
+   `qsp_code` every `course.po_candidates[]` row shares; else `ALJQ` for `dp_order` 1 or
+   `TEMP67` for `dp_order` 2 (programme owner, 2026-10-06), with a `standards` human action
+   saying the qualification was defaulted; else stop
    (`qsp_code unresolved`). Never `QSP-TODO` in the YAML.
 5. Write `02-content/<course.code lowercased>.yaml` to the pattern of
    `content/courses/c204-security-monitoring-siem.yaml`: `course_code` = `course.code`,
