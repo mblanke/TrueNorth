@@ -198,7 +198,12 @@ What users need:
   carries a long, random, per-user token.
   - It can be revoked and regenerated from the user's profile.
   - Only a hash of it is stored.
-  - It is never logged.
+  - It is never logged:
+    - the API request log and the uvicorn access log redact it (`middleware.redact_path`);
+    - both nginx configs skip access logging for `/api/(v1/)?schedule/feed/`;
+    - OpenTelemetry excludes the path.
+
+    Reverse proxies outside this repo must do the same.
   - The URL contains no personal data.
   - The feed itself contains only what that user may see:
     - staff see their tenant's bookings;
@@ -256,7 +261,14 @@ What users need:
    `service.conflicts`, migration `b5c6d7e8f9a0`).
 4. The clock: provision lead, activation, teardown, reminders (done: `scheduler/clock.py`,
    `app/range_lifecycle.py`, migration `c6d7e8f9a0b1`).
-5. ICS feed with per-user tokens and a profile page to regenerate them.
+5. ICS feed with per-user tokens (done: `scheduler/feed.py`, `scheduler/ics.py`,
+   migration `d7e8f9a0b1c2`).
+   - Endpoints: `GET`, `POST` and `DELETE /schedule/feed-token`, and the public
+     `GET /schedule/feed/{token}.ics`.
+   - The controls sit in the dashboard's schedule panel for now. A profile page waits
+     for the GUI redesign (mockups first).
+   - Staff only. Students' own-sessions feed waits for bookings to know their
+     attendees.
 6. Emailed invites (`REQUEST`/`CANCEL`) through the SMTP channel.
 7. `calendar_backends/` seam with `null`, plus contract tests. `microsoft_graph` later.
 8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button.

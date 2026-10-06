@@ -329,12 +329,32 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 _QUIET_PATHS: list[str] = ["/health", "/metrics"]
 _SLOW_THRESHOLD_MS: float = 1000.0
 
+# Paths that carry a bearer secret. They are logged with the secret replaced, here and in
+# uvicorn's access log (RedactSecretPaths). nginx skips logging them (access_log off).
+_SECRET_PATH = re.compile(r"(/schedule/feed/)[^/?\s\"]+")
+
+
+def redact_path(path: str) -> str:
+    """Hide the calendar-feed token (ADR 0004) in anything about to be logged."""
+    return _SECRET_PATH.sub(r"\1<redacted>", path)
+
+
+class RedactSecretPaths(logging.Filter):
+    """Logging filter for ``uvicorn.access``, whose records carry the request path in args."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(redact_path(a) if isinstance(a, str) else a for a in record.args)
+        elif isinstance(record.msg, str):
+            record.msg = redact_path(record.msg)
+        return True
+
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Structured JSON logging of every request."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        path = request.url.path
+        path = redact_path(request.url.path)
         verbose = not any(path.startswith(qp) for qp in _QUIET_PATHS)
 
         start = time.perf_counter()
@@ -489,6 +509,10 @@ def setup_middleware(
                 "Failed to initialise Redis for rate limiting; rate limiter will be disabled.",
                 exc_info=True,
             )
+
+    access_log = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, RedactSecretPaths) for f in access_log.filters):
+        access_log.addFilter(RedactSecretPaths())
 
     # --- Middleware stack (order matters: first added = outermost) ---------
     # 1. Request logging (outermost so it captures total time)

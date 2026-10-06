@@ -4479,6 +4479,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedule/feed-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether you have a calendar feed */
+        get: operations["feed_token_status_schedule_feed_token_get"];
+        put?: never;
+        /**
+         * Create or regenerate your calendar feed URL
+         * @description Returns the subscription URL once. Regenerating stops the previous URL working.
+         */
+        post: operations["feed_token_issue_schedule_feed_token_post"];
+        /** Revoke your calendar feed URL */
+        delete: operations["feed_token_revoke_schedule_feed_token_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/feed/{token}.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calendar feed (iCalendar) */
+        get: operations["calendar_feed_schedule_feed__token__ics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedule/policy": {
         parameters: {
             query?: never;
@@ -6926,6 +6965,34 @@ export interface components {
             lti_token_url?: string | null;
             /** Name */
             name?: string;
+        };
+        /**
+         * FeedTokenIssued
+         * @description Shown once: only a hash of the token is kept.
+         */
+        FeedTokenIssued: {
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Url
+             * @description HTTPS subscription URL; paste into Outlook 'Subscribe from web'
+             */
+            url: string;
+            /**
+             * Webcal Url
+             * @description The same URL as webcal://, for one-click subscribe
+             */
+            webcal_url: string;
+        };
+        /** FeedTokenStatus */
+        FeedTokenStatus: {
+            /** Active */
+            active: boolean;
+            /** Issued At */
+            issued_at?: string | null;
         };
         /** FleetNodeCreateIn */
         FleetNodeCreateIn: {
@@ -18237,6 +18304,102 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feed_token_status_schedule_feed_token_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedTokenStatus"];
+                };
+            };
+        };
+    };
+    feed_token_issue_schedule_feed_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedTokenIssued"];
+                };
+            };
+        };
+    };
+    feed_token_revoke_schedule_feed_token_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    calendar_feed_schedule_feed__token__ics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": unknown;
+                };
+            };
+            /** @description Unknown or revoked feed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

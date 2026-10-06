@@ -12,7 +12,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -20,10 +20,18 @@ from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..rbac import Permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
-from . import clock, lifecycle, service
+from . import clock, feed, lifecycle, service
 from .capacity import Resources, available, get_capacity_provider
 from .models import EventState, ScheduledEvent
-from .schemas import CapacityCheck, CapacityResult, EventIn, PolicyIn, PolicyOut
+from .schemas import (
+    CapacityCheck,
+    CapacityResult,
+    EventIn,
+    FeedTokenIssued,
+    FeedTokenStatus,
+    PolicyIn,
+    PolicyOut,
+)
 from .service import to_out as _to_out
 
 logger = logging.getLogger("truenorth.api.scheduling")
@@ -277,6 +285,7 @@ def update_event(
     evt.range_id = range_id
     evt.template_id = uuid.UUID(body.template_id) if body.template_id else None
     evt.instructor_id = instructor_id
+    evt.sequence = (evt.sequence or 0) + 1  # calendars replace their copy
     service.audit(db, user, "update", str(evt.id))
     _audit_warnings(db, user, evt, warnings)
     db.commit()
@@ -331,8 +340,10 @@ def _move(
     if lifecycle.transition(db, evt, to):
         detail = f"{before} -> {to.value}"
         # Cancelling after the clock built the range: take down what we built.
-        if to == EventState.cancelled and (what := service.release_range(db, evt)):
-            detail += f"; {what}"
+        if to == EventState.cancelled:
+            evt.sequence = (evt.sequence or 0) + 1
+            if what := service.release_range(db, evt):
+                detail += f"; {what}"
         service.audit(db, user, "transition", str(evt.id), detail)
         _audit_warnings(db, user, evt, warnings or [])
         db.commit()
@@ -387,3 +398,50 @@ def resource_timeline(
         "cluster_disk_gb": supply.disk_gb,
         "supply_source": provider.supply_source,
     }
+
+
+# -- Calendar feed (ADR 0004 §6) ----------------------------------------------
+@router.get("/feed-token", response_model=FeedTokenStatus, summary="Whether you have a calendar feed")
+def feed_token_status(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    issued = feed.issued_at(db, user)
+    return FeedTokenStatus(active=issued is not None, issued_at=issued)
+
+
+@router.post("/feed-token", response_model=FeedTokenIssued, summary="Create or regenerate your calendar feed URL")
+def feed_token_issue(request: Request, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Returns the subscription URL once. Regenerating stops the previous URL working."""
+    token = feed.issue(db, user)
+    service.audit(db, user, "feed_token_issued", str(user.id))
+    db.commit()
+    url = feed.feed_url(request, token)
+    return FeedTokenIssued(url=url, webcal_url=feed.webcal(url), issued_at=feed.issued_at(db, user))
+
+
+@router.delete("/feed-token", status_code=204, response_class=Response, summary="Revoke your calendar feed URL")
+def feed_token_revoke(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    if feed.revoke(db, user):
+        service.audit(db, user, "feed_token_revoked", str(user.id))
+        db.commit()
+
+
+# Calendar clients cannot sign in: this route is authenticated by the token in its path
+# and is listed in tests/api/test_auth_coverage_guard.py PUBLIC_PATHS for that reason.
+feed_router = APIRouter(prefix="/schedule", tags=["scheduling"])
+
+
+@feed_router.get(
+    "/feed/{token}.ics",
+    summary="Calendar feed (iCalendar)",
+    response_class=Response,
+    responses={200: {"content": {"text/calendar": {}}}, 404: {"description": "Unknown or revoked feed"}},
+)
+def calendar_feed(token: str, db: Session = Depends(get_db)):
+    owner = feed.owner_for(db, token)
+    if owner is None:
+        # One answer for unknown, revoked and no-longer-permitted: nothing to probe.
+        raise HTTPException(404, "Not found")
+    return Response(
+        content=feed.render(db, owner),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Cache-Control": "private, max-age=300", "Content-Disposition": 'inline; filename="truenorth.ics"'},
+    )

@@ -4123,6 +4123,58 @@
         "title": "ExternalPlatformUpdate",
         "type": "object"
       },
+      "FeedTokenIssued": {
+        "description": "Shown once: only a hash of the token is kept.",
+        "properties": {
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "url": {
+            "description": "HTTPS subscription URL; paste into Outlook 'Subscribe from web'",
+            "title": "Url",
+            "type": "string"
+          },
+          "webcal_url": {
+            "description": "The same URL as webcal://, for one-click subscribe",
+            "title": "Webcal Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "webcal_url",
+          "issued_at"
+        ],
+        "title": "FeedTokenIssued",
+        "type": "object"
+      },
+      "FeedTokenStatus": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "issued_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issued At"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "FeedTokenStatus",
+        "type": "object"
+      },
       "FleetNodeCreateIn": {
         "properties": {
           "gpu_model": {
@@ -24801,6 +24853,115 @@
           }
         ],
         "summary": "Schedule a draft",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/feed-token": {
+      "delete": {
+        "operationId": "feed_token_revoke_schedule_feed_token_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke your calendar feed URL",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "get": {
+        "operationId": "feed_token_status_schedule_feed_token_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedTokenStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Whether you have a calendar feed",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "post": {
+        "description": "Returns the subscription URL once. Regenerating stops the previous URL working.",
+        "operationId": "feed_token_issue_schedule_feed_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedTokenIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create or regenerate your calendar feed URL",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/feed/{token}.ics": {
+      "get": {
+        "operationId": "calendar_feed_schedule_feed__token__ics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Unknown or revoked feed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calendar feed (iCalendar)",
         "tags": [
           "scheduling"
         ]

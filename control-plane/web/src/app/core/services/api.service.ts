@@ -573,6 +573,17 @@ export class ApiService {
     const params = new HttpParams().set('days', days);
     return this.http.get<any>(`${this.base}/schedule/timeline`, { params });
   }
+  /** Your calendar-feed status. The URL itself is only ever returned by issueFeedToken. */
+  getFeedToken(): Observable<{ active: boolean; issued_at: string | null }> {
+    return this.http.get<{ active: boolean; issued_at: string | null }>(`${this.base}/schedule/feed-token`);
+  }
+  /** Create or regenerate your feed URL (the previous one stops working). Shown once. */
+  issueFeedToken(): Observable<{ url: string; webcal_url: string; issued_at: string }> {
+    return this.http.post<{ url: string; webcal_url: string; issued_at: string }>(`${this.base}/schedule/feed-token`, {});
+  }
+  revokeFeedToken(): Observable<void> {
+    return this.http.delete<void>(`${this.base}/schedule/feed-token`);
+  }
 
 
   // ── Helpdesk / Support Tickets ───────────────────────────

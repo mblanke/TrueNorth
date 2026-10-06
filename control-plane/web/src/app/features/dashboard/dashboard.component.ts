@@ -373,6 +373,31 @@ interface DeploymentProfile {
         </div>
       </div>
 
+      <!-- Calendar subscription (ADR 0004): Outlook "Subscribe from web", Apple, Google -->
+      <div class="feed-card">
+        <div class="event-form-title"><mat-icon>event</mat-icon> Subscribe in your calendar</div>
+        @if (feedUrl(); as f) {
+          <p class="feed-note">Copy this link now: it is shown only once. Anyone with it can read this schedule.</p>
+          <div class="feed-url"><code>{{ f.url }}</code></div>
+          <div class="feed-actions">
+            <button mat-stroked-button (click)="copyFeedUrl(f.url)"><mat-icon>content_copy</mat-icon> Copy link</button>
+            <a mat-stroked-button [href]="f.webcal_url"><mat-icon>open_in_new</mat-icon> Open in calendar app</a>
+          </div>
+        } @else {
+          <p class="feed-note">
+            {{ feedActive() ? 'You have a calendar link. Regenerate it if it was shared by mistake.' : 'Get a private link to see this schedule in Outlook or any calendar app.' }}
+          </p>
+        }
+        <div class="feed-actions">
+          <button mat-flat-button color="primary" (click)="issueFeed()">
+            <mat-icon>link</mat-icon> {{ feedActive() ? 'Regenerate link' : 'Get calendar link' }}
+          </button>
+          @if (feedActive()) {
+            <button mat-button (click)="revokeFeed()"><mat-icon>link_off</mat-icon> Turn off</button>
+          }
+        </div>
+      </div>
+
       </details>
       }
       <!-- ──── RECENT ACTIVITY ────────────────────────────────────────────────────────────────── -->
@@ -620,6 +645,12 @@ interface DeploymentProfile {
     .fit-fail { background: rgba(244, 67, 54, 0.12); color: var(--alert); }
     .fit-detail { width: 100%; font-size: 12px; font-weight: 400; margin-top: 4px; }
 
+    /* ──── Calendar subscription ───────────────────────────────────────────── */
+    .feed-card { margin-top: 20px; padding: 16px; border: 1px solid var(--mat-sys-outline-variant, #ccc); border-radius: 12px; }
+    .feed-note { margin: 8px 0; opacity: 0.8; }
+    .feed-url code { display: block; overflow-wrap: anywhere; padding: 8px; border-radius: 8px; background: var(--mat-sys-surface-container, rgba(0,0,0,.05)); }
+    .feed-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
     /* ──── Event timeline ──────────────────────────────────────────────────────── */
     .event-timeline { display: flex; flex-direction: column; gap: 12px; }
     .event-card {
@@ -683,6 +714,9 @@ export class DashboardComponent implements OnInit {
   capacity = signal<CapacityInfo | null>(null);
   scheduledEvents = signal<ScheduledEvent[]>([]);
   fitCheckResult = signal<CapacityInfo | null>(null);
+  feedActive = signal(false);
+  /** Set right after issuing: the only time the URL exists outside the user's calendar. */
+  feedUrl = signal<{ url: string; webcal_url: string } | null>(null);
 
   /* New event form */
   newEvtName = '';
@@ -738,6 +772,7 @@ export class DashboardComponent implements OnInit {
         error: () => {},
       });
       this.loadEvents();
+      this.api.getFeedToken().subscribe({ next: f => this.feedActive.set(f.active), error: () => {} });
     }
 
     // Personal dashboard data
@@ -905,6 +940,31 @@ export class DashboardComponent implements OnInit {
         this.snack.open(msg, 'OK', { duration: 5000 });
       },
     });
+  }
+
+  issueFeed(): void {
+    this.api.issueFeedToken().subscribe({
+      next: f => { this.feedUrl.set(f); this.feedActive.set(true); },
+      error: () => this.snack.open('Could not create a calendar link', 'OK', { duration: 5000 }),
+    });
+  }
+
+  revokeFeed(): void {
+    this.api.revokeFeedToken().subscribe({
+      next: () => {
+        this.feedUrl.set(null);
+        this.feedActive.set(false);
+        this.snack.open('Calendar link turned off', '', { duration: 2000 });
+      },
+      error: () => this.snack.open('Could not turn off the calendar link', 'OK', { duration: 5000 }),
+    });
+  }
+
+  copyFeedUrl(url: string): void {
+    navigator.clipboard?.writeText(url).then(
+      () => this.snack.open('Link copied', '', { duration: 2000 }),
+      () => {},
+    );
   }
 
   deleteEvent(id: string): void {

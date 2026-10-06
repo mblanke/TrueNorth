@@ -53,6 +53,9 @@ class ScheduledEvent(TimestampMixin, Base):
     # scheduler, never one that was already up. A reminder goes out once.
     auto_provisioned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # iCalendar SEQUENCE: raised whenever a calendar would need to update the event
+    # (time, name, cancellation), so clients replace their copy (RFC 5545 §3.8.7.4).
+    sequence: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     # Resource reservation (claimed at schedule time)
     vm_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -82,3 +85,14 @@ class SchedulerSetting(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     updated_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+
+
+class FeedToken(Base):
+    """A user's calendar-feed token (ADR 0004 §6). Calendar clients cannot log in, so
+    the feed URL carries this bearer secret. Only its SHA-256 is stored; one per user;
+    regenerating replaces it, revoking deletes it."""
+
+    __tablename__ = "scheduler_feed_tokens"
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id"), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

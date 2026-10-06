@@ -54,6 +54,9 @@ describe('DashboardComponent', () => {
       'checkCapacity',
       'createScheduledEvent',
       'deleteScheduledEvent',
+      'getFeedToken',
+      'issueFeedToken',
+      'revokeFeedToken',
     ]);
     mockApi.health.and.returnValue(of(mockHealth));
     mockApi.listRanges.and.returnValue(of(mockRanges as Range[]));
@@ -64,6 +67,9 @@ describe('DashboardComponent', () => {
     mockApi.checkCapacity.and.returnValue(of({}));
     mockApi.createScheduledEvent.and.returnValue(of({}));
     mockApi.deleteScheduledEvent.and.returnValue(of(void 0));
+    mockApi.getFeedToken.and.returnValue(of({ active: false, issued_at: null }));
+    mockApi.issueFeedToken.and.returnValue(of({ url: 'https://h/api/v1/schedule/feed/T.ics', webcal_url: 'webcal://h/api/v1/schedule/feed/T.ics', issued_at: '' }));
+    mockApi.revokeFeedToken.and.returnValue(of(void 0));
 
     await TestBed.configureTestingModule({
       imports: [
@@ -204,6 +210,18 @@ describe('DashboardComponent', () => {
     expect(mockApi.getCapacity).toHaveBeenCalled();
     expect(mockApi.listScheduledEvents).toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Schedule & resources');
+  });
+
+  it('shows the calendar link once, after it is issued', () => {
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('schedule/feed/T.ics');
+    component.issueFeed();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('https://h/api/v1/schedule/feed/T.ics');
+    expect(component.feedActive()).toBeTrue();
+    component.revokeFeed();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('schedule/feed/T.ics');
   });
 
   it('usagePct() is null when a figure is not reported', () => {

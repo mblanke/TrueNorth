@@ -237,6 +237,7 @@ from .routers import (
     threat_intel_router,
     transcript_router,
 )
+from .scheduler.router import feed_router as scheduling_feed_router  # noqa: E402
 from .scheduler.router import router as scheduling_router  # noqa: E402
 
 # Identity intake. Registration is mounted first because /auth/me is the one
@@ -256,6 +257,7 @@ app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)
 app.include_router(scheduling_router)  # app/scheduler (ADR 0004)
+app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(learning_paths_router)

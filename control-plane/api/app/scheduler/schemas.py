@@ -96,3 +96,16 @@ class PolicyIn(BaseModel):
 
 class PolicyOut(BaseModel):
     overcapacity: OvercapacityPolicy
+
+
+class FeedTokenStatus(BaseModel):
+    active: bool
+    issued_at: datetime | None = None
+
+
+class FeedTokenIssued(BaseModel):
+    """Shown once: only a hash of the token is kept."""
+
+    url: str = Field(description="HTTPS subscription URL; paste into Outlook 'Subscribe from web'")
+    webcal_url: str = Field(description="The same URL as webcal://, for one-click subscribe")
+    issued_at: datetime
