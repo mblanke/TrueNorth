@@ -256,6 +256,39 @@ class TestAccess:
         assert resp.status_code == 422 and "cannot receive course publications" in resp.json()["detail"]
 
 
+def test_supplied_evidence_becomes_a_download_and_a_wrong_file_fails_verification(tmp_path):
+    from app.course_publishing import payload as payload_mod
+    from app.course_publishing.service import _verify
+    from app.course_releases.bundle import parse
+
+    evidence = {"security-events.json": '{"EventID": 4624}\n', "index.html": "<p>not a page</p>"}
+    bundle = parse(build(tmp_path, evidence=evidence))
+    built = payload_mod.build(
+        bundle, release_id=uuid.uuid4(), course_id=uuid.uuid4(), idnumber=str(uuid.uuid4()),
+        visible=True, category={"idnumber": "tn-catalogue", "name": "Catalogue"}, version=1,
+    )
+    first = built["sections"][0]["activities"]
+    assert [a["type"] for a in first].count("page") == 1  # evidence HTML is a file, not a page
+    files = {a["name"]: a for a in first if a["type"] == "resource"}
+    assert set(files) == set(evidence)
+    assert files["security-events.json"]["idnumber"].startswith("tn:mod_001:file:")
+
+    want = payload_mod.expected(built)
+    described = {
+        "exists": True, "visible": 1, "sections": len(built["sections"]),
+        "activities": {
+            idn: {"type": w["type"], "visible": 1, "section": w["section"], "questions": w.get("questions"),
+                  "sha1": w.get("sha1")}
+            for idn, w in want.items()
+        },
+    }
+    assert _verify(described, want, len(built["sections"]), visible=True) == []
+    described["activities"][files["index.html"]["idnumber"]]["sha1"] = "0" * 40
+    assert _verify(described, want, len(built["sections"]), visible=True) == [
+        f"{files['index.html']['idnumber']} holds a different file than the release"
+    ]
+
+
 def _edit_question(data: bytes) -> bytes:
     """Rebuild a release with module 1's first question reworded (digests recomputed by
     the tool, so the release is valid)."""

@@ -12,6 +12,8 @@ Payload (``upsert_course``)::
          {"idnumber": "tn:<module>:page:NN", "type": "page", "name", "content", "format": "html"},
          {"idnumber": "tn:<module>:quiz:<hash>", "type": "quiz", "name", "intro", "grade",
           "pass_pct", "questions": [{"text", "answers": [...], "correct": [index, ...]}]},
+         {"idnumber": "tn:<module>:file:<hash>", "type": "resource", "name", "intro",
+          "filename", "content_b64", "sha1"},
          {"idnumber": "tn:<module>:lab", "type": "lti", "name", "resource", "grade"}]}]}
 """
 

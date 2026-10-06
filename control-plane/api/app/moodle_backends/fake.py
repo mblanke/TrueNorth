@@ -90,6 +90,8 @@ class FakeMoodle(BaseMoodleBackend):
                 act["questions"] = len(a["questions"])
             if a["type"] == "page":
                 act["content_length"] = len(a.get("content") or "")
+            if a["type"] == "resource":
+                act["sha1"] = a["sha1"]
             out[idn] = act["cmid"]
         removed, retired = [], []
         for idn in [i for i in existing if i not in wanted]:
@@ -114,7 +116,7 @@ class FakeMoodle(BaseMoodleBackend):
             return {"exists": False}
         acts = {
             idn: {
-                k: v for k, v in a.items() if k in ("cmid", "type", "visible", "section", "questions", "content_length")
+                k: v for k, v in a.items() if k in ("cmid", "type", "visible", "section", "questions", "content_length", "sha1")
             }
             for idn, a in course["activities"].items()
         }

@@ -85,6 +85,7 @@ def write_run(
     open_actions: list[dict[str, str]] | None = None,
     catalogue_code: str = "C304",
     drop_ordinals: frozenset[int] = frozenset(),
+    evidence: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Lay down the files a released run carries; returns module id → activity."""
     yml = course_yaml(range_ordinals, title_suffix=title_suffix, drop_ordinals=drop_ordinals)
@@ -103,6 +104,8 @@ def write_run(
     for m in mods:
         files[f"02-content/{m['id']}/content/page-01.html"] = f"<h2>{m['id']}</h2><p>Lesson.</p>"
         files[f"02-content/{m['id']}/course-config.json"] = "{}"
+    for name, text in (evidence or {}).items():
+        files[f"02-content/mod_001/content/evidence/{name}"] = text
     ranged = sorted(k for k, v in activities.items() if v == "range")
     if ranged and lab_profile:
         profile = dict(LAB_PROFILE if lab_profile is True else lab_profile)
@@ -125,6 +128,7 @@ def build(
     lab_profile: dict[str, Any] | None | bool = True,
     slug: str = "arc2-iot",
     drop_ordinals: frozenset[int] = frozenset(),
+    evidence: dict[str, str] | None = None,
 ) -> bytes:
     run = tmp_path / slug
     activities = write_run(
@@ -135,6 +139,7 @@ def build(
         open_actions=open_actions,
         catalogue_code=catalogue_code,
         drop_ordinals=drop_ordinals,
+        evidence=evidence,
     )
     parts = arc_release.collect(run)
     meta = {

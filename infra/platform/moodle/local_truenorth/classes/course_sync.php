@@ -18,7 +18,7 @@ use stdClass;
  * module, and the activities TrueNorth owns. Everything is keyed by idnumber:
  *   category  `tn-qual:<qualification uuid>` (or `tn-catalogue`)
  *   course    `<course uuid>`, or `tn-stage:<release uuid>` for a release being staged
- *   activity  `tn:<module>:<slot>`  (slot = page… | quiz:<question hash> | lab)
+ *   activity  `tn:<module>:<slot>`  (slot = page… | quiz:<question hash> | file:<hash> | lab)
  * Activities without a `tn:` idnumber were added in Moodle by an instructor; they are
  * never touched or deleted here.
  *
@@ -35,7 +35,10 @@ use stdClass;
  */
 class course_sync {
     /** Activity types TrueNorth projects. */
-    const TYPES = ['page', 'lti', 'quiz'];
+    const TYPES = ['page', 'lti', 'quiz', 'resource'];
+
+    /** Largest evidence file accepted, in bytes. */
+    const MAX_FILE = 20 * 1024 * 1024;
 
     /** Staging courses: the only courses delete() will remove. */
     const STAGE_PREFIX = 'tn-stage:';
@@ -147,6 +150,9 @@ class course_sync {
             if ($cm->modname === 'quiz') {
                 $row['questions'] = $DB->count_records('quiz_slots', ['quizid' => $cm->instance]);
             }
+            if ($cm->modname === 'resource') {
+                $row['sha1'] = self::resource_hash((int) $cm->id);
+            }
             if ($cm->modname === 'page') {
                 $row['content_length'] = strlen((string) $DB->get_field('page', 'content', ['id' => $cm->instance]));
             }
@@ -256,7 +262,8 @@ class course_sync {
                 $ok = $ok && str_starts_with($a['idnumber'] ?? '', 'tn:') && !empty($a['name'])
                     && in_array($a['type'] ?? '', self::TYPES, true)
                     && ($a['type'] !== 'lti' || !empty($a['resource']))
-                    && ($a['type'] !== 'quiz' || self::questions_ok($a['questions'] ?? null));
+                    && ($a['type'] !== 'quiz' || self::questions_ok($a['questions'] ?? null))
+                    && ($a['type'] !== 'resource' || self::file_ok($a));
             }
         }
         if (!$ok) {
@@ -285,6 +292,31 @@ class course_sync {
      */
     private static function clean(string $text, $format): string {
         return (string) $format === (string) FORMAT_HTML ? clean_text($text, FORMAT_HTML) : $text;
+    }
+
+    /**
+     * An evidence file: a plain file name and base64 bytes matching the stated sha1.
+     *
+     * @param array $a resource activity
+     * @return bool
+     */
+    private static function file_ok(array $a): bool {
+        $name = (string) ($a['filename'] ?? '');
+        $bytes = base64_decode((string) ($a['content_b64'] ?? ''), true);
+        return $name !== '' && $name === clean_param($name, PARAM_FILE) && $bytes !== false
+            && strlen($bytes) <= self::MAX_FILE && sha1($bytes) === ($a['sha1'] ?? '');
+    }
+
+    /**
+     * The content hash of a resource's one file, or '' when it has none.
+     *
+     * @param int $cmid
+     * @return string
+     */
+    private static function resource_hash(int $cmid): string {
+        $files = get_file_storage()->get_area_files(\context_module::instance($cmid)->id, 'mod_resource', 'content', 0,
+            'sortorder', false);
+        return count($files) === 1 ? reset($files)->get_contenthash() : '';
     }
 
     /**
@@ -395,6 +427,18 @@ class course_sync {
         if ($a['type'] === 'quiz') {
             return self::quiz_fields($a, $intro);
         }
+        if ($a['type'] === 'resource') {
+            // The file itself is stored after the module exists (see add_activity): there is
+            // no form, so no draft area to hand over.
+            return [
+                'name' => $a['name'],
+                'introeditor' => $intro,
+                'files' => 0,
+                'display' => RESOURCELIB_DISPLAY_DOWNLOAD,
+                'showsize' => 1, 'showtype' => 1, 'printintro' => 1,
+                'completion' => COMPLETION_TRACKING_AUTOMATIC, 'completionview' => 1,
+            ];
+        }
         $typeid = $DB->get_field('lti_types', 'id', ['name' => 'TrueNorth Range', 'course' => SITEID]);
         if (!$typeid) {
             throw new moodle_exception('syncnoltitool', 'local_truenorth');
@@ -430,6 +474,9 @@ class course_sync {
         if ($modname === 'quiz') {
             require_once($CFG->dirroot . '/mod/quiz/locallib.php');
         }
+        if ($modname === 'resource') {
+            require_once($CFG->libdir . '/resourcelib.php');
+        }
         $module = $DB->get_record('modules', ['name' => $modname], '*', MUST_EXIST);
         $data = (object) (self::type_fields($a) + [
             'modulename' => $modname,
@@ -443,7 +490,26 @@ class course_sync {
         if ($modname === 'quiz') {
             self::add_questions((int) $info->instance, (int) $info->coursemodule, $a['questions']);
         }
+        if ($modname === 'resource') {
+            self::store_file((int) $info->coursemodule, $a);
+        }
         return (int) $info->coursemodule;
+    }
+
+    /**
+     * Put the evidence file in the resource as its main file.
+     *
+     * @param int $cmid
+     * @param array $a resource activity (checked by file_ok)
+     */
+    private static function store_file(int $cmid, array $a): void {
+        $context = \context_module::instance($cmid);
+        $fs = get_file_storage();
+        $fs->delete_area_files($context->id, 'mod_resource', 'content');
+        $fs->create_file_from_string([
+            'contextid' => $context->id, 'component' => 'mod_resource', 'filearea' => 'content',
+            'itemid' => 0, 'filepath' => '/', 'filename' => $a['filename'], 'sortorder' => 1,
+        ], base64_decode($a['content_b64'], true));
     }
 
     /**
@@ -561,6 +627,10 @@ class course_sync {
             // the settings are brought up to date; the questions are never rewritten.
             require_once($CFG->dirroot . '/mod/quiz/locallib.php');
         }
+        if ($a['type'] === 'resource') {
+            // Same for a file: the idnumber carries a hash of its name and bytes.
+            require_once($CFG->libdir . '/resourcelib.php');
+        }
         if (!(int) $owned->visible) {
             set_coursemodule_visible($owned->id, 1);
         }
@@ -570,6 +640,9 @@ class course_sync {
             $data->$field = $value;
         }
         update_moduleinfo($cm, $data, $course);
+        if ($a['type'] === 'resource' && self::resource_hash((int) $owned->id) !== $a['sha1']) {
+            self::store_file((int) $owned->id, $a);  // a run interrupted before the file was stored
+        }
 
         if ((int) $owned->sectionnum !== (int) $a['section']) {
             $section = $DB->get_record('course_sections', ['course' => $course->id, 'section' => $a['section']], '*', MUST_EXIST);

@@ -21,6 +21,7 @@ What it proves, end to end through app.course_publishing and local_truenorth:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -124,7 +125,8 @@ def test_publish_learn_republish_and_revise(world):
     from _release_kit import build, write_run
     from arc2 import release as arc_release
 
-    first = release(world, build(world.tmp.mktemp("a"), range_ordinals=frozenset({6})))
+    evidence = {"security-events.json": '{"EventID": 4624}\n'}
+    first = release(world, build(world.tmp.mktemp("a"), range_ordinals=frozenset({6}), evidence=evidence))
     pub = publish(world, first)
     assert pub.state == "published", pub.error
     live_id = str(first.course_id)
@@ -133,6 +135,8 @@ def test_publish_learn_republish_and_revise(world):
     assert described["visible"] == 1 and described["sections"] >= 6
     kinds = [a["type"] for a in described["activities"].values()]
     assert kinds.count("quiz") == 6 and kinds.count("lti") == 1 and kinds.count("page") == 6
+    files = [a for a in described["activities"].values() if a["type"] == "resource"]
+    assert [f["sha1"] for f in files] == [hashlib.sha1(evidence["security-events.json"].encode()).hexdigest()]
     assert all(a["questions"] == 5 for a in described["activities"].values() if a["type"] == "quiz")
     assert all(a["content_length"] > 0 for a in described["activities"].values() if a["type"] == "page")
     assert world.backend.describe_course(world.platform, f"tn-stage:{first.id}") == {"exists": False}

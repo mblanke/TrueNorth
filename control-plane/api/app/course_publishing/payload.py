@@ -2,18 +2,21 @@
 
     release module mod_NNN       -> section "N. <title>", summary = its objectives
       learner page page-NN.html  -> page     tn:mod_NNN:page:NN   (HTML as authored)
+      supplied evidence file     -> resource tn:mod_NNN:file:<hash of its name and bytes>
       quiz                       -> quiz     tn:mod_NNN:quiz:<hash of the questions>
       range activity             -> LTI link tn:mod_NNN:lab, resource lab:<course>:mod_NNN
 
 Activity idnumbers depend on the module, not the release, so publishing a new release
 converges the same Moodle activities; a quiz is named by its questions, so changed
-questions are a new quiz and the old one (with its attempts) is kept, hidden. A lab link
+questions are a new quiz and the old one (with its attempts) is kept, hidden; an evidence
+file is named by its name and bytes the same way, so a file is never rewritten. A lab link
 names the course, not the release: the launch resolves the student's pinned release
 (app/lab_sessions), so publishing a new release never re-points a lab a student is in.
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -70,7 +73,7 @@ def build(
     for m in _modules(bundle):
         activities: list[dict[str, Any]] = []
         prefix = f"02-content/{m['id']}/content/"
-        pages = sorted(p for p in learner if p.startswith(prefix) and p.endswith(".html"))
+        pages = sorted(p for p in learner if p.startswith(prefix) and p.endswith(".html") and "/" not in p[len(prefix) :])
         for n, path in enumerate(pages, start=1):
             html = learner[path].decode("utf-8")
             activities.append(
@@ -80,6 +83,21 @@ def build(
                     "name": _page_title(html, f"{m['title']} ({n})"),
                     "content": html,
                     "format": "html",
+                }
+            )
+        for path in sorted(p for p in learner if p.startswith(prefix + "evidence/")):
+            data = learner[path]
+            name = path[len(prefix + "evidence/") :]
+            named = hashlib.sha256(name.encode() + b"\0" + data).hexdigest()[:12]
+            activities.append(
+                {
+                    "idnumber": f"tn:{m['id']}:file:{named}",
+                    "type": "resource",
+                    "name": name[:250],
+                    "intro": "Evidence for this module, supplied for the course (synthetic).",
+                    "filename": name.replace("/", "_"),
+                    "content_b64": base64.b64encode(data).decode(),
+                    "sha1": hashlib.sha1(data).hexdigest(),  # noqa: S324 - Moodle's content hash, not security
                 }
             )
         if m["questions"]:
@@ -130,6 +148,8 @@ def expected(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 want["questions"] = len(a["questions"])
             if a["type"] == "page" and a.get("content", "").strip():
                 want["content"] = True  # Moodle must hold a non-empty page body
+            if a["type"] == "resource":
+                want["sha1"] = a["sha1"]  # the file students download is the file released
             out[a["idnumber"]] = want
     return out
 

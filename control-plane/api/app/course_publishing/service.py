@@ -150,6 +150,8 @@ def _verify(described: dict[str, Any], want: dict[str, dict[str, Any]], sections
             problems.append(f"{idn} has {got.get('questions')} questions, expected {spec['questions']}")
         if spec.get("content") and not got.get("content_length", 1):
             problems.append(f"{idn} is an empty page")
+        if "sha1" in spec and got.get("sha1") != spec["sha1"]:
+            problems.append(f"{idn} holds a different file than the release")
     extra = sorted(k for k, a in acts.items() if k not in want and a.get("visible"))
     if extra:
         problems.append(f"visible TrueNorth activities this release does not have: {', '.join(extra)}")
