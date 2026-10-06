@@ -10,8 +10,15 @@ from pydantic import AfterValidator, BaseModel, Field
 
 from .models import OvercapacityPolicy
 
-# A time without a zone is taken as UTC (ADR 0004 §8), so naive and aware values compare.
-UtcDateTime = Annotated[datetime, AfterValidator(lambda v: v.replace(tzinfo=UTC) if v.tzinfo is None else v)]
+
+def as_utc(v: datetime) -> datetime:
+    """Times are stored and compared in UTC (ADR 0004 §8). A time without a zone is taken
+    as UTC; one with a zone is converted. Converting matters on SQLite, which keeps the
+    wall time and drops the offset: 09:00-04:00 would otherwise be stored as 09:00."""
+    return v.replace(tzinfo=UTC) if v.tzinfo is None else v.astimezone(UTC)
+
+
+UtcDateTime = Annotated[datetime, AfterValidator(as_utc)]
 
 
 class EventIn(BaseModel):
