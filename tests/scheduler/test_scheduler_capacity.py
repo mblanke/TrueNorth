@@ -220,3 +220,23 @@ def test_a_time_without_a_zone_is_taken_as_utc(client, small_cluster):
             },
         )
     assert r.status_code == 201, r.text
+
+
+def test_times_with_an_offset_are_stored_and_returned_in_utc(client, db_session, small_cluster):
+    """On SQLite the offset used to be dropped: 09:00-04:00 was stored as 09:00 and
+    returned without a zone, so capacity windows were four hours off."""
+    from datetime import timezone
+
+    eastern = timezone(timedelta(hours=-4))
+    start = (DAY + timedelta(hours=13)).astimezone(eastern)  # 09:00-04:00
+    with acting_as(UserRole.instructor):
+        ev = client.post(
+            "/schedule/events",
+            json={"name": "tz", "start_time": start.isoformat(), "end_time": (start + timedelta(hours=1)).isoformat()},
+        ).json()
+    returned = datetime.fromisoformat(ev["start_time"])
+    assert returned.tzinfo is not None
+    assert returned == DAY + timedelta(hours=13)
+    row = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    db_session.refresh(row)
+    assert row.start_time.replace(tzinfo=UTC) == DAY + timedelta(hours=13)
