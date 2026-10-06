@@ -60,9 +60,22 @@ def transition(db: Session, evt: ScheduledEvent, to: EventState) -> bool:
     return True
 
 
-def require_editable(evt: ScheduledEvent) -> None:
+def lock_editable(db: Session, evt: ScheduledEvent) -> None:
+    """Refuse unless the booking is editable *now*, and hold its row until the caller
+    commits. A no-op guarded UPDATE: on Postgres it row-locks the booking, so the clock's
+    transition waits for the edit (and then builds the range the edit chose), or the edit
+    waits for the clock and then finds the booking no longer editable. 409 either way
+    rather than an edit landing on a booking that is already being built."""
     if evt.state not in EDITABLE:
         raise HTTPException(409, f"Event is {evt.state.value}; only draft or scheduled events can be changed")
+    locked = (
+        db.query(ScheduledEvent)
+        .filter(ScheduledEvent.id == evt.id, ScheduledEvent.state.in_(EDITABLE))
+        .update({ScheduledEvent.state: ScheduledEvent.state}, synchronize_session=False)
+    )
+    if locked != 1:
+        db.rollback()
+        raise HTTPException(409, "Event changed state while this request ran; reload and retry")
 
 
 def event_id(raw: str) -> uuid.UUID:

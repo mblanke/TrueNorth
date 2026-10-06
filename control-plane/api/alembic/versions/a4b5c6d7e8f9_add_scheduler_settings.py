@@ -22,6 +22,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # A dev deploy starts the API (DB_AUTO_CREATE -> create_all) before running Alembic,
+    # so the table may already exist.
+    if "scheduler_settings" in sa.inspect(op.get_bind()).get_table_names():
+        return
     op.create_table(
         "scheduler_settings",
         sa.Column("key", sa.String(64), primary_key=True),
@@ -32,4 +36,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("scheduler_settings")
+    if "scheduler_settings" in sa.inspect(op.get_bind()).get_table_names():
+        op.drop_table("scheduler_settings")
