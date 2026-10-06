@@ -1226,6 +1226,10 @@ def gate(
         if digest is None:
             raise ContractError(f"outline gate: {run / '01-blueprint' / 'outline.yaml'} is missing")
         if action == "accept":
+            try:
+                yaml.safe_load((run / OUTLINE_REL).read_text(encoding="utf-8"))
+            except yaml.YAMLError as exc:
+                raise ContractError(f"outline gate: {OUTLINE_REL} is not valid YAML; nothing to accept ({exc})") from exc
             g.update(
                 {
                     "state": "accepted",

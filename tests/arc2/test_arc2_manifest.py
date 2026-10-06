@@ -631,6 +631,14 @@ class TestGates:
         assert m["gates"]["outline"]["feedback"][0]["round"] == 1
         assert m["stages"]["content-architect"]["state"] == "pending"
 
+    def test_an_outline_that_is_not_yaml_cannot_be_accepted(self, tmp_path, repo):
+        run = init_run(tmp_path, repo)
+        (run / "01-blueprint" / "outline.yaml").write_text("course: C205 Lab: Hardened Lab Network\n")
+        (run / "01-blueprint" / "fragment.json").write_text(json.dumps(architect_fragment()))
+        check.merge_fragment(run, "content-architect")
+        with pytest.raises(check.ContractError, match="not valid YAML"):
+            check.gate(run, "outline", "accept")
+
     def test_outline_gate_needs_a_finished_architect(self, tmp_path, repo):
         run = init_run(tmp_path, repo)
         with pytest.raises(check.ContractError, match="has not finished"):
