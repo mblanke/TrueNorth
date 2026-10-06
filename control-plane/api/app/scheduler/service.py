@@ -20,7 +20,7 @@ from ..range_topology import template_demand
 from ..tenancy import tenant_uuid
 from .capacity import CapacityProvider, Committed, Resources, available, held_window, shortfalls
 from .models import EventState, OvercapacityPolicy, ScheduledEvent, SchedulerSetting
-from .schemas import EventOut
+from .schemas import EventOut, as_utc
 
 # States in which an event still holds its range (and its capacity claim on the range).
 RESERVING_STATES = (EventState.draft, EventState.scheduled, EventState.active)
@@ -152,14 +152,14 @@ def to_out(e: ScheduledEvent, warnings: list[str] | None = None) -> dict:
         tenant_id=str(e.tenant_id),
         range_id=str(e.range_id) if e.range_id else None,
         template_id=str(e.template_id) if e.template_id else None,
-        start_time=e.start_time,
-        end_time=e.end_time,
+        start_time=as_utc(e.start_time),
+        end_time=as_utc(e.end_time),
         vm_count=e.vm_count,
         vcpu_total=e.vcpu_total,
         ram_mb_total=e.ram_mb_total,
         disk_gb_total=e.disk_gb_total,
-        created_at=e.created_at,
-        updated_at=e.updated_at,
+        created_at=as_utc(e.created_at),
+        updated_at=as_utc(e.updated_at),
         warnings=warnings or [],
     ).model_dump()
 
