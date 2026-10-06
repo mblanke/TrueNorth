@@ -297,15 +297,18 @@ class TestLabProfile:
         rules = lab_profile.findings(p, range_modules={"mod_001"}, catalogue=lab_profile.catalogue_ids(repo))
         assert any(r == "lab.catalogue" and "disabled" in msg for r, msg in rules)
 
-    def test_size_and_justification(self):
+    def test_size_is_bounded_only_by_the_declared_limits(self):
         p = self.profile()
         node = p["nodes"][0]
-        p["nodes"] = [dict(node, name=f"n{i}") for i in range(4)]
-        p["health_checks"] = [{"node": f"n{i}", "kind": "tools", "timeout_s": 60} for i in range(4)]
+        p["nodes"] = [dict(node, name=f"n{i}") for i in range(8)]
+        p["health_checks"] = [{"node": f"n{i}", "kind": "tools", "timeout_s": 60} for i in range(8)]
         p["access"] = [{"node": "n0", "kind": "console"}]
         p["evidence_checks"] = [{"id": "e", "node": "n0", "description": "x"}]
         rules = {r for r, _ in lab_profile.findings(p, range_modules={"mod_001"}, catalogue=None)}
-        assert rules == {"lab.size"}
+        assert rules == {"lab.size"}  # 8 nodes against the fixture's max_vms 1
+        n = len(p["nodes"])
+        p["limits"] = {"max_vms": n, "vcpu_total": 2 * n, "ram_mb_total": 4096 * n, "disk_gb_total": 40 * n}
+        assert lab_profile.findings(p, range_modules={"mod_001"}, catalogue=None) == []  # no fixed VM cap
 
     def test_references_and_coverage(self):
         p = self.profile()

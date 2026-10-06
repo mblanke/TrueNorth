@@ -127,7 +127,7 @@ def check_profile(db: Session, profile: dict[str, Any], activity_id: str) -> Non
         profile, range_modules=set(profile["module_ids"]), catalogue=_catalogue(db, hypervisor)
     )
     # A profile's own limits are the author's; the platform sets the ceiling.
-    if len(profile["nodes"]) > _int_env("LAB_MAX_VMS_PER_LAB", 6):
+    if len(profile["nodes"]) > _int_env("LAB_MAX_VMS_PER_LAB", 20):
         problems.append(("lab.size", f"{len(profile['nodes'])} VMs is above this platform's limit per lab"))
     for node in profile["nodes"]:
         if node["ram_mb"] > _int_env("LAB_MAX_VM_RAM_MB", 16384) or node["disk_gb"] > _int_env(
@@ -272,7 +272,7 @@ def _lease_networks(db: Session, session: LabSession, profile: dict[str, Any]) -
         .filter(LabSession.tenant_id == session.tenant_id)
         .count()
     )
-    if tenant_held + len(wanted) > _int_env("LAB_MAX_NETWORKS_PER_TENANT", 20):
+    if tenant_held + len(wanted) > _int_env("LAB_MAX_NETWORKS_PER_TENANT", 1000):
         return None
     free = (
         db.query(LabNetworkLease)
@@ -311,10 +311,10 @@ def _quota_problem(db: Session, session: LabSession) -> str | None:
     if holding.filter(LabSession.user_id == session.user_id).count() >= _int_env("LAB_MAX_SESSIONS_PER_USER", 1):
         return "you already have a lab running; end it before starting another"
     tenant = holding.filter(LabSession.tenant_id == session.tenant_id)
-    if tenant.count() >= _int_env("LAB_MAX_SESSIONS_PER_TENANT", 20):
+    if tenant.count() >= _int_env("LAB_MAX_SESSIONS_PER_TENANT", 1000):
         return "all lab places are in use; this lab starts when one is free"
     vcpu = tenant.with_entities(func.coalesce(func.sum(LabSession.vcpu), 0)).scalar() or 0
-    if vcpu + session.vcpu > _int_env("LAB_MAX_VCPU_PER_TENANT", 64):
+    if vcpu + session.vcpu > _int_env("LAB_MAX_VCPU_PER_TENANT", 20000):
         return "the lab capacity for your organisation is in use; this lab starts when some is free"
     older = (
         db.query(LabSession)
@@ -490,7 +490,7 @@ def _vms(rng: Range | None) -> list[dict[str, Any]]:
 
 
 def _step_timeout() -> timedelta:
-    return timedelta(seconds=_int_env("LAB_STEP_TIMEOUT", 1800))
+    return timedelta(seconds=_int_env("LAB_STEP_TIMEOUT", 3600))
 
 
 def advance(db: Session, session: LabSession) -> LabSession:
@@ -527,7 +527,7 @@ def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, n
         return _fail(db, session, "the lab's range record is missing")
     if rng.state == RangeState.failed:
         return _fail(db, session, f"the lab could not be built: {rng.error_message or 'provisioning failed'}")
-    timeout = timedelta(seconds=_int_env("LAB_PROVISION_TIMEOUT", 1800))
+    timeout = timedelta(seconds=_int_env("LAB_PROVISION_TIMEOUT", 3600))
     if now - _aware(session.provisioning_at or now) > timeout:
         return _fail(db, session, f"the lab was not ready within {int(timeout.total_seconds() // 60)} minutes")
     if rng.state != RangeState.ready:

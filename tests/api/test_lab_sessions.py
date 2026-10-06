@@ -548,3 +548,31 @@ class TestBoundaries:
             assert forged.status_code == 403
             big = client.post(f"/lab-sessions/{sid}/evidence", json={"kind": "submission", "data": {"x": "a" * 70000}})
             assert big.status_code == 413
+
+
+@pytest.mark.parametrize(("count", "ok"), [(20, True), (21, False)])
+def test_a_student_lab_of_up_to_twenty_vms_is_allowed_by_default(monkeypatch, count, ok):
+    """Programme policy: any course may give each student up to 20 VMs."""
+    from _release_kit import LAB_PROFILE
+
+    for var in ("LAB_MAX_VMS_PER_LAB", "LAB_MAX_VM_RAM_MB", "LAB_MAX_VM_DISK_GB"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(service, "_catalogue", lambda db, hypervisor: None)
+    node = LAB_PROFILE["nodes"][0]
+    profile = json.loads(json.dumps(LAB_PROFILE))
+    profile["module_ids"] = ["mod_006"]
+    profile["nodes"] = [dict(node, name=f"n{i}") for i in range(count)]
+    profile["health_checks"] = [{"node": f"n{i}", "kind": "ssh", "port": 22, "timeout_s": 300} for i in range(count)]
+    profile["access"] = [{"node": "n0", "kind": "console"}]
+    profile["evidence_checks"] = [{"id": "e", "node": "n0", "description": "x"}]
+    profile["limits"] = {
+        "max_vms": count,
+        "vcpu_total": 2 * count,
+        "ram_mb_total": 2048 * count,
+        "disk_gb_total": 20 * count,
+    }
+    if ok:
+        service.check_profile(None, profile, "mod_006")
+    else:
+        with pytest.raises(service.LabRefusedError, match="above this platform's limit"):
+            service.check_profile(None, profile, "mod_006")

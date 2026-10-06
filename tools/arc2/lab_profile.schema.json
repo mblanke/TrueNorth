@@ -98,7 +98,7 @@
       "additionalProperties": false,
       "required": ["max_vms", "vcpu_total", "ram_mb_total", "disk_gb_total"],
       "properties": {
-        "max_vms": {"type": "integer", "minimum": 1, "maximum": 12},
+        "max_vms": {"type": "integer", "minimum": 1, "maximum": 64},
         "vcpu_total": {"type": "integer", "minimum": 1},
         "ram_mb_total": {"type": "integer", "minimum": 256},
         "disk_gb_total": {"type": "integer", "minimum": 1}

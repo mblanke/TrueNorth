@@ -8,7 +8,7 @@ Rules beyond the JSON schema (``lab_profile.schema.json``):
   lab.schema              the document against the schema
   lab.modules             every range module is covered, and only range modules are named
   lab.references          health checks, access, evidence and node networks name things that exist
-  lab.size                node totals fit the declared limits; more than three VMs needs a justification
+  lab.size                node totals fit the declared limits
   lab.catalogue           every image is an enabled catalogue id (ARC cannot invent a template)
   lab.egress              an allowlist names at least one destination
 """
@@ -31,7 +31,6 @@ CATALOGUES = (
     Path("content/catalogue/vm_iso_catalogue.csv"),
     Path("truenorth-content-pack/truenorth-content/vm_catalogue.csv"),
 )
-DEFAULT_MAX_VMS = 3
 
 
 def load_schema() -> dict[str, Any]:
@@ -110,10 +109,6 @@ def findings(
     for key, total in totals.items():
         if total > limits[key]:
             out.append(("lab.size", f"nodes need {key} {total}, above the limit {limits[key]}"))
-    if count > DEFAULT_MAX_VMS and not profile.get("justification"):
-        out.append(
-            ("lab.size", f"{count} VMs needs an objective-based justification (default is up to {DEFAULT_MAX_VMS})")
-        )
 
     if catalogue is not None:
         enabled, disabled = catalogue

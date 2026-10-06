@@ -20,8 +20,9 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
   orchestrator marks this stage `not_applicable` and you are not launched.
 - `$RUN/03-range/lab_profile.yaml` (always): the small individual range one student gets per
   attempt, against `tools/arc2/lab_profile.schema.json`; `range.lab_profile` names it. Cover
-  every range module and no other. Prefer one VM for a single-host task, two or three for
-  client/server or small-network tasks; more needs `justification`. `catalogue_id` must be an
+  every range module and no other. Size the lab for realism, not economy: as many VMs as the
+  objectives need, up to 20 VMs per student (programme policy; hardware is not the
+  constraint), and set `limits` to match. `catalogue_id` must be an
   `enabled=yes` `template_id` in `content/catalogue/vm_iso_catalogue.csv` — never a template
   name you made up. Every node gets a health check; `access` lists the consoles the student
   may open; `evidence_checks` say what is collected before teardown; `reset` is `snapshot`
