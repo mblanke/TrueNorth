@@ -286,7 +286,9 @@ What users need:
      for create, move and schedule, `cancel` for cancellations.
    - It runs after the response and is best effort.
    - `microsoft_graph` later, as one file plus one `_REGISTRY` line.
-8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button.
+8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button. A mockup
+   for approval comes first: `docs/mockups/scheduler.html`, in the redesign's style,
+   with one view per role. Angular follows once it is approved.
 
 ## Decisions log
 
