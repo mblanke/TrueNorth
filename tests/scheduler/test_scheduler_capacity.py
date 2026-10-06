@@ -150,7 +150,7 @@ def test_warn_policy_books_anyway_and_audit_logs_it(client, db_session, small_cl
     with acting_as(UserRole.admin):
         r = client.put("/schedule/policy", json={"overcapacity": "warn"})
     assert r.status_code == 200, r.text
-    assert r.json() == {"overcapacity": "warn"}
+    assert r.json()["overcapacity"] == "warn"
 
     with acting_as(UserRole.instructor):
         r = client.post("/schedule/events", json=_book(start, template_id=str(t.id)))
@@ -175,7 +175,7 @@ def test_policy_defaults_to_block_and_staff_can_read_it(client):
     with acting_as(UserRole.observer):
         r = client.get("/schedule/policy")
     assert r.status_code == 200
-    assert r.json() == {"overcapacity": "block"}
+    assert r.json()["overcapacity"] == "block"
 
 
 def test_check_sizes_from_the_template_and_names_its_sources(client, db_session, small_cluster):
@@ -275,3 +275,26 @@ def test_times_with_an_offset_are_stored_and_returned_in_utc(client, db_session,
     row = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
     db_session.refresh(row)
     assert row.start_time.replace(tzinfo=UTC) == DAY + timedelta(hours=13)
+
+
+PLATFORM_TENANT = "00000000-0000-0000-0000-0000000000aa"
+
+
+def test_only_the_platform_tenants_admins_set_the_policy(client, monkeypatch):
+    """Admins are per tenant; the policy covers every tenant's bookings (decided 2026-10-06)."""
+    monkeypatch.setenv("PLATFORM_TENANT_ID", PLATFORM_TENANT)
+    with acting_as(UserRole.admin):  # an admin of an ordinary tenant
+        assert client.get("/schedule/policy").json() == {"overcapacity": "block", "can_change": False}
+        assert client.put("/schedule/policy", json={"overcapacity": "warn"}).status_code == 403
+        assert client.post("/schedule/tick").status_code == 403
+    with acting_as(UserRole.admin, tenant=PLATFORM_TENANT):
+        assert client.get("/schedule/policy").json()["can_change"] is True
+        assert client.put("/schedule/policy", json={"overcapacity": "warn"}).status_code == 200
+
+
+def test_without_a_platform_tenant_every_admin_is_the_operator(client, monkeypatch):
+    monkeypatch.delenv("PLATFORM_TENANT_ID", raising=False)
+    with acting_as(UserRole.admin):
+        assert client.get("/schedule/policy").json()["can_change"] is True
+    with acting_as(UserRole.instructor):
+        assert client.get("/schedule/policy").json()["can_change"] is False

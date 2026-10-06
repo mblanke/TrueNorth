@@ -9,6 +9,7 @@ injected into route signatures to enforce access control declaratively.
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import Callable
 from enum import Enum
@@ -320,6 +321,32 @@ def require_range_access() -> Callable[..., Any]:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this range",
             )
+        return user
+
+    return _check
+
+
+# ── Platform administration ────────────────────────────────────────────
+def is_platform_admin(user: CurrentUser) -> bool:
+    """An admin of the operator's own tenant, set by PLATFORM_TENANT_ID.
+
+    Admins are per tenant. Settings that hold for every tenant at once (the shared
+    cluster's over-capacity policy, running the scheduler clock by hand) belong to the
+    platform operator, not to any one tenant's admin. Unset: a single-tenant install,
+    where every admin is the operator.
+    """
+    if user.role != UserRole.admin:
+        return False
+    platform = os.getenv("PLATFORM_TENANT_ID", "").strip()
+    return not platform or str(user.tenant_id) == platform
+
+
+def require_platform_admin() -> Callable[..., Any]:
+    """FastAPI dependency: the caller must be a platform administrator."""
+
+    def _check(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+        if not is_platform_admin(user):
+            raise HTTPException(403, "Only a platform administrator can change this: it applies to every tenant")
         return user
 
     return _check

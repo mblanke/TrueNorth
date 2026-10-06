@@ -104,6 +104,7 @@ class PolicyIn(BaseModel):
 
 class PolicyOut(BaseModel):
     overcapacity: OvercapacityPolicy
+    can_change: bool = Field(False, description="Whether the caller may change it (platform administrators only)")
 
 
 class FeedTokenStatus(BaseModel):

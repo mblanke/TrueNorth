@@ -4533,7 +4533,7 @@ export interface paths {
          */
         get: operations["get_policy_schedule_policy_get"];
         /**
-         * Set the over-capacity policy (admin)
+         * Set the over-capacity policy (platform admin)
          * @description Platform-wide, because every tenant books against the same cluster. Audit-logged.
          */
         put: operations["put_policy_schedule_policy_put"];
@@ -4554,7 +4554,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Run the scheduler clock now (admin)
+         * Run the scheduler clock now (platform admin)
          * @description One clock pass, as the background clock runs every minute: provision at the lead,
          *     activate at the start, complete and tear down after the grace, send reminders.
          */
@@ -8154,6 +8154,12 @@ export interface components {
         };
         /** PolicyOut */
         PolicyOut: {
+            /**
+             * Can Change
+             * @description Whether the caller may change it (platform administrators only)
+             * @default false
+             */
+            can_change?: boolean;
             overcapacity: components["schemas"]["OvercapacityPolicy"];
         };
         /** ProgressSummaryOut */

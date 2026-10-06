@@ -122,10 +122,11 @@ const ROW = 46; // px per hour
       }
       @if (isAdmin()) {
         <section class="panel"><h2>Over-capacity policy</h2>
-          <p class="small muted">For the whole platform: every tenant books against the same cluster. Changes are logged.</p>
+          <p class="small muted">For the whole platform: every tenant books against the same cluster. Changes are logged.
+            @if (!canChangePolicy()) { Only the platform operator’s administrators can change it. }</p>
           <div class="radio">
-            <label [class.on]="policy() === 'block'"><input type="radio" name="pol" [checked]="policy() === 'block'" (change)="setPolicy('block')"><strong>Block</strong><br><span class="small muted">A booking that doesn’t fit is refused, for everyone.</span></label>
-            <label [class.on]="policy() === 'warn'"><input type="radio" name="pol" [checked]="policy() === 'warn'" (change)="setPolicy('warn')"><strong>Warn</strong><br><span class="small muted">It books, with the reasons shown and logged.</span></label>
+            <label [class.on]="policy() === 'block'"><input type="radio" name="pol" [checked]="policy() === 'block'" [disabled]="!canChangePolicy()" (change)="setPolicy('block')"><strong>Block</strong><br><span class="small muted">A booking that doesn’t fit is refused, for everyone.</span></label>
+            <label [class.on]="policy() === 'warn'"><input type="radio" name="pol" [checked]="policy() === 'warn'" [disabled]="!canChangePolicy()" (change)="setPolicy('warn')"><strong>Warn</strong><br><span class="small muted">It books, with the reasons shown and logged.</span></label>
           </div></section>
       }
       <ng-container *ngTemplateOutlet="feedPanel" />
@@ -324,6 +325,7 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   readonly ranges = signal<RangeSummary[]>([]);
   readonly people = signal<User[]>([]);
   readonly policy = signal<OvercapacityPolicy>('block');
+  readonly canChangePolicy = signal(false);
   readonly selected = signal<Booking | null>(null);
   readonly focusDay = signal(0);
   readonly form = signal<Form | null>(null);
@@ -474,7 +476,10 @@ export class ScheduleComponent implements OnInit, OnDestroy {
     this.api.listTemplates(200).subscribe({ next: t => this.templates.set(t), error: () => {} });
     this.api.listRanges(200).subscribe({ next: r => this.ranges.set(r), error: () => {} });
     if (this.canBook()) this.api.listUsers().subscribe({ next: u => this.people.set(u), error: () => {} });
-    this.scheduler.getPolicy().subscribe({ next: p => this.policy.set(p.overcapacity), error: () => {} });
+    this.scheduler.getPolicy().subscribe({
+      next: p => { this.policy.set(p.overcapacity); this.canChangePolicy.set(!!p.can_change); },
+      error: () => {},
+    });
     this.scheduler.feedStatus().subscribe({ next: f => this.feedActive.set(f.active), error: () => {} });
   }
 

@@ -56,8 +56,8 @@ describe('ScheduleComponent', () => {
     scheduler = jasmine.createSpyObj('SchedulerApiService',
       ['list', 'create', 'update', 'schedule', 'cancel', 'check', 'timeline', 'getPolicy', 'setPolicy', 'feedStatus', 'issueFeed', 'revokeFeed']);
     scheduler.timeline.and.returnValue(of(TIMELINE));
-    scheduler.getPolicy.and.returnValue(of({ overcapacity: 'block' }));
-    scheduler.setPolicy.and.callFake(p => of({ overcapacity: p }));
+    scheduler.getPolicy.and.returnValue(of({ overcapacity: 'block', can_change: true }));
+    scheduler.setPolicy.and.callFake(p => of({ overcapacity: p, can_change: true }));
     scheduler.feedStatus.and.returnValue(of({ active: false, issued_at: null }));
     scheduler.check.and.returnValue(of(fits(true)));
     scheduler.create.and.callFake(body => of(booking({ id: 'new', name: body.name })));
@@ -183,6 +183,15 @@ describe('ScheduleComponent', () => {
     expect(text()).toContain('Over-capacity policy');
     (fixture.nativeElement.querySelector('input[type=radio]:not(:checked)') as HTMLInputElement).click();
     expect(scheduler.setPolicy).toHaveBeenCalledWith('warn');
+  });
+
+  it('shows a tenant administrator the policy without letting them change it', () => {
+    scheduler.getPolicy.and.returnValue(of({ overcapacity: 'block', can_change: false }));
+    as('admin');
+    const radios = Array.from(fixture.nativeElement.querySelectorAll('input[type=radio]') as NodeListOf<HTMLInputElement>);
+    expect(radios.length).toBe(2);
+    expect(radios.every(r => r.disabled)).toBeTrue();
+    expect(text()).toContain('platform operator');
   });
 
   it('is read-only for observers', () => {

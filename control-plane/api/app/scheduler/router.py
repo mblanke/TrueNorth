@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, is_platform_admin, require_permission, require_platform_admin
 from ..tenancy import get_owned, tenant_uuid
 from . import calendar_backends, clock, feed, invites, lifecycle, service
 from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, Resources, available, get_capacity_provider
@@ -132,23 +132,23 @@ def check_capacity(body: CapacityCheck, db: Session = Depends(get_db), user: Cur
 
 
 @router.get("/policy", response_model=PolicyOut, summary="Over-capacity policy")
-def get_policy(db: Session = Depends(get_db)):
+def get_policy(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """`block`: a booking that does not fit is refused for everyone. `warn`: it is
     created, with warnings in the response, and the warning is audit-logged."""
-    return PolicyOut(overcapacity=service.get_policy(db))
+    return PolicyOut(overcapacity=service.get_policy(db), can_change=is_platform_admin(user))
 
 
 @router.put(
     "/policy",
     response_model=PolicyOut,
-    summary="Set the over-capacity policy (admin)",
-    dependencies=[Depends(require_permission(Permission.SCHEDULE_ADMIN))],
+    summary="Set the over-capacity policy (platform admin)",
+    dependencies=[Depends(require_permission(Permission.SCHEDULE_ADMIN)), Depends(require_platform_admin())],
 )
 def put_policy(body: PolicyIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """Platform-wide, because every tenant books against the same cluster. Audit-logged."""
     service.set_policy(db, user, body.overcapacity)
     db.commit()
-    return PolicyOut(overcapacity=service.get_policy(db))
+    return PolicyOut(overcapacity=service.get_policy(db), can_change=True)
 
 
 @router.get("/events", response_model=EventListOut, summary="List scheduled events")
@@ -428,8 +428,8 @@ def _move(
 
 @router.post(
     "/tick",
-    summary="Run the scheduler clock now (admin)",
-    dependencies=[Depends(require_permission(Permission.SCHEDULE_ADMIN))],
+    summary="Run the scheduler clock now (platform admin)",
+    dependencies=[Depends(require_permission(Permission.SCHEDULE_ADMIN)), Depends(require_platform_admin())],
 )
 async def run_tick(db: Session = Depends(get_db)):
     """One clock pass, as the background clock runs every minute: provision at the lead,

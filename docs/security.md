@@ -275,7 +275,7 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `aar:read` | X | X | X | X | |
 | `schedule:read` | X | X | | X | X |
 | `schedule:write` | X | X | | | |
-| `schedule:admin` | X | | | | |
+| `schedule:admin` | X (platform tenant only when `PLATFORM_TENANT_ID` is set) | | | | |
 
 ### Permission Enforcement
 

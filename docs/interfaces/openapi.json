@@ -7000,6 +7000,12 @@
       },
       "PolicyOut": {
         "properties": {
+          "can_change": {
+            "default": false,
+            "description": "Whether the caller may change it (platform administrators only)",
+            "title": "Can Change",
+            "type": "boolean"
+          },
           "overcapacity": {
             "$ref": "#/components/schemas/OvercapacityPolicy"
           }
@@ -25336,7 +25342,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Set the over-capacity policy (admin)",
+        "summary": "Set the over-capacity policy (platform admin)",
         "tags": [
           "scheduling"
         ]
@@ -25361,7 +25367,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Run the scheduler clock now (admin)",
+        "summary": "Run the scheduler clock now (platform admin)",
         "tags": [
           "scheduling"
         ]

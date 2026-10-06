@@ -141,7 +141,9 @@ What users need:
   - `warn`: the booking is created, the response carries the warnings, and the
     warning is audit-logged.
 
-  Only admins (`schedule:admin`) can change the policy, through `PUT /schedule/policy`,
+  Only platform administrators (`schedule:admin` plus, when `PLATFORM_TENANT_ID` is
+  set, membership of that operator tenant) can change the policy, through
+  `PUT /schedule/policy`,
   and each change is audit-logged. The default is `block`. The policy is platform-wide,
   not per tenant: every tenant books against the same cluster, so one tenant's `warn`
   would overbook everyone else.
@@ -286,6 +288,12 @@ What users need:
      for create, move and schedule, `cancel` for cancellations.
    - It runs after the response and is best effort.
    - `microsoft_graph` later, as one file plus one `_REGISTRY` line.
+9. Platform administrator for platform-wide settings (done: `rbac.is_platform_admin`;
+   `GET /schedule/policy` reports `can_change`).
+10. Students: bookings name a course; its active Students get their own sessions in a
+    feed, invites and reminders.
+11. A booking creates its range (from the template) and its exercise (from a
+    scenario) when none is linked.
 8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button. The
    mockup (`docs/mockups/scheduler.html`) was approved on 2026-10-06 and built as
    `features/schedule/` on `/schedule` (done).
@@ -351,8 +359,18 @@ What users need:
     tenant's admin can change the platform-wide policy. It needs a platform-admin
     notion.
 
+- 2026-10-06 — The user answered "yes to all" to the four open questions. They are
+  read as:
+  - Students get their own sessions in Outlook: the feed, invites and reminders.
+  - A booking links an existing range or exercise when one is given, and otherwise
+    creates them (the range from its template; the exercise from a scenario, when
+    one is named).
+  - Reminders go to Instructors and Students, by email.
+  - Admins are per tenant, so platform-wide settings need a platform administrator:
+    an admin of the operator tenant named by `PLATFORM_TENANT_ID`. Unset means a
+    single-tenant install, where every admin is the operator. Slice 9.
+
 ## Open questions
 
-- Does a booking create its exercise, or link to an exercise that already exists?
-- Who gets reminders, when, and on which channels (email, in-app)?
-- Confirm: do Students get their own sessions in a personal feed, or nothing at all?
+- None outstanding from 2026-10-04. Bookings take their Students from a course's
+  active enrolments (slice 10).
