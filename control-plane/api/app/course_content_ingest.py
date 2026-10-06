@@ -47,15 +47,19 @@ from .models import (
     Lesson,
     ModuleContent,
     ModuleContentType,
+    ModuleProgress,
     PerformanceObjective,
     Qualification,
     Quiz,
+    QuizAttempt,
     QuizQuestion,
     QuizQuestionType,
 )
 from .programme_ingest import catalogue_tags, delivered_qsp_codes
 
 _OPTION_PREFIX_LEN = 3  # "A) "
+# What a module asks of its students: teaching, practice on supplied material, or a live range.
+ACTIVITIES = frozenset({"theory", "practical", "range"})
 
 
 def _option_text(raw: str) -> str:
@@ -114,6 +118,14 @@ def parse_course_content(yaml_text: str) -> dict:
                 }
             )
         ct = str(raw.get("content_type") or "reading").strip()
+        lab = str(raw.get("lab") or "").strip()
+        # A module without a declared activity predates activities: every one of those
+        # carries a lab brief, so it is a range activity. A declared one is checked.
+        activity = str(raw.get("activity") or "range").strip()
+        if activity not in ACTIVITIES:
+            raise ValueError(f"module {raw.get('ordinal')} activity {activity!r} is not one of {sorted(ACTIVITIES)}")
+        if activity != "range" and lab:
+            raise ValueError(f"module {raw.get('ordinal')} is a {activity} activity but has a range lab brief")
         modules.append(
             {
                 "ordinal": int(raw.get("ordinal") or 0),
@@ -126,7 +138,10 @@ def parse_course_content(yaml_text: str) -> dict:
                 "pass_threshold": int(raw.get("pass_threshold") or 70),
                 "objectives": list(raw.get("objectives") or []),
                 "topics": list(raw.get("topics") or []),
-                "lab": str(raw.get("lab") or "").strip(),
+                "lab": lab,
+                "activity": activity,
+                "practice": [str(p).strip() for p in raw.get("practice") or [] if str(p).strip()],
+                "minutes_breakdown": dict(raw.get("minutes_breakdown") or {}),
                 "refs": list(raw.get("refs") or []),
                 "po": _po_ref(raw.get("po")),
                 "quiz_title": (raw.get("quiz") or {}).get("title") or "",
@@ -173,9 +188,7 @@ def _resolve_po(db: Session, ref: dict | None, course_code: str, ordinal: int):
     return po.id
 
 
-def _remove_placeholder(
-    db: Session, course: Course, superseded_by: str, meta: dict, stats: dict
-) -> None:
+def _remove_placeholder(db: Session, course: Course, superseded_by: str, meta: dict, stats: dict) -> None:
     """Delete a spine-generated stub that authored content has replaced.
 
     The stub existed only because no real content did. Once a course delivers the
@@ -244,7 +257,33 @@ def _claim_po(db: Session, module: CourseModule, course_code: str, ordinal: int,
         stats["placeholders_superseded"] = stats.get("placeholders_superseded", 0) + 1
 
 
-def _find_course(db: Session, course_code: str, tenant_id: str | None) -> Course | None:
+def _align_with_release(db: Session, course: Course, ordinals: set[int], stats: dict) -> None:
+    """Retire modules the release dropped (students' records on them stay) and give every
+    enrollment a progress row for each module it does not have yet."""
+    modules = db.query(CourseModule).filter_by(course_id=course.id).all()
+    for module in modules:
+        if module.ordinal in ordinals:
+            continue
+        try:
+            ref = json.loads(module.content_ref or "{}")
+        except ValueError:
+            ref = {}
+        if not ref.get("retired"):
+            ref["retired"] = True
+            module.content_ref = json.dumps(ref)
+            module.is_required = False
+            stats["modules_retired"] = stats.get("modules_retired", 0) + 1
+    current = [m for m in modules if m.ordinal in ordinals]
+    for enrollment in db.query(Enrollment).filter_by(course_id=course.id).all():
+        have = {p.module_id for p in db.query(ModuleProgress).filter_by(enrollment_id=enrollment.id).all()}
+        for module in current:
+            if module.id not in have:
+                db.add(ModuleProgress(enrollment_id=enrollment.id, module_id=module.id))
+                stats["progress_rows_added"] = stats.get("progress_rows_added", 0) + 1
+    db.flush()
+
+
+def find_catalogue_course(db: Session, course_code: str, tenant_id) -> Course | None:
     """Locate the catalogue course by its course_meta.course_code."""
     for course in db.query(Course).filter_by(tenant_id=tenant_id).all():
         try:
@@ -269,6 +308,8 @@ def _lesson_body(m: dict) -> str:
         parts.append("## Objectives\n" + "\n".join(f"- {o}" for o in m["objectives"]))
     if m["topics"]:
         parts.append("## Topics\n" + "\n".join(f"- {t}" for t in m["topics"]))
+    if m.get("practice"):
+        parts.append("## Practice\n" + "\n".join(f"- {p}" for p in m["practice"]))
     if m["lab"]:
         parts.append("## Lab\n" + m["lab"])
     if m["refs"]:
@@ -297,7 +338,13 @@ def _content_row(db: Session, module: CourseModule, kind: ContentKind, ordinal: 
 
 
 def _build_module_content(
-    db: Session, module: CourseModule, m: dict, quiz: Quiz | None, tenant_id: str | None
+    db: Session,
+    module: CourseModule,
+    m: dict,
+    quiz: Quiz | None,
+    tenant_id: str | None,
+    *,
+    keep_published: bool = False,
 ) -> None:
     """Give an authored module the teach -> check -> assess shape.
 
@@ -306,11 +353,7 @@ def _build_module_content(
     an empty shell next to a placeholder.
     """
     teach = _content_row(db, module, ContentKind.teach, 0)
-    lesson = (
-        db.query(Lesson).filter_by(id=teach.lesson_id).one_or_none()
-        if teach.lesson_id
-        else None
-    )
+    lesson = db.query(Lesson).filter_by(id=teach.lesson_id).one_or_none() if teach.lesson_id else None
     if lesson is None:
         # title is NOT NULL, and the row is flushed to get its id — so it has to be set
         # at construction, not after.
@@ -320,7 +363,8 @@ def _build_module_content(
     lesson.title = m["title"]
     lesson.body_markdown = _lesson_body(m)
     lesson.duration_minutes = m["duration_minutes"]
-    lesson.is_published = False  # authored draft content never publishes
+    if not keep_published:
+        lesson.is_published = False  # authored draft content never publishes
     teach.lesson_id = lesson.id
 
     if quiz is not None:
@@ -330,13 +374,53 @@ def _build_module_content(
         assess = _content_row(db, module, ContentKind.assess, 2)
         # Never touch `scenario_id`: generate_exercises owns it.
         assess.external_ref = json.dumps({"lab": m["lab"]})
+    else:
+        # A module that became theory or practical keeps no stale lab reference from an
+        # earlier import; its assess row (and any scenario on it) is left for its owner.
+        for row in db.query(ModuleContent).filter_by(module_id=module.id, content_kind=ContentKind.assess):
+            try:
+                ref = json.loads(row.external_ref or "{}")
+            except ValueError:
+                continue
+            if isinstance(ref, dict) and "lab" in ref:
+                row.external_ref = ""
     db.flush()
 
 
-def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = None) -> dict:
-    """Attach authored modules and quizzes to an existing catalogue course."""
+def _question_rows(m: dict) -> list[tuple[str, str, str]]:
+    return [(q["stem"], json.dumps(q["options"]), json.dumps(q["correct"])) for q in m["questions"]]
+
+
+def _current_quiz(db: Session, module: CourseModule) -> Quiz | None:
+    """The quiz the module's check row points at (a module can keep retired quizzes that
+    students attempted), else its newest quiz."""
+    check = (
+        db.query(ModuleContent)
+        .filter_by(module_id=module.id, content_kind=ContentKind.check)
+        .order_by(ModuleContent.ordinal)
+        .first()
+    )
+    if check is not None and check.quiz_id:
+        quiz = db.get(Quiz, check.quiz_id)
+        if quiz is not None:
+            return quiz
+    return db.query(Quiz).filter_by(module_id=module.id).order_by(Quiz.created_at.desc()).first()
+
+
+def import_course_content(
+    db: Session, yaml_text: str, tenant_id=None, *, commit: bool = True, release_mode: bool = False
+) -> dict:
+    """Attach authored modules and quizzes to an existing catalogue course. ``commit=False``
+    leaves the transaction to the caller (release acceptance imports and supersedes atomically).
+
+    ``release_mode`` is an accepted release replacing the content students are using:
+    publication flags are left as they are; a quiz whose questions did not change is not
+    touched; one whose questions changed after students attempted it is kept (retired) and
+    a new quiz takes its place, so no attempt is ever graded against questions it did not
+    see; modules the release no longer has are retired, not deleted; and enrollments get
+    progress rows for modules the release adds."""
     doc = parse_course_content(yaml_text)
-    course = _find_course(db, doc["course_code"], tenant_id)
+    course = find_catalogue_course(db, doc["course_code"], tenant_id)
     if course is None:
         raise ValueError(
             f"no catalogue course with course_code={doc['course_code']!r}; "
@@ -380,8 +464,10 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
     # its `po_id` stripped. Set it here so the guard holds on its own.
     meta.setdefault("provenance", doc["provenance"])
     course.course_meta = json.dumps(meta)
-    # Authored draft content never publishes a course.
-    course.is_published = False
+    # Authored draft content never publishes a course; an accepted release keeps the
+    # course's publication as it was.
+    if not release_mode:
+        course.is_published = False
 
     for m in doc["modules"]:
         module = db.query(CourseModule).filter_by(course_id=course.id, ordinal=m["ordinal"]).one_or_none()
@@ -404,6 +490,9 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
                 "objectives": m["objectives"],
                 "topics": m["topics"],
                 "lab": m["lab"],
+                "activity": m["activity"],
+                "practice": m["practice"],
+                "minutes_breakdown": m["minutes_breakdown"],
                 "refs": m["refs"],
             }
         )
@@ -411,17 +500,30 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
         stats["modules_created" if created else "modules_updated"] += 1
 
         quiz = None
+        unchanged = False
         if m["questions"]:
-            quiz = db.query(Quiz).filter_by(module_id=module.id).one_or_none()
+            quiz = _current_quiz(db, module)
+            unchanged = quiz is not None and [
+                (q.stem, q.options, q.correct) for q in sorted(quiz.questions, key=lambda q: q.ordinal)
+            ] == _question_rows(m)
+            attempted = quiz is not None and db.query(QuizAttempt).filter_by(quiz_id=quiz.id).count() > 0
+            if release_mode and not unchanged and attempted:
+                quiz.title = f"{quiz.title} (retired)"[:255]
+                quiz.is_published = False
+                stats["quizzes_retired"] = stats.get("quizzes_retired", 0) + 1
+                quiz = None
             if quiz is None:
                 quiz = Quiz(module_id=module.id, tenant_id=tenant_id)
                 db.add(quiz)
                 stats["quizzes"] += 1
+                unchanged = False
             quiz.title = m["quiz_title"] or f"{m['title']} quiz"
             quiz.pass_pct = m["quiz_pass"]
-            quiz.is_published = False
+            if not release_mode:
+                quiz.is_published = False
             db.flush()
 
+        if m["questions"] and not unchanged:
             quiz.questions.clear()
             db.flush()
             for i, q in enumerate(m["questions"], start=1):
@@ -443,13 +545,19 @@ def import_course_content(db: Session, yaml_text: str, tenant_id: str | None = N
         # Every module gets the teach -> check -> assess shape, quiz or not. This runs
         # for all modules, which is why the quiz block above no longer `continue`s past
         # it — a module without questions still teaches something.
-        _build_module_content(db, module, m, quiz, tenant_id)
+        _build_module_content(db, module, m, quiz, tenant_id, keep_published=release_mode)
         stats["module_content"] = stats.get("module_content", 0) + 1
+
+    if release_mode:
+        _align_with_release(db, course, {m["ordinal"] for m in doc["modules"]}, stats)
 
     # Recompute the whole tag set now the modules are bound, so `delivers:*` reflects
     # what this course actually delivers rather than the looser top-level `qsp_code`.
     course.tags = json.dumps(catalogue_tags(meta, delivered_qsp_codes(db, course.id)))
     stats["tags"] = json.loads(course.tags)
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return stats

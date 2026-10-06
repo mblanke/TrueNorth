@@ -66,10 +66,17 @@ export const routes: Routes = [
         { label: 'MESL', path: 'mesl' },
         { label: 'Forge', path: 'forge' },
         { label: 'Content', path: 'content' },
+        { label: 'Courses', path: 'courses' },
       ],
     },
     children: [
       { path: '', redirectTo: 'ranges', pathMatch: 'full' },
+      {
+        path: 'courses',
+        loadComponent: () =>
+          import('./features/course-studio/course-studio.component').then(m => m.CourseStudioComponent),
+        title: 'Authoring · Courses - TrueNorth Range',
+      },
       {
         // Ranges tab is now the range list; the designer opens per range.
         path: 'ranges',
@@ -304,6 +311,13 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/ops-center/ops-center.component').then(m => m.OpsCenterComponent),
     title: 'Ops Center - TrueNorth Range',
+  },
+  {
+    // A student's lab. No guard: a Moodle launch arrives with a token for this one lab
+    // (URL fragment); without one the page itself asks the student to sign in.
+    path: 'labs/:id',
+    loadComponent: () => import('./features/labs/lab-page.component').then(m => m.LabPageComponent),
+    title: 'Lab - TrueNorth Range',
   },
   {
     path: '**',

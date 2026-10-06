@@ -222,17 +222,6 @@ class TestRanges:
         assert delay.call_args.args[0] == str(world.range.id)
         assert _fresh(db, world.range).updated_at >= before
 
-    def test_cleanup_expired_ranges_reports_unsupported_without_an_expiry_column(self, world):
-        # Production defect: the replaced SQL read ranges.expires_at, which no migration or
-        # model ever created, so this periodic task raised on every run. It now says expiry
-        # is unsupported instead of reporting "ok" forever.
-        assert "expires_at" not in m.Range.__table__.c
-        world.range.state = m.RangeState.ready
-        world.db.commit()
-        with patch.object(tasks.destroy_range, "delay") as delay:
-            assert tasks.cleanup_expired_ranges() == {"status": "unsupported", "expired_count": 0}
-        delay.assert_not_called()
-
 
 # -- exercises + objectives ----------------------------------------------------------
 def _objective(ex, ref, points, **kw):
@@ -774,20 +763,7 @@ class TestPostgresRendering:
     def test_every_public_helper_is_covered(self):
         public = {n for n, f in vars(db_ops).items() if callable(f) and getattr(f, "__module__", "") == db_ops.__name__
                   and not n.startswith("_") and n != "aar_upsert_statement"}
-        # expired_ranges executes nothing until ranges has an expires_at column (tested below);
-        # range_expiry_supported runs no SQL.
-        assert public == set(PG_CALLS) | {"expired_ranges", "range_expiry_supported"}
-
-    def test_expired_ranges_query_runs_once_the_column_exists(self, monkeypatch):
-        import sqlalchemy as sa
-
-        db = _PgRecorder()
-        assert db_ops.expired_ranges(db) == [] and db.sql == []
-        with_expiry = db_ops.ranges.to_metadata(sa.MetaData())
-        with_expiry.append_column(sa.Column("expires_at", sa.DateTime(timezone=True)))
-        monkeypatch.setattr(db_ops, "ranges", with_expiry)
-        db_ops.expired_ranges(db)
-        assert "ranges.expires_at IS NOT NULL AND ranges.expires_at < now()" in " ".join(db.sql[0].split())
+        assert public == set(PG_CALLS)
 
     def test_aar_insert_is_on_conflict_do_nothing_returning_on_postgres(self):
         from sqlalchemy.dialects import postgresql

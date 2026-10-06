@@ -93,30 +93,6 @@ def active_ranges(db) -> list:
     return db.execute(stmt).fetchall()
 
 
-def range_expiry_supported() -> bool:
-    """Whether the API schema gives ranges an expiry (see ``expired_ranges``)."""
-    return ranges.c.get("expires_at") is not None
-
-
-def expired_ranges(db) -> list:
-    """(id, name) of live ranges past their expiry.
-
-    The API's ``ranges`` table has no ``expires_at`` column, and never had one: the raw
-    SQL this replaced failed with "column does not exist" on every periodic run. Until the
-    API gives ranges an expiry, nothing has expired. The query runs as soon as the column
-    exists in the regenerated mirror.
-    """
-    expires_at = ranges.c.get("expires_at")
-    if expires_at is None:
-        return []
-    stmt = sa.select(ranges.c.id, ranges.c.name).where(
-        ranges.c.state.in_(["ready", "running", "stopped"]),
-        expires_at.is_not(None),
-        expires_at < _now(),
-    )
-    return db.execute(stmt).fetchall()
-
-
 def touch_range(db, range_id: str) -> None:
     db.execute(sa.update(ranges).where(ranges.c.id == range_id).values(updated_at=_now()))
 

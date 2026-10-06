@@ -507,6 +507,24 @@
         "title": "AIModelRouteUpdate",
         "type": "object"
       },
+      "AcceptIn": {
+        "properties": {
+          "acknowledge_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Acknowledge Actions",
+            "type": "array"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          }
+        },
+        "title": "AcceptIn",
+        "type": "object"
+      },
       "AnnotationIn": {
         "properties": {
           "annotation_type": {
@@ -1352,6 +1370,20 @@
         "title": "Body_lti_launch_lti_launch_post",
         "type": "object"
       },
+      "Body_upload_course_release_course_releases_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_course_release_course_releases_post",
+        "type": "object"
+      },
       "Body_upload_documents_curricula__curriculum_id__documents_post": {
         "properties": {
           "files": {
@@ -2116,6 +2148,34 @@
         "title": "CompetencyProfileOut",
         "type": "object"
       },
+      "ConsoleOut": {
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "kind",
+          "url",
+          "expires_in"
+        ],
+        "title": "ConsoleOut",
+        "type": "object"
+      },
       "CourseGenerateIn": {
         "properties": {
           "difficulty": {
@@ -2481,6 +2541,267 @@
           "updated_at"
         ],
         "title": "CourseOut",
+        "type": "object"
+      },
+      "CoursePublicationOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "receipt": {
+            "additionalProperties": true,
+            "title": "Receipt",
+            "type": "object"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "release_id",
+          "course_id",
+          "platform_id",
+          "state",
+          "error",
+          "attempts",
+          "receipt",
+          "created_at",
+          "published_at"
+        ],
+        "title": "CoursePublicationOut",
+        "type": "object"
+      },
+      "CourseReleaseOut": {
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "accepted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted By"
+          },
+          "acknowledged_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Acknowledged Actions",
+            "type": "array"
+          },
+          "activities": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Activities",
+            "type": "object"
+          },
+          "arc2_code": {
+            "title": "Arc2 Code",
+            "type": "string"
+          },
+          "catalogue_code": {
+            "title": "Catalogue Code",
+            "type": "string"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "instructor_digest": {
+            "title": "Instructor Digest",
+            "type": "string"
+          },
+          "learner_digest": {
+            "title": "Learner Digest",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "open_actions": {
+            "items": {
+              "$ref": "#/components/schemas/OpenAction"
+            },
+            "title": "Open Actions",
+            "type": "array"
+          },
+          "platform_digest": {
+            "title": "Platform Digest",
+            "type": "string"
+          },
+          "release_digest": {
+            "title": "Release Digest",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "catalogue_code",
+          "arc2_code",
+          "title",
+          "version",
+          "state",
+          "release_digest",
+          "learner_digest",
+          "platform_digest",
+          "instructor_digest",
+          "activities",
+          "open_actions",
+          "acknowledged_actions",
+          "created_at",
+          "accepted_at",
+          "accepted_by",
+          "notes"
+        ],
+        "title": "CourseReleaseOut",
+        "type": "object"
+      },
+      "CourseReleaseStatusOut": {
+        "properties": {
+          "active_release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Release Id"
+          },
+          "active_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Version"
+          },
+          "candidates": {
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "legacy": {
+            "title": "Legacy",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "course_id",
+          "legacy",
+          "active_release_id",
+          "active_version",
+          "candidates"
+        ],
+        "title": "CourseReleaseStatusOut",
         "type": "object"
       },
       "CourseUpdate": {
@@ -3420,6 +3741,26 @@
           "end_time"
         ],
         "title": "EventIn",
+        "type": "object"
+      },
+      "EvidenceIn": {
+        "properties": {
+          "data": {
+            "additionalProperties": true,
+            "title": "Data",
+            "type": "object"
+          },
+          "kind": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "EvidenceIn",
         "type": "object"
       },
       "ExerciseIn": {
@@ -5268,6 +5609,173 @@
         "title": "KitDefinitionOut",
         "type": "object"
       },
+      "LabSessionOut": {
+        "properties": {
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
+          },
+          "activity_id": {
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "end_reason": {
+            "title": "End Reason",
+            "type": "string"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "evidence_count": {
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "idle_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Expires At"
+          },
+          "max_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Expires At"
+          },
+          "probes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Probes",
+            "type": "array"
+          },
+          "readiness_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readiness Seconds"
+          },
+          "ready_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready At"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "release_id",
+          "activity_id",
+          "attempt",
+          "error",
+          "probes",
+          "evidence_count",
+          "readiness_seconds",
+          "created_at",
+          "ready_at",
+          "idle_expires_at",
+          "max_expires_at",
+          "ended_at",
+          "end_reason"
+        ],
+        "title": "LabSessionOut",
+        "type": "object"
+      },
+      "LaunchIn": {
+        "properties": {
+          "activity_id": {
+            "pattern": "^mod_[0-9]{3}$",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id",
+          "activity_id"
+        ],
+        "title": "LaunchIn",
+        "type": "object"
+      },
       "LearningPathGroupAssignIn": {
         "description": "Enrol a whole security group (mirroring an AD group) on a learning path.",
         "properties": {
@@ -6419,6 +6927,29 @@
         "title": "OnboardingStateOut",
         "type": "object"
       },
+      "OpenAction": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "text"
+        ],
+        "title": "OpenAction",
+        "type": "object"
+      },
       "OpsStatsOut": {
         "properties": {
           "active_analysts": {
@@ -6751,6 +7282,20 @@
           "recent_assessments"
         ],
         "title": "ProgressSummaryOut",
+        "type": "object"
+      },
+      "PublishIn": {
+        "properties": {
+          "platform_id": {
+            "format": "uuid",
+            "title": "Platform Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform_id"
+        ],
+        "title": "PublishIn",
         "type": "object"
       },
       "QualificationOut": {
@@ -13353,6 +13898,575 @@
         ]
       }
     },
+    "/course-publications/{publication_id}": {
+      "get": {
+        "operationId": "get_course_publication_course_publications__publication_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "publication_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publication Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Publication",
+        "tags": [
+          "course-publications"
+        ]
+      }
+    },
+    "/course-publications/{publication_id}/retry": {
+      "post": {
+        "description": "Run a failed or stalled publication again from staging (each step converges).",
+        "operationId": "retry_course_publication_course_publications__publication_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "publication_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Publication Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Wait",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Course Publication",
+        "tags": [
+          "course-publications"
+        ]
+      }
+    },
+    "/course-releases": {
+      "get": {
+        "operationId": "list_course_releases_course_releases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "course_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourseReleaseOut"
+                  },
+                  "title": "Response List Course Releases Course Releases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Course Releases",
+        "tags": [
+          "course-releases"
+        ]
+      },
+      "post": {
+        "description": "Upload an ARC\u00b2 release tarball (``python -m arc2.release build``) as a candidate.\nRe-uploading the same release returns the existing candidate with 200.",
+        "operationId": "upload_course_release_course_releases_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_course_release_course_releases_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Course Release",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/courses/{course_id}": {
+      "get": {
+        "description": "Which release a course delivers; ``legacy`` when it has none (content that predates\nreleases).",
+        "operationId": "get_course_release_status_course_releases_courses__course_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseReleaseStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Release Status",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}": {
+      "get": {
+        "operationId": "get_course_release_course_releases__release_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Release",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}/accept": {
+      "post": {
+        "description": "Accept a candidate: its content becomes the course's, the previous release is\nsuperseded, and enrollments made from now on pin to it. Open ARC\u00b2 actions must each be\nacknowledged by id.",
+        "operationId": "accept_course_release_course_releases__release_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Accept Course Release",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}/instructor-bundle": {
+      "get": {
+        "description": "The instructor pack: rubric, solutions, marking notes. Never a student download.",
+        "operationId": "get_course_release_instructor_bundle_course_releases__release_id__instructor_bundle_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Release Instructor Bundle",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}/learner-bundle": {
+      "get": {
+        "operationId": "get_course_release_learner_bundle_course_releases__release_id__learner_bundle_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Course Release Learner Bundle",
+        "tags": [
+          "course-releases"
+        ]
+      }
+    },
+    "/course-releases/{release_id}/publications": {
+      "get": {
+        "operationId": "list_course_release_publications_course_releases__release_id__publications_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CoursePublicationOut"
+                  },
+                  "title": "Response List Course Release Publications Course Releases  Release Id  Publications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Course Release Publications",
+        "tags": [
+          "course-publications"
+        ]
+      },
+      "post": {
+        "description": "Publish the accepted release to one of the tenant's Moodles. Asking again for the\nsame release and Moodle returns the existing job (and runs it again only if it failed).",
+        "operationId": "publish_course_release_course_releases__release_id__publications_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Wait",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePublicationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Publish Course Release",
+        "tags": [
+          "course-publications"
+        ]
+      }
+    },
     "/courses": {
       "get": {
         "description": "List courses with optional filters.\n\n`tags` is repeatable and ANDs \u2014 `?tags=DP1&tags=delivers:none` is \"DP1 courses that\ndeliver no objective\". Tags are derived at import from `course_meta`\n(`programme_ingest.catalogue_tags`), never hand-authored.\n\nRetired courses are hidden by default: they are spine-generated stubs that authored\ncontent has superseded, kept only so their scenario/range wiring survives.",
@@ -18251,6 +19365,761 @@
         "summary": "Delete Kit",
         "tags": [
           "kits"
+        ]
+      }
+    },
+    "/lab-access/{session_id}": {
+      "get": {
+        "operationId": "get_lab_by_token_lab_access__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-lab-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lab-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Lab By Token",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-access/{session_id}/console": {
+      "post": {
+        "operationId": "open_console_by_token_lab_access__session_id__console_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-lab-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lab-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Console By Token",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-access/{session_id}/end": {
+      "post": {
+        "operationId": "end_lab_by_token_lab_access__session_id__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-lab-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lab-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "End Lab By Token",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-access/{session_id}/heartbeat": {
+      "post": {
+        "operationId": "heartbeat_lab_by_token_lab_access__session_id__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-lab-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lab-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Heartbeat Lab By Token",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-access/{session_id}/reset": {
+      "post": {
+        "operationId": "reset_lab_by_token_lab_access__session_id__reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-lab-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Lab-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Lab By Token",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions": {
+      "get": {
+        "description": "The caller's labs; ``all_students`` (staff) lists the tenant's.",
+        "operationId": "list_lab_sessions_lab_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "all_students",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "All Students",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LabSessionOut"
+                  },
+                  "title": "Response List Lab Sessions Lab Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Lab Sessions",
+        "tags": [
+          "lab-sessions"
+        ]
+      },
+      "post": {
+        "description": "Start (or return) the caller's lab for a range activity of a course. Launching again,\nrefreshing or retrying returns the same session; never a second range.",
+        "operationId": "launch_lab_session_lab_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Launch Lab Session",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/reconcile": {
+      "post": {
+        "description": "Ask the worker to remove anything this tenant's finished labs left on the hypervisor.",
+        "operationId": "reconcile_lab_sessions_lab_sessions_reconcile_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Reconcile Lab Sessions Lab Sessions Reconcile Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reconcile Lab Sessions",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/{session_id}": {
+      "get": {
+        "operationId": "get_lab_session_lab_sessions__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Lab Session",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/{session_id}/console": {
+      "post": {
+        "operationId": "open_lab_console_lab_sessions__session_id__console_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Open Lab Console",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/{session_id}/end": {
+      "post": {
+        "operationId": "end_lab_session_lab_sessions__session_id__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "End Lab Session",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/{session_id}/evidence": {
+      "post": {
+        "description": "Keep a submission or validator result with the session; it outlives the VMs.",
+        "operationId": "add_lab_evidence_lab_sessions__session_id__evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Lab Evidence",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/{session_id}/heartbeat": {
+      "post": {
+        "operationId": "heartbeat_lab_session_lab_sessions__session_id__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Heartbeat Lab Session",
+        "tags": [
+          "lab-sessions"
+        ]
+      }
+    },
+    "/lab-sessions/{session_id}/reset": {
+      "post": {
+        "operationId": "reset_lab_session_lab_sessions__session_id__reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reset Lab Session",
+        "tags": [
+          "lab-sessions"
         ]
       }
     },

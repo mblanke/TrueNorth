@@ -8,6 +8,10 @@ Keep v2's detailed seven-agent contracts, cmi5 layout, validation rules, gate ha
 and four engine PRs except where this revision explicitly changes scope or wording.
 The v2 resume instructions describe outstanding work; they are not executed by this plan.
 
+For the 44-course programme, `arc2-44-course-programme.md` (2026-10-05) extends this
+boundary: automated Moodle publication and individual range creation are in-product
+requirements of ARC rather than a handoff after packaging.
+
 ## 1. Product boundary and intended outcome
 
 ARC² is the **Course Studio** module. It creates, reviews, validates, and packages

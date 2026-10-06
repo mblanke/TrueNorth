@@ -10,6 +10,7 @@ Production FastAPI application with:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -59,8 +60,23 @@ async def lifespan(app: FastAPI):
     # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
     # process at boot instead of turning every authenticated request into a 500.
     logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
+    # Course publications a previous process left mid-way resume in the background
+    # (app/course_publishing); a Moodle that is down only delays them.
+    if os.getenv("COURSE_PUBLISH_RESUME", "true").lower() == "true":
+        from .course_publishing.runner import resume_on_start
+
+        asyncio.get_running_loop().run_in_executor(None, resume_on_start)
+    # Lab sessions advance (readiness, expiry, teardown) without anyone asking.
+    lab_sweep = None
+    if os.getenv("LAB_SESSIONS_SWEEP", "true").lower() == "true":
+        from .lab_sessions.runner import loop as lab_loop
+
+        lab_sweep = asyncio.create_task(lab_loop())
 
     yield
+
+    if lab_sweep is not None:
+        lab_sweep.cancel()
 
     # Graceful shutdown of any started subsystems
     ws_mgr = getattr(app.state, "ws_manager", None)
@@ -203,6 +219,8 @@ from .routers import (
     certifications_router,
     collective_exercises_router,
     competency_router,
+    course_publications_router,
+    course_releases_router,
     courses_router,
     curriculum_router,
     detection_rules_router,
@@ -214,6 +232,7 @@ from .routers import (
     injectors_router,
     integrations_router,
     kit_router,
+    lab_sessions_router,
     learning_paths_router,
     lti_router,
     network_devices_router,
@@ -251,6 +270,9 @@ app.include_router(proxmox_router)
 app.include_router(scheduling_router)
 # LMS & Integration routers
 app.include_router(courses_router)
+app.include_router(course_releases_router)
+app.include_router(course_publications_router)
+app.include_router(lab_sessions_router)
 app.include_router(learning_paths_router)
 app.include_router(transcript_router)
 app.include_router(competency_router)

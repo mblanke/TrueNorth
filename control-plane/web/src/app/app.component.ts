@@ -319,6 +319,12 @@ export class AppComponent implements OnDestroy {
   };
   navLoading = signal(false);
   isBareRoute = signal(false);
+
+  /** Pages that render without the navigation shell: sign-in, and a student's lab (often
+   *  opened from Moodle by someone with no TrueNorth session). */
+  private isBare(url: string): boolean {
+    return url.startsWith('/login') || url.startsWith('/labs/');
+  }
   workspaceTitle = signal('Overview');
 
   readonly themes: ThemeOption[];
@@ -372,7 +378,7 @@ export class AppComponent implements OnDestroy {
     this.themes = this.theme.themes;
     this.mobileQuery.addEventListener('change', this.onViewportChange);
     this.activeTheme = this.theme.activeTheme;
-    this.isBareRoute.set(this.router.url.startsWith('/login'));
+    this.isBareRoute.set(this.isBare(this.router.url));
 
     this.routerSub = this.router.events.subscribe((event) => {
       if (event instanceof NavigationStart) {
@@ -386,7 +392,7 @@ export class AppComponent implements OnDestroy {
           'ai-orchestrator': 'AI Orchestrator', integrations: 'Integrations', users: 'People',
           admin: 'Administration',
         } as Record<string, string>)[path] ?? 'Overview');
-        this.isBareRoute.set(event.urlAfterRedirects.startsWith('/login'));
+        this.isBareRoute.set(this.isBare(event.urlAfterRedirects));
         if (!this.isBareRoute()) {
           // Wait a frame so the routed component and routerLinkActive exist.
           requestAnimationFrame(() => {

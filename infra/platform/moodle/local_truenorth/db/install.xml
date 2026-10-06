@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/truenorth/db" VERSION="20261005" COMMENT="XMLDB file for local_truenorth"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
+  <TABLES>
+    <TABLE NAME="local_truenorth_sso_jti" COMMENT="TrueNorth sign-in tickets already used (replay guard)">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="jti" TYPE="char" LENGTH="64" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="expires" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="jti" UNIQUE="true" FIELDS="jti"/>
+        <INDEX NAME="expires" UNIQUE="false" FIELDS="expires"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

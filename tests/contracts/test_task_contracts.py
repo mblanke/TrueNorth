@@ -58,7 +58,7 @@ def test_dispatch_sends_contracted_args_to_the_contracted_queue():
     with mock.patch.object(celery_client.celery_app, "send_task") as send:
         send.return_value.id = "t-1"
         assert celery_client.dispatch("snapshot_range", "r-1", "s-1") == "t-1"
-    send.assert_called_once_with("worker.tasks.snapshot_range", args=["r-1", "s-1"])
+    send.assert_called_once_with("worker.tasks.snapshot_range", args=["r-1", "s-1"], ignore_result=True)
 
 
 @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ def test_dispatch_rejects_calls_outside_the_contract(name, args):
 def test_optional_arg_may_be_omitted():
     with mock.patch.object(celery_client.celery_app, "send_task") as send:
         celery_client.dispatch("generate_learning_recommendation", "u-1")
-    send.assert_called_once_with("worker.tasks.generate_learning_recommendation", args=["u-1"])
+    send.assert_called_once_with("worker.tasks.generate_learning_recommendation", args=["u-1"], ignore_result=True)
 
 
 def test_broker_outage_returns_none_instead_of_raising():

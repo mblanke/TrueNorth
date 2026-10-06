@@ -69,6 +69,11 @@ def ensure_enrollment(
     for mod in modules:
         db.add(ModuleProgress(enrollment_id=enrollment.id, module_id=mod.id))
     db.flush()
+    # A course with an accepted release delivers that release to this enrollment for good;
+    # a later release does not move it (app.course_releases).
+    from .course_releases.service import pin_enrollment
+
+    pin_enrollment(db, enrollment)
 
     logger.info("Enrolled user %s in course %s (%d modules)", user_id, course_id, len(modules))
     return enrollment

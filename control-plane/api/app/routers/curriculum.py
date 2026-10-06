@@ -172,6 +172,8 @@ async def upload_documents(
         filename = file.filename or "upload"
         if not filename.lower().endswith(ALLOWED_SUFFIXES):
             raise HTTPException(415, f"Unsupported file type: {filename}")
+        if "\x00" in filename:
+            raise HTTPException(422, "the file name contains a NUL byte")
         data = await file.read()
         if len(data) > MAX_UPLOAD_BYTES:
             raise HTTPException(413, f"{filename} exceeds the 50 MB limit")

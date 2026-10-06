@@ -67,3 +67,18 @@ Output: concrete issues + recommended fixes + risk assessment.
 
 ## Claude Code Agents (optional)
 - `.claude/agents/architect-cyber.md` — architecture + security + ops decisions for cyber range platform.
+- `.claude/agents/scenario-engineer.md` — scenario YAML, injectors, validators, MESL timelines, QSP/CFITES objective mapping; authoring or reviewing exercise content and its scoring.
+- `.claude/agents/adversarial-reviewer.md` — argues against merging; use before landing anything touching auth, scoring, provisioning, the curriculum spine, or multi-tenancy.
+- `.claude/agents/test-engineer.md` — pytest and Angular/Karma coverage, regression and contract tests, environment-vs-code failure diagnosis; use when tests fail or coverage is thin.
+
+### ARC² (AI Rapid Course Creator)
+- `.claude/commands/arc2.md` — `/arc2 <request> | --resume <slug> [accept|<feedback>]`: free-text course request → staged, QA-checked TrueNorth bundle + cmi5 package candidate under `build/arc2/<slug>/`. Two human gates (outline, preview); for preview feedback the orchestrator picks the stage to route it to. The only caller of the agents and of init/merge/check/gate; never commits, applies, provisions or imports.
+- `.claude/agents/arc2-content-architect.md` — `01-blueprint/`: request, course, observable objectives, critical events. Binds a PO only when its crosswalk row is `todo`/`example` and no course already delivers it (otherwise `po_candidates` for Standards); crosswalk critical events are verbatim `;`-items of the row.
+- `.claude/agents/arc2-code-generator.md` — `02-content/`: course YAML, per-module `course-config.json` and learner pages; objective coverage is counted from its `files[]` entries.
+- `.claude/agents/arc2-range-engineer.md` — `03-range/`: a reused range or a new vSphere `range.tf` (fmt/validate only), and the defanged inject timeline with noise floor; offensive steps are `AUTHOR-REQUIRED`.
+- `.claude/agents/arc2-artifact-creator.md` — `04-artifacts/`: rubric, deliverable template, variant B, `xapi.json` (the only place NICE/DCWF identifiers go), instructor-only directory.
+- `.claude/agents/arc2-sensor-gateway.md` — `05-sensor/`: must-pass crit validators that fail on zero hits, a `manual_ack` summative that is never auto-scored, the engine scenario, the xAPI telemetry map.
+- `.claude/agents/arc2-qa-tester.md` — `06-qa/report.md` and the preview digest, from `check --dry-run`. `check` itself produces the findings and routes rework; the qa-tester owns no manifest keys.
+- `.claude/agents/arc2-package-builder.md` — `07-bundle/`: runs `arc2.cmi5 package` (the package is derived, never hand-written), lays out the TrueNorth bundle by destination, writes `PROMOTE.md`; only after QA pass and preview accept.
+- `tools/arc2/` — the run contract, run as `PYTHONPATH=tools .venv/bin/python -m arc2.check …`: `manifest.schema.json`; `check.py` (init/merge/check [--dry-run]/gate/status); `qa.py` (repo content rules, called by `check`); `cmi5.py` (ids/package/validate); `lab_profile.py` + `lab_profile.schema.json` (the per-student range a range activity needs; the platform validates the same file before provisioning); `skip` marks the range stages not_applicable for a run with no range activity; `au/` (AU runtime and templates); `vendor/` (`CourseStructure.xsd`, fetched by a human). Tests in `tests/arc2/`.
+- Staging rule: runs write only under `build/arc2/` (gitignored). Promotion is a human PR following `07-bundle/PROMOTE.md` (destinations under `content/` and the content pack). A package candidate with open human actions is not an approved release. Product boundary and later slices: `docs/arc2-course-studio.md`.

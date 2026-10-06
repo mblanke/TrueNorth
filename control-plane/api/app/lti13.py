@@ -238,7 +238,7 @@ def parse_resource_target(claims: dict) -> tuple[str, str]:
     resource = str(custom.get("resource", ""))
     if ":" in resource:
         kind, _, rid = resource.partition(":")
-        if kind in ("quiz", "exercise", "course"):
+        if kind in ("quiz", "exercise", "course", "lab"):  # lab: "<course uuid>:mod_NNN"
             return kind, rid
     return "", ""
 

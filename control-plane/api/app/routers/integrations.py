@@ -354,7 +354,9 @@ async def lti_launch(
     kind, rid = lti13.parse_resource_target(claims)
     lti13.record_launch(db, platform, user.id, claims, kind, rid)
 
-    if kind == "quiz" and rid:
+    if kind == "lab" and rid:
+        target = _launch_lab(db, user, rid)
+    elif kind == "quiz" and rid:
         target = f"{WEB_BASE_URL}/training?quiz={rid}&lti=1"
     elif kind == "exercise" and rid:
         target = f"{WEB_BASE_URL}/exercises?exercise={rid}&lti=1"
@@ -363,6 +365,37 @@ async def lti_launch(
     else:
         target = f"{WEB_BASE_URL}/training?lti=1"
     return RedirectResponse(target, status_code=302)
+
+
+def _launch_lab(db: Session, user: User, rid: str) -> str:
+    """A Moodle "Start lab" link: start or resume this student's lab and send the browser to
+    the lab page with the session's own access token (in the fragment, so it never reaches
+    a server log or a Referer header)."""
+    import uuid as _uuid
+
+    from ..lab_sessions import service as labs
+    from ..lab_sessions import tokens as lab_tokens
+
+    course_part, _, activity_id = rid.partition(":")
+    try:
+        course_id = _uuid.UUID(course_part)
+    except ValueError as exc:
+        raise HTTPException(400, "malformed lab link") from exc
+    try:
+        with db.begin_nested():
+            # Moodle course membership is the control on this path, so the launch enrols.
+            release = labs.release_for_student(
+                db, tenant_id=user.tenant_id, user_id=user.id, course_id=course_id, auto_enroll=True
+            )
+            session, _ = labs.launch(
+                db, tenant_id=user.tenant_id, user_id=user.id, release_id=release.id, activity_id=activity_id
+            )
+    except labs.LabRefusedError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    db.commit()
+    labs.flush_outbox(db)
+    token = lab_tokens.mint(db, session.id, user.id, session.max_expires_at)
+    return f"{WEB_BASE_URL}/labs/{session.id}?lti=1#token={token}"
 
 
 # The tool key also signs the LtiDeepLinkingResponse and AGS client assertions; this

@@ -8,9 +8,9 @@
 #     database — an installer that is not idempotent about secrets is worse than
 #     one that is not idempotent at all.
 #
-#  2. The env file is written OUTSIDE the checkout. infra/platform/docker/
-#     .env.production is a git-tracked path; rendering real secrets there would
-#     commit them on the next `git add -A`.
+#  2. The env file is written OUTSIDE the checkout, so no secret can be swept into a
+#     commit. (infra/platform/docker/.env.production was once tracked; it is now
+#     git-ignored, but the checkout is still no place for secrets.)
 
 - name: Config — generate and persist any secret left empty in the vault
   ansible.builtin.shell:

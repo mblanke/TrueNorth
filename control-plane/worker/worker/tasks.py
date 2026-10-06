@@ -25,7 +25,7 @@ from . import db_ops
 from .aar import build_report as build_aar_report
 from .celery_app import app
 from .detection import detection_scorer, range_index
-from .provisioners import get_provisioner
+from .provisioners import discard_built, get_provisioner
 
 logger = logging.getLogger("truenorth.worker")
 
@@ -44,6 +44,7 @@ def _get_backend(backend: str | None = None):
     return get_provisioner(resolved)
 
 
+_DESTROYABLE = ("created", "provisioning", "ready", "running", "stopped", "destroying", "failed")
 # -- DB session management (one per task, no leaks) ---------------------
 @contextmanager
 def _db_session():
@@ -82,7 +83,7 @@ def _update_range_state(
     ``clear_error`` drops a stale error_message, for a success after a failed attempt.
     """
     with _db_session() as db:
-        db_ops.update_range_state(
+        return db_ops.update_range_state(
             db, range_id, new_state, error=error, output=output, only_from=only_from, clear_error=clear_error
         )
 
@@ -124,14 +125,13 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
 def provision_range(self, range_id: str):
-    """Provision a single range using the configured backend.
-
-    Fetches the range template from the database, delegates to the
-    provisioner class hierarchy via asyncio.run(), and stores the
-    structured ProvisionResult back to the database.
-    """
+    """Provision a range: render its template, build it with its backend, store the result.
+    A range torn down while it was being built gets what was built destroyed, not recorded."""
     logger.info(f"[provision] Starting range {range_id}")
-    _update_range_state(range_id, "provisioning")
+    # A redelivered task for a range that is already ready (or being torn down) must not
+    # build a second set of VMs: only a range still waiting to be built is provisioned.
+    if not _update_range_state(range_id, "provisioning", only_from=("created", "provisioning", "failed")):
+        return {"status": "skipped", "range_id": range_id}
     _notify_api("range", {"id": range_id, "state": "provisioning"})
 
     try:
@@ -197,13 +197,14 @@ def provision_range(self, range_id: str):
             }
         )
 
-        _update_range_state(range_id, "ready", output=output)
+        if not _update_range_state(range_id, "ready", output=output, only_from=("provisioning",)):
+            return discard_built(provisioner, range_id, result)
         _notify_api("range", {"id": range_id, "state": "ready"})
         logger.info(f"[provision] Range {range_id} ready ({len(result.vms)} VMs)")
         return {"status": "ready", "range_id": range_id, "vm_count": len(result.vms)}
 
     except Exception as e:
-        _update_range_state(range_id, "failed", error=str(e))
+        _update_range_state(range_id, "failed", error=str(e), only_from=("provisioning",))
         _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[provision] Range {range_id} FAILED: {e}")
         raise
@@ -239,7 +240,8 @@ def destroy_range(self, range_id: str):
     the provisioner class hierarchy, and updates range state.
     """
     logger.info(f"[destroy] Starting range {range_id}")
-    _update_range_state(range_id, "destroying")
+    if not _update_range_state(range_id, "destroying", only_from=_DESTROYABLE):
+        return {"status": "skipped", "range_id": range_id}  # already destroyed: a repeat
     _notify_api("range", {"id": range_id, "state": "destroying"})
 
     try:
@@ -523,51 +525,6 @@ def generate_aar(self, exercise_id: str):
             },
         )
         logger.error(f"[aar] AAR generation FAILED for {exercise_id}: {e}")
-        raise
-
-
-# -- Periodic: Cleanup Expired Ranges -------------------------------------
-@app.task(bind=True, name="worker.tasks.cleanup_expired_ranges")
-def cleanup_expired_ranges(self):
-    """Periodic task: destroy ranges past their expiry time.
-
-    Queries ranges where expires_at < now() and state == 'ready',
-    dispatches destroy tasks for each, and logs summary.
-    """
-    logger.info("[cleanup] Checking for expired ranges")
-    if not db_ops.range_expiry_supported():
-        # Say so rather than log "No expired ranges found" forever and look healthy.
-        logger.warning("[cleanup] Range expiry is not implemented: ranges have no expires_at column")
-        return {"status": "unsupported", "expired_count": 0}
-
-    try:
-        with _db_session() as db:
-            expired = db_ops.expired_ranges(db)  # always empty: ranges have no expires_at column yet
-
-        if not expired:
-            logger.info("[cleanup] No expired ranges found")
-            return {"status": "ok", "expired_count": 0}
-
-        dispatched = 0
-        for row in expired:
-            range_id, name = str(row[0]), row[1]
-            logger.info(f"[cleanup] Dispatching destroy for expired range {name} ({range_id})")
-            destroy_range.delay(range_id)
-            dispatched += 1
-
-        _notify_api(
-            "system",
-            {
-                "event": "cleanup_expired",
-                "dispatched": dispatched,
-            },
-        )
-
-        logger.info(f"[cleanup] Dispatched destroy for {dispatched} expired ranges")
-        return {"status": "ok", "expired_count": dispatched}
-
-    except Exception as e:
-        logger.error(f"[cleanup] Error checking expired ranges: {e}")
         raise
 
 
