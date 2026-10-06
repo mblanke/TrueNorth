@@ -46,6 +46,33 @@ def test_a_restore_in_progress_still_blocks(client, db_session, sent):
 
 
 def test_a_restore_that_never_finished_stops_blocking(client, db_session, sent):
-    rng = _range_restoring(client, db_session, timedelta(hours=3))
+    rng = _range_restoring(client, db_session, timedelta(hours=6))
     r = client.post(f"/ranges/{rng.id}/stop")
     assert r.status_code == 202, r.text
+
+
+def _snapshot(db, rng):
+    from app.models import RangeSnapshot
+
+    return db.query(RangeSnapshot).filter(RangeSnapshot.range_id == rng.id).one()
+
+
+def test_a_snapshot_stuck_restoring_can_be_restored_again(client, db_session, sent):
+    """Its worker died: restore said 404 "not ready" and delete 409 "is restoring", so the
+    snapshot (and its copy on the hypervisor) could never be used or removed."""
+    rng = _range_restoring(client, db_session, timedelta(hours=6))
+    snap = _snapshot(db_session, rng)
+    r = client.post(f"/ranges/{rng.id}/snapshots/{snap.id}/restore")
+    assert r.status_code == 202, r.text
+
+
+def test_a_snapshot_stuck_restoring_can_be_deleted(client, db_session, sent):
+    rng = _range_restoring(client, db_session, timedelta(hours=6))
+    snap = _snapshot(db_session, rng)
+    assert client.delete(f"/ranges/{rng.id}/snapshots/{snap.id}").status_code == 204
+
+
+def test_a_live_restore_is_not_taken_for_stuck(client, db_session, sent):
+    rng = _range_restoring(client, db_session, timedelta(hours=3))  # a retry may still be running
+    snap = _snapshot(db_session, rng)
+    assert client.delete(f"/ranges/{rng.id}/snapshots/{snap.id}").status_code == 409

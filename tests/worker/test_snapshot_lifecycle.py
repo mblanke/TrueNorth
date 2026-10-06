@@ -562,6 +562,20 @@ class TestRestoreSnapshotTask:
         spies.range_state.assert_not_called()
         spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready", only_from=("restoring",))
 
+    def test_a_restore_hitting_the_soft_limit_gives_the_snapshot_back(self, backend, spies):
+        """No retry follows the soft limit (FINAL_ERRORS); waiting for the last attempt left
+        the snapshot `restoring` for good (third re-review)."""
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        backend.restore.side_effect = SoftTimeLimitExceeded()
+        with (
+            patch.object(tasks, "_db_session", self._rows()),
+            patch.object(tasks, "_last_attempt", return_value=False),
+            pytest.raises(SoftTimeLimitExceeded),
+        ):
+            tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)
+        spies.snapshot_state.assert_called_once_with(SNAP_ID, "ready", only_from=("restoring",))
+
     def test_a_half_done_restore_marks_the_range_failed(self, backend, spies):
         backend.restore.return_value = RestoreResult(
             status="partial", vms_restored=1, vms_reverted=2, errors=["VM vm-2: power on failed"]

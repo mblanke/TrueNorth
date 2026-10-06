@@ -127,7 +127,21 @@ _DELETABLE_RANGE_STATES = (RangeState.created, RangeState.destroyed)
 _RESERVING_EVENT_STATES = (EventState.draft, EventState.scheduled, EventState.active)
 
 
-RESTORE_STALE_AFTER = timedelta(hours=2)  # well past the worker's hard time limit (~1 h)
+# A restore runs at most 4 attempts of up to 3500 s (the worker's hard time limit) plus
+# retry backoff (at most 300 s each), and writes nothing in between: a `restoring` row
+# untouched for longer belongs to a worker that died.
+RESTORE_STALE_AFTER = timedelta(hours=5)
+
+
+def _release_stale_restores(db: Session, range_id: uuid.UUID) -> None:
+    """Give back a snapshot left `restoring` by a worker that died: `ready` again, so it
+    can be restored or deleted. Without this it was stuck for good (restore: "not ready",
+    delete: "is restoring")."""
+    db.query(RangeSnapshot).filter(
+        RangeSnapshot.range_id == range_id,
+        RangeSnapshot.snapshot_state == "restoring",
+        RangeSnapshot.updated_at <= datetime.now(UTC) - RESTORE_STALE_AFTER,
+    ).update({"snapshot_state": "ready"}, synchronize_session="fetch")
 
 
 def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
@@ -135,8 +149,8 @@ def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
 
     A restore does not move the range out of `ready`, so without this a second
     restore or a new snapshot could run over the VMs mid-revert. A restore cannot run
-    longer than the worker's hard time limit, so a `restoring` row untouched for
-    RESTORE_STALE_AFTER belongs to a worker that died, and no longer blocks the range.
+    longer than RESTORE_STALE_AFTER (all its attempts), so a `restoring` row untouched
+    that long belongs to a worker that died, and no longer blocks the range.
     """
     # tenant-safe: callers pass a range_id they already resolved through _tenant_range().
     busy = (
@@ -754,6 +768,7 @@ def restore_snapshot(
     rng = _tenant_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
+    _release_stale_restores(db, range_id)
     _refuse_while_restoring(db, range_id)
 
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
@@ -789,6 +804,7 @@ def delete_snapshot(
     # delete any other tenant's snapshot given the two ids. That only flipped a row
     # while the worker's delete was broken; now it removes the hypervisor copy.
     _tenant_range(db, range_id, user)
+    _release_stale_restores(db, range_id)
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
     # caller, so filtering snapshots by that same range_id is transitively scoped.
     snap = (

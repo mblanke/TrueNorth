@@ -293,3 +293,52 @@ def test_the_soft_limit_comes_before_the_hard_one_and_both_before_redelivery():
     visibility = app.conf.broker_transport_options["visibility_timeout"]
     assert app.conf.task_soft_time_limit and app.conf.task_soft_time_limit < app.conf.task_time_limit < visibility
     assert SoftTimeLimitExceeded in tasks.ReliableTask.dont_autoretry_for
+
+
+# ── From the third re-review ───────────────────────────────────────────
+def test_a_destroy_hitting_the_soft_limit_records_failed(db):
+    """It used to check only _last_attempt: with the retry suppressed (FINAL_ERRORS), the
+    range stayed `destroying` with nothing to settle it."""
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    rid = _range(db, "destroying", OUTPUT)
+    with (
+        patch.object(tasks, "_get_backend", side_effect=SoftTimeLimitExceeded()),
+        patch.object(tasks, "_last_attempt", return_value=False),
+        pytest.raises(SoftTimeLimitExceeded),
+    ):
+        tasks.destroy_range.run(rid)
+    with db.connect() as conn:
+        assert conn.execute(sa.text("SELECT state FROM ranges WHERE id = :i"), {"i": rid}).scalar() == "failed"
+
+
+def test_the_soft_limit_is_not_held_up_by_a_hypervisor_call_in_a_thread(db):
+    """asyncio.run waits for in-flight to_thread work before re-raising, so a long vSphere
+    call could push the cleanup past the hard limit (which kills it). The task must surface
+    the soft limit at once."""
+    import signal
+    import time
+
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    class SlowThreadBackend:
+        async def destroy(self, range_id, output):
+            await asyncio.to_thread(time.sleep, 3)
+
+    def soft_limit(signum, frame):
+        raise SoftTimeLimitExceeded()
+
+    rid = _range(db, "destroying", OUTPUT)
+    previous = signal.signal(signal.SIGALRM, soft_limit)
+    signal.setitimer(signal.ITIMER_REAL, 0.3)
+    started = time.monotonic()
+    try:
+        with (
+            patch.object(tasks, "_get_backend", return_value=SlowThreadBackend()),
+            pytest.raises(SoftTimeLimitExceeded),
+        ):
+            tasks.destroy_range.run(rid)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    assert time.monotonic() - started < 1.5, "the cleanup waited for the hypervisor thread"

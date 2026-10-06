@@ -18,14 +18,17 @@ The lease is released when the task ends, however it ends (``release``), so a re
 failed attempt can claim again; it still finds the range in progress, because only the
 last attempt records ``failed`` (reliable._last_attempt). Time limits (celery_app): the
 soft limit ``SOFT_TIME_LIMIT`` raises ``SoftTimeLimitExceeded`` inside the task, which is
-final (``FINAL_ERRORS``: no retry, the task records ``failed``, cleanup and ``release``
-run); the hard limit ``TASK_TIME_LIMIT`` only backs it up (it kills the process, nothing
-runs after it) and is below the broker's visibility timeout, so a running task is not
-redelivered. ``LEASE_SECONDS`` outlives the hard limit.
+final (``FINAL_ERRORS``: no retry; each range task records ``failed``, a restore gives its
+snapshot back; cleanup and ``release`` run). Hypervisor calls go through ``run_async``,
+which does not wait for their threads after a failure, so that cleanup is not held past
+the hard limit ``TASK_TIME_LIMIT``. The hard limit only backs the soft one up (it kills
+the process, nothing runs after it) and is below the broker's visibility timeout, so a
+running task is not redelivered. ``LEASE_SECONDS`` outlives the hard limit.
 """
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import logging
 import uuid
@@ -54,6 +57,26 @@ def skipped(action: str, range_id: str, expected: str) -> dict:
     """The result of a duplicate or stale delivery: logged, and nothing else."""
     logger.warning("[%s] range %s is no longer %s: duplicate or stale delivery, skipped", action, range_id, expected)
     return {"status": "skipped", "range_id": range_id, "reason": f"range is no longer {expected}"}
+
+
+def run_async(coro):
+    """``asyncio.run`` for a task's hypervisor call, except on the way out after a failure.
+
+    ``asyncio.run`` waits for every thread the call started (``to_thread``: vSphere clones,
+    guest installs) before re-raising, so the soft time limit's cleanup could be held past
+    the hard limit, which kills the process with nothing recorded. Here a failure leaves
+    those threads behind (the executor is shut down without waiting) and propagates at once.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        result = loop.run_until_complete(coro)
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.run_until_complete(loop.shutdown_default_executor())  # finished: nothing to wait for
+        return result
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()  # after a failure: shuts the executor down without waiting for its threads
 
 
 def claim(session_factory, range_id: str, state: str) -> str | None:

@@ -906,15 +906,20 @@ in, and only one execution at a time (`worker/fencing.py`, table `range_leases`)
   A lease outlives a dead worker by at most `LEASE_SECONDS` (1 h); nothing to do but wait.
   To see one: `SELECT * FROM range_leases WHERE range_id = '<id>'`. Do not delete a lease
   whose `expires_at` is in the future unless you are sure no worker is running that task.
-- **Time limits**: a range task is stopped after 3300 s (soft: it records `failed` with
-  `SoftTimeLimitExceeded`, cleans up and releases its lease) and killed after 3500 s
-  (hard: a backstop; nothing runs after it, so the operation shows `no_outcome` later and
-  you abandon it as above). Both are below the broker's 1 h visibility timeout, so a
-  running task is never handed to a second worker.
-- **Stuck restore**: a snapshot left `restoring` by a worker that died blocks every
-  operation on its range (409 "A restore of this range is in progress") for at most 2 h
-  (`RESTORE_STALE_AFTER`), after which it no longer counts. Restore the snapshot again
-  or delete it once the range is usable.
+- **Time limits**: a task is stopped after 3300 s (soft). A provision, destroy, stop or
+  start then records `failed` with `SoftTimeLimitExceeded`; a restore gives its snapshot
+  back (`ready`) and marks the range `failed` only if some VMs were already reverted. In
+  every case the task releases its lease and is not retried. It does not wait for a
+  hypervisor call still running in a thread (`fencing.run_async`), so it finishes before
+  the hard limit at 3500 s, which kills the process with nothing recorded (then the
+  operation shows `no_outcome` later and you abandon it as above). Both limits are below
+  the broker's 1 h visibility timeout, so a running task is never handed to a second
+  worker.
+- **Stuck restore**: a restore runs at most 4 attempts of up to 3500 s. A snapshot left
+  `restoring` by a worker that died blocks every operation on its range (409 "A restore
+  of this range is in progress") until it has been untouched for `RESTORE_STALE_AFTER`
+  (5 h). After that it no longer blocks, and restoring or deleting it gives it back
+  (`ready`) first.
 
 Only the last retry of a failing task marks the range `failed`; a soft time limit, a full
 address pool or a range with nothing to power do so on the first attempt.
