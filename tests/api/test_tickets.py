@@ -185,6 +185,10 @@ class TestTriage:
             fields = [a["field"] for a in client.get(f"/tickets/{t['id']}/activity").json()]
         assert fields[0] == "created"
         assert {"assignee_id", "priority", "status"} <= set(fields)
+        with acting_as(student):
+            history = client.get(f"/tickets/{t['id']}/activity").json()
+        assigned = next(a for a in history if a["field"] == "assignee_id")
+        assert assigned["new_value"] == "instructor person"  # a name, not an id
 
     def test_assignee_must_be_staff_in_the_tenant(self, client, student, instructor):
         with acting_as(student):
@@ -289,3 +293,151 @@ class TestAttachments:
             t = _file(client)
             r = client.post(f"/tickets/{t['id']}/attachments", files=[("files", ("a.txt", io.BytesIO(b""), "text/plain"))])
         assert r.status_code == 422
+
+
+class TestSecurityReviewFixes:
+    @pytest.fixture
+    def fake_store(self, monkeypatch):
+        from app import object_store
+
+        store: dict[str, bytes] = {}
+        monkeypatch.setattr(object_store, "put_object", lambda k, d, c, bucket=None: store.__setitem__(k, d))
+        monkeypatch.setattr(object_store, "get_object", lambda k, bucket=None: store[k])
+        monkeypatch.setattr(object_store, "delete_object", lambda k, bucket=None: store.pop(k, None))
+        return store
+
+    def test_non_latin_filenames_download(self, client, fake_store):
+        t = _file(client)
+        att = client.post(
+            f"/tickets/{t['id']}/attachments", files=[("files", ("журнал\r\n.log", io.BytesIO(b"x"), "text/plain"))]
+        ).json()[0]
+        dl = client.get(f"/tickets/attachments/{att['id']}")
+        assert dl.status_code == 200
+        cd = dl.headers["content-disposition"]
+        assert cd.startswith('attachment; filename="')
+        assert "filename*=UTF-8''%D0%B6" in cd
+        assert "\r" not in cd and "\n" not in cd
+
+    def test_oversized_upload_stores_nothing(self, client, fake_store, monkeypatch):
+        from app.routers import tickets as tickets_router
+
+        monkeypatch.setattr(tickets_router, "MAX_ATTACHMENT_BYTES", 10)
+        t = _file(client)
+        r = client.post(
+            f"/tickets/{t['id']}/attachments",
+            files=[("files", ("ok.txt", io.BytesIO(b"small"), "text/plain")), ("files", ("big.bin", io.BytesIO(b"x" * 50), "x/y"))],
+        )
+        assert r.status_code == 413
+        assert fake_store == {}
+        assert client.get(f"/tickets/{t['id']}/attachments").json() == []
+
+    def test_internal_note_leaves_no_trace_for_the_reporter(self, client, student, instructor):
+        with acting_as(student):
+            t = _file(client)
+            before = client.get(f"/tickets/{t['id']}").json()["updated_at"]
+        with acting_as(instructor):
+            client.post(f"/tickets/{t['id']}/comments", json={"body": "hidden", "is_internal": True})
+        with acting_as(student):
+            assert client.get(f"/tickets/{t['id']}").json()["updated_at"] == before
+
+    def test_search_wildcards_are_literal(self, client):
+        _file(client, subject="alpha")
+        _file(client, subject="100% broken")
+        assert client.get("/tickets", params={"q": "%"}).json()[0]["subject"] == "100% broken"
+        assert len(client.get("/tickets", params={"q": "%"}).json()) == 1
+        assert client.get("/tickets", params={"q": "_"}).json() == []
+
+    def test_nan_board_position_is_refused_and_never_stored(self, client, instructor):
+        """NaN is a 422 (app/validation_errors.py keeps the echoed input encodable) and never
+        reaches the database, where it would break every board load."""
+        t = _file(client)
+        with acting_as(instructor):
+            r = client.post(
+                f"/tickets/{t['id']}/move",
+                content='{"status": "in_progress", "board_order": NaN}',
+                headers={"Content-Type": "application/json"},
+            )
+            assert r.status_code == 422
+            board = client.get("/tickets/board")
+            assert board.status_code == 200
+            card = next(c for col in board.json() for c in col["tickets"] if c["id"] == t["id"])
+            assert card["status"] == "open" and card["board_order"] == t["board_order"]
+
+
+class TestAdversarialReviewFixes:
+    def test_deleting_the_support_queue_does_not_break_support(self, client):
+        """The soft-deleted 'support' row still holds its slug; recreating it used to 500 everything."""
+        client.get("/tickets/queues")  # first use creates "support"
+        other = client.post("/tickets/queues", json={"name": "Platform", "slug": "platform"}).json()
+        support = next(q for q in client.get("/tickets/queues").json() if q["slug"] == "support")
+        assert client.delete(f"/tickets/queues/{support['id']}").status_code == 204
+        assert client.delete(f"/tickets/queues/{other['id']}").status_code == 409  # last one stays
+        # Re-creating the deleted slug revives it instead of colliding.
+        revived = client.post("/tickets/queues", json={"name": "Support again", "slug": "support"})
+        assert revived.status_code == 201 and revived.json()["id"] == support["id"]
+        assert _file(client)["key"] == "TN-1"
+
+    def test_default_queue_comes_back_after_its_row_was_deleted(self, client, db_session):
+        from app.models_tickets import SupportQueue
+
+        client.get("/tickets/queues")  # creates "support"
+        q = db_session.query(SupportQueue).filter_by(slug="support").one()
+        q.soft_delete()
+        db_session.commit()
+        assert client.get("/tickets/queues").status_code == 200
+        assert _file(client)["queue_name"] == "Support"
+
+    def test_deleting_the_default_hands_default_to_another(self, client):
+        client.get("/tickets/queues")
+        client.post("/tickets/queues", json={"name": "Platform", "slug": "platform"})
+        support = next(q for q in client.get("/tickets/queues").json() if q["slug"] == "support")
+        client.delete(f"/tickets/queues/{support['id']}")
+        assert [q["is_default"] for q in client.get("/tickets/queues").json()] == [True]
+
+    def test_closed_back_to_resolved_clears_closed_at(self, client):
+        t = _file(client)
+        client.patch(f"/tickets/{t['id']}", json={"status": "closed"})
+        back = client.patch(f"/tickets/{t['id']}", json={"status": "resolved"}).json()
+        assert back["closed_at"] is None and back["resolved_at"] is not None
+
+    def test_new_tickets_get_distinct_board_positions_so_reorders_stick(self, client):
+        a, b, c = _file(client, subject="a"), _file(client, subject="b"), _file(client, subject="c")
+        assert len({a["board_order"], b["board_order"], c["board_order"]}) == 3
+        # Drag c between a and b, the way the board computes it (midpoint of neighbours).
+        mid = (a["board_order"] + b["board_order"]) / 2
+        client.post(f"/tickets/{c['id']}/move", json={"status": "open", "board_order": mid})
+        col = next(col for col in client.get("/tickets/board").json() if col["status"] == "open")
+        assert [x["subject"] for x in col["tickets"]] == ["a", "c", "b"]
+
+    def test_staff_can_unlink_a_range(self, client, rng):
+        t = _file(client, range_id=str(rng.id))
+        r = client.patch(f"/tickets/{t['id']}", json={"unlink_range": True})
+        assert r.status_code == 200 and r.json()["range_id"] is None
+
+    def test_reporter_cannot_unlink(self, client, student, rng):
+        with acting_as(student):
+            t = _file(client, range_id=str(rng.id))
+            assert client.patch(f"/tickets/{t['id']}", json={"unlink_range": True}).status_code == 403
+
+
+class TestBrowserTourFixes:
+    @pytest.fixture
+    def exercise(self, db_session, rng):
+        from app.models import Exercise
+
+        e = Exercise(name="IR Drill #1", range_id=rng.id, tenant_id=uuid.UUID(DEV_TENANT))
+        db_session.add(e)
+        db_session.commit()
+        return e
+
+    def test_filing_from_an_exercise_links_its_range(self, client, exercise, rng):
+        t = _file(client, exercise_id=str(exercise.id))
+        assert t["range_id"] == str(rng.id)
+        assert t["range_name"] == "DP2 AD Lab" and t["exercise_name"] == "IR Drill #1"
+
+    def test_unlinking_is_in_the_history_by_name(self, client, exercise):
+        t = _file(client, exercise_id=str(exercise.id))
+        client.patch(f"/tickets/{t['id']}", json={"unlink_exercise": True, "unlink_range": True})
+        changes = {a["field"]: (a["old_value"], a["new_value"]) for a in client.get(f"/tickets/{t['id']}/activity").json()}
+        assert changes["exercise_id"] == ("IR Drill #1", "")
+        assert changes["range_id"] == ("DP2 AD Lab", "")

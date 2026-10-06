@@ -7288,16 +7288,14 @@
           },
           "breadcrumbs": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/PageRef"
             },
             "title": "Breadcrumbs",
             "type": "array"
           },
           "children": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/PageRef"
             },
             "title": "Children",
             "type": "array"
@@ -7390,6 +7388,26 @@
           "updated_at"
         ],
         "title": "PageOut",
+        "type": "object"
+      },
+      "PageRef": {
+        "description": "A link to another page: enough to name it and route to it.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "PageRef",
         "type": "object"
       },
       "PageUpdate": {
@@ -12527,6 +12545,16 @@
           "unassign": {
             "default": false,
             "title": "Unassign",
+            "type": "boolean"
+          },
+          "unlink_exercise": {
+            "default": false,
+            "title": "Unlink Exercise",
+            "type": "boolean"
+          },
+          "unlink_range": {
+            "default": false,
+            "title": "Unlink Range",
             "type": "boolean"
           }
         },

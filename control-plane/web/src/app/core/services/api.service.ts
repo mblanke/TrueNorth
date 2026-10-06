@@ -623,58 +623,6 @@ export class ApiService {
   }
 
 
-  // ── Helpdesk / Support Tickets ───────────────────────────
-  listQueues(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/tickets/queues`);
-  }
-  createQueue(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/queues`, data);
-  }
-  addQueueMember(queueId: string, userId: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/queues/${queueId}/members`, { user_id: userId });
-  }
-  removeQueueMember(queueId: string, userId: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/tickets/queues/${queueId}/members/${userId}`);
-  }
-
-  listTickets(params?: { status?: string; priority?: string; category?: string; queue_id?: string; assigned_to?: string }): Observable<any[]> {
-    let httpParams = new HttpParams();
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => { if (v) httpParams = httpParams.set(k, v); });
-    }
-    return this.http.get<any[]>(`${this.base}/tickets`, { params: httpParams });
-  }
-  createTicket(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets`, data);
-  }
-  getTicket(id: string): Observable<any> {
-    return this.http.get<any>(`${this.base}/tickets/${id}`);
-  }
-  updateTicket(id: string, data: any): Observable<any> {
-    return this.http.put<any>(`${this.base}/tickets/${id}`, data);
-  }
-  deleteTicket(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/tickets/${id}`);
-  }
-
-  listTicketComments(ticketId: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/tickets/${ticketId}/comments`);
-  }
-  addTicketComment(ticketId: string, data: { author_id: string; body: string }): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/${ticketId}/comments`, data);
-  }
-
-  // AI Agent
-  askAI(ticketId: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/${ticketId}/ask-ai`, {});
-  }
-  runDiagnostics(ticketId: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/${ticketId}/run-diagnostics`, {});
-  }
-  listAIActions(ticketId: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/tickets/${ticketId}/ai-actions`);
-  }
-
   // ── Curriculum Forge ─────────────────────────────────────
   listCurricula(): Observable<any[]> {
     return this.http.get<any[]>(`${this.base}/curricula`);
@@ -737,45 +685,5 @@ export class ApiService {
   /** GET /competency/heatmap (untyped in the contract). */
   getCompetencyHeatmap(view: string): Observable<CompetencyHeatmap> {
     return this.http.get<CompetencyHeatmap>(`${this.base}/competency/heatmap`, { params: { view } });
-  }
-
-  // ── Wiki / Knowledge Base ────────────────────────────────
-  listWikiSpaces(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/wiki/spaces`);
-  }
-  createWikiSpace(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/wiki/spaces`, data);
-  }
-  getWikiSpace(slug: string): Observable<any> {
-    return this.http.get<any>(`${this.base}/wiki/spaces/${slug}`);
-  }
-  deleteWikiSpace(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/wiki/spaces/${id}`);
-  }
-
-  listWikiPages(spaceSlug: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/wiki/spaces/${spaceSlug}/pages`);
-  }
-  getWikiPageTree(spaceSlug: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/wiki/spaces/${spaceSlug}/tree`);
-  }
-  createWikiPage(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/wiki/pages`, data);
-  }
-  getWikiPage(pageId: string): Observable<any> {
-    return this.http.get<any>(`${this.base}/wiki/pages/${pageId}`);
-  }
-  updateWikiPage(pageId: string, data: any): Observable<any> {
-    return this.http.put<any>(`${this.base}/wiki/pages/${pageId}`, data);
-  }
-  deleteWikiPage(pageId: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/wiki/pages/${pageId}`);
-  }
-  listWikiPageRevisions(pageId: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/wiki/pages/${pageId}/revisions`);
-  }
-  searchWiki(q: string): Observable<any[]> {
-    const params = new HttpParams().set('q', q);
-    return this.http.get<any[]>(`${this.base}/wiki/search`, { params });
   }
 }

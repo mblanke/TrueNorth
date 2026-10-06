@@ -17,8 +17,8 @@ POST   /wiki/spaces/{slug}/pages                    WIKI_EDIT
 GET    /wiki/pages/{page_id}                        WIKI_READ
 PUT    /wiki/pages/{page_id}                        WIKI_EDIT
 DELETE /wiki/pages/{page_id}                        WIKI_EDIT
-GET    /wiki/pages/{page_id}/revisions              WIKI_READ
-GET    /wiki/pages/{page_id}/revisions/{n}          WIKI_READ
+GET    /wiki/pages/{page_id}/revisions              WIKI_EDIT
+GET    /wiki/pages/{page_id}/revisions/{n}          WIKI_EDIT
 POST   /wiki/pages/{page_id}/revisions/{n}/restore  WIKI_EDIT
 GET    /wiki/search?q=                              WIKI_READ
 ==================================================  ==========================
@@ -27,6 +27,10 @@ Visibility: a space marked ``staff`` is invisible (404, never 403) to anyone wit
 WIKI_EDIT, and so are unpublished pages. Saving a page requires the ``base_revision``
 the editor started from; a stale one is a 409 carrying the current page, so concurrent
 editors cannot silently overwrite each other.
+
+History is editors-only: a page's earlier revisions can predate its publication (an
+unpublished draft holding an answer key, later replaced by student instructions), so
+"the page is published now" says nothing about what its old revisions contain.
 """
 
 from __future__ import annotations
@@ -110,6 +114,13 @@ class RestoreRequest(BaseModel):
     base_revision: int = Field(..., ge=1, description="revision_number the restore was decided against")
 
 
+class PageRef(BaseModel):
+    """A link to another page: enough to name it and route to it."""
+
+    id: uuid.UUID
+    title: str
+
+
 class PageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -126,8 +137,8 @@ class PageOut(BaseModel):
     last_editor_id: uuid.UUID
     last_editor_name: str = ""
     revision_number: int
-    breadcrumbs: list[dict] = Field(default_factory=list)
-    children: list[dict] = Field(default_factory=list)
+    breadcrumbs: list[PageRef] = Field(default_factory=list)
+    children: list[PageRef] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -224,16 +235,16 @@ def _visible_pages(db: Session, space: WikiSpace, user: CurrentUser):
 def _page_out(db: Session, page: WikiPage, space: WikiSpace, user: CurrentUser) -> PageOut:
     siblings = _visible_pages(db, space, user).all()
     by_id = {p.id: p for p in siblings}
-    crumbs: list[dict] = []
+    crumbs: list[PageRef] = []
     cursor = by_id.get(page.parent_id) if page.parent_id else None
     while cursor is not None and len(crumbs) < 50:
-        crumbs.insert(0, {"id": str(cursor.id), "title": cursor.title})
+        crumbs.insert(0, PageRef(id=cursor.id, title=cursor.title))
         cursor = by_id.get(cursor.parent_id) if cursor.parent_id else None
     children = sorted((p for p in siblings if p.parent_id == page.id), key=lambda p: (p.ordinal, p.title.lower()))
     out = PageOut.model_validate(page)
     out.space_slug = space.slug
     out.breadcrumbs = crumbs
-    out.children = [{"id": str(c.id), "title": c.title} for c in children]
+    out.children = [PageRef(id=c.id, title=c.title) for c in children]
     out.last_editor_name = _names(db, user, {page.last_editor_id}).get(page.last_editor_id, "")
     return out
 
@@ -408,6 +419,8 @@ def create_page(
     user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
 ) -> PageOut:
     space = _space(db, slug, user)
+    if space.is_archived:
+        raise HTTPException(409, "This space is archived")
     if body.parent_id:
         _check_parent(db, None, space, body.parent_id, user)
     uid = uuid.UUID(user.id)
@@ -460,22 +473,37 @@ def update_page(
     page, space = _page(db, page_id, user)
     if body.base_revision != page.revision_number:
         return _conflict(db, page.id, user)
-    content_changed = (body.title is not None and body.title != page.title) or (
-        body.body is not None and body.body != page.body
-    )
-    if not _claim(db, page, body.base_revision, bump=content_changed):
+
+    new_parent = None if body.move_to_root else (body.parent_id if body.parent_id is not None else page.parent_id)
+    if new_parent is not None and new_parent != page.parent_id:
+        _check_parent(db, page, space, new_parent, user)
+    # Every real change advances the revision, metadata included. If publishing,
+    # unpublishing, tags or a move left the number alone, an editor still holding the
+    # old number could save a typo fix and silently undo it (re-publish a page someone
+    # had just hidden). Each change is also a history row, so it can be seen and undone.
+    changes: list[str] = []
+    if body.title is not None and body.title != page.title:
+        changes.append("title")
+    if body.body is not None and body.body != page.body:
+        changes.append("content")
+    if body.tags is not None and body.tags != page.tags:
+        changes.append("tags")
+    if body.is_published is not None and body.is_published != page.is_published:
+        changes.append("published" if body.is_published else "unpublished")
+    if new_parent != page.parent_id:
+        changes.append("moved")
+    if body.ordinal is not None and body.ordinal != page.ordinal:
+        changes.append("reordered")
+    if not changes:
+        return _page_out(db, page, space, user)
+    if not _claim(db, page, body.base_revision, bump=True):
         return _conflict(db, page.id, user)
 
-    if body.move_to_root:
-        page.parent_id = None
-    elif body.parent_id is not None and body.parent_id != page.parent_id:
-        _check_parent(db, page, space, body.parent_id, user)
-        page.parent_id = body.parent_id
-
+    page.parent_id = new_parent
     if body.title is not None and body.title != page.title:
         page.title = body.title
         page.slug = _slugify(body.title)
-    if body.body is not None and body.body != page.body:
+    if body.body is not None:
         page.body = body.body
     if body.tags is not None:
         page.tags = body.tags
@@ -485,8 +513,10 @@ def update_page(
         page.ordinal = body.ordinal
 
     page.last_editor_id = uuid.UUID(user.id)
-    if content_changed:
-        _write_revision(db, page, user, body.edit_summary)
+    summary = body.edit_summary
+    if not ({"title", "content"} & set(changes)) and not summary:
+        summary = ", ".join(changes).capitalize()
+    _write_revision(db, page, user, summary)
     _audit(db, user, "wiki_page_update", "wiki_page", str(page.id))
     try:
         db.commit()
@@ -521,7 +551,7 @@ def delete_page(
 def list_revisions(
     page_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
 ) -> list[RevisionListOut]:
     page, _ = _page(db, page_id, user)
     revs = (
@@ -559,7 +589,7 @@ def get_revision(
     page_id: uuid.UUID = Path(...),
     n: int = Path(..., ge=1),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
 ) -> RevisionOut:
     page, _ = _page(db, page_id, user)
     rev = _revision(db, page, n, user)

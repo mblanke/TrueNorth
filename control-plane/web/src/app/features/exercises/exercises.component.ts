@@ -159,6 +159,10 @@ export const EXERCISE_POLL_MS = 5000;
                 <mat-icon>picture_as_pdf</mat-icon>
               </button>
             }
+            <a mat-icon-button matTooltip="Report a problem" aria-label="Report a problem with this exercise"
+               routerLink="/support/new" [queryParams]="{ exercise_id: e.id }">
+              <mat-icon>support_agent</mat-icon>
+            </a>
           </td>
         </ng-container>
         <tr mat-header-row *matHeaderRowDef="columns"></tr>

@@ -91,6 +91,10 @@ const NODE_ICON: Record<string, string> = {
             @if (d.state === 'completed') {
               <button mat-stroked-button (click)="genAar()"><mat-icon>description</mat-icon> Generate AAR</button>
             }
+            <a mat-button routerLink="/support/new"
+               [queryParams]="{ exercise_id: d.exercise_id, range_id: d.range_id || null }">
+              <mat-icon>support_agent</mat-icon> Report a problem
+            </a>
           </div>
         </header>
         <div class="score">

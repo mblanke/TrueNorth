@@ -122,11 +122,30 @@ class TestRevisions:
         assert restored["revision_number"] == 3
         assert len(client.get(f"/wiki/pages/{page['id']}/revisions").json()) == 3
 
-    def test_metadata_only_change_does_not_add_a_revision(self, client):
+    def test_metadata_change_is_a_revision_with_a_summary(self, client):
         _space(client)
         page = _page(client)
-        r = client.put(f"/wiki/pages/{page['id']}", json={"base_revision": 1, "tags": "vsphere"})
-        assert r.json()["revision_number"] == 1
+        r = client.put(f"/wiki/pages/{page['id']}", json={"base_revision": 1, "tags": "vsphere", "is_published": False})
+        assert r.json()["revision_number"] == 2
+        assert client.get(f"/wiki/pages/{page['id']}/revisions").json()[0]["edit_summary"] == "Tags, unpublished"
+
+    def test_saving_nothing_new_changes_nothing(self, client):
+        _space(client)
+        page = _page(client, body="same")
+        r = client.put(f"/wiki/pages/{page['id']}", json={"base_revision": 1, "body": "same", "tags": ""})
+        assert r.status_code == 200 and r.json()["revision_number"] == 1
+
+    def test_unpublish_cannot_be_undone_by_a_stale_content_save(self, client):
+        """B hides the page; A, still on the revision before that, fixes a typo -> 409, not re-published."""
+        _space(client)
+        page = _page(client, body="v1")
+        hidden = client.put(f"/wiki/pages/{page['id']}", json={"base_revision": 1, "is_published": False})
+        assert hidden.status_code == 200
+        stale = client.put(
+            f"/wiki/pages/{page['id']}", json={"base_revision": 1, "body": "v1 typo fixed", "is_published": True}
+        )
+        assert stale.status_code == 409
+        assert client.get(f"/wiki/pages/{page['id']}").json()["is_published"] is False
 
     def test_page_cannot_move_under_its_own_descendant(self, client):
         _space(client)
@@ -194,3 +213,20 @@ class TestSearch:
         assert [h["title"] for h in hits] == ["vSphere reset", "Notes"]
         assert "vsphere" in hits[1]["snippet"]
         assert client.get("/wiki/search?q=%25%25").json() == []
+
+
+class TestSecurityReviewFixes:
+    def test_students_cannot_read_revision_history(self, client):
+        """An unpublished draft (an answer key) must not be readable once the page is published."""
+        _space(client)
+        page = _page(client, body="ANSWER KEY: flag{x}", is_published=False)
+        client.put(f"/wiki/pages/{page['id']}", json={"base_revision": 1, "body": "Student instructions", "is_published": True})
+        with acting_as(UserRole.student):
+            assert client.get(f"/wiki/pages/{page['id']}").json()["body"] == "Student instructions"
+            assert client.get(f"/wiki/pages/{page['id']}/revisions").status_code == 403
+            assert client.get(f"/wiki/pages/{page['id']}/revisions/1").status_code == 403
+
+    def test_archived_space_takes_no_new_pages(self, client):
+        _space(client)
+        client.delete("/wiki/spaces/runbooks")
+        assert client.post("/wiki/spaces/runbooks/pages", json={"title": "x"}).status_code == 409

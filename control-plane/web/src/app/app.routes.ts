@@ -281,6 +281,18 @@ export const routes: Routes = [
       import('./features/ai-orchestrator/ai-orchestrator.component').then(m => m.AiOrchestratorComponent),
     title: 'AI Orchestrator - TrueNorth Range',
   },
+  // -- Knowledge base + trouble tickets --
+  {
+    path: 'wiki',
+    canActivate: [authGuard, onboardingGuard],
+    loadChildren: () => import('./features/wiki/wiki.routes').then(m => m.WIKI_ROUTES),
+  },
+  {
+    path: 'support',
+    canActivate: [authGuard, onboardingGuard],
+    loadChildren: () => import('./features/tickets/tickets.routes').then(m => m.SUPPORT_ROUTES),
+  },
+  { path: 'tickets', redirectTo: 'support', pathMatch: 'full' },
   {
     path: 'login',
     loadComponent: () =>

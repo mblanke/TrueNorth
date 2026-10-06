@@ -38,13 +38,15 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -66,7 +68,7 @@ TYPE_RE = r"^(incident|bug|task|request)$"
 STATUS_RE = r"^(open|in_progress|waiting|resolved|closed)$"
 PRIORITY_RE = r"^(low|medium|high|critical)$"
 STAFF_ROLES = (UserRole.admin, UserRole.instructor, UserRole.range_ops)
-TRACKED_FIELDS = ("status", "priority", "type", "assignee_id", "queue_id", "subject")
+TRACKED_FIELDS = ("status", "priority", "type", "assignee_id", "queue_id", "subject", "range_id", "exercise_id")
 
 
 # ── Schemas ─────────────────────────────────────────────────────────────
@@ -119,11 +121,14 @@ class TicketUpdate(BaseModel):
     unassign: bool = False
     range_id: uuid.UUID | None = None
     exercise_id: uuid.UUID | None = None
+    unlink_range: bool = False
+    unlink_exercise: bool = False
 
 
 class MoveIn(BaseModel):
     status: str = Field(..., pattern=STATUS_RE)
-    board_order: float = 0.0
+    # NaN would be stored and then break JSON encoding of the whole board.
+    board_order: float = Field(0.0, allow_inf_nan=False)
 
 
 class TicketListOut(BaseModel):
@@ -207,8 +212,24 @@ class BoardColumn(BaseModel):
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
-def _audit(db: Session, user: CurrentUser, action: str, rid: str) -> None:
-    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type="ticket", resource_id=rid))
+def _audit(db: Session, user: CurrentUser, action: str, rid: str, rtype: str = "ticket") -> None:
+    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid))
+
+
+def _like(term: str) -> str:
+    """A LIKE pattern matching `term` literally (``%`` and ``_`` are not wildcards)."""
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _content_disposition(filename: str) -> str:
+    """`attachment` with an ASCII fallback plus the UTF-8 name (RFC 6266 / 5987).
+
+    Header values must be Latin-1, so a Cyrillic or CJK filename sent raw is a 500.
+    """
+    clean = re.sub(r"[\x00-\x1f\x7f]", "", filename)
+    ascii_name = re.sub(r'[^\x20-\x7e]|["\\]', "_", clean) or "download"
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(clean, safe='')}"
 
 
 def _staff(user: CurrentUser) -> bool:
@@ -240,6 +261,8 @@ def _ticket(db: Session, ticket_id: uuid.UUID, user: CurrentUser) -> Ticket:
 
 def _default_queue(db: Session, user: CurrentUser) -> SupportQueue:
     tid = tenant_uuid(user)
+    # The first filings in a new tenant race to create the queue; queue them (Postgres).
+    _tenant_lock(db, f"queue:{tid}")
     q = (
         db.query(SupportQueue)
         .filter(SupportQueue.tenant_id == tid, SupportQueue.deleted_at.is_(None))
@@ -248,6 +271,14 @@ def _default_queue(db: Session, user: CurrentUser) -> SupportQueue:
     )
     if q:
         return q
+    # The slug stays taken after a soft delete (unique tenant_id+slug), so bring the old
+    # row back rather than colliding with it, which would 500 every Support page.
+    old = db.query(SupportQueue).filter(SupportQueue.tenant_id == tid, SupportQueue.slug == "support").first()
+    if old:
+        old.deleted_at = None
+        old.is_default = True
+        db.flush()
+        return old
     q = SupportQueue(tenant_id=tid, name="Support", slug="support", description="General support", is_default=True)
     db.add(q)
     db.flush()
@@ -322,6 +353,7 @@ def _set_status(t: Ticket, status: str) -> None:
     t.status = status
     if status == "resolved":
         t.resolved_at = t.resolved_at or _now()
+        t.closed_at = None
     elif status == "closed":
         t.closed_at = _now()
         t.resolved_at = t.resolved_at or t.closed_at
@@ -344,9 +376,27 @@ def _apply(db: Session, t: Ticket, user: CurrentUser, changes: dict) -> None:
             setattr(t, field, new)
 
 
+def _tenant_lock(db: Session, key: str) -> None:
+    """Hold a Postgres advisory lock on `key` until this transaction ends.
+
+    Ticket numbering (max+1) gave 503s when a class filed together: 6 of 10 concurrent
+    filings won and 5 retries were not enough. Creating the default queue raced the same
+    way (IntegrityError, a 500). With the lock, concurrent requests queue instead of
+    colliding. SQLite (tests) serialises writers anyway.
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": key})
+
+
 def _allocate_number(db: Session, tid: uuid.UUID) -> int:
     current = db.query(func.max(Ticket.number)).filter(Ticket.tenant_id == tid).scalar()
     return (current or 0) + 1
+
+
+def _next_board_order(db: Session, tid: uuid.UUID) -> float:
+    """Below every existing card, and distinct, so drag-reordering has gaps to work with."""
+    current = db.query(func.max(Ticket.board_order)).filter(Ticket.tenant_id == tid).scalar()
+    return float(current or 0) + 1.0
 
 
 # ── Fixed paths first (they would otherwise match /{ticket_id}) ──────────
@@ -372,12 +422,21 @@ def create_queue(
     user: CurrentUser = Depends(require_permission(Permission.TICKET_ADMIN)),
 ) -> SupportQueue:
     tid = tenant_uuid(user)
-    if db.query(SupportQueue.id).filter(SupportQueue.tenant_id == tid, SupportQueue.slug == body.slug).first():
+    existing = db.query(SupportQueue).filter(SupportQueue.tenant_id == tid, SupportQueue.slug == body.slug).first()
+    if existing and existing.deleted_at is None:
         raise HTTPException(409, f"A queue with slug '{body.slug}' already exists")
     if body.is_default:
         db.query(SupportQueue).filter(SupportQueue.tenant_id == tid).update({"is_default": False})
-    q = SupportQueue(tenant_id=tid, **body.model_dump())
-    db.add(q)
+    if existing:  # a deleted queue still holds its slug; reuse the row
+        q = existing
+        q.deleted_at = None
+        for k, v in body.model_dump().items():
+            setattr(q, k, v)
+    else:
+        q = SupportQueue(tenant_id=tid, **body.model_dump())
+        db.add(q)
+    db.flush()
+    _audit(db, user, "queue_create", str(q.id), "support_queue")
     db.commit()
     db.refresh(q)
     return q
@@ -397,6 +456,7 @@ def update_queue(
     for k, v in data.items():
         if v is not None:
             setattr(q, k, v)
+    _audit(db, user, "queue_update", str(q.id), "support_queue")
     db.commit()
     db.refresh(q)
     return q
@@ -416,7 +476,18 @@ def delete_queue(
     )
     if in_use:
         raise HTTPException(409, "Move this queue's tickets elsewhere before deleting it")
+    others = (
+        db.query(SupportQueue)
+        .filter(SupportQueue.tenant_id == q.tenant_id, SupportQueue.id != q.id, SupportQueue.deleted_at.is_(None))
+        .order_by(SupportQueue.created_at)
+        .all()
+    )
+    if not others:
+        raise HTTPException(409, "Keep at least one queue: new tickets need somewhere to go")
+    if q.is_default:
+        others[0].is_default = True
     q.soft_delete()
+    _audit(db, user, "queue_delete", str(q.id), "support_queue")
     db.commit()
 
 
@@ -453,14 +524,12 @@ def board(
         except ValueError as exc:
             raise HTTPException(422, "assignee must be 'me' or a user id") from exc
         q = q.filter(Ticket.assignee_id == who)
-    tickets = q.order_by(Ticket.board_order, Ticket.created_at.desc()).all()
-    decorated = _decorate(db, user, tickets)
+    active = q.filter(Ticket.status != "closed").order_by(Ticket.board_order, Ticket.created_at).all()
+    closed = q.filter(Ticket.status == "closed").order_by(Ticket.updated_at.desc()).limit(50).all()
+    decorated = _decorate(db, user, active + closed)
     columns = []
     for status in ("open", "in_progress", "waiting", "resolved", "closed"):
-        cards = [d for d in decorated if d.status == status]
-        if status == "closed":
-            cards = sorted(cards, key=lambda c: c.updated_at, reverse=True)[:50]
-        columns.append(BoardColumn(status=status, tickets=cards))
+        columns.append(BoardColumn(status=status, tickets=[d for d in decorated if d.status == status]))
     return columns
 
 
@@ -477,12 +546,11 @@ def download_attachment(
     except Exception as exc:  # noqa: BLE001 — object store faults are a 502, not a crash
         logger.error("Could not read %s from object storage: %s", att.object_key, exc)
         raise HTTPException(502, "Attachment storage is unavailable") from exc
-    safe_name = att.filename.replace('"', "").replace("\r", "").replace("\n", "")
     return Response(
         content=data,
         media_type="application/octet-stream",  # never rendered inline by the browser
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_name}"',
+            "Content-Disposition": _content_disposition(att.filename),
             "X-Content-Type-Options": "nosniff",
         },
     )
@@ -501,6 +569,7 @@ def delete_attachment(
     with contextlib.suppress(Exception):
         object_store.delete_object(att.object_key, bucket=TICKET_BUCKET)
     _log(db, t, user, "attachment", att.filename, "")
+    _audit(db, user, "ticket_attachment_delete", str(t.id))
     db.delete(att)
     db.commit()
 
@@ -537,8 +606,12 @@ def list_tickets(
         query = query.filter(Ticket.range_id == range_id)
     if q:
         term = q.strip()
-        like = f"%{term}%"
-        conds = [Ticket.subject.ilike(like), Ticket.description.ilike(like), Ticket.labels.ilike(like)]
+        like = _like(term)
+        conds = [
+            Ticket.subject.ilike(like, escape="\\"),
+            Ticket.description.ilike(like, escape="\\"),
+            Ticket.labels.ilike(like, escape="\\"),
+        ]
         digits = term.upper().removeprefix("TN-")
         if digits.isdigit():
             conds.append(Ticket.number == int(digits))
@@ -562,16 +635,25 @@ def create_ticket(
     if data["range_id"]:
         get_owned(db, Range, data["range_id"], user, not_found="Range not found")
     if data["exercise_id"]:
-        get_owned(db, Exercise, data["exercise_id"], user, not_found="Exercise not found")
+        ex = get_owned(db, Exercise, data["exercise_id"], user, not_found="Exercise not found")
+        # Filed from an exercise: the range it runs on is the one with the problem.
+        data["range_id"] = data["range_id"] or ex.range_id
     if data["queue_id"]:
         get_owned(db, SupportQueue, data["queue_id"], user, not_found="Queue not found")
     else:
         data["queue_id"] = _default_queue(db, user).id
 
-    # Per-tenant numbering: two concurrent filings can pick the same next number;
-    # the unique (tenant_id, number) constraint rejects one and it simply retries.
+    # Per-tenant numbering. On Postgres the advisory lock queues concurrent filers; the
+    # unique (tenant_id, number) constraint plus retry is the backstop everywhere.
+    _tenant_lock(db, f"tickets:{tid}")
     for _attempt in range(5):
-        t = Ticket(tenant_id=tid, reporter_id=uuid.UUID(user.id), number=_allocate_number(db, tid), **data)
+        t = Ticket(
+            tenant_id=tid,
+            reporter_id=uuid.UUID(user.id),
+            number=_allocate_number(db, tid),
+            board_order=_next_board_order(db, tid),
+            **data,
+        )
         try:
             with db.begin_nested():
                 db.add(t)
@@ -608,6 +690,7 @@ def update_ticket(
     t = _ticket(db, ticket_id, user)
     data = body.model_dump(exclude_unset=True)
     unassign = data.pop("unassign", False)
+    unlink = {f: data.pop(f"unlink_{f.removesuffix('_id')}", False) for f in ("range_id", "exercise_id")}
     data = {k: v for k, v in data.items() if v is not None}
 
     if not _staff(user):
@@ -615,8 +698,8 @@ def update_ticket(
         status = data.pop("status", None)
         if set(data) - allowed:
             raise HTTPException(403, "Only support staff can change those fields")
-        if unassign:
-            raise HTTPException(403, "Only support staff can change the assignee")
+        if unassign or any(unlink.values()):
+            raise HTTPException(403, "Only support staff can change those fields")
         if status is not None:
             reopen = status == "open" and t.status in ("resolved", "closed")
             close = status == "closed" and t.status == "resolved"
@@ -634,6 +717,9 @@ def update_ticket(
             get_owned(db, Range, data["range_id"], user, not_found="Range not found")
         if "exercise_id" in data:
             get_owned(db, Exercise, data["exercise_id"], user, not_found="Exercise not found")
+        for field, drop in unlink.items():
+            if drop:
+                data[field] = None
 
     _apply(db, t, user, data)
     _audit(db, user, "ticket_update", str(t.id))
@@ -664,6 +750,7 @@ def move_ticket(
     """Drag-and-drop on the board: change column and/or position within it."""
     t = _ticket(db, ticket_id, user)
     _apply(db, t, user, {"status": body.status, "board_order": body.board_order})
+    _audit(db, user, "ticket_move", str(t.id))
     db.commit()
     db.refresh(t)
     return _decorate(db, user, [t])[0]
@@ -711,7 +798,11 @@ def add_comment(
     # The reporter answering a "waiting on you" ticket puts it back in the queue.
     if t.status == "waiting" and str(t.reporter_id) == user.id and not body.is_internal:
         _apply(db, t, user, {"status": "open"})
-    t.updated_at = _now()
+    if not body.is_internal:
+        # An internal note must leave no trace the reporter can see, not even a
+        # newer "updated" time or a re-sorted list.
+        t.updated_at = _now()
+    _audit(db, user, "ticket_comment_internal" if body.is_internal else "ticket_comment", str(t.id))
     db.commit()
     db.refresh(c)
     out = CommentOut.model_validate(c)
@@ -743,29 +834,45 @@ async def upload_attachments(
     user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
 ) -> list[TicketAttachment]:
     t = _ticket(db, ticket_id, user)
-    created: list[TicketAttachment] = []
+    # Validate every file before storing any, and never read more than the limit + 1
+    # byte, so an oversized upload neither fills memory nor leaves orphaned objects.
+    staged: list[tuple[str, str, bytes]] = []
     for file in files:
         filename = (file.filename or "upload").replace("/", "_").replace("\\", "_")[:500]
-        data = await file.read()
+        data = await file.read(MAX_ATTACHMENT_BYTES + 1)
         if not data:
             raise HTTPException(422, f"{filename} is empty")
         if len(data) > MAX_ATTACHMENT_BYTES:
             raise HTTPException(413, f"{filename} exceeds the 25 MB limit")
-        att = TicketAttachment(
-            tenant_id=t.tenant_id,
-            ticket_id=t.id,
-            filename=filename,
-            content_type=(file.content_type or "application/octet-stream")[:120],
-            size_bytes=len(data),
-            uploaded_by=uuid.UUID(user.id),
-        )
-        db.add(att)
-        db.flush()
-        att.object_key = f"{t.tenant_id}/{t.id}/{att.id}"
-        object_store.put_object(att.object_key, data, att.content_type, bucket=TICKET_BUCKET)
-        _log(db, t, user, "attachment", "", filename)
-        created.append(att)
-    db.commit()
+        staged.append((filename, (file.content_type or "application/octet-stream")[:120], data))
+
+    created: list[TicketAttachment] = []
+    stored: list[str] = []
+    try:
+        for filename, content_type, data in staged:
+            att = TicketAttachment(
+                tenant_id=t.tenant_id,
+                ticket_id=t.id,
+                filename=filename,
+                content_type=content_type,
+                size_bytes=len(data),
+                uploaded_by=uuid.UUID(user.id),
+            )
+            db.add(att)
+            db.flush()
+            att.object_key = f"{t.tenant_id}/{t.id}/{att.id}"
+            object_store.put_object(att.object_key, data, att.content_type, bucket=TICKET_BUCKET)
+            stored.append(att.object_key)
+            _log(db, t, user, "attachment", "", filename)
+            created.append(att)
+        _audit(db, user, "ticket_attachment_upload", str(t.id))
+        db.commit()
+    except Exception:
+        db.rollback()
+        for key in stored:
+            with contextlib.suppress(Exception):
+                object_store.delete_object(key, bucket=TICKET_BUCKET)
+        raise
     for att in created:
         db.refresh(att)
     return created
@@ -785,10 +892,47 @@ def list_activity(
         .order_by(TicketActivity.created_at)
         .all()
     )
-    names = _names(db, user, {a.actor_id for a in rows})
+
+    # Assignee / queue changes are stored as ids; show names, which a student
+    # cannot otherwise look up.
+    def _ids(field: str) -> set[uuid.UUID]:
+        found = set()
+        for a in rows:
+            if a.field != field:
+                continue
+            for v in (a.old_value, a.new_value):
+                with contextlib.suppress(ValueError):
+                    found.add(uuid.UUID(v))
+        return found
+
+    def _labels(model, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+        if not ids:
+            return {}
+        rows_ = db.query(model.id, model.name).filter(model.id.in_(ids), model.tenant_id == t.tenant_id).all()
+        return {r.id: r.name for r in rows_}
+
+    names = _names(db, user, {a.actor_id for a in rows} | _ids("assignee_id"))
+    lookups = {
+        "assignee_id": names,
+        "queue_id": _labels(SupportQueue, _ids("queue_id")),
+        "range_id": _labels(Range, _ids("range_id")),
+        "exercise_id": _labels(Exercise, _ids("exercise_id")),
+    }
+
+    def _show(field: str, value: str) -> str:
+        if field not in lookups or not value:
+            return value
+        try:
+            key = uuid.UUID(value)
+        except ValueError:
+            return value
+        return lookups[field].get(key, "something deleted")
+
     out = []
     for a in rows:
         item = ActivityOut.model_validate(a)
         item.actor_name = names.get(a.actor_id, "")
+        item.old_value = _show(a.field, a.old_value)
+        item.new_value = _show(a.field, a.new_value)
         out.append(item)
     return out

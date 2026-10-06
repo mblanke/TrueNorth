@@ -360,6 +360,13 @@ export class AppComponent implements OnDestroy {
       items: [{ label: 'Scoring & AAR', icon: 'assessment', route: '/scoring' }],
     },
     {
+      name: 'Help',
+      items: [
+        { label: 'Wiki',    icon: 'menu_book',      route: '/wiki' },
+        { label: 'Support', icon: 'support_agent',  route: '/support' },
+      ],
+    },
+    {
       name: 'Admin',
       items: [
         { label: 'Infrastructure',  icon: 'storage',              route: '/infrastructure' },

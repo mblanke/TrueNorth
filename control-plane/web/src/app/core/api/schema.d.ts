@@ -9009,13 +9009,9 @@ export interface components {
             /** Body */
             body: string;
             /** Breadcrumbs */
-            breadcrumbs?: {
-                [key: string]: unknown;
-            }[];
+            breadcrumbs?: components["schemas"]["PageRef"][];
             /** Children */
-            children?: {
-                [key: string]: unknown;
-            }[];
+            children?: components["schemas"]["PageRef"][];
             /**
              * Created At
              * Format: date-time
@@ -9065,6 +9061,19 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * PageRef
+         * @description A link to another page: enough to name it and route to it.
+         */
+        PageRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
         };
         /** PageUpdate */
         PageUpdate: {
@@ -11093,6 +11102,16 @@ export interface components {
              * @default false
              */
             unassign?: boolean;
+            /**
+             * Unlink Exercise
+             * @default false
+             */
+            unlink_exercise?: boolean;
+            /**
+             * Unlink Range
+             * @default false
+             */
+            unlink_range?: boolean;
         };
         /**
          * TranscriptEntry
