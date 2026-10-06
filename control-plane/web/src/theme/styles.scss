@@ -789,6 +789,9 @@ button[mat-icon-button]:hover .mat-icon,
 }
 .status-chip.created,
 .status-chip.draft       { background: rgba(143, 168, 191, 0.14); border-color: rgba(143, 168, 191, 0.3); color: var(--text-muted); }
+.status-chip.stopping,
+.status-chip.starting,
+.status-chip.destroying,
 .status-chip.provisioning{ background: rgba(232, 168, 56,  0.14); border-color: rgba(232, 168, 56,  0.35); color: var(--warning); }
 .status-chip.ready       { background: rgba(31,  182, 166, 0.14); border-color: rgba(31,  182, 166, 0.35); color: var(--success); }
 .status-chip.running,

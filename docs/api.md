@@ -650,11 +650,27 @@ Trigger asynchronous range destruction. Transitions to `destroying` state.
 
 ### `POST /ranges/{range_id}/stop`
 
-Stop a running range. Transitions from `running` to `stopped`.
+Power off a range's VMs. Asynchronous: the range moves from `ready` or `running` to
+`stopping`, and the worker writes `stopped` once the hypervisor has powered every VM off
+(or `failed`). Refused (409) for a range with no recorded VMs, while a snapshot is being
+taken or restored, or while an exercise is running on it; 503 if the task queue is down
+(the range is left as it was).
 
 **Permission: `range:provision`**
 
-**Response `200 OK`:** Range object with `state: "stopped"`.
+**Response `202 Accepted`:** Range object with `state: "stopping"`.
+
+---
+
+### `POST /ranges/{range_id}/start`
+
+Power on a stopped range's VMs. Asynchronous: `stopped` -> `starting`, then `running` once
+the hypervisor has powered every VM on (or `failed`). Same refusals as stop, except the
+exercise check.
+
+**Permission: `range:provision`**
+
+**Response `202 Accepted`:** Range object with `state: "starting"`.
 
 ---
 
@@ -1217,7 +1233,8 @@ The auto-generated OpenAPI specification is available at:
 | 27 | `DELETE` | `/ranges/{id}` | `range:delete` | Delete range |
 | 28 | `POST` | `/ranges/{id}/provision` | `range:provision` | Provision range |
 | 29 | `POST` | `/ranges/{id}/destroy` | `range:destroy` | Destroy range |
-| 30 | `POST` | `/ranges/{id}/stop` | `range:provision` | Stop range |
+| 30 | `POST` | `/ranges/{id}/stop` | `range:provision` | Stop range (power off) |
+| 30a | `POST` | `/ranges/{id}/start` | `range:provision` | Start range (power on) |
 | 31 | `POST` | `/ranges/batch-provision` | `range:batch_provision` | Batch provision |
 | 32 | `POST` | `/exercises` | `exercise:create` | Create exercise |
 | 33 | `GET` | `/exercises` | `exercise:read` | List exercises |

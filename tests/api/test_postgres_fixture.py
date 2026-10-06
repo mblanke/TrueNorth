@@ -7,16 +7,19 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from pathlib import Path
 
 import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from app.course_releases.models import ACCEPTED, CANDIDATE, CourseRelease, CourseReleaseBlob
 from app.models import Course
-from conftest import API_DIR
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+# Not imported from conftest: with tests/worker collected too, "conftest" is ambiguous.
+API_DIR = Path(__file__).resolve().parents[2] / "control-plane" / "api"
 
 
 def test_the_database_is_at_the_single_migration_head(postgres_engine):

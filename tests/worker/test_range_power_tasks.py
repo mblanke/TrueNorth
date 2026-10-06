@@ -73,3 +73,87 @@ def test_power_tasks_have_the_range_time_limits():
 
     for task in (power_tasks.stop_range, power_tasks.start_range):
         assert task.soft_time_limit and task.time_limit < app.conf.broker_transport_options["visibility_timeout"]
+
+
+# ── vSphere (from the adversarial review of 5dd2457) ────────────────────
+
+
+class FakeVcenter:
+    """Each VM's power state; the power action answers as vCenter does."""
+
+    def __init__(self, states: dict[str, str], fail: set[str] = frozenset()):
+        self.states, self.fail, self.actions = dict(states), set(fail), []
+
+    async def get(self, client, path):
+        return {"state": self.states[path.split("/")[3]]}
+
+    async def act(self, client, vm_id, action):
+        import httpx
+
+        self.actions.append((vm_id, action))
+        want = {"stop": "POWERED_OFF", "start": "POWERED_ON"}[action]
+        if vm_id in self.fail or self.states[vm_id] == want:
+            request = httpx.Request("POST", f"https://vc/api/vcenter/vm/{vm_id}/power")
+            body = "ALREADY_IN_DESIRED_STATE" if self.states[vm_id] == want else "busy"
+            raise httpx.HTTPStatusError(
+                "400", request=request, response=httpx.Response(400, request=request, text=body)
+            )
+        self.states[vm_id] = want
+
+
+def _vsphere(monkeypatch, vc: FakeVcenter):
+    import asyncio
+    from contextlib import asynccontextmanager
+
+    from worker.provisioners.vsphere_api import VsphereAPIProvisioner
+
+    prov = VsphereAPIProvisioner()
+
+    async def session():
+        return "s"
+
+    @asynccontextmanager
+    async def client(session):
+        yield None
+
+    monkeypatch.setattr(prov, "_get_session", session)
+    monkeypatch.setattr(prov, "_client", client)
+    monkeypatch.setattr(prov, "_api_get", vc.get)
+    monkeypatch.setattr(prov, "_power_action", vc.act)
+    return prov, asyncio.run
+
+
+VMS = {"vms": [{"name": "dc01", "vm_id": "vm-1"}, {"name": "ws01", "vm_id": "vm-2"}]}
+
+
+def test_a_vm_already_off_counts_as_stopped_so_a_retry_can_succeed(monkeypatch):
+    """Attempt 1 stopped vm-1 and failed on vm-2; the retry must not fail on vm-1."""
+    vc = FakeVcenter({"vm-1": "POWERED_OFF", "vm-2": "POWERED_ON"})
+    prov, run = _vsphere(monkeypatch, vc)
+    result = run(prov.stop("r", VMS))
+    assert result.status == "ok" and result.vms_stopped == 2
+    assert vc.actions == [("vm-2", "stop")]
+
+
+def test_already_in_desired_state_from_vcenter_is_not_an_error(monkeypatch):
+    """The VM got there between the read and the action."""
+    vc = FakeVcenter({"vm-1": "POWERED_ON", "vm-2": "POWERED_ON"})
+    prov, run = _vsphere(monkeypatch, vc)
+    monkeypatch.setattr(prov, "_api_get", _stale_read(vc))
+    assert run(prov.start("r", VMS)).status == "ok"
+
+
+def _stale_read(vc):
+    async def read(client, path):  # reports off; the VM is in fact already on
+        return {"state": "POWERED_OFF"}
+
+    return read
+
+
+def test_a_real_failure_names_the_right_vm_and_a_vm_without_an_id_is_an_error(monkeypatch):
+    vms = {"vms": [{"name": "dc01"}, {"name": "ws01", "vm_id": "vm-2"}, {"name": "db01", "vm_id": "vm-3"}]}
+    vc = FakeVcenter({"vm-2": "POWERED_ON", "vm-3": "POWERED_ON"}, fail={"vm-3"})
+    prov, run = _vsphere(monkeypatch, vc)
+    result = run(prov.stop("r", vms))
+    assert result.status == "partial" and result.vms_stopped == 1
+    assert [e.split(":")[0] for e in result.errors] == ["VM dc01", "VM db01"]

@@ -12,9 +12,11 @@ _RANGE_TRANSITIONS: dict[str, list[str]] = {
     "provisioning": ["ready", "failed"],
     "ready": ["running", "stopping", "destroying"],
     "running": ["stopping", "destroying"],
-    "stopping": ["stopped", "failed"],
+    # destroying too: a power task that was lost must not strand the range (the
+    # destroy waits for the range's lease if the power task is in fact still running).
+    "stopping": ["stopped", "failed", "destroying"],
     "stopped": ["starting", "destroying"],
-    "starting": ["running", "failed"],
+    "starting": ["running", "failed", "destroying"],
     "destroying": ["destroyed", "failed"],
     "failed": ["provisioning", "destroying", "destroyed"],
 }

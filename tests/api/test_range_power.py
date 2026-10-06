@@ -93,3 +93,59 @@ def test_another_tenants_range_cannot_be_powered(client, db_session, no_real_bro
     finally:
         fastapi_app.dependency_overrides.pop(get_current_user, None)
     assert no_real_broker.sent == []
+
+
+# ── From the adversarial review of 5dd2457 ──────────────────────────────
+
+
+def _snapshot(db_session, rid: str, state: str):
+    from app.models import RangeSnapshot
+
+    rng = db_session.get(Range, uuid.UUID(rid))
+    snap = RangeSnapshot(
+        range_id=rng.id, name="s", snapshot_state=state, range_state_at_snapshot="ready", tenant_id=rng.tenant_id
+    )
+    db_session.add(snap)
+    db_session.commit()
+    return snap
+
+
+def test_a_started_range_can_still_be_snapshotted_and_restored(client, db_session, no_real_broker):
+    """After stop and start the worker writes running; snapshot and restore took only
+    ready / stopped, so one power cycle took them away."""
+    rid = _range(client, db_session, "running")
+    assert client.post(f"/ranges/{rid}/snapshots", json={"name": "after-start"}).status_code == 202
+    snap = _snapshot(db_session, rid, "ready")
+    assert client.post(f"/ranges/{rid}/snapshots/{snap.id}/restore").status_code == 202
+
+
+@pytest.mark.parametrize("snapshot_state", ["creating", "restoring"])
+def test_power_is_refused_while_a_snapshot_is_taken_or_restored(client, db_session, no_real_broker, snapshot_state):
+    rid = _range(client, db_session, "ready")
+    _snapshot(db_session, rid, snapshot_state)
+    resp = client.post(f"/ranges/{rid}/stop")
+    assert resp.status_code == 409 and "snapshot" in resp.json()["detail"]
+    assert no_real_broker.sent == []
+
+
+def test_a_range_under_a_running_exercise_is_not_stopped(client, db_session, no_real_broker):
+    from app.models import Exercise, ExerciseState, Scenario
+
+    rid = _range(client, db_session, "ready")
+    rng = db_session.get(Range, uuid.UUID(rid))
+    sc = Scenario(name="s", yaml="id: s\n", tenant_id=rng.tenant_id)
+    db_session.add(sc)
+    db_session.flush()
+    db_session.add(
+        Exercise(name="e", range_id=rng.id, scenario_id=sc.id, tenant_id=rng.tenant_id, state=ExerciseState.running)
+    )
+    db_session.commit()
+    resp = client.post(f"/ranges/{rid}/stop")
+    assert resp.status_code == 409 and "exercise" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize("state", ["stopping", "starting"])
+def test_a_range_whose_power_task_was_lost_can_still_be_destroyed(client, db_session, no_real_broker, state):
+    rid = _range(client, db_session, state)
+    resp = client.post(f"/ranges/{rid}/destroy")
+    assert resp.status_code == 200 and resp.json()["state"] == "destroying"

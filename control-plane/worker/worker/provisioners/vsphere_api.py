@@ -595,29 +595,47 @@ class VsphereAPIProvisioner(BaseProvisioner):
             errors=errors,
         )
 
+    # The power state each action leaves a VM in (GET /vcenter/vm/{id}/power).
+    _POWER_TARGET = {"stop": "POWERED_OFF", "start": "POWERED_ON"}
+
+    async def _power_all(self, vms: list[dict], action: str) -> tuple[int, list[str]]:
+        """Power every VM of a range. A VM already in the wanted state counts as done (a
+        retry after a partial attempt, a guest that shut itself down, a VM powered by hand);
+        vCenter answers ALREADY_IN_DESIRED_STATE for those, which used to fail the range.
+        A VM with no recorded id is an error, never silently counted."""
+
+        async def one(client: httpx.AsyncClient, vm: dict) -> None:
+            if not vm.get("vm_id"):
+                raise RuntimeError("no vm_id recorded")
+            power = await self._api_get(client, f"/vcenter/vm/{vm['vm_id']}/power")
+            if isinstance(power, dict) and power.get("state") == self._POWER_TARGET[action]:
+                return
+            try:
+                await self._power_action(client, vm["vm_id"], action)
+            except httpx.HTTPStatusError as exc:  # it got there between the read and the action
+                if "ALREADY_IN_DESIRED_STATE" not in exc.response.text:
+                    raise
+
+        session = await self._get_session()
+        async with self._client(session) as client:
+            results = await asyncio.gather(*(one(client, vm) for vm in vms), return_exceptions=True)
+        failed = [(vm, res) for vm, res in zip(vms, results, strict=True) if isinstance(res, Exception)]
+        errors = [f"VM {vm.get('name')}: {res}" for vm, res in failed]
+        return len(vms) - len(errors), errors
+
     async def stop(
         self,
         range_id: str,
         provision_output: dict,
     ) -> StopResult:
         start = time.monotonic()
-        errors: list[str] = []
-        vms = provision_output.get("vms", [])
-
         try:
-            session = await self._get_session()
-            async with self._client(session) as client:
-                tasks = [self._power_action(client, vm["vm_id"], "stop") for vm in vms if vm.get("vm_id")]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for vm, res in zip(vms, results):
-                    if isinstance(res, Exception):
-                        errors.append(f"VM {vm.get('name')}: {res}")
+            done, errors = await self._power_all(provision_output.get("vms", []), "stop")
         except Exception as exc:
-            errors.append(str(exc))
-
+            done, errors = 0, [str(exc)]
         return StopResult(
             status="ok" if not errors else "partial",
-            vms_stopped=len(vms) - len(errors),
+            vms_stopped=done,
             duration_seconds=time.monotonic() - start,
             errors=errors,
         )
@@ -628,23 +646,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
         provision_output: dict,
     ) -> StartResult:
         start = time.monotonic()
-        errors: list[str] = []
-        vms = provision_output.get("vms", [])
-
         try:
-            session = await self._get_session()
-            async with self._client(session) as client:
-                tasks = [self._power_action(client, vm["vm_id"], "start") for vm in vms if vm.get("vm_id")]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for vm, res in zip(vms, results):
-                    if isinstance(res, Exception):
-                        errors.append(f"VM {vm.get('name')}: {res}")
+            done, errors = await self._power_all(provision_output.get("vms", []), "start")
         except Exception as exc:
-            errors.append(str(exc))
-
+            done, errors = 0, [str(exc)]
         return StartResult(
             status="ok" if not errors else "partial",
-            vms_started=len(vms) - len(errors),
+            vms_started=done,
             duration_seconds=time.monotonic() - start,
             errors=errors,
         )

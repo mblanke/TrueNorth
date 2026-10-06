@@ -154,7 +154,8 @@ import { CountUpDirective } from '../../shared/motion';
                 <mat-icon>play_arrow</mat-icon>
               </button>
             }
-            @if (r.state === 'ready' || r.state === 'running' || r.state === 'stopped') {
+            <!-- Also from failed, and from stopping / starting, so a lost power task never strands a range. -->
+            @if (['ready', 'running', 'stopped', 'failed', 'stopping', 'starting'].includes(r.state)) {
               <button mat-icon-button color="warn" (click)="destroy(r.id)" matTooltip="Destroy">
                 <mat-icon>delete</mat-icon>
               </button>

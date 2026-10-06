@@ -18,6 +18,7 @@ DELETE /ranges/{range_id}          RANGE_DELETE
 POST   /ranges/{range_id}/provision  RANGE_PROVISION
 POST   /ranges/{range_id}/destroy    RANGE_DESTROY
 POST   /ranges/{range_id}/stop       RANGE_PROVISION
+POST   /ranges/{range_id}/start      RANGE_PROVISION
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
 """
@@ -558,6 +559,20 @@ def _power(db: Session, user: CurrentUser, range_id: uuid.UUID, action: str, cla
         vms = []
     if not vms:
         raise HTTPException(409, f"Cannot {action}: the range has no VMs recorded")
+    # Never alongside a snapshot being taken or restored: the snapshot task holds no lease,
+    # and a stop over a half-done revert would hide that the revert failed.
+    busy = (
+        db.query(RangeSnapshot.snapshot_state)
+        .filter(RangeSnapshot.range_id == rng.id, RangeSnapshot.snapshot_state.in_(("creating", "restoring")))
+        .first()
+    )
+    if busy:
+        doing = "taken" if busy[0] == "creating" else "restored"
+        raise HTTPException(409, f"Cannot {action}: a snapshot of this range is being {doing}")
+    if action == "stop" and (
+        db.query(Exercise.id).filter(Exercise.range_id == rng.id, Exercise.state == ExerciseState.running).first()
+    ):
+        raise HTTPException(409, "Cannot stop: an exercise is running on this range")
     previous, rng.state = rng.state, claim
     db.commit()
     _send_or_undo(db, [(rng, previous)], f"{action}_range", str(rng.id))
@@ -642,7 +657,7 @@ def create_snapshot(
 ) -> SnapshotOut:
     """Create a snapshot of the current range state."""
     rng = _changeable_range(db, range_id, user)
-    if rng.state not in (RangeState.ready, RangeState.stopped):
+    if rng.state not in (RangeState.ready, RangeState.running, RangeState.stopped):
         raise HTTPException(409, f"Cannot snapshot range in state '{rng.state.value}'")
     _refuse_while_restoring(db, range_id)
 
@@ -674,7 +689,7 @@ def restore_snapshot(
 ) -> RangeOut:
     """Restore a range from a snapshot."""
     rng = _changeable_range(db, range_id, user)
-    if rng.state not in (RangeState.ready, RangeState.stopped, RangeState.failed):
+    if rng.state not in (RangeState.ready, RangeState.running, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
     _refuse_while_restoring(db, range_id)
 

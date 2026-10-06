@@ -813,7 +813,7 @@ def collect_range_metrics(self):
 # States routers/ranges.py:restore_snapshot accepts. A restore only ever writes to a
 # range still in one of them; if the range moved on (say, it was destroyed while the
 # task queued or retried), the range is left alone.
-_RESTORABLE_STATES = ("ready", "stopped", "failed")
+_RESTORABLE_STATES = ("ready", "running", "stopped", "failed")
 # Snapshot states the snapshot task may still write over: its first attempt, or a retry.
 _SNAPSHOT_PENDING = ("creating", "failed")
 
@@ -985,7 +985,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
         name = snapshot_data.get("snapshot_name") or snapshot_id
 
         provisioner = _get_backend(_range_backend(rng))
-        result = run_async(provisioner.restore(range_id, prov_output, name, power_on=original_state == "ready"))
+        result = run_async(provisioner.restore(range_id, prov_output, name, power_on=original_state != "stopped"))
         changed = result.vms_reverted > 0
         if result.status != "ok":
             raise RuntimeError(f"restore {result.status}: {'; '.join(result.errors) or 'no detail'}")
