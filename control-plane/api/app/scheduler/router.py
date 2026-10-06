@@ -19,7 +19,7 @@ from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..rbac import Permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
-from . import service
+from . import lifecycle, service
 from .capacity import Resources, available, get_capacity_provider
 from .models import EventState, ScheduledEvent
 from .schemas import CapacityCheck, CapacityResult, EventIn, PolicyIn, PolicyOut
@@ -159,17 +159,27 @@ def list_events(
 
 @router.post("/events", status_code=201, summary="Create a scheduled event", dependencies=_WRITE)
 def create_event(body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
-    """Create a new event with resource reservation. A booking that does not fit is
-    refused with 409 (policy `block`) or created with warnings (policy `warn`)."""
-    demand, warnings = _plan(db, user, body)
+    """Book a session. Refused with 409 when its range or instructor is already booked
+    then. One that does not fit the cluster is refused with 409 (policy `block`) or
+    created with warnings (policy `warn`). A draft holds nothing and is checked when it
+    is scheduled."""
+    _check_times(body)
+    service.serialize_bookings(db)
+    range_id = service.resolve_range(db, user, body.range_id)
+    instructor_id = service.resolve_instructor(db, user, body.instructor_id)
+    typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
+    demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
+    warnings = [] if body.draft else _admit(db, body, demand.resources, range_id, instructor_id)
 
     evt = ScheduledEvent(
         name=body.name,
         description=body.description,
-        state=EventState.scheduled,
+        state=EventState.draft if body.draft else EventState.scheduled,
         tenant_id=tenant_uuid(user),
-        range_id=uuid.UUID(body.range_id) if body.range_id else None,
+        range_id=range_id,
         template_id=uuid.UUID(body.template_id) if body.template_id else None,
+        instructor_id=instructor_id,
+        created_by=service.user_uuid(user),
         start_time=body.start_time,
         end_time=body.end_time,
         vm_count=demand.vm_count,
@@ -179,20 +189,39 @@ def create_event(body: EventIn, db: Session = Depends(get_db), user: CurrentUser
     )
     db.add(evt)
     db.flush()
+    service.audit(db, user, "create", str(evt.id), evt.state.value)
     _audit_warnings(db, user, evt, warnings)
     db.commit()
     db.refresh(evt)
     return _to_out(evt, warnings)
 
 
-def _plan(db: Session, user: CurrentUser, body: EventIn, exclude_id: uuid.UUID | None = None):
-    """Size a booking and apply the over-capacity policy. Raises 400/404/409/422."""
+def _check_times(body) -> None:
     if body.end_time <= body.start_time:
         raise HTTPException(400, "end_time must be after start_time")
-    typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
-    demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
-    a = service.assess(db, get_capacity_provider(), body.start_time, body.end_time, demand.resources, exclude_id)
-    return demand, service.enforce(db, a)
+
+
+def _admit(
+    db: Session,
+    window,
+    need: Resources,
+    range_id: uuid.UUID | None,
+    instructor_id: uuid.UUID | None,
+    exclude_id: uuid.UUID | None = None,
+) -> list[str]:
+    """Conflicts are always refused; capacity follows the over-capacity policy."""
+    clash = service.conflicts(
+        db,
+        start=window.start_time,
+        end=window.end_time,
+        range_id=range_id,
+        instructor_id=instructor_id,
+        exclude_id=exclude_id,
+    )
+    if clash:
+        raise HTTPException(409, "; ".join(clash))
+    a = service.assess(db, get_capacity_provider(), window.start_time, window.end_time, need, exclude_id)
+    return service.enforce(db, a)
 
 
 def _audit_warnings(db: Session, user: CurrentUser, evt: ScheduledEvent, warnings: list[str]) -> None:
@@ -200,18 +229,35 @@ def _audit_warnings(db: Session, user: CurrentUser, evt: ScheduledEvent, warning
         service.audit(db, user, "overcapacity_warning", str(evt.id), "; ".join(warnings))
 
 
+def _owned(db: Session, event_id: str, user: CurrentUser) -> ScheduledEvent:
+    return get_owned(db, ScheduledEvent, lifecycle.event_id(event_id), user, not_found="Event not found")
+
+
 @router.get("/events/{event_id}", summary="Get a scheduled event")
 def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
-    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
-    return _to_out(evt)
+    return _to_out(_owned(db, event_id, user))
 
 
 @router.put("/events/{event_id}", summary="Update a scheduled event", dependencies=_WRITE)
 def update_event(
     event_id: str, body: EventIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ):
-    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
-    demand, warnings = _plan(db, user, body, exclude_id=evt.id)
+    """Reschedule or resize a draft or scheduled booking (409 once it is being built)."""
+    _check_times(body)
+    service.serialize_bookings(db)
+    evt = _owned(db, event_id, user)
+    lifecycle.require_editable(evt)
+    range_id = service.resolve_range(db, user, body.range_id)
+    instructor_id = (
+        service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id
+    )
+    typed = Resources(body.vcpu_total, body.ram_mb_total, body.disk_gb_total)
+    demand = service.demand_for(db, user, body.template_id, typed, body.vm_count)
+    warnings = (
+        []
+        if evt.state == EventState.draft
+        else _admit(db, body, demand.resources, range_id, instructor_id, exclude_id=evt.id)
+    )
 
     evt.name = body.name
     evt.description = body.description
@@ -221,39 +267,65 @@ def update_event(
     evt.vcpu_total = demand.resources.vcpu
     evt.ram_mb_total = demand.resources.ram_mb
     evt.disk_gb_total = demand.resources.disk_gb
-    evt.range_id = uuid.UUID(body.range_id) if body.range_id else None
+    evt.range_id = range_id
     evt.template_id = uuid.UUID(body.template_id) if body.template_id else None
+    evt.instructor_id = instructor_id
+    service.audit(db, user, "update", str(evt.id))
     _audit_warnings(db, user, evt, warnings)
     db.commit()
     db.refresh(evt)
     return _to_out(evt, warnings)
 
 
-@router.delete(
-    "/events/{event_id}", status_code=204, response_class=Response, summary="Cancel/delete event", dependencies=_WRITE
-)
-def delete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
-    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
-    db.delete(evt)
-    db.commit()
+@router.post("/events/{event_id}/schedule", summary="Schedule a draft", dependencies=_WRITE)
+def schedule_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """draft -> scheduled, checked for conflicts and capacity exactly as a new booking."""
+    service.serialize_bookings(db)
+    evt = _owned(db, event_id, user)
+    warnings: list[str] = []
+    if evt.state == EventState.draft:
+        need = Resources(evt.vcpu_total, evt.ram_mb_total, evt.disk_gb_total)
+        warnings = _admit(db, evt, need, evt.range_id, evt.instructor_id, exclude_id=evt.id)
+    return _move(db, user, evt, EventState.scheduled, warnings)
 
 
 @router.post("/events/{event_id}/activate", summary="Mark event as active", dependencies=_WRITE)
 def activate_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
-    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
-    evt.state = EventState.active
-    db.commit()
-    db.refresh(evt)
-    return _to_out(evt)
+    """scheduled or provisioning -> active."""
+    return _move(db, user, _owned(db, event_id, user), EventState.active)
 
 
 @router.post("/events/{event_id}/complete", summary="Mark event as completed", dependencies=_WRITE)
 def complete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
-    evt = get_owned(db, ScheduledEvent, uuid.UUID(event_id), user, not_found="Event not found")
-    evt.state = EventState.completed
-    db.commit()
+    """active -> completed."""
+    return _move(db, user, _owned(db, event_id, user), EventState.completed)
+
+
+@router.post("/events/{event_id}/cancel", summary="Cancel an event", dependencies=_WRITE)
+def cancel_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Any state before completed -> cancelled. The row stays as history."""
+    return _move(db, user, _owned(db, event_id, user), EventState.cancelled)
+
+
+@router.delete(
+    "/events/{event_id}", status_code=204, response_class=Response, summary="Cancel an event", dependencies=_WRITE
+)
+def delete_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking
+    is history, like a completed one."""
+    _move(db, user, _owned(db, event_id, user), EventState.cancelled)
+
+
+def _move(
+    db: Session, user: CurrentUser, evt: ScheduledEvent, to: EventState, warnings: list[str] | None = None
+) -> dict:
+    before = evt.state.value
+    if lifecycle.transition(db, evt, to):
+        service.audit(db, user, "transition", str(evt.id), f"{before} -> {to.value}")
+        _audit_warnings(db, user, evt, warnings or [])
+        db.commit()
     db.refresh(evt)
-    return _to_out(evt)
+    return _to_out(evt, warnings)
 
 
 @router.get("/timeline", summary="Resource timeline for capacity planning")

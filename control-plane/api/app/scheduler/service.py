@@ -12,18 +12,31 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..models import AuditLog, Template
+from ..models import AuditLog, Range, Template, User, UserRole
 from ..range_topology import template_demand
-from ..tenancy import tenant_uuid
-from .capacity import CapacityProvider, Committed, Resources, available, held_window, shortfalls
+from ..tenancy import get_owned, tenant_uuid
+from .capacity import (
+    PROVISION_LEAD,
+    TEARDOWN_GRACE,
+    CapacityProvider,
+    Committed,
+    Resources,
+    available,
+    held_window,
+    shortfalls,
+    window_label,
+)
+from .lifecycle import HOLDING
 from .models import EventState, OvercapacityPolicy, ScheduledEvent, SchedulerSetting
 from .schemas import EventOut
 
-# States in which an event still holds its range (and its capacity claim on the range).
-RESERVING_STATES = (EventState.draft, EventState.scheduled, EventState.active)
+# States in which an event still holds its range, for range deletion. A draft counts:
+# deleting the range would silently break a booking someone is still preparing.
+RESERVING_STATES = (EventState.draft, *HOLDING)
 
 POLICY_KEY = "overcapacity_policy"
 DEFAULT_POLICY = OvercapacityPolicy.block
@@ -101,6 +114,89 @@ def enforce(db: Session, assessment: Assessment) -> list[str]:
     return assessment.reasons
 
 
+# -- Conflicts ----------------------------------------------------------------
+def serialize_bookings(db: Session) -> None:
+    """Hold a transaction-scoped lock while checking and writing a booking, so two
+    concurrent bookings cannot both pass the capacity and conflict checks. Postgres
+    only; SQLite (tests) serialises writers anyway."""
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext('truenorth.scheduler.bookings'))"))
+
+
+def resolve_instructor(db: Session, user: CurrentUser, instructor_id: str | None) -> uuid.UUID | None:
+    """The booking's instructor: the one named, else the caller when they are an instructor.
+    A named instructor must be an active instructor or admin in the caller's tenant."""
+    if not instructor_id:
+        return user_uuid(user) if user.role == UserRole.instructor else None
+    try:
+        iid = uuid.UUID(instructor_id)
+    except ValueError:
+        raise HTTPException(422, "instructor_id is not a valid id") from None
+    ok = (
+        db.query(User.id)
+        .filter(
+            User.id == iid,
+            User.tenant_id == tenant_uuid(user),
+            User.role.in_([UserRole.instructor, UserRole.admin]),
+            User.deleted_at.is_(None),
+            User.is_active == True,  # noqa: E712
+        )
+        .first()
+    )
+    if not ok:
+        raise HTTPException(422, "instructor_id must be an active instructor or admin in your tenant")
+    return iid
+
+
+def resolve_range(db: Session, user: CurrentUser, range_id: str | None) -> uuid.UUID | None:
+    """A booked range must be the caller's tenant's (404 otherwise, as for any range)."""
+    if not range_id:
+        return None
+    return get_owned(db, Range, range_id, user, not_found="Range not found").id
+
+
+def conflicts(
+    db: Session,
+    *,
+    start: datetime,
+    end: datetime,
+    range_id: uuid.UUID | None,
+    instructor_id: uuid.UUID | None,
+    exclude_id: uuid.UUID | None = None,
+) -> list[str]:
+    """Double bookings (ADR 0004, "Conflicts").
+
+    - A range is held from its provisioning lead to its teardown grace, so two bookings
+      of one range need that much room between them.
+    - An instructor is held for the session itself.
+    Both are within one tenant: ranges and instructors belong to one.
+    """
+    out: list[str] = []
+
+    def others(*crit):
+        q = db.query(ScheduledEvent).filter(ScheduledEvent.state.in_(HOLDING), *crit)
+        if exclude_id:
+            q = q.filter(ScheduledEvent.id != exclude_id)
+        return q.order_by(ScheduledEvent.start_time).all()
+
+    if range_id:
+        reach = PROVISION_LEAD + TEARDOWN_GRACE
+        for e in others(
+            ScheduledEvent.range_id == range_id,
+            ScheduledEvent.start_time < end + reach,
+            ScheduledEvent.end_time > start - reach,
+        ):
+            out.append(f"Range is already booked for '{e.name}' {window_label(e.start_time, e.end_time)}")
+    if instructor_id:
+        for e in others(
+            ScheduledEvent.instructor_id == instructor_id,
+            ScheduledEvent.start_time < end,
+            ScheduledEvent.end_time > start,
+        ):
+            out.append(f"Instructor is already teaching '{e.name}' {window_label(e.start_time, e.end_time)}")
+    return out
+
+
 # -- Policy -------------------------------------------------------------------
 def get_policy(db: Session) -> OvercapacityPolicy:
     row = db.get(SchedulerSetting, POLICY_KEY)
@@ -118,7 +214,7 @@ def set_policy(db: Session, user: CurrentUser, policy: OvercapacityPolicy) -> No
         row = SchedulerSetting(key=POLICY_KEY, value=policy.value)
         db.add(row)
     row.value = policy.value
-    row.updated_by = _user_uuid(user)
+    row.updated_by = user_uuid(user)
     audit(db, user, "update", POLICY_KEY, f"{before.value} -> {policy.value}")
 
 
@@ -126,7 +222,7 @@ def set_policy(db: Session, user: CurrentUser, policy: OvercapacityPolicy) -> No
 def audit(db: Session, user: CurrentUser, action: str, resource_id: str, detail: str = "") -> None:
     db.add(
         AuditLog(
-            user_id=_user_uuid(user),
+            user_id=user_uuid(user),
             tenant_id=tenant_uuid(user),
             action=action,
             resource_type="schedule",
@@ -136,7 +232,7 @@ def audit(db: Session, user: CurrentUser, action: str, resource_id: str, detail:
     )
 
 
-def _user_uuid(user: CurrentUser) -> uuid.UUID | None:
+def user_uuid(user: CurrentUser) -> uuid.UUID | None:
     try:
         return uuid.UUID(str(user.id))
     except (TypeError, ValueError):
@@ -152,6 +248,8 @@ def to_out(e: ScheduledEvent, warnings: list[str] | None = None) -> dict:
         tenant_id=str(e.tenant_id),
         range_id=str(e.range_id) if e.range_id else None,
         template_id=str(e.template_id) if e.template_id else None,
+        instructor_id=str(e.instructor_id) if e.instructor_id else None,
+        created_by=str(e.created_by) if e.created_by else None,
         start_time=e.start_time,
         end_time=e.end_time,
         vm_count=e.vm_count,

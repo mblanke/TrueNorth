@@ -820,7 +820,10 @@ export class DashboardComponent implements OnInit {
 
   loadEvents(): void {
     this.api.listScheduledEvents().subscribe({
-      next: (res: any) => this.scheduledEvents.set(Array.isArray(res) ? res : (res.items || [])),
+      // Cancelling keeps the booking as history (ADR 0004); the planner shows live ones.
+      next: (res: any) => this.scheduledEvents.set(
+        (Array.isArray(res) ? res : (res.items || [])).filter((e: ScheduledEvent) => e.state !== 'cancelled'),
+      ),
       error: () => {},
     });
   }

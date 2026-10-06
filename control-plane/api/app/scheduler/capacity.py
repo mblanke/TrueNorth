@@ -18,7 +18,8 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
-from .models import EventState, ScheduledEvent
+from .lifecycle import HOLDING
+from .models import ScheduledEvent
 
 # A booking holds capacity from its provisioning lead before the start until its
 # teardown grace after the end (ADR 0004, "Lead time").
@@ -26,7 +27,7 @@ PROVISION_LEAD = timedelta(minutes=int(os.getenv("SCHEDULER_PROVISION_LEAD_MIN",
 TEARDOWN_GRACE = timedelta(minutes=int(os.getenv("SCHEDULER_TEARDOWN_GRACE_MIN", "15")))
 
 # Events in these states hold capacity.
-COMMITTING_STATES = (EventState.scheduled, EventState.active)
+COMMITTING_STATES = HOLDING
 
 
 @dataclass(frozen=True)
@@ -114,7 +115,7 @@ def available(supply: Resources, committed: Resources) -> Resources:
 
 def shortfalls(need: Resources, free: Resources, start: datetime, end: datetime) -> list[str]:
     """One reason per resource that does not fit, e.g. "RAM: need 96 GB, 40 GB free 13:00–16:00 UTC"."""
-    window = _window_label(start, end)
+    window = window_label(start, end)
     out = []
     if need.vcpu > free.vcpu:
         out.append(f"vCPU: need {need.vcpu}, {free.vcpu} free {window}")
@@ -129,7 +130,7 @@ def _gb(mb: int) -> str:
     return f"{mb / 1024:.0f}" if mb % 1024 == 0 or mb >= 10240 else f"{mb / 1024:.1f}"
 
 
-def _window_label(start: datetime, end: datetime) -> str:
+def window_label(start: datetime, end: datetime) -> str:
     start, end = (t.astimezone(UTC) if t.tzinfo else t.replace(tzinfo=UTC) for t in (start, end))
     if start.date() == end.date():
         return f"{start:%Y-%m-%d %H:%M}–{end:%H:%M} UTC"

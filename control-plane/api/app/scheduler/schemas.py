@@ -22,6 +22,10 @@ class EventIn(BaseModel):
     disk_gb_total: int = Field(0, ge=0)
     template_id: str | None = Field(None, description="Size the booking from this template's VM specs")
     range_id: str | None = None
+    instructor_id: str | None = Field(
+        None, description="Who teaches it; defaults to the caller when they are an instructor"
+    )
+    draft: bool = Field(False, description="Create as a draft: holds nothing and is not checked until scheduled")
 
 
 class EventOut(BaseModel):
@@ -32,6 +36,8 @@ class EventOut(BaseModel):
     tenant_id: str
     range_id: str | None
     template_id: str | None
+    instructor_id: str | None = None
+    created_by: str | None = None
     start_time: datetime
     end_time: datetime
     vm_count: int

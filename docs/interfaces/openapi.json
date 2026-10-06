@@ -3403,10 +3403,28 @@
             "title": "Disk Gb Total",
             "type": "integer"
           },
+          "draft": {
+            "default": false,
+            "description": "Create as a draft: holds nothing and is not checked until scheduled",
+            "title": "Draft",
+            "type": "boolean"
+          },
           "end_time": {
             "format": "date-time",
             "title": "End Time",
             "type": "string"
+          },
+          "instructor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who teaches it; defaults to the caller when they are an instructor",
+            "title": "Instructor Id"
           },
           "name": {
             "maxLength": 255,
@@ -24423,7 +24441,7 @@
         ]
       },
       "post": {
-        "description": "Create a new event with resource reservation. A booking that does not fit is\nrefused with 409 (policy `block`) or created with warnings (policy `warn`).",
+        "description": "Book a session. Refused with 409 when its range or instructor is already booked\nthen. One that does not fit the cluster is refused with 409 (policy `block`) or\ncreated with warnings (policy `warn`). A draft holds nothing and is checked when it\nis scheduled.",
         "operationId": "create_event_schedule_events_post",
         "requestBody": {
           "content": {
@@ -24468,6 +24486,7 @@
     },
     "/schedule/events/{event_id}": {
       "delete": {
+        "description": "Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking\nis history, like a completed one.",
         "operationId": "delete_event_schedule_events__event_id__delete",
         "parameters": [
           {
@@ -24500,7 +24519,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Cancel/delete event",
+        "summary": "Cancel an event",
         "tags": [
           "scheduling"
         ]
@@ -24549,6 +24568,7 @@
         ]
       },
       "put": {
+        "description": "Reschedule or resize a draft or scheduled booking (409 once it is being built).",
         "operationId": "update_event_schedule_events__event_id__put",
         "parameters": [
           {
@@ -24604,6 +24624,7 @@
     },
     "/schedule/events/{event_id}/activate": {
       "post": {
+        "description": "scheduled or provisioning -> active.",
         "operationId": "activate_event_schedule_events__event_id__activate_post",
         "parameters": [
           {
@@ -24647,8 +24668,55 @@
         ]
       }
     },
+    "/schedule/events/{event_id}/cancel": {
+      "post": {
+        "description": "Any state before completed -> cancelled. The row stays as history.",
+        "operationId": "cancel_event_schedule_events__event_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel an event",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/events/{event_id}/complete": {
       "post": {
+        "description": "active -> completed.",
         "operationId": "complete_event_schedule_events__event_id__complete_post",
         "parameters": [
           {
@@ -24687,6 +24755,52 @@
           }
         ],
         "summary": "Mark event as completed",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/events/{event_id}/schedule": {
+      "post": {
+        "description": "draft -> scheduled, checked for conflicts and capacity exactly as a new booking.",
+        "operationId": "schedule_event_schedule_events__event_id__schedule_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Schedule a draft",
         "tags": [
           "scheduling"
         ]

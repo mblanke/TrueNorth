@@ -14,8 +14,12 @@ from ..models import GUID, TimestampMixin
 
 
 class EventState(str, enum.Enum):
+    """draft -> scheduled -> provisioning -> active -> completed; cancelled from any
+    state before completed. Transitions live in :mod:`.lifecycle`."""
+
     draft = "draft"
     scheduled = "scheduled"
+    provisioning = "provisioning"
     active = "active"
     completed = "completed"
     cancelled = "cancelled"
@@ -36,6 +40,9 @@ class ScheduledEvent(TimestampMixin, Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
     range_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("ranges.id"), nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("templates.id"), nullable=True)
+    # Who teaches it (one session per instructor at a time) and who booked it.
+    instructor_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"), nullable=True)
 
     # Schedule
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

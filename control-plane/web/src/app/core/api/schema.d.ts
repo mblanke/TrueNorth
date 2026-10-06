@@ -4361,8 +4361,10 @@ export interface paths {
         put?: never;
         /**
          * Create a scheduled event
-         * @description Create a new event with resource reservation. A booking that does not fit is
-         *     refused with 409 (policy `block`) or created with warnings (policy `warn`).
+         * @description Book a session. Refused with 409 when its range or instructor is already booked
+         *     then. One that does not fit the cluster is refused with 409 (policy `block`) or
+         *     created with warnings (policy `warn`). A draft holds nothing and is checked when it
+         *     is scheduled.
          */
         post: operations["create_event_schedule_events_post"];
         delete?: never;
@@ -4380,10 +4382,17 @@ export interface paths {
         };
         /** Get a scheduled event */
         get: operations["get_event_schedule_events__event_id__get"];
-        /** Update a scheduled event */
+        /**
+         * Update a scheduled event
+         * @description Reschedule or resize a draft or scheduled booking (409 once it is being built).
+         */
         put: operations["update_event_schedule_events__event_id__put"];
         post?: never;
-        /** Cancel/delete event */
+        /**
+         * Cancel an event
+         * @description Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking
+         *     is history, like a completed one.
+         */
         delete: operations["delete_event_schedule_events__event_id__delete"];
         options?: never;
         head?: never;
@@ -4399,8 +4408,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark event as active */
+        /**
+         * Mark event as active
+         * @description scheduled or provisioning -> active.
+         */
         post: operations["activate_event_schedule_events__event_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an event
+         * @description Any state before completed -> cancelled. The row stays as history.
+         */
+        post: operations["cancel_event_schedule_events__event_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4416,8 +4448,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark event as completed */
+        /**
+         * Mark event as completed
+         * @description active -> completed.
+         */
         post: operations["complete_event_schedule_events__event_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule a draft
+         * @description draft -> scheduled, checked for conflicts and capacity exactly as a new booking.
+         */
+        post: operations["schedule_event_schedule_events__event_id__schedule_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6584,10 +6639,21 @@ export interface components {
              */
             disk_gb_total?: number;
             /**
+             * Draft
+             * @description Create as a draft: holds nothing and is not checked until scheduled
+             * @default false
+             */
+            draft?: boolean;
+            /**
              * End Time
              * Format: date-time
              */
             end_time: string;
+            /**
+             * Instructor Id
+             * @description Who teaches it; defaults to the caller when they are an instructor
+             */
+            instructor_id?: string | null;
             /** Name */
             name: string;
             /**
@@ -18069,7 +18135,69 @@ export interface operations {
             };
         };
     };
+    cancel_event_schedule_events__event_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     complete_event_schedule_events__event_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_event_schedule_events__event_id__schedule_post: {
         parameters: {
             query?: never;
             header?: never;

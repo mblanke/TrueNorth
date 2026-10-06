@@ -127,7 +127,16 @@ What users need:
   not per tenant: every tenant books against the same cluster, so one tenant's `warn`
   would overbook everyone else.
 - **Conflicts:** the same range, or the same Instructor, double-booked in an
-  overlapping window is refused with 409.
+  overlapping window is refused with 409. Conflicts are always refused; the
+  over-capacity policy does not apply to them.
+  - A range is held for its lead and grace as well, so two bookings of one range need
+    lead + grace (45 minutes by default) between them.
+  - An Instructor is held for the session only, so back-to-back sessions are fine.
+  - The Instructor is the one named (an active instructor or admin in the tenant),
+    otherwise the caller when they are an instructor.
+  - A booked range must belong to the caller's tenant.
+  - Booking checks and writes run under a Postgres advisory lock, so two concurrent
+    bookings cannot both pass.
 - **Lead time:** provision `SCHEDULER_PROVISION_LEAD_MIN` before the start
   (default 30); tear down `SCHEDULER_TEARDOWN_GRACE_MIN` after the end (default 15).
   The lead time counts as committed capacity.
@@ -148,6 +157,12 @@ What users need:
 - **Lifecycle:** `draft → scheduled → provisioning → active → completed`, with
   `cancelled` reachable from any state before `completed`. A state change is a
   guarded update, so a retry can't move a booking twice.
+  - Asking for the current state is a no-op, so retries are safe.
+  - Only `draft` and `scheduled` bookings can be edited.
+  - A draft holds nothing. It is checked for conflicts and capacity at
+    `POST .../schedule`.
+  - `DELETE` cancels; it no longer hard-deletes. Bookings are history.
+  - Every create, edit and move is audit-logged.
 
 ## Outlook and calendar-client notes
 
@@ -218,7 +233,8 @@ What users need:
    - The lead time and teardown grace count as committed capacity.
    - Refusals give one reason per resource and the window.
    - Over-capacity policy: `GET`/`PUT /schedule/policy`, stored in `scheduler_settings`.
-3. Lifecycle, guarded state transitions, conflicts.
+3. Lifecycle, guarded state transitions, conflicts (done: `scheduler/lifecycle.py`,
+   `service.conflicts`, migration `b5c6d7e8f9a0`).
 4. Worker tasks for provision lead, teardown and reminders, via `contracts.py`.
 5. ICS feed with per-user tokens and a profile page to regenerate them.
 6. Emailed invites (`REQUEST`/`CANCEL`) through the SMTP channel.
