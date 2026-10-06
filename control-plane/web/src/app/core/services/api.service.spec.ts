@@ -1,9 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import {
-  HttpClientTestingModule,
-  HttpTestingController,
-} from '@angular/common/http/testing';
-import { HTTP_INTERCEPTORS, HttpRequest, HttpHandler, HttpInterceptor } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HTTP_INTERCEPTORS, HttpRequest, HttpHandler, HttpInterceptor, provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { ApiService } from './api.service';
 import { environment } from '@env/environment';
@@ -31,12 +28,14 @@ describe('ApiService', () => {
     fakeToken = null;
 
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
-      providers: [
+    imports: [],
+    providers: [
         ApiService,
         { provide: HTTP_INTERCEPTORS, useClass: FakeAuthInterceptor, multi: true },
-      ],
-    });
+        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClientTesting(),
+    ]
+});
 
     service = TestBed.inject(ApiService);
     httpMock = TestBed.inject(HttpTestingController);

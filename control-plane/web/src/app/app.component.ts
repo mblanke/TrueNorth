@@ -1,5 +1,4 @@
-import { Component, ElementRef, NgZone, OnDestroy, ViewChild, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ElementRef, NgZone, OnDestroy, ViewChild, signal, inject } from '@angular/core';
 import {
   NavigationCancel,
   NavigationEnd,
@@ -36,9 +35,7 @@ interface NavSection {
 
 @Component({
   selector: 'tn-root',
-  standalone: true,
   imports: [
-    CommonModule,
     RouterModule,
     RouterOutlet,
     TourOverlayComponent,
@@ -48,8 +45,8 @@ interface NavSection {
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
-    MatExpansionModule,
-  ],
+    MatExpansionModule
+],
   template: `
     @if (isBareRoute()) {
       <router-outlet />
@@ -305,6 +302,11 @@ interface NavSection {
   `],
 })
 export class AppComponent implements OnDestroy {
+  private theme = inject(ThemeService);
+  private motion = inject(MotionService);
+  private router = inject(Router);
+  private zone = inject(NgZone);
+
   @ViewChild('content') contentEl?: ElementRef<HTMLElement>;
   @ViewChild('indicator') indicatorEl?: ElementRef<HTMLElement>;
   @ViewChild('sideNavEl') sideNavRef?: ElementRef<HTMLElement>;
@@ -366,12 +368,7 @@ export class AppComponent implements OnDestroy {
 
   private routerSub: Subscription;
 
-  constructor(
-    private theme: ThemeService,
-    private motion: MotionService,
-    private router: Router,
-    private zone: NgZone,
-  ) {
+  constructor() {
     this.themes = this.theme.themes;
     this.mobileQuery.addEventListener('change', this.onViewportChange);
     this.activeTheme = this.theme.activeTheme;

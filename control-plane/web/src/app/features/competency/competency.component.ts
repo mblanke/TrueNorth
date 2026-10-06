@@ -52,7 +52,6 @@ interface SkillGap {
 
 @Component({
   selector: 'tn-competency',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatSelectModule, MatFormFieldModule, MatProgressBarModule,
@@ -219,6 +218,8 @@ interface SkillGap {
   `],
 })
 export class CompetencyComponent implements OnInit, OnDestroy {
+  private api = inject(ApiService);
+
   @ViewChild('fwChart') fwChart?: ElementRef<HTMLDivElement>;
   @ViewChild('profChart') profChart?: ElementRef<HTMLDivElement>;
 
@@ -245,7 +246,7 @@ export class CompetencyComponent implements OnInit, OnDestroy {
     'OV-LGA-001', 'OV-LGA-002',
   ];
 
-  constructor(private api: ApiService) {
+  constructor() {
     // ECharts snapshots CSS variables at option-build time, so both a theme
     // switch and a fresh profile load must (re)build the options. The chart
     // containers live behind an @if, so defer a tick for them to render.

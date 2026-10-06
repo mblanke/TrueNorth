@@ -31,7 +31,8 @@ export class TourService {
   readonly steps = this.stepsSignal.asReadonly();
   readonly index = this.indexSignal.asReadonly();
   readonly active = this.activeSignal.asReadonly();
-  readonly current = computed(() => this.stepsSignal()[this.indexSignal()] ?? null);
+  // Typed explicitly: TS treats steps[i] as always defined, but an out-of-range index is null here.
+  readonly current = computed<TourStep | null>(() => this.stepsSignal()[this.indexSignal()] ?? null);
   readonly isLast = computed(() => this.indexSignal() >= this.stepsSignal().length - 1);
 
   /** Start a tour. Steps whose anchor is not in the DOM are skipped, not fatal. */

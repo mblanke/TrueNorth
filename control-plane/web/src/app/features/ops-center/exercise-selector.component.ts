@@ -7,7 +7,6 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 
 @Component({
   selector: 'tn-exercise-selector',
-  standalone: true,
   imports: [RouterLink, MatButtonModule, EmptyStateComponent],
   template: `
     <section class="page-container">

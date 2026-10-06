@@ -85,18 +85,18 @@ class TestKeycloakOIDCBackend:
         # Stub JWKS fetch
         respx_mock.get(b._jwks_url).mock(return_value=httpx.Response(200, json=_MOCK_JWKS))
         # Stub jwt.decode to return our payload
-        mocker.patch("app.auth_backends.keycloak_oidc.jwt.decode", return_value=_MOCK_PAYLOAD)
+        mocker.patch("app.auth_backends.keycloak_oidc.jwks_verify.decode", return_value=_MOCK_PAYLOAD)
 
         payload = await b.validate_token("fake.jwt.token")
         assert payload["sub"] == "user-123"
 
     @pytest.mark.asyncio
     async def test_validate_token_invalid_jwt_raises_401(self, respx_mock, mocker):
-        from jose import JWTError
+        from jwt import InvalidTokenError
 
         b = self._make_backend()
         respx_mock.get(b._jwks_url).mock(return_value=httpx.Response(200, json=_MOCK_JWKS))
-        mocker.patch("app.auth_backends.keycloak_oidc.jwt.decode", side_effect=JWTError("bad"))
+        mocker.patch("app.auth_backends.keycloak_oidc.jwks_verify.decode", side_effect=InvalidTokenError("bad"))
 
         with pytest.raises(HTTPException) as exc_info:
             await b.validate_token("bad.token")
@@ -144,7 +144,7 @@ class TestKeycloakOIDCBackend:
     async def test_jwks_cached_on_second_call(self, respx_mock, mocker):
         b = self._make_backend()
         route = respx_mock.get(b._jwks_url).mock(return_value=httpx.Response(200, json=_MOCK_JWKS))
-        mocker.patch("app.auth_backends.keycloak_oidc.jwt.decode", return_value=_MOCK_PAYLOAD)
+        mocker.patch("app.auth_backends.keycloak_oidc.jwks_verify.decode", return_value=_MOCK_PAYLOAD)
         await b.validate_token("tok1")
         await b.validate_token("tok2")
         # JWKS endpoint should only be hit once
@@ -173,17 +173,17 @@ class TestGenericOIDCBackend:
     async def test_validate_token_success(self, respx_mock, mocker):
         b = self._make_backend()
         respx_mock.get(b._jwks_url).mock(return_value=httpx.Response(200, json=_MOCK_JWKS))
-        mocker.patch("app.auth_backends.generic_oidc.jwt.decode", return_value=_MOCK_PAYLOAD)
+        mocker.patch("app.auth_backends.generic_oidc.jwks_verify.decode", return_value=_MOCK_PAYLOAD)
         payload = await b.validate_token("fake.jwt.token")
         assert payload["sub"] == "user-123"
 
     @pytest.mark.asyncio
     async def test_validate_token_invalid_jwt_raises_401(self, respx_mock, mocker):
-        from jose import JWTError
+        from jwt import InvalidTokenError
 
         b = self._make_backend()
         respx_mock.get(b._jwks_url).mock(return_value=httpx.Response(200, json=_MOCK_JWKS))
-        mocker.patch("app.auth_backends.generic_oidc.jwt.decode", side_effect=JWTError("bad"))
+        mocker.patch("app.auth_backends.generic_oidc.jwks_verify.decode", side_effect=InvalidTokenError("bad"))
 
         with pytest.raises(HTTPException) as exc_info:
             await b.validate_token("bad.token")
@@ -268,3 +268,20 @@ class TestGetAuthBackend:
         monkeypatch.setenv("AUTH_BACKEND", "DISABLED")
         backend = get_auth_backend()
         assert isinstance(backend, DisabledAuthBackend)
+
+
+class TestStartup:
+    @pytest.mark.asyncio
+    async def test_a_bad_oidc_config_stops_the_app_at_boot(self, monkeypatch):
+        """Not a 500 on every request later: lifespan builds the backend up front."""
+        from app.main import app, lifespan
+
+        monkeypatch.setenv("AUTH_DISABLED", "false")
+        monkeypatch.setenv("AUTH_BACKEND", "generic_oidc")
+        monkeypatch.setenv("OIDC_JWKS_URL", "https://idp.test/keys")
+        monkeypatch.setenv("OIDC_ALGORITHMS", "HS256")
+        monkeypatch.setenv("DB_AUTO_CREATE", "false")
+        monkeypatch.setenv("SEED_DEV_DATA", "false")
+        with pytest.raises(ValueError, match="Unsupported JWT algorithm"):
+            async with lifespan(app):
+                pass

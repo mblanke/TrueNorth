@@ -1,5 +1,4 @@
-import { Component, Inject, OnInit, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -52,11 +51,14 @@ export function groupByPhase(events: MeslEvent[]): { phase: string; events: Mesl
 /** Edit one serial. */
 @Component({
   selector: 'tn-mesl-event-dialog',
-  standalone: true,
   imports: [
-    CommonModule, FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
-    MatInputModule, MatSelectModule,
-  ],
+    FormsModule,
+    MatDialogModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule
+],
   template: `
     <h2 mat-dialog-title>Serial {{ event.serial }}</h2>
     <mat-dialog-content>
@@ -137,14 +139,17 @@ export function groupByPhase(events: MeslEvent[]): { phase: string; events: Mesl
   `],
 })
 export class MeslEventDialogComponent {
+  ref = inject<MatDialogRef<MeslEventDialogComponent, MeslEvent>>(MatDialogRef);
+
   protected readonly deliveryMethods = DELIVERY_METHODS;
   protected readonly statuses = MESL_STATUSES;
   event: MeslEvent;
 
-  constructor(
-    public ref: MatDialogRef<MeslEventDialogComponent, MeslEvent>,
-    @Inject(MAT_DIALOG_DATA) data: { event: MeslEvent },
-  ) {
+  constructor() {
+    const data = inject<{
+    event: MeslEvent;
+}>(MAT_DIALOG_DATA);
+
     this.event = { ...data.event };
   }
 }
@@ -152,11 +157,14 @@ export class MeslEventDialogComponent {
 /** Draft a MESL from the exercise objectives. */
 @Component({
   selector: 'tn-mesl-generate-dialog',
-  standalone: true,
   imports: [
-    CommonModule, FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
-    MatInputModule, MatIconModule,
-  ],
+    FormsModule,
+    MatDialogModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatIconModule
+],
   template: `
     <h2 mat-dialog-title>Generate MESL</h2>
     <mat-dialog-content>
@@ -189,11 +197,11 @@ export class MeslEventDialogComponent {
   `],
 })
 export class MeslGenerateDialogComponent {
+  ref = inject<MatDialogRef<MeslGenerateDialogComponent>>(MatDialogRef);
+
   eventCount = 12;
   adversary = '';
   durationDays = 1;
-
-  constructor(public ref: MatDialogRef<MeslGenerateDialogComponent>) {}
 
   submit(): void {
     this.ref.close({
@@ -211,11 +219,16 @@ export class MeslGenerateDialogComponent {
  */
 @Component({
   selector: 'tn-mesl-board',
-  standalone: true,
   imports: [
-    CommonModule, RouterLink, MatButtonModule, MatCardModule, MatDialogModule,
-    MatIconModule, MatTooltipModule, EmptyStateComponent, EnterStaggerDirective,
-  ],
+    RouterLink,
+    MatButtonModule,
+    MatCardModule,
+    MatDialogModule,
+    MatIconModule,
+    MatTooltipModule,
+    EmptyStateComponent,
+    EnterStaggerDirective
+],
   template: `
     <div class="page-container">
       <div class="page-header">

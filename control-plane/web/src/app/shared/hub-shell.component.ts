@@ -1,5 +1,4 @@
 import { Component, computed, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import {
   ActivatedRoute,
   RouterLink,
@@ -24,8 +23,7 @@ interface HubTab {
  */
 @Component({
   selector: 'tn-hub-shell',
-  standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, QuietStylesComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, QuietStylesComponent],
   template: `
     <tn-quiet-styles />
     <section class="hub">

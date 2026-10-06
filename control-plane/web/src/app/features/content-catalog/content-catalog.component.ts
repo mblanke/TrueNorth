@@ -1,6 +1,4 @@
-import {
-  ChangeDetectionStrategy, Component, Inject, OnInit, inject, signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -46,7 +44,6 @@ export interface TemplateEditorResult {
  */
 @Component({
   selector: 'tn-template-editor-dialog',
-  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     FormsModule, MatButtonModule, MatDialogModule, MatFormFieldModule,
@@ -146,6 +143,8 @@ export interface TemplateEditorResult {
   `],
 })
 export class TemplateEditorDialogComponent {
+  data = inject<TemplateEditorData>(MAT_DIALOG_DATA);
+
   readonly validating = signal(false);
   readonly valid = signal(false);
   readonly errors = signal<{ path: string; message: string }[]>([]);
@@ -157,7 +156,9 @@ export class TemplateEditorDialogComponent {
   private readonly api = inject(ApiService);
   private readonly ref = inject<MatDialogRef<TemplateEditorDialogComponent>>(MatDialogRef);
 
-  constructor(@Inject(MAT_DIALOG_DATA) public data: TemplateEditorData) {
+  constructor() {
+    const data = this.data;
+
     const t = data?.template;
     if (!t) {
       return;
@@ -214,7 +215,6 @@ export class TemplateEditorDialogComponent {
  */
 @Component({
   selector: 'tn-content-catalog',
-  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink, MatButtonModule, MatCardModule,

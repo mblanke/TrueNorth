@@ -17,7 +17,7 @@ import typing
 import pytest
 from app import models
 from app.main import app
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, iter_route_contexts
 from pydantic import BaseModel, ValidationError
 
 # Handlers that skip None values themselves, so a null is ignored rather than written.
@@ -30,8 +30,10 @@ _TABLES = {m.class_.__name__: m.class_ for m in models.Base.registry.mappers}
 
 
 def _cases():
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
+    # FastAPI >= 0.13x keeps included routers behind one wrapper in app.routes; walk the
+    # effective routes (prefixed paths, merged dependencies) instead.
+    for route in iter_route_contexts(app.routes):
+        if not isinstance(route.original_route, APIRoute):
             continue
         for method in sorted({"PUT", "PATCH"} & route.methods):
             if (method, route.path) in IGNORES_NULL:

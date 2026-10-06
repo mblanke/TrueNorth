@@ -464,6 +464,19 @@ def test_state_change_between_check_and_write_is_409_and_writes_nothing(client, 
     assert db_session.query(Template).count() == before
 
 
+def test_generated_port_labels_use_the_joint_core_4_form():
+    """@joint/core 4 throws on a bare-string port label position ({"position": "outside"}).
+
+    The designer upgrades legacy diagrams on load (diagram-compat.ts), but what the API
+    generates should already be in the form the client library accepts.
+    """
+    cells = rt.build_template_diagram("name: s\nassets:\n  - role: dc\n    count: 2\n")["cells"]
+    groups = [g for c in cells for g in (c.get("ports") or {}).get("groups", {}).values()]
+    assert groups, "expected host cells with port groups"
+    for group in groups:
+        assert group["label"]["position"] == {"name": "outside"}
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [

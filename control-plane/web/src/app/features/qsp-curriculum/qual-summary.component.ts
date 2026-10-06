@@ -29,7 +29,6 @@ const PROGRESS_CHIP: Record<POProgressState, string> = {
  */
 @Component({
   selector: 'tn-qual-summary',
-  standalone: true,
   imports: [CommonModule, RouterLink, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

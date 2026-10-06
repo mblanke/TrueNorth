@@ -21,6 +21,7 @@
             "outputPath": "dist/truenorth-range-web",
             "index": "src/index.html",
             "browser": "src/main.ts",
+            "allowedCommonJsDependencies": ["js-sha256", "lottie-web"],
             "polyfills": [
               "zone.js"
             ],
@@ -37,7 +38,6 @@
             ],
             "styles": [
               "node_modules/@angular/cdk/overlay-prebuilt.css",
-              "node_modules/jointjs/dist/joint.css",
               "node_modules/material-icons/iconfont/material-icons.css",
               "node_modules/@fontsource/inter/400.css",
               "node_modules/@fontsource/inter/500.css",
@@ -55,7 +55,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "1.1mb",
+                  "maximumWarning": "1.2mb",
                   "maximumError": "1.75mb"
                 },
                 {
@@ -107,7 +107,6 @@
             ],
             "styles": [
               "node_modules/@angular/cdk/overlay-prebuilt.css",
-              "node_modules/jointjs/dist/joint.css",
               "node_modules/material-icons/iconfont/material-icons.css",
               "node_modules/@fontsource/inter/400.css",
               "node_modules/@fontsource/inter/500.css",
@@ -131,6 +130,32 @@
           }
         }
       }
+    }
+  },
+  "schematics": {
+    "@schematics/angular:component": {
+      "type": "component"
+    },
+    "@schematics/angular:directive": {
+      "type": "directive"
+    },
+    "@schematics/angular:service": {
+      "type": "service"
+    },
+    "@schematics/angular:guard": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:interceptor": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:module": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:pipe": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:resolver": {
+      "typeSeparator": "."
     }
   }
 }

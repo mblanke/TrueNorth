@@ -1,5 +1,4 @@
-import { Component, Inject, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -25,11 +24,15 @@ interface ObjectiveDraft {
 /** Create a collective exercise, with its first objectives inline. */
 @Component({
   selector: 'tn-collective-create-dialog',
-  standalone: true,
   imports: [
-    CommonModule, FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
-    MatIconModule, MatInputModule, MatSelectModule,
-  ],
+    FormsModule,
+    MatDialogModule,
+    MatButtonModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatSelectModule
+],
   template: `
     <h2 mat-dialog-title>New collective exercise</h2>
     <mat-dialog-content>
@@ -86,14 +89,14 @@ interface ObjectiveDraft {
   `],
 })
 export class CollectiveCreateDialogComponent {
+  ref = inject<MatDialogRef<CollectiveCreateDialogComponent>>(MatDialogRef);
+  data = inject<{
+    ranges: RangeModel[];
+}>(MAT_DIALOG_DATA);
+
   name = '';
   rangeId = '';
   objectives: ObjectiveDraft[] = [];
-
-  constructor(
-    public ref: MatDialogRef<CollectiveCreateDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: { ranges: RangeModel[] },
-  ) {}
 
   addObjective(): void {
     this.objectives.push({ ref: `O${this.objectives.length + 1}`, text: '', moe: '' });
@@ -115,12 +118,18 @@ export class CollectiveCreateDialogComponent {
  */
 @Component({
   selector: 'tn-mesl-home',
-  standalone: true,
   imports: [
-    CommonModule, RouterLink, MatButtonModule, MatCardModule, MatDialogModule,
-    MatIconModule, MatTooltipModule,
-    EmptyStateComponent, CountUpDirective, EnterStaggerDirective, HoverLiftDirective,
-  ],
+    RouterLink,
+    MatButtonModule,
+    MatCardModule,
+    MatDialogModule,
+    MatIconModule,
+    MatTooltipModule,
+    EmptyStateComponent,
+    CountUpDirective,
+    EnterStaggerDirective,
+    HoverLiftDirective
+],
   template: `
     <div class="page-container">
       <div class="page-header">

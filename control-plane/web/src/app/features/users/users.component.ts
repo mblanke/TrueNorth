@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
@@ -29,7 +29,6 @@ type AuthZone = AuthZonePolicy;
 
 @Component({
   selector: 'tn-users',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatTabsModule, MatCardModule, MatButtonModule,
     MatIconModule, MatTableModule, MatChipsModule, MatFormFieldModule,
@@ -48,7 +47,7 @@ type AuthZone = AuthZonePolicy;
           </div>
         </div>
       </div>
-
+    
       <mat-tab-group>
         <!-- ===== Personnel Tab ===== -->
         <mat-tab label="Personnel">
@@ -63,100 +62,108 @@ type AuthZone = AuthZonePolicy;
                 <mat-icon>person_add</mat-icon> {{ (showUserForm || editingUserId) ? 'Cancel' : 'Add User' }}
               </button>
             </div>
-
+    
             <!-- Add / Edit User Form -->
-            <mat-card *ngIf="showUserForm || editingUserId" class="add-form-card">
-              <mat-card-header><mat-card-title>{{ editingUserId ? 'Edit User' : 'New User' }}</mat-card-title></mat-card-header>
-              <mat-card-content>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Email</mat-label>
-                    <input matInput [(ngModel)]="newUser.email" placeholder="user@example.com" [readonly]="!!editingUserId">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Display Name</mat-label>
-                    <input matInput [(ngModel)]="newUser.display_name" placeholder="John Doe">
-                  </mat-form-field>
-                </div>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>First Name</mat-label>
-                    <input matInput [(ngModel)]="newUser.first_name">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Last Name</mat-label>
-                    <input matInput [(ngModel)]="newUser.last_name">
-                  </mat-form-field>
-                </div>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Role</mat-label>
-                    <mat-select [(ngModel)]="newUser.role" panelClass="tn-select-panel">
-                      <mat-option value="student">Student</mat-option>
-                      <mat-option value="instructor">Instructor</mat-option>
-                      <mat-option value="observer">Observer</mat-option>
-                      <mat-option value="range_ops">Range Ops</mat-option>
-                      <mat-option value="admin">Admin</mat-option>
-                    </mat-select>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Clearance Level</mat-label>
-                    <mat-select [(ngModel)]="newUser.clearance_level" panelClass="tn-select-panel">
-                      <mat-option value="unclassified">Unclassified</mat-option>
-                      <mat-option value="protected">Protected</mat-option>
-                      <mat-option value="confidential">Confidential</mat-option>
-                      <mat-option value="secret">Secret</mat-option>
-                      <mat-option value="top_secret">Top Secret</mat-option>
-                    </mat-select>
-                  </mat-form-field>
-                </div>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Rank</mat-label>
-                    <input matInput [(ngModel)]="newUser.rank" placeholder="e.g. CPT, SGT, Civ">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Service Branch</mat-label>
-                    <input matInput [(ngModel)]="newUser.service_branch" placeholder="e.g. Army, Navy">
-                  </mat-form-field>
-                </div>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Nation</mat-label>
-                    <mat-select [(ngModel)]="newUser.nation_id" panelClass="tn-select-panel">
-                      <mat-option [value]="null">-- None --</mat-option>
-                      <mat-option *ngFor="let n of nations" [value]="n.id">
-                        {{ n.flag_emoji }} {{ n.name }}
-                      </mat-option>
-                    </mat-select>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Unit</mat-label>
-                    <input matInput [(ngModel)]="newUser.unit" placeholder="e.g. 1st Cyber Bn">
-                  </mat-form-field>
-                </div>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Callsign</mat-label>
-                    <input matInput [(ngModel)]="newUser.callsign" placeholder="e.g. Viper">
-                  </mat-form-field>
-                </div>
-              </mat-card-content>
-              <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="editingUserId ? updateUser() : createUser()" [disabled]="userSaving || !newUser.email || !newUser.display_name">
-                  <mat-icon>save</mat-icon> {{ editingUserId ? 'Save Changes' : 'Create User' }}
-                </button>
-                <button mat-button (click)="editingUserId ? cancelUserEdit() : (showUserForm = false)">Cancel</button>
-              </mat-card-actions>
-            </mat-card>
-
+            @if (showUserForm || editingUserId) {
+              <mat-card class="add-form-card">
+                <mat-card-header><mat-card-title>{{ editingUserId ? 'Edit User' : 'New User' }}</mat-card-title></mat-card-header>
+                <mat-card-content>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Email</mat-label>
+                      <input matInput [(ngModel)]="newUser.email" placeholder="user@example.com" [readonly]="!!editingUserId">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Display Name</mat-label>
+                      <input matInput [(ngModel)]="newUser.display_name" placeholder="John Doe">
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>First Name</mat-label>
+                      <input matInput [(ngModel)]="newUser.first_name">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Last Name</mat-label>
+                      <input matInput [(ngModel)]="newUser.last_name">
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Role</mat-label>
+                      <mat-select [(ngModel)]="newUser.role" panelClass="tn-select-panel">
+                        <mat-option value="student">Student</mat-option>
+                        <mat-option value="instructor">Instructor</mat-option>
+                        <mat-option value="observer">Observer</mat-option>
+                        <mat-option value="range_ops">Range Ops</mat-option>
+                        <mat-option value="admin">Admin</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Clearance Level</mat-label>
+                      <mat-select [(ngModel)]="newUser.clearance_level" panelClass="tn-select-panel">
+                        <mat-option value="unclassified">Unclassified</mat-option>
+                        <mat-option value="protected">Protected</mat-option>
+                        <mat-option value="confidential">Confidential</mat-option>
+                        <mat-option value="secret">Secret</mat-option>
+                        <mat-option value="top_secret">Top Secret</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Rank</mat-label>
+                      <input matInput [(ngModel)]="newUser.rank" placeholder="e.g. CPT, SGT, Civ">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Service Branch</mat-label>
+                      <input matInput [(ngModel)]="newUser.service_branch" placeholder="e.g. Army, Navy">
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Nation</mat-label>
+                      <mat-select [(ngModel)]="newUser.nation_id" panelClass="tn-select-panel">
+                        <mat-option [value]="null">-- None --</mat-option>
+                        @for (n of nations; track n) {
+                          <mat-option [value]="n.id">
+                            {{ n.flag_emoji }} {{ n.name }}
+                          </mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Unit</mat-label>
+                      <input matInput [(ngModel)]="newUser.unit" placeholder="e.g. 1st Cyber Bn">
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Callsign</mat-label>
+                      <input matInput [(ngModel)]="newUser.callsign" placeholder="e.g. Viper">
+                    </mat-form-field>
+                  </div>
+                </mat-card-content>
+                <mat-card-actions>
+                  <button mat-raised-button color="primary" (click)="editingUserId ? updateUser() : createUser()" [disabled]="userSaving || !newUser.email || !newUser.display_name">
+                    <mat-icon>save</mat-icon> {{ editingUserId ? 'Save Changes' : 'Create User' }}
+                  </button>
+                  <button mat-button (click)="editingUserId ? cancelUserEdit() : (showUserForm = false)">Cancel</button>
+                </mat-card-actions>
+              </mat-card>
+            }
+    
             <table mat-table [dataSource]="filteredUsers" class="full-width">
               <ng-container matColumnDef="name">
                 <th mat-header-cell *matHeaderCellDef>Name</th>
                 <td mat-cell *matCellDef="let u">
                   <strong>{{ u.display_name }}</strong>
-                  <span *ngIf="u.rank" class="rank-badge">{{ u.rank }}</span>
-                  <span *ngIf="u.callsign" class="callsign">"{{ u.callsign }}"</span>
+                  @if (u.rank) {
+                    <span class="rank-badge">{{ u.rank }}</span>
+                  }
+                  @if (u.callsign) {
+                    <span class="callsign">"{{ u.callsign }}"</span>
+                  }
                 </td>
               </ng-container>
               <ng-container matColumnDef="email">
@@ -170,7 +177,7 @@ type AuthZone = AuthZonePolicy;
                 </td>
               </ng-container>
               <!-- Whether this person has finished first-run. A trainee stuck at
-                   'not started' has an account but has never actually arrived. -->
+              'not started' has an account but has never actually arrived. -->
               <ng-container matColumnDef="onboarding">
                 <th mat-header-cell *matHeaderCellDef>Onboarding</th>
                 <td mat-cell *matCellDef="let u">
@@ -209,20 +216,20 @@ type AuthZone = AuthZonePolicy;
             </table>
             @if (filteredUsers.length === 0) {
               <tn-empty-state icon="person_search" title="No users found"
-                              message="Adjust the search or sync from the directory." />
+                message="Adjust the search or sync from the directory." />
             }
           </div>
         </mat-tab>
-
+    
         <!-- ===== Approvals Tab ===== -->
         <!-- Where registration requests are turned into accounts. Approving is
-             the only path that creates a trainee. -->
+        the only path that creates a trainee. -->
         <mat-tab label="Approvals">
           <div class="tab-content">
             <tn-approvals-panel />
           </div>
         </mat-tab>
-
+    
         <!-- ===== Teams Tab ===== -->
         <mat-tab label="Teams">
           <div class="tab-content">
@@ -232,119 +239,137 @@ type AuthZone = AuthZonePolicy;
                 <mat-icon>group_add</mat-icon> {{ (showTeamForm || editingTeamId) ? 'Cancel' : 'Add Team' }}
               </button>
             </div>
-
+    
             <!-- Add / Edit Team Form -->
-            <mat-card *ngIf="showTeamForm || editingTeamId" class="add-form-card">
-              <mat-card-header><mat-card-title>{{ editingTeamId ? 'Edit Team' : 'New Team' }}</mat-card-title></mat-card-header>
-              <mat-card-content>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Team Name</mat-label>
-                    <input matInput [(ngModel)]="newTeam.name" placeholder="Alpha Team">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Type</mat-label>
-                    <mat-select [(ngModel)]="newTeam.team_type" panelClass="tn-select-panel">
-                      <mat-option value="red">Red</mat-option>
-                      <mat-option value="blue">Blue</mat-option>
-                      <mat-option value="white">White</mat-option>
-                      <mat-option value="green">Green</mat-option>
-                      <mat-option value="purple">Purple</mat-option>
-                      <mat-option value="custom">Custom</mat-option>
-                    </mat-select>
-                  </mat-form-field>
-                </div>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Description</mat-label>
-                    <input matInput [(ngModel)]="newTeam.description">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Max Members</mat-label>
-                    <input matInput type="number" [(ngModel)]="newTeam.max_members">
-                  </mat-form-field>
-                </div>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Color Hex</mat-label>
-                    <input matInput [(ngModel)]="newTeam.color_hex" placeholder="#FF0000">
-                  </mat-form-field>
-                </div>
-              </mat-card-content>
-              <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="editingTeamId ? updateTeam() : createTeam()" [disabled]="teamSaving || !newTeam.name">
-                  <mat-icon>save</mat-icon> {{ editingTeamId ? 'Save Changes' : 'Create Team' }}
-                </button>
-                <button mat-button (click)="editingTeamId ? cancelTeamEdit() : (showTeamForm = false)">Cancel</button>
-              </mat-card-actions>
-            </mat-card>
-
-            <div class="teams-grid">
-              <mat-card *ngFor="let t of teams" class="team-card" [style.border-left-color]="t.color_hex || 'var(--accent)'">
-                <mat-card-header>
-                  <mat-card-title>{{ t.name }}</mat-card-title>
-                  <mat-card-subtitle *ngIf="t.team_type">{{ t.team_type | uppercase }} Team</mat-card-subtitle>
-                </mat-card-header>
+            @if (showTeamForm || editingTeamId) {
+              <mat-card class="add-form-card">
+                <mat-card-header><mat-card-title>{{ editingTeamId ? 'Edit Team' : 'New Team' }}</mat-card-title></mat-card-header>
                 <mat-card-content>
-                  <p *ngIf="t.description">{{ t.description }}</p>
-                  <div class="team-meta">
-                    <span *ngIf="t.max_members"><mat-icon>group</mat-icon> Max: {{ t.max_members }}</span>
-                    <span><mat-icon>{{ t.is_persistent ? 'lock' : 'lock_open' }}</mat-icon> {{ t.is_persistent ? 'Persistent' : 'Temporary' }}</span>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Team Name</mat-label>
+                      <input matInput [(ngModel)]="newTeam.name" placeholder="Alpha Team">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Type</mat-label>
+                      <mat-select [(ngModel)]="newTeam.team_type" panelClass="tn-select-panel">
+                        <mat-option value="red">Red</mat-option>
+                        <mat-option value="blue">Blue</mat-option>
+                        <mat-option value="white">White</mat-option>
+                        <mat-option value="green">Green</mat-option>
+                        <mat-option value="purple">Purple</mat-option>
+                        <mat-option value="custom">Custom</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Description</mat-label>
+                      <input matInput [(ngModel)]="newTeam.description">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Max Members</mat-label>
+                      <input matInput type="number" [(ngModel)]="newTeam.max_members">
+                    </mat-form-field>
+                  </div>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Color Hex</mat-label>
+                      <input matInput [(ngModel)]="newTeam.color_hex" placeholder="#FF0000">
+                    </mat-form-field>
                   </div>
                 </mat-card-content>
                 <mat-card-actions>
-                  <button mat-icon-button matTooltip="Edit" (click)="startEditTeam(t)">
-                    <mat-icon>edit</mat-icon>
+                  <button mat-raised-button color="primary" (click)="editingTeamId ? updateTeam() : createTeam()" [disabled]="teamSaving || !newTeam.name">
+                    <mat-icon>save</mat-icon> {{ editingTeamId ? 'Save Changes' : 'Create Team' }}
                   </button>
-                  <button mat-icon-button color="warn" matTooltip="Delete" (click)="deleteTeam(t)">
-                    <mat-icon>delete</mat-icon>
-                  </button>
+                  <button mat-button (click)="editingTeamId ? cancelTeamEdit() : (showTeamForm = false)">Cancel</button>
                 </mat-card-actions>
               </mat-card>
+            }
+    
+            <div class="teams-grid">
+              @for (t of teams; track t) {
+                <mat-card class="team-card" [style.border-left-color]="t.color_hex || 'var(--accent)'">
+                  <mat-card-header>
+                    <mat-card-title>{{ t.name }}</mat-card-title>
+                    @if (t.team_type) {
+                      <mat-card-subtitle>{{ t.team_type | uppercase }} Team</mat-card-subtitle>
+                    }
+                  </mat-card-header>
+                  <mat-card-content>
+                    @if (t.description) {
+                      <p>{{ t.description }}</p>
+                    }
+                    <div class="team-meta">
+                      @if (t.max_members) {
+                        <span><mat-icon>group</mat-icon> Max: {{ t.max_members }}</span>
+                      }
+                      <span><mat-icon>{{ t.is_persistent ? 'lock' : 'lock_open' }}</mat-icon> {{ t.is_persistent ? 'Persistent' : 'Temporary' }}</span>
+                    </div>
+                  </mat-card-content>
+                  <mat-card-actions>
+                    <button mat-icon-button matTooltip="Edit" (click)="startEditTeam(t)">
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    <button mat-icon-button color="warn" matTooltip="Delete" (click)="deleteTeam(t)">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  </mat-card-actions>
+                </mat-card>
+              }
             </div>
             @if (teams.length === 0) {
               <tn-empty-state icon="groups" title="No teams configured"
-                              message="Create a team to group operators for an exercise." />
+                message="Create a team to group operators for an exercise." />
             }
           </div>
         </mat-tab>
-
+    
         <!-- ===== Nations Tab ===== -->
         <mat-tab label="Nations ({{ nations.length }})">
           <div class="tab-content">
             <div class="nations-grid">
-              <mat-card *ngFor="let n of nations" class="nation-card">
-                <div class="nation-flag">{{ n.flag_emoji }}</div>
-                <div class="nation-info">
-                  <strong>{{ n.name }}</strong>
-                  <span class="nation-code">{{ n.iso_alpha3 }}</span>
-                </div>
-                <div class="nation-badges">
-                  <mat-chip-set>
-                    <mat-chip *ngIf="n.is_nato" class="badge-nato">NATO</mat-chip>
-                    <mat-chip *ngIf="n.is_fvey" class="badge-fvey">FVEY</mat-chip>
-                  </mat-chip-set>
-                </div>
-              </mat-card>
+              @for (n of nations; track n) {
+                <mat-card class="nation-card">
+                  <div class="nation-flag">{{ n.flag_emoji }}</div>
+                  <div class="nation-info">
+                    <strong>{{ n.name }}</strong>
+                    <span class="nation-code">{{ n.iso_alpha3 }}</span>
+                  </div>
+                  <div class="nation-badges">
+                    <mat-chip-set>
+                      @if (n.is_nato) {
+                        <mat-chip class="badge-nato">NATO</mat-chip>
+                      }
+                      @if (n.is_fvey) {
+                        <mat-chip class="badge-fvey">FVEY</mat-chip>
+                      }
+                    </mat-chip-set>
+                  </div>
+                </mat-card>
+              }
             </div>
           </div>
         </mat-tab>
-
+    
         <!-- ===== Coalitions Tab ===== -->
         <mat-tab label="Coalitions">
           <div class="tab-content">
-            <mat-card *ngFor="let c of coalitions" class="coalition-card">
-              <mat-card-header>
-                <mat-card-title>{{ c.name }}</mat-card-title>
-                <mat-card-subtitle>{{ c.slug }}</mat-card-subtitle>
-              </mat-card-header>
-              <mat-card-content>
-                <p>{{ c.description }}</p>
-              </mat-card-content>
-            </mat-card>
+            @for (c of coalitions; track c) {
+              <mat-card class="coalition-card">
+                <mat-card-header>
+                  <mat-card-title>{{ c.name }}</mat-card-title>
+                  <mat-card-subtitle>{{ c.slug }}</mat-card-subtitle>
+                </mat-card-header>
+                <mat-card-content>
+                  <p>{{ c.description }}</p>
+                </mat-card-content>
+              </mat-card>
+            }
           </div>
         </mat-tab>
-
+    
         <!-- ===== Directory Tab ===== -->
         <mat-tab label="Directory">
           <div class="tab-content">
@@ -354,102 +379,110 @@ type AuthZone = AuthZonePolicy;
                 <mat-icon>create_new_folder</mat-icon> {{ (showOUForm || editingOuId) ? 'Cancel' : 'Add OU' }}
               </button>
             </div>
-
+    
             <!-- Add / Edit OU Form -->
-            <mat-card *ngIf="showOUForm || editingOuId" class="add-form-card">
-              <mat-card-header><mat-card-title>{{ editingOuId ? 'Edit OU' : 'New OU' }}</mat-card-title></mat-card-header>
-              <mat-card-content>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>OU Name</mat-label>
-                    <input matInput [(ngModel)]="newOU.name" placeholder="HQ Division">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Slug</mat-label>
-                    <input matInput [(ngModel)]="newOU.slug" placeholder="hq-division">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Type</mat-label>
-                    <mat-select [(ngModel)]="newOU.ou_type" panelClass="tn-select-panel">
-                      <mat-option value="department">Department</mat-option>
-                      <mat-option value="division">Division</mat-option>
-                      <mat-option value="team">Team</mat-option>
-                      <mat-option value="custom">Custom</mat-option>
-                    </mat-select>
-                  </mat-form-field>
-                </div>
-              </mat-card-content>
-              <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="editingOuId ? updateOu() : createOU()" [disabled]="ouSaving || !newOU.name || !newOU.slug">
-                  <mat-icon>save</mat-icon> {{ editingOuId ? 'Save Changes' : 'Create OU' }}
-                </button>
-                <button mat-button (click)="editingOuId ? cancelOuEdit() : (showOUForm = false)">Cancel</button>
-              </mat-card-actions>
-            </mat-card>
-
-            <div *ngFor="let ou of ouTree" class="ou-node">
-              <mat-icon>folder</mat-icon>
-              <strong>{{ ou.name }}</strong> ({{ ou.ou_type }})
-              <button mat-icon-button matTooltip="Edit" (click)="startEditOu(ou)">
-                <mat-icon>edit</mat-icon>
-              </button>
-              <div *ngFor="let child of ou.children" class="ou-child">
-                <mat-icon>subdirectory_arrow_right</mat-icon>
-                {{ child.name }} ({{ child.ou_type }})
-                <button mat-icon-button matTooltip="Edit" (click)="startEditOu(child)">
+            @if (showOUForm || editingOuId) {
+              <mat-card class="add-form-card">
+                <mat-card-header><mat-card-title>{{ editingOuId ? 'Edit OU' : 'New OU' }}</mat-card-title></mat-card-header>
+                <mat-card-content>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>OU Name</mat-label>
+                      <input matInput [(ngModel)]="newOU.name" placeholder="HQ Division">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Slug</mat-label>
+                      <input matInput [(ngModel)]="newOU.slug" placeholder="hq-division">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Type</mat-label>
+                      <mat-select [(ngModel)]="newOU.ou_type" panelClass="tn-select-panel">
+                        <mat-option value="department">Department</mat-option>
+                        <mat-option value="division">Division</mat-option>
+                        <mat-option value="team">Team</mat-option>
+                        <mat-option value="custom">Custom</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                </mat-card-content>
+                <mat-card-actions>
+                  <button mat-raised-button color="primary" (click)="editingOuId ? updateOu() : createOU()" [disabled]="ouSaving || !newOU.name || !newOU.slug">
+                    <mat-icon>save</mat-icon> {{ editingOuId ? 'Save Changes' : 'Create OU' }}
+                  </button>
+                  <button mat-button (click)="editingOuId ? cancelOuEdit() : (showOUForm = false)">Cancel</button>
+                </mat-card-actions>
+              </mat-card>
+            }
+    
+            @for (ou of ouTree; track ou) {
+              <div class="ou-node">
+                <mat-icon>folder</mat-icon>
+                <strong>{{ ou.name }}</strong> ({{ ou.ou_type }})
+                <button mat-icon-button matTooltip="Edit" (click)="startEditOu(ou)">
                   <mat-icon>edit</mat-icon>
                 </button>
+                @for (child of ou.children; track child) {
+                  <div class="ou-child">
+                    <mat-icon>subdirectory_arrow_right</mat-icon>
+                    {{ child.name }} ({{ child.ou_type }})
+                    <button mat-icon-button matTooltip="Edit" (click)="startEditOu(child)">
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                  </div>
+                }
               </div>
-            </div>
+            }
             @if (ouTree.length === 0) {
               <tn-empty-state icon="account_tree" title="No OUs configured"
-                              message="Organizational units appear here once synced or created." />
+                message="Organizational units appear here once synced or created." />
             }
-
+    
             <mat-divider style="margin: 24px 0;"></mat-divider>
-
+    
             <div class="tab-toolbar">
               <h3 style="margin: 0;">Security Groups</h3>
               <button mat-raised-button color="accent" (click)="editingGroupId ? cancelGroupEdit() : (showGroupForm = !showGroupForm)">
                 <mat-icon>security</mat-icon> {{ (showGroupForm || editingGroupId) ? 'Cancel' : 'Add Group' }}
               </button>
             </div>
-
+    
             <!-- Add / Edit Security Group Form -->
-            <mat-card *ngIf="showGroupForm || editingGroupId" class="add-form-card">
-              <mat-card-header><mat-card-title>{{ editingGroupId ? 'Edit Group' : 'New Group' }}</mat-card-title></mat-card-header>
-              <mat-card-content>
-                <div class="form-row">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Group Name</mat-label>
-                    <input matInput [(ngModel)]="newGroup.name" placeholder="Range Operators">
+            @if (showGroupForm || editingGroupId) {
+              <mat-card class="add-form-card">
+                <mat-card-header><mat-card-title>{{ editingGroupId ? 'Edit Group' : 'New Group' }}</mat-card-title></mat-card-header>
+                <mat-card-content>
+                  <div class="form-row">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Group Name</mat-label>
+                      <input matInput [(ngModel)]="newGroup.name" placeholder="Range Operators">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Slug</mat-label>
+                      <input matInput [(ngModel)]="newGroup.slug" placeholder="range-operators">
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Type</mat-label>
+                      <mat-select [(ngModel)]="newGroup.group_type" panelClass="tn-select-panel">
+                        <mat-option value="access">Access</mat-option>
+                        <mat-option value="role">Role</mat-option>
+                        <mat-option value="distribution">Distribution</mat-option>
+                      </mat-select>
+                    </mat-form-field>
+                  </div>
+                  <mat-form-field appearance="outline" class="full-width">
+                    <mat-label>Description</mat-label>
+                    <input matInput [(ngModel)]="newGroup.description">
                   </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Slug</mat-label>
-                    <input matInput [(ngModel)]="newGroup.slug" placeholder="range-operators">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Type</mat-label>
-                    <mat-select [(ngModel)]="newGroup.group_type" panelClass="tn-select-panel">
-                      <mat-option value="access">Access</mat-option>
-                      <mat-option value="role">Role</mat-option>
-                      <mat-option value="distribution">Distribution</mat-option>
-                    </mat-select>
-                  </mat-form-field>
-                </div>
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Description</mat-label>
-                  <input matInput [(ngModel)]="newGroup.description">
-                </mat-form-field>
-              </mat-card-content>
-              <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="editingGroupId ? updateGroup() : createGroup()" [disabled]="groupSaving || !newGroup.name || !newGroup.slug">
-                  <mat-icon>save</mat-icon> {{ editingGroupId ? 'Save Changes' : 'Create Group' }}
-                </button>
-                <button mat-button (click)="editingGroupId ? cancelGroupEdit() : (showGroupForm = false)">Cancel</button>
-              </mat-card-actions>
-            </mat-card>
-
+                </mat-card-content>
+                <mat-card-actions>
+                  <button mat-raised-button color="primary" (click)="editingGroupId ? updateGroup() : createGroup()" [disabled]="groupSaving || !newGroup.name || !newGroup.slug">
+                    <mat-icon>save</mat-icon> {{ editingGroupId ? 'Save Changes' : 'Create Group' }}
+                  </button>
+                  <button mat-button (click)="editingGroupId ? cancelGroupEdit() : (showGroupForm = false)">Cancel</button>
+                </mat-card-actions>
+              </mat-card>
+            }
+    
             <table mat-table [dataSource]="securityGroups" class="full-width">
               <ng-container matColumnDef="name">
                 <th mat-header-cell *matHeaderCellDef>Name</th>
@@ -476,39 +509,41 @@ type AuthZone = AuthZonePolicy;
             </table>
           </div>
         </mat-tab>
-
+    
         <!-- ===== AD Sync Tab ===== -->
         <mat-tab label="AD Sync">
           <div class="tab-content">
-            <mat-card class="sync-card" *ngIf="adSyncStatus">
-              <mat-card-header>
-                <mat-card-title>
-                  <mat-icon [class]="adSyncStatus.connected ? 'status-online' : 'status-offline'">
-                    {{ adSyncStatus.connected ? 'cloud_done' : 'cloud_off' }}
-                  </mat-icon>
-                  AD/LDAP Federation
-                </mat-card-title>
-              </mat-card-header>
-              <mat-card-content>
-                <div class="sync-stats">
-                  <div><strong>Users Synced:</strong> {{ adSyncStatus.users_synced }}</div>
-                  <div><strong>Groups Synced:</strong> {{ adSyncStatus.groups_synced }}</div>
-                  <div><strong>Last Sync:</strong> {{ adSyncStatus.last_sync_at || 'Never' }}</div>
-                </div>
-              </mat-card-content>
-              <mat-card-actions>
-                <button mat-raised-button color="primary" (click)="triggerSync()">
-                  <mat-icon>sync</mat-icon> Trigger Sync
-                </button>
-              </mat-card-actions>
-            </mat-card>
+            @if (adSyncStatus) {
+              <mat-card class="sync-card">
+                <mat-card-header>
+                  <mat-card-title>
+                    <mat-icon [class]="adSyncStatus.connected ? 'status-online' : 'status-offline'">
+                      {{ adSyncStatus.connected ? 'cloud_done' : 'cloud_off' }}
+                    </mat-icon>
+                    AD/LDAP Federation
+                  </mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="sync-stats">
+                    <div><strong>Users Synced:</strong> {{ adSyncStatus.users_synced }}</div>
+                    <div><strong>Groups Synced:</strong> {{ adSyncStatus.groups_synced }}</div>
+                    <div><strong>Last Sync:</strong> {{ adSyncStatus.last_sync_at || 'Never' }}</div>
+                  </div>
+                </mat-card-content>
+                <mat-card-actions>
+                  <button mat-raised-button color="primary" (click)="triggerSync()">
+                    <mat-icon>sync</mat-icon> Trigger Sync
+                  </button>
+                </mat-card-actions>
+              </mat-card>
+            }
           </div>
         </mat-tab>
-
+    
         <!-- ===== Auth Zones Tab ===== -->
         <mat-tab label="Auth Zones">
           <div class="tab-content">
-            <ng-container *ngFor="let z of authZones">
+            @for (z of authZones; track z) {
               <mat-card class="zone-card">
                 <mat-card-header>
                   <mat-card-title>{{ z.zone_name }}</mat-card-title>
@@ -528,68 +563,69 @@ type AuthZone = AuthZonePolicy;
                   </button>
                 </mat-card-actions>
               </mat-card>
-
               <!-- Auth Zone Inline Edit Form -->
-              <mat-card *ngIf="editingZoneId === z.id" class="add-form-card">
-                <mat-card-header><mat-card-title>Edit Auth Zone</mat-card-title></mat-card-header>
-                <mat-card-content>
-                  <div class="form-row">
-                    <mat-form-field appearance="outline">
-                      <mat-label>Zone Name</mat-label>
-                      <input matInput [(ngModel)]="zoneForm.zone_name">
-                    </mat-form-field>
-                    <mat-form-field appearance="outline">
-                      <mat-label>Description</mat-label>
-                      <input matInput [(ngModel)]="zoneForm.description">
-                    </mat-form-field>
-                  </div>
-                  <div class="form-row">
-                    <mat-form-field appearance="outline">
-                      <mat-label>Allowed Methods</mat-label>
-                      <input matInput [(ngModel)]="zoneForm.allowed_methods" placeholder="password,cac,token">
-                    </mat-form-field>
-                    <mat-form-field appearance="outline">
-                      <mat-label>Clearance Required</mat-label>
-                      <mat-select [(ngModel)]="zoneForm.clearance_required" panelClass="tn-select-panel">
-                        <mat-option value="unclassified">Unclassified</mat-option>
-                        <mat-option value="protected">Protected</mat-option>
-                        <mat-option value="confidential">Confidential</mat-option>
-                        <mat-option value="secret">Secret</mat-option>
-                        <mat-option value="top_secret">Top Secret</mat-option>
-                      </mat-select>
-                    </mat-form-field>
-                  </div>
-                  <div class="form-row">
-                    <mat-form-field appearance="outline">
-                      <mat-label>Require MFA</mat-label>
-                      <mat-select [(ngModel)]="zoneForm.require_mfa" panelClass="tn-select-panel">
-                        <mat-option [value]="true">Yes</mat-option>
-                        <mat-option [value]="false">No</mat-option>
-                      </mat-select>
-                    </mat-form-field>
-                    <mat-form-field appearance="outline">
-                      <mat-label>Session Timeout (min)</mat-label>
-                      <input matInput type="number" [(ngModel)]="zoneForm.session_timeout_minutes">
-                    </mat-form-field>
-                    <mat-form-field appearance="outline">
-                      <mat-label>Max Failed Attempts</mat-label>
-                      <input matInput type="number" [(ngModel)]="zoneForm.max_failed_attempts">
-                    </mat-form-field>
-                  </div>
-                </mat-card-content>
-                <mat-card-actions>
-                  <button mat-raised-button color="primary" (click)="updateZone()" [disabled]="zoneSaving || !zoneForm.zone_name">
-                    <mat-icon>save</mat-icon> Save Changes
-                  </button>
-                  <button mat-button (click)="cancelZoneEdit()">Cancel</button>
-                </mat-card-actions>
-              </mat-card>
-            </ng-container>
+              @if (editingZoneId === z.id) {
+                <mat-card class="add-form-card">
+                  <mat-card-header><mat-card-title>Edit Auth Zone</mat-card-title></mat-card-header>
+                  <mat-card-content>
+                    <div class="form-row">
+                      <mat-form-field appearance="outline">
+                        <mat-label>Zone Name</mat-label>
+                        <input matInput [(ngModel)]="zoneForm.zone_name">
+                      </mat-form-field>
+                      <mat-form-field appearance="outline">
+                        <mat-label>Description</mat-label>
+                        <input matInput [(ngModel)]="zoneForm.description">
+                      </mat-form-field>
+                    </div>
+                    <div class="form-row">
+                      <mat-form-field appearance="outline">
+                        <mat-label>Allowed Methods</mat-label>
+                        <input matInput [(ngModel)]="zoneForm.allowed_methods" placeholder="password,cac,token">
+                      </mat-form-field>
+                      <mat-form-field appearance="outline">
+                        <mat-label>Clearance Required</mat-label>
+                        <mat-select [(ngModel)]="zoneForm.clearance_required" panelClass="tn-select-panel">
+                          <mat-option value="unclassified">Unclassified</mat-option>
+                          <mat-option value="protected">Protected</mat-option>
+                          <mat-option value="confidential">Confidential</mat-option>
+                          <mat-option value="secret">Secret</mat-option>
+                          <mat-option value="top_secret">Top Secret</mat-option>
+                        </mat-select>
+                      </mat-form-field>
+                    </div>
+                    <div class="form-row">
+                      <mat-form-field appearance="outline">
+                        <mat-label>Require MFA</mat-label>
+                        <mat-select [(ngModel)]="zoneForm.require_mfa" panelClass="tn-select-panel">
+                          <mat-option [value]="true">Yes</mat-option>
+                          <mat-option [value]="false">No</mat-option>
+                        </mat-select>
+                      </mat-form-field>
+                      <mat-form-field appearance="outline">
+                        <mat-label>Session Timeout (min)</mat-label>
+                        <input matInput type="number" [(ngModel)]="zoneForm.session_timeout_minutes">
+                      </mat-form-field>
+                      <mat-form-field appearance="outline">
+                        <mat-label>Max Failed Attempts</mat-label>
+                        <input matInput type="number" [(ngModel)]="zoneForm.max_failed_attempts">
+                      </mat-form-field>
+                    </div>
+                  </mat-card-content>
+                  <mat-card-actions>
+                    <button mat-raised-button color="primary" (click)="updateZone()" [disabled]="zoneSaving || !zoneForm.zone_name">
+                      <mat-icon>save</mat-icon> Save Changes
+                    </button>
+                    <button mat-button (click)="cancelZoneEdit()">Cancel</button>
+                  </mat-card-actions>
+                </mat-card>
+              }
+            }
           </div>
         </mat-tab>
       </mat-tab-group>
     </div>
-  `,
+    `,
   styles: [`
         .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
     .header-left { display: flex; align-items: center; gap: 16px; }
@@ -631,6 +667,10 @@ type AuthZone = AuthZonePolicy;
   `],
 })
 export class UsersComponent implements OnInit {
+  private api = inject(ApiService);
+  private directory = inject(DirectoryApiService);
+  private snack = inject(MatSnackBar);
+
   users: UserFull[] = [];
   teams: TeamFull[] = [];
   nations: Nation[] = [];
@@ -689,12 +729,6 @@ export class UsersComponent implements OnInit {
   ouSaving = false;
   editingGroupId: string | null = null;
   groupSaving = false;
-
-  constructor(
-    private api: ApiService,
-    private directory: DirectoryApiService,
-    private snack: MatSnackBar,
-  ) {}
 
   emptyUser(): any {
     return {

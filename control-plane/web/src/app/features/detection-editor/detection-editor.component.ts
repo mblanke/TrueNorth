@@ -1,5 +1,5 @@
-import { Component, signal, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, signal, OnInit, OnDestroy, inject } from '@angular/core';
+import { DatePipe, UpperCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { MatCardModule } from '@angular/material/card';
@@ -81,7 +81,6 @@ falsepositives:
 
 @Component({
   selector: 'tn-detection-ai-dialog',
-  standalone: true,
   imports: [
     FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
     MatInputModule, MatSelectModule,
@@ -125,11 +124,11 @@ falsepositives:
   `],
 })
 export class DetectionAiDialogComponent {
+  dialogRef = inject<MatDialogRef<DetectionAiDialogComponent, AiDraftRequest>>(MatDialogRef);
+
   technique = '';
   dataSource = 'sysmon';
   format = 'sigma';
-
-  constructor(public dialogRef: MatDialogRef<DetectionAiDialogComponent, AiDraftRequest>) {}
 
   isValidTechnique(): boolean {
     return MITRE_ID_PATTERN.test(this.technique.trim().toUpperCase());
@@ -147,14 +146,26 @@ export class DetectionAiDialogComponent {
 
 @Component({
   selector: 'tn-detection-editor',
-  standalone: true,
   imports: [
-    CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
-    MatFormFieldModule, MatInputModule, MatSelectModule, MatChipsModule,
-    MatCheckboxModule, MatTableModule, MatSnackBarModule, MatDialogModule,
-    MatProgressSpinnerModule, MatTooltipModule,
-    EmptyStateComponent, EnterStaggerDirective,
-  ],
+    DatePipe,
+    UpperCasePipe,
+    FormsModule,
+    MatCardModule,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule,
+    MatChipsModule,
+    MatCheckboxModule,
+    MatTableModule,
+    MatSnackBarModule,
+    MatDialogModule,
+    MatProgressSpinnerModule,
+    MatTooltipModule,
+    EmptyStateComponent,
+    EnterStaggerDirective
+],
   template: `
     <div class="page-container">
       <div class="page-header">
@@ -312,10 +323,11 @@ export class DetectionAiDialogComponent {
               <button mat-stroked-button class="ai-button"
                       [disabled]="aiDrafting()" (click)="openAiDraft()">
                 @if (aiDrafting()) {
-                  <mat-spinner diameter="16"></mat-spinner> Drafting...
+                  <mat-spinner diameter="16"></mat-spinner>
                 } @else {
-                  <mat-icon>auto_awesome</mat-icon> Draft with AI
+                  <mat-icon>auto_awesome</mat-icon>
                 }
+                {{ aiDrafting() ? 'Drafting...' : 'Draft with AI' }}
               </button>
               <button mat-icon-button matTooltip="Validate YAML" (click)="validateYaml()">
                 <mat-icon>check_circle</mat-icon>
@@ -542,6 +554,11 @@ export class DetectionAiDialogComponent {
   `],
 })
 export class DetectionEditorComponent implements OnInit, OnDestroy {
+  private api = inject(ApiService);
+  private assets = inject(StaticAssetsService);
+  private dialog = inject(MatDialog);
+  private snackBar = inject(MatSnackBar);
+
   /** Sigma levels map onto the shared severity chips; only one name differs. */
   levelClass(level: string): string {
     return level === 'informational' ? 'sev-info' : `sev-${level}`;
@@ -586,13 +603,6 @@ export class DetectionEditorComponent implements OnInit, OnDestroy {
 
   private searchInput = new Subject<string>();
   private destroyed = new Subject<void>();
-
-  constructor(
-    private api: ApiService,
-    private assets: StaticAssetsService,
-    private dialog: MatDialog,
-    private snackBar: MatSnackBar,
-  ) {}
 
   ngOnInit() {
     this.searchInput

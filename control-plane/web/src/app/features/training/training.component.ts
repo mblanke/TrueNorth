@@ -123,7 +123,6 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
 
 @Component({
   selector: 'tn-training',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, ReactiveFormsModule,
     MatCardModule, MatButtonModule, MatIconModule, MatTabsModule,
@@ -582,6 +581,10 @@ function sortRows<T>(rows: T[], sort: Sort, key: (row: T, column: string) => unk
   `],
 })
 export class TrainingComponent implements OnInit {
+  private api = inject(ApiService);
+  private notify = inject(NotificationService);
+  private fb = inject(FormBuilder);
+
   private readonly route = inject(ActivatedRoute);
 
   // Tab state
@@ -683,11 +686,7 @@ export class TrainingComponent implements OnInit {
     }),
   );
 
-  constructor(
-    private api: ApiService,
-    private notify: NotificationService,
-    private fb: FormBuilder,
-  ) {
+  constructor() {
     this.courseForm = this.fb.group({
       name: ['', Validators.required],
       description: ['', Validators.required],

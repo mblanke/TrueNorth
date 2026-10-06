@@ -1,4 +1,4 @@
-﻿import { Component, OnInit, signal } from '@angular/core';
+﻿import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -27,7 +27,6 @@ interface ExternalPlatform {
 
 @Component({
   selector: 'tn-integrations',
-  standalone: true,
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatTabsModule, MatTableModule, MatFormFieldModule, MatInputModule,
@@ -200,14 +199,14 @@ interface ExternalPlatform {
   `],
 })
 export class IntegrationsComponent implements OnInit {
+  private api = inject(ApiService);
+
   platforms = signal<ExternalPlatform[]>([]);
   loading = signal(true);
   showAdd = false;
   editingPlatformId: string | null = null;
   platformSaving = false;
   newPlatform: any = { name: '', slug: '', base_url: '', auth_type: 'lti13', platform_type: 'moodle' };
-
-  constructor(private api: ApiService) {}
 
   ngOnInit() {
     this.loadPlatforms();

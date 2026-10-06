@@ -1,7 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -37,7 +37,6 @@ import {
 /** Objectives → a drafted scenario, via the orchestrator. */
 @Component({
   selector: 'tn-scenario-draft-dialog',
-  standalone: true,
   imports: [
     FormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule,
     MatInputModule, MatSelectModule,
@@ -79,11 +78,11 @@ import {
   `],
 })
 export class ScenarioDraftDialogComponent {
+  ref = inject<MatDialogRef<ScenarioDraftDialogComponent>>(MatDialogRef);
+
   objectivesText = '';
   difficulty = 'intermediate';
   durationMinutes = 60;
-
-  constructor(public ref: MatDialogRef<ScenarioDraftDialogComponent>) {}
 
   objectives(): string[] {
     return this.objectivesText.split('\n').map(o => o.trim()).filter(Boolean).slice(0, 10);
@@ -108,13 +107,23 @@ export class ScenarioDraftDialogComponent {
  */
 @Component({
   selector: 'tn-scenario-studio',
-  standalone: true,
   imports: [
-    CommonModule, FormsModule, RouterLink, MatButtonModule, MatCardModule, MatChipsModule,
-    MatDialogModule, MatFormFieldModule, MatIconModule, MatInputModule,
-    MatProgressSpinnerModule, MatSelectModule, MatSlideToggleModule, MatTooltipModule,
-    EmptyStateComponent, EnterStaggerDirective,
-  ],
+    DatePipe,
+    FormsModule,
+    MatButtonModule,
+    MatCardModule,
+    MatChipsModule,
+    MatDialogModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    MatSelectModule,
+    MatSlideToggleModule,
+    MatTooltipModule,
+    EmptyStateComponent,
+    EnterStaggerDirective
+],
   template: `
     <div class="page-container">
       @if (!editorOpen()) {

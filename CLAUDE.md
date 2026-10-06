@@ -62,6 +62,6 @@ because that failure mode is not exclusive to weak models.
 
 ## Repo facts
 
-Python (FastAPI, Celery, SQLAlchemy) + Angular 17 (Material M3) + Terraform.
+Python (FastAPI, Celery, SQLAlchemy) + Angular 21 (Material M3) + Terraform.
 Tests: `.venv/bin/python -m pytest`. Lint: `.venv/bin/python -m ruff`.
 The API is on `:4200` via nginx (`/api/`), not `:8000`.

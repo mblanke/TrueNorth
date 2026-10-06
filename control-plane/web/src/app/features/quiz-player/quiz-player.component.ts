@@ -1,5 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnDestroy, OnInit, computed, signal, inject } from '@angular/core';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -14,12 +13,15 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
 
 @Component({
   selector: 'tn-quiz-player',
-  standalone: true,
   imports: [
-    CommonModule, RouterModule, MatButtonModule, MatCardModule,
-    MatIconModule, MatProgressBarModule, MatSnackBarModule,
-    LottieIconComponent,
-  ],
+    RouterModule,
+    MatButtonModule,
+    MatCardModule,
+    MatIconModule,
+    MatProgressBarModule,
+    MatSnackBarModule,
+    LottieIconComponent
+],
   template: `
     <div class="player-shell">
       @if (!attempt() && !result()) {
@@ -197,6 +199,11 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
   `],
 })
 export class QuizPlayerComponent implements OnInit, OnDestroy {
+  private api = inject(ApiService);
+  private route = inject(ActivatedRoute);
+  private motion = inject(MotionService);
+  private snack = inject(MatSnackBar);
+
   quiz = signal<any | null>(null);
   attempt = signal<any | null>(null);
   result = signal<any | null>(null);
@@ -210,13 +217,6 @@ export class QuizPlayerComponent implements OnInit, OnDestroy {
 
   private quizId = '';
   private timerHandle: any = null;
-
-  constructor(
-    private api: ApiService,
-    private route: ActivatedRoute,
-    private motion: MotionService,
-    private snack: MatSnackBar,
-  ) {}
 
   ngOnInit(): void {
     this.quizId = this.route.snapshot.queryParamMap.get('quiz') ?? '';

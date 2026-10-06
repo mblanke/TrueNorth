@@ -105,14 +105,14 @@ def _cell_node(cid: str, label: str, node_type: str, os_template: str, ip: str, 
                     "attrs": {
                         "circle": {"fill": color, "stroke": "var(--border)", "strokeWidth": 1, "r": 5, "magnet": True}
                     },
-                    "label": {"position": "outside"},
+                    "label": {"position": {"name": "outside"}},
                 },
                 "out": {
                     "position": "right",
                     "attrs": {
                         "circle": {"fill": color, "stroke": "var(--border)", "strokeWidth": 1, "r": 5, "magnet": True}
                     },
-                    "label": {"position": "outside"},
+                    "label": {"position": {"name": "outside"}},
                 },
             },
             "items": [{"group": "in", "id": "in1"}, {"group": "out", "id": "out1"}],

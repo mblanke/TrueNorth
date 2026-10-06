@@ -1,7 +1,6 @@
 import {
   Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, effect, inject,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { ApiService, CompetencyHeatmap } from '@core/services/api.service';
 import { MatCardModule } from '@angular/material/card';
 import { MatSelectModule } from '@angular/material/select';
@@ -25,8 +24,7 @@ type HeatmapData = CompetencyHeatmap;
 
 @Component({
   selector: 'tn-competency-heatmap',
-  standalone: true,
-  imports: [CommonModule, MatCardModule, MatSelectModule, MatFormFieldModule, FormsModule],
+  imports: [MatCardModule, MatSelectModule, MatFormFieldModule, FormsModule],
   template: `
     <mat-card>
       <mat-card-header>
@@ -57,6 +55,8 @@ type HeatmapData = CompetencyHeatmap;
   `],
 })
 export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
+  private api = inject(ApiService);
+
   @ViewChild('chartContainer') chartContainer!: ElementRef<HTMLDivElement>;
   @Input() tenantId?: string;
 
@@ -65,7 +65,7 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
   private lastData: HeatmapData | null = null;
   private readonly theme = inject(ThemeService);
 
-  constructor(private api: ApiService) {
+  constructor() {
     // ECharts snapshots CSS variables at option-build time, so a theme switch
     // must rebuild the option or the old palette sticks.
     effect(() => {

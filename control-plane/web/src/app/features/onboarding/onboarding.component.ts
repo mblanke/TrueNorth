@@ -1,5 +1,4 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MatStepperModule } from '@angular/material/stepper';
@@ -48,9 +47,7 @@ interface ProfileForm {
  */
 @Component({
   selector: 'tn-onboarding',
-  standalone: true,
   imports: [
-    CommonModule,
     FormsModule,
     MatStepperModule,
     MatCardModule,
@@ -60,8 +57,8 @@ interface ProfileForm {
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
-    MatListModule,
-  ],
+    MatListModule
+],
   template: `
     <div class="shell">
       <mat-card class="card">
