@@ -246,3 +246,61 @@ def test_only_admins_can_run_the_clock_by_hand(client, role, code):
     assert r.status_code == code
     if code == 200:
         assert set(r.json()) == {"provisioning", "activated", "completed", "torn_down", "reminders"}
+
+
+def _second_booking(db, rng: Range, start: datetime) -> ScheduledEvent:
+    ev = ScheduledEvent(
+        name="Second class",
+        state=EventState.scheduled,
+        tenant_id=uuid.UUID(DEV_TENANT),
+        range_id=rng.id,
+        start_time=start,
+        end_time=start + timedelta(hours=3),
+    )
+    db.add(ev)
+    db.flush()
+    return ev
+
+
+@pytest.mark.parametrize("gap", [timedelta(minutes=45), timedelta(days=7)])
+def test_the_next_booking_of_a_range_inherits_it_instead_of_losing_it(db_session, dispatched, gap):
+    """Back-to-back classes, or the same class next week: finishing the first must not
+    destroy the range the second needs (a destroyed range cannot be built again)."""
+    rng = _range(db_session)
+    first = _booking(db_session, rng=rng)
+    second = _second_booking(db_session, rng, END + gap)
+
+    clock.tick(db_session, now=START - LEAD)
+    rng.state = RangeState.ready
+    db_session.flush()
+    clock.tick(db_session, now=START)
+    clock.tick(db_session, now=END + GRACE)
+
+    assert _state(db_session, first) == EventState.completed
+    assert _state(db_session, rng) == RangeState.ready  # kept up
+    db_session.refresh(second)
+    assert (first.auto_provisioned, second.auto_provisioned) == (False, True)
+    assert [n for n, _ in dispatched] == ["provision_range"]
+
+    # The heir tears it down when it finishes.
+    clock.tick(db_session, now=second.start_time)
+    clock.tick(db_session, now=second.end_time + GRACE)
+    assert _state(db_session, second) == EventState.completed
+    assert _state(db_session, rng) == RangeState.destroying
+    assert [n for n, _ in dispatched] == ["provision_range", "destroy_range"]
+
+
+def test_ownership_is_recorded_with_the_build_even_if_dispatch_then_fails(db_session):
+    """auto_provisioned commits with the range's `provisioning` state, before dispatch,
+    so a failure after that cannot leave a built range nobody will tear down."""
+    rng = _range(db_session)
+    ev = _booking(db_session, rng=rng)
+    with (
+        patch("app.range_lifecycle.dispatch", side_effect=RuntimeError("broker exploded")),
+        pytest.raises(RuntimeError),
+    ):
+        clock.tick(db_session, now=START - LEAD)
+    db_session.refresh(ev)
+    db_session.refresh(rng)
+    assert rng.state == RangeState.provisioning
+    assert ev.auto_provisioned is True

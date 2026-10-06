@@ -95,6 +95,11 @@ What users need:
    - **It only tears down what it built.** A range that was already up is used as it
      is and left up. A range still being built when its booking ends or is cancelled is
      torn down by a later tick, once it can be.
+   - **The next booking of a range inherits it.** When a booking finishes and another
+     live booking of the same range exists (the next class in a series), ownership
+     passes to that booking and the range stays up. Only the last booking tears it
+     down. Destroyed ranges cannot be built again, so tearing down between sessions
+     would strand the next one.
    - **It is safe to run anywhere.** Every step is claimed with a guarded update, so
      the clock can run in every API replica at once. `SCHEDULER_CLOCK_ENABLED=false`
      turns it off, and `POST /schedule/tick` (`schedule:admin`) runs one pass by hand.
@@ -288,6 +293,19 @@ What users need:
       only tears down ranges it built from `created` or `failed`.
   - **Reminders go to the Instructor only, by email**, until the Student-feed question
     is answered. They are at most once: the booking is marked before sending.
+
+- 2026-10-06 — An adversarial review of slices 1–4 found these, now fixed:
+  - finishing one booking destroyed the range the next booking of it needed;
+  - the `scheduler_settings` migration failed when `create_all` ran first;
+  - the ownership flag was committed after the build;
+  - an edit could race the clock;
+  - `/tick` blocked the event loop.
+
+  Still open:
+  - `schedule:admin` is held by the `admin` role. If admins are per tenant, any
+    tenant's admin can change the platform-wide policy. It needs a platform-admin
+    notion.
+  - A cancelled booking sends no calendar cancellation yet (slice 6).
 
 ## Open questions
 

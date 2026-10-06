@@ -7,6 +7,7 @@ deployment will fit within the cluster capacity at a given time.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -196,6 +197,10 @@ def create_event(body: EventIn, db: Session = Depends(get_db), user: CurrentUser
     return _to_out(evt, warnings)
 
 
+def _same_instant(a: datetime, b: datetime) -> bool:
+    return a.replace(tzinfo=a.tzinfo or UTC) == b.replace(tzinfo=b.tzinfo or UTC)
+
+
 def _check_times(body) -> None:
     if body.end_time <= body.start_time:
         raise HTTPException(400, "end_time must be after start_time")
@@ -259,6 +264,8 @@ def update_event(
         else _admit(db, body, demand.resources, range_id, instructor_id, exclude_id=evt.id)
     )
 
+    if not _same_instant(evt.start_time, body.start_time):
+        evt.reminded_at = None  # moved: remind again for the new time
     evt.name = body.name
     evt.description = body.description
     evt.start_time = body.start_time
@@ -284,6 +291,7 @@ def schedule_event(event_id: str, db: Session = Depends(get_db), user: CurrentUs
     evt = _owned(db, event_id, user)
     warnings: list[str] = []
     if evt.state == EventState.draft:
+        service.resolve_range(db, user, str(evt.range_id) if evt.range_id else None)  # still buildable?
         need = Resources(evt.vcpu_total, evt.ram_mb_total, evt.disk_gb_total)
         warnings = _admit(db, evt, need, evt.range_id, evt.instructor_id, exclude_id=evt.id)
     return _move(db, user, evt, EventState.scheduled, warnings)
@@ -340,7 +348,7 @@ def _move(
 async def run_tick(db: Session = Depends(get_db)):
     """One clock pass, as the background clock runs every minute: provision at the lead,
     activate at the start, complete and tear down after the grace, send reminders."""
-    result = clock.tick(db)
+    result = await asyncio.to_thread(clock.tick, db)  # sync DB and broker calls: off the event loop
     await clock.send_reminders(result.reminders)
     return result.summary()
 

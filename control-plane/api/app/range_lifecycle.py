@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
@@ -46,17 +47,25 @@ def begin_destroy(db: Session, rng: Range) -> str | None:
 
 
 # -- For the scheduler ----------------------------------------------------------
-def provision_for_booking(db: Session, range_id: uuid.UUID) -> tuple[bool, str]:
+def provision_for_booking(
+    db: Session, range_id: uuid.UUID, before_build: Callable[[], None] | None = None
+) -> tuple[bool, str]:
     """Bring a booked range up. Returns (built_by_us, what happened).
 
     A range that is already up is used as it is and reported as not built by us, so the
-    scheduler will not tear it down afterwards.
+    scheduler will not tear it down afterwards. ``before_build`` runs just before the
+    build is committed, so the caller's record of owning it commits in the same
+    transaction: a crash after the commit cannot leave a built range nobody owns.
     """
     rng = db.get(Range, range_id)
     if rng is None or rng.deleted_at is not None:
         return False, "range no longer exists"
     if rng.state in UP_STATES:
         return False, f"range already {rng.state.value}"
+    if not rng.state.can_transition_to(RangeState.provisioning):
+        return False, f"Cannot provision range in state {rng.state.value}"
+    if before_build:
+        before_build()
     try:
         task = begin_provision(db, rng)
     except RangeTransitionError as exc:

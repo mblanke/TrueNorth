@@ -81,8 +81,12 @@ def tick(db: Session, now: datetime | None = None) -> TickResult:
         ScheduledEvent.end_time > now,
     ):
         if _claim(db, evt, S.provisioning):
-            built, what = range_lifecycle.provision_for_booking(db, evt.range_id)
-            evt.auto_provisioned = built
+            db.refresh(evt)  # the range the booking points at now, after any edit that won the row
+
+            def owned(evt=evt):
+                evt.auto_provisioned = True
+
+            _, what = range_lifecycle.provision_for_booking(db, evt.range_id, before_build=owned)
             service.audit_system(db, evt, "transition", f"scheduled -> provisioning; {what}")
             db.commit()
             res.provisioning += 1

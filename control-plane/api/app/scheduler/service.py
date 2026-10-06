@@ -246,6 +246,22 @@ def release_range(db: Session, evt: ScheduledEvent) -> str | None:
     """
     if not (evt.auto_provisioned and evt.range_id):
         return None
+    # Another live booking of the same range (the next class in a series) takes the range
+    # over instead: ranges cannot be built again once destroyed.
+    heir = (
+        db.query(ScheduledEvent)
+        .filter(
+            ScheduledEvent.range_id == evt.range_id,
+            ScheduledEvent.id != evt.id,
+            ScheduledEvent.state.in_(HOLDING),
+        )
+        .order_by(ScheduledEvent.start_time)
+        .first()
+    )
+    if heir is not None:
+        heir.auto_provisioned = True
+        evt.auto_provisioned = False
+        return f"range kept up for '{heir.name}' ({heir.id}), which now owns it"
     settled, what = range_lifecycle.destroy_for_booking(db, evt.range_id)
     if settled:
         evt.auto_provisioned = False
