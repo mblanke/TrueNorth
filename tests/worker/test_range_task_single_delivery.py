@@ -64,6 +64,7 @@ def db(tmp_path, monkeypatch):
             )
         )
     tables.network_reservations.create(engine)
+    tables.range_snapshots.create(engine)
     if hasattr(tables, "range_leases"):
         tables.range_leases.create(engine)
     monkeypatch.setattr(tasks, "DATABASE_URL", url)
@@ -278,12 +279,7 @@ def test_a_soft_time_limit_records_failed_and_releases_the_lease(db):
         tasks.provision_range.run(rid)
     with db.connect() as conn:
         state = conn.execute(sa.text("SELECT state FROM ranges WHERE id = :i"), {"i": rid}).scalar()
-        leases = (
-            conn.execute(sa.text("SELECT count(*) FROM range_leases")).scalar()
-            if hasattr(tables, "range_leases")
-            else 0
-        )
-    assert state == "failed" and leases == 0
+    assert state == "failed"
 
 
 def test_the_soft_limit_comes_before_the_hard_one_and_both_before_redelivery():
@@ -342,3 +338,107 @@ def test_the_soft_limit_is_not_held_up_by_a_hypervisor_call_in_a_thread(db):
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
     assert time.monotonic() - started < 1.5, "the cleanup waited for the hypervisor thread"
+
+
+# ── From the fourth re-review ──────────────────────────────────────────
+def _soft_limit_after(seconds: float):
+    """Raise SoftTimeLimitExceeded in this (main) thread after ``seconds``, as Celery does."""
+    import signal
+
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    def soft_limit(signum, frame):
+        raise SoftTimeLimitExceeded()
+
+    previous = signal.signal(signal.SIGALRM, soft_limit)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    return lambda: (signal.setitimer(signal.ITIMER_REAL, 0), signal.signal(signal.SIGALRM, previous))
+
+
+def test_after_the_soft_limit_the_hypervisor_calls_cleanup_runs():
+    """vSphere closes its session and client in finally / async-with exits; abandoning
+    the coroutine skipped them (leaked sessions)."""
+    import time
+
+    from celery.exceptions import SoftTimeLimitExceeded
+    from worker.fencing import run_async
+
+    cleaned = []
+
+    async def call():
+        try:
+            await asyncio.to_thread(time.sleep, 3)
+        finally:
+            cleaned.append("finally")
+
+    restore = _soft_limit_after(0.3)
+    started = time.monotonic()
+    try:
+        with pytest.raises(SoftTimeLimitExceeded):
+            run_async(call())
+    finally:
+        restore()
+    assert cleaned == ["finally"]
+    assert time.monotonic() - started < 1.5, "it waited for the hypervisor thread"
+
+
+def test_after_the_soft_limit_the_range_stays_leased_while_the_call_may_still_run(db, requeued):
+    """The hypervisor call can outlive the task in a thread; releasing the lease let a new
+    destroy run alongside it. The lease is kept (until it expires) instead."""
+    import time
+
+    if not hasattr(tables, "range_leases"):
+        pytest.skip("no lease table before the fix")
+
+    class StuckBackend:
+        async def destroy(self, range_id, output):
+            await asyncio.to_thread(time.sleep, 2)
+
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    rid = _range(db, "destroying", OUTPUT)
+    restore = _soft_limit_after(0.3)
+    try:
+        with patch.object(tasks, "_get_backend", return_value=StuckBackend()), pytest.raises(SoftTimeLimitExceeded):
+            tasks.destroy_range.run(rid)
+    finally:
+        restore()
+    with db.begin() as conn:
+        held = conn.execute(sa.text("SELECT count(*) FROM range_leases WHERE range_id = :i"), {"i": rid}).scalar()
+        assert held == 1, "the lease was released while the destroy may still be running"
+        conn.execute(sa.text("UPDATE ranges SET state = 'destroying' WHERE id = :i"), {"i": rid})  # the user retries
+    backend = SlowBackend()
+    with patch.object(tasks, "_get_backend", return_value=backend):
+        assert tasks.destroy_range.run(rid)["status"] == "deferred"
+    assert backend.calls == 0
+
+
+def test_stop_after_the_soft_limit_keeps_the_lease_too(db, requeued):
+    if not hasattr(tables, "range_leases"):
+        pytest.skip("no lease table before the fix")
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    rid = _range(db, "stopping", OUTPUT)
+    with patch.object(tasks, "_get_backend", side_effect=SoftTimeLimitExceeded()), pytest.raises(SoftTimeLimitExceeded):
+        tasks.stop_range.run(rid)
+    with db.connect() as conn:
+        assert conn.execute(sa.text("SELECT state FROM ranges WHERE id = :i"), {"i": rid}).scalar() == "failed"
+        assert conn.execute(sa.text("SELECT count(*) FROM range_leases")).scalar() == 1
+
+
+def test_a_restore_takes_the_range_lease(db, requeued):
+    """Two restores of one range (a stale-looking one re-sent) must not overlap."""
+    if not hasattr(tables, "range_leases"):
+        pytest.skip("no lease table before the fix")
+    rid = _range(db, "ready", OUTPUT)
+    with db.begin() as conn:
+        conn.execute(
+            tables.range_leases.insert().values(
+                range_id=rid, holder="other", expires_at=datetime.now(UTC) + timedelta(seconds=60)
+            )
+        )
+    with patch.object(tasks, "_get_backend") as backend:
+        result = tasks.restore_snapshot.run(rid, str(uuid.uuid4()))
+    backend.assert_not_called()
+    assert result["status"] == "deferred"
+    assert requeued and requeued[0]["task"] == "worker.tasks.restore_snapshot"

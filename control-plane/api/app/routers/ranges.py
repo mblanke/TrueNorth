@@ -127,9 +127,9 @@ _DELETABLE_RANGE_STATES = (RangeState.created, RangeState.destroyed)
 _RESERVING_EVENT_STATES = (EventState.draft, EventState.scheduled, EventState.active)
 
 
-# A restore runs at most 4 attempts of up to 3500 s (the worker's hard time limit) plus
-# retry backoff (at most 300 s each), and writes nothing in between: a `restoring` row
-# untouched for longer belongs to a worker that died.
+# A `restoring` row is stale when it has been untouched this long *and* no worker holds the
+# range's lease (a running restore always does, worker/fencing.py). Time alone is not
+# enough: it counts from the dispatch, so it includes time spent waiting in the queue.
 RESTORE_STALE_AFTER = timedelta(hours=5)
 
 
@@ -137,11 +137,23 @@ def _release_stale_restores(db: Session, range_id: uuid.UUID) -> None:
     """Give back a snapshot left `restoring` by a worker that died: `ready` again, so it
     can be restored or deleted. Without this it was stuck for good (restore: "not ready",
     delete: "is restoring")."""
+    if _range_leased(db, range_id):  # a worker is acting on the range right now
+        return
     db.query(RangeSnapshot).filter(
         RangeSnapshot.range_id == range_id,
         RangeSnapshot.snapshot_state == "restoring",
         RangeSnapshot.updated_at <= datetime.now(UTC) - RESTORE_STALE_AFTER,
     ).update({"snapshot_state": "ready"}, synchronize_session="fetch")
+
+
+def _range_leased(db: Session, range_id: uuid.UUID) -> bool:
+    """A worker holds the range's lease (worker/fencing.py): a restore under it is live."""
+    from ..models_range_ops import RangeLease
+
+    held = db.query(RangeLease.range_id).filter(
+        RangeLease.range_id == range_id, RangeLease.expires_at > datetime.now(UTC)
+    )
+    return held.first() is not None
 
 
 def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
@@ -153,15 +165,11 @@ def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
     that long belongs to a worker that died, and no longer blocks the range.
     """
     # tenant-safe: callers pass a range_id they already resolved through _tenant_range().
-    busy = (
-        db.query(RangeSnapshot.id)
-        .filter(
-            RangeSnapshot.range_id == range_id,
-            RangeSnapshot.snapshot_state == "restoring",
-            RangeSnapshot.updated_at > datetime.now(UTC) - RESTORE_STALE_AFTER,
-        )
-        .first()
+    restoring = db.query(RangeSnapshot.id).filter(
+        RangeSnapshot.range_id == range_id, RangeSnapshot.snapshot_state == "restoring"
     )
+    fresh = restoring.filter(RangeSnapshot.updated_at > datetime.now(UTC) - RESTORE_STALE_AFTER)
+    busy = fresh.first() or (_range_leased(db, range_id) and restoring.first())
     if busy:
         raise HTTPException(409, "A restore of this range is in progress")
 
