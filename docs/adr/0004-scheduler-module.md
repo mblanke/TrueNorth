@@ -280,7 +280,12 @@ What users need:
    - The organizer is `SCHEDULER_ORGANIZER_EMAIL`, else `SMTP_FROM`. Replies go to
      that mailbox and are not read back.
    - Sending is a background task and best effort.
-7. `calendar_backends/` seam with `null`, plus contract tests. `microsoft_graph` later.
+7. `calendar_backends/` seam with `null`, plus contract tests (done:
+   `scheduler/calendar_backends/`, seam `calendar` in the adapter contract suite).
+   - Every invite also goes to `CALENDAR_BACKEND` as a neutral `IcsEvent`: `publish`
+     for create, move and schedule, `cancel` for cancellations.
+   - It runs after the response and is best effort.
+   - `microsoft_graph` later, as one file plus one `_REGISTRY` line.
 8. Scheduler UI: calendar view, capacity bar per time slot, subscribe button.
 
 ## Decisions log

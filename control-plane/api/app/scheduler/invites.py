@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sqlalchemy.orm import Session
 
@@ -70,6 +70,14 @@ def build(evt: ScheduledEvent, method: str, to: str) -> Invite:
         method=method,
         calendar=ics.calendar([event], method=method, name="TrueNorth Range"),
     )
+
+
+def neutral_event(db: Session, evt: ScheduledEvent) -> ics.IcsEvent:
+    """The booking as an external calendar backend receives it."""
+    from .feed import to_ics
+
+    to = instructor_email(db, evt.instructor_id)
+    return replace(to_ics(evt), organizer=organizer(), attendees=(to,) if to else ())
 
 
 def instructor_email(db: Session, instructor_id: uuid.UUID | None) -> str | None:

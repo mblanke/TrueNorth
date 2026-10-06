@@ -194,6 +194,29 @@ def _ai_factory(key, mp):
         ai._reset_backends()
 
 
+def _calendar_abc():
+    from app.scheduler.calendar_backends import BaseCalendarBackend
+
+    return BaseCalendarBackend
+
+
+def _calendar_registry():
+    from app.scheduler import calendar_backends
+
+    return calendar_backends._REGISTRY
+
+
+def _calendar_factory(key, mp):
+    from app.scheduler import calendar_backends
+
+    mp.setenv("CALENDAR_BACKEND", key)
+    calendar_backends.reset_calendar_backend()
+    try:
+        return calendar_backends.get_calendar_backend()
+    finally:
+        calendar_backends.reset_calendar_backend()
+
+
 SEAMS: dict[str, Seam] = {
     s.name: s
     for s in (
@@ -204,6 +227,7 @@ SEAMS: dict[str, Seam] = {
         Seam("notifications", _notif_abc, _notif_registry, _notif_factory, "in_app", KeyError),
         Seam("provisioners", _prov_abc, _prov_registry, _prov_factory, "mock", ValueError),
         Seam("ai", _ai_abc, _ai_registry, _ai_factory, "mock", ValueError),
+        Seam("calendar", _calendar_abc, _calendar_registry, _calendar_factory, "null", ValueError),
     )
 }
 
@@ -443,3 +467,16 @@ def test_null_ai(monkeypatch):
     empty = _run(backend.generate(""))
     assert isinstance(empty, tuple) and len(empty) == 3
     assert _run(backend.health_check()) is True
+
+
+def test_null_calendar(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from app.scheduler.ics import IcsEvent, booking_uid
+
+    backend = _build(SEAMS["calendar"], SEAMS["calendar"].null_key, monkeypatch)
+    start = datetime(2026, 10, 15, 13, 0, tzinfo=UTC)
+    event = IcsEvent(uid=booking_uid("b-1"), sequence=0, start=start, end=start + timedelta(hours=2), summary="x")
+    assert _run(backend.health_check()) is True
+    assert _run(backend.publish(event)) is None
+    assert _run(backend.cancel(event)) is None

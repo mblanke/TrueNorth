@@ -20,7 +20,7 @@ from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..rbac import Permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
-from . import clock, feed, invites, lifecycle, service
+from . import calendar_backends, clock, feed, invites, lifecycle, service
 from .capacity import Resources, available, get_capacity_provider
 from .models import EventState, ScheduledEvent
 from .schemas import (
@@ -208,8 +208,21 @@ def create_event(
     db.commit()
     db.refresh(evt)
     if evt.state == EventState.scheduled:
-        background.add_task(invites.send, invites.plan(db, evt, "REQUEST"))
+        _announce(background, db, evt, "REQUEST")
     return _to_out(evt, warnings)
+
+
+def _announce(
+    background: BackgroundTasks,
+    db: Session,
+    evt: ScheduledEvent,
+    method: str,
+    previous_instructor: uuid.UUID | None = None,
+) -> None:
+    """After the response: email the invite (slice 6) and sync any external calendar
+    (CALENDAR_BACKEND, slice 7). Both are built now, while the session is open."""
+    background.add_task(invites.send, invites.plan(db, evt, method, previous_instructor=previous_instructor))
+    background.add_task(calendar_backends.push, invites.neutral_event(db, evt), method == "CANCEL")
 
 
 def _same_instant(a: datetime, b: datetime) -> bool:
@@ -304,7 +317,7 @@ def update_event(
     db.commit()
     db.refresh(evt)
     if evt.state == EventState.scheduled:  # an updated invite: same UID, higher SEQUENCE
-        background.add_task(invites.send, invites.plan(db, evt, "REQUEST", previous_instructor=previous_instructor))
+        _announce(background, db, evt, "REQUEST", previous_instructor)
     return _to_out(evt, warnings)
 
 
@@ -388,9 +401,9 @@ def _move(
         # Invite when a booking becomes real; withdraw it when one the Instructor was
         # invited to is called off. Drafts were never sent.
         if to == EventState.scheduled:
-            background.add_task(invites.send, invites.plan(db, evt, "REQUEST"))
+            _announce(background, db, evt, "REQUEST")
         elif to == EventState.cancelled and before != EventState.draft.value:
-            background.add_task(invites.send, invites.plan(db, evt, "CANCEL"))
+            _announce(background, db, evt, "CANCEL")
     return _to_out(evt, warnings)
 
 
