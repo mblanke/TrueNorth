@@ -6,7 +6,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
@@ -47,6 +47,12 @@ class ScheduledEvent(TimestampMixin, Base):
     # Schedule
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # Set by the clock (scheduler/clock.py). auto_provisioned: this booking built its
+    # range and still owns the live build; only such a range is ever torn down by the
+    # scheduler, never one that was already up. A reminder goes out once.
+    auto_provisioned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Resource reservation (claimed at schedule time)
     vm_count: Mapped[int] = mapped_column(Integer, default=0)

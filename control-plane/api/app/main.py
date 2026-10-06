@@ -10,6 +10,7 @@ Production FastAPI application with:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -26,6 +27,7 @@ from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
 from .models import Tenant, User, UserRole
+from .scheduler import clock as scheduler_clock
 from .schemas import HealthOut
 from .search_backends import get_search_backend
 from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
@@ -59,8 +61,13 @@ async def lifespan(app: FastAPI):
     # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
     # process at boot instead of turning every authenticated request into a 500.
     logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
+    # Moves bookings along as time passes (docs/adr/0004-scheduler-module.md).
+    clock_task = asyncio.create_task(scheduler_clock.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
 
     yield
+
+    if clock_task:
+        clock_task.cancel()
 
     # Graceful shutdown of any started subsystems
     ws_mgr = getattr(app.state, "ws_manager", None)

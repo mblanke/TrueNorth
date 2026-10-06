@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .. import range_lifecycle
 from ..auth import CurrentUser
 from ..models import AuditLog, Range, Template, User, UserRole
 from ..range_topology import template_demand
@@ -228,6 +229,35 @@ def audit(db: Session, user: CurrentUser, action: str, resource_id: str, detail:
             resource_type="schedule",
             resource_id=resource_id,
             detail=detail,
+        )
+    )
+
+
+def release_range(db: Session, evt: ScheduledEvent) -> str | None:
+    """Tear down the range this booking built, if it still holds one.
+
+    ``auto_provisioned`` means "this booking owns a live build". It is cleared once the
+    teardown is settled (dispatched, or the range is already going or gone); while the
+    range is still being built it stays set, and the clock retries.
+    """
+    if not (evt.auto_provisioned and evt.range_id):
+        return None
+    settled, what = range_lifecycle.destroy_for_booking(db, evt.range_id)
+    if settled:
+        evt.auto_provisioned = False
+    return what
+
+
+def audit_system(db: Session, evt: ScheduledEvent, action: str, detail: str = "") -> None:
+    """An entry for something the clock did: no user, the booking's tenant."""
+    db.add(
+        AuditLog(
+            user_id=None,
+            tenant_id=evt.tenant_id,
+            action=action,
+            resource_type="schedule",
+            resource_id=str(evt.id),
+            detail=f"[clock] {detail}" if detail else "[clock]",
         )
     )
 

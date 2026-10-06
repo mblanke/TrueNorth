@@ -19,7 +19,7 @@ from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..rbac import Permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
-from . import lifecycle, service
+from . import clock, lifecycle, service
 from .capacity import Resources, available, get_capacity_provider
 from .models import EventState, ScheduledEvent
 from .schemas import CapacityCheck, CapacityResult, EventIn, PolicyIn, PolicyOut
@@ -321,11 +321,28 @@ def _move(
 ) -> dict:
     before = evt.state.value
     if lifecycle.transition(db, evt, to):
-        service.audit(db, user, "transition", str(evt.id), f"{before} -> {to.value}")
+        detail = f"{before} -> {to.value}"
+        # Cancelling after the clock built the range: take down what we built.
+        if to == EventState.cancelled and (what := service.release_range(db, evt)):
+            detail += f"; {what}"
+        service.audit(db, user, "transition", str(evt.id), detail)
         _audit_warnings(db, user, evt, warnings or [])
         db.commit()
     db.refresh(evt)
     return _to_out(evt, warnings)
+
+
+@router.post(
+    "/tick",
+    summary="Run the scheduler clock now (admin)",
+    dependencies=[Depends(require_permission(Permission.SCHEDULE_ADMIN))],
+)
+async def run_tick(db: Session = Depends(get_db)):
+    """One clock pass, as the background clock runs every minute: provision at the lead,
+    activate at the start, complete and tear down after the grace, send reminders."""
+    result = clock.tick(db)
+    await clock.send_reminders(result.reminders)
+    return result.summary()
 
 
 @router.get("/timeline", summary="Resource timeline for capacity planning")

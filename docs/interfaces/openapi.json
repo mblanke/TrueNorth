@@ -24878,6 +24878,31 @@
         ]
       }
     },
+    "/schedule/tick": {
+      "post": {
+        "description": "One clock pass, as the background clock runs every minute: provision at the lead,\nactivate at the start, complete and tear down after the grace, send reminders.",
+        "operationId": "run_tick_schedule_tick_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run the scheduler clock now (admin)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/timeline": {
       "get": {
         "description": "Return hourly resource commitment buckets for the next N days.\nUsed to render the capacity timeline chart in the dashboard.",

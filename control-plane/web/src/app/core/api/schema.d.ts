@@ -4504,6 +4504,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/schedule/tick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the scheduler clock now (admin)
+         * @description One clock pass, as the background clock runs every minute: provision at the lead,
+         *     activate at the start, complete and tear down after the grace, send reminders.
+         */
+        post: operations["run_tick_schedule_tick_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/schedule/timeline": {
         parameters: {
             query?: never;
@@ -18277,6 +18298,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_tick_schedule_tick_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

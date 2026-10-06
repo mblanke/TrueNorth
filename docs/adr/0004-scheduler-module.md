@@ -76,15 +76,29 @@ What users need:
      values are only a fallback.
    - The dashboard gauge and the booking check use the same service, so they never
      disagree.
-5. **Time-based actions go through the worker:**
-   - Provision a set lead time before the session starts.
-   - Tear down a set time after it ends.
-   - Send reminders.
+5. **Time-based actions: the API keeps the clock, the worker does the work** (revised
+   2026-10-05; see the decisions log). `scheduler/clock.py` ticks once a minute
+   (`SCHEDULER_TICK_SECONDS`) and:
+   - provisions the booked range `SCHEDULER_PROVISION_LEAD_MIN` (30) before the start;
+   - activates the booking at the start;
+   - completes it `SCHEDULER_TEARDOWN_GRACE_MIN` (15) after the end, and tears the
+     range down;
+   - emails the Instructor `SCHEDULER_REMINDER_LEAD_MIN` (1440) before the start
+     (0 turns reminders off).
 
-   All of these are worker tasks dispatched with `celery_client.dispatch()` and
-   declared in `worker/worker/contracts.py`. The scheduler never imports worker code
-   and never writes range tables. If the worker needs to read scheduler tables, add
-   them to `WORKER_TABLES` in `scripts/export_worker_tables.py`, not raw SQL.
+   The rules for that work:
+   - **The worker builds and tears down.** Provision and teardown are the existing
+     contracted worker tasks (`provision_range`, `destroy_range`), sent through
+     `celery_client.dispatch()` by `app/range_lifecycle.py`. That module is the one
+     guarded path the ranges router uses too. The scheduler never imports worker code
+     and never writes range tables.
+   - **It only tears down what it built.** A range that was already up is used as it
+     is and left up. A range still being built when its booking ends or is cancelled is
+     torn down by a later tick, once it can be.
+   - **It is safe to run anywhere.** Every step is claimed with a guarded update, so
+     the clock can run in every API replica at once. `SCHEDULER_CLOCK_ENABLED=false`
+     turns it off, and `POST /schedule/tick` (`schedule:admin`) runs one pass by hand.
+   - **No booking-specific worker tasks or `WORKER_TABLES` entries are needed.**
 6. **Calendar standard: iCalendar (RFC 5545).** Two delivery paths in v1, neither
    needing any Microsoft-side setup:
    - **Subscription feed:** `GET /api/v1/schedule/feed/{token}.ics`. Read-only and
@@ -235,7 +249,8 @@ What users need:
    - Over-capacity policy: `GET`/`PUT /schedule/policy`, stored in `scheduler_settings`.
 3. Lifecycle, guarded state transitions, conflicts (done: `scheduler/lifecycle.py`,
    `service.conflicts`, migration `b5c6d7e8f9a0`).
-4. Worker tasks for provision lead, teardown and reminders, via `contracts.py`.
+4. The clock: provision lead, activation, teardown, reminders (done: `scheduler/clock.py`,
+   `app/range_lifecycle.py`, migration `c6d7e8f9a0b1`).
 5. ICS feed with per-user tokens and a profile page to regenerate them.
 6. Emailed invites (`REQUEST`/`CANCEL`) through the SMTP channel.
 7. `calendar_backends/` seam with `null`, plus contract tests. `microsoft_graph` later.
@@ -257,6 +272,22 @@ What users need:
     red-team 30 vs 28, large-enterprise 54 vs 50). Demand uses what is built.
 - Moot: whether Students can see other Students' names. They can't see the calendar,
   and their own feed omits other attendees.
+
+- 2026-10-05 — The clock lives in the API instead of in new worker tasks.
+  - **The ADR's original plan didn't work yet.** Worker tasks reading
+    `scheduled_events` need either the generated table mirror (`WORKER_TABLES`, not
+    yet on main, PR #6) or raw SQL, which the MOSA ratchet forbids. Booking-specific
+    tasks would also have duplicated range-state logic that already lives in the API.
+  - **The API owns the rules, and the worker still does all hypervisor work** through
+    the existing contracts.
+  - **Booking-to-range rules:**
+    - A booking with no `range_id` (template only) moves through its states but
+      builds nothing. Whether a booking creates its range or exercise is still open.
+    - Ranges that are `destroyed` cannot be provisioned again (`_RANGE_TRANSITIONS`),
+      so a range booked weekly must not be torn down between sessions. The clock
+      only tears down ranges it built from `created` or `failed`.
+  - **Reminders go to the Instructor only, by email**, until the Student-feed question
+    is answered. They are at most once: the booking is marked before sending.
 
 ## Open questions
 

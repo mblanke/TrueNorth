@@ -35,7 +35,7 @@ from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import object_store
+from .. import object_store, range_lifecycle
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
@@ -456,11 +456,10 @@ async def provision_range(
 ) -> Range:
     """Provision a range (async Celery task).  **Permission: range:provision**"""
     rng = _tenant_range(db, range_id, user)
-    if not rng.state.can_transition_to(RangeState.provisioning):
-        raise HTTPException(409, f"Cannot provision range in state {rng.state.value}")
-    rng.state = RangeState.provisioning
-    db.commit()
-    _dispatch_task("provision_range", str(rng.id))
+    try:
+        range_lifecycle.begin_provision(db, rng)
+    except range_lifecycle.RangeTransitionError as exc:
+        raise HTTPException(409, str(exc)) from None
     _audit(db, user, "provision", "range", str(rng.id))
     db.commit()
     db.refresh(rng)
@@ -475,11 +474,10 @@ async def destroy_range(
 ) -> Range:
     """Destroy a range (async Celery task).  **Permission: range:destroy**"""
     rng = _tenant_range(db, range_id, user)
-    if not rng.state.can_transition_to(RangeState.destroying):
-        raise HTTPException(409, f"Cannot destroy range in state {rng.state.value}")
-    rng.state = RangeState.destroying
-    db.commit()
-    _dispatch_task("destroy_range", str(rng.id))
+    try:
+        range_lifecycle.begin_destroy(db, rng)
+    except range_lifecycle.RangeTransitionError as exc:
+        raise HTTPException(409, str(exc)) from None
     _audit(db, user, "destroy", "range", str(rng.id))
     db.commit()
     db.refresh(rng)
