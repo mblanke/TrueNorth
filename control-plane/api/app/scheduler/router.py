@@ -246,7 +246,7 @@ def update_event(
     _check_times(body)
     service.serialize_bookings(db)
     evt = _owned(db, event_id, user)
-    lifecycle.require_editable(evt)
+    lifecycle.lock_editable(db, evt)
     range_id = service.resolve_range(db, user, body.range_id)
     instructor_id = (
         service.resolve_instructor(db, user, body.instructor_id) if body.instructor_id else evt.instructor_id

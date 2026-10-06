@@ -242,3 +242,33 @@ def test_an_admin_books_on_behalf_of_an_instructor_in_their_tenant(client, db_se
     with acting_as(UserRole.admin):
         assert client.post("/schedule/events", json=_book(DAY, instructor_id=str(outsider.id))).status_code == 422
         assert client.post("/schedule/events", json=_book(DAY, instructor_id=str(student.id))).status_code == 422
+
+
+def test_an_edit_racing_a_state_change_is_refused(db_session):
+    """The booking was editable when the edit loaded it, then the clock moved it on."""
+    ev = ScheduledEvent(
+        name="race",
+        state=EventState.scheduled,
+        tenant_id=uuid.UUID(DEV_TENANT),
+        start_time=DAY,
+        end_time=DAY + timedelta(hours=1),
+    )
+    db_session.add(ev)
+    db_session.flush()
+    db_session.query(ScheduledEvent).filter(ScheduledEvent.id == ev.id).update(
+        {ScheduledEvent.state: EventState.provisioning}, synchronize_session=False
+    )
+    with pytest.raises(HTTPException) as exc:
+        lifecycle.lock_editable(db_session, ev)  # `ev` still believes it is scheduled
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.parametrize("state", [RangeState.destroying, RangeState.destroyed])
+def test_a_range_that_cannot_be_built_again_cannot_be_booked(client, db_session, state):
+    rng = _range(db_session)
+    rng.state = state
+    db_session.flush()
+    with acting_as(UserRole.instructor):
+        r = client.post("/schedule/events", json=_book(DAY, range_id=str(rng.id)))
+    assert r.status_code == 409
+    assert "cannot be built again" in r.json()["detail"]

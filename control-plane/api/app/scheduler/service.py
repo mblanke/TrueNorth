@@ -16,7 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..models import AuditLog, Range, Template, User, UserRole
+from ..models import AuditLog, Range, RangeState, Template, User, UserRole
 from ..range_topology import template_demand
 from ..tenancy import get_owned, tenant_uuid
 from .capacity import (
@@ -149,10 +149,14 @@ def resolve_instructor(db: Session, user: CurrentUser, instructor_id: str | None
 
 
 def resolve_range(db: Session, user: CurrentUser, range_id: str | None) -> uuid.UUID | None:
-    """A booked range must be the caller's tenant's (404 otherwise, as for any range)."""
+    """A booked range must be the caller's tenant's (404 otherwise, as for any range),
+    and must still be buildable: a destroyed range cannot be provisioned again."""
     if not range_id:
         return None
-    return get_owned(db, Range, range_id, user, not_found="Range not found").id
+    rng = get_owned(db, Range, range_id, user, not_found="Range not found")
+    if rng.state in (RangeState.destroying, RangeState.destroyed):
+        raise HTTPException(409, f"Range is {rng.state.value} and cannot be built again; book another range")
+    return rng.id
 
 
 def conflicts(
