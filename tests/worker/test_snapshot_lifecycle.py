@@ -430,6 +430,20 @@ def spies(backend):
         yield SimpleNamespace(get_backend=get_backend, range_state=range_state, snapshot_state=snapshot_state)
 
 
+@pytest.fixture(autouse=True)
+def _leased():
+    """The snapshot/restore logic under test, not the range lease
+    (test_range_task_single_delivery covers that)."""
+    from worker import fencing
+
+    with (
+        patch.object(fencing, "claim", return_value="holder"),
+        patch.object(fencing, "release"),
+        patch.object(fencing, "keep"),
+    ):
+        yield
+
+
 def _rows(
     snapshot_state="creating",
     snapshot_data=None,
@@ -516,18 +530,6 @@ class TestSnapshotRangeTask:
 
 
 class TestRestoreSnapshotTask:
-    @pytest.fixture(autouse=True)
-    def _leased(self):
-        """The restore logic under test, not the range lease (test_range_task_single_delivery)."""
-        from worker import fencing
-
-        with (
-            patch.object(fencing, "claim", return_value="holder"),
-            patch.object(fencing, "release"),
-            patch.object(fencing, "keep"),
-        ):
-            yield
-
     def _rows(self, range_state: str = "ready", snapshot_data: dict | None = None, at_snapshot: str = "ready", **kw):
         data = snapshot_data if snapshot_data is not None else {"snapshot_name": "tnabc"}
         return _rows("restoring", data, at_snapshot, range_state, **kw)
@@ -550,6 +552,14 @@ class TestRestoreSnapshotTask:
         with patch.object(tasks, "_db_session", self._rows(snapshot_data={"provider": "proxmox"})):
             tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)
         backend.restore.assert_awaited_once_with("r1", PROV, SNAP_ID, power_on=True)
+
+    def test_a_late_copy_of_a_finished_restore_does_nothing(self, backend, spies):
+        """The snapshot is `ready` again: this restore already ran. A redelivered copy used
+        to revert the VMs a second time, undoing what students did since (fifth re-review)."""
+        with patch.object(tasks, "_db_session", _rows("ready", {"snapshot_name": "tnabc"}, "ready", "ready")):
+            assert tasks.restore_snapshot(range_id="r1", snapshot_id=SNAP_ID)["status"] == "skipped"
+        backend.restore.assert_not_awaited()
+        spies.range_state.assert_not_called()
 
     def test_a_destroyed_range_is_left_alone(self, backend, spies):
         with patch.object(tasks, "_db_session", self._rows("destroyed")):

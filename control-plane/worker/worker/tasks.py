@@ -28,6 +28,7 @@ from .periodic import HEALTH_CHECK_BUDGET, METRICS_BUDGET
 from .provisioners import get_provisioner
 from .range_alloc import reserve_for_build
 from .render import load_template
+from .snapshots import _RESTORABLE_STATES, _SNAPSHOT_PENDING, _backend_snapshot_name
 
 logger = logging.getLogger("truenorth.worker")
 
@@ -677,24 +678,6 @@ def collect_range_metrics(self):
 
 
 # -- Range Snapshots ----------------------------------------------------
-# States routers/ranges.py:restore_snapshot accepts. A restore only ever writes to a
-# range still in one of them; if the range moved on (say, it was destroyed while the
-# task queued or retried), the range is left alone.
-_RESTORABLE_STATES = ("ready", "stopped", "failed")
-# Snapshot states the snapshot task may still write over: its first attempt, or a retry.
-_SNAPSHOT_PENDING = ("creating", "failed")
-
-
-def _backend_snapshot_name(snapshot_id: str) -> str:
-    """The name the hypervisor stores the snapshot under.
-
-    Proxmox requires a snapname that starts with a letter, uses only letters, digits,
-    ``-`` and ``_``, and is at most 40 characters. The bare UUID used before starts
-    with a digit ten times in sixteen, and Proxmox rejected those.
-    """
-    return "tn" + "".join(ch for ch in snapshot_id if ch.isalnum())[:38]
-
-
 def _last_attempt(task) -> bool:
     """True when a failure now will not be retried, or the task was called directly."""
     return bool(task.request.called_directly) or task.request.retries >= (task.max_retries or 0)
@@ -743,6 +726,7 @@ def _range_backend(rng) -> str:
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.snapshot_range")
+@fenced("snapshot", None)  # the range's lease only: never alongside a restore or a destroy
 def snapshot_range(self, range_id: str, snapshot_id: str):
     """Create a point-in-time snapshot of a range."""
     logger.info(f"[snapshot] Creating snapshot {snapshot_id} for range {range_id}")
@@ -816,6 +800,8 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
         snap, rng = _snapshot_context(snapshot_id, range_id)
         if not snap or not snap[1]:
             raise RuntimeError(f"Snapshot {snapshot_id} has no data")
+        if snap[0] != "restoring":  # a late or duplicate copy: this restore already ran
+            return {"status": "skipped", "snapshot_id": snapshot_id, "reason": f"snapshot is {snap[0]}"}
 
         current_state = rng[0] if rng else None
         if current_state not in _RESTORABLE_STATES:
@@ -868,6 +854,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.delete_snapshot")
+@fenced("delete snapshot", None)
 def delete_snapshot(self, range_id: str, snapshot_id: str):
     """Delete snapshot data from the provisioner backend."""
     logger.info(f"[snapshot] Deleting snapshot {snapshot_id} for range {range_id}")

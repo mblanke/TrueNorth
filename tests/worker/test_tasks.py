@@ -299,6 +299,19 @@ class TestCleanupExpiredRanges:
 class TestSnapshotRange:
     """Tests for snapshot_range task."""
 
+    @pytest.fixture(autouse=True)
+    def _leased(self):
+        """The snapshot logic under test, not the range lease (test_range_task_single_delivery)."""
+        if not _WORKER_IMPORTABLE:
+            yield
+            return
+        from unittest.mock import patch
+
+        from worker import fencing
+
+        with patch.object(fencing, "claim", return_value="holder"), patch.object(fencing, "release"):
+            yield
+
     def test_snapshot_range_mock(self):
         """Test snapshot creation with mock backend."""
         if not _WORKER_IMPORTABLE:

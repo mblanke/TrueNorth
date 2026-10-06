@@ -6,6 +6,9 @@ the operation row (control-plane/api/app/range_ops.py). A task may be delivered 
 (worker loss with late acks, or the API's outbox re-sending) or late, after the range has
 moved on. So a task ``claim``s the range: the range must still be in that state, *and* the
 task takes the range's lease (table ``range_leases``), which one execution holds at a time.
+Snapshot, restore and snapshot-delete tasks, which have no in-progress range state, take
+the lease alone (``fenced(..., None)``); a restore also skips unless its snapshot is still
+``restoring``.
 
 * State moved on: a late or duplicate copy. ``skipped``; nothing touched.
 * State matches, lease held by another execution: that one may be running, or may have
@@ -14,14 +17,16 @@ task takes the range's lease (table ``range_leases``), which one execution holds
   on (the holder finished) or the lease expired (the holder died) and takes over. It is
   never dropped while the range is still in progress.
 
-The lease is released when the task ends, however it ends (``release``), so a retry of a
-failed attempt can claim again; it still finds the range in progress, because only the
-last attempt records ``failed`` (reliable._last_attempt). Time limits (celery_app): the
-soft limit ``SOFT_TIME_LIMIT`` raises ``SoftTimeLimitExceeded`` inside the task, which is
-final (``FINAL_ERRORS``: no retry; each range task records ``failed``, a restore gives its
-snapshot back; cleanup and ``release`` run). Hypervisor calls go through ``run_async``,
-which does not wait for their threads after a failure, so that cleanup is not held past
-the hard limit ``TASK_TIME_LIMIT``. The hard limit only backs the soft one up (it kills
+The lease is released when the task ends (``release``), so a retry of a failed attempt
+can claim again; it still finds the range in progress, because only the last attempt
+records ``failed`` (reliable._last_attempt). The exception is the soft time limit
+(``SOFT_TIME_LIMIT``, celery_app): ``SoftTimeLimitExceeded`` is raised inside the task and
+is final (``FINAL_ERRORS``: no retry; each range task records ``failed``, a restore gives
+its snapshot back and fails the range). Hypervisor calls go through ``run_async``, which
+cancels the call, lets its cleanup run for ``CLEANUP_GRACE`` and does not wait for its
+threads, so the outcome is recorded before the hard limit ``TASK_TIME_LIMIT``. A thread
+may still be running, so the lease is then *kept* (``keep``) for another
+``LEASE_SECONDS`` rather than released. The hard limit only backs the soft one up (it kills
 the process, nothing runs after it) and is below the broker's visibility timeout, so a
 running task is not redelivered. ``LEASE_SECONDS`` outlives the hard limit.
 """
@@ -111,8 +116,8 @@ def claim(session_factory, range_id: str, state: str | None) -> str | None:
 def defer(task, action: str, range_id: str, state: str, *args, **kwargs) -> dict:
     """Re-queue this delivery to try again in ``LEASE_RETRY_SECONDS`` (the lease is held)."""
     logger.warning(
-        "[%s] range %s is %s but another execution holds its lease; trying again in %ss",
-        action, range_id, state, LEASE_RETRY_SECONDS,
+        "[%s] another execution holds the lease on range %s%s; trying again in %ss",
+        action, range_id, f" (still {state})" if state else "", LEASE_RETRY_SECONDS,
     )
     task.apply_async(args=(range_id, *args), kwargs=kwargs, countdown=LEASE_RETRY_SECONDS)
     return {"status": "deferred", "range_id": range_id, "reason": "another execution holds the range's lease"}
@@ -120,8 +125,9 @@ def defer(task, action: str, range_id: str, state: str, *args, **kwargs) -> dict
 
 def keep(session_factory, range_id: str, holder: str) -> None:
     """After a soft time limit: the hypervisor call may still be running in a thread, so
-    hold the lease for another ``LEASE_SECONDS`` instead of releasing it. Nothing else acts
-    on the range until then (a retry is deferred), longer than any one vSphere wait."""
+    hold the lease for another ``LEASE_SECONDS`` instead of releasing it, longer than any one
+    vSphere wait. Until then every task that takes the lease (all range, snapshot and restore
+    tasks) is deferred."""
     from . import db_ops
 
     try:

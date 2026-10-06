@@ -896,13 +896,17 @@ Each provision or destroy request is a durable *operation* (`range_operations`;
 | `succeeded` / `failed` | the range reached the outcome's state; `failed` carries the worker's message | — |
 
 The worker acts on a task only while the range is still in the state the API put it
-in, and only one execution at a time (`worker/fencing.py`, table `range_leases`):
+in, and only one execution at a time (`worker/fencing.py`, table `range_leases`). Snapshot,
+restore and snapshot-delete tasks take the same lease, so none of them runs alongside a
+provision, destroy, stop, start or each other:
 
-- **Late or duplicate delivery** (the range has moved on): logs "duplicate or stale
-  delivery, skipped" and touches nothing.
-- **Another execution holds the range's lease** (one running, or one that died less than
-  an hour ago): logs "another execution holds its lease; trying again in 60s" and re-queues
-  itself. It finds the range finished (then skips) or the lease expired (then takes over).
+- **Late or duplicate delivery** (the range has moved on, or a restore's snapshot is no
+  longer `restoring`): logs "duplicate or stale delivery, skipped" (a restore: "snapshot
+  is ready") and touches nothing.
+- **Another execution holds the range's lease** (one running, one that died less than an
+  hour ago, or a soft-limited task whose call may still be running): logs "another
+  execution holds the lease on range …; trying again in 60s" and re-queues itself. It
+  finds its work done (then skips) or the lease expired (then takes over).
   A lease outlives a dead worker by at most `LEASE_SECONDS` (1 h); nothing to do but wait.
   To see one: `SELECT * FROM range_leases WHERE range_id = '<id>'`. Do not delete a lease
   whose `expires_at` is in the future unless you are sure no worker is running that task.

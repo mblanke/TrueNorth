@@ -442,3 +442,23 @@ def test_a_restore_takes_the_range_lease(db, requeued):
     backend.assert_not_called()
     assert result["status"] == "deferred"
     assert requeued and requeued[0]["task"] == "worker.tasks.restore_snapshot"
+
+
+# ── From the fifth re-review ───────────────────────────────────────────
+@pytest.mark.parametrize("task", ["snapshot_range", "delete_snapshot"])
+def test_snapshot_tasks_wait_for_the_range_lease_too(db, requeued, task):
+    """A snapshot taken or deleted while a restore's thread may still be reverting the
+    same VMs (or while a destroy runs) acted alongside it: both take the range's lease."""
+    if not hasattr(tables, "range_leases"):
+        pytest.skip("no lease table before the fix")
+    rid = _range(db, "ready", OUTPUT)
+    with db.begin() as conn:
+        conn.execute(
+            tables.range_leases.insert().values(
+                range_id=rid, holder="other", expires_at=datetime.now(UTC) + timedelta(seconds=60)
+            )
+        )
+    with patch.object(tasks, "_get_backend") as backend:
+        result = getattr(tasks, task).run(rid, str(uuid.uuid4()))
+    backend.assert_not_called()
+    assert result["status"] == "deferred" and requeued[0]["task"] == f"worker.tasks.{task}"
