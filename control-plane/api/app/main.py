@@ -241,6 +241,7 @@ from .routers import (
     lti_router,
     network_devices_router,
     noise_router,
+    notifications_router,
     onboarding_router,
     ops_center_router,
     proxmox_router,
@@ -315,6 +316,7 @@ app.include_router(ops_center_router)
 # Knowledge base + trouble tickets
 app.include_router(wiki_router)
 app.include_router(tickets_router)
+app.include_router(notifications_router)
 
 # -- API versioning: /api/v1/... -> canonical route (docs/adr/0002) ---------
 # Added last so it is the outermost middleware: rate limiting, metrics and tracing all

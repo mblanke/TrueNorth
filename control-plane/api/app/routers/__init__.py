@@ -26,6 +26,7 @@ from .integrations import router as integrations_router
 from .kit import router as kit_router
 from .network_devices import router as network_devices_router
 from .noise import router as noise_router
+from .notifications import router as notifications_router
 from .onboarding import router as onboarding_router
 from .ops_center import router as ops_center_router
 from .proxmox import router as proxmox_router
@@ -85,4 +86,5 @@ __all__ = [
     "quizzes_router",
     "tickets_router",
     "wiki_router",
+    "notifications_router",
 ]

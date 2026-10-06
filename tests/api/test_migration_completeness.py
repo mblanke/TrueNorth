@@ -38,7 +38,6 @@ MIGRATION_ONLY_TABLES = {
     "audit_events",
     "custom_permissions",
     "leaderboard_entries",
-    "notifications",
     "objective_results",
     "scoring_results",
 }
