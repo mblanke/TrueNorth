@@ -149,3 +149,25 @@ def test_a_range_whose_power_task_was_lost_can_still_be_destroyed(client, db_ses
     rid = _range(client, db_session, state)
     resp = client.post(f"/ranges/{rid}/destroy")
     assert resp.status_code == 200 and resp.json()["state"] == "destroying"
+
+
+def test_on_postgres_the_migrated_enum_takes_the_power_states(postgres_engine):
+    """The rangestate enum is a native PostgreSQL type: the new values exist only if the
+    migration (e3f4a5b6c7d8) added them. SQLite stores the enum as text and cannot tell."""
+    from app.models import Template, Tenant
+    from sqlalchemy.orm import Session
+
+    with Session(postgres_engine) as s:
+        tenant = Tenant(name="t", slug=f"t-{uuid.uuid4().hex[:6]}")
+        s.add(tenant)
+        s.flush()
+        tmpl = Template(name="t", yaml="id: t\n", tenant_id=tenant.id)
+        s.add(tmpl)
+        s.flush()
+        rng = Range(name="r", template_id=tmpl.id, tenant_id=tenant.id, state=RangeState.stopping)
+        s.add(rng)
+        s.commit()
+        rng.state = RangeState.starting
+        s.commit()
+        s.refresh(rng)
+        assert rng.state == RangeState.starting
