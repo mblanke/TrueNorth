@@ -256,7 +256,7 @@ def scenario_detail(
 
 
 @router.post("/{exercise_id}/run", response_model=ExerciseOut)
-async def run_exercise(
+def run_exercise(
     exercise_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_START)),

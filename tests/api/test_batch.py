@@ -99,9 +99,10 @@ class TestBrokerDown:
         monkeypatch.setattr(celery_client, "dispatch", lambda *a, **k: None)
         assert client.post("/ranges/batch-provision", json={"range_ids": rids}).status_code == 202
         assert [self._state(client, r) for r in rids] == ["provisioning", "provisioning"]
-        for r in rids:
-            (op,) = self._ops(client, r)
-            assert op["status"] == "pending" and op["error"]["code"] == "broker_unavailable"
+        first, *rest = [self._ops(client, r)[0] for r in sorted(rids)]
+        assert first["status"] == "pending" and first["error"]["code"] == "broker_unavailable"
+        # After one refusal the batch stops sending: the rest wait for the re-send loop.
+        assert all(op["status"] == "pending" and op["dispatch_attempts"] == 0 for op in rest)
         monkeypatch.setattr(celery_client, "dispatch", lambda name, *a: sent.append((name, a)) or dispatch(name, *a))
         assert redispatch_pending(db_session, min_age=timedelta(0)) == 2  # the broker is back
         assert sorted(sent) == sorted(("provision_range", (r,)) for r in rids)

@@ -48,7 +48,7 @@ def test_an_accepted_provision_is_a_recorded_operation_and_is_sent(client, db_se
     resp = client.post(f"/ranges/{rid}/provision")
     assert resp.status_code == 202 and resp.json()["state"] == "provisioning"
     op_id = resp.headers["Operation-Id"]
-    assert resp.headers["Location"] == f"/ranges/{rid}/operations/{op_id}"
+    assert "Location" not in resp.headers  # behind the proxy the API is under /api, which it does not know
     op = client.get(f"/ranges/{rid}/operations/{op_id}").json()
     assert (op["action"], op["status"], op["generation"], op["dispatch_attempts"]) == ("provision", "dispatched", 1, 1)
     assert no_real_broker.sent == [("worker.tasks.provision_range", [rid])]
@@ -306,3 +306,118 @@ def test_on_postgres_two_processes_resending_send_each_operation_once(postgres_e
     gate.set()
     first.join(20)
     assert sent == ["provision_range"] and sorted(counts) == [0, 1]
+
+
+# ── From the adversarial review of f3b4b0d ──────────────────────────────
+
+
+def test_a_restore_reads_a_finished_stop_first_and_is_refused_while_one_is_in_flight(
+    client, db_session, no_real_broker
+):
+    """A restore over a stop nobody had read stranded the stop (its outcome state was
+    overwritten) or recorded the restore's failure as the stop's."""
+    rid = _range(client, db_session, "ready", VMS)
+    snap = RangeSnapshot(
+        range_id=uuid.UUID(rid),
+        name="s",
+        snapshot_state="ready",
+        range_state_at_snapshot="ready",
+        tenant_id=db_session.get(Range, uuid.UUID(rid)).tenant_id,
+    )
+    db_session.add(snap)
+    db_session.commit()
+    stop_id = client.post(f"/ranges/{rid}/stop").headers["Operation-Id"]
+    rng = db_session.get(Range, uuid.UUID(rid))
+    rng.state = RangeState.stopped  # the worker reports; nobody reads the operation
+    db_session.commit()
+    assert client.post(f"/ranges/{rid}/snapshots/{snap.id}/restore").status_code == 202
+    _set_state(db_session, rid, "ready")  # the restore's worker writes the snapshot's state
+    assert client.get(f"/ranges/{rid}/operations/{stop_id}").json()["status"] == "succeeded"
+
+
+def test_abandon_reads_the_outcome_first(client, db_session, no_real_broker):
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _set_state(db_session, rid, "ready")  # the worker finished
+    resp = client.post(f"/ranges/{rid}/operations/{op_id}/abandon")
+    assert resp.status_code == 409 and "succeeded" in resp.json()["detail"]
+    assert client.get(f"/ranges/{rid}").json()["state"] == "ready"
+
+
+def test_no_new_operation_while_a_worker_still_holds_the_range(client, db_session, no_real_broker):
+    """An abandoned task may still be running: a new provision would take its result."""
+    from app.range_leases import RangeLease
+
+    rid = _range(client, db_session, "failed")
+    db_session.add(
+        RangeLease(range_id=uuid.UUID(rid), holder="old-task", expires_at=datetime.now(UTC) + timedelta(minutes=30))
+    )
+    db_session.commit()
+    resp = client.post(f"/ranges/{rid}/provision")
+    assert resp.status_code == 409 and "worker is still acting" in resp.json()["detail"]
+    assert client.post(f"/ranges/{rid}/destroy").status_code == 202, "a destroy waits for the lease itself"
+
+
+def test_on_postgres_refused_requests_do_not_stall_the_api_process(postgres_engine, no_real_broker):
+    """Acceptance row-locks the range. In async handlers a refused request held the lock
+    until its teardown, which needs the event loop, while a second request for the same
+    range waited for the lock on the event loop: the process hung (or, with the 30 s
+    statement timeout, answered 500)."""
+    import asyncio
+
+    import httpx
+    from app.db import get_db
+    from app.main import app as fastapi_app
+    from app.models import Template, Tenant, User, UserRole
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+
+    dev = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    with Session(postgres_engine) as s:
+        s.add(Tenant(id=dev, name="d", slug="d"))
+        s.flush()
+        s.add(
+            User(
+                id=dev, email="a@x.test", display_name="a", role=UserRole.admin, tenant_id=dev, keycloak_id="dev-admin"
+            )
+        )
+        tmpl = Template(name="t", yaml="id: t\n", tenant_id=dev)
+        s.add(tmpl)
+        s.flush()
+        rng = Range(name="r", template_id=tmpl.id, tenant_id=dev, state=RangeState.provisioning)
+        s.add(rng)
+        s.commit()
+        rid = rng.id
+
+    @event.listens_for(postgres_engine, "connect")
+    def _timeout(dbapi_conn, _record):
+        cur = dbapi_conn.cursor()
+        cur.execute("SET statement_timeout = '5000'")
+        cur.close()
+
+    postgres_engine.dispose()
+
+    def _get_db():
+        db = Session(postgres_engine)
+        try:
+            yield db
+        finally:
+            db.close()
+
+    async def three_clicks():
+        transport = httpx.ASGITransport(app=fastapi_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            return [
+                r.status_code for r in await asyncio.gather(*(c.post(f"/ranges/{rid}/provision") for _ in range(3)))
+            ]
+
+    codes: list = []
+    fastapi_app.dependency_overrides[get_db] = _get_db
+    try:
+        runner = threading.Thread(target=lambda: codes.extend(asyncio.run(three_clicks())), daemon=True)
+        runner.start()
+        runner.join(20)
+    finally:
+        fastapi_app.dependency_overrides.pop(get_db, None)
+    assert not runner.is_alive(), "the API process hung on the range lock"
+    assert codes == [409, 409, 409], codes

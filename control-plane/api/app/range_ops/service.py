@@ -131,13 +131,29 @@ def recorded_vms(rng: Range) -> int:
     return len(vms) if isinstance(vms, list) else 0
 
 
-def check(db: Session, range_id: uuid.UUID, user: CurrentUser, action: str) -> None:
-    """Lock the range and refuse (409) as ``accept`` would, writing nothing but reconciled
-    outcomes. A batch checks every range first, so one refusal leaves no partial batch."""
-    _check(db, _locked_range(db, range_id, user), action, supersede=False)
+def worker_acting(db: Session, range_id: uuid.UUID) -> bool:
+    """A worker task holds the range's lease (worker/fencing.py): it is acting on it."""
+    from ..range_leases import RangeLease
+
+    return (
+        db.query(RangeLease.range_id).filter(RangeLease.range_id == range_id, RangeLease.expires_at > _now()).first()
+        is not None
+    )
 
 
-def _check(db: Session, rng: Range, action: str, *, supersede: bool = True) -> None:
+def refuse_while_in_flight(db: Session, rng: Range, what: str) -> None:
+    """409 while an operation of the range is in flight (outcomes reconciled first). For
+    actions that are not operations (a restore): a restore over a stop that has not been
+    read yet stranded the stop, whose outcome state the restore then overwrote."""
+    reconcile(db, rng)
+    busy = (
+        db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT)).first()
+    )
+    if busy:
+        raise HTTPException(409, f"Cannot {what}: a {busy.action} of this range is still in progress")
+
+
+def _check(db: Session, rng: Range, action: str) -> None:
     reconcile(db, rng)
     if not rng.state.can_transition_to(ACTIONS[action].in_progress):
         raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
@@ -162,11 +178,14 @@ def _check(db: Session, rng: Range, action: str, *, supersede: bool = True) -> N
     if action == "provision" and vms:
         raise HTTPException(409, f"The range still has {vms} VMs from an earlier build; destroy it first")
     in_flight = db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT))
+    if action != "destroy" and worker_acting(db, rng.id):
+        # An abandoned or superseded task may still be running: its result would be taken
+        # for the new operation's, and the new task skipped (worker/fencing.py).
+        raise HTTPException(409, f"Cannot {action}: a worker is still acting on this range; try again later")
     if action == "destroy":
-        if supersede:
-            for op in in_flight:
-                op.status, op.finished_at = "superseded", _now()
-                op.error = {"code": "superseded", "message": "A destroy of the range replaced it"}
+        for op in in_flight:
+            op.status, op.finished_at = "superseded", _now()
+            op.error = {"code": "superseded", "message": "A destroy of the range replaced it"}
         return
     busy_op = in_flight.first()
     if busy_op:
@@ -306,6 +325,7 @@ def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> N
     the operation records who gave up on it. Not automatic: the API cannot see whether the
     hypervisor is still working.
     """
+    reconcile(db, rng)  # it may have finished since anyone looked
     if op.status not in IN_FLIGHT:
         raise HTTPException(409, f"Operation is already {op.status}")
     op.status, op.finished_at = "failed", _now()

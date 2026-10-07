@@ -510,8 +510,9 @@ def save_range_topology(
 # ── Lifecycle Actions ──────────────────────────────────────────────────
 _OPERATION_RESPONSES: dict = {
     202: {
-        "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). "
-        "It may still be waiting for the task queue; see the operation's status."
+        "description": "Accepted: the operation is durably recorded. "
+        "It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+        "headers": {"Operation-Id": {"description": "The operation's id", "schema": {"type": "string"}}},
     },
     409: {
         "description": "Not allowed in the range's state, another operation is in flight, "
@@ -525,7 +526,9 @@ def _range_operation(
     action: str, range_id: uuid.UUID, idempotency_key: str | None, db: Session, user: CurrentUser, response: Response
 ) -> Range:
     """Accept a provision / destroy / stop / start: the operation and the state change in
-    one commit, then the send (app/range_ops). 202 means accepted, not done: the body is
+    one commit, then the send (app/range_ops). The handlers are plain ``def``: acceptance
+    row-locks the range, and a lock waited for on the event loop (an ``async def``
+    handler) stalled the whole API process behind a request that held it. 202 means accepted, not done: the body is
     the range as it is now (``provisioning``, ``destroying``, ``stopping``, ``starting``),
     and the operation (headers) carries the request's progress. A broker that is down
     leaves the operation pending and visibly delayed; it is re-sent when the broker is back."""
@@ -542,14 +545,15 @@ def _range_operation(
         raise
     if created:
         ops.dispatch(db, op)
+    # GET /ranges/{id}/operations/{Operation-Id}. Not a Location header: behind the proxy
+    # the API lives under /api, which the app does not know.
     response.headers["Operation-Id"] = str(op.id)
-    response.headers["Location"] = f"/ranges/{rng.id}/operations/{op.id}"
     db.refresh(rng)
     return rng
 
 
 @router.post("/{range_id}/provision", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
-async def provision_range(
+def provision_range(
     response: Response,
     range_id: uuid.UUID = Path(...),
     idempotency_key: str | None = _IDEMPOTENCY_KEY,
@@ -562,7 +566,7 @@ async def provision_range(
 
 
 @router.post("/{range_id}/destroy", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
-async def destroy_range(
+def destroy_range(
     response: Response,
     range_id: uuid.UUID = Path(...),
     idempotency_key: str | None = _IDEMPOTENCY_KEY,
@@ -576,7 +580,7 @@ async def destroy_range(
 
 
 @router.post("/{range_id}/stop", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
-async def stop_range(
+def stop_range(
     response: Response,
     range_id: uuid.UUID = Path(...),
     idempotency_key: str | None = _IDEMPOTENCY_KEY,
@@ -589,7 +593,7 @@ async def stop_range(
 
 
 @router.post("/{range_id}/start", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
-async def start_range(
+def start_range(
     response: Response,
     range_id: uuid.UUID = Path(...),
     idempotency_key: str | None = _IDEMPOTENCY_KEY,
@@ -657,7 +661,8 @@ def abandon_range_operation(
     Check the hypervisor first: the API cannot see whether work is still running there.
     The range goes to ``failed``, from where it can be destroyed or provisioned again.
     **Permission: range:destroy**"""
-    rng = _changeable_range(db, range_id, user)
+    _changeable_range(db, range_id, user)
+    rng = ops._locked_range(db, range_id, user)  # the range first, as a destroy locks it: no deadlock
     op = _operation(db, rng, operation_id, lock=True)
     ops.abandon(db, rng, op, user)
     _audit(db, user, "abandon_operation", "range", str(rng.id), f"operation {op.id}")
@@ -682,20 +687,23 @@ def batch_provision_ranges(
     # subset the caller happens to own.
     owned_or_404(db, Range, body.range_ids, user)
     ordered = sorted(set(body.range_ids), key=str)
+    from ..lab_sessions.service import lab_range_ids
+
+    if labs := lab_range_ids(db, ordered):
+        raise HTTPException(409, f"Range {sorted(labs, key=str)[0]} belongs to a student's lab session")
     try:
-        for rid in ordered:  # every range passes before any operation is written
-            _changeable_range(db, rid, user)
-            ops.check(db, rid, user, "provision")
-        accepted = [ops.accept(db, rid, user, "provision")[0] for rid in ordered]
+        with db.begin_nested():  # a refusal of any range undoes those accepted before it
+            accepted = [ops.accept(db, rid, user, "provision")[0] for rid in ordered]
         _audit(db, user, "batch_provision", "range", f"{len(accepted)} ranges")
         db.commit()
     except HTTPException:
-        raise  # every range is checked before any operation is written
+        raise  # nothing was committed: a refusal of any range accepts none
     except Exception:
         db.rollback()
         raise
     for op in accepted:
-        ops.dispatch(db, op)
+        if not ops.dispatch(db, op) and op.status == "pending":
+            break  # the broker is down: the rest wait, pending, for the re-send loop
     return BatchProvisionOut(dispatched=len(accepted), task_id=",".join(str(op.id) for op in accepted))
 
 
@@ -728,6 +736,7 @@ def create_snapshot(
     rng = _changeable_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.running, RangeState.stopped):
         raise HTTPException(409, f"Cannot snapshot range in state '{rng.state.value}'")
+    ops.refuse_while_in_flight(db, rng, "snapshot")
     _refuse_while_restoring(db, range_id)
 
     snap = RangeSnapshot(
@@ -760,6 +769,7 @@ def restore_snapshot(
     rng = _changeable_range(db, range_id, user)
     if rng.state not in (RangeState.ready, RangeState.running, RangeState.stopped, RangeState.failed):
         raise HTTPException(409, f"Cannot restore range in state '{rng.state.value}'")
+    ops.refuse_while_in_flight(db, rng, "restore")
     _refuse_while_restoring(db, range_id)
 
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the

@@ -18388,9 +18388,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
+            /** @description Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}. */
             202: {
                 headers: {
+                    /** @description The operation's id */
+                    "Operation-Id"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18723,9 +18725,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
+            /** @description Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}. */
             202: {
                 headers: {
+                    /** @description The operation's id */
+                    "Operation-Id"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18891,9 +18895,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
+            /** @description Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}. */
             202: {
                 headers: {
+                    /** @description The operation's id */
+                    "Operation-Id"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -18931,9 +18937,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
+            /** @description Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}. */
             202: {
                 headers: {
+                    /** @description The operation's id */
+                    "Operation-Id"?: string;
                     [name: string]: unknown;
                 };
                 content: {

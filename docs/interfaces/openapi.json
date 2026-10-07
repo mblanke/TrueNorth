@@ -24709,7 +24709,15 @@
                 }
               }
             },
-            "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status."
+            "description": "Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "409": {
             "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
@@ -25281,7 +25289,15 @@
                 }
               }
             },
-            "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status."
+            "description": "Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "409": {
             "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
@@ -25569,7 +25585,15 @@
                 }
               }
             },
-            "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status."
+            "description": "Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "409": {
             "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
@@ -25638,7 +25662,15 @@
                 }
               }
             },
-            "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status."
+            "description": "Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "409": {
             "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"

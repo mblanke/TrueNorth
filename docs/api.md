@@ -621,8 +621,8 @@ Delete a range record. **Permission: `range:delete`**
 Each of these is an **operation** (app/range_ops): the request is recorded in the same
 transaction as the range's move to its in-progress state, and the worker writes the
 outcome state once the hypervisor has done the work. `202 Accepted` means *recorded*,
-not done. The body is the range as it is now; the `Operation-Id` and `Location`
-(`/ranges/{range_id}/operations/{operation_id}`) headers carry the request's progress.
+not done. The body is the range as it is now; the `Operation-Id` header names the
+operation, whose progress is at `GET /ranges/{range_id}/operations/{operation_id}`.
 
 - **Task queue down:** still `202`. The operation stays `pending` with
   `error.code = "broker_unavailable"`, and the API re-sends it once the broker is back.
@@ -641,7 +641,9 @@ not done. The body is the range as it is now; the `Operation-Id` and `Location`
 
 Stop and start are refused (`409`) for a range with no recorded VMs, or while a snapshot
 is being taken or restored. Stop is also refused while an exercise is running on the
-range. vSphere's stop is a hard power-off, not a guest shutdown.
+range. No new operation (other than a destroy) is accepted while a worker task still holds
+the range's lease, e.g. one that was abandoned. A snapshot or restore is refused while an
+operation is in flight. vSphere's stop is a hard power-off, not a guest shutdown.
 
 | Status | Condition |
 |--------|-----------|
