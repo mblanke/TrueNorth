@@ -38,17 +38,33 @@ def _reachable(url: str) -> bool:
     return True
 
 
+# Fixtures that reach the live API. Tests that use none of them (the Moodle publish and
+# vSphere lab tests run the API code in-process) carry their own configuration gates and
+# must not be skipped for a missing API: the Moodle CI lane has no API stack at all.
+_LIVE_API_FIXTURES = frozenset({"api_base_url", "api_client", "async_api_client", "range_template", "make_range"})
+
+
 def pytest_collection_modifyitems(config, items):
-    """Skip the suite only when the services it needs are not up."""
+    """Skip live-API tests only when the API is not up — unless it is required.
+
+    With INTEGRATION_REQUIRE_API=1 (set by scripts/itest.sh, which CI runs) a missing
+    API is an error, not a skip: a required job that starts no stack must go red, not
+    report "N skipped" as green.
+    """
+    needs_api = [i for i in items if _LIVE_API_FIXTURES.intersection(getattr(i, "fixturenames", ()))]
+    if not needs_api:
+        return
     api_url = os.getenv("API_BASE_URL", DEFAULT_API_URL)
     if _reachable(api_url):
         return
-    skip = pytest.mark.skip(
-        reason=f"no API at {api_url} — start the stack or set API_BASE_URL"
-    )
-    for item in items:
-        if "integration" in item.keywords:
-            item.add_marker(skip)
+    if os.getenv("INTEGRATION_REQUIRE_API", "").strip().lower() in ("1", "true", "yes"):
+        raise pytest.UsageError(
+            f"INTEGRATION_REQUIRE_API is set but no API answers at {api_url}; "
+            "start the stack (make itest) or set API_BASE_URL"
+        )
+    skip = pytest.mark.skip(reason=f"no API at {api_url} — start the stack or set API_BASE_URL")
+    for item in needs_api:
+        item.add_marker(skip)
 
 
 @pytest.fixture(scope="session")

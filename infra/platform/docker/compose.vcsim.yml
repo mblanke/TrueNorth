@@ -1,0 +1,26 @@
+# vcsim: govmomi's vCenter simulator (SOAP /sdk and a subset of the REST /api), for
+# provisioner tests that need a vCenter to talk to but not real VMs. Standalone — it
+# needs nothing else from the dev stack:
+#
+#   docker compose -p tn-vcsim -f infra/platform/docker/compose.vcsim.yml up -d --wait
+#   VSPHERE_URL=https://127.0.0.1:8989 VSPHERE_USERNAME=user VSPHERE_PASSWORD=pass \
+#     VSPHERE_VERIFY_SSL=false .venv/bin/python -m pytest -m vcsim
+#
+# vcsim accepts any username/password unless started with -username/-password; the
+# inventory is its default (-dc 1 -cluster 1 -host 3 -vm 2 -ds 1): datacenter DC0,
+# cluster DC0_C0, datastore LocalDS_0, network "VM Network". Self-signed TLS.
+# Tests that need it are marked `vcsim` (pytest.ini); CI runs them in `vsphere-sim`.
+#
+# Pinned: v0.56.0 was the newest release on 2026-10-07. Published for amd64 only, so
+# Apple Silicon runs it under emulation.
+name: tn-vcsim
+
+services:
+  vcsim:
+    image: vmware/vcsim:v0.56.0
+    platform: linux/amd64
+    command: ["-l", "0.0.0.0:8989"]
+    ports:
+      - "127.0.0.1:8989:8989"
+    # No healthcheck: the image is the static /vcsim binary alone (no shell, no curl).
+    # Readiness is probed from the host: curl -kfsS https://127.0.0.1:8989/about

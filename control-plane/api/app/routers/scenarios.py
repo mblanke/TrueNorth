@@ -24,6 +24,7 @@ import yaml as pyyaml
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import engine_bridge
@@ -148,7 +149,17 @@ def delete_scenario(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.SCENARIO_DELETE)),
 ):
-    """Delete a scenario.  **Permission: scenario:delete**"""
+    """Delete a scenario.  **Permission: scenario:delete**
+
+    409 while any exercise (including a soft-deleted one) still references it.
+    """
     sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
     db.delete(sc)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Scenario is used by one or more exercises; delete those exercises first",
+        ) from None

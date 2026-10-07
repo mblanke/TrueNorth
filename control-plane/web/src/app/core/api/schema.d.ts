@@ -4800,6 +4800,8 @@ export interface paths {
         /**
          * Delete Scenario
          * @description Delete a scenario.  **Permission: scenario:delete**
+         *
+         *     409 while any exercise (including a soft-deleted one) still references it.
          */
         delete: operations["delete_scenario_scenarios__scenario_id__delete"];
         options?: never;

@@ -26324,7 +26324,7 @@
     },
     "/scenarios/{scenario_id}": {
       "delete": {
-        "description": "Delete a scenario.  **Permission: scenario:delete**",
+        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a soft-deleted one) still references it.",
         "operationId": "delete_scenario_scenarios__scenario_id__delete",
         "parameters": [
           {
