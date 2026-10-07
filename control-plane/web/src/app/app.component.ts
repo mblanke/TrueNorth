@@ -10,6 +10,7 @@ import {
 } from '@angular/router';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { NotificationBellComponent } from './shared/notification-bell.component';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -48,7 +49,8 @@ interface NavSection {
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
-    MatExpansionModule
+    MatExpansionModule,
+    NotificationBellComponent,
 ],
   template: `
     @if (isBareRoute()) {
@@ -109,6 +111,8 @@ interface NavSection {
             <span class="toolbar-kicker">Workspace <span class="kicker-sep">/</span> <strong>{{ workspaceTitle() }}</strong></span>
 
             <span class="spacer"></span>
+
+            <tn-notification-bell />
 
             <details class="appearance-menu">
               <summary>Appearance</summary>
@@ -366,6 +370,13 @@ export class AppComponent implements OnDestroy {
     {
       name: 'Review',
       items: [{ label: 'Scoring & AAR', icon: 'assessment', route: '/scoring' }],
+    },
+    {
+      name: 'Help',
+      items: [
+        { label: 'Wiki',    icon: 'menu_book',      route: '/wiki' },
+        { label: 'Support', icon: 'support_agent',  route: '/support' },
+      ],
     },
     {
       name: 'Admin',

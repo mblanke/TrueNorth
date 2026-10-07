@@ -389,6 +389,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 # =========================================================================
 
 _MAX_REQUEST_SIZE_DEFAULT = 10 * 1024 * 1024  # 10 MB
+# File uploads (multipart) get their own cap: ticket attachments and range documents
+# allow 25 MB per file, and the web nginx passes up to 50M on /api/.
+_MAX_UPLOAD_SIZE_DEFAULT = 50 * 1024 * 1024  # 50 MB
+
+# Null bytes are stripped from every body except binary ones. A file upload is binary
+# by nature (PNG, PDF, pcap and zip files all contain zero bytes), and stripping them
+# silently corrupted every one while still answering 201.
+_BINARY_CONTENT_TYPES = {"multipart/form-data", "application/octet-stream"}
 
 _METHODS_REQUIRING_CONTENT_TYPE = {"POST", "PUT", "PATCH"}
 _ALLOWED_CONTENT_TYPES = {
@@ -406,40 +414,40 @@ class InputSanitizationMiddleware(BaseHTTPMiddleware):
         self,
         app: ASGIApp,
         max_request_size: int = _MAX_REQUEST_SIZE_DEFAULT,
+        max_upload_size: int = _MAX_UPLOAD_SIZE_DEFAULT,
     ) -> None:
         super().__init__(app)
         self.max_request_size = max_request_size
+        self.max_upload_size = max(max_upload_size, max_request_size)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         method = request.method
 
+        ct = request.headers.get("content-type", "")
+        base_ct = ct.split(";")[0].strip().lower()
+
         # --- Payload size guard -------------------------------------------
+        limit = self.max_upload_size if base_ct == "multipart/form-data" else self.max_request_size
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self.max_request_size:
+        if content_length and int(content_length) > limit:
             return JSONResponse(
                 status_code=413,
-                content={"detail": (f"Payload too large. Max allowed: {self.max_request_size} bytes.")},
+                content={"detail": (f"Payload too large. Max allowed: {limit} bytes.")},
             )
 
         # --- Content-Type validation on mutating methods ------------------
-        if method in _METHODS_REQUIRING_CONTENT_TYPE:
-            ct = request.headers.get("content-type", "")
-            base_ct = ct.split(";")[0].strip().lower()
-            if ct and base_ct not in _ALLOWED_CONTENT_TYPES:
-                return JSONResponse(
-                    status_code=415,
-                    content={
-                        "detail": (
-                            f"Unsupported Content-Type: {base_ct}. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}"
-                        )
-                    },
-                )
+        if method in _METHODS_REQUIRING_CONTENT_TYPE and ct and base_ct not in _ALLOWED_CONTENT_TYPES:
+            return JSONResponse(
+                status_code=415,
+                content={
+                    "detail": (
+                        f"Unsupported Content-Type: {base_ct}. Allowed: {', '.join(sorted(_ALLOWED_CONTENT_TYPES))}"
+                    )
+                },
+            )
 
-        # --- Null-byte stripping (via receive wrapper) --------------------
-        # Text bodies only. A multipart upload carries files whose bytes are their content
-        # (a gzip, an image, a document): stripping 0x00 from them corrupts every binary
-        # upload. Each upload handler decodes and validates its own file.
-        if request.headers.get("content-type", "").split(";")[0].strip().lower() == "multipart/form-data":
+        # --- Null-byte stripping, except binary bodies (via receive wrapper) -
+        if base_ct in _BINARY_CONTENT_TYPES:
             return await call_next(request)
         original_receive = request._receive  # type: ignore[attr-defined]
 
@@ -486,6 +494,8 @@ def setup_middleware(
         Default requests-per-minute (default ``"100"``).
     MAX_REQUEST_SIZE : str
         Maximum request body in bytes (default ``"10485760"`` = 10 MB).
+    MAX_UPLOAD_SIZE : str
+        Maximum multipart (file upload) body in bytes (default ``"52428800"`` = 50 MB).
     REDIS_URL : str
         Fallback redis URL if *redis_url* parameter is not provided.
     """
@@ -494,6 +504,7 @@ def setup_middleware(
     rate_limit_enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
     rate_limit_default = int(os.getenv("RATE_LIMIT_DEFAULT", "100"))
     max_request_size = int(os.getenv("MAX_REQUEST_SIZE", str(_MAX_REQUEST_SIZE_DEFAULT)))
+    max_upload_size = int(os.getenv("MAX_UPLOAD_SIZE", str(_MAX_UPLOAD_SIZE_DEFAULT)))
     effective_redis_url = redis_url or os.getenv("REDIS_URL")
     csrf_enabled = os.getenv("AUTH_DISABLED", "false").lower() != "true"
 
@@ -541,6 +552,7 @@ def setup_middleware(
     app.add_middleware(
         InputSanitizationMiddleware,
         max_request_size=max_request_size,
+        max_upload_size=max_upload_size,
     )
 
     # 6. CSRF protection (innermost: only reached after sanitisation)
