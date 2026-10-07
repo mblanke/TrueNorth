@@ -15,7 +15,11 @@ from pathlib import Path
 
 import yaml
 
-_REPO_COPY = Path(__file__).resolve().parents[3] / "content" / "catalogue" / "software_catalogue.yaml"
+_CATALOGUE_REL = Path("content") / "catalogue" / "software_catalogue.yaml"
+# In the repo this file is <repo>/control-plane/worker/worker/; in the image it is
+# /app/worker/, which has only two parents — so never index parents at import time.
+_HERE = Path(__file__).resolve()
+_REPO_COPY = (_HERE.parents[3] / _CATALOGUE_REL) if len(_HERE.parents) > 3 else _CATALOGUE_REL
 _CONTAINER_COPY = Path("/app/content/catalogue/software_catalogue.yaml")
 
 # Red Hat family guests use dnf; everything else Linux uses apt.
