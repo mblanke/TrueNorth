@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from app.search_backends import (
@@ -107,6 +109,35 @@ class TestOpenSearchBackend:
         )
         result = await self._make_backend().search("range-1", "event_type:login")
         assert result["hits"]["total"]["value"] == 2
+
+    @pytest.mark.asyncio
+    async def test_search_sends_the_constrained_dsl_not_query_string(self, respx_mock):
+        route = respx_mock.post("http://mock-os:9200/range-1/_search").mock(
+            return_value=httpx.Response(200, json=_MOCK_SEARCH_RESPONSE)
+        )
+        await self._make_backend().search("range-1", "event_type:login", size=7)
+        body = json.loads(route.calls.last.request.content)
+        assert body["query"] == {"bool": {"must": [{"match_phrase": {"event_type": "login"}}]}}
+        assert body["size"] == 7
+        assert "query_string" not in json.dumps(body["query"]).replace("simple_query_string", "")
+
+    @pytest.mark.asyncio
+    async def test_search_rejects_a_query_outside_the_grammar_without_calling_opensearch(self, respx_mock):
+        route = respx_mock.post("http://mock-os:9200/range-1/_search")
+        with pytest.raises(HTTPException) as exc_info:
+            await self._make_backend().search("range-1", "_index:range-other")
+        assert exc_info.value.status_code == 422
+        assert not route.called
+
+    @pytest.mark.asyncio
+    async def test_search_400_from_opensearch_is_422(self, respx_mock):
+        """A well-formed query OpenSearch still refuses (prefix on a date field) is the caller's."""
+        respx_mock.post("http://mock-os:9200/range-1/_search").mock(
+            return_value=httpx.Response(400, json={"error": {"type": "query_shard_exception"}})
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await self._make_backend().search("range-1", "@timestamp:2026*")
+        assert exc_info.value.status_code == 422
 
     @pytest.mark.asyncio
     async def test_search_backend_error_raises_502(self, respx_mock):

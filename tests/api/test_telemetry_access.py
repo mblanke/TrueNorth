@@ -114,3 +114,49 @@ class TestSearch:
             resp = client.get(f"/telemetry/{foreign.id}/search", params={"q": "*"})
         assert resp.status_code == 404
         assert backend.searched == []
+
+    @pytest.mark.parametrize("q", ["_index:range-*", "cmd:*admin", 'a:"open', "a:x OR a:y"])
+    def test_query_outside_the_grammar_is_422_and_never_reaches_the_backend(self, client, db_session, backend, q):
+        r = _range(db_session, DEV_TENANT)
+        with acting_as(UserRole.instructor):
+            resp = client.get(f"/telemetry/{r.id}/search", params={"q": q})
+        assert resp.status_code == 422, resp.text
+        assert "Invalid search query" in resp.json()["detail"]
+        assert backend.searched == []
+
+    def test_overlong_query_is_422(self, client, db_session, backend):
+        r = _range(db_session, DEV_TENANT)
+        with acting_as(UserRole.instructor):
+            resp = client.get(f"/telemetry/{r.id}/search", params={"q": "x" * 513})
+        assert resp.status_code == 422
+        assert backend.searched == []
+
+    def test_ownership_is_checked_before_the_query(self, client, db_session, backend):
+        """A foreign range is 404 whatever the query, so q cannot probe for range ids."""
+        foreign = _range(db_session, OTHER_TENANT)
+        with acting_as(UserRole.instructor):
+            resp = client.get(f"/telemetry/{foreign.id}/search", params={"q": "_index:x"})
+        assert resp.status_code == 404
+
+
+class TestMitreTagging:
+    def _ingest(self, client, db_session, backend, events):
+        r = _range(db_session, DEV_TENANT)
+        with acting_as(UserRole.instructor):
+            resp = client.post(f"/telemetry/{r.id}/events", json=events)
+        assert resp.status_code == 202, resp.text
+        return backend.ingested[0][1]
+
+    def test_event_type_maps_to_a_technique(self, client, db_session, backend):
+        [ev] = self._ingest(client, db_session, backend, [{"event_type": "process_exec"}])
+        assert ev["mitre_technique"] == ["T1059"]
+
+    def test_inject_technique_id_wins_over_event_type(self, client, db_session, backend):
+        [ev] = self._ingest(
+            client, db_session, backend, [{"event_type": "process_exec", "technique_id": "t1003.001"}]
+        )
+        assert ev["mitre_technique"] == ["T1003.001"]
+
+    def test_unknown_event_is_left_untagged(self, client, db_session, backend):
+        [ev] = self._ingest(client, db_session, backend, EVENT)
+        assert "mitre_technique" not in ev

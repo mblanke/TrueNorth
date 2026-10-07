@@ -703,44 +703,10 @@ services:
     networks:
       - tn-frontend
 
-  # ================================================================
-  #  TELEMETRY INGEST PIPELINE
-  # ================================================================
-  # Required: drains the Redis stream `telemetry:ingest` into OpenSearch.
-  # Without it NO telemetry is ever indexed, and scoring, detections and AAR
-  # all silently produce nothing. Nothing errors — the data simply never lands.
-  telemetry-pipeline:
-    build:
-      context: ../../../telemetry-pipeline
-      dockerfile: Dockerfile
-    restart: always
-    environment:
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      OPENSEARCH_URL: http://opensearch:9200
-      OPENSEARCH_INDEX_PREFIX: ${OPENSEARCH_INDEX_PREFIX:-truenorth-telemetry}
-      BATCH_SIZE: "500"
-      FLUSH_INTERVAL_MS: "2000"
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-    depends_on:
-      redis:
-        condition: service_healthy
-      opensearch:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 512M
-        reservations:
-          cpus: "0.5"
-          memory: 256M
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "5"
-    networks:
-      - tn-backend
+  # Telemetry is indexed per range (`range-<id>`) by the API (POST
+  # /telemetry/{range_id}/events) and the worker-telemetry Celery queue. The
+  # old telemetry-pipeline service (Redis stream -> truenorth-telemetry-*) was
+  # removed: nothing wrote its stream and nothing read its indices.
 
   # ================================================================
   #  LEARNING RECORD STORE (xAPI)

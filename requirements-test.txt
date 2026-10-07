@@ -8,8 +8,6 @@
 -r control-plane/worker/requirements.txt
 -r scenario-engine/requirements.txt
 -r ai-orchestrator/requirements.txt
-# telemetry-pipeline brings opensearch-py[async], which tests import as opensearchpy.
--r telemetry-pipeline/requirements.txt
 
 # Test tooling. Pinned: a float to pytest-asyncio 1.x or a new respx changes fixture
 # behaviour, and CI green must mean the same thing as local green.

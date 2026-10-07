@@ -1,8 +1,9 @@
 """TrueNorth Range AI Orchestrator — Abstract AI backend interface.
 
-Every AI backend (OpenAI, Anthropic, vLLM, Mock) must implement this ABC.
-The Ollama fleet manager (fleet routing, health checks, load balancing) is
-intentionally separate — it orchestrates across multiple backends.
+Every AI backend (OpenAI, Anthropic, vLLM, Ollama, Mock) must implement this
+ABC. The Ollama fleet manager in main.py (fleet routing, health checks, load
+balancing) is intentionally separate — it orchestrates across one
+OllamaBackend per node.
 """
 
 from __future__ import annotations
@@ -36,3 +37,14 @@ class BaseAIBackend(ABC):
     async def health_check(self) -> bool:
         """Return True if the backend is reachable and accepting requests."""
         ...
+
+    async def embed(self, text: str, model: str = "") -> tuple[list[float], str]:
+        """Return ``(vector, model_used)`` for *text*.
+
+        Optional capability: backends without an embeddings API keep this
+        default, which refuses with 501. Transport failures propagate as
+        ``httpx.HTTPError`` so the orchestrator can retry them.
+        """
+        from fastapi import HTTPException
+
+        raise HTTPException(501, f"{type(self).__name__} does not provide embeddings")

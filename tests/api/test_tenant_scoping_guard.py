@@ -104,6 +104,68 @@ def test_the_guard_detects_every_by_id_idiom(sample):
     assert BY_ID.search(m.group(2)), f"not recognised as a by-id lookup: {sample}"
 
 
+# `db.get(Model, id)` is a primary-key lookup with no room for a tenant predicate, and
+# the QUERY pattern above never saw it: directory.py and auth_zones.py did every by-id
+# fetch that way and leaked across tenants while this guard stayed green (fixed
+# 2026-10-07). A `db.get` of a tenant-owned model needs a `# tenant-safe:` waiver in
+# the preceding 4 lines, or should be `app.tenancy.get_owned()`.
+DB_GET = re.compile(r"db\.get\((\w+)\s*,")
+
+# Known unscoped `db.get` calls, per router file, when this check was added. A ratchet:
+# a count may go down (lower it here), never up, and a file not listed must have none.
+# These are outside the platform-core slot that added the check and have not been
+# reviewed; some may be scoped by a later check in the handler, some may be leaks.
+DB_GET_BASELINE = {
+    "ai_config.py": 6,
+    "curriculum.py": 2,
+    "hypervisors.py": 6,
+    "integrations.py": 1,
+    "lab_sessions.py": 3,
+    "quizzes.py": 1,
+}
+
+
+def _db_get_findings() -> dict[str, list[str]]:
+    tenanted = _tenanted_models()
+    out: dict[str, list[str]] = {}
+    for f in sorted(ROUTERS.glob("*.py")):
+        src = f.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        for m in DB_GET.finditer(src):
+            if m.group(1) not in tenanted:
+                continue
+            line = src[: m.start()].count("\n") + 1
+            if "tenant-safe:" in "\n".join(lines[max(0, line - 5) : line]):
+                continue
+            out.setdefault(f.name, []).append(f"{f.name}:{line} db.get({m.group(1)}, ...)")
+    return out
+
+
+def test_no_new_unscoped_db_get_on_tenant_models():
+    over = []
+    for name, hits in _db_get_findings().items():
+        allowed = DB_GET_BASELINE.get(name, 0)
+        if len(hits) > allowed:
+            over.append(f"{name}: {len(hits)} > baseline {allowed}\n    " + "\n    ".join(hits))
+    assert not over, (
+        "db.get() of a tenant-owned model returns another tenant's row by id:\n  "
+        + "\n  ".join(over)
+        + "\n\nUse app.tenancy.get_owned(), or justify with a '# tenant-safe:' comment."
+    )
+
+
+@pytest.mark.parametrize("router", ["directory.py", "auth_zones.py", "storage.py", "ad_sync.py", "admin.py"])
+def test_platform_routers_have_no_unscoped_db_get(router):
+    """The platform-core routers were fixed outright; they carry no baseline."""
+    assert router not in DB_GET_BASELINE
+    assert not _db_get_findings().get(router), _db_get_findings()[router]
+
+
+def test_the_db_get_detector_fires():
+    assert DB_GET.search("ou = db.get(OrganizationalUnit, str(ou_id))").group(1) == "OrganizationalUnit"
+    assert "OrganizationalUnit" in _tenanted_models()
+
+
 def test_foreign_key_filters_are_not_mistaken_for_by_id_lookups():
     m = QUERY.search("rows = db.query(RangeObjectiveMap).filter_by(template_id=t.id).all()")
     assert m and not BY_ID.search(m.group(2))
