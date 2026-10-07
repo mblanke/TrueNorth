@@ -168,18 +168,12 @@ def render_topology(
 
 
 def golden_image_resolver(db, hypervisor: str = "vsphere") -> Callable[[str], str | None]:
-    """Build an os-alias -> template_name resolver from the golden_images table (raw SQL)."""
+    """Build an os-alias -> template_name resolver from the golden_images table."""
     import json as _json
 
-    from sqlalchemy import text
+    from .db_ops import enabled_golden_images
 
-    rows = db.execute(
-        text(
-            "SELECT catalogue_id, template_name, os_aliases FROM golden_images "
-            "WHERE hypervisor = :h AND enabled = TRUE AND deleted_at IS NULL"
-        ),
-        {"h": hypervisor},
-    ).fetchall()
+    rows = enabled_golden_images(db, hypervisor)
     by_id: dict[str, str] = {}
     by_alias: dict[str, str] = {}
     for cid, tname, aliases_json in rows:

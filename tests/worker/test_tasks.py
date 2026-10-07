@@ -248,8 +248,12 @@ class TestCleanupExpiredRanges:
         result_mock.fetchall.return_value = expired_ranges
         mock_session.execute = MagicMock(return_value=result_mock)
 
+        # `ranges` has no expires_at column, so db_ops.expired_ranges is empty against the
+        # real schema (test_worker_sql_real_db.py). Feed rows through it to test dispatch.
         with (
             patch("worker.tasks._db_session", return_value=mock_session),
+            patch("worker.db_ops.range_expiry_supported", return_value=True),
+            patch("worker.db_ops.expired_ranges", return_value=expired_ranges),
             patch("worker.tasks._notify_api"),
             patch("worker.tasks.destroy_range") as mock_destroy,
         ):
@@ -277,7 +281,11 @@ class TestCleanupExpiredRanges:
         result_mock.fetchall.return_value = []
         mock_session.execute = MagicMock(return_value=result_mock)
 
-        with patch("worker.tasks._db_session", return_value=mock_session), patch("worker.tasks._notify_api"):
+        with (
+            patch("worker.tasks._db_session", return_value=mock_session),
+            patch("worker.db_ops.range_expiry_supported", return_value=True),
+            patch("worker.tasks._notify_api"),
+        ):
             try:
                 from worker.tasks import cleanup_expired_ranges
 
