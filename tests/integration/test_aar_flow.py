@@ -80,9 +80,11 @@ def completed_exercise(api_client, range_template):
         return state if state in ("running", "paused", "completed") else None
 
     # The mock runner may finish on its own; if it is still going, the instructor ends it.
-    if _poll(_settled, "the exercise to start") != "completed":
+    # It can also finish between the poll and the call: a 409 "is completed" is that race.
+    if _poll(_settled, "the exercise to start") in ("running", "paused"):
         done = api_client.post(f"/exercises/{eid}/complete")
-        assert done.status_code in (200, 202, 409), f"complete => {done.status_code} {done.text}"
+        already_done = done.status_code == 409 and "is completed" in done.text
+        assert done.status_code in (200, 202) or already_done, f"complete => {done.status_code} {done.text}"
     _poll(lambda: api_client.get(f"/exercises/{eid}").json()["state"] == "completed", "state 'completed'")
 
     yield {"id": eid, "name": name}
