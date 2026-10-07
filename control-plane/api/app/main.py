@@ -200,6 +200,20 @@ from .validation_errors import install as install_validation_errors  # noqa: E40
 
 install_validation_errors(app)
 
+# -- Stored credentials (app/secretbox.py) ----------------------------------
+# No key, or a key that does not open what is stored: a clear 503 naming the setting, never
+# a credential stored as typed or a login attempted with ciphertext.
+from fastapi.responses import JSONResponse  # noqa: E402
+
+from .secretbox import SecretKeyMissingError, SecretUnreadableError  # noqa: E402
+
+
+@app.exception_handler(SecretKeyMissingError)
+@app.exception_handler(SecretUnreadableError)
+async def _credentials_unavailable(_request, exc):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
 # -- CORS ------------------------------------------------------------------
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:4200,http://localhost:3000").split(",")
 app.add_middleware(

@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 
 from celery import group
 
-from . import db_ops, greyspace, range_alloc
+from . import db_ops, greyspace, range_alloc, secretbox
 from .base_tasks import ReliableTask, _get_backend
 from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, run_async
@@ -121,7 +121,7 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
         return {}
     return {
         "host": row[0], "port": row[1], "username": row[2],
-        "password": row[3] or "", "api_token": row[4] or "",
+        "password": secretbox.unseal(row[3]) or "", "api_token": secretbox.unseal(row[4]) or "",  # sealed by the API
         "verify_ssl": bool(row[5]), "datacenter": row[6] or "",
     }
 

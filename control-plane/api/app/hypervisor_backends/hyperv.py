@@ -6,6 +6,7 @@ from datetime import datetime
 
 from ..models import HypervisorConnection, HypervisorNode
 from ..schemas import HypervisorTestResult
+from ..secretbox import unseal
 from .base import BaseHypervisorBackend
 
 
@@ -26,7 +27,7 @@ def _session(conn: HypervisorConnection):
     port = conn.port or 5985
     return winrm.Session(
         f"{scheme}://{conn.host}:{port}/wsman",
-        auth=(conn.username, conn.password_encrypted or ""),
+        auth=(conn.username, unseal(conn.password_encrypted) or ""),
         transport="ntlm",
         server_cert_validation="ignore",
     )

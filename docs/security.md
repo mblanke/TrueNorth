@@ -464,6 +464,30 @@ add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; prelo
 | MinIO | Server-Side Encryption (SSE-S3) | MinIO KMS or Vault |
 | Redis | Not encrypted at rest (volatile) | N/A — cache only |
 | Backups | AES-256-GCM | Vault or cloud KMS |
+| Stored credentials (hypervisor passwords and API tokens, AI engine keys) | Fernet (AES-128-CBC + HMAC-SHA256), sealed by the application | `TN_SECRETS_KEY` |
+
+#### Stored credentials
+
+Hypervisor connection passwords and API tokens (`hypervisor_connections.password_encrypted`,
+`.api_token`) and AI engine keys (`ai_backend_configs.api_key_encrypted`) are sealed before
+they are written and unsealed only where a login needs them (`app/secretbox.py`; the
+worker has a byte-identical copy, `worker/secretbox.py`). The API never returns them.
+
+- **Key.** `TN_SECRETS_KEY`: at least 32 random characters (`openssl rand -hex 32`), the
+  same value for the api and every worker. The installer generates it once and never
+  again (`vault_secrets_key`); Helm takes `secrets.secretsKey`. The dev compose file uses
+  a public dev-only value.
+- **Without a key** nothing is stored: saving a credential, testing a connection or calling
+  an AI engine that has one returns 503 naming the setting. Production compose refuses to
+  start without it. A connection or engine with no credential needs no key.
+- **Back the key up with the database.** A credential sealed with a lost key cannot be
+  read (503); the fix is to re-enter it.
+- **Rotation.** Set `TN_SECRETS_KEY=new,old` and restart api and workers: new values are
+  sealed with `new`, old ones still open. Re-save each credential, then drop `old`.
+- **Upgrade.** Migration `f4b5c6d7e8a9` seals existing plaintext values and refuses to run
+  without the key if there are any. Its downgrade unseals them for a rollback.
+- **Not covered:** `external_platforms.credentials_encrypted` (LMS integrations). No code
+  writes it today; whatever starts to must seal it with the same module.
 
 ---
 

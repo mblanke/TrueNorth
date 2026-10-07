@@ -201,6 +201,8 @@ services:
       # Use PgBouncer for connection pooling
       DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
       REDIS_URL: redis://redis:6379/0
+      # DEV ONLY, public. Seals stored credentials (app/secretbox.py); the workers share it.
+      TN_SECRETS_KEY: dev-only-not-secret-truenorth-secrets-key
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -264,6 +266,7 @@ services:
     environment: &worker-env
       DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
       REDIS_URL: redis://redis:6379/0
+      TN_SECRETS_KEY: dev-only-not-secret-truenorth-secrets-key  # the api's (DEV ONLY)
       OPENSEARCH_URL: http://opensearch:9200
       PROVISIONER_BACKEND: mock
       LRS_URL: http://lrs:8080
