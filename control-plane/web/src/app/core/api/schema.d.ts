@@ -37,6 +37,10 @@ export interface paths {
         /**
          * Ad Sync Status
          * @description Return current AD sync status and statistics.  **Permission: user:read**
+         *
+         *     Counts are the caller's tenant only — a count of another tenant's directory
+         *     users is still disclosure. The Keycloak federation fields describe the shared
+         *     identity provider and are the same for everyone.
          */
         get: operations["ad_sync_status_ad_sync_status_get"];
         put?: never;
@@ -5077,7 +5081,13 @@ export interface paths {
         delete: operations["delete_team_teams__team_id__delete"];
         options?: never;
         head?: never;
-        /** Update Team */
+        /**
+         * Update Team
+         * @description Update a team.  **Permission: user:update**
+         *
+         *     Until 2026-10-07 this needed only a login: a student could rename or resize
+         *     any team in their tenant.
+         */
         patch: operations["update_team_teams__team_id__patch"];
         trace?: never;
     };
