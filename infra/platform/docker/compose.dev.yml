@@ -259,6 +259,8 @@ services:
         scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q provision,destroy -c 4 --loglevel=info -n provision@%h
+    volumes:
+      - ../../../content/catalogue:/app/content/catalogue:ro  # software_catalogue.py (vSphere installs)
     environment: &worker-env
       DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
       REDIS_URL: redis://redis:6379/0
