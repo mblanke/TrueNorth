@@ -504,6 +504,8 @@ services:
       TN_DEPOT_APT_PROXY: ${TN_DEPOT_APT_PROXY:-}
       TN_DEPOT_PORTS: ${TN_DEPOT_PORTS:-8081,3142}
       TN_SOFTWARE_INSTALL_TIMEOUT: ${TN_SOFTWARE_INSTALL_TIMEOUT:-1800}
+      # Per VM, its Windows Server roles (features, reboots, forest promotion).
+      VSPHERE_ROLE_TIMEOUT: ${VSPHERE_ROLE_TIMEOUT:-1800}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       # Deploy-time software installs resolve node services against this (software_catalogue.py).

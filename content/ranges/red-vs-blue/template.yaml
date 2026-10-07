@@ -254,7 +254,7 @@ nodes:
     vlan: server_vlan
     ip: "10.30.0.10"
     node: coyote
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 48 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
     services: [active_directory, dns, gpo, dhcp]
     tags: [blue_defend]
     ad_forest: corp.range.local
@@ -268,7 +268,7 @@ nodes:
     vlan: server_vlan
     ip: "10.30.0.11"
     node: acme
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 48 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
     services: [active_directory, dns]
     tags: [blue_defend]
     ad_forest: corp.range.local
@@ -293,7 +293,7 @@ nodes:
     vlan: server_vlan
     ip: "10.30.0.40"
     node: acme
-    specs: { cores: 2, memory_mb: 4096, disk_gb: 48 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 100 }
     services: [smb, dfs]
     tags: [blue_defend]
     description: "File server — sensitive data shares, DFS namespace"
@@ -305,7 +305,7 @@ nodes:
     vlan: server_vlan
     ip: "10.30.0.50"
     node: acme
-    specs: { cores: 2, memory_mb: 16384, disk_gb: 48 }
+    specs: { cores: 4, memory_mb: 16384, disk_gb: 200 }
     services: [exchange, owa, smtp]
     tags: [blue_defend]
     description: "Exchange mail server — high-value target"
@@ -329,7 +329,7 @@ nodes:
     vlan: server_vlan
     ip: "10.30.0.70"
     node: coyote
-    specs: { cores: 2, memory_mb: 2048, disk_gb: 16 }
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
     services: [ad_cs, ocsp]
     tags: [blue_defend]
     description: "Enterprise PKI — AD Certificate Services"

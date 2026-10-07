@@ -6119,9 +6119,30 @@ export interface paths {
         put?: never;
         /**
          * Validate Template
-         * @description Validate range-template YAML against the engine's canonical schema.
+         * @description Validate range-template YAML against the engine's canonical schema and the
+         *     Windows Server role rules (two product images on one VM, conflicting roles).
          */
         post: operations["validate_template_templates_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/windows-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Windows Role Catalogue
+         * @description Windows Server roles the designer offers, with minimum sizing and placement rules.
+         */
+        get: operations["windows_role_catalogue_templates_windows_roles_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -11509,6 +11530,15 @@ export interface components {
              */
             version?: string;
         };
+        /** RoleSpecsOut */
+        RoleSpecsOut: {
+            /** Disk Gb */
+            disk_gb: number;
+            /** Ram Mb */
+            ram_mb: number;
+            /** Vcpu */
+            vcpu: number;
+        };
         /** RosterIn */
         RosterIn: {
             /**
@@ -13392,6 +13422,37 @@ export interface components {
             slug: string;
             /** Title */
             title: string;
+        };
+        /** WindowsRoleCatalogueOut */
+        WindowsRoleCatalogueOut: {
+            base: components["schemas"]["RoleSpecsOut"];
+            /** Groups */
+            groups: string[];
+            /** Roles */
+            roles: components["schemas"]["WindowsRoleOut"][];
+        };
+        /** WindowsRoleOut */
+        WindowsRoleOut: {
+            /** Aliases */
+            aliases: string[];
+            /** Conflicts */
+            conflicts: string[];
+            /** Group */
+            group: string;
+            /** Id */
+            id: string;
+            /** Images */
+            images: string[];
+            /** Label */
+            label: string;
+            /** Method */
+            method: string;
+            min: components["schemas"]["RoleSpecsOut"];
+            /** Notes */
+            notes: string;
+            recommended: components["schemas"]["RoleSpecsOut"];
+            /** Requires */
+            requires: string[];
         };
         /** YamlValidateIn */
         YamlValidateIn: {
@@ -24989,6 +25050,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    windows_role_catalogue_templates_windows_roles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WindowsRoleCatalogueOut"];
                 };
             };
         };

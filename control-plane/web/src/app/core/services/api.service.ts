@@ -100,7 +100,16 @@ export interface DiagramTemplate {
   template: Record<string, unknown>;
   yaml: string;
   warnings: string[];
+  /** Windows Server role placements that cannot be built; Save topology refuses them. */
+  errors?: string[];
 }
+
+/** Minimum / recommended sizing of a Windows Server role. */
+export type RoleSpecs = components['schemas']['RoleSpecsOut'];
+/** One Windows Server role (GET /templates/windows-roles). `method`: feature (installed
+ *  after boot) or image (cloned from a pre-built role image, one per VM). */
+export type WindowsRole = components['schemas']['WindowsRoleOut'];
+export type WindowsRoleCatalogue = components['schemas']['WindowsRoleCatalogueOut'];
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -262,6 +271,10 @@ export class ApiService {
   /** The real injector registry — replaces hard-coded action lists. */
   listInjectors(): Observable<InjectorInfo[]> {
     return this.http.get<InjectorInfo[]>(`${this.base}/injectors`);
+  }
+  /** Windows Server roles with minimum sizing and placement rules, for the designer. */
+  getWindowsRoles(): Observable<WindowsRoleCatalogue> {
+    return this.http.get<WindowsRoleCatalogue>(`${this.base}/templates/windows-roles`);
   }
   /** Hypervisor-verified OS aliases for the designer's image picker. */
   getGoldenImageAliasMap(hypervisor?: string): Observable<Record<string, string>> {

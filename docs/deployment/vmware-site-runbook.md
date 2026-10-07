@@ -449,7 +449,7 @@ use about 34 of the vCPUs below. Recompute after any template change with
 | cloud-security | 52 | 126 GB | 1 | 3 |
 | soc-training | 69 | 157 GB | 0 | 2 |
 | red-team | 67 | 149 GB | 0 | 2 |
-| red-vs-blue | 80 | 160 GB | 0 | 1 |
+| red-vs-blue | 82 | 162 GB | 0 | 1 |
 | large-enterprise | 142 | 375 GB | 0 | 1 (disk: 7.2 TB provisioned; only fits thin) |
 
 Counts are per range type on an otherwise empty lab; mixed ranges share the same 158 vCPU

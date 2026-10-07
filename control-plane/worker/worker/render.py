@@ -15,6 +15,8 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from . import windows_roles
+
 # Renamed OS identifiers and the spellings of one golden image. Vendored copy of the
 # tables in control-plane/api/app/golden_images.py; tests/api/test_os_aliases.py
 # fails if they drift apart.
@@ -215,6 +217,11 @@ def render_topology(
     ip, gateway, netmask, prefix, port_group, cores, memory/memory_mb, disk_gb, and `nics`:
     one {vlan, network, ip, prefix, netmask, gateway[, port_group]} per NIC, in NIC order.
     VLAN ids here are the template's, logical; vSphere maps them to physical VLANs.
+
+    Windows Server nodes whose ``services`` name roles (windows_roles.py) are sized to at
+    least their roles' minimum, clone the role's image when it has one, and carry
+    ``roles`` / ``role_features`` (and, for DCs, ``ad_domain`` / ``ad_forest_root``).
+    ``role_errors`` lists placements that cannot be built (two product images on one VM).
     """
     range_name = template.get("name") or template.get("id") or range_id
 
@@ -243,6 +250,11 @@ def render_topology(
     nodes = _extract_nodes(template)
     vms: list[dict] = []
     unresolved: list[str] = []
+    role_errors, _ = windows_roles.check_nodes(
+        [{**n, "os": canonical_os(_node_os(n))} for n in nodes if isinstance(n, dict)]
+    )
+    default_domain = str(template.get("ad_domain") or template.get("domain") or "range.local")
+    forests: set[str] = set()  # AD domains whose first (forest-root) DC is already assigned
     for node in nodes:
         if (not node.get("os") and not node.get("os_template")
                 and str(node.get("type", "")) in _DESIGNER_NON_VM_TYPES):
@@ -256,9 +268,17 @@ def render_topology(
             name = f"{range_id[:8]}-{suffix}"
             given_os = _node_os(node)
             os_alias = canonical_os(given_os)
-            template_name = next(
-                (t for t in map(resolve_template, os_alias_candidates(given_os)) if t), None
-            )
+            roles = windows_roles.roles_of(node.get("services")) if windows_roles.is_windows_server(os_alias) else []
+            # A pre-built role image (build sheet, stage R; registered as a golden-image
+            # variant) replaces the bare OS template. Not registered yet: the bare OS is
+            # built and the image role reports skipped, rather than the VM failing.
+            role_image = windows_roles.role_image(roles, os_alias)
+            template_name = resolve_template(role_image) if role_image else None
+            missing_image = role_image if role_image and template_name is None else ""
+            if template_name is None:
+                template_name = next(
+                    (t for t in map(resolve_template, os_alias_candidates(given_os)) if t), None
+                )
             if template_name is None:
                 unresolved.append(os_alias)
                 template_name = os_alias  # best-effort; provisioning will surface the miss
@@ -267,6 +287,19 @@ def render_topology(
             if not ip and netinfo:
                 ip = _next_ip(netinfo, routes)
             specs = _node_specs(node)
+            role_plan: dict[str, Any] = {}
+            if roles:
+                floor = windows_roles.min_specs(roles)
+                for src, dst in (("vcpu", "cores"), ("ram_mb", "memory_mb"), ("disk_gb", "disk_gb")):
+                    specs[dst] = max(int(specs.get(dst) or 0), floor[src])
+                role_plan = {"roles": roles, "role_features": windows_roles.role_features(roles)}
+                if missing_image:
+                    role_plan["role_image_missing"] = missing_image
+                if "ad-ds" in roles:
+                    domain = str(node.get("ad_domain") or node.get("ad_forest") or default_domain)
+                    role_plan["ad_domain"] = domain
+                    role_plan["ad_forest_root"] = domain not in forests
+                    forests.add(domain)
             gateway = netinfo["gateway"] if netinfo else ""
             netmask = str(netinfo["net"].netmask) if netinfo else "255.255.255.0"
             prefix = netinfo["net"].prefixlen if netinfo else 24
@@ -284,6 +317,7 @@ def render_topology(
                 "memory": specs.get("memory_mb", 4096), "memory_mb": specs.get("memory_mb", 4096),
                 "disk_gb": specs.get("disk_gb", 60),
                 "services": node.get("services", []),
+                **role_plan,
                 # The range's edge firewall (WAN uplink to the depot); see vsphere_infra.pick_edge.
                 **({"edge": True} if node.get("edge") or node.get("wan") else {}),
             })
@@ -312,6 +346,7 @@ def render_topology(
         "range_id": range_id, "range_name": range_name,
         "vm_definitions": vms, "network_definitions": networks,
         "vlan_map": vlan_map, "unresolved": sorted(set(unresolved)),
+        "role_errors": role_errors,
     }
 
 

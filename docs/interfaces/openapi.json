@@ -11389,6 +11389,29 @@
         "title": "ReportIn",
         "type": "object"
       },
+      "RoleSpecsOut": {
+        "properties": {
+          "disk_gb": {
+            "title": "Disk Gb",
+            "type": "integer"
+          },
+          "ram_mb": {
+            "title": "Ram Mb",
+            "type": "integer"
+          },
+          "vcpu": {
+            "title": "Vcpu",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vcpu",
+          "ram_mb",
+          "disk_gb"
+        ],
+        "title": "RoleSpecsOut",
+        "type": "object"
+      },
       "RosterIn": {
         "properties": {
           "count": {
@@ -15830,6 +15853,107 @@
           "is_published"
         ],
         "title": "WikiTreeNode",
+        "type": "object"
+      },
+      "WindowsRoleCatalogueOut": {
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/RoleSpecsOut"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/WindowsRoleOut"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "groups",
+          "base",
+          "roles"
+        ],
+        "title": "WindowsRoleCatalogueOut",
+        "type": "object"
+      },
+      "WindowsRoleOut": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Images",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "min": {
+            "$ref": "#/components/schemas/RoleSpecsOut"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "recommended": {
+            "$ref": "#/components/schemas/RoleSpecsOut"
+          },
+          "requires": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Requires",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "group",
+          "min",
+          "recommended",
+          "method",
+          "images",
+          "requires",
+          "conflicts",
+          "aliases",
+          "notes"
+        ],
+        "title": "WindowsRoleOut",
         "type": "object"
       },
       "YamlValidateIn": {
@@ -34540,7 +34664,7 @@
     },
     "/templates/validate": {
       "post": {
-        "description": "Validate range-template YAML against the engine's canonical schema.",
+        "description": "Validate range-template YAML against the engine's canonical schema and the\nWindows Server role rules (two product images on one VM, conflicting roles).",
         "operationId": "validate_template_templates_validate_post",
         "requestBody": {
           "content": {
@@ -34582,6 +34706,33 @@
           }
         ],
         "summary": "Validate Template",
+        "tags": [
+          "templates"
+        ]
+      }
+    },
+    "/templates/windows-roles": {
+      "get": {
+        "description": "Windows Server roles the designer offers, with minimum sizing and placement rules.",
+        "operationId": "windows_role_catalogue_templates_windows_roles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WindowsRoleCatalogueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Windows Role Catalogue",
         "tags": [
           "templates"
         ]

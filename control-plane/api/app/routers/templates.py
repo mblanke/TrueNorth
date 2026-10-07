@@ -9,6 +9,7 @@ Endpoint                                 Permission(s)
 =======================================  ==========================
 POST   /templates                        TEMPLATE_CREATE
 GET    /templates                        TEMPLATE_READ
+GET    /templates/windows-roles          TEMPLATE_READ
 GET    /templates/{template_id}          TEMPLATE_READ
 PUT    /templates/{template_id}          TEMPLATE_UPDATE
 DELETE /templates/{template_id}          TEMPLATE_DELETE
@@ -25,7 +26,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import engine_bridge, range_topology
+from .. import engine_bridge, range_topology, windows_roles
 from ..auth import CurrentUser
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
@@ -80,8 +81,50 @@ def validate_template(
     body: YamlValidateIn,
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
 ) -> dict:
-    """Validate range-template YAML against the engine's canonical schema."""
-    return engine_bridge.validate_yaml("template", body.yaml)
+    """Validate range-template YAML against the engine's canonical schema and the
+    Windows Server role rules (two product images on one VM, conflicting roles)."""
+    result = engine_bridge.validate_yaml("template", body.yaml)
+    doc = result.get("normalized")
+    if isinstance(doc, dict) and isinstance(doc.get("nodes"), list):
+        errors, warnings = windows_roles.check_nodes(doc["nodes"])
+        result["errors"] = result["errors"] + [{"path": "nodes", "message": m} for m in errors]
+        result["valid"] = not result["errors"]
+        result["warnings"] = warnings
+    return result
+
+
+class RoleSpecsOut(BaseModel):
+    vcpu: int
+    ram_mb: int
+    disk_gb: int
+
+
+class WindowsRoleOut(BaseModel):
+    id: str
+    label: str
+    group: str
+    min: RoleSpecsOut
+    recommended: RoleSpecsOut
+    method: str  # feature: installed after boot | image: cloned from a pre-built role image
+    images: list[str]  # OS values an image role has an image for
+    requires: list[str]
+    conflicts: list[str]
+    aliases: list[str]
+    notes: str
+
+
+class WindowsRoleCatalogueOut(BaseModel):
+    groups: list[str]
+    base: RoleSpecsOut
+    roles: list[WindowsRoleOut]
+
+
+@router.get("/windows-roles", response_model=WindowsRoleCatalogueOut)
+def windows_role_catalogue(
+    user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_READ)),
+) -> dict:
+    """Windows Server roles the designer offers, with minimum sizing and placement rules."""
+    return windows_roles.catalogue()
 
 
 @router.post("/{template_id}/diagram-preview")
@@ -132,6 +175,7 @@ def template_from_diagram(
         "template": out["template"],
         "yaml": pyyaml.safe_dump(out["template"], sort_keys=False),
         "warnings": out["warnings"],
+        "errors": out["errors"],
     }
 
 

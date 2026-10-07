@@ -42,6 +42,7 @@ from .range_alloc import AllocationError
 
 # The API owns the table (app/range_leases, migration d2e3f4a5b6c7); tables.py mirrors it.
 from .tables import range_leases
+from .windows_roles import RoleError
 
 logger = logging.getLogger("worker.fencing")
 
@@ -53,7 +54,8 @@ CLEANUP_GRACE = 30  # seconds a cancelled hypervisor call gets to close its sess
 LEASE_HELD = "lease-held"  # claim(): the state matches but another execution holds the lease
 
 # Failures that end a task for good on the first attempt: no retry, record failed.
-FINAL_ERRORS = (SoftTimeLimitExceeded, AllocationError)  # a full VLAN/address pool: retrying won't help
+# A full VLAN/address pool, or Windows Server roles that cannot share a VM: retrying won't help.
+FINAL_ERRORS = (SoftTimeLimitExceeded, AllocationError, RoleError)
 
 
 def last_attempt(task) -> bool:

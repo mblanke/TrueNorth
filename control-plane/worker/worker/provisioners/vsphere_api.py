@@ -69,6 +69,7 @@ except ImportError:  # only the snapshot operations need it
 from .. import pfsense_config, software_catalogue, uplink_pool, vlan_pool
 from . import vsphere_guest as guest
 from . import vsphere_infra as infra
+from . import vsphere_roles
 from .base import AllocationNeed, BaseProvisioner
 from .results import (
     DestroyResult,
@@ -146,6 +147,8 @@ TN_DEPOT_APT_PROXY: str = os.environ.get("TN_DEPOT_APT_PROXY", "")
 TN_DEPOT_PORTS: str = os.environ.get("TN_DEPOT_PORTS", "8081,3142")
 # Per VM, for all of its installs together.
 TN_SOFTWARE_INSTALL_TIMEOUT: int = int(os.environ.get("TN_SOFTWARE_INSTALL_TIMEOUT", "1800"))
+# Per VM, for its Windows Server roles together (features, reboots, forest promotion).
+VSPHERE_ROLE_TIMEOUT: int = int(os.environ.get("VSPHERE_ROLE_TIMEOUT", "1800"))
 # No new work starts once a provision has run this long: Celery redelivers a task that is
 # still unacknowledged after its visibility timeout (celery_app.py, 3600s), and a second
 # copy of a range build is the one thing worse than a slow one.
@@ -388,6 +391,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._apt_proxy = TN_DEPOT_APT_PROXY or TN_DEPOT_URL
         self._depot_ports = tuple(int(p) for p in TN_DEPOT_PORTS.replace(" ", "").split(",") if p)
         self._install_timeout = TN_SOFTWARE_INSTALL_TIMEOUT
+        self._role_timeout = VSPHERE_ROLE_TIMEOUT
         self._budget = VSPHERE_PROVISION_BUDGET
         self._guest_poll = 5.0
         self._library_id: str | None = None
@@ -1180,6 +1184,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 raise RuntimeError("pyvmomi is required to build vSphere ranges (pip install pyvmomi)")
             uplink = self._plan_uplink(vm_defs, allocations)
             self._plan_software(vm_defs, uplink, warnings)
+            self._plan_roles(vm_defs)
             self._plan_appliances(vm_defs, template, networks, warnings)
             mirror_plans = self._plan_mirrors(template, networks, warnings)
             for name in {n["port_group"] for v in vm_defs for n in v["nics"] if n.get("port_group")}:
@@ -1225,6 +1230,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     if mirror_plans and vms_out:
                         mirrors = await asyncio.to_thread(self._mirror_sync, si, site, range_id, mirror_plans,
                                                           vm_defs, vms_out, errors, warnings)
+                    await self._install_roles(si, vm_defs, vms_out, start, errors)
                     await self._install_software(si, vm_defs, vms_out, start, errors, warnings)
                 except Exception as exc:
                     errors.append(self._redact(exc, *vm_defs))
@@ -1505,7 +1511,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             if skipped:
                 out["software"] = {"status": "skipped", "packages": [
                     {"name": n, "status": "skipped", "exit_code": None} for n in skipped]}
-        todo = [(by_name[o["name"]], o) for o in vms_out if by_name[o["name"]].get("_guest")]
+        todo = [(by_name[o["name"]], o) for o in vms_out if by_name[o["name"]].get("_software")]
         if not todo:
             return
         hard_stop = start + self._budget
@@ -1534,6 +1540,51 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     errors.append(f"VM {out['name']}: software install: {res['error']}")
 
         await asyncio.gather(*(one(v, o) for v, o in todo))
+
+    @staticmethod
+    def _plan_roles(vm_defs: list[dict]) -> None:
+        """A Windows VM with feature roles to install needs a known Administrator password:
+        the one software installs use, or its own (``_guest``, set by Sysprep)."""
+        for vm_def in vm_defs:
+            if vsphere_roles.needs_guest(vm_def) and infra.os_family(vm_def) == "windows":
+                vm_def.setdefault("_guest", guest.windows_credentials())
+
+    def _roles_sync(self, si, vm_def: dict, vm_id: str, deadline: float) -> dict[str, dict]:
+        session = guest.GuestSession(si.content, self._vm(si, vm_id), vm_def["_guest"], poll=self._guest_poll)
+        return vsphere_roles.install(session, vm_def, deadline)
+
+    async def _install_roles(self, si, vm_defs: list[dict], vms_out: list[dict], start: float,
+                             errors: list[str]) -> None:
+        """Windows Server roles of each built VM (vsphere_roles.py), before its software:
+        VSPHERE_CONCURRENCY VMs at a time, VSPHERE_ROLE_TIMEOUT each, never past
+        VSPHERE_PROVISION_BUDGET. Every role that does not end ``ok`` is an error."""
+        by_name = {v["name"]: v for v in vm_defs}
+        hard_stop = start + self._budget
+        gate = asyncio.Semaphore(self._concurrency)
+
+        async def one(vm_def: dict, out: dict) -> None:
+            status = vsphere_roles.initial_status(vm_def)
+            if vsphere_roles.needs_guest(vm_def):
+                async with gate:
+                    now = time.monotonic()
+                    deadline = min(now + self._role_timeout, hard_stop)
+                    state, detail = "skipped", ""
+                    if not vm_def.get("_guest"):
+                        detail = "no guest login for this VM"
+                    elif deadline - now < 60:
+                        detail = f"the provision time budget (VSPHERE_PROVISION_BUDGET={self._budget}s) is spent"
+                    else:
+                        try:
+                            status = await asyncio.to_thread(self._roles_sync, si, vm_def, out["vm_id"], deadline)
+                        except Exception as exc:  # noqa: BLE001
+                            state, detail = "failed", self._redact(exc, vm_def)
+                    if detail:
+                        for rid in vsphere_roles.feature_roles(vm_def):
+                            status[rid] = {"status": state, "detail": detail}
+            out["roles"] = status
+            errors.extend(vsphere_roles.errors(out["name"], status))
+
+        await asyncio.gather(*(one(by_name[o["name"]], o) for o in vms_out if by_name[o["name"]].get("roles")))
 
     async def _rollback(self, si, range_id: str, networks: list[dict], errors: list[str]) -> None:
         """Best effort: remove what a failed build created (its VMs already removed themselves)."""
