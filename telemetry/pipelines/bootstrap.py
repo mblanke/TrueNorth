@@ -101,9 +101,45 @@ _COMMON_MAPPINGS: dict[str, Any] = {
     "raw_log": {"type": "text"},
 }
 
+# Per-range indices (range-<range id> and range-<range id>-<date>): what detection credit is
+# judged against (ADR 0005). Every document passes through INGESTED_AT_PIPELINE as the
+# index's final pipeline, so the exercise window rests on the cluster's own clock whoever
+# wrote the event. Strings map to keyword (with a .text sub-field for free-text search), so a
+# scenario query such as url.domain:*northwind-update.example* matches the whole value
+# rather than analysed tokens. Low priority: the named families below (range-events-*,
+# ...) keep their own templates.
+INGESTED_AT_PIPELINE = "truenorth-ingested-at"
+RANGE_TEMPLATE: dict[str, Any] = {
+    "index_patterns": ["range-*"],
+    "priority": 10,
+    "template": {
+        "settings": {"index.final_pipeline": INGESTED_AT_PIPELINE, "index.refresh_interval": "5s"},
+        "mappings": {
+            "dynamic_templates": [
+                {
+                    "strings_as_keywords": {
+                        "match_mapping_type": "string",
+                        "mapping": {
+                            "type": "keyword",
+                            "ignore_above": 8191,
+                            "fields": {"text": {"type": "text"}},
+                        },
+                    }
+                }
+            ],
+            "properties": {
+                "@timestamp": {"type": "date"},
+                "truenorth": {"properties": {"ingested_at": {"type": "date_nanos"}}},
+            },
+        },
+    },
+}
+
 TEMPLATES: dict[str, dict[str, Any]] = {
+    "range": RANGE_TEMPLATE,
     "range-events": {
         "index_patterns": ["range-events-*"],
+        "priority": 100,
         "template": {
             "settings": {
                 "number_of_shards": 2,
@@ -250,6 +286,20 @@ TEMPLATES: dict[str, dict[str, Any]] = {
 # ═══════════════════════════════════════════════════════════════════
 
 INGEST_PIPELINES: dict[str, dict[str, Any]] = {
+    INGESTED_AT_PIPELINE: {
+        "description": "Server ingest time for detection credit (ADR 0005); drops any the sender supplied",
+        "processors": [
+            {
+                "script": {
+                    "lang": "painless",
+                    # Both a nested truenorth object and flat "truenorth.*" keys: a flat key left
+                    # beside the stamp would index as a second value of the same field.
+                    "source": "ctx.remove('truenorth'); ctx.keySet().removeIf(k -> k.startsWith('truenorth.'));",
+                }
+            },
+            {"set": {"field": "truenorth.ingested_at", "value": "{{_ingest.timestamp}}"}},
+        ],
+    },
     "range-events-pipeline": {
         "description": "Range event enrichment — timestamp normalisation, geoip, user-agent parsing",
         "processors": [
@@ -407,7 +457,16 @@ DASHBOARD_OBJECTS: list[dict[str, Any]] = [
 
 
 def _client() -> httpx.Client:
-    return httpx.Client(base_url=OPENSEARCH_URL, timeout=30.0)
+    """OPENSEARCH_USER / OPENSEARCH_PASS / OPENSEARCH_VERIFY_SSL, as the API and worker read them."""
+    kwargs: dict[str, Any] = {"base_url": OPENSEARCH_URL, "timeout": 30.0}
+    if user := os.getenv("OPENSEARCH_USER"):
+        kwargs["auth"] = (user, os.getenv("OPENSEARCH_PASS", ""))
+    verify = os.getenv("OPENSEARCH_VERIFY_SSL", "true").strip()
+    if verify.lower() in ("0", "false", "no", "off"):
+        kwargs["verify"] = False
+    elif verify.lower() not in ("", "1", "true", "yes", "on"):
+        kwargs["verify"] = verify
+    return httpx.Client(**kwargs)
 
 
 def _exists(client: httpx.Client, path: str) -> bool:
@@ -447,6 +506,8 @@ def create_ingest_pipelines(client: httpx.Client) -> None:
 def create_initial_indices(client: httpx.Client) -> None:
     """Create initial write-alias indices if they don't exist."""
     for name in TEMPLATES:
+        if name == "range":  # per-range indices are created by their first event
+            continue
         alias = name
         index = f"{name}-000001"
         if not _exists(client, f"/{index}"):
@@ -479,8 +540,8 @@ def bootstrap(opensearch_url: str | None = None) -> None:
     logger.info("Bootstrapping OpenSearch at %s", OPENSEARCH_URL)
     with _client() as client:
         create_ism_policy(client)
+        create_ingest_pipelines(client)  # first: the range template names one as its final pipeline
         create_index_templates(client)
-        create_ingest_pipelines(client)
         create_initial_indices(client)
         try:
             create_dashboards(client)

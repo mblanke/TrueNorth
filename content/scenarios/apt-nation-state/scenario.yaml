@@ -26,6 +26,13 @@ mitre_attack:
   - T1071.001  # Application Layer Protocol: Web Protocols
   - T1027      # Obfuscated Files or Information
 
+# Scenario variables: rendered into {{ name }} in objective queries (the answer key) and,
+# once injects are dispatched, into timeline params. Defanged: reserved .example names.
+variables:
+  c2_domain: northwind-update.example
+  domain: corp.example
+  target_user: j.harper
+
 timeline:
   - phase: 1
     t: "00:00"

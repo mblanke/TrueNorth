@@ -45,10 +45,26 @@ def get_event_store(name: str = "opensearch", **kwargs: Any) -> BaseEventStore:
 def event_store_from_env() -> BaseEventStore:
     """The store a service is deployed against: ``EVENT_STORE`` (default ``opensearch``).
 
-    OpenSearch is reached at ``OPENSEARCH_URL``. Services read the URL here, inside the
-    adapter, rather than building requests against it themselves.
+    OpenSearch is reached at ``OPENSEARCH_URL`` with ``OPENSEARCH_USER`` /
+    ``OPENSEARCH_PASS`` (the same variables the API's search backend reads), and
+    ``OPENSEARCH_VERIFY_SSL`` (``true``, ``false`` or a CA bundle path; default true).
+    Services read them here, inside the adapter, rather than building requests themselves.
     """
     name = os.getenv("EVENT_STORE", "opensearch")
     if name == "opensearch":
-        return OpenSearchEventStore(os.getenv("OPENSEARCH_URL", "http://opensearch:9200"))
+        return OpenSearchEventStore(
+            os.getenv("OPENSEARCH_URL", "http://opensearch:9200"),
+            username=os.getenv("OPENSEARCH_USER") or None,
+            password=os.getenv("OPENSEARCH_PASS") or None,
+            verify_ssl=_verify(os.getenv("OPENSEARCH_VERIFY_SSL", "true")),
+        )
     return get_event_store(name)
+
+
+def _verify(raw: str) -> bool | str:
+    flag = raw.strip().lower()
+    if flag in ("", "1", "true", "yes", "on"):
+        return True
+    if flag in ("0", "false", "no", "off"):
+        return False
+    return raw.strip()  # a CA bundle path

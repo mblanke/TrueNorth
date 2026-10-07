@@ -11,8 +11,25 @@ import logging
 from typing import Any
 
 from ..event_stores import BaseEventStore, OpenSearchEventStore
+from ..variables import unresolved
 
 logger = logging.getLogger(__name__)
+
+
+class UnscoredError(Exception):
+    """The objective could not be judged this time (no query, no store, store outage).
+
+    Distinct from "not achieved": the caller leaves the objective pending and retries.
+    """
+
+
+def _threshold(config: dict[str, Any]) -> int:
+    """``threshold`` or ``min_hits``, at least 1, so zero events never pass."""
+    raw = config.get("threshold", config.get("min_hits", 1))
+    try:
+        return max(int(raw), 1)
+    except (TypeError, ValueError) as exc:
+        raise UnscoredError(f"threshold {raw!r} is not an integer") from exc
 
 
 class ScoringValidator:
@@ -65,22 +82,28 @@ class ScoringValidator:
 
         ``config`` keys:
             - ``index``: index pattern (e.g. ``truenorth-*``)
-            - ``query``: Lucene query string, or query DSL (dict)
-            - ``threshold`` (or ``min_hits``): minimum number of matching docs
+            - ``query``: Lucene query string, or query DSL (dict). Required: an objective
+              without one is not scored, never scored as match-all.
+            - ``threshold`` (or ``min_hits``): minimum number of matching docs, at least 1
+
+        Raises ``UnscoredError`` when the objective cannot be judged (no query, a bad threshold,
+        no store, or the store failed), so an outage is never reported as "not achieved".
         """
+        query = config.get("query")
+        if not query:
+            raise UnscoredError("objective has no query")
+        if isinstance(query, str) and (names := unresolved(query)):
+            raise UnscoredError(f"query has unrendered placeholders: {', '.join(names)}")
+        threshold = _threshold(config)
         if event_store is None:
-            logger.warning("No event store configured; skipping query validation")
-            return False, []
+            raise UnscoredError("no event store configured")
 
         index = config.get("index", "truenorth-*")
-        query = config.get("query", {"match_all": {}})
-        threshold = int(config.get("threshold", config.get("min_hits", 1)))
-
         try:
-            found = await event_store.search(index, query, size=min(max(threshold, 1), 100))
-        except Exception:
+            found = await event_store.search(index, query, size=min(threshold, 100))
+        except Exception as exc:
             logger.exception("Event store query validation failed")
-            return False, []
+            raise UnscoredError(f"event store unavailable: {exc}") from exc
         return found.total >= threshold, found.hits[:20]
 
     @staticmethod

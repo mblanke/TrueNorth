@@ -3054,6 +3054,127 @@
         "title": "DetectionDraftIn",
         "type": "object"
       },
+      "DetectionIn": {
+        "properties": {
+          "query": {
+            "description": "Lucene query string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "DetectionIn",
+        "type": "object"
+      },
+      "DetectionOut": {
+        "description": "One attempt. ``on_target`` and ``precision`` are shown only to staff who may see the key.",
+        "properties": {
+          "attempts_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempts Left"
+          },
+          "events_matched": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Events Matched"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "objective_ref": {
+            "title": "Objective Ref",
+            "type": "string"
+          },
+          "on_target": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Target"
+          },
+          "precision": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precision"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "objective_ref",
+          "user_id",
+          "query",
+          "submitted_at",
+          "verdict",
+          "events_matched"
+        ],
+        "title": "DetectionOut",
+        "type": "object"
+      },
       "DetectionRuleIn": {
         "properties": {
           "author": {
@@ -17552,7 +17673,7 @@
     },
     "/exercises/{exercise_id}/complete": {
       "post": {
-        "description": "Complete an exercise and tally scores.  **Permission: exercise:complete**",
+        "description": "Complete an exercise and tally scores.  **Permission: exercise:complete**\n\nCompetency assessment, the LTI grade and the xAPI statement go to whoever completed it\nand to every Student who submitted a detection in this run (app/exercise_completion).",
         "operationId": "complete_exercise_exercises__exercise_id__complete_post",
         "parameters": [
           {
@@ -17596,6 +17717,59 @@
         "summary": "Complete Exercise",
         "tags": [
           "exercises"
+        ]
+      }
+    },
+    "/exercises/{exercise_id}/detections": {
+      "get": {
+        "description": "Detection attempts on an exercise: a Student's own; every attempt for staff.  **Permission: exercise:read**",
+        "operationId": "list_detections_exercises__exercise_id__detections_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DetectionOut"
+                  },
+                  "title": "Response List Detections Exercises  Exercise Id  Detections Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Detections",
+        "tags": [
+          "detections"
         ]
       }
     },
@@ -17654,7 +17828,7 @@
     },
     "/exercises/{exercise_id}/objectives/{ref_id}/ack": {
       "post": {
-        "description": "Acknowledge (achieve) an objective.  **Permission: exercise:complete**",
+        "description": "Acknowledge (achieve) an objective on a running or paused exercise in the caller's\ntenant, recording who acknowledged it, and re-total the exercise score.\n\n**Permission: objective:ack** (instructors and admins; never Students).\n404 if the exercise is not in the caller's tenant or the objective does not exist;\n409 if the exercise is not running/paused or the objective is already achieved.",
         "operationId": "acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post",
         "parameters": [
           {
@@ -17723,6 +17897,84 @@
         "summary": "Acknowledge Objective",
         "tags": [
           "exercises"
+        ]
+      }
+    },
+    "/exercises/{exercise_id}/objectives/{ref_id}/detections": {
+      "post": {
+        "description": "Submit a detection for an objective; it is credited if it finds the attack.  **Permission: detection:submit**",
+        "operationId": "submit_detection_exercises__exercise_id__objectives__ref_id__detections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ref_id",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "title": "Ref Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Exercise not running, objective already achieved, or not a detection objective"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "No attempts left for this objective"
+          },
+          "503": {
+            "description": "The event store could not answer; the attempt was not counted"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Detection",
+        "tags": [
+          "detections"
         ]
       }
     },
@@ -26364,7 +26616,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a single scenario.  **Permission: scenario:read**",
+        "description": "Retrieve a single scenario.  **Permission: scenario:read**\n\nWithout scenario:update the YAML is the briefing only: no objective params,\nvariables or inject playbook (ADR 0005 \u00a75).",
         "operationId": "get_scenario_scenarios__scenario_id__get",
         "parameters": [
           {

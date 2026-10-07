@@ -141,6 +141,16 @@ def exercise_scenario_yaml(db, exercise_id: str):
     return db.execute(stmt).first()
 
 
+def exercise_range_backend(db, exercise_id: str) -> str | None:
+    """The provisioner backend of the range an exercise runs on, or None."""
+    stmt = (
+        sa.select(ranges.c.provisioner_backend)
+        .select_from(exercises.join(ranges, exercises.c.range_id == ranges.c.id))
+        .where(exercises.c.id == exercise_id)
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
 def exercise_scores_and_yaml(db, exercise_id: str):
     """(total_score, max_score, scenario yaml), or None."""
     stmt = (
@@ -152,39 +162,42 @@ def exercise_scores_and_yaml(db, exercise_id: str):
 
 
 def start_exercise(db, exercise_id: str) -> None:
+    """Mark a pending exercise running. The API already did so when it dispatched the run, and
+    its started_at opens the detection window (ADR 0005), so a run that reaches the worker late
+    keeps that start; a paused, completed or cancelled exercise is not brought back."""
     db.execute(
         sa.update(exercises)
-        .where(exercises.c.id == exercise_id)
-        .values(state="running", started_at=_now(), updated_at=_now())
+        .where(exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(("pending", "running")))
+        .values(state="running", started_at=sa.func.coalesce(exercises.c.started_at, _now()), updated_at=_now())
     )
 
 
-def exercise_range_and_yaml(db, exercise_id: str):
-    """(range_id, scenario yaml or None), or None when the exercise is missing."""
-    stmt = (
-        sa.select(exercises.c.range_id, scenarios.c.yaml)
-        .select_from(exercises.outerjoin(scenarios, exercises.c.scenario_id == scenarios.c.id))
-        .where(exercises.c.id == exercise_id)
+LIVE_EXERCISE = ("running", "paused")
+
+
+def _exercise_is_live(exercise_id: str):
+    """True while the exercise is running or paused. Once an instructor has completed or
+    cancelled it, results (LTI, xAPI, the AAR) may already have gone out, so a worker still
+    running must not move its objectives or score."""
+    # CAST: `state` is a native enum on Postgres and plain text on SQLite.
+    return sa.exists().where(
+        exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(LIVE_EXERCISE)
     )
-    return db.execute(stmt).first()
-
-
-def objectives_to_score(db, exercise_id: str) -> list:
-    """(ref_id, validator, validator_params, points, achieved) for each of the exercise's objectives."""
-    o = objectives
-    stmt = sa.select(o.c.ref_id, o.c.validator, o.c.validator_params, o.c.points, o.c.achieved)
-    return db.execute(stmt.where(o.c.exercise_id == exercise_id)).fetchall()
 
 
 def achieve_objective(db, exercise_id: str, ref_id: str, evidence: str | None = None) -> None:
-    """Mark an objective achieved, once: an already-achieved row keeps its time and evidence."""
+    """Mark an objective achieved, once, while the exercise is live: an already-achieved row
+    keeps its time and evidence."""
     values: dict[str, Any] = {"achieved": True, "achieved_at": _now(), "updated_at": _now()}
     if evidence is not None:
         values["evidence"] = evidence
     db.execute(
         sa.update(objectives)
         .where(
-            objectives.c.exercise_id == exercise_id, objectives.c.ref_id == ref_id, objectives.c.achieved == sa.false()
+            objectives.c.exercise_id == exercise_id,
+            objectives.c.ref_id == ref_id,
+            objectives.c.achieved == sa.false(),
+            _exercise_is_live(exercise_id),
         )
         .values(**values)
     )
@@ -202,20 +215,12 @@ def _score_values(exercise_id: str) -> dict[str, Any]:
     return {"total_score": _points(o.c.achieved == sa.true()), "max_score": _points()}
 
 
-def refresh_exercise_score(db, exercise_id: str) -> None:
-    """Re-total a running exercise's score, so the scoreboard moves as objectives are achieved."""
-    db.execute(
-        sa.update(exercises)
-        .where(exercises.c.id == exercise_id)
-        .values(updated_at=_now(), **_score_values(exercise_id))
-    )
-
-
 def complete_exercise(db, exercise_id: str) -> None:
-    """Mark complete and total the score from its objectives."""
+    """Mark complete and total the score from its objectives, unless an instructor already
+    completed or cancelled it (that close stands)."""
     db.execute(
         sa.update(exercises)
-        .where(exercises.c.id == exercise_id)
+        .where(exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(LIVE_EXERCISE))
         .values(state="completed", completed_at=_now(), updated_at=_now(), **_score_values(exercise_id))
     )
 

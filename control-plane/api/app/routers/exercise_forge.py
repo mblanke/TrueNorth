@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
+from ..detections.names import canonical_validator
 from ..models import (
     Exercise,
     ExerciseState,
@@ -394,7 +395,7 @@ def _create_objectives(db: Session, exercise_id: uuid.UUID, parsed: dict) -> int
                 ref_id=ref_id[:100],
                 objective_type=type_map.get(str(obj.get("type", "")).lower(), ObjectiveType.deliverable),
                 description=str(obj.get("name") or ref_id),
-                validator=str(obj.get("validator") or "validate.manual_ack")[:255],
+                validator=canonical_validator(str(obj.get("validator") or ""))[:255],
                 validator_params=json.dumps(obj.get("params") or {}),
                 points=int(obj.get("points") or 0),
                 competency_code=(str(obj.get("competency_code") or "")[:50] or None),

@@ -75,6 +75,12 @@ async def lifespan(app: FastAPI):
         from .lab_sessions.runner import loop as lab_loop
 
         lab_sweep = asyncio.create_task(lab_loop())
+    # Real-backend exercises end when their scenario's duration runs out (ADR 0005 §6).
+    exercise_clock = None
+    if os.getenv("EXERCISE_CLOCK", "true").lower() == "true":
+        from .exercise_completion import loop as exercise_loop
+
+        exercise_clock = asyncio.create_task(exercise_loop())
 
     # Range operations the broker did not take (down, or a process that died between
     # the commit and the send) are re-sent (app/range_ops). One sender per operation.
@@ -91,10 +97,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if range_resend is not None:
-        range_resend.cancel()
-    if lab_sweep is not None:
-        lab_sweep.cancel()
+    for sweep in (range_resend, lab_sweep, exercise_clock):
+        if sweep is not None:
+            sweep.cancel()
 
     # Graceful shutdown of any started subsystems
     ws_mgr = getattr(app.state, "ws_manager", None)
@@ -242,6 +247,7 @@ from .routers import (
     courses_router,
     curriculum_router,
     detection_rules_router,
+    detections_router,
     directory_router,
     exercise_forge_router,
     exercises_router,
@@ -278,6 +284,7 @@ app.include_router(onboarding_router)
 # Core routers
 app.include_router(ranges_router)
 app.include_router(exercises_router)
+app.include_router(detections_router)
 app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)

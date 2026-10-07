@@ -19,6 +19,20 @@
     "range_template": {
       "type": "string"
     },
+    "variables": {
+      "description": "Values for {{ name }} placeholders. Every placeholder in an objective query must be defined here.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      }
+    },
     "timeline": {
       "type": "array",
       "items": {
@@ -63,7 +77,12 @@
             ]
           },
           "validator": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "opensearch_query",
+              "manual_ack",
+              "deliverable_check"
+            ]
           },
           "params": {
             "type": "object"

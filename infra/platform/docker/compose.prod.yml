@@ -416,8 +416,6 @@ services:
     build:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
-      additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: always
     command: >
       celery -A worker.celery_app worker
@@ -479,8 +477,6 @@ services:
     build:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
-      additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: always
     command: >
       celery -A worker.celery_app worker
@@ -522,8 +518,6 @@ services:
     build:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
-      additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: always
     command: >
       celery -A worker.celery_app worker
@@ -563,8 +557,6 @@ services:
     build:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
-      additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
     restart: always
     command: >
       celery -A worker.celery_app flower

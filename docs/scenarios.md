@@ -405,7 +405,7 @@ validator:
   params: {}    # No parameters needed
 ```
 
-The trainee calls `POST /exercises/{id}/objectives/{ref_id}/ack` with optional evidence.
+An instructor calls `POST /exercises/{id}/objectives/{ref_id}/ack` (permission `objective:ack`) with optional evidence; a Student cannot acknowledge their own objective.
 
 ### `deliverable_check` — Artifact Upload Validator
 
