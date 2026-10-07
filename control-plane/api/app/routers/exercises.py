@@ -37,6 +37,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from ..aar_html import pdf_text
+from ..aar_html import render_html as render_aar_html
+from ..aar_report import build_report as build_aar_report
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
@@ -434,6 +437,26 @@ async def acknowledge_objective(
 
 
 # ── AAR ────────────────────────────────────────────────────────────────
+# Every AAR route resolves the exercise through get_owned first: the report row has no
+# tenant of its own, so a lookup by exercise id alone served any tenant's report.
+def _owned_aar(db: Session, exercise_id: uuid.UUID, user: CurrentUser) -> AfterActionReport:
+    """The stored AAR of the caller's exercise, or 404 (unknown, foreign or not generated)."""
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == ex.id).first()
+    if not aar:
+        raise HTTPException(404, "AAR not found — generate it first")
+    return aar
+
+
+def _report_data(aar: AfterActionReport) -> dict:
+    try:
+        data = json.loads(aar.report_json) if aar.report_json else {}
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+
 @router.post("/{exercise_id}/aar/generate", response_model=AAROut, status_code=201)
 def generate_aar(
     exercise_id: uuid.UUID = Path(...),
@@ -442,40 +465,10 @@ def generate_aar(
 ) -> AfterActionReport:
     """Generate After-Action Report.  **Permission: aar:generate**"""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    sc = get_owned(db, Scenario, ex.scenario_id, user)
-    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
-
-    report = {
-        "exercise": {
-            "id": str(ex.id),
-            "name": ex.name,
-            "state": ex.state.value,
-            "started_at": str(ex.started_at) if ex.started_at else None,
-            "completed_at": str(ex.completed_at) if ex.completed_at else None,
-        },
-        "scenario": {"id": str(sc.id), "name": sc.name} if sc else None,
-        "scores": {
-            "total": ex.total_score,
-            "max": ex.max_score,
-            "pct": round(ex.total_score / max(ex.max_score, 1) * 100, 1),
-        },
-        "objectives": [
-            {
-                "ref_id": o.ref_id,
-                "type": o.objective_type.value,
-                "description": o.description,
-                "points": o.points,
-                "achieved": o.achieved,
-                "evidence": o.evidence,
-            }
-            for o in objectives
-        ],
-        "generated_at": datetime.now(UTC).isoformat(),
-        "generated_by": user.display_name,
-    }
+    sc = db.query(Scenario).filter(Scenario.id == ex.scenario_id, Scenario.tenant_id == ex.tenant_id).first()
+    report = build_aar_report(db, ex, sc, user.display_name)
     report_json = json.dumps(report, indent=2)
-    pct = report["scores"]["pct"]
-    html = f"<html><body><h1>AAR: {ex.name}</h1><p>Score: {pct}%</p></body></html>"
+    html = render_aar_html(report)
 
     existing = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == ex.id).first()
     if existing:
@@ -497,10 +490,7 @@ def get_aar(
     user: CurrentUser = Depends(require_permission(Permission.AAR_READ)),
 ) -> AfterActionReport:
     """Retrieve AAR JSON.  **Permission: aar:read**"""
-    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
-    if not aar:
-        raise HTTPException(404, "AAR not found — generate it first")
-    return aar
+    return _owned_aar(db, exercise_id, user)
 
 
 @router.get("/{exercise_id}/aar/html", response_class=HTMLResponse)
@@ -509,11 +499,13 @@ def get_aar_html(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.AAR_READ)),
 ) -> HTMLResponse:
-    """Retrieve AAR as rendered HTML.  **Permission: aar:read**"""
-    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
-    if not aar:
-        raise HTTPException(404, "AAR not found")
-    return HTMLResponse(content=aar.report_html)
+    """Retrieve AAR as rendered HTML.  **Permission: aar:read**
+
+    Rendered from the stored report JSON on every read, so reports written by the worker
+    or before this renderer existed get the full page and are escaped the same way.
+    """
+    aar = _owned_aar(db, exercise_id, user)
+    return HTMLResponse(content=render_aar_html(_report_data(aar)))
 
 
 @router.get("/{exercise_id}/aar/pdf")
@@ -524,27 +516,20 @@ def get_aar_pdf(
 ) -> StreamingResponse:
     """Retrieve AAR as downloadable PDF.  **Permission: aar:read**
 
-    Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps).
+    Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps). Its core
+    fonts are latin-1 only; text outside it is transliterated (``aar_html.pdf_text``).
     """
     from io import BytesIO
 
-    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
-    if not aar:
-        raise HTTPException(404, "AAR not found — generate it first")
+    aar = _owned_aar(db, exercise_id, user)
 
     try:
         from fpdf import FPDF
     except ImportError as exc:  # pragma: no cover
         raise HTTPException(500, "PDF rendering dependency unavailable") from exc
 
-    try:
-        data = json.loads(aar.report_json) if aar.report_json else {}
-    except json.JSONDecodeError:
-        data = {}
-
-    def _s(val: object) -> str:
-        """Coerce to str and strip characters outside fpdf2's core-font range (latin-1)."""
-        return str(val if val is not None else "").encode("latin-1", "replace").decode("latin-1")
+    data = _report_data(aar)
+    _s = pdf_text
 
     pdf = FPDF()
     pdf.add_page()
@@ -555,7 +540,7 @@ def get_aar_pdf(
     pdf.cell(0, 10, "After-Action Report", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 11)
 
-    ex = data.get("exercise", {})
+    ex = data.get("exercise") if isinstance(data.get("exercise"), dict) else {}
     pdf.cell(0, 7, _s(f"Exercise: {ex.get('name', 'Unknown')}"), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 7, _s(f"State: {ex.get('state', '-')}"), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 7, _s(f"Started: {ex.get('started_at') or '-'}"), new_x="LMARGIN", new_y="NEXT")
@@ -564,7 +549,7 @@ def get_aar_pdf(
     pdf.ln(4)
 
     # Scores
-    scores = data.get("scores", {})
+    scores = data.get("scores") if isinstance(data.get("scores"), dict) else {}
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 8, "Score", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 11)
@@ -578,19 +563,42 @@ def get_aar_pdf(
     pdf.ln(4)
 
     # Objectives
-    objectives = data.get("objectives", [])
+    def _rows(key: str) -> list[dict]:
+        value = data.get(key)
+        return [r for r in value if isinstance(r, dict)] if isinstance(value, list) else []
+
+    def _section(title: str, lines: list[str]) -> None:
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, _s(title), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        for line in lines or ["(none recorded)"]:
+            pdf.multi_cell(0, 6, _s(line), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(4)
+
+    objectives = _rows("objectives")
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 8, _s(f"Objectives ({len(objectives)})"), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 10)
     for obj in objectives:
         status = "[x]" if obj.get("achieved") else "[ ]"
         line = f"{status} [{obj.get('ref_id', '?')}] ({obj.get('points', 0)} pts) {obj.get('description', '')}"
-        pdf.multi_cell(0, 6, _s(line))
+        pdf.multi_cell(0, 6, _s(line), new_x="LMARGIN", new_y="NEXT")
         if obj.get("evidence"):
             pdf.set_font("Helvetica", "I", 9)
-            pdf.multi_cell(0, 5, _s(f"     Evidence: {obj['evidence']}"))
+            pdf.multi_cell(0, 5, _s(f"     Evidence: {obj['evidence']}"), new_x="LMARGIN", new_y="NEXT")
             pdf.set_font("Helvetica", "", 10)
     pdf.ln(4)
+
+    _section(
+        "Injects", [f"{i.get('at') or ''}  {i.get('title') or ''}  {i.get('status') or ''}" for i in _rows("injects")]
+    )
+    _section(
+        "Timeline", [f"{t.get('at') or ''}  {t.get('title') or ''}  {t.get('detail') or ''}" for t in _rows("timeline")]
+    )
+    _section(
+        "Participants",
+        [" - ".join(str(p.get(k)) for k in ("name", "team", "role") if p.get(k)) for p in _rows("participants")],
+    )
 
     # AI analysis if present
     ai = data.get("ai_analysis")
@@ -598,7 +606,7 @@ def get_aar_pdf(
         pdf.set_font("Helvetica", "B", 13)
         pdf.cell(0, 8, "AI Analysis", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 5, _s(str(ai["summary"])[:4000]))
+        pdf.multi_cell(0, 5, _s(str(ai["summary"])[:4000]), new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_y(-20)
     pdf.set_font("Helvetica", "I", 8)
@@ -630,11 +638,8 @@ async def ai_enhance_aar(
     - MITRE ATT&CK mapping insights
     - Competency gap identification
     """
-    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
-    if not aar:
-        raise HTTPException(404, "AAR not found — generate the base report first")
-
-    report_data = json.loads(aar.report_json)
+    aar = _owned_aar(db, exercise_id, user)
+    report_data = _report_data(aar)
     # Was pointed at :8000 /generate with a task_type/temperature body and read
     # ai_result["text"] — four mismatches against the orchestrator, so this could
     # never succeed. The real route is :6000 /ai/aar-analysis, takes
@@ -666,16 +671,8 @@ async def ai_enhance_aar(
         }
         aar.report_json = json.dumps(report_data, indent=2)
 
-        # Enhance HTML with AI section
-        ai_html = (
-            f'<div class="ai-analysis">'
-            f"<h2>AI-Powered Analysis</h2>"
-            f'<div class="analysis-content">{_md_to_html(ai_analysis)}</div>'
-            f'<p class="ai-meta">Generated by {ai_model}</p>'
-            f"</div>"
-        )
-        if aar.report_html:
-            aar.report_html = aar.report_html.replace("</body>", f"{ai_html}</body>")
+        # The renderer escapes the model's output like everything else in the report.
+        aar.report_html = render_aar_html(report_data)
 
         db.commit()
         db.refresh(aar)
@@ -688,43 +685,3 @@ async def ai_enhance_aar(
     except Exception as exc:
         logger.error("AI AAR enhancement failed: %s", exc, exc_info=True)
         raise HTTPException(500, "AI analysis failed") from exc
-
-
-def _build_aar_prompt(report: dict) -> str:
-    """Build a structured prompt for AAR analysis."""
-    ex = report.get("exercise", {})
-    scores = report.get("scores", {})
-    objectives = report.get("objectives", [])
-
-    achieved = [o for o in objectives if o.get("achieved")]
-    missed = [o for o in objectives if not o.get("achieved")]
-
-    return (
-        f"You are a cybersecurity training analyst reviewing an After-Action Report.\n\n"
-        f"Exercise: {ex.get('name', 'Unknown')}\n"
-        f"Score: {scores.get('pct', 0)}% ({scores.get('total', 0)}/{scores.get('max', 0)} points)\n\n"
-        f"Achieved Objectives ({len(achieved)}):\n"
-        + "\n".join(f"- [{o.get('type', '')}] {o.get('description', '')}" for o in achieved)
-        + f"\n\nMissed Objectives ({len(missed)}):\n"
-        + "\n".join(f"- [{o.get('type', '')}] {o.get('description', '')} ({o.get('points', 0)} pts)" for o in missed)
-        + "\n\nProvide:\n"
-        "1. Executive summary (2-3 sentences)\n"
-        "2. Key strengths demonstrated\n"
-        "3. Areas for improvement with specific recommendations\n"
-        "4. MITRE ATT&CK technique coverage analysis\n"
-        "5. Suggested follow-up training exercises\n"
-    )
-
-
-def _md_to_html(text: str) -> str:
-    """Minimal Markdown-to-HTML for AI output."""
-    import re
-
-    text = re.sub(r"^### (.+)$", r"<h3>\1</h3>", text, flags=re.MULTILINE)
-    text = re.sub(r"^## (.+)$", r"<h3>\1</h3>", text, flags=re.MULTILINE)
-    text = re.sub(r"^# (.+)$", r"<h2>\1</h2>", text, flags=re.MULTILINE)
-    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    text = re.sub(r"^- (.+)$", r"<li>\1</li>", text, flags=re.MULTILINE)
-    text = re.sub(r"(<li>.*</li>)", r"<ul>\1</ul>", text, flags=re.DOTALL)
-    text = text.replace("\n\n", "</p><p>")
-    return f"<p>{text}</p>"

@@ -1811,6 +1811,9 @@ export interface paths {
         /**
          * Get Aar Html
          * @description Retrieve AAR as rendered HTML.  **Permission: aar:read**
+         *
+         *     Rendered from the stored report JSON on every read, so reports written by the worker
+         *     or before this renderer existed get the full page and are escaped the same way.
          */
         get: operations["get_aar_html_exercises__exercise_id__aar_html_get"];
         put?: never;
@@ -1832,7 +1835,8 @@ export interface paths {
          * Get Aar Pdf
          * @description Retrieve AAR as downloadable PDF.  **Permission: aar:read**
          *
-         *     Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps).
+         *     Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps). Its core
+         *     fonts are latin-1 only; text outside it is transliterated (``aar_html.pdf_text``).
          */
         get: operations["get_aar_pdf_exercises__exercise_id__aar_pdf_get"];
         put?: never;
