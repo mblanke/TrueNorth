@@ -106,6 +106,9 @@ class Permission(str, Enum):
     # Admin / analytics
     AUDIT_READ = "audit:read"
     TELEMETRY_READ = "telemetry:read"
+    # Write events into a range's telemetry index. Not for Students: that index is what
+    # detection objectives are scored against, so writing to it would award points.
+    TELEMETRY_WRITE = "telemetry:write"
     STATS_READ = "stats:read"
     AAR_GENERATE = "aar:generate"
     AAR_READ = "aar:read"
@@ -158,6 +161,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.AAR_GENERATE,
         Permission.AAR_READ,
         Permission.TELEMETRY_READ,
+        Permission.TELEMETRY_WRITE,
     },
     # Range-ops: infrastructure-focused, no exercises/scenarios write
     UserRole.range_ops: {
@@ -181,6 +185,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.SCHEDULE_READ,
         Permission.STATS_READ,
         Permission.TELEMETRY_READ,
+        Permission.TELEMETRY_WRITE,
     },
     # Student (trainee): consume ranges, run exercises
     UserRole.student: {
