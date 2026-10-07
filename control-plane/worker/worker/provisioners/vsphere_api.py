@@ -982,7 +982,12 @@ class VsphereAPIProvisioner(BaseProvisioner):
         logger.info("Cloning %r from template %r", vm_def["name"], vm_def["template_name"])
         task = template.CloneVM_Task(folder=site["folder"], name=vm_def["name"], spec=spec)
         self._wait(task, si)
-        return task.info.result
+        vm = task.info.result
+        if vm_def.get("_range_id") and annotated_range(getattr(vm.config, "annotation", None)) != vm_def["_range_id"]:
+            # The clone spec's annotation did not land (govmomi's vcsim ignores it; vCenter
+            # applies it): set it now, while the VM is still off and nothing else runs on it.
+            self._wait(vm.ReconfigVM_Task(spec=vim.vm.ConfigSpec(annotation=range_annotation(vm_def["_range_id"]))), si)
+        return vm
 
     @staticmethod
     def _tag(spec, vm_def: dict) -> None:

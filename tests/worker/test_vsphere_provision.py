@@ -315,6 +315,8 @@ class FakeVM:
         if self.clone_fail:
             return FakeTask(fail=self.clone_fail)
         vm = FakeVM(name, _apply([_card(d.key, "x") for d in self.config.hardware.device], spec.config.deviceChange))
+        if not FAKE.clone_drops_annotation:  # vCenter applies the clone spec's annotation; vcsim does not
+            vm.config.annotation = spec.config.annotation
         vm.placed = spec.location
         folder.childEntity.append(vm)
         FAKE.vms[vm._moId] = vm
@@ -385,6 +387,7 @@ class FakeVCenter:
         svc = SimpleNamespace(name="dPG-TN-SVC", _moId="network-32", config=None)
         self.networks = [smoke, mgmt, svc]
         self.guest_ops = FakeGuestOps()
+        self.clone_drops_annotation = False
 
     # pyVmomi ------------------------------------------------------------
     def si(self):
@@ -1670,6 +1673,19 @@ class TestRangeTag:
         specs = [s for t in vc.templates.values() for (_, _, s) in t.clone_specs]
         assert len(specs) == 4
         assert {mod.annotated_range(s.config.annotation) for s in specs} == {RANGE_ID}
+
+    def test_a_clone_that_dropped_the_tag_is_tagged_again(self, vc):
+        """govmomi's vcsim ignores CloneSpec.config.annotation (found against v0.56.0)."""
+        vc.clone_drops_annotation = True
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered({**TEMPLATE, "nodes": [TEMPLATE["nodes"][1]]}), {}))
+        assert result.status == "ok", result.errors
+        tag, *_rest = vc.vms[result.vms[0]["vm_id"]].reconfig_specs
+        assert mod.annotated_range(tag.annotation) == RANGE_ID and not tag.deviceChange
+
+    def test_a_clone_that_kept_the_tag_is_not_reconfigured_for_it(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered({**TEMPLATE, "nodes": [TEMPLATE["nodes"][1]]}), {}))
+        specs = vc.vms[result.vms[0]["vm_id"]].reconfig_specs
+        assert [s.annotation for s in specs] == [None]  # only the guestinfo reconfigure
 
     def test_ovf_deployed_vm_is_tagged_in_its_reconfigure(self, vc, monkeypatch):
         monkeypatch.setattr(mod, "VSPHERE_CONTENT_LIBRARY", "TrueNorth-Templates")
