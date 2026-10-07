@@ -5,6 +5,7 @@ from scenario_engine.scoring.engine import (
     ObjectiveResult,
     ScoringEngine,
     ScoringResult,
+    validation_method,
 )
 from scenario_engine.scoring.grading import GradingCalculator
 from scenario_engine.scoring.leaderboard import Leaderboard
@@ -18,4 +19,5 @@ __all__ = [
     "ScoringEngine",
     "ScoringResult",
     "ScoringValidator",
+    "validation_method",
 ]
