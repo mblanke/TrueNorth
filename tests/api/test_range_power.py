@@ -64,13 +64,20 @@ def test_a_range_with_no_vms_cannot_be_powered(client, db_session, no_real_broke
     assert no_real_broker.sent == []
 
 
-def test_a_power_request_the_broker_refused_leaves_the_range_as_it_was(client, db_session, monkeypatch):
+def test_a_power_request_the_broker_refused_is_kept_and_sent_later(client, db_session, monkeypatch):
+    from datetime import timedelta
+
     from app import celery_client
+    from app.range_ops.service import redispatch_pending
 
     rid = _range(client, db_session, "ready")
+    dispatch = celery_client.dispatch
     monkeypatch.setattr(celery_client, "dispatch", lambda *a, **k: None)
-    assert client.post(f"/ranges/{rid}/stop").status_code == 503
-    assert client.get(f"/ranges/{rid}").json()["state"] == "ready"
+    assert client.post(f"/ranges/{rid}/stop").json()["state"] == "stopping"
+    (op,) = client.get(f"/ranges/{rid}/operations").json()
+    assert op["action"] == "stop" and op["status"] == "pending"
+    monkeypatch.setattr(celery_client, "dispatch", dispatch)
+    assert redispatch_pending(db_session, min_age=timedelta(0)) == 1
 
 
 def test_another_tenants_range_cannot_be_powered(client, db_session, no_real_broker):
@@ -148,7 +155,7 @@ def test_a_range_under_a_running_exercise_is_not_stopped(client, db_session, no_
 def test_a_range_whose_power_task_was_lost_can_still_be_destroyed(client, db_session, no_real_broker, state):
     rid = _range(client, db_session, state)
     resp = client.post(f"/ranges/{rid}/destroy")
-    assert resp.status_code == 200 and resp.json()["state"] == "destroying"
+    assert resp.status_code == 202 and resp.json()["state"] == "destroying"
 
 
 def test_on_postgres_the_migrated_enum_takes_the_power_states(postgres_engine):

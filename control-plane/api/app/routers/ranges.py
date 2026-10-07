@@ -19,6 +19,9 @@ POST   /ranges/{range_id}/provision  RANGE_PROVISION
 POST   /ranges/{range_id}/destroy    RANGE_DESTROY
 POST   /ranges/{range_id}/stop       RANGE_PROVISION
 POST   /ranges/{range_id}/start      RANGE_PROVISION
+GET    /ranges/{range_id}/operations RANGE_READ
+GET    /ranges/{range_id}/operations/{operation_id}            RANGE_READ
+POST   /ranges/{range_id}/operations/{operation_id}/abandon    RANGE_DESTROY
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
 """
@@ -26,18 +29,17 @@ POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import os
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import object_store
+from .. import object_store, range_ops
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
@@ -51,6 +53,7 @@ from ..models import (
     ScheduledEvent,
     Template,
 )
+from ..range_ops import service as ops
 from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
     BatchProvisionIn,
@@ -92,20 +95,17 @@ def _dispatch_task(task_name: str, *args: Any) -> str | None:
     return dispatch(task_name, *args)
 
 
-def _send_or_undo(db: Session, moved: list[tuple[Range, RangeState]], task_name: str, *args: Any) -> str:
-    """Send a range task after its state change committed. If the broker refuses it, put
-    each range back where it was (only if it is still where this request moved it) and
-    answer 503: the worker builds or tears down only a range left in that state
-    (worker/fencing.py), so an unsent task otherwise left it there for good."""
-    task_id = _dispatch_task(task_name, *args)
-    if task_id is None:
-        for rng, previous in moved:
-            db.query(Range).filter(Range.id == rng.id, Range.state == rng.state).update(
-                {Range.state: previous}, synchronize_session=False
-            )
-        db.commit()
-        raise HTTPException(503, "The task queue is not reachable; nothing was started. Try again shortly.")
-    return task_id
+def _send_snapshot_task(db: Session, snap: RangeSnapshot, task_name: str, busy: str, previous: str) -> None:
+    """Send a snapshot task after the row's new state committed (the worker reads it). If
+    the broker refuses it, put the row back (only if still ``busy``) and answer 503:
+    nothing will ever move a row the worker never hears about."""
+    if _dispatch_task(task_name, str(snap.range_id), str(snap.id)) is not None:
+        return
+    db.query(RangeSnapshot).filter(RangeSnapshot.id == snap.id, RangeSnapshot.snapshot_state == busy).update(
+        {RangeSnapshot.snapshot_state: previous}, synchronize_session=False
+    )
+    db.commit()
+    raise HTTPException(503, "The task queue is not reachable; nothing was started. Try again shortly.")
 
 
 # ── CRUD ───────────────────────────────────────────────────────────────
@@ -508,100 +508,161 @@ def save_range_topology(
 
 
 # ── Lifecycle Actions ──────────────────────────────────────────────────
-@router.post("/{range_id}/provision", response_model=RangeOut)
+_OPERATION_RESPONSES: dict = {
+    202: {
+        "description": "Accepted: the operation is durably recorded (Operation-Id / Location headers). "
+        "It may still be waiting for the task queue; see the operation's status."
+    },
+    409: {
+        "description": "Not allowed in the range's state, another operation is in flight, "
+        "or the Idempotency-Key was used for a different request"
+    },
+}
+_IDEMPOTENCY_KEY = Header(None, alias="Idempotency-Key", max_length=255)
+
+
+def _range_operation(
+    action: str, range_id: uuid.UUID, idempotency_key: str | None, db: Session, user: CurrentUser, response: Response
+) -> Range:
+    """Accept a provision / destroy / stop / start: the operation and the state change in
+    one commit, then the send (app/range_ops). 202 means accepted, not done: the body is
+    the range as it is now (``provisioning``, ``destroying``, ``stopping``, ``starting``),
+    and the operation (headers) carries the request's progress. A broker that is down
+    leaves the operation pending and visibly delayed; it is re-sent when the broker is back."""
+    _changeable_range(db, range_id, user)  # 404 for another tenant's, 409 for a lab's
+    try:
+        op, rng, created = ops.accept(db, range_id, user, action, idempotency_key)
+        if created:
+            _audit(db, user, action, "range", str(rng.id), f"operation {op.id} generation {op.generation}")
+            db.commit()
+    except HTTPException:
+        raise  # refused before anything was written; closing the session releases the row lock
+    except Exception:
+        db.rollback()  # nothing is accepted unless the operation and the state change both commit
+        raise
+    if created:
+        ops.dispatch(db, op)
+    response.headers["Operation-Id"] = str(op.id)
+    response.headers["Location"] = f"/ranges/{rng.id}/operations/{op.id}"
+    db.refresh(rng)
+    return rng
+
+
+@router.post("/{range_id}/provision", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
 async def provision_range(
+    response: Response,
     range_id: uuid.UUID = Path(...),
+    idempotency_key: str | None = _IDEMPOTENCY_KEY,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
-    """Provision a range (async Celery task).  **Permission: range:provision**"""
-    rng = _changeable_range(db, range_id, user)
-    if not rng.state.can_transition_to(RangeState.provisioning):
-        raise HTTPException(409, f"Cannot provision range in state {rng.state.value}")
-    previous, rng.state = rng.state, RangeState.provisioning
-    db.commit()
-    _send_or_undo(db, [(rng, previous)], "provision_range", str(rng.id))
-    _audit(db, user, "provision", "range", str(rng.id))
-    db.commit()
-    db.refresh(rng)
-    return rng
+    """Provision a range (async: ``provisioning`` until the worker reports ``ready``).
+    **Permission: range:provision**"""
+    return _range_operation("provision", range_id, idempotency_key, db, user, response)
 
 
-@router.post("/{range_id}/destroy", response_model=RangeOut)
+@router.post("/{range_id}/destroy", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
 async def destroy_range(
+    response: Response,
     range_id: uuid.UUID = Path(...),
+    idempotency_key: str | None = _IDEMPOTENCY_KEY,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_DESTROY)),
 ) -> Range:
-    """Destroy a range (async Celery task).  **Permission: range:destroy**"""
-    rng = _changeable_range(db, range_id, user)
-    if not rng.state.can_transition_to(RangeState.destroying):
-        raise HTTPException(409, f"Cannot destroy range in state {rng.state.value}")
-    previous, rng.state = rng.state, RangeState.destroying
-    db.commit()
-    _send_or_undo(db, [(rng, previous)], "destroy_range", str(rng.id))
-    _audit(db, user, "destroy", "range", str(rng.id))
-    db.commit()
-    db.refresh(rng)
-    return rng
+    """Destroy a range (async: ``destroying`` until the worker reports ``destroyed``). It
+    supersedes an operation still in flight, so a range whose power task was lost can
+    always be torn down.  **Permission: range:destroy**"""
+    return _range_operation("destroy", range_id, idempotency_key, db, user, response)
 
 
-def _power(db: Session, user: CurrentUser, range_id: uuid.UUID, action: str, claim: RangeState) -> Range:
-    """Record a power request (``stopping`` / ``starting``) and send it to the worker,
-    which writes ``stopped`` / ``running`` once the VMs are (worker/power_tasks.py). Until
-    CR1-05 /stop set ``stopped`` and sent nothing: the VMs kept running."""
-    rng = _changeable_range(db, range_id, user)
-    if not rng.state.can_transition_to(claim):
-        raise HTTPException(409, f"Cannot {action} range in state {rng.state.value}")
-    try:
-        vms = json.loads(rng.provisioner_output or "{}").get("vms") or []
-    except (ValueError, AttributeError):
-        vms = []
-    if not vms:
-        raise HTTPException(409, f"Cannot {action}: the range has no VMs recorded")
-    # Never alongside a snapshot being taken or restored: the snapshot task holds no lease,
-    # and a stop over a half-done revert would hide that the revert failed.
-    busy = (
-        db.query(RangeSnapshot.snapshot_state)
-        .filter(RangeSnapshot.range_id == rng.id, RangeSnapshot.snapshot_state.in_(("creating", "restoring")))
-        .first()
-    )
-    if busy:
-        doing = "taken" if busy[0] == "creating" else "restored"
-        raise HTTPException(409, f"Cannot {action}: a snapshot of this range is being {doing}")
-    if action == "stop" and (
-        db.query(Exercise.id).filter(Exercise.range_id == rng.id, Exercise.state == ExerciseState.running).first()
-    ):
-        raise HTTPException(409, "Cannot stop: an exercise is running on this range")
-    previous, rng.state = rng.state, claim
-    db.commit()
-    _send_or_undo(db, [(rng, previous)], f"{action}_range", str(rng.id))
-    _audit(db, user, action, "range", str(rng.id))
-    db.commit()
-    db.refresh(rng)
-    return rng
-
-
-@router.post("/{range_id}/stop", response_model=RangeOut, status_code=202)
+@router.post("/{range_id}/stop", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
 async def stop_range(
+    response: Response,
     range_id: uuid.UUID = Path(...),
+    idempotency_key: str | None = _IDEMPOTENCY_KEY,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
     """Power a range's VMs off (async: ``stopping`` until the worker reports ``stopped``).
-    **Permission: range:provision**"""
-    return _power(db, user, range_id, "stop", RangeState.stopping)
+    Until CR1-05 this set ``stopped`` and sent nothing.  **Permission: range:provision**"""
+    return _range_operation("stop", range_id, idempotency_key, db, user, response)
 
 
-@router.post("/{range_id}/start", response_model=RangeOut, status_code=202)
+@router.post("/{range_id}/start", response_model=RangeOut, status_code=202, responses=_OPERATION_RESPONSES)
 async def start_range(
+    response: Response,
     range_id: uuid.UUID = Path(...),
+    idempotency_key: str | None = _IDEMPOTENCY_KEY,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_PROVISION)),
 ) -> Range:
     """Power a stopped range's VMs on (async: ``starting`` until the worker reports
     ``running``).  **Permission: range:provision**"""
-    return _power(db, user, range_id, "start", RangeState.starting)
+    return _range_operation("start", range_id, idempotency_key, db, user, response)
+
+
+def _operation(db: Session, rng: Range, operation_id: uuid.UUID, *, lock: bool = False) -> range_ops.RangeOperation:
+    q = db.query(range_ops.RangeOperation).filter(
+        range_ops.RangeOperation.id == operation_id,
+        range_ops.RangeOperation.range_id == rng.id,
+        range_ops.RangeOperation.tenant_id == rng.tenant_id,
+    )
+    op = (q.with_for_update() if lock else q).first()
+    if not op:
+        raise HTTPException(404, "Operation not found")
+    return op
+
+
+@router.get("/{range_id}/operations", response_model=list[ops.RangeOperationOut])
+def list_range_operations(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> list[range_ops.RangeOperation]:
+    """The range's operations, newest first, with outcomes reconciled from its state."""
+    rng = _readable_range(db, range_id, user)
+    ops.reconcile(db, rng)
+    db.commit()
+    return (
+        db.query(range_ops.RangeOperation)
+        .filter(range_ops.RangeOperation.range_id == rng.id)
+        .order_by(range_ops.RangeOperation.generation.desc())
+        .limit(100)
+        .all()
+    )
+
+
+@router.get("/{range_id}/operations/{operation_id}", response_model=ops.RangeOperationOut)
+def get_range_operation(
+    range_id: uuid.UUID = Path(...),
+    operation_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> range_ops.RangeOperation:
+    rng = _readable_range(db, range_id, user)
+    ops.reconcile(db, rng)
+    db.commit()
+    return _operation(db, rng, operation_id)
+
+
+@router.post("/{range_id}/operations/{operation_id}/abandon", response_model=ops.RangeOperationOut)
+def abandon_range_operation(
+    range_id: uuid.UUID = Path(...),
+    operation_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_DESTROY)),
+) -> range_ops.RangeOperation:
+    """Give up on an in-flight operation that will not finish (a lost task, a dead worker).
+
+    Check the hypervisor first: the API cannot see whether work is still running there.
+    The range goes to ``failed``, from where it can be destroyed or provisioned again.
+    **Permission: range:destroy**"""
+    rng = _changeable_range(db, range_id, user)
+    op = _operation(db, rng, operation_id, lock=True)
+    ops.abandon(db, rng, op, user)
+    _audit(db, user, "abandon_operation", "range", str(rng.id), f"operation {op.id}")
+    db.commit()
+    return op
 
 
 @router.post("/batch-provision", response_model=BatchProvisionOut, status_code=202)
@@ -610,24 +671,32 @@ def batch_provision_ranges(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_BATCH_PROVISION)),
 ) -> BatchProvisionOut:
-    """Batch-provision multiple ranges.  **Permission: range:batch_provision**"""
-    range_ids = [str(rid) for rid in body.range_ids]
+    """Batch-provision multiple ranges.  **Permission: range:batch_provision**
+
+    Each range gets its own provision operation (app/range_ops), all accepted in one
+    transaction: one refusal (not the caller's, a lab's, wrong state, already busy)
+    accepts none. Ranges are locked in id order so two overlapping batches cannot
+    deadlock. ``task_id`` carries the operations' ids, comma-separated.
+    """
     # owned_or_404 refuses partial results: a batch must not silently act on the
     # subset the caller happens to own.
-    ranges_found = owned_or_404(db, Range, body.range_ids, user)
-    for rng in ranges_found:
-        if not rng.state.can_transition_to(RangeState.provisioning):
-            raise HTTPException(409, f"Range {rng.id} in state {rng.state.value} cannot be provisioned")
-    # As a single provision: recorded (provisioning) and committed before the task is sent.
-    # The worker builds only a range in provisioning (worker/fencing.py).
-    moved = [(rng, rng.state) for rng in ranges_found]
-    for rng in ranges_found:
-        rng.state = RangeState.provisioning
-    db.commit()
-    task_id = _send_or_undo(db, moved, "batch_provision", range_ids)
-    _audit(db, user, "batch_provision", "range", f"{len(range_ids)} ranges")
-    db.commit()
-    return BatchProvisionOut(dispatched=len(range_ids), task_id=task_id)
+    owned_or_404(db, Range, body.range_ids, user)
+    ordered = sorted(set(body.range_ids), key=str)
+    try:
+        for rid in ordered:  # every range passes before any operation is written
+            _changeable_range(db, rid, user)
+            ops.check(db, rid, user, "provision")
+        accepted = [ops.accept(db, rid, user, "provision")[0] for rid in ordered]
+        _audit(db, user, "batch_provision", "range", f"{len(accepted)} ranges")
+        db.commit()
+    except HTTPException:
+        raise  # every range is checked before any operation is written
+    except Exception:
+        db.rollback()
+        raise
+    for op in accepted:
+        ops.dispatch(db, op)
+    return BatchProvisionOut(dispatched=len(accepted), task_id=",".join(str(op.id) for op in accepted))
 
 
 # ── Snapshots ──────────────────────────────────────────────────────────
@@ -671,9 +740,9 @@ def create_snapshot(
     )
     db.add(snap)
     db.flush()
-    _dispatch_task("snapshot_range", str(range_id), str(snap.id))
     _audit(db, user, "snapshot_create", "range_snapshot", str(snap.id), f"Snapshot of range {range_id}")
     db.commit()
+    _send_snapshot_task(db, snap, "snapshot_range", "creating", "failed")
     db.refresh(snap)
     return snap
 
@@ -708,9 +777,9 @@ def restore_snapshot(
         raise HTTPException(404, "Snapshot not found or not ready")
 
     snap.snapshot_state = "restoring"
-    _dispatch_task("restore_snapshot", str(range_id), str(snapshot_id))
     _audit(db, user, "snapshot_restore", "range_snapshot", str(snapshot_id), f"Restoring range {range_id}")
     db.commit()
+    _send_snapshot_task(db, snap, "restore_snapshot", "restoring", "ready")
     db.refresh(rng)
     return rng
 
@@ -742,10 +811,11 @@ def delete_snapshot(
         # The worker is still writing this row; deleting now let it come back `ready`
         # with nothing on the hypervisor, or left the hypervisor copy orphaned.
         raise HTTPException(409, f"Snapshot is {snap.snapshot_state}; delete it once that finishes")
-    _dispatch_task("delete_snapshot", str(range_id), str(snapshot_id))
+    previous = snap.snapshot_state
     snap.snapshot_state = "deleted"
     _audit(db, user, "snapshot_delete", "range_snapshot", str(snapshot_id))
     db.commit()
+    _send_snapshot_task(db, snap, "delete_snapshot", "deleted", previous)
 
 
 # ── Description & documents ──────────────────────────────────────────────

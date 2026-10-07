@@ -274,12 +274,15 @@ async def run_exercise(
         db.commit()
     if ex.state != ExerciseState.pending:
         raise HTTPException(409, f"Exercise is {ex.state.value}, expected pending")
-    # provision the range if it hasn't been (mock provisioner flips it to ready via the worker)
+    # provision the range if it hasn't been (mock provisioner flips it to ready via the worker),
+    # as a recorded range operation (app/range_ops): durable, and re-sent if the broker is down.
     rng = get_owned(db, Range, ex.range_id, user)
     if rng and rng.state.can_transition_to(RangeState.provisioning):
-        rng.state = RangeState.provisioning
+        from ..range_ops import service as range_ops
+
+        op, _, _ = range_ops.accept(db, rng.id, user, "provision")
         db.commit()
-        _dispatch_task("provision_range", str(rng.id))
+        range_ops.dispatch(db, op)
     # start the exercise + dispatch the scenario runner
     ex.state = ExerciseState.running
     ex.started_at = datetime.now(UTC)

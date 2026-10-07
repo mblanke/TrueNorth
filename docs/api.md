@@ -616,67 +616,64 @@ Delete a range record. **Permission: `range:delete`**
 
 ---
 
-### `POST /ranges/{range_id}/provision`
+### Range operations: provision, destroy, stop, start
 
-Trigger asynchronous range provisioning. Transitions state from `created` to `provisioning`. A Celery task is dispatched.
+Each of these is an **operation** (app/range_ops): the request is recorded in the same
+transaction as the range's move to its in-progress state, and the worker writes the
+outcome state once the hypervisor has done the work. `202 Accepted` means *recorded*,
+not done. The body is the range as it is now; the `Operation-Id` and `Location`
+(`/ranges/{range_id}/operations/{operation_id}`) headers carry the request's progress.
 
-**Permission: `range:provision`**
+- **Task queue down:** still `202`. The operation stays `pending` with
+  `error.code = "broker_unavailable"`, and the API re-sends it once the broker is back.
+- **`Idempotency-Key` header** (optional): the same key for the same action returns the
+  original operation and does nothing again. The same key for another action is a `409`.
+- **One operation at a time per range:** a second action while one is in flight is a
+  `409`. A **destroy supersedes** an in-flight operation instead, so a range whose task
+  was lost can always be torn down.
 
-**Response `200 OK`:** Range object with `state: "provisioning"`.
+| Endpoint | Permission | From | In progress | Outcome |
+|---|---|---|---|---|
+| `POST /ranges/{range_id}/provision` | `range:provision` | `created`, `failed` (no VMs recorded) | `provisioning` | `ready` / `failed` |
+| `POST /ranges/{range_id}/destroy` | `range:destroy` | most states, including `stopping` / `starting` | `destroying` | `destroyed` / `failed` |
+| `POST /ranges/{range_id}/stop` | `range:provision` | `ready`, `running` | `stopping` | `stopped` / `failed` |
+| `POST /ranges/{range_id}/start` | `range:provision` | `stopped` | `starting` | `running` / `failed` |
+
+Stop and start are refused (`409`) for a range with no recorded VMs, or while a snapshot
+is being taken or restored. Stop is also refused while an exercise is running on the
+range. vSphere's stop is a hard power-off, not a guest shutdown.
 
 | Status | Condition |
 |--------|-----------|
-| `200` | Provisioning initiated |
-| `404` | Range not found |
-| `409` | Invalid state transition (range not in provisionable state) |
+| `202` | Accepted (recorded; see the operation for progress) |
+| `404` | Range not found (or another tenant's) |
+| `409` | Not allowed in the range's state, another operation in flight, a lab session's range, or an Idempotency-Key reused for another action |
 
----
+### `GET /ranges/{range_id}/operations`, `GET /ranges/{range_id}/operations/{operation_id}`
 
-### `POST /ranges/{range_id}/destroy`
+**Permission: `range:read`.** The range's operations, newest first, with their outcomes
+reconciled from its state:
 
-Trigger asynchronous range destruction. Transitions to `destroying` state.
+- `status` is `pending`, `dispatched`, `succeeded`, `failed` or `superseded`.
+- `error.code` is `broker_unavailable`, `range_failed`, `no_outcome`, `abandoned` or
+  `superseded`.
 
-**Permission: `range:destroy`**
+`no_outcome` means no result arrived long after the task was sent. The operation still
+blocks the range until someone abandons it.
 
-**Response `200 OK`:** Range object with `state: "destroying"`.
+### `POST /ranges/{range_id}/operations/{operation_id}/abandon`
 
-| Status | Condition |
-|--------|-----------|
-| `200` | Destruction initiated |
-| `404` | Range not found |
-| `409` | Invalid state transition |
-
----
-
-### `POST /ranges/{range_id}/stop`
-
-Power off a range's VMs. Asynchronous: the range moves from `ready` or `running` to
-`stopping`, and the worker writes `stopped` once the hypervisor has powered every VM off
-(or `failed`). Refused (409) for a range with no recorded VMs, while a snapshot is being
-taken or restored, or while an exercise is running on it; 503 if the task queue is down
-(the range is left as it was).
-
-**Permission: `range:provision`**
-
-**Response `202 Accepted`:** Range object with `state: "stopping"`.
-
----
-
-### `POST /ranges/{range_id}/start`
-
-Power on a stopped range's VMs. Asynchronous: `stopped` -> `starting`, then `running` once
-the hypervisor has powered every VM on (or `failed`). Same refusals as stop, except the
-exercise check.
-
-**Permission: `range:provision`**
-
-**Response `202 Accepted`:** Range object with `state: "starting"`.
+**Permission: `range:destroy`.** An operator gives up on an in-flight operation that will
+not finish (a lost task, a dead worker). Check the hypervisor first. The operation becomes
+`failed` (`abandoned`), and the range goes to `failed`, from where it can be destroyed or
+provisioned again.
 
 ---
 
 ### `POST /ranges/batch-provision`
 
-Batch-provision multiple ranges simultaneously. Returns immediately with a task ID.
+Batch-provision multiple ranges: one provision operation per range, all accepted in one
+transaction (one refusal accepts none). `task_id` carries the operations' ids, comma-separated.
 
 **Permission: `range:batch_provision`**
 

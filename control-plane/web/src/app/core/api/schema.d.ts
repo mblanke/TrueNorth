@@ -4183,6 +4183,11 @@ export interface paths {
         /**
          * Batch Provision Ranges
          * @description Batch-provision multiple ranges.  **Permission: range:batch_provision**
+         *
+         *     Each range gets its own provision operation (app/range_ops), all accepted in one
+         *     transaction: one refusal (not the caller's, a lab's, wrong state, already busy)
+         *     accepts none. Ranges are locked in id order so two overlapping batches cannot
+         *     deadlock. ``task_id`` carries the operations' ids, comma-separated.
          */
         post: operations["batch_provision_ranges_ranges_batch_provision_post"];
         delete?: never;
@@ -4278,7 +4283,9 @@ export interface paths {
         put?: never;
         /**
          * Destroy Range
-         * @description Destroy a range (async Celery task).  **Permission: range:destroy**
+         * @description Destroy a range (async: ``destroying`` until the worker reports ``destroyed``). It
+         *     supersedes an operation still in flight, so a range whose power task was lost can
+         *     always be torn down.  **Permission: range:destroy**
          */
         post: operations["destroy_range_ranges__range_id__destroy_post"];
         delete?: never;
@@ -4361,6 +4368,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Range Operations
+         * @description The range's operations, newest first, with outcomes reconciled from its state.
+         */
+        get: operations["list_range_operations_ranges__range_id__operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Range Operation */
+        get: operations["get_range_operation_ranges__range_id__operations__operation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/operations/{operation_id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon Range Operation
+         * @description Give up on an in-flight operation that will not finish (a lost task, a dead worker).
+         *
+         *     Check the hypervisor first: the API cannot see whether work is still running there.
+         *     The range goes to ``failed``, from where it can be destroyed or provisioned again.
+         *     **Permission: range:destroy**
+         */
+        post: operations["abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/provision": {
         parameters: {
             query?: never;
@@ -4372,7 +4440,8 @@ export interface paths {
         put?: never;
         /**
          * Provision Range
-         * @description Provision a range (async Celery task).  **Permission: range:provision**
+         * @description Provision a range (async: ``provisioning`` until the worker reports ``ready``).
+         *     **Permission: range:provision**
          */
         post: operations["provision_range_ranges__range_id__provision_post"];
         delete?: never;
@@ -4472,7 +4541,7 @@ export interface paths {
         /**
          * Stop Range
          * @description Power a range's VMs off (async: ``stopping`` until the worker reports ``stopped``).
-         *     **Permission: range:provision**
+         *     Until CR1-05 this set ``stopped`` and sent nothing.  **Permission: range:provision**
          */
         post: operations["stop_range_ranges__range_id__stop_post"];
         delete?: never;
@@ -8788,6 +8857,41 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** RangeOperationOut */
+        RangeOperationOut: {
+            /** Action */
+            action: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Dispatch Attempts */
+            dispatch_attempts: number;
+            /** Dispatched At */
+            dispatched_at?: string | null;
+            /** Error */
+            error?: {
+                [key: string]: unknown;
+            } | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Generation */
+            generation: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Status */
+            status: string;
+            /** Task Id */
+            task_id?: string | null;
         };
         /** RangeOut */
         RangeOut: {
@@ -18274,7 +18378,9 @@ export interface operations {
     destroy_range_ranges__range_id__destroy_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 range_id: string;
             };
@@ -18282,14 +18388,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["RangeOut"];
                 };
+            };
+            /** @description Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18502,7 +18615,7 @@ export interface operations {
             };
         };
     };
-    provision_range_ranges__range_id__provision_post: {
+    list_range_operations_ranges__range_id__operations_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -18519,8 +18632,112 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["RangeOperationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_range_operation_ranges__range_id__operations__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeOperationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RangeOperationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_range_ranges__range_id__provision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["RangeOut"];
                 };
+            };
+            /** @description Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18664,7 +18881,9 @@ export interface operations {
     start_range_ranges__range_id__start_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 range_id: string;
             };
@@ -18672,7 +18891,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -18680,6 +18899,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RangeOut"];
                 };
+            };
+            /** @description Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18695,7 +18921,9 @@ export interface operations {
     stop_range_ranges__range_id__stop_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 range_id: string;
             };
@@ -18703,7 +18931,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description Accepted: the operation is durably recorded (Operation-Id / Location headers). It may still be waiting for the task queue; see the operation's status. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -18711,6 +18939,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RangeOut"];
                 };
+            };
+            /** @description Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
