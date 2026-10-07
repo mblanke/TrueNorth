@@ -22,6 +22,7 @@ POST   /ranges/{range_id}/start      RANGE_PROVISION
 GET    /ranges/{range_id}/operations RANGE_READ
 GET    /ranges/{range_id}/operations/{operation_id}            RANGE_READ
 POST   /ranges/{range_id}/operations/{operation_id}/abandon    RANGE_DESTROY
+GET    /ranges/{range_id}/network-reservations                  RANGE_READ
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
 """
@@ -53,6 +54,7 @@ from ..models import (
     ScheduledEvent,
     Template,
 )
+from ..network_inventory import NetworkReservation, NetworkReservationOut
 from ..range_ops import service as ops
 from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
@@ -668,6 +670,23 @@ def abandon_range_operation(
     _audit(db, user, "abandon_operation", "range", str(rng.id), f"operation {op.id}")
     db.commit()
     return op
+
+
+@router.get("/{range_id}/network-reservations", response_model=list[NetworkReservationOut])
+def list_network_reservations(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> list[NetworkReservation]:
+    """Addresses and VLANs this range holds on shared networks (app/network_inventory/).
+    **Permission: range:read**"""
+    rng = _tenant_range(db, range_id, user)
+    return (
+        db.query(NetworkReservation)
+        .filter(NetworkReservation.range_id == rng.id, NetworkReservation.tenant_id == rng.tenant_id)
+        .order_by(NetworkReservation.kind, NetworkReservation.holder)
+        .all()
+    )
 
 
 @router.post("/batch-provision", response_model=BatchProvisionOut, status_code=202)

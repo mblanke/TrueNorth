@@ -311,6 +311,10 @@ def reconcile(db: Session, rng: Range) -> None:
                 }
             continue
         op.status, op.finished_at = outcome, _now()
+        if op.action == "destroy" and outcome == "succeeded":
+            from ..network_inventory import release_range
+
+            release_range(db, rng.id)  # its addresses and VLANs are free for other ranges
         if outcome == "failed":
             op.error = {"code": "range_failed", "message": (rng.error_message or "The worker reported a failure")[:500]}
     # Sessions here do not autoflush: write the outcomes now, so the in-flight check that

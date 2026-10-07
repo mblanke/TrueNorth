@@ -23,7 +23,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import range_leases, range_ops, ws_auth  # noqa: F401 — range_leases, range_ops: register their tables
+from . import (  # noqa: F401 — network_inventory, range_leases, range_ops: register their tables
+    network_inventory,
+    range_leases,
+    range_ops,
+    ws_auth,
+)
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db

@@ -6432,6 +6432,35 @@
         "title": "NetworkDeviceUpdate",
         "type": "object"
       },
+      "NetworkReservationOut": {
+        "description": "One address or VLAN a range holds on a shared network.",
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "holder": {
+            "title": "Holder",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "kind",
+          "value",
+          "holder"
+        ],
+        "title": "NetworkReservationOut",
+        "type": "object"
+      },
       "NetworkSummaryOut": {
         "properties": {
           "active_devices": {
@@ -25072,6 +25101,59 @@
           }
         ],
         "summary": "Download Range Document",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/network-reservations": {
+      "get": {
+        "description": "Addresses and VLANs this range holds on shared networks (app/network_inventory/).\n**Permission: range:read**",
+        "operationId": "list_network_reservations_ranges__range_id__network_reservations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NetworkReservationOut"
+                  },
+                  "title": "Response List Network Reservations Ranges  Range Id  Network Reservations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Network Reservations",
         "tags": [
           "ranges"
         ]
