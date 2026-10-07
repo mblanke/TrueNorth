@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import range_leases, range_ops, ws_auth  # noqa: F401 — range_leases, range_ops: register their tables
+from . import range_leases, range_ops, scenario_runs, ws_auth  # noqa: F401 — the first three register tables
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
@@ -261,6 +261,7 @@ from .routers import (
     quizzes_router,
     ranges_router,
     registration_router,
+    scenario_executions_router,
     scenarios_router,
     scheduling_router,
     storage_router,
@@ -281,6 +282,7 @@ app.include_router(exercises_router)
 app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)
+app.include_router(scenario_executions_router)
 app.include_router(injectors_router)
 app.include_router(ai_authoring_router)
 app.include_router(admin_router)

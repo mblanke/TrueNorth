@@ -24,13 +24,14 @@ import yaml as pyyaml
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import engine_bridge
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models import AuditLog, Scenario, UserRole
+from ..models import AuditLog, Exercise, Scenario, UserRole
 from ..rbac import Permission, require_permission
 from ..schemas import ScenarioIn, ScenarioListOut, ScenarioOut, ScenarioUpdate
 from ..tenancy import get_owned
@@ -143,7 +144,12 @@ def update_scenario(
     return sc
 
 
-@router.delete("/{scenario_id}", status_code=204, response_class=Response)
+@router.delete(
+    "/{scenario_id}",
+    status_code=204,
+    response_class=Response,
+    responses={409: {"description": "An exercise references the scenario"}},
+)
 def delete_scenario(
     scenario_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
@@ -151,15 +157,23 @@ def delete_scenario(
 ):
     """Delete a scenario.  **Permission: scenario:delete**
 
-    409 while any exercise (including a soft-deleted one) still references it.
+    409 while any exercise (including a finished or soft-deleted one, whose AAR still
+    reads the scenario) references it. Checked up front (SQLite does not enforce the FK)
+    and again at commit, for an exercise created in between. Scenario executions do not
+    block: they keep their record and lose the link.
     """
     sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
+    in_use = db.query(func.count(Exercise.id)).filter(Exercise.scenario_id == sc.id).scalar() or 0
+    if in_use:
+        raise HTTPException(409, _in_use_message(in_use))
     db.delete(sc)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Scenario is used by one or more exercises; delete those exercises first",
-        ) from None
+        raise HTTPException(409, _in_use_message(None)) from None
+
+
+def _in_use_message(count: int | None) -> str:
+    used = f"{count} exercise(s)" if count else "an exercise"
+    return f"Scenario is used by {used}; delete those exercises or point them at another scenario first"

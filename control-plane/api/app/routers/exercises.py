@@ -15,6 +15,7 @@ POST   /exercises/{id}/start               EXERCISE_START
 POST   /exercises/{id}/pause               EXERCISE_PAUSE
 POST   /exercises/{id}/complete            EXERCISE_COMPLETE
 GET    /exercises/{id}/objectives           EXERCISE_READ
+GET    /exercises/{id}/injects              EXERCISE_READ
 POST   /exercises/{id}/objectives/{ref}/ack EXERCISE_COMPLETE
 POST   /exercises/{id}/aar/generate        AAR_GENERATE
 GET    /exercises/{id}/aar                  AAR_READ
@@ -50,6 +51,8 @@ from ..models import (
     Scenario,
 )
 from ..rbac import Permission, require_permission
+from ..scenario_runs import InjectRecord
+from ..scenario_runs.schemas import InjectRecordOut
 from ..schemas import (
     AAROut,
     ExerciseIn,
@@ -95,9 +98,9 @@ def _scenario_definition(db: Session, ex: Exercise, user: CurrentUser) -> dict:
             pass
     objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
     definition["objectives"] = [{"ref_id": o.ref_id, "validator": o.validator, "points": o.points} for o in objectives]
-    # Fallback: if the YAML carried no timeline, synthesize one step per objective so the run walks.
-    if not definition["timeline"]:
-        definition["timeline"] = [{"t": f"{i}:00", "action": f"inject.{o.ref_id}"} for i, o in enumerate(objectives)]
+    # No timeline, no injects. (This used to synthesize an `inject.<ref_id>` event per
+    # objective so the run "walked"; now that events are really dispatched, those fake
+    # actions would only be recorded as failed injects.)
     return definition
 
 
@@ -389,6 +392,24 @@ def list_objectives(
 ) -> list[Objective]:
     """List objectives for an exercise.  **Permission: exercise:read**"""
     return db.query(Objective).filter(Objective.exercise_id == exercise_id).all()
+
+
+# ── Injects ────────────────────────────────────────────────────────────
+@router.get("/{exercise_id}/injects", response_model=list[InjectRecordOut])
+def list_injects(
+    exercise_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
+) -> list[InjectRecord]:
+    """What each inject did (timeline and instructor), oldest first, every run kept.
+    **Permission: exercise:read**"""
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    return (
+        db.query(InjectRecord)
+        .filter(InjectRecord.exercise_id == ex.id)
+        .order_by(InjectRecord.created_at, InjectRecord.seq)
+        .all()
+    )
 
 
 @router.post("/{exercise_id}/objectives/{ref_id}/ack", response_model=ObjectiveOut)

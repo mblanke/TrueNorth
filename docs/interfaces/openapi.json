@@ -5499,6 +5499,160 @@
         "title": "HypervisorTestResult",
         "type": "object"
       },
+      "InjectCounts": {
+        "properties": {
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "fired": {
+            "title": "Fired",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "fired",
+          "skipped",
+          "failed",
+          "pending"
+        ],
+        "title": "InjectCounts",
+        "type": "object"
+      },
+      "InjectRecordOut": {
+        "description": "One recorded inject outcome.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "simulated (synthetic records) | live; null if not run",
+            "title": "Execution Mode"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mitre_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitre Technique"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the run that fired it; a replay is a new run",
+            "title": "Run Id"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "timeline position; null for an instructor inject",
+            "title": "Seq"
+          },
+          "source": {
+            "description": "timeline | instructor",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "fired",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T"
+          },
+          "telemetry_count": {
+            "default": 0,
+            "title": "Telemetry Count",
+            "type": "integer"
+          },
+          "telemetry_shipped": {
+            "default": false,
+            "title": "Telemetry Shipped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "action",
+          "status"
+        ],
+        "title": "InjectRecordOut",
+        "type": "object"
+      },
       "InstructorInjectIn": {
         "properties": {
           "description": {
@@ -6751,6 +6905,31 @@
           "achieved"
         ],
         "title": "ObjectiveOut",
+        "type": "object"
+      },
+      "ObjectiveResultOut": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "ref_id": {
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "unassessed",
+            "default": "unassessed",
+            "description": "an execution has no Students or evidence review, so nothing is scored",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref_id"
+        ],
+        "title": "ObjectiveResultOut",
         "type": "object"
       },
       "OnboardingPathIn": {
@@ -8932,6 +9111,244 @@
         "title": "ScenarioDraftIn",
         "type": "object"
       },
+      "ScenarioExecuteIn": {
+        "properties": {
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "scenario_id": {
+            "format": "uuid",
+            "title": "Scenario Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "range_id"
+        ],
+        "title": "ScenarioExecuteIn",
+        "type": "object"
+      },
+      "ScenarioExecutionOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scenario_id",
+          "scenario_name",
+          "range_id",
+          "state"
+        ],
+        "title": "ScenarioExecutionOut",
+        "type": "object"
+      },
+      "ScenarioExecutionResultsOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "injects": {
+            "$ref": "#/components/schemas/InjectCounts"
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectiveResultOut"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scenario_id",
+          "scenario_name",
+          "range_id",
+          "state",
+          "injects",
+          "objectives"
+        ],
+        "title": "ScenarioExecutionResultsOut",
+        "type": "object"
+      },
       "ScenarioIn": {
         "properties": {
           "is_public": {
@@ -10685,6 +11102,91 @@
           }
         },
         "title": "ThreatIntelFeedUpdate",
+        "type": "object"
+      },
+      "TimelineEntryOut": {
+        "description": "A timeline event and what happened to it (``pending`` until the worker records it).",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
+          },
+          "mitre_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitre Technique"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "fired",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T"
+          },
+          "telemetry_count": {
+            "default": 0,
+            "title": "Telemetry Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "action",
+          "status"
+        ],
+        "title": "TimelineEntryOut",
         "type": "object"
       },
       "TranscriptEntry": {
@@ -17594,6 +18096,59 @@
           }
         ],
         "summary": "Complete Exercise",
+        "tags": [
+          "exercises"
+        ]
+      }
+    },
+    "/exercises/{exercise_id}/injects": {
+      "get": {
+        "description": "What each inject did (timeline and instructor), oldest first, every run kept.\n**Permission: exercise:read**",
+        "operationId": "list_injects_exercises__exercise_id__injects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InjectRecordOut"
+                  },
+                  "title": "Response List Injects Exercises  Exercise Id  Injects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Injects",
         "tags": [
           "exercises"
         ]
@@ -26273,6 +26828,155 @@
         ]
       }
     },
+    "/scenarios/execute": {
+      "post": {
+        "description": "Run a scenario's timeline against a ready range.  **Permission: exercise:start**\n\n202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.\n422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is\ndown (the execution is recorded ``failed``).",
+        "operationId": "execute_scenario_scenarios_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioExecuteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioExecutionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Execute Scenario",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/scenarios/executions/{execution_id}/results": {
+      "get": {
+        "description": "State, inject counts and objectives (always ``unassessed``) of an execution.",
+        "operationId": "get_execution_results_scenarios_executions__execution_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioExecutionResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Execution Results",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/scenarios/executions/{execution_id}/timeline": {
+      "get": {
+        "description": "Each timeline event with its recorded outcome (``pending`` until the worker reaches it).",
+        "operationId": "get_execution_timeline_scenarios_executions__execution_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TimelineEntryOut"
+                  },
+                  "title": "Response Get Execution Timeline Scenarios Executions  Execution Id  Timeline Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Execution Timeline",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
     "/scenarios/validate": {
       "post": {
         "description": "Validate scenario YAML against the engine's canonical schema.\n\nReturns ``{valid, errors: [{path, message}], normalized}`` \u2014 ``normalized``\nis the parsed document whenever the YAML parses, even when schema-invalid,\nso the Scenario Studio can load a document and show its problems at once.\nCreate/update stay permissive on purpose (forge output and older seeds are\nnot schema-clean); this endpoint is the contract for authored content.",
@@ -26324,7 +27028,7 @@
     },
     "/scenarios/{scenario_id}": {
       "delete": {
-        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a soft-deleted one) still references it.",
+        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a finished or soft-deleted one, whose AAR still\nreads the scenario) references it. Checked up front (SQLite does not enforce the FK)\nand again at commit, for an exercise created in between. Scenario executions do not\nblock: they keep their record and lose the link.",
         "operationId": "delete_scenario_scenarios__scenario_id__delete",
         "parameters": [
           {
@@ -26341,6 +27045,9 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "An exercise references the scenario"
           },
           "422": {
             "content": {
