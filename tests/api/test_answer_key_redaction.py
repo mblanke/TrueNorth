@@ -64,3 +64,37 @@ def test_scenario_detail_and_objectives_hide_the_key_from_students(client, exerc
 def test_objectives_of_another_tenant_are_not_found(client, exercise):
     with acting_as(UserRole.instructor, tenant=OTHER_TENANT):
         assert client.get(f"/exercises/{exercise.id}/objectives").status_code == 404
+
+
+def test_unlisted_content_such_as_pre_staged_indicators_is_withheld():
+    # Review B3: incident-response-drill lists the compromised hosts' indicators (the C2 IP
+    # its detect objective keys on) under pre_staged_environment.
+    from pathlib import Path
+
+    from app.detections.redaction import redact_scenario_yaml
+
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "content/scenarios/incident-response-drill/scenario.yaml").read_text()
+    assert "10.60.200.10" in text
+    briefing = redact_scenario_yaml(text)
+    assert "10.60.200.10" not in briefing and "pre_staged_environment" not in briefing
+    doc = yaml.safe_load(briefing)
+    assert doc["timeline"][0]["tasks"]  # the Student's instructions stay
+
+
+def test_every_shipped_scenario_briefing_leaks_no_objective_key():
+    from pathlib import Path
+
+    from app.detections.redaction import redact_scenario_yaml
+    from app.detections.templating import render
+
+    root = Path(__file__).resolve().parents[2]
+    for path in sorted((root / "content/scenarios").glob("*/scenario.yaml")):
+        doc = yaml.safe_load(path.read_text())
+        briefing = redact_scenario_yaml(path.read_text())
+        for obj in doc.get("objectives") or []:
+            query = (obj.get("params") or {}).get("query")
+            if isinstance(query, str):
+                assert render(query, doc.get("variables")) not in briefing, (path.parent.name, obj["id"])
+        for value in (doc.get("variables") or {}).values():
+            assert str(value) not in briefing, (path.parent.name, value)

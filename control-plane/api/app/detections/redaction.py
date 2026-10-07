@@ -1,9 +1,12 @@
 """What a Student may see of a scenario: the briefing, not the answer key (ADR 0005 §5).
 
 The answer key is everything that says what the attack emits: objective ``params``
-(the ground-truth queries), the scenario ``variables:`` they are rendered from, and the
-timeline's ``action`` / ``params`` (the inject playbook). Staff who may edit scenarios
-(``scenario:update``) see it all; everyone else gets the narrative.
+(the ground-truth queries), the scenario ``variables:`` they are rendered from, the
+timeline's ``action`` / ``params`` (the inject playbook), and anything else an author put
+in the document (``pre_staged_environment`` lists the compromised hosts and their
+indicators). So the briefing is an allowlist: a key not named below is withheld, and a new
+kind of content stays hidden until someone decides it is briefing. Staff who may edit
+scenarios (``scenario:update``) see it all.
 """
 
 from __future__ import annotations
@@ -16,9 +19,14 @@ import yaml
 from ..auth import CurrentUser
 from ..rbac import Permission, user_has_permission
 
-TIMELINE_KEYS = ("t", "phase", "name", "title", "description", "narrative")
+BRIEFING_KEYS = (
+    "name", "version", "title", "description", "difficulty", "duration_minutes", "duration_min", "phase_count",
+    "author", "range_template", "environment", "po_id", "mitre_attack", "mitre_ics", "purdue_model", "scoring",
+)
+# Timeline entries: what happens when, and what the Student is asked to do and hand in.
+TIMELINE_KEYS = ("t", "phase", "name", "title", "description", "narrative", "duration_minutes", "tasks",
+                 "expected_deliverables")
 OBJECTIVE_KEYS = ("id", "type", "name", "description", "points", "validator", "competency_code")
-KEY_FIELDS = ("variables",)
 EVIDENCE_KEY_FIELDS = ("query", "events", "index", "threshold")
 
 
@@ -31,7 +39,7 @@ def redact_timeline(timeline: Any) -> list[dict[str, Any]]:
 
 
 def redact_scenario(doc: dict[str, Any]) -> dict[str, Any]:
-    out = {k: v for k, v in doc.items() if k not in KEY_FIELDS and k not in ("timeline", "objectives")}
+    out = {k: doc[k] for k in BRIEFING_KEYS if k in doc}
     out["timeline"] = redact_timeline(doc.get("timeline"))
     out["objectives"] = [
         {k: o[k] for k in OBJECTIVE_KEYS if k in o} for o in doc.get("objectives") or [] if isinstance(o, dict)
