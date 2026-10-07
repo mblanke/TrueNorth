@@ -1,4 +1,6 @@
-﻿import { Component, OnInit, signal, inject } from '@angular/core';
+﻿import { Component, DestroyRef, OnInit, signal, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { interval } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -15,6 +17,9 @@ import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { ExerciseSummary, RangeSummary, ScenarioSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+
+/** How often the list refreshes while an exercise is running. */
+export const EXERCISE_POLL_MS = 5000;
 
 @Component({
   selector: 'tn-exercises',
@@ -206,6 +211,7 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 export class ExercisesComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
+  private destroyRef = inject(DestroyRef);
 
   exercises = signal<ExerciseSummary[]>([]);
   ranges = signal<RangeSummary[]>([]);
@@ -221,6 +227,12 @@ export class ExercisesComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+    // The worker runs an exercise and Students' detections score it (ADR 0005): follow it
+    // while anything is running, or the row keeps its old state and score (it showed
+    // running 0/100, with Pause and Complete, after a 100/100 finish).
+    interval(EXERCISE_POLL_MS).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      if (this.exercises().some(e => e.state === 'running')) this.refresh();
+    });
     this.api.listRanges().subscribe(r => this.ranges.set(r));
     this.api.listScenarios().subscribe(s => this.scenarios.set(s));
   }
@@ -232,6 +244,11 @@ export class ExercisesComponent implements OnInit {
       next: e => { this.exercises.set(e); this.loading.set(false); },
       error: () => { this.loading.set(false); this.loadError.set(true); },
     });
+  }
+
+  /** Reload the list without the loading state (no flicker while polling). */
+  private refresh(): void {
+    this.api.listExercises().subscribe({ next: e => this.exercises.set(e), error: () => undefined });
   }
 
   create(): void {

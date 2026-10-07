@@ -29,6 +29,18 @@ timeline:
   - t: "0:05"
     action: http_burst
     description: Beacon to the C2 server
+objectives:
+  - id: detect-c2-beacon
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:http"
+      min_hits: 1
+    points: 60
+  - id: incident-report
+    type: deliverable
+    validator: deliverable_check
+    points: 40
 """
 
 
@@ -114,14 +126,14 @@ class TestAarFlow:
         # The scenario's planned injects, read from its YAML.
         assert "email_phish" in page and "Beacon to the C2 server" in page
         assert "Exercise completed" in page
-        # Every objective the exercise has is listed, with its result.
+        # The exercise carries the scenario's objectives from its creation (PR #28: nothing is
+        # seeded), and every one is listed with its result.
         objectives = api_client.get(f"/exercises/{eid}/objectives").json()
+        assert {o["ref_id"]: o["points"] for o in objectives} == {"detect-c2-beacon": 60, "incident-report": 40}
         for obj in objectives:
             assert obj["ref_id"] in page, obj["ref_id"]
-        if objectives:
-            assert "Achieved" in page or "Not achieved" in page
-        else:
-            assert "No objectives were recorded" in page
+        assert "Achieved" in page or "Not achieved" in page
+        assert "No objectives were recorded" not in page
 
     def test_pdf_report(self, api_client, completed_exercise):
         eid = completed_exercise["id"]

@@ -14,7 +14,7 @@ with the same critical events on different hosts and times, and the xAPI definit
 Every file is a draft for a human to sign; nothing you write scores anyone.
 
 ## Contract
-Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `manifest.json` first, and act on every `gates.*.feedback[]` entry routed to you. Write ONLY inside your own `NN-*/` directory and `NN-*/fragment.json`, which carries only the keys you own plus `files` / `human_actions` entries stamped with your stage name. Never commit, apply, provision, import, call an external API, or touch a tracked file. If a required upstream field is missing, or a rule cannot be met, write `{"stop": "<reason>"}` to your fragment and return; do not improvise. Shared rules: `.claude/agents/scenario-engineer.md` and `truenorth-content-pack/truenorth-content/CLAUDE.md`. Where those files say to commit, append to `docs/BUILD_LOG.md`, or run `terraform init`, this Contract wins; NICE/DCWF identifiers go only in `04-artifacts/xapi.json` and `01-blueprint/po_fit.md` (verbatim crosswalk rows), never in course content or the package. Return a summary of ten lines or fewer.
+Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `manifest.json` first, and act on every `gates.*.feedback[]` entry routed to you. Write ONLY inside your own `NN-*/` directory and `NN-*/fragment.json`, which carries only the keys you own plus `files` / `human_actions` entries stamped with your stage name. Never commit, apply, provision, import, call an external API, or touch a tracked file. If a required upstream field is missing, or a rule cannot be met, write `{"stop": "<reason>"}` to your fragment and return; do not improvise. Shared rules: `.claude/agents/scenario-engineer.md` and `truenorth-content-pack/truenorth-content/CLAUDE.md`. Where those files say to commit, append to `docs/BUILD_LOG.md`, or run `terraform init`, this Contract wins; NICE/DCWF identifiers go only in `04-artifacts/xapi.json` and `01-blueprint/po_fit.md` (verbatim crosswalk rows), never in course content or the package. Author actions follow `tools/arc2/AUTHOR-ACTIONS.md`: make what can be made; ask a person only to decide, supply or confirm, and set `ask` and `who` on every human action. Return a summary of ten lines or fewer.
 
 ## You own
 - Manifest key `artifacts` (`tools/arc2/manifest.schema.json` "artifacts": `rubric`,
@@ -45,6 +45,9 @@ When no module in `content.modules[]` has `activity.kind: range`, `range`, `inje
 - `files[]` entries for each of these, kind `artifact`, objective ids of what they cover.
 
 ## Steps
+0. Captures: when an inject in `manifest.json` has `capture.summary`, build every answer-key and
+   inject-solution row about it from that summary (hosts, roles, segments, gateways, DNS answers,
+   HTTP requests, TLS names). The summary is the ground truth; never leave those rows AUTHOR-REQUIRED.
 1. Read `$RUN/manifest.json`. You need `course` (`code`, `title`, `po`, `po_candidates`),
    `objectives[]`, `critical_events[]`, `content.modules[]` (`id`, `objective_ids`, `pages`),
    `range` (`mode`, `path`, `name`, `templates`), `injects` (`timeline`, `items[]`,

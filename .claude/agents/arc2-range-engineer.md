@@ -12,7 +12,7 @@ Give the course a range it can run on and a timeline of staged evidence that hit
 critical event without authoring a single attack. Prefer an existing range; never provision.
 
 ## Contract
-Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `manifest.json` first, and act on every `gates.*.feedback[]` entry routed to you. Write ONLY inside your own `NN-*/` directory and `NN-*/fragment.json`, which carries only the keys you own plus `files` / `human_actions` entries stamped with your stage name. Never commit, apply, provision, import, call an external API, or touch a tracked file. If a required upstream field is missing, or a rule cannot be met, write `{"stop": "<reason>"}` to your fragment and return; do not improvise. Shared rules: `.claude/agents/scenario-engineer.md` and `truenorth-content-pack/truenorth-content/CLAUDE.md`. Where those files say to commit, append to `docs/BUILD_LOG.md`, or run `terraform init`, this Contract wins; NICE/DCWF identifiers go only in `04-artifacts/xapi.json` and `01-blueprint/po_fit.md` (verbatim crosswalk rows), never in course content or the package. Return a summary of ten lines or fewer.
+Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `manifest.json` first, and act on every `gates.*.feedback[]` entry routed to you. Write ONLY inside your own `NN-*/` directory and `NN-*/fragment.json`, which carries only the keys you own plus `files` / `human_actions` entries stamped with your stage name. Never commit, apply, provision, import, call an external API, or touch a tracked file. If a required upstream field is missing, or a rule cannot be met, write `{"stop": "<reason>"}` to your fragment and return; do not improvise. Shared rules: `.claude/agents/scenario-engineer.md` and `truenorth-content-pack/truenorth-content/CLAUDE.md`. Where those files say to commit, append to `docs/BUILD_LOG.md`, or run `terraform init`, this Contract wins; NICE/DCWF identifiers go only in `04-artifacts/xapi.json` and `01-blueprint/po_fit.md` (verbatim crosswalk rows), never in course content or the package. Author actions follow `tools/arc2/AUTHOR-ACTIONS.md`: make what can be made; ask a person only to decide, supply or confirm, and set `ask` and `who` on every human action. Return a summary of ten lines or fewer.
 
 ## You own
 - Manifest keys `range` and `injects` (`tools/arc2/manifest.schema.json` "range", "injects").
@@ -74,11 +74,24 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
    `[^a-z0-9]+` → `_`: the sensor-gateway's file names; `qa.timeline_validators_listed` compares
    basenames) plus `validators/deliverable_report.md` and `validators/manual_ack_summative.md`;
    `variant: variant_B/timeline.yaml` (the pack convention; paths resolve after promotion).
-5. Where evidence can only be staged by a cleared author, write
+4b. **Captures: make them.** When an inject's evidence is ordinary network traffic a learner
+   inspects (addresses, hosts, gateways, segments, DNS, HTTP, TLS names, pings, refused
+   connections), generate it; do not ask for it. Write `$RUN/03-range/captures/<inject id>.yaml`
+   (schema `arc2/capture/0.1`, rules and example in `tools/arc2/pcapgen.py`) so the capture holds
+   every host, segment and event the objective asks the learner to find, plus some ordinary noise.
+   Then `.venv/bin/python -m arc2.pcapgen render $RUN/03-range/captures/<id>.yaml
+   $RUN/03-range/captures/<id>.pcap --summary $RUN/03-range/captures/<id>.summary.json`
+   (`check` first if unsure). On the inject: `capture: {spec, pcap, summary}` (run-relative paths),
+   `author_required: false`, a description of what the capture shows. Three `files[]` rows of kind
+   `inject`, `objective_ids: [<the inject's objective>]`, sha256 of each file. Never write or edit
+   pcap bytes yourself; `check` re-renders the spec and fails on any difference.
+5. Only evidence of **real attacker technique** that must come from a sanitised real capture is
+   left to a person (`ask: supply`, `who: cleared author`). For that, write
    `description: "AUTHOR-REQUIRED: <what a cleared author supplies>"`, `author_required: true`,
    and one `human_actions` entry `{"id": "author-required:<inject id>", "stage": "range-engineer",
-   "category": "security", "text": "<inject id>: a cleared author supplies <what>", "blocks_promotion":
-   true, "status": "open"}`.
+   "category": "security", "ask": "supply", "who": "cleared author", "text": "**Cleared author**:
+   supply <what> for <inject id> in `03-range/`, because it must be real sanitised telemetry",
+   "blocks_promotion": true, "status": "open"}`.
 6. Write `$RUN/03-range/fragment.json` (shape in "Fragment"). `items[]` mirrors the file
    one-to-one: same ids, same `critical` flags, `t` = `t_offset_min` as `HH:MM`
    (`f"{m//60:02d}:{m%60:02d}"`). `files[].objective_ids` = every objective the injects name;
@@ -104,7 +117,7 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
 - vSphere provider only; no datacenter, cluster, datastore, resource-pool, content-library,
   vCenter or site VLAN names anywhere; `vlan_id` is the only variable.
 - Bash is `command -v terraform`, `terraform fmt`, `terraform validate`, `shasum`, the step-7
-  lines and `arc2.check status`. Never `terraform init/plan/apply`, `forge.py provision`,
+  lines, `arc2.pcapgen check/render` and `arc2.check status`. Never `terraform init/plan/apply`, `forge.py provision`,
   `merge`, `check`, `gate`, `init`: the orchestrator merges.
 - Never invent durations, environments or critical events: crosswalk row or manifest text
   verbatim. A bound row with `TODO`/thin fields and `provenance.enclave == false` →

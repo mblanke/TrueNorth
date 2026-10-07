@@ -256,3 +256,21 @@ def repo(tmp_path: Path) -> Path:
     (root / "content" / "catalogue" / "references.yaml").write_text(REFERENCES)
     (root / check.CROSSWALK_REL).with_name("vm_catalogue.csv").write_text(VM_CATALOGUE)
     return root
+
+
+@pytest.fixture(autouse=True)
+def _runner_tests_run_unconfined(monkeypatch):
+    """runner.main() fails closed without an OS sandbox, and the sandbox confines a fake
+    engine's writes to its run. The generic runner tests check queue, record, deadline and
+    history logic with fake engines that write elsewhere, so they run unconfined;
+    test_arc2_confinement.py selects the sandbox, and the fail-closed start, itself."""
+    monkeypatch.setenv("ARC2_CONFINE", "none")
+
+
+@pytest.fixture(autouse=True)
+def _job_homes_and_env(tmp_path, monkeypatch):
+    """Confined jobs get a fresh home under ARC2_JOB_HOMES and only allow-listed
+    environment variables; the fake engines read their settings from these."""
+    monkeypatch.setenv("ARC2_JOB_HOMES", str(tmp_path / "job-homes"))
+    monkeypatch.setenv("ARC2_OAUTH_TOKEN_FILE", str(tmp_path / "no-token"))
+    monkeypatch.setenv("ARC2_JOB_ENV", "FAKE_ARGS,FAKE_MODE,FAKE_PIDS,PROBE_RUNS,PROBE_REPO,PROBE_NAME")
