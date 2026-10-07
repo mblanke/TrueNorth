@@ -114,3 +114,13 @@ export const instructorGuard: CanActivateFn = (): Observable<boolean | UrlTree> 
     auth.isInstructor() ? true : router.createUrlTree(['/dashboard']),
   );
 };
+
+/** The scheduler is for staff: every role except Student (ADR 0004). */
+export const scheduleGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+
+  return resolved<boolean | UrlTree>(() =>
+    auth.canViewSchedule() ? true : router.createUrlTree(['/dashboard']),
+  );
+};

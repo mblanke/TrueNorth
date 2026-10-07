@@ -25,6 +25,13 @@ class ProvisionResult:
     duration_seconds: float = 0.0
     terraform_state: str | None = None
     errors: list[str] = field(default_factory=list)
+    # Things skipped on purpose that do not make the build partial (vSphere: software
+    # names not in the catalogue, installs skipped for want of a depot path).
+    warnings: list[str] = field(default_factory=list)
+    # vSphere: the edge firewall's WAN address on the depot uplink network, if any.
+    uplink: dict | None = None
+    # vSphere: the vDS port-mirroring sessions made for the template's mirror rules.
+    mirrors: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -89,6 +96,33 @@ class SnapshotDeleteResult:
     status: str  # ok, partial, failed
     snapshot_name: str = ""
     vms_cleaned: int = 0
+    duration_seconds: float = 0.0
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class MetricsResult:
+    """Resource usage of a range's VMs, as the hypervisor reports it.
+
+    ``status``: ok, partial, failed, or ``unsupported`` (the backend has no metrics;
+    ``vms`` is then empty and nothing must be reported as measured). One dict per VM in
+    ``vms``; a value the hypervisor did not give is None, never a guess:
+
+    - ``vm_id``, ``name``
+    - ``power_state``: poweredOn, poweredOff, suspended, or notFound
+    - ``tools_status``: guestToolsRunning, guestToolsNotRunning, guestToolsExecutingScripts
+    - ``cpu_usage_mhz`` / ``cpu_capacity_mhz``: CPU in use / the VM's ceiling
+    - ``memory_active_mb`` / ``memory_configured_mb``: active guest memory / configured
+    - ``uptime_seconds``
+
+    ``synthetic`` is True when the numbers are made up (the mock backend), so no report
+    can mistake them for measurements.
+    """
+
+    status: str  # ok, partial, failed, unsupported
+    vms: list[dict] = field(default_factory=list)
+    source: str = ""
+    synthetic: bool = False
     duration_seconds: float = 0.0
     errors: list[str] = field(default_factory=list)
 

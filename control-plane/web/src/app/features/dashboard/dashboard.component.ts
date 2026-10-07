@@ -15,6 +15,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialogModule } from '@angular/material/dialog';
 import { ApiService } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
+import { MySessionsComponent } from '../schedule/my-sessions.component';
 import { DirectoryApiService } from '@core/services/directory-api.service';
 import { RangeSummary, ExerciseSummary, HealthResponse, HypervisorNode } from '@core/models';
 import { CountUpDirective, EnterStaggerDirective, HoverLiftDirective, MotionService } from '../../shared/motion';
@@ -41,19 +43,6 @@ interface CapacityInfo {
   detail?: string;
 }
 
-interface ScheduledEvent {
-  id: string;
-  name: string;
-  description: string | null;
-  state: string;
-  start_time: string;
-  end_time: string;
-  vm_count: number;
-  vcpu_total: number;
-  ram_mb_total: number;
-  disk_gb_total: number;
-}
-
 /* Deployment profile pre-sets */
 interface DeploymentProfile {
   name: string;
@@ -69,7 +58,7 @@ interface DeploymentProfile {
   imports: [
     CommonModule, RouterModule, FormsModule, MatCardModule, MatIconModule,
     MatButtonModule, MatChipsModule, MatProgressBarModule, MatTooltipModule,
-    MatDividerModule, MatFormFieldModule, MatInputModule, MatSnackBarModule,
+    MatDividerModule, MatFormFieldModule, MatInputModule, MatSnackBarModule, MySessionsComponent,
     MatDialogModule, CountUpDirective, EnterStaggerDirective, HoverLiftDirective,
   ],
   template: `
@@ -84,6 +73,10 @@ interface DeploymentProfile {
         </div>
       </div>
 
+      @if (!auth.canViewSchedule()) {
+        <!-- Students: their own sessions and calendar link (ADR 0004); never the schedule itself -->
+        <tn-my-sessions />
+      }
       <section class="workspace-launcher" aria-label="Choose your next task">
         <a class="workspace-primary" routerLink="/learning/career-path">
           <span class="workspace-eyebrow">Learn & develop</span>
@@ -95,6 +88,9 @@ interface DeploymentProfile {
           <a routerLink="/exercises"><strong>Prepare an exercise</strong><span>Bring the scenario, range, and training run together.</span><mat-icon>arrow_forward</mat-icon></a>
           <a routerLink="/authoring"><strong>Create training content</strong><span>Work on scenarios, detections, and range designs.</span><mat-icon>arrow_forward</mat-icon></a>
           <a routerLink="/scoring"><strong>Review the evidence</strong><span>Inspect scoring and after-action reports.</span><mat-icon>arrow_forward</mat-icon></a>
+          @if (auth.canViewSchedule()) {
+            <a routerLink="/schedule"><strong>Plan the schedule</strong><span>Book sessions, check cluster capacity, subscribe in your calendar.</span><mat-icon>arrow_forward</mat-icon></a>
+          }
         </div>
       </section>
 
@@ -268,105 +264,6 @@ interface DeploymentProfile {
                 </div>
               </div>
             </mat-card>
-          }
-        </div>
-      </div>
-
-      </details>
-      <details class="workspace-disclosure">
-      <summary><strong>Schedule & resources</strong><span>Plan an event and check the capacity it requires</span></summary>
-      <div class="scheduler-panel">
-        <!-- New event form -->
-        <mat-card class="new-event-card">
-          <div class="event-form-title">
-            <mat-icon>add_circle</mat-icon> Schedule New Event
-          </div>
-          <div class="event-form">
-            <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
-              <mat-label>Event Name</mat-label>
-              <input matInput [(ngModel)]="newEvtName" placeholder="e.g. Red Team Exercise Alpha">
-            </mat-form-field>
-            <div class="event-form-row">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Start</mat-label>
-                <input matInput type="datetime-local" [(ngModel)]="newEvtStart">
-              </mat-form-field>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>End</mat-label>
-                <input matInput type="datetime-local" [(ngModel)]="newEvtEnd">
-              </mat-form-field>
-            </div>
-            <div class="event-form-row four-col">
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>VMs</mat-label>
-                <input matInput type="number" [(ngModel)]="newEvtVms">
-              </mat-form-field>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>vCPU</mat-label>
-                <input matInput type="number" [(ngModel)]="newEvtCpu" placeholder="vCPU count">
-              </mat-form-field>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>RAM</mat-label>
-                <input matInput type="number" [(ngModel)]="newEvtRam" placeholder="MB">
-              </mat-form-field>
-              <mat-form-field appearance="outline" subscriptSizing="dynamic">
-                <mat-label>Disk</mat-label>
-                <input matInput type="number" [(ngModel)]="newEvtDisk" placeholder="GB">
-              </mat-form-field>
-            </div>
-            <div class="event-form-actions">
-              <button mat-stroked-button (click)="checkNewEvent()" [disabled]="!newEvtName">
-                <mat-icon>fact_check</mat-icon> Check Fit
-              </button>
-              <button mat-flat-button color="primary" (click)="scheduleEvent()" [disabled]="!newEvtName || !newEvtStart || !newEvtEnd">
-                <mat-icon>event_available</mat-icon> Schedule
-              </button>
-            </div>
-            @if (fitCheckResult()) {
-              <div class="fit-result" [class.fit-ok]="fitCheckResult()!.fits" [class.fit-fail]="!fitCheckResult()!.fits">
-                <mat-icon>{{ fitCheckResult()!.fits ? 'check_circle' : 'warning' }}</mat-icon>
-                {{ fitCheckResult()!.message }}
-                @if (!fitCheckResult()!.fits) {
-                  <div class="fit-detail">
-                    Available: {{ fitCheckResult()!.vcpu_available }} vCPU,
-                    {{ (fitCheckResult()!.ram_mb_available / 1024) | number:'1.0-0' }}GB RAM,
-                    {{ fitCheckResult()!.disk_gb_available }}GB disk
-                  </div>
-                }
-              </div>
-            }
-          </div>
-        </mat-card>
-
-        <!-- Event timeline -->
-        <div class="event-timeline">
-          @for (evt of scheduledEvents(); track evt.id) {
-            <mat-card class="event-card" [class]="'evt-' + evt.state">
-              <div class="event-card-top">
-                <div class="event-state-dot" [class]="'dot-' + evt.state"></div>
-                <div class="event-card-name">{{ evt.name }}</div>
-                <button mat-icon-button class="evt-delete" (click)="deleteEvent(evt.id)"
-                        matTooltip="Cancel event">
-                  <mat-icon>close</mat-icon>
-                </button>
-              </div>
-              <div class="event-time">
-                <mat-icon class="sm-icon">schedule</mat-icon>
-                {{ evt.start_time | date:'MMM d, h:mm a' }} – {{ evt.end_time | date:'MMM d, h:mm a' }}
-              </div>
-              <div class="event-resources">
-                <span><mat-icon class="sm-icon">computer</mat-icon> {{ evt.vm_count }} VMs</span>
-                <span><mat-icon class="sm-icon">developer_board</mat-icon> {{ evt.vcpu_total }} vCPU</span>
-                <span><mat-icon class="sm-icon">memory</mat-icon> {{ (evt.ram_mb_total / 1024) | number:'1.0-0' }}GB</span>
-                <span><mat-icon class="sm-icon">storage</mat-icon> {{ evt.disk_gb_total }}GB</span>
-              </div>
-            </mat-card>
-          }
-          @if (scheduledEvents().length === 0) {
-            <div class="no-events">
-              <mat-icon>event_busy</mat-icon>
-              <p>No events scheduled</p>
-            </div>
           }
         </div>
       </div>
@@ -593,53 +490,6 @@ interface DeploymentProfile {
     .profile-fit.fits { color: var(--success); }
     .profile-fit.no-fit { color: var(--alert); }
 
-    /* ──── Event Scheduler ────────────────────────────────────────────────────── */
-    .scheduler-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    @media (max-width: 1200px) { .scheduler-panel { grid-template-columns: 1fr; } }
-    .new-event-card { padding: 20px; }
-    .event-form-title {
-      display: flex; align-items: center; gap: 8px; font-size: 15px;
-      font-weight: 600; color: var(--accent); margin-bottom: 14px;
-    }
-    .event-form { display: flex; flex-direction: column; gap: 10px; }
-    .event-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .event-form-row.four-col { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-    @media (max-width: 1000px) { .event-form-row.four-col { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 768px) { .event-form-row.four-col { grid-template-columns: 1fr; } }
-    .event-form mat-form-field { width: 100%; font-size: 13px; }
-    .event-form-actions { display: flex; gap: 10px; }
-    .full-width { width: 100%; }
-    .fit-result {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-      padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
-    }
-    .fit-ok { background: rgba(76, 175, 80, 0.12); color: var(--success); }
-    .fit-fail { background: rgba(244, 67, 54, 0.12); color: var(--alert); }
-    .fit-detail { width: 100%; font-size: 12px; font-weight: 400; margin-top: 4px; }
-
-    /* ──── Event timeline ──────────────────────────────────────────────────────── */
-    .event-timeline { display: flex; flex-direction: column; gap: 12px; }
-    .event-card {
-      padding: 14px 16px; border-left: 4px solid var(--accent);
-      position: relative;
-    }
-    .event-card.evt-active { border-left-color: var(--success); }
-    .event-card.evt-completed { border-left-color: var(--text-muted); opacity: 0.6; }
-    .event-card.evt-cancelled { border-left-color: var(--alert); opacity: 0.5; text-decoration: line-through; }
-    .event-card-top { display: flex; align-items: center; gap: 8px; }
-    .event-state-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-    }
-    .dot-scheduled { background: var(--accent); }
-    .dot-active { background: var(--success); }
-    .dot-completed { background: var(--text-muted); }
-    .dot-cancelled { background: var(--alert); }
-    .dot-draft { background: var(--border-light); }
-    .event-card-name { font-weight: 600; font-size: 14px; color: var(--text-primary); flex: 1; }
-    .evt-delete { opacity: 0.5; }
-    .evt-delete:hover { opacity: 1; }
-    .event-time { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-muted); margin: 4px 0; }
-    .event-resources { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); }
     .event-resources span { display: flex; align-items: center; gap: 3px; }
     .no-events { text-align: center; padding: 40px; color: var(--text-muted); }
     .no-events mat-icon { font-size: 40px; width: 40px; height: 40px; color: var(--border-light); }
@@ -662,6 +512,7 @@ interface DeploymentProfile {
 })
 export class DashboardComponent implements OnInit {
   private api = inject(ApiService);
+  readonly auth = inject(AuthService);
   private directory = inject(DirectoryApiService);
   private snack = inject(MatSnackBar);
   private cdr = inject(ChangeDetectorRef);
@@ -677,17 +528,8 @@ export class DashboardComponent implements OnInit {
   clusterNodes = signal<HypervisorNode[]>([]);
   clusterLoading = signal(false);
   capacity = signal<CapacityInfo | null>(null);
-  scheduledEvents = signal<ScheduledEvent[]>([]);
-  fitCheckResult = signal<CapacityInfo | null>(null);
 
   /* New event form */
-  newEvtName = '';
-  newEvtStart = '';
-  newEvtEnd = '';
-  newEvtVms = 10;
-  newEvtCpu = 40;
-  newEvtRam = 81920;
-  newEvtDisk = 500;
 
   /* Personal dashboard */
   myActiveCourses = 0;
@@ -724,15 +566,16 @@ export class DashboardComponent implements OnInit {
     // Cluster discovery
     this.refreshCluster();
 
-    // Capacity & events
-    this.api.getCapacity().subscribe({
-      next: c => {
-        this.capacity.set(c);
-        this.animateRings();
-      },
-      error: () => {},
-    });
-    this.loadEvents();
+    // Capacity & events: staff only, the API refuses Students (ADR 0004)
+    if (this.auth.canViewSchedule()) {
+      this.api.getCapacity().subscribe({
+        next: c => {
+          this.capacity.set(c);
+          this.animateRings();
+        },
+        error: () => {},
+      });
+    }
 
     // Personal dashboard data
     this.directory.nations().subscribe({
@@ -812,13 +655,6 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  loadEvents(): void {
-    this.api.listScheduledEvents().subscribe({
-      next: (res: any) => this.scheduledEvents.set(Array.isArray(res) ? res : (res.items || [])),
-      error: () => {},
-    });
-  }
-
   healthTooltip(): string {
     const h = this.health();
     if (!h) return '';
@@ -849,58 +685,4 @@ export class DashboardComponent implements OnInit {
   }
 
   /* Event scheduling */
-  checkNewEvent(): void {
-    const body = {
-      start_time: this.newEvtStart ? new Date(this.newEvtStart).toISOString() : new Date().toISOString(),
-      end_time: this.newEvtEnd ? new Date(this.newEvtEnd).toISOString() : new Date().toISOString(),
-      vcpu_needed: this.newEvtCpu,
-      ram_mb_needed: this.newEvtRam,
-      disk_gb_needed: this.newEvtDisk,
-    };
-    this.api.checkCapacity(body).subscribe({
-      next: (res: any) => {
-        this.fitCheckResult.set(res);
-        this.cdr.detectChanges();
-      },
-      error: (_err: any) => {
-        this.snack.open('Capacity check failed', 'OK', { duration: 3000 });
-      },
-    });
-  }
-
-  scheduleEvent(): void {
-    const body = {
-      name: this.newEvtName,
-      start_time: this.newEvtStart ? new Date(this.newEvtStart).toISOString() : new Date().toISOString(),
-      end_time: this.newEvtEnd ? new Date(this.newEvtEnd).toISOString() : new Date().toISOString(),
-      vm_count: this.newEvtVms,
-      vcpu_total: this.newEvtCpu,
-      ram_mb_total: this.newEvtRam,
-      disk_gb_total: this.newEvtDisk,
-    };
-    this.api.createScheduledEvent(body).subscribe({
-      next: () => {
-        this.snack.open('Event scheduled', '', { duration: 2000, panelClass: 'snack-success' });
-        this.newEvtName = '';
-        this.fitCheckResult.set(null);
-        this.loadEvents();
-
-      },
-      error: (err: any) => {
-        const msg = err.error?.detail || 'Failed to schedule event';
-        this.snack.open(msg, 'OK', { duration: 5000 });
-      },
-    });
-  }
-
-  deleteEvent(id: string): void {
-    this.api.deleteScheduledEvent(id).subscribe({
-      next: () => {
-        this.snack.open('Event cancelled', '', { duration: 2000 });
-        this.loadEvents();
-
-      },
-      error: () => this.snack.open('Failed to delete', 'OK', { duration: 3000 }),
-    });
-  }
 }

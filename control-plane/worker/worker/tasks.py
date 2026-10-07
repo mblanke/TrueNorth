@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 
 from celery import group
 
-from . import db_ops
+from . import db_ops, range_alloc
 from .base_tasks import ReliableTask, _get_backend
 from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, run_async
@@ -182,20 +182,13 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
         provisioner = _get_backend(backend)
-
+        allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
         result = run_async(provisioner.provision(range_id, template, allocations))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
 
-        output = json.dumps(
-            {
-                "provider": backend,
-                "range_id": range_id,
-                "vms": result.vms,
-                "networks": result.networks,
-            }
-        )
+        output = json.dumps(range_alloc.stored_output(backend, range_id, result))
 
         if not _update_range_state(range_id, "ready", output=output, only_from=("provisioning",)):
             return discard_built(provisioner, range_id, result)
@@ -257,6 +250,7 @@ def destroy_range(self, range_id: str):
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
         _update_range_state(range_id, "destroyed", only_from=("destroying",))
+        range_alloc.release_after_destroy(_db_session, range_id)  # its VLANs and addresses
         _notify_api("range", {"id": range_id, "state": "destroyed"})
         logger.info(f"[destroy] Range {range_id} destroyed ({result.resources_removed} resources)")
         return {"status": "destroyed", "range_id": range_id}

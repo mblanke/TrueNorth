@@ -230,7 +230,10 @@ def test_the_task_time_limit_ends_a_task_before_the_broker_redelivers_it():
 
 
 def test_the_soft_limit_is_final_not_retried():
-    assert tasks.ReliableTask.dont_autoretry_for == (SoftTimeLimitExceeded,)
+    from worker.range_alloc import AllocationError
+
+    # and a full VLAN/address pool (worker/range_alloc.py): retrying does not empty it
+    assert tasks.ReliableTask.dont_autoretry_for == (SoftTimeLimitExceeded, AllocationError)
 
 
 def _soft_limit_after(seconds: float):

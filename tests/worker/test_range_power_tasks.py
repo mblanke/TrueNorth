@@ -113,7 +113,7 @@ def _vsphere(monkeypatch, vc: FakeVcenter):
         return "s"
 
     @asynccontextmanager
-    async def client(session):
+    async def client():
         yield None
 
     monkeypatch.setattr(prov, "_get_session", session)

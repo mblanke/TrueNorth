@@ -62,7 +62,8 @@ def setup_tracing(app: FastAPI, db_engine: Engine | None = None) -> None:
     try:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-        FastAPIInstrumentor.instrument_app(app)
+        # Calendar-feed URLs carry a bearer token in the path (ADR 0004): no spans for them.
+        FastAPIInstrumentor.instrument_app(app, excluded_urls="schedule/feed/")
         logger.info("Instrumented FastAPI")
     except ImportError:
         logger.debug("FastAPI OTEL instrumentation not available")
