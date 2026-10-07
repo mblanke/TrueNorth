@@ -23,10 +23,8 @@ from unittest.mock import MagicMock
 
 import pytest
 import sqlalchemy as sa
+from _shared import SCENARIO, FakeStore, _run_upgrade_head, acting_as, beacon, noise
 from sqlalchemy.orm import Session, sessionmaker
-
-from tests.api.test_detections import SCENARIO, FakeStore, acting_as, beacon, noise
-from tests.api.test_migration_completeness import _run_upgrade_head
 
 ADMIN_URL = os.getenv("TEST_POSTGRES_ADMIN_URL")
 pytestmark = [

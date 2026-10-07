@@ -7,9 +7,8 @@ import uuid
 
 import pytest
 import yaml
+from _shared import DEV_TENANT, OTHER_TENANT, SCENARIO, acting_as
 from app.models import Exercise, ExerciseState, Objective, ObjectiveType, Scenario, UserRole
-
-from tests.api.test_detections import DEV_TENANT, OTHER_TENANT, SCENARIO, acting_as
 
 OLD_EVIDENCE = json.dumps({"source": "event_store", "index": "range-x", "query": "url.domain:*northwind*",
                            "threshold": 2, "events": [{"_id": "1"}]})

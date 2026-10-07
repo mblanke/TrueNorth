@@ -17,11 +17,11 @@ These tests make the gap fail here instead.
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from _shared import _run_upgrade_head
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 API = REPO_ROOT / "control-plane/api"
@@ -108,26 +108,6 @@ def test_upgrade_head_works_on_an_empty_database(tmp_path):
     db = tmp_path / "fresh.db"
     _run_upgrade_head(f"sqlite:///{db}")
     _assert_schema_matches_orm(f"sqlite:///{db}")
-
-
-def _run_upgrade_head(database_url: str) -> None:
-    env = {
-        "PATH": "/usr/bin:/bin:/usr/local/bin",
-        "DATABASE_URL": database_url,
-        "PYTHONPATH": str(API),
-        "AUTH_DISABLED": "true",
-    }
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=API,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
-    assert result.returncode == 0, (
-        "alembic upgrade head failed on an empty database:\n" + result.stdout[-3000:] + "\n" + result.stderr[-3000:]
-    )
 
 
 def _assert_schema_matches_orm(database_url: str, *, foreign_keys: bool = False) -> None:
