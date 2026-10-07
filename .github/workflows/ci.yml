@@ -276,3 +276,62 @@ jobs:
       - name: Tear down
         if: always()
         run: bash scripts/itest.sh down
+
+  # ARC² releases published into a real, disposable Moodle (compose.moodle-test.yml) and
+  # a student played through them: tests/integration/test_moodle_publish.py. The test
+  # signs sync tickets with MOODLE_TEST_KEY; the Moodle trusts TN_PUBLIC_KEY, its public
+  # half. A throwaway RSA pair is generated per run.
+  moodle:
+    runs-on: ubuntu-latest
+    needs: lint-python
+    timeout-minutes: 45
+    env:
+      MOODLE_TEST_URL: http://localhost:8093
+      MOODLE_TEST_KEY: ${{ github.workspace }}/build/moodle/tool-private.pem
+      MOODLE_TEST_CONTAINER: tn-moodle-test-moodle-1
+      MOODLE_COMPOSE: docker compose -p tn-moodle-test -f infra/platform/docker/compose.moodle-test.yml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-test.txt
+      - name: Throwaway tool key pair
+        run: |
+          mkdir -p build/moodle
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out build/moodle/tool-private.pem
+          openssl pkey -in build/moodle/tool-private.pem -pubout -out build/moodle/tool-public.pem
+      - name: Build the TrueNorth Moodle image
+        run: docker build -t truenorth/moodle:5.2.3-tn-test infra/platform/moodle
+      - name: Start Moodle and wait for the login page
+        run: |
+          TN_PUBLIC_KEY="$(cat build/moodle/tool-public.pem)" $MOODLE_COMPOSE up -d --wait
+          # The first start installs Moodle; that takes minutes, not seconds.
+          for _ in $(seq 1 180); do
+            if curl -fsS -o /dev/null http://localhost:8093/login/index.php; then exit 0; fi
+            sleep 5
+          done
+          echo "Moodle did not answer within 15 minutes" >&2
+          exit 1
+      - name: Moodle publish test
+        run: |
+          rc=0
+          pytest tests/integration/test_moodle_publish.py -m integration -rs --tb=short \
+            --junitxml=build/moodle/junit.xml || rc=$?
+          python scripts/junit_require_pass.py build/moodle/junit.xml || rc=1
+          exit $rc
+        env:
+          AUTH_DISABLED: "true"
+          RATE_LIMIT_ENABLED: "false"
+      - name: Moodle logs
+        if: failure()
+        run: TN_PUBLIC_KEY=unused $MOODLE_COMPOSE logs --no-color --tail=500
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: moodle-junit
+          path: build/moodle/junit.xml
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: TN_PUBLIC_KEY=unused $MOODLE_COMPOSE down -v
