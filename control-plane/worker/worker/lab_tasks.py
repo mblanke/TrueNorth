@@ -9,8 +9,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from .base_tasks import ReliableTask, _get_backend
 from .celery_app import app
-from .tasks import ReliableTask, _get_backend
 
 logger = logging.getLogger(__name__)
 

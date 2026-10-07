@@ -19,29 +19,19 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
-from celery import Task, group
+from celery import group
 
 from . import db_ops
 from .aar import build_report as build_aar_report
+from .base_tasks import ReliableTask, _get_backend
 from .celery_app import app
 from .detection import detection_scorer, range_index
-from .provisioners import discard_built, get_provisioner
+from .provisioners import discard_built
 
 logger = logging.getLogger("truenorth.worker")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://forge:forge@localhost:5432/forge")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-
-# -- Helper: provisioner backend -----------------------------------------
-def _get_backend(backend: str | None = None):
-    """Return an instantiated provisioner for the given backend name.
-
-    Falls back to the ``PROVISIONER_BACKEND`` environment variable, then
-    to ``"mock"`` when neither the caller nor the env provides a value.
-    """
-    resolved = backend or os.getenv("PROVISIONER_BACKEND", "mock")
-    return get_provisioner(resolved)
 
 
 _DESTROYABLE = ("created", "provisioning", "ready", "running", "stopped", "destroying", "failed")
@@ -97,17 +87,6 @@ def _notify_api(channel: str, message: dict):
         r.publish(f"truenorth:{channel}", json.dumps(message))
     except Exception as e:
         logger.warning(f"Redis notify failed: {e}")
-
-
-# -- Base task with exponential backoff --------------------------------
-class ReliableTask(Task):
-    """Base task with exponential backoff + jitter on retries."""
-
-    autoretry_for = (Exception,)
-    max_retries = 3
-    retry_backoff = True  # Exponential backoff
-    retry_backoff_max = 300  # Max 5 minutes between retries
-    retry_jitter = True  # Add randomness to prevent thundering herd
 
 
 # -- Provisioning -------------------------------------------------------
