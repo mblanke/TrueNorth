@@ -520,7 +520,7 @@ export interface paths {
         put?: never;
         /**
          * Add Certification
-         * @description Add a certification record for a user.
+         * @description Add a certification record for a user (self-reported, or by an instructor).
          */
         post: operations["add_certification_certifications_users__user_id__post"];
         delete?: never;
@@ -730,7 +730,7 @@ export interface paths {
         put?: never;
         /**
          * Create Assertion
-         * @description Record a competency assertion for a user.
+         * @description Record a competency assertion for a user (``learning_record:write``, never self-service).
          */
         post: operations["create_assertion_competency_users__user_id__assertions_post"];
         delete?: never;
@@ -2352,6 +2352,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/moodle/sso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Moodle Sso Ticket
+         * @description A one-minute, single-use ticket that signs the caller into their unit's Moodle.
+         *
+         *     The browser POSTs ``token`` to ``action``. Students need an active enrolment in
+         *     the course; staff (``learning_record:write``) enter as teachers. A course in
+         *     another tenant is 404. Never put the ticket in a URL: it would land in Moodle's
+         *     access log and browser history.
+         */
+        post: operations["moodle_sso_ticket_integrations_moodle_sso_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/platforms": {
         parameters: {
             query?: never;
@@ -2879,6 +2904,30 @@ export interface paths {
          * @description LTI 1.3 OIDC initiation: validate issuer, mint state+nonce, redirect.
          */
         post: operations["lti_oidc_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lti/public-key.pem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lti Public Key Pem
+         * @description The tool's public key as PEM, for Moodle farm nodes.
+         *
+         *     A node fetches this when it starts (``infra/platform/moodle/hooks/04-truenorth-bootstrap.sh``)
+         *     and trusts it for LTI messages, sign-in tickets and course sync, so a key rotation
+         *     reaches every node on its next restart. It is the public half only.
+         */
+        get: operations["lti_public_key_pem_lti_public_key_pem_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4136,7 +4185,7 @@ export interface paths {
         };
         /**
          * Get Quiz Questions
-         * @description Instructor view with answer key (any authenticated user with tenant access in v1).
+         * @description Instructor view with the answer key (``course:author`` only).
          */
         get: operations["get_quiz_questions_quizzes__quiz_id__questions_get"];
         /**
@@ -8165,6 +8214,21 @@ export interface components {
             score: number;
             /** Status */
             status: string;
+        };
+        /** MoodleSsoIn */
+        MoodleSsoIn: {
+            /** Course Id */
+            course_id?: string | null;
+        };
+        /**
+         * MoodleSsoOut
+         * @description POST ``token`` (form field) to ``action``. Never put it in a URL.
+         */
+        MoodleSsoOut: {
+            /** Action */
+            action: string;
+            /** Token */
+            token: string;
         };
         /** NationOut */
         NationOut: {
@@ -14847,6 +14911,39 @@ export interface operations {
             };
         };
     };
+    moodle_sso_ticket_integrations_moodle_sso_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoodleSsoIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoodleSsoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_platforms_integrations_platforms_get: {
         parameters: {
             query?: never;
@@ -15881,6 +15978,24 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+        };
+    };
+    lti_public_key_pem_lti_public_key_pem_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

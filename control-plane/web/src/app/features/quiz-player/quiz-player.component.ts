@@ -282,7 +282,7 @@ export class QuizPlayerComponent implements OnInit, OnDestroy {
   toggleMulti(qid: string, idx: number): void {
     const cur = new Set(this.answers[qid] ?? []);
     cur.has(idx) ? cur.delete(idx) : cur.add(idx);
-    this.answers[qid] = [...cur].sort();
+    this.answers[qid] = [...cur].sort((a, b) => a - b);
   }
 
   answeredCount(): number {

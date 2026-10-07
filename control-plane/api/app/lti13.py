@@ -20,6 +20,7 @@ import secrets
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import jwt
@@ -43,6 +44,30 @@ CLAIM_CUSTOM = "https://purl.imsglobal.org/spec/lti/claim/custom"
 CLAIM_AGS = "https://purl.imsglobal.org/spec/lti-ags/claim/endpoint"
 CLAIM_DL_SETTINGS = "https://purl.imsglobal.org/spec/lti-dl/claim/deep_linking_settings"
 CLAIM_DL_CONTENT_ITEMS = "https://purl.imsglobal.org/spec/lti-dl/claim/content_items"
+
+
+# ── Server-side routing to the platform ──────────────────────────────────
+
+
+def platform_route(platform: ExternalPlatform, url: str) -> tuple[str, dict[str, str]]:
+    """Where TrueNorth's server should send a request for a platform's public URL.
+
+    Registration URLs (issuer, JWKS, token, AGS lineitems) are the platform's public
+    ones: browsers use them and the platform checks token audiences against them.
+    When the platform is reached from inside the deployment at a different origin
+    (``base_url``, e.g. ``http://moodle-unit:8080``), send the request there and keep
+    the public Host. Moodle redirects any request whose Host is not its wwwroot.
+    Only URLs on the issuer's own origin are rerouted, so a lineitem URL taken from a
+    launch can never point our traffic at the internal address of something else.
+    """
+    public = urlsplit(platform.lti_issuer or "")
+    internal = urlsplit(platform.base_url or "")
+    target = urlsplit(url)
+    same_origin = (target.scheme, target.netloc) == (public.scheme, public.netloc)
+    if not public.netloc or not internal.netloc or not same_origin or internal.netloc == public.netloc:
+        return url, {}
+    rerouted = urlunsplit((internal.scheme, internal.netloc, target.path, target.query, target.fragment))
+    return rerouted, {"Host": public.netloc}
 
 
 # ── Tool keypair ─────────────────────────────────────────────────────────
@@ -181,8 +206,9 @@ async def validate_launch(db: Session, id_token: str, state: str) -> tuple[Exter
     if not platform.lti_deployment_id:
         raise ValueError("Platform has no LTI deployment id registered")
 
+    jwks_url, jwks_headers = platform_route(platform, platform.lti_jwks_url)
     async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(platform.lti_jwks_url)
+        resp = await client.get(jwks_url, headers=jwks_headers)
         resp.raise_for_status()
         platform_jwks = resp.json()
 
@@ -334,9 +360,12 @@ async def _ags_access_token(db: Session, platform: ExternalPlatform) -> str:
         algorithm="RS256",
         headers={"kid": key.kid},
     )
+    # The assertion's aud stays the public token URL: that is what the platform checks.
+    token_url, token_headers = platform_route(platform, platform.lti_token_url)
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(
-            platform.lti_token_url,
+            token_url,
+            headers=token_headers,
             data={
                 "grant_type": "client_credentials",
                 "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
@@ -371,6 +400,7 @@ async def push_score(
             scores_url = f"{base}/scores?{query}"
         else:
             scores_url = f"{scores_url}/scores"
+        scores_url, route_headers = platform_route(platform, scores_url)
         payload = {
             "timestamp": datetime.now(UTC).isoformat(),
             "scoreGiven": score,
@@ -386,6 +416,7 @@ async def push_score(
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/vnd.ims.lis.v1.score+json",
+                    **route_headers,
                 },
             )
             resp.raise_for_status()

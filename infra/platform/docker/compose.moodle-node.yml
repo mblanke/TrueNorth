@@ -1,0 +1,75 @@
+# One Moodle farm node: one per TrueNorth tenant, each its own compose project
+# (own database, own volumes). Do not run this by hand; scripts/moodle-farm.sh
+# generates the secrets, brings the node up and registers it with TrueNorth:
+#
+#   scripts/moodle-farm.sh add <node> --port <public port>
+#
+# The node joins TrueNorth's network as moodle-<node>, which is the address
+# TrueNorth's API uses for server-side calls (publishing, LTI keys and grades). Its
+# database is reachable from this node only.
+#
+# Not the CI Moodle: tests/integration/test_moodle_publish.py runs against
+# compose.moodle-test.yml, which this file does not touch.
+name: tn-moodle-${MOODLE_NODE:?set MOODLE_NODE}
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: moodle
+      POSTGRES_USER: moodle
+      POSTGRES_PASSWORD: ${MOODLE_DB_PASSWORD:?set MOODLE_DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks: [node]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moodle -d moodle"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  moodle:
+    image: ${MOODLE_IMAGE:-truenorth/moodle:5.2.3-tn}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_TYPE: pgsql
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: moodle
+      DB_USER: moodle
+      DB_PASS: ${MOODLE_DB_PASSWORD}
+      MOODLE_USERNAME: admin
+      MOODLE_PASSWORD: ${MOODLE_ADMIN_PASSWORD:?set MOODLE_ADMIN_PASSWORD}
+      # Expanded by the image's CLI bootstrap as one shell argument: no spaces.
+      MOODLE_SITENAME: ${MOODLE_SITENAME:-TrueNorth}
+      SITE_URL: ${MOODLE_SITE_URL:?set MOODLE_SITE_URL}
+      MOODLE_PUBLIC_PORT: ${MOODLE_PUBLIC_PORT:?set MOODLE_PUBLIC_PORT}
+      TN_TOOL_URL: ${TN_TOOL_URL:?set TN_TOOL_URL}
+      TN_PUBLIC_KEY_URL: ${TN_PUBLIC_KEY_URL:-http://api:8080/lti/public-key.pem}
+      TN_LOGIN_URL: ${TN_LOGIN_URL:-}
+      # The tenant this node serves: local_truenorth refuses sync tickets for any other.
+      TN_TENANT_ID: ${TN_TENANT_ID:?set TN_TENANT_ID}
+    ports:
+      - "${MOODLE_PUBLIC_PORT}:8080"
+    volumes:
+      - html:/var/www/html
+      - moodledata:/var/www/moodledata
+    networks:
+      node: {}
+      truenorth:
+        aliases: ["moodle-${MOODLE_NODE}"]
+    restart: unless-stopped
+
+networks:
+  node: {}
+  truenorth:
+    external: true
+    name: ${TN_NETWORK:-truenorth_default}
+
+volumes:
+  db-data:
+  html:
+  moodledata:
