@@ -11,8 +11,7 @@ from __future__ import annotations
 import pytest
 import yaml
 from app.models import RangeState
-
-from tests.api.test_noise import TARGETS, _hdr, _range, _setup
+from test_noise import TARGETS, _hdr, _range, _setup  # sibling module; tests/ is not a package
 
 
 @pytest.fixture
