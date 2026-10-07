@@ -3,7 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
-  AAR, Exercise, ExerciseSummary, HealthResponse, HypervisorNode, Objective, Range,
+  AAR, Exercise, ExerciseSummary, HealthResponse, HypervisorNode, InjectRecord, Objective, Range,
   RangeDocument, RangeSummary, Scenario, ScenarioSummary, Team, Template, TemplateSummary,
   Tenant, TelemetryEvent, User,
 } from '../models';
@@ -351,6 +351,10 @@ export class ApiService {
   // ── Objectives ───────────────────────────────────────────
   listObjectives(exerciseId: string): Observable<Objective[]> {
     return this.http.get<Objective[]>(`${this.base}/exercises/${exerciseId}/objectives`);
+  }
+  /** What each inject did (timeline and instructor), oldest first. */
+  listInjects(exerciseId: string): Observable<InjectRecord[]> {
+    return this.http.get<InjectRecord[]>(`${this.base}/exercises/${exerciseId}/injects`);
   }
   ackObjective(exerciseId: string, refId: string, evidence = ''): Observable<Objective> {
     return this.http.post<Objective>(
