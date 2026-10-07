@@ -27,7 +27,7 @@ import httpx
 import pytest
 from _shared import acting_as
 from app import search_backends
-from app.models import UserRole
+from app.models import User, UserRole
 
 pytestmark = pytest.mark.integration
 
@@ -131,7 +131,7 @@ def _ok(resp: httpx.Response, *codes: int) -> dict:
 
 class TestDetectionFlow:
     def test_instructor_rule_and_feed_then_student_detection_is_credited(
-        self, client, event_store, range_index
+        self, client, db_session, event_store, range_index
     ):
         # -- the instructor's side: a rule, a feed, a range, an exercise --------------------
         rule = _ok(client.post("/detection-rules", json={
@@ -173,7 +173,12 @@ class TestDetectionFlow:
         event_store.post(f"/{index}/_refresh").raise_for_status()
 
         # -- the Student: nothing is credited for being idle; a precise detection is -------
-        with acting_as(UserRole.student):
+        with acting_as(UserRole.student) as who:
+            # A real users row: the submission references it, and db_session enforces keys.
+            db_session.add(User(id=uuid.UUID(who.id), email=who.email, display_name=who.display_name,
+                                role=UserRole.student, tenant_id=uuid.UUID(who.tenant_id),
+                                keycloak_id=f"kc-{who.id}"))
+            db_session.flush()
             assert _ok(client.get(f"/exercises/{ex['id']}/detections")) == []
             before = {o["ref_id"]: o["achieved"] for o in _ok(client.get(f"/exercises/{ex['id']}/objectives"))}
             assert before == {"detect_c2": False, "write_report": False}
