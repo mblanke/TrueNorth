@@ -353,6 +353,81 @@ class TestApi:
         refused = client.post(f"/lab-access/{a.id}/console?node=ghost", headers={"X-Lab-Token": token})
         assert refused.status_code == 403
 
+    # F14 / CR1-17: a token is checked against the session as it is now.
+
+    @pytest.mark.parametrize("action", ["reset", "end", "console"])
+    def test_a_token_no_longer_acts_on_a_lab_that_has_ended(self, lab, db_session, action):
+        client, rid, _ = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        token = tokens.mint(db_session, a.id, s.id, a.max_expires_at)
+        act(db_session, service.end, a)
+        db_session.commit()
+        resp = client.post(f"/lab-access/{a.id}/{action}", headers={"X-Lab-Token": token})
+        assert resp.status_code == 410, resp.text
+        # Reading it stays allowed: the page can say the lab ended.
+        assert client.get(f"/lab-access/{a.id}", headers={"X-Lab-Token": token}).status_code == 200
+
+    def test_a_heartbeat_on_an_ended_lab_answers_with_its_state(self, lab, db_session):
+        """The page polls only while a lab is starting; after that the heartbeat is how it
+        learns the lab ended. A 410 there left it saying "running" (review of 6558791)."""
+        client, rid, _ = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        token = tokens.mint(db_session, a.id, s.id, a.max_expires_at)
+        act(db_session, service.end, a)
+        db_session.commit()
+        resp = client.post(f"/lab-access/{a.id}/heartbeat", headers={"X-Lab-Token": token})
+        assert resp.status_code == 200 and resp.json()["state"] not in ("ready", "active")
+
+    @pytest.mark.parametrize("status", ["withdrawn", "failed"])
+    def test_a_signed_in_student_whose_enrollment_closed_cannot_act_on_the_lab(self, lab, db_session, status):
+        from app.auth import CurrentUser, get_current_user
+        from app.main import app as fastapi_app
+        from app.models import EnrollmentStatus
+
+        client, rid, course_id = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        ensure_enrollment(
+            db_session, user_id=s.id, course_id=course_id, tenant_id=s.tenant_id
+        ).status = EnrollmentStatus(status)
+        db_session.commit()
+        me = CurrentUser(
+            id=str(s.id),
+            email=s.email,
+            display_name="s",
+            role=UserRole.student,
+            tenant_id=str(s.tenant_id),
+            keycloak_id=s.keycloak_id,
+        )
+        fastapi_app.dependency_overrides[get_current_user] = lambda: me
+        try:
+            for path in ("console", "reset", "heartbeat"):
+                assert client.post(f"/lab-sessions/{a.id}/{path}").status_code == 403, path
+        finally:
+            fastapi_app.dependency_overrides.pop(get_current_user, None)
+        assert client.post(f"/lab-sessions/{a.id}/console").status_code == 200, "staff still can"
+
+    def test_a_token_is_refused_once_the_enrollment_is_withdrawn(self, lab, db_session):
+        from app.models import Enrollment, EnrollmentStatus
+
+        client, rid, course_id = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        token = tokens.mint(db_session, a.id, s.id, a.max_expires_at)
+        enrollment = ensure_enrollment(db_session, user_id=s.id, course_id=course_id, tenant_id=s.tenant_id)
+        enrollment.status = EnrollmentStatus.withdrawn
+        db_session.commit()
+        for method, path in (("get", ""), ("post", "/console"), ("post", "/heartbeat")):
+            resp = getattr(client, method)(f"/lab-access/{a.id}{path}", headers={"X-Lab-Token": token})
+            assert resp.status_code == 403, (path, resp.text)
+        assert db_session.query(Enrollment).filter_by(user_id=s.id).count() == 1
+
     def test_an_lti_lab_launch_starts_the_lab_and_hands_over_a_token(self, lab, db_session):
         from app.routers.integrations import _launch_lab
 
@@ -446,6 +521,121 @@ class TestDispatch:
         db_session.commit()
         service.flush_outbox(db_session)
         assert [c[0] for c in worker.calls] == ["provision_range"]
+
+    # F19 (docs/review/codereview1.md): the process dies after the commit, before the send.
+
+    def _later(self, monkeypatch, minutes=5):
+        """The restarted process's clock: past any lease the dead one held."""
+        later = service._now() + timedelta(minutes=minutes)
+        monkeypatch.setattr(service, "_now", lambda: later)
+
+    def test_a_launch_task_lost_with_its_process_is_sent_after_restart(self, lab, db_session, worker, monkeypatch):
+        _, rid, _ = lab
+        s = student(db_session)
+        session, _ = service.launch(
+            db_session, tenant_id=s.tenant_id, user_id=s.id, release_id=rid, activity_id="mod_006"
+        )
+        db_session.commit()
+        db_session.info.pop(service.OUTBOX, None)  # the process dies here: the send never happens
+        assert worker.calls == []
+        self._later(monkeypatch)
+        service.sweep(db_session)
+        assert worker.calls == [("provision_range", str(session.range_id))]
+
+    def test_a_reset_task_lost_with_its_process_is_sent_after_restart(self, lab, db_session, worker, monkeypatch):
+        _, rid, _ = lab
+        session, _ = launch(db_session, student(db_session), rid)
+        until(db_session, session, "ready")
+        sent = len(worker.calls)
+
+        def die(db):
+            db.info.pop(service.OUTBOX, None)
+            raise SystemExit("process died after the commit")
+
+        flush = service.flush_outbox
+        monkeypatch.setattr(service, "flush_outbox", die)
+        with pytest.raises(SystemExit):
+            act(db_session, service.reset, session)
+        assert session.state == "resetting" and len(worker.calls) == sent
+        monkeypatch.setattr(service, "flush_outbox", flush)  # the restarted process
+        self._later(monkeypatch)
+        service.sweep(db_session)
+        assert [c[0] for c in worker.calls[sent:]] == ["restore_snapshot"]
+
+    def test_a_sweep_between_the_commit_and_the_send_does_not_send_twice(self, lab, db_session, worker):
+        _, rid, _ = lab
+        s = student(db_session)
+        session, _ = service.launch(
+            db_session, tenant_id=s.tenant_id, user_id=s.id, release_id=rid, activity_id="mod_006"
+        )
+        db_session.commit()
+        outbox = db_session.info.pop(service.OUTBOX, None)  # another process sweeps meanwhile
+        service.sweep(db_session)
+        db_session.info[service.OUTBOX] = outbox
+        service.flush_outbox(db_session)
+        assert worker.calls == [("provision_range", str(session.range_id))]
+
+    # From the adversarial review of bee0ff1.
+
+    def _reconciling_with_a_lost_check(self, lab, db_session, monkeypatch):
+        """An ended lab whose leftover-VM check was written, then its process died."""
+        _, rid, _ = lab
+        monkeypatch.setenv("LAB_RECONCILE_GRACE", "120")  # the production default
+        session, _ = launch(db_session, student(db_session), rid)
+        until(db_session, session, "ready")
+        act(db_session, service.end, session, reason="completed")
+        until(db_session, session, "reconciling")
+        session.pending = json.dumps([["reconcile_lab_vms", [[str(session.range_id)], session.backend]]])
+        session.lease_until = service._now() + timedelta(seconds=service.LEASE_SECONDS)
+        db_session.commit()
+        return session
+
+    def test_after_a_crash_the_networks_wait_a_full_grace_after_the_leftover_check(
+        self, lab, db_session, worker, monkeypatch
+    ):
+        session = self._reconciling_with_a_lost_check(lab, db_session, monkeypatch)
+        order = []
+        release_networks, dispatch = service._release_networks, worker.dispatch
+        monkeypatch.setattr(
+            service, "_release_networks", lambda db, s: (order.append("networks"), release_networks(db, s))
+        )
+        monkeypatch.setattr(service, "_dispatch", lambda t, *a: (order.append(t), dispatch(t, *a))[1])
+        self._later(monkeypatch, minutes=3)  # the lease and the grace have both run out
+        service.sweep(db_session)
+        assert order == ["reconcile_lab_vms"] and session.state == "reconciling"
+        self._later(monkeypatch, minutes=1)  # one minute after the check went out (clocks add up)
+        service.sweep(db_session)
+        assert order == ["reconcile_lab_vms"]
+        self._later(monkeypatch, minutes=2)
+        service.sweep(db_session)
+        assert order == ["reconcile_lab_vms", "networks"] and session.state == "destroyed"
+
+    def test_a_task_left_on_an_ended_lab_is_still_sent(self, lab, db_session, worker, monkeypatch):
+        session = self._reconciling_with_a_lost_check(lab, db_session, monkeypatch)
+        session.state = "failed"  # e.g. teardown gave up with the check still refused
+        db_session.commit()
+        self._later(monkeypatch, minutes=3)
+        service.sweep(db_session)
+        assert worker.calls[-1][0] == "reconcile_lab_vms" and session.pending == "[]"
+
+    def test_a_task_the_contract_refuses_is_dropped_and_does_not_wedge_the_lab(
+        self, lab, db_session, worker, monkeypatch
+    ):
+        from app.task_contracts import validate_args
+
+        _, rid, _ = lab
+        session, _ = launch(db_session, student(db_session), rid)
+        until(db_session, session, "ready")
+        session.pending = json.dumps([["destroy_range", []], ["reconcile_lab_vms", [[str(session.range_id)], "mock"]]])
+        db_session.commit()
+        dispatch = worker.dispatch
+        monkeypatch.setattr(service, "_dispatch", lambda t, *a: (validate_args(t, a), dispatch(t, *a))[1])
+        self._later(monkeypatch)
+        service.sweep(db_session)
+        assert session.lease_until is None and session.pending == "[]"
+        assert worker.calls[-1][0] == "reconcile_lab_vms" and "destroy_range" in session.error
+        act(db_session, service.end, session, reason="completed")  # not "busy"
+        assert session.state != "ready"
 
     def test_an_action_on_a_lab_another_process_holds_is_refused_not_doubled(self, lab, db_session, worker):
         _, rid, _ = lab

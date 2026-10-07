@@ -22,8 +22,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import or_, update
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, exists, or_, update
+from sqlalchemy.orm import Session, aliased
 
 from .. import lti13
 from ..course_releases.models import ACCEPTED, CourseRelease
@@ -45,12 +45,18 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 LEASE = timedelta(minutes=15)
+HOLDERS = "course_publication_holders"  # db.info: publication id -> this run's lease token
 
 
 class PublishRefusedError(ValueError):
     def __init__(self, message: str, status: int = 409):
         super().__init__(message)
         self.status = status
+
+
+class LeaseLostError(RuntimeError):
+    """Another process took this publication's lease (this run's step outlived it). This
+    run stops at once and writes nothing more: the job is the other process's now."""
 
 
 def backend_for(db: Session, platform: ExternalPlatform) -> BaseMoodleBackend:
@@ -96,20 +102,67 @@ def request(
 
 
 def claim(db: Session, pub: CoursePublication) -> bool:
-    """Take the job's lease; False if another process holds a live one."""
+    """Take the job's lease; False if another process holds a live one, or if another
+    publication of the same course is running on the same Moodle. All of a course's
+    publications write one live Moodle course: two at once let an older release's upsert
+    land after a newer one's, while the records said the newer one was live. The lease is
+    this run's (``lease_holder``): every later write renews it only while it still is."""
     now = datetime.now(UTC)
+    holder = uuid.uuid4().hex
+    other = aliased(CoursePublication)
+    sibling_running = exists().where(
+        and_(
+            other.course_id == pub.course_id,
+            other.platform_id == pub.platform_id,
+            other.id != pub.id,
+            other.lease_until.isnot(None),
+            other.lease_until >= now,
+        )
+    )
     result = db.execute(
         update(CoursePublication)
         .where(
             CoursePublication.id == pub.id,
             or_(CoursePublication.lease_until.is_(None), CoursePublication.lease_until < now),
+            ~sibling_running,
         )
-        .values(lease_until=now + LEASE)
+        .values(lease_until=now + LEASE, lease_holder=holder)
         .execution_options(synchronize_session=False)
     )
     db.flush()
     db.refresh(pub)
-    return result.rowcount == 1
+    if result.rowcount == 1:
+        db.info.setdefault(HOLDERS, {})[pub.id] = holder
+        return True
+    return False
+
+
+def _commit_holding(db: Session, pub: CoursePublication, *, release_lease: bool = False) -> None:
+    """Commit this step's writes only while this run still holds the lease, renewing it
+    (or giving it up at the end) in the same transaction. A step that outlived the lease
+    used to renew it unconditionally, so two processes drove one job (CR1-15)."""
+    holder = db.info.get(HOLDERS, {}).get(pub.id)
+    values = (
+        {"lease_until": None, "lease_holder": None} if release_lease else {"lease_until": datetime.now(UTC) + LEASE}
+    )
+    kept = (
+        holder is not None
+        and db.execute(
+            update(CoursePublication)
+            .where(CoursePublication.id == pub.id, CoursePublication.lease_holder == holder)
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        == 1
+    )
+    if not kept:
+        db.rollback()
+        raise LeaseLostError(f"publication {pub.id}: another process holds its lease now")
+    pub.lease_until = values["lease_until"]
+    if release_lease:
+        pub.lease_holder = None
+        db.info.get(HOLDERS, {}).pop(pub.id, None)
+    db.commit()
 
 
 def _category(db: Session, release: CourseRelease) -> dict[str, str]:
@@ -188,11 +241,14 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
     if release is None or release.state != ACCEPTED or _newer_than(db, pub, release):
         pub.state = SUPERSEDED
         pub.error = "a later release of this course has been accepted"
-        pub.lease_until = None
+        pub.lease_until = pub.lease_holder = None  # a run still going stops at its next step
         db.commit()
         return pub
     if not claim(db, pub):
-        raise PublishRefusedError("this publication is already running")
+        raise PublishRefusedError(
+            "this publication is already running, or another release of this course is being published to"
+            " this Moodle; it runs after that one"
+        )
     platform = db.get(ExternalPlatform, pub.platform_id)
     pub.attempts += 1
     pub.error = ""
@@ -227,6 +283,8 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
         problems = _verify(described, want, len(live["sections"]), visible=True)
         if problems:
             return _fail(db, pub, "live course did not verify after activation: " + "; ".join(problems))
+    except LeaseLostError:
+        raise  # the job is another process's now: write nothing
     except MoodleError as exc:
         return _fail(db, pub, str(exc))
     except Exception as exc:  # noqa: BLE001 — anything else is recorded, never left running
@@ -256,11 +314,10 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
         older_release = db.get(CourseRelease, older.release_id)
         if older.state != SUPERSEDED and older_release is not None and older_release.version < release.version:
             older.state = SUPERSEDED
-            older.lease_until = None
+            older.lease_until = older.lease_holder = None
     pub.state = PUBLISHED
     pub.published_at = now
-    pub.lease_until = None
-    db.commit()
+    _commit_holding(db, pub, release_lease=True)
     logger.info("published release %s to platform %s (course %s)", release.id, platform.id, described.get("courseid"))
     return pub
 
@@ -269,15 +326,13 @@ def _step(db: Session, pub: CoursePublication, state: str) -> None:
     """Move to the next step and renew the lease, so a slow Moodle never lets a second
     runner take over a job that is still making progress."""
     pub.state = state
-    pub.lease_until = datetime.now(UTC) + LEASE
-    db.commit()
+    _commit_holding(db, pub)
 
 
 def _fail(db: Session, pub: CoursePublication, error: str) -> CoursePublication:
     pub.state = FAILED
     pub.error = error[:4000]
-    pub.lease_until = None
-    db.commit()
+    _commit_holding(db, pub, release_lease=True)
     logger.warning("publication %s failed: %s", pub.id, error)
     return pub
 
@@ -294,16 +349,39 @@ def retry(db: Session, pub: CoursePublication) -> CoursePublication:
 
 
 def stalled(db: Session) -> list[CoursePublication]:
-    """Jobs a dead process left mid-way: running state, lease lapsed."""
+    """Jobs a dead process left mid-way (running state, lease lapsed), and jobs still
+    requested: a process that died before running one, or one that waited for another
+    release of its course and was never started. Oldest first."""
     now = datetime.now(UTC)
     return (
         db.query(CoursePublication)
         .filter(
-            CoursePublication.state.in_(RUNNING),
+            CoursePublication.state.in_((*RUNNING, REQUESTED)),
             or_(CoursePublication.lease_until.is_(None), CoursePublication.lease_until < now),
+        )
+        .order_by(CoursePublication.created_at)
+        .all()
+    )
+
+
+def waiting(db: Session, course_id: uuid.UUID, platform_id: uuid.UUID) -> CoursePublication | None:
+    """The newest requested publication of this course on this Moodle (an older one would
+    end superseded anyway), or None."""
+    pubs = (
+        db.query(CoursePublication)
+        .filter(
+            CoursePublication.course_id == course_id,
+            CoursePublication.platform_id == platform_id,
+            CoursePublication.state == REQUESTED,
         )
         .all()
     )
+
+    def version(p: CoursePublication) -> int:
+        release = db.get(CourseRelease, p.release_id)
+        return release.version if release is not None else 0
+
+    return max(pubs, key=version, default=None)
 
 
 def resume_stalled(db: Session) -> int:
@@ -313,6 +391,6 @@ def resume_stalled(db: Session) -> int:
         try:
             run(db, pub)
             count += 1
-        except PublishRefusedError:
+        except (PublishRefusedError, LeaseLostError):
             continue
     return count

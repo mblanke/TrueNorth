@@ -139,7 +139,11 @@ export class LabPageComponent implements OnInit {
     });
     interval(60000).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       if (this.usable()) {
-        this.api.labAction(this.id, 'heartbeat', this.token).subscribe({ next: s => this.session.set(s) });
+        // On an error (the lab ended, the enrollment closed) reload, so the page says so.
+        this.api.labAction(this.id, 'heartbeat', this.token).subscribe({
+          next: s => this.session.set(s),
+          error: () => this.refresh(),
+        });
       }
     });
   }

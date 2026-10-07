@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from . import range_leases, range_ops, ws_auth  # noqa: F401 — range_leases, range_ops: register their tables
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
@@ -75,8 +76,23 @@ async def lifespan(app: FastAPI):
 
         lab_sweep = asyncio.create_task(lab_loop())
 
+    # Range operations the broker did not take (down, or a process that died between
+    # the commit and the send) are re-sent (app/range_ops). One sender per operation.
+    from .db import SessionLocal
+    from .range_ops.service import redispatch_interval, redispatch_loop
+
+    interval = redispatch_interval()
+    range_resend = asyncio.create_task(redispatch_loop(SessionLocal, interval)) if interval > 0 else None
+
+    # WebSocket heartbeat (no Redis): drops dead sockets and closes those whose token has
+    # expired (app/ws_auth.py). Nothing started it before, so a socket outlived its user.
+    if _env_flag("WS_HEARTBEAT"):
+        await app.state.ws_manager.start_local()
+
     yield
 
+    if range_resend is not None:
+        range_resend.cancel()
     if lab_sweep is not None:
         lab_sweep.cancel()
 
@@ -370,31 +386,83 @@ async def deep_health():
 # -- WebSocket endpoint ----------------------------------------------------
 @app.websocket("/ws/{channel}")
 async def websocket_endpoint(ws: WebSocket, channel: str):
-    """Real-time event stream. Channels: 'ranges', 'exercises', 'all'."""
-    conn_id = await ws_manager.connect(ws, channel)
+    """Real-time event stream for a signed-in user, on a channel of their tenant
+    (app/ws_auth.py: ``range.<id>``, ``exercise.<id>``, ``tenant.<id>``; admins
+    ``system.*``).
+
+    The access token is the second subprotocol: ``new WebSocket(url, ["bearer", token])``.
+    No valid token, or a channel the user may not open: closed with 1008. Reply
+    ``{"type": "pong"}`` to each ``{"type": "ping"}`` or the socket is dropped.
+    """
+    db_gen = app.dependency_overrides.get(get_db, get_db)()  # a session only for the handshake
+    db = next(db_gen)
+    try:
+        who = await ws_auth.ws_user(ws, db)
+        allowed = who is not None and ws_auth.authorize(channel, who.user, db)
+    finally:
+        db_gen.close()
+    if not allowed:
+        await ws.close(code=1008)
+        return
+    user = who.user
+    conn_id = await ws_manager.connect(
+        ws,
+        channel,
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        subprotocol=ws_auth.SUBPROTOCOL if ws_auth.bearer_token(ws) else None,
+        expires_at=who.expires_at,
+    )
+
+    def room_ok(room_id: str, *, joined: bool) -> bool:
+        """A room of the user's tenant; for leaving, sending or listing, one this socket joined."""
+        if ws_auth.canonical_id(room_id) is None:
+            return False
+        conn = ws_manager.connections.get(conn_id)
+        if joined and (conn is None or f"room.{room_id}" not in conn.channels):
+            return False
+        db_gen = app.dependency_overrides.get(get_db, get_db)()
+        try:
+            return ws_auth.room_allowed(room_id, user, next(db_gen))
+        finally:
+            db_gen.close()
+
     try:
         while True:
             data = await ws.receive_text()
+            if len(data) > ws_auth.MAX_FRAME_BYTES:
+                await ws_manager.send_to_connection(conn_id, {"type": "error", "detail": "frame too large"})
+                continue
             try:
                 msg = json.loads(data)
             except (json.JSONDecodeError, TypeError):
                 await ws_manager.send_to_connection(conn_id, {"type": "ack", "data": data})
                 continue
 
-            action = msg.get("action")
+            if isinstance(msg, dict) and msg.get("type") == "pong":
+                ws_manager.handle_pong(conn_id)
+                continue
+            action = msg.get("action") if isinstance(msg, dict) else None
+            room_id = str(msg.get("room_id", "")) if isinstance(msg, dict) else ""
+            if action in ("join_room", "leave_room", "room_message", "room_members") and not room_ok(
+                room_id, joined=action != "join_room"
+            ):
+                await ws_manager.send_to_connection(conn_id, {"type": "error", "detail": "room not allowed"})
+                continue
             if action == "join_room":
-                await ws_manager.join_room(conn_id, msg.get("room_id", ""), msg.get("display_name"))
+                await ws_manager.join_room(conn_id, room_id, ws_auth.display_name(msg.get("display_name")))
             elif action == "leave_room":
-                await ws_manager.leave_room(conn_id, msg.get("room_id", ""))
+                await ws_manager.leave_room(conn_id, room_id)
             elif action == "room_message":
+                payload = msg.get("data") if isinstance(msg.get("data"), dict) else {}
                 await ws_manager.broadcast_to_room(
-                    msg.get("room_id", ""),
+                    room_id,
                     conn_id,
-                    msg.get("type", "room_chat"),
-                    msg.get("data", {}),
+                    ws_auth.room_message_type(msg.get("type")),
+                    {**payload, "sender_user_id": user.id},  # stamped here: a client cannot speak for another
                 )
             elif action == "room_members":
-                members = ws_manager.get_room_members(msg.get("room_id", ""))
+                members = ws_manager.get_room_members(room_id)
                 await ws_manager.send_to_connection(conn_id, {"type": "room_members", "members": members})
             else:
                 await ws_manager.send_to_connection(conn_id, {"type": "ack", "data": data})

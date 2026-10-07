@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import app.range_leases  # noqa: F401 — registers range_leases (the range tasks' lease, worker/fencing.py)
 import pytest
 from app import models as m
 from app.db import Base
@@ -153,6 +154,7 @@ class TestRanges:
             "network:\n  vlans:\n    - name: lan\n      cidr: 10.9.0.0/24\n"
         )
         world.range.provisioner_backend = "vsphere_api"
+        world.range.state = m.RangeState.provisioning  # the API records the request first (fencing.py)
         _add(
             db,
             m.GoldenImage(catalogue_id="ubuntu-2404", hypervisor="vsphere", template_name="tpl-ubuntu",
@@ -183,6 +185,8 @@ class TestRanges:
         assert json.loads(r.provisioner_output)["provider"] == "vsphere_api"
 
     def test_provision_failure_marks_failed(self, world, monkeypatch):
+        world.range.state = m.RangeState.provisioning
+        world.db.commit()
         backend = _fake_backend(provision=ProvisionResult(status="failed", errors=["no capacity"]))
         monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
         with pytest.raises(RuntimeError, match="no capacity"):
@@ -192,7 +196,7 @@ class TestRanges:
 
     def test_destroy_reads_output_and_backend(self, world, monkeypatch):
         world.range.provisioner_output = '{"vms": [{"name": "web"}]}'
-        world.range.state = m.RangeState.ready
+        world.range.state = m.RangeState.destroying  # the API records the request first (fencing.py)
         world.db.commit()
         backend = _fake_backend(destroy=DestroyResult(status="ok", resources_removed=1))
         seen = []
