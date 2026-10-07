@@ -3,7 +3,8 @@
 # ------------------------------------------------------------------
 .PHONY: help dev dev-down import-content test lint format build clean migrate \
                 packer-validate tf-plan k6 pre-commit security-scan \
-                prod-config prod-up prod-down prod-ps prod-logs
+                prod-config prod-up prod-down prod-ps prod-logs \
+                itest itest-down itest-web
 
 SHELL := /bin/bash
 COMPOSE := docker compose -f infra/platform/docker/compose.dev.yml
@@ -88,6 +89,18 @@ test-scenario: ## Run scenario-engine tests only
 
 test-worker: ## Run worker tests only
 	$(PYTHON) -m pytest tests/worker/ -v --tb=short
+
+# Integration tests against a real stack built from this checkout (scripts/itest.sh; CI
+# runs the same script). Own project + ports (API 127.0.0.1:18081), so a running dev
+# stack is left alone. Fails if no test passed. ITEST_KEEP=1 leaves the stack up.
+itest: ## Build + start an isolated stack, migrate, run tests/integration, tear down
+	bash scripts/itest.sh all
+
+itest-web: ## Same stack plus keycloak + web on http://localhost:14200 (for Playwright)
+	ITEST_WEB=1 ITEST_KEEP=1 bash scripts/itest.sh up
+
+itest-down: ## Stop the integration stack and delete its volumes
+	bash scripts/itest.sh down
 
 # ── Linting & Formatting ───────────────────────────────────
 lint: ## Ruff check + fix

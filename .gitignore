@@ -57,3 +57,10 @@ control-plane/web/devtools-shots/
 
 # ARC² staging: every /arc2 run writes here and only here; promotion is a human PR
 build/arc2/
+
+# Integration / e2e lane output (scripts/itest.sh, ci.yml integration, moodle, vsphere-sim, e2e)
+build/itest/
+build/moodle/
+build/vcsim/
+tests/e2e/playwright-report/
+tests/e2e/test-results/

@@ -1,0 +1,4 @@
+# actionlint: custom labels of our self-hosted runners (docs/runbooks/lab-runner.md).
+self-hosted-runner:
+  labels:
+    - truenorth-lab
