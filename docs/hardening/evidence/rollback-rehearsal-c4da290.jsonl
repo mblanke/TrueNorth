@@ -1,0 +1,4 @@
+{"step": "new populates", "template_id": "784dbbb5-c03d-4de2-9214-7f5d8f9a588c", "a": "93523b76-c2e4-4a76-980f-7f8b1617ea66", "b": "cedfeb5c-d38e-4bcd-927c-001348a87e54", "provision_a": 202, "op_a": "pending", "wiki": 201}
+{"step": "old code on upgraded db", "health": 200, "ranges": ["rb-a", "rb-b"], "a_state": "provisioning", "create": 201, "provision_b": 202}
+{"step": "new again", "ops_a": ["pending"], "b_state": "provisioning", "wiki": ["runbooks"]}
+{"step": "checks", "failed": []}
