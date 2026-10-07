@@ -8,7 +8,7 @@
 # jobs). What it changes, and why:
 #
 # - Host ports move to a 1xxxx range (API 18081, OpenSearch 19200, web 14200, Keycloak
-#   18180) and the backing stores are not published at all. compose.dev.yml publishes the
+#   18180) and the backing stores (and ai-orchestrator) are not published at all. compose.dev.yml publishes the
 #   API on 8081, and a dev stack is usually already there: the integration suite would
 #   otherwise either fail to bind or, worse, run against the developer's own database.
 # - The schema comes from `alembic upgrade head` (scripts/itest.sh runs it before the API
@@ -55,6 +55,27 @@ services:
       timeout: 5s
       retries: 60
       start_period: 10s
+
+  # The API's AI authoring routes (exercise forge, Course Studio, quizzes) call this
+  # at AI_ORCHESTRATOR_URL=http://ai-orchestrator:6000. The mock backend answers with
+  # deterministic, parseable fixtures: no model, no GPU, no egress, no keys. Not
+  # published on the host, so it cannot clash with a dev stack's :6000.
+  ai-orchestrator:
+    ports: !reset []
+    environment:
+      AI_MODEL_BACKEND: mock
+      AI_EMBED_BACKEND: mock
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OLLAMA_NODES: ""
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "6000", "--workers", "1"]
+    healthcheck:
+      # python:3.11-slim has no curl.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:6000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
 
   # Only the e2e lane starts these two (scripts/itest.sh with ITEST_WEB=1).
   keycloak:

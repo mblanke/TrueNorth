@@ -95,8 +95,12 @@ app.conf.beat_schedule = {
 # Importing the module registers Celery signals; actual injection is
 # controlled by CHAOS_ENABLED env var.
 from . import (
+    aar_tasks,  # noqa: F401, E402
     chaos,  # noqa: F401, E402
+    exercise_run,  # noqa: F401, E402
     lab_tasks,  # noqa: F401, E402
+    noise_tasks,  # noqa: F401, E402
     power_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
+    telemetry_tasks,  # noqa: F401, E402
 )

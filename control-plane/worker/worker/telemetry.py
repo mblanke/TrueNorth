@@ -5,8 +5,8 @@ window is matched on it, never on the sender's ``@timestamp``. Whatever a sender
 ``truenorth`` is dropped first, so no sender can place an event inside a window.
 
 ``bulk_ingest`` (the worker's write to the store, replacing the inline one in
-``tasks.ingest_telemetry_batch``) lands with the tasks.py half of ADR 0005:
-``.agent-patches/s4-detection-tasks.patch``.
+``telemetry_tasks.ingest_telemetry_batch``) lands with the worker half of ADR 0005
+(intent: ``.agent-patches/s4-detection-tasks.patch``).
 """
 
 from __future__ import annotations

@@ -14,6 +14,11 @@ a total ingestion failure reported as a skip rather than a failure.
 Verification goes through `GET /telemetry/{range_id}/search` rather than reaching into
 OpenSearch directly: the index naming is an implementation detail, and a test that
 encodes it breaks when the backend is swapped.
+
+Stack (scripts/itest.sh): api (SEARCH_BACKEND=opensearch) + opensearch +
+worker-telemetry, API at API_BASE_URL. The API writes `range-{id}` itself; the queries
+use the constrained grammar (`field:value`, ANDed), and each event is expected back
+with its MITRE `mitre_technique` tag.
 """
 
 from __future__ import annotations
@@ -112,6 +117,39 @@ class TestTelemetryFlow:
     def test_verify_batch_is_searchable(self, api_client, telemetry_range):
         batch_tag = self.__class__._batch_tag
         _search(api_client, telemetry_range, f"data.batch_tag:{batch_tag}", expect=10)
+
+    def test_ingested_events_come_back_mitre_tagged(self, api_client, telemetry_range):
+        """Ingest -> search -> the stored event carries its ATT&CK technique.
+
+        One event is tagged from its event_type (the API's map), one from the
+        injector-style technique_id it carries; both are found by searching the tag.
+        """
+        marker = uuid.uuid4().hex[:12]
+        resp = api_client.post(
+            f"/telemetry/{telemetry_range}/events",
+            json=[
+                {"event_id": str(uuid.uuid4()), "event_type": "process_exec", "marker": marker},
+                {"event_id": str(uuid.uuid4()), "event_type": "inject", "technique_id": "t1046", "marker": marker},
+            ],
+        )
+        assert resp.status_code == 202, resp.text
+        assert resp.json()["accepted"] == 2
+
+        [by_type] = _search(api_client, telemetry_range, f"marker:{marker} mitre_technique:T1059", expect=1)
+        assert by_type["_source"]["mitre_technique"] == ["T1059"]
+        assert by_type["_source"]["event_type"] == "process_exec"
+
+        [by_inject] = _search(api_client, telemetry_range, f"marker:{marker} mitre_technique:T1046", expect=1)
+        assert by_inject["_source"]["mitre_technique"] == ["T1046"]
+
+        _search(api_client, telemetry_range, f"marker:{marker} mitre_technique:*", expect=2)
+
+    @pytest.mark.parametrize("q", ["_index:range-*", "event_id:*abc", "/.*(a+)+$/ OR x:y"])
+    def test_queries_outside_the_grammar_are_refused(self, api_client, telemetry_range, q):
+        """q no longer reaches OpenSearch query_string: metadata fields, leading
+        wildcards and OR across field terms are a 422, not a backend query."""
+        resp = api_client.get(f"/telemetry/{telemetry_range}/search", params={"q": q})
+        assert resp.status_code == 422, resp.text
 
     def test_events_are_scoped_to_their_range(self, api_client, telemetry_range, range_template):
         """Telemetry is indexed per range, so another range must not see these events."""

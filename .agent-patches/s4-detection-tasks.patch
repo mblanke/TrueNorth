@@ -1,3 +1,8 @@
+STALE since the github/main merge (2026-10-07): main moved run_scenario_v2's loop to
+worker/exercise_run.py and ingest_telemetry_batch to worker/telemetry_tasks.py, so these
+hunks no longer apply. Do not apply. Its intent is re-applied on top of the
+scenario-engine PR's exercise_run.py after that lands (coordinator's instruction).
+
 The worker/tasks.py half of PR #67 (ADR 0005), for the stage-4 slot that owns tasks.py.
 
 The detection slot (branch claude/s4-detection) could not edit tasks.py. With this patch:

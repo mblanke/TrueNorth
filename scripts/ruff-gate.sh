@@ -12,7 +12,7 @@ cd "$ROOT"
 PY="${PY:-$ROOT/.venv/bin/python}"
 fail() { echo "DoD FAIL: $1" >&2; exit 1; }
 
-PY_TARGETS=(control-plane/ scenario-engine/ ai-orchestrator/ telemetry/ tools/ tests/)
+PY_TARGETS=(control-plane/ scenario-engine/ ai-orchestrator/ telemetry/ tools/ noise-agent/ tests/)
 BASELINE_FILE="$ROOT/.dod-ruff-baseline"
 
 echo "+ ruff check (breakage rules: F821,F811,E9)"

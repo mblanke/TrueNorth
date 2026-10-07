@@ -17,6 +17,8 @@ from app import (  # noqa: F401
     detections,
     lab_sessions,
     models,
+    network_inventory,
+    noise,
     range_leases,
     range_ops,
 )

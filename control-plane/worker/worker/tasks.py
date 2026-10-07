@@ -1,10 +1,13 @@
-"""TrueNorth Range - Celery tasks for range provisioning and scenario execution.
+"""TrueNorth Range - Celery tasks for range provisioning, snapshots and maintenance.
+
+Scenario runs live in exercise_run.py, AAR generation in aar_tasks.py and telemetry
+ingest in telemetry_tasks.py (ADR 0003); their Celery names are still
+``worker.tasks.<name>`` and they import from here too.
 
 Designed for 70,000-VM scale:
   - Batch provisioning with chunked VM creation
   - Exponential backoff retries with jitter
   - Proper DB session lifecycle (no leaks)
-  - Telemetry batch ingest to OpenSearch
   - Distributed locking via Redis for state transitions
 """
 
@@ -22,10 +25,8 @@ from datetime import UTC, datetime
 from celery import group
 
 from . import db_ops
-from .aar import build_report as build_aar_report
 from .base_tasks import ReliableTask, _get_backend
 from .celery_app import app
-from .detection import detection_scorer, range_index
 from .fencing import FINAL_ERRORS, fenced, run_async
 from .fencing import last_attempt as _last_attempt
 from .provisioners import discard_built
@@ -34,6 +35,24 @@ logger = logging.getLogger("truenorth.worker")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://forge:forge@localhost:5432/forge")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# Tasks moved to their own modules (ADR 0003), still importable from here. Resolved on
+# first use: celery_app imports every task module at its end, so a load-time import
+# here would find a module that was imported first only half-initialised.
+_MOVED = {
+    "run_scenario": "exercise_run",
+    "run_scenario_v2": "exercise_run",
+    "generate_aar": "aar_tasks",
+    "ingest_telemetry_batch": "telemetry_tasks",
+}
+
+
+def __getattr__(name: str):
+    if name in _MOVED:
+        import importlib
+
+        return getattr(importlib.import_module(f".{_MOVED[name]}", __package__), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # -- DB session management (one per task, no leaks) ---------------------
@@ -109,7 +128,7 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
 @fenced("provision", "provisioning")  # only a range its sender moved to provisioning; one copy at a time
-def provision_range(self, range_id: str):
+def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
     """Provision a range: render its template, build it with its backend, store the result.
     A range torn down while it was being built gets what was built destroyed, not recorded."""
     logger.info(f"[provision] Starting range {range_id}")
@@ -145,7 +164,7 @@ def provision_range(self, range_id: str):
             with _db_session() as db2:
                 resolver = golden_image_resolver(db2, hv)
                 creds = _hypervisor_creds(db2, hv)
-            rendered = render_topology(template, range_id, resolver)
+            rendered = render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt)
             template = {
                 **template,
                 "name": rendered["range_name"],
@@ -250,262 +269,9 @@ def destroy_range(self, range_id: str):
         raise
 
 
-# -- Scenario Execution --------------------------------------------------
-@app.task(bind=True, name="worker.tasks.run_scenario")
-def run_scenario(self, exercise_id: str):
-    """Execute a scenario timeline for an exercise."""
-    logger.info(f"[scenario] Starting exercise {exercise_id}")
-
-    with _db_session() as db:
-        row = db_ops.exercise_scenario_yaml(db, exercise_id)
-
-        if not row:
-            logger.error(f"[scenario] Exercise {exercise_id} not found")
-            return {"status": "error", "detail": "Exercise not found"}
-
-    import yaml
-
-    scenario_data = yaml.safe_load(row[1])
-    timeline = scenario_data.get("timeline", [])
-    scenario_data.get("inject_packs", [])
-
-    executed = 0
-    for event in timeline:
-        t = event.get("t", "0:00")
-        action = event.get("action", "unknown")
-        params = event.get("params", {})
-
-        parts = t.split(":")
-        offset_seconds = int(parts[0]) * 60 + int(parts[1]) if len(parts) == 2 else 0
-
-        logger.info(f"[scenario] [{t}] inject={action} params={params}")
-
-        # In production: dispatch to injector registry
-        # _dispatch_inject(action, params, range_context)
-
-        # Compressed time for dev/test
-        time.sleep(min(offset_seconds * 0.01, 2))
-        executed += 1
-
-    logger.info(f"[scenario] Exercise {exercise_id} complete ({executed} events)")
-    return {"status": "completed", "exercise_id": exercise_id, "events_executed": executed}
-
-
-# -- Telemetry Batch Ingest ----------------------------------------------
-@app.task(bind=True, name="worker.tasks.ingest_telemetry_batch")
-def ingest_telemetry_batch(self, range_id: str, events: list[dict]):
-    """Batch-ingest telemetry events into OpenSearch.
-
-    At scale, the API buffers events and dispatches to this task
-    to avoid blocking request threads on OpenSearch I/O.
-    """
-    import httpx
-
-    os_url = os.getenv("OPENSEARCH_URL", "http://opensearch:9200")
-    index = range_index(range_id)
-
-    bulk_body = ""
-    for event in events:
-        event.setdefault("range_id", range_id)
-        event.setdefault("@timestamp", datetime.now(UTC).isoformat())
-        bulk_body += json.dumps({"index": {"_index": index}}) + "\n"
-        bulk_body += json.dumps(event) + "\n"
-
-    try:
-        with httpx.Client(timeout=30) as client:
-            resp = client.post(
-                f"{os_url}/_bulk",
-                content=bulk_body,
-                headers={"Content-Type": "application/x-ndjson"},
-            )
-            resp.raise_for_status()
-            result = resp.json()
-            errors = result.get("errors", False)
-            if errors:
-                failed = [item for item in result.get("items", []) if item.get("index", {}).get("error")]
-                logger.warning(f"[telemetry] {len(failed)} events failed indexing")
-    except Exception as e:
-        logger.error(f"[telemetry] OpenSearch ingest error: {e}")
-        raise
-
-    logger.info(f"[telemetry] Ingested {len(events)} events for range {range_id}")
-    return {"indexed": len(events), "range_id": range_id}
-
-
 # ========================================================================
 # Additional tasks â€” scenario execution, snapshots, periodic maintenance
 # ========================================================================
-
-
-# -- Scenario Execution (enhanced) ----------------------------------------
-@app.task(base=ReliableTask, bind=True, name="worker.tasks.run_scenario_v2")
-def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
-    """Execute a scenario against a range using a structured definition.
-
-    Parses the timeline from scenario_definition, executes each timeline
-    event via the injector registry, updates exercise state as phases
-    progress, tracks objective completion, and sends progress via Redis
-    pub/sub.
-    """
-    logger.info(f"[scenario_v2] Starting exercise {exercise_id}")
-    _notify_api("exercise", {"id": exercise_id, "state": "running", "phase": "starting"})
-
-    backend = os.getenv("PROVISIONER_BACKEND", "mock")
-
-    try:
-        timeline = scenario_definition.get("timeline", [])
-        objectives = scenario_definition.get("objectives", [])
-        detections = detection_scorer(exercise_id, _db_session, backend)  # None unless DETECTION_SCORING=on
-
-        # â”€â”€ Update exercise state to running â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        with _db_session() as db:
-            db_ops.start_exercise(db, exercise_id)
-
-        # â”€â”€ Execute timeline events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        executed = 0
-        total_events = len(timeline)
-
-        for idx, event in enumerate(timeline):
-            t = event.get("t", "0:00")
-            action = event.get("action", "noop")
-            params = event.get("params", {})
-
-            parts = t.split(":")
-            offset_seconds = int(parts[0]) * 60 + int(parts[1]) if len(parts) == 2 else 0
-
-            logger.info(f"[scenario_v2] [{t}] event {idx + 1}/{total_events} action={action} params={params}")
-
-            # Production: dispatch to injector registry (_dispatch_inject(action, params, range_context))
-            time.sleep(min(offset_seconds * 0.01, 1 if backend == "mock" else 2))
-            if detections:  # score the telemetry so far, so the scoreboard moves mid-run
-                detections.score()
-            executed += 1
-
-            # Publish progress
-            progress = int((executed / max(total_events, 1)) * 100)
-            _notify_api(
-                "exercise",
-                {
-                    "id": exercise_id,
-                    "state": "running",
-                    "progress": progress,
-                    "current_event": action,
-                },
-            )
-
-        # â”€â”€ Track objective completion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if detections:  # final pass against the range's telemetry (worker/detection.py)
-            completed_objectives = detections.score()
-        else:  # mock auto-completes every objective; a real backend with scoring off achieves none
-            with _db_session() as db:
-                for obj in objectives if backend == "mock" else []:
-                    db_ops.achieve_objective(db, exercise_id, obj.get("ref_id", ""))
-            completed_objectives = len(objectives) if backend == "mock" else 0
-
-        # â”€â”€ Mark exercise complete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        with _db_session() as db:
-            db_ops.complete_exercise(db, exercise_id)
-
-        _notify_api(
-            "exercise",
-            {
-                "id": exercise_id,
-                "state": "completed",
-                "events_executed": executed,
-                "objectives_completed": completed_objectives,
-            },
-        )
-
-        logger.info(
-            f"[scenario_v2] Exercise {exercise_id} completed ({executed} events, {completed_objectives} objectives)"
-        )
-        return {
-            "status": "completed",
-            "exercise_id": exercise_id,
-            "events_executed": executed,
-            "objectives_completed": completed_objectives,
-        }
-
-    except Exception as e:
-        with _db_session() as db:
-            db_ops.cancel_exercise(db, exercise_id)  # exercises has no error_message column
-        _notify_api("exercise", {"id": exercise_id, "state": "failed", "error": str(e)})
-        logger.error(f"[scenario_v2] Exercise {exercise_id} FAILED: {e}")
-        raise
-
-
-# -- AAR Generation -------------------------------------------------------
-@app.task(base=ReliableTask, bind=True, name="worker.tasks.generate_aar")
-def generate_aar(self, exercise_id: str):
-    """Generate After-Action Review for a completed exercise.
-
-    Gathers exercise data, objective scores, timeline events, and telemetry.
-    Optionally calls the AI orchestrator for analysis.
-    Builds an AAR report JSON, stores it, and notifies via WebSocket.
-    """
-    logger.info(f"[aar] Generating AAR for exercise {exercise_id}")
-    _notify_api("exercise", {"id": exercise_id, "event": "aar_generating"})
-
-    try:
-        # â”€â”€ Gather exercise data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        with _db_session() as db:
-            exercise_row = db_ops.exercise_for_aar(db, exercise_id)
-
-            if not exercise_row:
-                raise ValueError(f"Exercise {exercise_id} not found")
-
-            objectives = db_ops.objectives_for_aar(db, exercise_id)
-
-        # â”€â”€ Build report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        aar_report, report_html = build_aar_report(exercise_id, exercise_row, objectives)
-
-        # â”€â”€ Optional AI analysis (if orchestrator available) â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        ai_url = os.getenv("AI_ORCHESTRATOR_URL")
-        if ai_url:
-            try:
-                import httpx
-
-                with httpx.Client(timeout=30) as client:
-                    resp = client.post(
-                        f"{ai_url}/analyze-aar",
-                        json=aar_report,
-                    )
-                    if resp.status_code == 200:
-                        aar_report["ai_analysis"] = resp.json()
-            except Exception as ai_err:
-                logger.warning(f"[aar] AI analysis unavailable: {ai_err}")
-                aar_report["ai_analysis"] = None
-
-        # â”€â”€ Store AAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        report_json = json.dumps(aar_report)
-        with _db_session() as db:
-            # Was `INSERT INTO aars`, a table that does not exist. Never replaces an existing
-            # (API-generated, possibly AI-enhanced) report; returns whichever row is stored.
-            aar_id = db_ops.upsert_aar(db, exercise_id, report_json, report_html)
-
-        _notify_api(
-            "exercise",
-            {
-                "id": exercise_id,
-                "event": "aar_ready",
-                "aar_id": aar_id,
-            },
-        )
-
-        logger.info(f"[aar] AAR generated for exercise {exercise_id} (score: {aar_report['summary']['score_pct']}%)")
-        return {"status": "generated", "exercise_id": exercise_id, "aar_id": aar_id}
-
-    except Exception as e:
-        _notify_api(
-            "exercise",
-            {
-                "id": exercise_id,
-                "event": "aar_failed",
-                "error": str(e),
-            },
-        )
-        logger.error(f"[aar] AAR generation FAILED for {exercise_id}: {e}")
-        raise
 
 
 # -- Periodic: Health Check Ranges ----------------------------------------
@@ -646,6 +412,8 @@ def collect_range_metrics(self):
                 **metrics,
             }
             try:
+                from .telemetry_tasks import ingest_telemetry_batch
+
                 ingest_telemetry_batch.delay(range_id, [event])
             except Exception as ingest_err:
                 logger.warning(f"[metrics] Failed to queue telemetry for {range_id}: {ingest_err}")

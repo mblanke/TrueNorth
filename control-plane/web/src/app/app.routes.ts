@@ -92,6 +92,14 @@ export const routes: Routes = [
         title: 'Authoring · Range Designer - TrueNorth Range',
       },
       {
+        // Background noise for one range: white cell only (instructorGuard on the hub;
+        // the API checks noise:read / noise:control on every call).
+        path: 'ranges/:id/noise',
+        loadComponent: () =>
+          import('./features/noise/noise-console.component').then(m => m.NoiseConsoleComponent),
+        title: 'Authoring · Background noise - TrueNorth Range',
+      },
+      {
         path: 'scenarios',
         loadComponent: () =>
           import('./features/scenario-studio/scenario-studio.component').then(m => m.ScenarioStudioComponent),

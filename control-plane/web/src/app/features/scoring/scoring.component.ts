@@ -10,7 +10,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatTableModule } from '@angular/material/table';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { DomSanitizer } from '@angular/platform-browser';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { ActivatedRoute } from '@angular/router';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { AuthService } from '@core/services/auth.service';
@@ -91,24 +92,24 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
           }
         </div>
 
-        <div class="mt-3">
+        <div class="mt-3 aar-actions">
           <button mat-raised-button color="primary" (click)="generateAAR()">
-            <mat-icon>assessment</mat-icon> Generate AAR
+            <mat-icon>assessment</mat-icon> {{ aar() ? 'Regenerate AAR' : 'Generate AAR' }}
           </button>
           @if (aar()) {
-            <button mat-button (click)="viewAARHtml()" class="ml-2">
-              <mat-icon>open_in_new</mat-icon> View HTML Report
+            <button mat-stroked-button (click)="viewAARHtml()" data-testid="aar-view">
+              <mat-icon>article</mat-icon> View report
+            </button>
+            <button mat-stroked-button (click)="downloadAARPdf()" data-testid="aar-pdf">
+              <mat-icon>picture_as_pdf</mat-icon> Download PDF
             </button>
           }
         </div>
 
-        @if (aar()) {
+        @if (aarHtml()) {
           <h2 class="mt-3">After Action Report</h2>
-          <mat-card>
-            <mat-card-content>
-              <pre style="max-height:400px;overflow:auto;font-size:13px;">{{ prettyReport() }}</pre>
-            </mat-card-content>
-          </mat-card>
+          <!-- Sandboxed with no permissions: the report's own CSP forbids scripts as well. -->
+          <iframe class="aar-frame" sandbox="" title="After-action report" [srcdoc]="aarHtml()"></iframe>
         }
       }
     </div>
@@ -120,6 +121,8 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
     @media (max-width: 800px) { .review-selector { grid-template-columns: minmax(0, 1fr); } }
     .achieved { border-left: 4px solid var(--success); }
     .meta { color: var(--text-muted); font-size: 13px; }
+    .aar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .aar-frame { width: 100%; height: 70vh; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
     :host > .page-container > mat-form-field { width: 100%; max-width: 500px; display: block; margin-bottom: 16px; }
   `],
 })
@@ -132,13 +135,26 @@ export class ScoringComponent implements OnInit {
   /** Students see objectives but cannot award them (objective:ack). */
   readonly canAck = this.auth.canAcknowledgeObjectives;
 
+  private route = inject(ActivatedRoute);
+
   exercises = signal<ExerciseSummary[]>([]);
   selectedExerciseId = '';
   selectedExercise = signal<Exercise | null>(null);
   objectives = signal<Objective[]>([]);
   aar = signal<AAR | null>(null);
+  /** The report page, fetched through the API client (so it carries the bearer token) and
+   *  shown in a sandboxed iframe. Trusted only for that srcdoc: the API escapes every value. */
+  aarHtml = signal<SafeHtml | null>(null);
 
-  ngOnInit(): void { this.api.listExercises().subscribe(e => this.exercises.set(e)); }
+  ngOnInit(): void {
+    this.api.listExercises().subscribe(e => this.exercises.set(e));
+    // /scoring?exercise=<id> opens straight onto one exercise's review.
+    const preselect = this.route.snapshot.queryParamMap.get('exercise');
+    if (preselect) {
+      this.selectedExerciseId = preselect;
+      this.loadExercise();
+    }
+  }
 
   scorePercent(): number {
     const ex = this.selectedExercise();
@@ -146,19 +162,13 @@ export class ScoringComponent implements OnInit {
     return Math.round((ex.total_score / ex.max_score) * 100);
   }
 
-  prettyReport(): string {
-    const a = this.aar();
-    if (!a) return '';
-    try { return JSON.stringify(JSON.parse(a.report_json), null, 2); }
-    catch { return a.report_json; }
-  }
-
   loadExercise(): void {
     if (!this.selectedExerciseId) return;
+    this.aarHtml.set(null);
     this.api.getExercise(this.selectedExerciseId).subscribe(e => this.selectedExercise.set(e));
     this.api.listObjectives(this.selectedExerciseId).subscribe(o => this.objectives.set(o));
     this.api.getAAR(this.selectedExerciseId).subscribe({
-      next: a => this.aar.set(a),
+      next: a => { this.aar.set(a); this.viewAARHtml(); },
       error: () => this.aar.set(null),
     });
   }
@@ -172,12 +182,36 @@ export class ScoringComponent implements OnInit {
 
   generateAAR(): void {
     this.api.generateAAR(this.selectedExerciseId).subscribe({
-      next: a => { this.aar.set(a); this.notify.success('AAR generated'); },
+      next: a => {
+        this.aar.set(a);
+        this.notify.success('AAR generated');
+        this.viewAARHtml();
+      },
       error: () => this.notify.error('AAR generation failed'),
     });
   }
 
+  /** Was window.open on /api/.../aar/html: a plain navigation sends no bearer token, so
+   *  outside dev mode it opened a 401. */
   viewAARHtml(): void {
-    window.open(`/api/exercises/${this.selectedExerciseId}/aar/html`, '_blank');
+    this.api.getAARHtml(this.selectedExerciseId).subscribe({
+      next: html => this.aarHtml.set(this.sanitizer.bypassSecurityTrustHtml(html)),
+      error: (err) => this.notify.error(err?.error?.detail || 'Could not load the report'),
+    });
+  }
+
+  downloadAARPdf(): void {
+    const id = this.selectedExerciseId;
+    this.api.getAARPdf(id).subscribe({
+      next: blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `aar-${id}.pdf`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      },
+      error: () => this.notify.error('PDF download failed. Generate the AAR first.'),
+    });
   }
 }

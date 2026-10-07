@@ -10,7 +10,7 @@ Read the applicable repository instructions and relevant source before editing.
 
 ## Start here
 
-- `telemetry-pipeline/pipeline`
+- `control-plane/api/app/telemetry_mitre.py`, `control-plane/worker/worker/telemetry_tasks.py`
 - `control-plane/api/app/xapi.py`
 - `control-plane/api/app/lms`
 - `control-plane/api/app/search_backends`

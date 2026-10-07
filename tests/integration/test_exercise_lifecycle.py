@@ -122,7 +122,10 @@ class TestExerciseLifecycle:
         state = api_client.get(f"/exercises/{eid}").json()["state"]
         if state != "completed":
             resp = api_client.post(f"/exercises/{eid}/complete")
-            assert resp.status_code in (200, 202), resp.text
+            # The mock runner can finish between the read above and this call; a 409
+            # saying it is already completed is that race, not a defect.
+            already_done = resp.status_code == 409 and "is completed" in resp.text
+            assert resp.status_code in (200, 202) or already_done, resp.text
         _poll_state(api_client, f"/exercises/{eid}", "completed")
 
     def test_completing_twice_is_rejected(self, api_client):

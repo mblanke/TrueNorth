@@ -227,6 +227,7 @@ def register_urls(
             tenant_id=user.tenant_id,
         )
         db.add(doc)
+        db.flush()  # doc.id is assigned at flush; without it the ingest task got None ids
         doc_ids.append(doc.id)
     curriculum.status = CurriculumStatus.ingesting
     db.commit()
@@ -449,6 +450,8 @@ async def _ingest_documents(curriculum_id: uuid.UUID, doc_ids: list[uuid.UUID]) 
     try:
         embed_model = ""
         for doc_id in doc_ids:
+            # tenant-safe: background task; doc_ids were created or selected by a handler
+            # that first passed _get_owned() for this curriculum.
             doc = db.get(CurriculumDocument, doc_id)
             if not doc:
                 continue
@@ -488,6 +491,7 @@ async def _ingest_documents(curriculum_id: uuid.UUID, doc_ids: list[uuid.UUID]) 
                 doc.error = str(exc)[:2000]
                 db.commit()
 
+        # tenant-safe: same curriculum the scheduling handler checked with _get_owned().
         curriculum = db.get(Curriculum, curriculum_id)
         if curriculum:
             docs = curriculum.documents

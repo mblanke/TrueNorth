@@ -2,6 +2,16 @@
 
 Maps NICE/ATT&CK competencies to exercise objectives, tracks user proficiency,
 identifies skill gaps, and manages external certifications.
+
+Access:
+
+- the competency catalogue is platform-wide (no tenant); anyone signed in may read it,
+  adding to it needs ``course:author``;
+- a user's profile, skill gaps and certifications are their learning record
+  (``app.tenancy.authorize_record_access``): their own always, someone else's with
+  ``learning_record:read`` / ``:write`` and only inside the caller's tenant (404 outside);
+- a competency *assertion* is a grade, so it always needs ``learning_record:write`` —
+  a Student cannot assert their own proficiency.
 """
 
 from __future__ import annotations
@@ -11,6 +21,8 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import case, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
@@ -21,7 +33,9 @@ from ..models import (
     CompetencyAssertion,
     CompetencyFramework,
     ProficiencyLevel,
+    User,
 )
+from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
     CertificationIn,
     CertificationOut,
@@ -30,10 +44,21 @@ from ..schemas import (
     CompetencyProfileOut,
     SkillGapOut,
 )
+from ..tenancy import authorize_record_access, tenant_uuid
 
 logger = logging.getLogger("truenorth.competency")
 
 router = APIRouter(prefix="/competency", tags=["competency"])
+
+author = require_permission(Permission.COURSE_AUTHOR)
+
+
+def _enum_or_422(enum_cls, value: str, field: str):
+    try:
+        return enum_cls(value)
+    except ValueError:
+        allowed = ", ".join(m.value for m in enum_cls)
+        raise HTTPException(422, f"Invalid {field} {value!r}; expected one of: {allowed}") from None
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -69,20 +94,24 @@ def create_competency(
     level: str = "",
     parent_code: str | None = None,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(author),
 ):
     """Create a competency definition (admin/instructor)."""
     comp = Competency(
         code=code,
         name=name,
         description=description,
-        framework=CompetencyFramework(framework),
+        framework=_enum_or_422(CompetencyFramework, framework, "framework"),
         category=category,
         level=level,
         parent_code=parent_code,
     )
     db.add(comp)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, f"Competency {code!r} already exists in framework {framework!r}") from None
     db.refresh(comp)
     return comp
 
@@ -90,7 +119,7 @@ def create_competency(
 @router.post("/frameworks/import-nice", status_code=status.HTTP_201_CREATED)
 def import_nice_framework(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(author),
 ):
     """Seed the NICE Workforce Framework (SP 800-181r1) core work roles and KSAs.
 
@@ -230,7 +259,8 @@ def get_competency_profile(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Get aggregated competency profile for a user."""
-    assertions = db.query(CompetencyAssertion).filter(CompetencyAssertion.user_id == user_id).all()
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_READ)
+    assertions =db.query(CompetencyAssertion).filter(CompetencyAssertion.user_id == user_id).all()
 
     by_framework: dict[str, int] = {}
     by_proficiency: dict[str, int] = {}
@@ -260,6 +290,7 @@ def get_skill_gaps(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Identify competencies required by target role but not yet demonstrated."""
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_READ)
     # Get all competencies for the target role category
     target = db.query(Competency).filter(Competency.code == target_role).first()
     if not target:
@@ -311,11 +342,17 @@ def create_assertion(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Record a competency assertion for a user."""
+    """Record a competency assertion for a user (``learning_record:write``, never self-service)."""
+    if not user_has_permission(user, Permission.LEARNING_RECORD_WRITE):
+        raise HTTPException(403, f"Missing permission: {Permission.LEARNING_RECORD_WRITE.value}")
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_WRITE)
+    level = _enum_or_422(ProficiencyLevel, proficiency, "proficiency")
+    if db.get(Competency, competency_id) is None:
+        raise HTTPException(404, "Competency not found")
     assertion = CompetencyAssertion(
         user_id=user_id,
         competency_id=competency_id,
-        proficiency=ProficiencyLevel(proficiency),
+        proficiency=level,
         source=source,
         evidence_refs=json.dumps(evidence_refs or []),
     )
@@ -339,6 +376,7 @@ def list_user_certifications(
     user: CurrentUser = Depends(get_current_user),
 ):
     """List all certifications for a user."""
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_READ)
     return (
         db.query(Certification).filter(Certification.user_id == user_id).order_by(Certification.issued_at.desc()).all()
     )
@@ -351,7 +389,8 @@ def add_certification(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Add a certification record for a user."""
+    """Add a certification record for a user (self-reported, or by an instructor)."""
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_WRITE)
     cert = Certification(
         user_id=user_id,
         cert_name=body.cert_name,
@@ -396,7 +435,11 @@ def get_competency_heatmap(
     ]
 
     # Get distinct work roles from competencies
-    work_roles_rows = db.query(Competency.category).filter(Competency.framework == "NICE").distinct().all()
+    # The enum member, not "NICE": the column stores "nice", so the literal never matched
+    # and the heatmap always fell back to the placeholder roles with zero scores.
+    work_roles_rows = (
+        db.query(Competency.category).filter(Competency.framework == CompetencyFramework.nice).distinct().all()
+    )
     work_roles = (
         [r[0] for r in work_roles_rows]
         if work_roles_rows
@@ -422,8 +465,6 @@ def get_competency_heatmap(
     values = []
     for x_idx, _role in enumerate(work_roles):
         for y_idx, category in enumerate(nice_categories):
-            from sqlalchemy import case, func
-
             score_expr = case(
                 (CompetencyAssertion.proficiency == "novice", 10),
                 (CompetencyAssertion.proficiency == "beginner", 30),
@@ -435,9 +476,12 @@ def get_competency_heatmap(
             avg_query = (
                 db.query(func.avg(score_expr))
                 .join(Competency, CompetencyAssertion.competency_id == Competency.id)
+                # "team" means the caller's tenant, not every tenant on the platform.
+                .join(User, CompetencyAssertion.user_id == User.id)
                 .filter(
                     Competency.category == category,
-                    Competency.framework == "NICE",
+                    Competency.framework == CompetencyFramework.nice,
+                    User.tenant_id == tenant_uuid(user),
                 )
             )
             if view == "individual":

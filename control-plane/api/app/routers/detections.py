@@ -134,6 +134,8 @@ async def submit_detection(
         raise HTTPException(404, "Objective not found")
     if obj.achieved:
         raise HTTPException(409, "Objective already achieved")
+    # tenant-safe: reached only through ex.scenario_id of an exercise fetched above with
+    # get_owned; only its YAML (the answer key) is read, never returned.
     scenario = db.get(Scenario, ex.scenario_id) if ex.scenario_id else None
     try:
         key = credit.answer_key(obj.validator, obj.validator_params, obj.ref_id, scenario.yaml if scenario else None)
@@ -154,6 +156,7 @@ async def submit_detection(
         logger.warning("[detections] exercise %s objective %s unscored: %s", ex.id, ref_id, exc)
         raise HTTPException(503, "The event store could not judge this detection; try again (no attempt used)") from exc
 
+    # tenant-safe: re-reading the row this request reserved for the caller's own exercise.
     row = db.get(DetectionSubmission, row.id)
     row.events_matched, row.on_target = judged.events_matched, judged.on_target
     row.matched_ids = json.dumps(judged.matched_ids)
@@ -219,6 +222,7 @@ def _reserve(db, exercise_id, objective_id, ref_id, user_id, start, key, query, 
 
 
 def _settle(db: Session, row: DetectionSubmission, verdict: str, reason: str) -> None:
+    # tenant-safe: the row the caller's own request reserved (submit_detection), re-read.
     row = db.get(DetectionSubmission, row.id)
     row.verdict, row.reason = verdict, reason
     db.commit()

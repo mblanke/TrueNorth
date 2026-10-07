@@ -38,4 +38,4 @@
       OpenSearch templates: {{ (tn_os_templates.stdout_lines | default([]) | length) }} present.
       {{ 'Telemetry ingest has somewhere to land.'
          if (tn_os_templates.stdout_lines | default([]) | length) > 0
-         else 'NONE — telemetry-pipeline will index into dynamically-mapped indices.' }}
+         else 'NONE — range-* telemetry will index into dynamically-mapped indices.' }}

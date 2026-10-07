@@ -24,6 +24,7 @@ import yaml as pyyaml
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import engine_bridge
@@ -45,7 +46,15 @@ class YamlValidateIn(BaseModel):
 
 
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
-    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid))
+    db.add(
+        AuditLog(
+            user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),
+            action=action,
+            resource_type=rtype,
+            resource_id=rid,
+        )
+    )
 
 
 @router.post("/validate")
@@ -155,7 +164,17 @@ def delete_scenario(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.SCENARIO_DELETE)),
 ):
-    """Delete a scenario.  **Permission: scenario:delete**"""
+    """Delete a scenario.  **Permission: scenario:delete**
+
+    409 while any exercise (including a soft-deleted one) still references it.
+    """
     sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
     db.delete(sc)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Scenario is used by one or more exercises; delete those exercises first",
+        ) from None

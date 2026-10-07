@@ -26,6 +26,7 @@ from ..auth import CurrentUser, require_role
 from ..db import get_db
 from ..models import SecurityGroup, User, UserRole
 from ..rbac import Permission, require_permission
+from ..tenancy import tenant_uuid
 
 logger = logging.getLogger("truenorth.api.ad_sync")
 
@@ -83,11 +84,23 @@ def ad_sync_status(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.USER_READ)),
 ):
-    """Return current AD sync status and statistics.  **Permission: user:read**"""
-    ad_users = db.query(User).filter(User.source.in_(AD_SOURCES)).count()
-    ad_groups = db.query(SecurityGroup).filter(SecurityGroup.ad_object_guid.isnot(None)).count()
+    """Return current AD sync status and statistics.  **Permission: user:read**
+
+    Counts are the caller's tenant only — a count of another tenant's directory
+    users is still disclosure. The Keycloak federation fields describe the shared
+    identity provider and are the same for everyone.
+    """
+    tid = tenant_uuid(user)
+    ad_users = db.query(User).filter(User.tenant_id == tid, User.source.in_(AD_SOURCES)).count()
+    ad_groups = (
+        db.query(SecurityGroup)
+        .filter(SecurityGroup.tenant_id == tid, SecurityGroup.ad_object_guid.isnot(None))
+        .count()
+    )
     last_sync = (
-        db.query(func.max(User.last_synced_at)).filter(User.source.in_(AD_SOURCES)).scalar()
+        db.query(func.max(User.last_synced_at))
+        .filter(User.tenant_id == tid, User.source.in_(AD_SOURCES))
+        .scalar()
     )
     config = _get_ldap_config()
     kc = _keycloak_config()

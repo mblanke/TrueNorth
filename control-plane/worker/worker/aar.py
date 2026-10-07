@@ -1,15 +1,32 @@
 """After-action report body built by the worker's ``generate_aar`` task.
 
-Uses the API's report shape (``control-plane/api/app/routers/exercises.py`` generate_aar):
-its PDF and HTML views read ``exercise`` and ``scores``. The flat keys the worker used to
-write are kept alongside for existing consumers.
+Uses the API's report shape (``control-plane/api/app/aar_report.py``): its PDF and HTML
+views read ``exercise``, ``scores``, ``objectives`` and ``timeline``. The worker has the
+exercise row and its objectives, so it fills those sections; injects and participants
+come from the API's ``POST /exercises/{id}/aar/generate``. The flat keys the worker used
+to write are kept alongside for existing consumers.
 """
 
 from __future__ import annotations
 
-import html
 from datetime import UTC, datetime
 from typing import Any
+
+from .aar_html import render_html
+
+
+def _timeline(started: str | None, completed: str | None, objectives) -> list[dict[str, Any]]:
+    events = [{"at": started, "kind": "lifecycle", "title": "Exercise started", "detail": ""}] if started else []
+    events += [
+        {"at": str(o[6]), "kind": str(getattr(o[2], "value", o[2])), "title": f"Objective {o[0]} achieved", "detail": o[1] or ""}
+        for o in objectives
+        if o[4] and o[6]
+    ]
+    if completed:
+        events.append({"at": completed, "kind": "lifecycle", "title": "Exercise completed", "detail": ""})
+    # ISO strings from one database sort chronologically; the stable sort keeps
+    # "started" first and "completed" last on ties.
+    return sorted(events, key=lambda e: e["at"])
 
 
 def build_report(exercise_id: str, exercise_row, objectives) -> tuple[dict[str, Any], str]:
@@ -49,6 +66,8 @@ def build_report(exercise_id: str, exercise_row, objectives) -> tuple[dict[str, 
             "achieved": sum(1 for o in objectives if o[4]),
             "score_pct": pct,
         },
+        "injects": [],
+        "timeline": _timeline(started, completed, objectives),
+        "participants": [],
     }
-    report_html = f"<html><body><h1>AAR: {html.escape(str(name))}</h1><p>Score: {pct}%</p></body></html>"
-    return report, report_html
+    return report, render_html(report)

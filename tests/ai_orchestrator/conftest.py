@@ -54,7 +54,7 @@ else:
     _backends_pkg = sys.modules[_NS_BACKENDS]  # type: ignore[assignment]
 
 # ── 3. Load leaf modules (dependency order: base first) ─────────────────
-for _leaf in ("base", "mock", "openai", "anthropic", "vllm"):
+for _leaf in ("base", "mock", "openai", "anthropic", "vllm", "ollama"):
     _load_submodule(_leaf)
 
 # ── 4. Execute __init__.py into the _backends_pkg stub ──────────────────

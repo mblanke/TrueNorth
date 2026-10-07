@@ -23,8 +23,16 @@ sys.path.insert(0, str(API))
 
 
 def _tenanted_models() -> set[str]:
+    import importlib
+
     from app.models import Base
 
+    # Section modules (app/<section>/models.py: lab_sessions, course_releases, ...) map
+    # onto the same Base but only register once imported. Without this the set depended
+    # on whether another test had imported app.main first, so a run of this file alone
+    # missed LabSession and CourseRelease.
+    for mod in sorted((API / "app").glob("*/models.py")):
+        importlib.import_module(f"app.{mod.parent.name}.models")
     return {m.class_.__name__ for m in Base.registry.mappers if "tenant_id" in m.class_.__table__.columns}
 
 
@@ -102,6 +110,77 @@ def test_the_guard_detects_every_by_id_idiom(sample):
     m = QUERY.search(sample)
     assert m, f"detector misses: {sample}"
     assert BY_ID.search(m.group(2)), f"not recognised as a by-id lookup: {sample}"
+
+
+# `db.get(Model, id)` is a primary-key lookup with no room for a tenant predicate, and
+# the QUERY pattern above never saw it: directory.py and auth_zones.py did every by-id
+# fetch that way and leaked across tenants while this guard stayed green (fixed
+# 2026-10-07). A `db.get` of a tenant-owned model needs a `# tenant-safe:` waiver in
+# the preceding 4 lines, or should be `app.tenancy.get_owned()`.
+DB_GET = re.compile(r"db\.get\((\w+)\s*,")
+
+# Known unscoped `db.get` calls, per router file. A ratchet: a count may go down (lower
+# it here), never up, and a file not listed must have none.
+#
+# Reviewed 2026-10-07 (tenancy follow-up); every other file is at 0:
+# - hypervisors.py (6): real leaks, fixed with get_owned.
+# - ai_config.py (6): platform-wide config behind a platform-admin-only router; one
+#   waived helper.
+# - lab_sessions.py (3), curriculum.py (2), integrations.py (1): already scoped (tenant
+#   compared on the next line, signed lab/deep-link token, or ids from a handler that
+#   passed get_owned); waived in place.
+# - quizzes.py (1): the quiz of an attempt fetched by the caller's user_id; waived.
+# The ratchet is empty: every router must now have none.
+DB_GET_BASELINE: dict[str, int] = {}
+
+
+def _db_get_findings() -> dict[str, list[str]]:
+    tenanted = _tenanted_models()
+    out: dict[str, list[str]] = {}
+    for f in sorted(ROUTERS.glob("*.py")):
+        src = f.read_text(encoding="utf-8")
+        lines = src.splitlines()
+        for m in DB_GET.finditer(src):
+            if m.group(1) not in tenanted:
+                continue
+            line = src[: m.start()].count("\n") + 1
+            if "tenant-safe:" in "\n".join(lines[max(0, line - 5) : line]):
+                continue
+            out.setdefault(f.name, []).append(f"{f.name}:{line} db.get({m.group(1)}, ...)")
+    return out
+
+
+def test_no_new_unscoped_db_get_on_tenant_models():
+    over = []
+    for name, hits in _db_get_findings().items():
+        allowed = DB_GET_BASELINE.get(name, 0)
+        if len(hits) > allowed:
+            over.append(f"{name}: {len(hits)} > baseline {allowed}\n    " + "\n    ".join(hits))
+    assert not over, (
+        "db.get() of a tenant-owned model returns another tenant's row by id:\n  "
+        + "\n  ".join(over)
+        + "\n\nUse app.tenancy.get_owned(), or justify with a '# tenant-safe:' comment."
+    )
+
+
+@pytest.mark.parametrize(
+    "router",
+    [
+        "directory.py", "auth_zones.py", "storage.py", "ad_sync.py", "admin.py",
+        # reviewed in the 2026-10-07 tenancy follow-up
+        "ai_config.py", "hypervisors.py", "lab_sessions.py", "curriculum.py", "integrations.py",
+        "quizzes.py",
+    ],
+)
+def test_platform_routers_have_no_unscoped_db_get(router):
+    """These routers were fixed or reviewed outright; they carry no baseline."""
+    assert router not in DB_GET_BASELINE
+    assert not _db_get_findings().get(router), _db_get_findings()[router]
+
+
+def test_the_db_get_detector_fires():
+    assert DB_GET.search("ou = db.get(OrganizationalUnit, str(ou_id))").group(1) == "OrganizationalUnit"
+    assert "OrganizationalUnit" in _tenanted_models()
 
 
 def test_foreign_key_filters_are_not_mistaken_for_by_id_lookups():

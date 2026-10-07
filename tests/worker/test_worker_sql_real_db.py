@@ -301,8 +301,9 @@ class TestRealBackendExercise:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="needs the worker/tasks.py half of ADR 0005 (another stage-4 slot owns tasks.py); "
-        "patch: .agent-patches/s4-detection-tasks.patch. Drop this marker when it lands.",
+        reason="needs the worker half of ADR 0005 (the run loop, now worker/exercise_run.py, owned by "
+        "the scenario-engine slot); intent in .agent-patches/s4-detection-tasks.patch. Drop this marker "
+        "when it lands.",
     )
     def test_timeline_end_leaves_it_running_and_achieves_nothing(self, world, monkeypatch, notify):
         # The blocker: the run used to score the attack's own telemetry and then close the
@@ -355,7 +356,10 @@ class TestAfterActionReports:
         assert report["exercise"]["name"] == "e1" and report["exercise"]["state"] == "completed"
         assert report["scores"] == {"total": 30, "max": 100, "pct": 30.0}
         assert {o["ref_id"]: o["type"] for o in report["objectives"]} == {"o1": "detection", "o2": "detection"}
-        assert "Score: 30.0%" in aar.report_html
+        # The full page (worker/aar_html.py), not the old one-line stub.
+        assert "<h1>After-Action Report: e1</h1>" in aar.report_html
+        assert "30.0%" in aar.report_html and 'id="objectives"' in aar.report_html
+        assert "Not achieved" in aar.report_html and "alert 42" in aar.report_html
 
         # A second run must not replace the stored report; it reports the stored row's id.
         world.exercise.total_score = 100

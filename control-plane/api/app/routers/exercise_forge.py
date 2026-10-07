@@ -201,6 +201,9 @@ async def generate_exercise(
         parsed = yaml.safe_load(scenario_yaml)
     except yaml.YAMLError as e:
         raise HTTPException(502, f"AI generated invalid YAML: {e}") from e
+    if not isinstance(parsed, dict):
+        # A bare string or list parses fine but is not a scenario (and used to 500 below).
+        raise HTTPException(502, "AI output is not a scenario mapping.")
 
     scenario_name = req.name_override or parsed.get("name", f"forged-{uuid.uuid4().hex[:8]}")
 
@@ -437,7 +440,8 @@ async def _call_forge_ai(
         except httpx.HTTPStatusError as e:
             logger.error("AI orchestrator returned %s: %s", e.response.status_code, e.response.text)
             raise HTTPException(502, "AI orchestrator failed to generate exercise.") from e
-        except httpx.ConnectError as e:
+        except httpx.RequestError as e:
+            # Connect failures, timeouts, dropped connections: the orchestrator is not answering.
             logger.error("Cannot reach AI orchestrator: %s", e)
             raise HTTPException(503, "AI orchestrator is unavailable.") from e
 

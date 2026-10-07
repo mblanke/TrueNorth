@@ -361,13 +361,25 @@ def _template_curriculum(db: Session, template: Template) -> dict:
     }
 
 
+# The qualification spine is platform-global in practice: ``Qualification.qsp_code`` is
+# unique across all tenants, and both crosswalk imports upsert by that code, so an
+# import rewrites the POs/EOs (and their competency links) that every tenant's courses,
+# ranges and progress hang off — whichever tenant first created the row. Changing it is
+# therefore a platform action and needs the platform-level ``tenant:read`` (the
+# convention /audit-log uses), not only ``course:author``.
+SPINE_WRITE = require_permission(Permission.COURSE_AUTHOR, Permission.TENANT_READ)
+
+
 @router.post("/import-crosswalk")
 async def import_crosswalk(
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(SPINE_WRITE),
 ) -> dict:
-    """Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent)."""
+    """Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).
+
+    **Permission: course:author + tenant:read** — platform admin only (was: any
+    signed-in user, Students included). See ``SPINE_WRITE``."""
     raw = await file.read()
     if len(raw) > MAX_CSV_BYTES:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="crosswalk too large")
@@ -585,9 +597,12 @@ async def import_competency_crosswalk(
     taxonomy: UploadFile,
     crosswalk: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(SPINE_WRITE),
 ) -> dict:
     """Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).
+
+    **Permission: course:author + tenant:read** — platform admin only; it rewrites the
+    shared spine's PO links (see ``SPINE_WRITE``).
 
     Upload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.
     """
@@ -610,9 +625,11 @@ async def import_competency_crosswalk(
 @router.post("/generate-learning-paths")
 def generate_learning_paths(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ) -> dict:
-    """Build per-PO courses, qualification paths, role paths, and the developmental progression."""
+    """Build per-PO courses, qualification paths, role paths, and the developmental progression.
+
+    **Permission: course:author.**"""
     try:
         stats = qsp_paths.generate_learning_paths(db, tenant_id=user.tenant_id or None)
     except Exception as exc:  # noqa: BLE001
@@ -625,9 +642,11 @@ def generate_learning_paths(
 @router.post("/generate-exercises")
 def generate_exercises(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR, Permission.EXERCISE_CREATE)),
 ) -> dict:
-    """Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range)."""
+    """Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).
+
+    **Permission: course:author and exercise:create.**"""
     try:
         stats = qsp_paths.generate_exercises(db, tenant_id=user.tenant_id or None)
     except Exception as exc:  # noqa: BLE001

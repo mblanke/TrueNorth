@@ -2,6 +2,13 @@
 
 DB-backed CRUD for AI backends, fleet nodes, model routing,
 real test-generate via configured backends, and fleet summary.
+
+Tenancy: AI configuration is platform-wide, not per tenant. There is one primary
+backend for the whole platform (``test_generate`` and ``set_primary_backend`` act
+across every row), fleet nodes and model routes carry no tenant at all, the seeded
+default backend has a NULL ``tenant_id`` and nothing here ever sets one. The whole
+router needs ``ai_config:write``, which only ``admin`` (the TN-Platform-Admins group)
+holds. ``AIBackendConfig.tenant_id`` is an unused column; reviewed 2026-10-07.
 """
 
 from __future__ import annotations
@@ -18,6 +25,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..ai_backends import get_ai_engine
 from ..db import get_db
 from ..models import AIBackendConfig, AIFleetNode, AIModelRoute
 from ..rbac import Permission, require_permission
@@ -38,6 +46,15 @@ logger = logging.getLogger("truenorth.api.ai_config")
 #
 # Every route here was previously reachable with no credentials at all.
 router = APIRouter(prefix="/ai-config", tags=["AI Orchestrator"], dependencies=[Depends(require_permission(Permission.AI_CONFIG_WRITE))])
+
+
+def _backend(db: Session, backend_id: uuid.UUID) -> AIBackendConfig:
+    # tenant-safe: platform-wide config behind a platform-admin-only router (module
+    # docstring); there is no tenant predicate to apply.
+    backend = db.get(AIBackendConfig, str(backend_id))
+    if not backend:
+        raise HTTPException(404, "Backend not found")
+    return backend
 
 
 # -- Backends CRUD -------------------------------------------------------
@@ -66,17 +83,13 @@ def create_backend(payload: AIBackendConfigIn, db: Session = Depends(get_db)):
 
 @router.get("/backends/{backend_id}", response_model=AIBackendConfigOut)
 def get_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
     return backend
 
 
 @router.patch("/backends/{backend_id}", response_model=AIBackendConfigOut)
 def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Session = Depends(get_db)):
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "api_key":
             backend.api_key_encrypted = value
@@ -89,9 +102,7 @@ def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Se
 
 @router.delete("/backends/{backend_id}", status_code=204, response_class=Response)
 def delete_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
     db.delete(backend)
     db.commit()
 
@@ -99,9 +110,7 @@ def delete_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
 # -- Set Primary ---------------------------------------------------------
 @router.post("/backends/{backend_id}/set-primary")
 def set_primary_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
     for other in db.query(AIBackendConfig).filter(AIBackendConfig.id != str(backend_id)).all():
         other.is_primary = False
     backend.is_primary = True
@@ -130,9 +139,7 @@ def add_fleet_node(
     db: Session = Depends(get_db),
 ):
     """Add a GPU/inference node to a backend.  Accepts JSON body."""
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    _backend(db, backend_id)  # 404 on an unknown backend
     node = AIFleetNode(
         backend_id=str(backend_id),
         node_name=payload.node_name,
@@ -209,88 +216,23 @@ KNOWN_OLLAMA_NODES = [
 ]
 
 
-def _probe_ollama_node(host: str, port: int, timeout: float = 5.0) -> dict:
-    """Probe a single Ollama node and return status + model list."""
-    base = f"http://{host}:{port}"
-    result: dict = {"url": base, "online": False, "models": [], "version": None, "running": []}
-    try:
-        # Get version
-        vr = httpx.get(f"{base}/api/version", timeout=timeout)
-        vr.raise_for_status()
-        result["version"] = vr.json().get("version")
-
-        # Get all available models
-        tr = httpx.get(f"{base}/api/tags", timeout=timeout)
-        tr.raise_for_status()
-        models = tr.json().get("models", [])
-        result["models"] = [
-            {
-                "name": m["name"],
-                "size_bytes": m.get("size", 0),
-                "family": m.get("details", {}).get("family", ""),
-                "parameter_size": m.get("details", {}).get("parameter_size", ""),
-                "quantization": m.get("details", {}).get("quantization_level", ""),
-            }
-            for m in models
-        ]
-
-        # Get currently loaded/running models
-        pr = httpx.get(f"{base}/api/ps", timeout=timeout)
-        if pr.status_code == 200:
-            result["running"] = [rm.get("name", "") for rm in pr.json().get("models", [])]
-
-        result["online"] = True
-    except Exception as exc:
-        logger.warning("Probe failed for %s:%s — %s", host, port, exc)
-    return result
-
-
-def _probe_openai_engine(base_url: str, api_key: str | None, timeout: float = 5.0) -> dict:
-    """Probe an OpenAI-compatible engine (e.g. LiteLLM/vLLM) via GET /models."""
-    base = base_url.rstrip("/")
-    result: dict = {"url": base, "online": False, "models": [], "version": None, "running": []}
-    try:
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        r = httpx.get(f"{base}/models", headers=headers, timeout=timeout)
-        r.raise_for_status()
-        data = r.json().get("data", [])
-        result["models"] = [
-            {
-                "name": m.get("id", "unknown"),
-                "size_bytes": 0,
-                "family": m.get("owned_by", ""),
-                "parameter_size": "",
-                "quantization": "",
-            }
-            for m in data
-        ]
-        result["running"] = [m["name"] for m in result["models"]]
-        result["online"] = True
-    except Exception as exc:
-        logger.warning("OpenAI-compatible probe failed for %s — %s", base_url, exc)
-    return result
-
-
-# Backend types that speak the OpenAI-compatible API (LiteLLM, vLLM, Azure).
-_OPENAI_COMPATIBLE = {"openai", "azure_openai", "vllm", "litellm"}
-
-
 @router.post("/backends/{backend_id}/discover")
 def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
     """Scan known Ollama nodes on the LAN, upsert fleet node records, and return results."""
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
 
-    openai_like = backend.backend_type in _OPENAI_COMPATIBLE
+    # The adapter decides what to probe: OpenAI-compatible engines (LiteLLM/vLLM)
+    # serve models at the backend base_url, Ollama per LAN node. Unknown types
+    # are probed as Ollama nodes, as before.
+    engine = get_ai_engine(backend.backend_type, default="ollama")
     scan_results = []
     for known in KNOWN_OLLAMA_NODES:
-        # OpenAI-compatible backends (LiteLLM/vLLM) expose models at the backend
-        # base_url, not on the Ollama port. Probe accordingly.
-        if openai_like:
-            probe = _probe_openai_engine(backend.base_url, backend.api_key_encrypted)
-        else:
-            probe = _probe_ollama_node(known["host"], known["port"])
+        probe = engine.probe(
+            base_url=backend.base_url,
+            api_key=backend.api_key_encrypted,
+            host=known["host"],
+            port=known["port"],
+        )
 
         # Upsert fleet node
         existing = (
@@ -346,53 +288,6 @@ def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
 
 
 # -- Test Generate (real backend routing) --------------------------------
-def _call_ollama(base_url: str, prompt: str, timeout: int, model: str = "llama3.1:latest") -> dict:
-    """Call Ollama /api/generate endpoint on a real Ollama node."""
-    r = httpx.post(
-        f"{base_url.rstrip('/')}/api/generate",
-        json={"model": model, "prompt": prompt, "stream": False},
-        timeout=timeout,
-    )
-    r.raise_for_status()
-    data = r.json()
-    return {"response": data.get("response", ""), "model": data.get("model", "unknown")}
-
-
-def _call_openai(base_url: str, api_key: str | None, prompt: str, timeout: int, model: str = "") -> dict:
-    """Call OpenAI-compatible /v1/chat/completions endpoint.
-
-    ``base_url`` may already include ``/v1`` (e.g. LiteLLM ``.../v1``); avoid
-    doubling it. ``model`` must be a name the engine actually serves.
-    """
-    base = base_url.rstrip("/")
-    url = f"{base}/chat/completions" if base.endswith("/v1") else f"{base}/v1/chat/completions"
-    headers = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    r = httpx.post(
-        url,
-        json={
-            "model": model or "agent",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 256,
-        },
-        headers=headers,
-        timeout=timeout,
-    )
-    r.raise_for_status()
-    data = r.json()
-    msg = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-    return {"response": msg, "model": data.get("model", "unknown")}
-
-
-def _call_mock(prompt: str) -> dict:
-    """Return a mock response for testing."""
-    return {
-        "response": f"[Mock AI] Echo: {prompt[:200]}",
-        "model": "mock-v1",
-    }
-
-
 @router.get("/models")
 def list_available_models(db: Session = Depends(get_db)):
     """Return all models across online fleet nodes."""
@@ -457,32 +352,35 @@ def test_generate(
     )
 
     if not primary:
-        result = _call_mock(prompt)
+        result = get_ai_engine("mock").generate(prompt, base_url="")
         result["backend"] = "mock (no primary configured)"
         result["latency_ms"] = 0
         return result
 
+    # Unknown backend types answer from the mock, as they always have.
+    engine = get_ai_engine(primary.backend_type, default="mock")
     t0 = time.time()
     try:
-        if primary.backend_type == "ollama":
-            # Route through a real fleet node, not the base_url (Open WebUI)
+        target_url = primary.base_url
+        node_label = None
+        if engine.uses_fleet_nodes:
+            # Route through a real fleet node, not the base_url (Open WebUI);
+            # with no nodes discovered yet, fall back to base_url.
             node = _pick_ollama_node(db, str(primary.id), model)
             if node:
                 target_url = node.url
                 node_label = f"{node.node_name} ({node.url})"
             else:
-                # No fleet nodes discovered yet — fall back to base_url
-                target_url = primary.base_url
                 node_label = primary.base_url
-            result = _call_ollama(target_url, prompt, primary.timeout_seconds, model)
+        result = engine.generate(
+            prompt,
+            base_url=target_url,
+            api_key=primary.api_key_encrypted,
+            timeout=primary.timeout_seconds,
+            model=model,
+        )
+        if node_label is not None:
             result["node"] = node_label
-        elif primary.backend_type in ("openai", "azure_openai", "anthropic", "vllm", "litellm"):
-            req_model = model if model and model != "llama3.1:latest" else ""
-            result = _call_openai(primary.base_url, primary.api_key_encrypted, prompt, primary.timeout_seconds, req_model)
-        elif primary.backend_type == "mock":
-            result = _call_mock(prompt)
-        else:
-            result = _call_mock(prompt)
         latency = int((time.time() - t0) * 1000)
         result["backend"] = primary.name
         result["backend_type"] = primary.backend_type

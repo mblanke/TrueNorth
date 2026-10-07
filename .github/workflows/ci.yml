@@ -120,7 +120,7 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit -r control-plane/api/requirements.txt -r control-plane/worker/requirements.txt \
-            -r ai-orchestrator/requirements.txt -r telemetry-pipeline/requirements.txt \
+            -r ai-orchestrator/requirements.txt \
             -r scenario-engine/requirements.txt \
             -f json -o pip-audit.json
       - name: npm audit
@@ -148,6 +148,11 @@ jobs:
       - run: npm ci
         working-directory: control-plane/web
       - run: npx ng lint
+        working-directory: control-plane/web
+      # Karma unit specs (src/**/*.spec.ts) in headless Chrome. The runner image ships
+      # Google Chrome; karma-chrome-launcher finds it on PATH.
+      - name: Unit tests (Karma, ChromeHeadless)
+        run: npx ng test --watch=false --browsers=ChromeHeadless
         working-directory: control-plane/web
 
   build-angular:
@@ -182,8 +187,6 @@ jobs:
             context: control-plane/web
           - name: scenario-engine
             context: scenario-engine
-          - name: telemetry-pipeline
-            context: telemetry-pipeline
           - name: ai-orchestrator
             context: ai-orchestrator
     steps:
