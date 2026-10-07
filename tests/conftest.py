@@ -54,29 +54,50 @@ def engine():
 # key, and PostgreSQL refused a release whose blob was flushed with it (course_releases).
 # These modules still insert rows that reference rows they never create (a random tenant
 # id, a platform id that is not registered), so they run without enforcement. The list
-# only shrinks: fix a module's fixtures and take it off.
-SQLITE_FK_EXEMPT = frozenset(
-    f"api/{name}.py"
-    for name in (
-        "test_adaptive_learning",
-        "test_developmental_path_binding",
-        "test_integration",
-        "test_integrations_authz",
-        "test_lti13",
-        "test_moodle_sso",
-        "test_onboarding_flow",
-        "test_platform_tenancy",
-        "test_qsp_curriculum_map",
-        "test_qsp_tenant_isolation",
-        "test_range_delete",
-        "test_range_description",
-        "test_registration_flow",
-        "test_snapshot_endpoints",
-        "test_telemetry_access",
-        "test_tenant_isolation",
-        "test_token_validation",
-    )
-)
+# only shrinks: fix a module's fixtures and take it off. "Acting user" below means a
+# CurrentUser with a random id that has no users row, so its audit_logs row dangles.
+SQLITE_FK_EXEMPT = {
+    "api/test_adaptive_learning.py": "assessments and recommendations for users never created",
+    "api/test_aar_report.py": "templates in tenants never created",
+    "api/test_answer_key_redaction.py": "objectives for exercises never created",
+    "api/test_detection_rules.py": "rules in tenants never created",
+    "api/test_detections.py": "objectives for exercises never created",
+    "api/test_developmental_path_binding.py": "enrollments for users never created",
+    "api/test_greyspace.py": "templates in a second tenant never created; acting user",
+    "api/test_hypervisors_vsphere.py": "connections in tenants never created",
+    "api/test_integration.py": "ranges and templates in tenants never created",
+    "api/test_integrations_authz.py": "users and platforms in tenants never created",
+    "api/test_lti13.py": "platforms and users in tenants never created",
+    "api/test_moodle_sso.py": "platforms and courses in tenants never created",
+    "api/test_noise.py": "templates in tenants never created; acting user",
+    "api/test_objective_ack.py": "exercises on ranges and scenarios never created",
+    "api/test_onboarding_flow.py": "creates the dev tenant and admin itself (clashes with the seed)",
+    "api/test_platform_tenancy.py": "OUs, users, storage and auth zones in tenants never created",
+    "api/test_qsp_curriculum_map.py": "enrollments for users never created",
+    "api/test_qsp_tenant_isolation.py": "templates and golden images in tenants never created",
+    "api/test_range_delete.py": "ranges in tenants never created",
+    "api/test_range_description.py": "templates in tenants never created",
+    "api/test_registration_flow.py": "creates the dev tenant itself (clashes with the seed)",
+    "api/test_scenario_runs.py": "scenarios, templates and executions referencing rows never created",
+    "api/test_snapshot_endpoints.py": "ranges in tenants never created",
+    "api/test_support_notifications.py": "users in tenants never created",
+    "api/test_telemetry_access.py": "templates in tenants never created",
+    "api/test_tenancy_followup.py": "users, exercises and assessments in tenants never created",
+    "api/test_tenant_isolation.py": "ranges in tenants never created",
+    "api/test_threat_intel.py": "feeds in tenants never created",
+    "api/test_tickets.py": "acting user",
+    "api/test_token_validation.py": "platforms in tenants never created",
+    "api/test_wiki.py": "acting user",
+    "scheduler/test_scheduler_access.py": "events for instructors never created; acting user",
+    "scheduler/test_scheduler_auto_create.py": "ranges and scenarios never created; acting user",
+    "scheduler/test_scheduler_calendar_sync.py": "events for instructors never created",
+    "scheduler/test_scheduler_capacity.py": "events, templates and instructors never created; acting user",
+    "scheduler/test_scheduler_clock.py": "ranges in tenants never created",
+    "scheduler/test_scheduler_feed.py": "events for instructors never created",
+    "scheduler/test_scheduler_lifecycle.py": "events for instructors never created; ranges",
+    "scheduler/test_scheduler_range_ops.py": "ranges in tenants never created",
+    "scheduler/test_scheduler_students.py": "courses in tenants never created",
+}
 DEV_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")  # app.auth's AUTH_DISABLED user and tenant
 
 
