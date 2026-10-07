@@ -1,7 +1,7 @@
 {
   "api_imports_worker": 0,
   "hardcoded_backend_branches": 0,
-  "lines_api_models_py": 1850,
+  "lines_api_models_py": 1816,
   "lines_api_schemas_py": 1877,
   "lines_worker_tasks_py": 1005,
   "vendor_endpoint_outside_adapters": 2,

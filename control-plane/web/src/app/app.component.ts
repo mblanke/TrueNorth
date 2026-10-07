@@ -18,6 +18,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { Subscription } from 'rxjs';
 import gsap from 'gsap';
 
+import { AuthService } from './core/services/auth.service';
 import { ThemeService, ThemeOption } from './core/services/theme.service';
 import { MotionService } from './shared/motion';
 import { TourOverlayComponent } from './shared/tour/tour-overlay.component';
@@ -26,6 +27,8 @@ interface NavItem {
   label: string;
   icon: string;
   route: string;
+  /** Hidden from Students (the route guard and the API refuse them too). */
+  staffOnly?: boolean;
 }
 
 interface NavSection {
@@ -71,6 +74,7 @@ interface NavSection {
                   <h2 class="nav-group-title">{{ section.name }}</h2>
                   <mat-nav-list dense>
                     @for (item of section.items; track item.route) {
+                      @if (!item.staffOnly || auth.canViewSchedule()) {
                       <a mat-list-item
                          [routerLink]="item.route"
                          (click)="mobile() && sidenav.close()"
@@ -84,6 +88,7 @@ interface NavSection {
                         <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
                         <span matListItemTitle class="nav-label">{{ item.label }}</span>
                       </a>
+                      }
                     }
                   </mat-nav-list>
                 </section>
@@ -302,6 +307,7 @@ interface NavSection {
   `],
 })
 export class AppComponent implements OnDestroy {
+  readonly auth = inject(AuthService);
   private theme = inject(ThemeService);
   private motion = inject(MotionService);
   private router = inject(Router);
@@ -354,6 +360,7 @@ export class AppComponent implements OnDestroy {
       items: [
         { label: 'Exercises', icon: 'fitness_center', route: '/exercises' },
         { label: 'Ops Center', icon: 'radar', route: '/ops-center/select' },
+        { label: 'Schedule', icon: 'event', route: '/schedule', staffOnly: true },
       ],
     },
     {

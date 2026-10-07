@@ -48,6 +48,10 @@ class SMTPChannel(NotificationChannel):
 
         if metadata and metadata.get("html"):
             msg.add_alternative(metadata["html"], subtype="html")
+        if metadata and metadata.get("calendar"):
+            # An iCalendar invite (RFC 6047): mail clients show Accept/Decline for it.
+            method, ics_text = metadata["calendar"]
+            msg.add_alternative(ics_text, subtype="calendar", params={"method": method})
 
         last_err: Exception | None = None
         for attempt in range(1, _MAX_RETRIES + 1):

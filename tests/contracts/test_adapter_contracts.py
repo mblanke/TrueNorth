@@ -228,6 +228,27 @@ def _console_factory(key, mp):
     from app.console_backends import get_console_backend
 
     return get_console_backend(key)
+def _calendar_abc():
+    from app.scheduler.calendar_backends import BaseCalendarBackend
+
+    return BaseCalendarBackend
+
+
+def _calendar_registry():
+    from app.scheduler import calendar_backends
+
+    return calendar_backends._REGISTRY
+
+
+def _calendar_factory(key, mp):
+    from app.scheduler import calendar_backends
+
+    mp.setenv("CALENDAR_BACKEND", key)
+    calendar_backends.reset_calendar_backend()
+    try:
+        return calendar_backends.get_calendar_backend()
+    finally:
+        calendar_backends.reset_calendar_backend()
 
 
 SEAMS: dict[str, Seam] = {
@@ -242,6 +263,7 @@ SEAMS: dict[str, Seam] = {
         Seam("ai", _ai_abc, _ai_registry, _ai_factory, "mock", ValueError),
         Seam("moodle", _moodle_abc, _moodle_registry, _moodle_factory, "fake", ValueError),
         Seam("console", _console_abc, _console_registry, _console_factory, "mock", ValueError),
+        Seam("calendar", _calendar_abc, _calendar_registry, _calendar_factory, "null", ValueError),
     )
 }
 
@@ -517,3 +539,14 @@ def test_null_console(monkeypatch):
     access = console.open({"vm_id": "vm-1", "name": "lab-analyst"})
     assert access["kind"] == "mock" and access["url"].startswith("mock://console/vm-1") and access["expires_in"] > 0
     assert console.open({"vm_id": "vm-1"})["url"] != access["url"]  # one-time, not a standing link
+def test_null_calendar(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from app.scheduler.ics import IcsEvent, booking_uid
+
+    backend = _build(SEAMS["calendar"], SEAMS["calendar"].null_key, monkeypatch)
+    start = datetime(2026, 10, 15, 13, 0, tzinfo=UTC)
+    event = IcsEvent(uid=booking_uid("b-1"), sequence=0, start=start, end=start + timedelta(hours=2), summary="x")
+    assert _run(backend.health_check()) is True
+    assert _run(backend.publish(event)) is None
+    assert _run(backend.cancel(event)) is None
