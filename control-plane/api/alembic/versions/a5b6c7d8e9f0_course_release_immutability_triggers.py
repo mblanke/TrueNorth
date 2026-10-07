@@ -14,7 +14,9 @@ every writer:
   record (accepted_at/by, acknowledged_actions, notes) is written only by the move to
   accepted; rows are never deleted.
 * ``course_release_blobs``: content-addressed, never rewritten or deleted.
-* ``enrollment_release_pins``: an enrollment's release never moves.
+* ``enrollment_release_pins``: never updated or deleted, so an enrollment's release never
+  moves (not by a delete and re-insert either). Nothing in the app deletes enrollments.
+* None of the three can be TRUNCATEd (a row trigger does not see a TRUNCATE).
 
 SQLite (tests, ``create_all``) keeps the ORM hooks only. Downgrade drops the triggers.
 """
@@ -44,8 +46,10 @@ FIXED = (
     "blob_sha256",
     "meta",
     "created_by",
+    "created_at",
 )
 ACCEPTANCE = ("accepted_at", "accepted_by", "acknowledged_actions", "notes")
+TRUNCATE_GUARDED = ("course_releases", "course_release_blobs", "enrollment_release_pins")
 
 
 def _changed(cols) -> str:
@@ -99,15 +103,21 @@ def upgrade() -> None:
             FOR EACH ROW EXECUTE FUNCTION tn_refuse_change();
     """)
     op.execute("""
-        CREATE TRIGGER tn_release_pin_guard BEFORE UPDATE OF release_id ON enrollment_release_pins
-            FOR EACH ROW WHEN (NEW.release_id IS DISTINCT FROM OLD.release_id)
-            EXECUTE FUNCTION tn_refuse_change();
+        CREATE TRIGGER tn_release_pin_guard BEFORE UPDATE OR DELETE ON enrollment_release_pins
+            FOR EACH ROW EXECUTE FUNCTION tn_refuse_change();
     """)
+    for table in TRUNCATE_GUARDED:
+        op.execute(f"""
+            CREATE TRIGGER tn_{table}_truncate_guard BEFORE TRUNCATE ON {table}
+                FOR EACH STATEMENT EXECUTE FUNCTION tn_refuse_change();
+        """)
 
 
 def downgrade() -> None:
     if op.get_bind().dialect.name != "postgresql":
         return
+    for table in TRUNCATE_GUARDED:
+        op.execute(f"DROP TRIGGER IF EXISTS tn_{table}_truncate_guard ON {table}")
     op.execute("DROP TRIGGER IF EXISTS tn_release_pin_guard ON enrollment_release_pins")
     op.execute("DROP TRIGGER IF EXISTS tn_course_release_blob_guard ON course_release_blobs")
     op.execute("DROP TRIGGER IF EXISTS tn_course_release_guard ON course_releases")

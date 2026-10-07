@@ -19,12 +19,41 @@ def run_by_id(publication_id: uuid.UUID) -> None:
         pub = db.get(CoursePublication, publication_id)
         if pub is not None:
             service.run(db, pub)
-    except (service.PublishRefusedError, service.LeaseLostError) as exc:
+    except service.PublishRefusedError as exc:
         logger.info("publication %s not run: %s", publication_id, exc)
+    except service.LeaseLostError as exc:  # its Moodle writes may have landed: say so
+        logger.warning("publication %s lost its lease mid-run: %s", publication_id, exc)
     except Exception:  # noqa: BLE001 — a background job must record, never crash the server
         logger.exception("publication %s crashed", publication_id)
     finally:
         db.close()
+    run_waiting(publication_id)
+
+
+def run_waiting(publication_id: uuid.UUID) -> None:
+    """After a run ends, run the publication of the same course and Moodle that waited for
+    it (claim() lets one run per course and Moodle at a time)."""
+    from ..db import SessionLocal
+    from . import service
+    from .models import CoursePublication
+
+    for _ in range(10):  # each pass publishes or supersedes one waiting job
+        db = SessionLocal()
+        try:
+            done = db.get(CoursePublication, publication_id)
+            nxt = service.waiting(db, done.course_id, done.platform_id) if done is not None else None
+            if nxt is None:
+                return
+            publication_id = nxt.id
+            service.run(db, nxt)
+        except (service.PublishRefusedError, service.LeaseLostError) as exc:
+            logger.info("waiting publication %s not run: %s", publication_id, exc)
+            return
+        except Exception:  # noqa: BLE001
+            logger.exception("waiting publication %s crashed", publication_id)
+            return
+        finally:
+            db.close()
 
 
 def resume_on_start() -> None:
