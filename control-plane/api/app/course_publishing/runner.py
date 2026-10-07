@@ -19,7 +19,7 @@ def run_by_id(publication_id: uuid.UUID) -> None:
         pub = db.get(CoursePublication, publication_id)
         if pub is not None:
             service.run(db, pub)
-    except service.PublishRefusedError as exc:
+    except (service.PublishRefusedError, service.LeaseLostError) as exc:
         logger.info("publication %s not run: %s", publication_id, exc)
     except Exception:  # noqa: BLE001 — a background job must record, never crash the server
         logger.exception("publication %s crashed", publication_id)

@@ -50,6 +50,7 @@ class CoursePublication(Base):
     error: Mapped[str] = mapped_column(Text, nullable=False, default="")
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_holder: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the run that holds it
     requested_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

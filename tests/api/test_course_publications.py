@@ -235,6 +235,33 @@ class TestNewRelease:
 
 
 class TestAccess:
+    def test_the_moodle_payload_carries_no_instructor_or_platform_file(self, ready, tmp_path, db_session, monkeypatch):
+        """F11: Moodle is a student surface. Only the release's learner part may reach it."""
+        import json
+
+        from app.course_releases.models import CourseRelease
+        from app.course_releases.service import load_bundle
+
+        client, platform = ready
+        rid = accepted(client, build(tmp_path))
+        sent: list[dict] = []
+        upsert = fake.FakeMoodle.upsert_course
+        monkeypatch.setattr(
+            fake.FakeMoodle,
+            "upsert_course",
+            lambda self, p, payload: (sent.append(payload), upsert(self, p, payload))[1],
+        )
+        assert publish(client, rid, platform).json()["state"] == "published"
+        bundle = load_bundle(db_session, db_session.get(CourseRelease, uuid.UUID(rid)))
+        wire = json.dumps(sent, default=str)
+        assert sent and bundle.files["instructor"], "the kit must carry instructor material to test this"
+        for part in ("instructor", "platform"):
+            for name, blob in bundle.files[part].items():
+                assert name not in wire, f"{part} file {name} reached Moodle"
+                text_ = blob.decode("utf-8", "ignore").strip()
+                if len(text_) >= 12 and text_ not in bundle.files["learner"].get(name, b"").decode("utf-8", "ignore"):
+                    assert text_ not in wire, f"the content of {part} file {name} reached Moodle"
+
     def test_students_cannot_publish(self, ready, tmp_path):
         client, platform = ready
         rid = accepted(client, build(tmp_path))
