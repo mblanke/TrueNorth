@@ -23,8 +23,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import (  # noqa: F401 — network_inventory, range_leases, range_ops: register their tables
+from . import (  # noqa: F401 — network_inventory, noise, range_leases, range_ops: register their tables
     network_inventory,
+    noise,
     range_leases,
     range_ops,
     ws_auth,
@@ -259,6 +260,7 @@ from .routers import (
     learning_paths_router,
     lti_router,
     network_devices_router,
+    noise_router,
     onboarding_router,
     ops_center_router,
     proxmox_router,
@@ -287,6 +289,7 @@ app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)
 app.include_router(injectors_router)
+app.include_router(noise_router)
 app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)

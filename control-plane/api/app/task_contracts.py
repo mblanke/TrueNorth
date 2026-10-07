@@ -68,6 +68,13 @@ TASKS: dict[str, TaskContract] = {
         TaskContract("snapshot_range", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("restore_snapshot", "provision", (_RANGE, _SNAPSHOT)),
         TaskContract("delete_snapshot", "provision", (_RANGE, _SNAPSHOT)),
+        # -- Background noise ------------------------------------------------
+        TaskContract(
+            "deploy_noise_agents",
+            "provision",
+            (Arg("inventory", "object", description="range_id, controller_url, mgmt_cidr, domain, agents"),),
+            "Install the noise agent on a range's agent nodes over the management network (Ansible).",
+        ),
         TaskContract(
             "reconcile_lab_vms",
             "destroy",

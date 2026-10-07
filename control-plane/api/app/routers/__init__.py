@@ -27,6 +27,7 @@ from .integrations import router as integrations_router
 from .kit import router as kit_router
 from .lab_sessions import router as lab_sessions_router
 from .network_devices import router as network_devices_router
+from .noise import router as noise_router
 from .onboarding import router as onboarding_router
 from .ops_center import router as ops_center_router
 from .proxmox import router as proxmox_router
@@ -50,6 +51,7 @@ __all__ = [
     "templates_router",
     "scenarios_router",
     "injectors_router",
+    "noise_router",
     "ai_authoring_router",
     "admin_router",
     "proxmox_router",

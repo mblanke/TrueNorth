@@ -214,6 +214,8 @@ def accept(
                 raise HTTPException(409, "This Idempotency-Key was already used for a different request")
             return existing, rng, False
     _check(db, rng, action)
+    if action == "provision":
+        _reserve_for_provision(db, rng)
     generation = (
         db.query(func.max(RangeOperation.generation)).filter(RangeOperation.range_id == rng.id).scalar() or 0
     ) + 1
@@ -236,6 +238,42 @@ def accept(
     return op, rng, True
 
 
+def _reserve_for_provision(db: Session, rng: Range) -> None:
+    """Shared-network addresses the worker will build with, held from acceptance on.
+
+    Today only noise agents' management NICs (app/noise/mgmt.py). In the acceptance
+    transaction, so a refused or failed acceptance holds nothing.
+    """
+    from ..network_inventory import PoolExhaustedError
+    from ..noise import mgmt as noise_mgmt
+
+    try:
+        noise_mgmt.reserve(db, rng, noise_mgmt.range_template(rng))
+    except PoolExhaustedError as exc:
+        raise HTTPException(409, f"Cannot provision: {exc}") from exc
+
+
+def _task_args(db: Session, op: RangeOperation) -> tuple:
+    """What the operation's task is sent: the range id, and for a provision the reserved
+    noise management addresses when it holds any and the task contract takes them
+    (``noise_mgmt``, an optional second argument of provision_range)."""
+    if op.action == "provision" and _contract_takes("provision_range", "noise_mgmt"):
+        from ..noise import mgmt as noise_mgmt
+
+        if held := noise_mgmt.reserved(db, op.range_id):
+            return (str(op.range_id), held)
+    return (str(op.range_id),)
+
+
+def _contract_takes(task: str, arg: str) -> bool:
+    """Whether the published worker contract (app/task_contracts.py) has ``arg`` for
+    ``task``. The contract is checked against the worker's signature, so this is true
+    only once the worker accepts the argument."""
+    from ..task_contracts import TASKS
+
+    return any(a.name == arg for a in TASKS[task].args)
+
+
 def dispatch(db: Session, op: RangeOperation) -> bool:
     """Send a pending operation's task, after its acceptance has committed. Commits.
 
@@ -255,7 +293,7 @@ def dispatch(db: Session, op: RangeOperation) -> bool:
     if held is None:  # being sent by someone else, or already sent
         db.commit()
         return False
-    task_id = send(ACTIONS[op.action].task, str(op.range_id))
+    task_id = send(ACTIONS[op.action].task, *_task_args(db, op))
     values: dict = {"dispatch_attempts": RangeOperation.dispatch_attempts + 1}
     if task_id:
         values.update(status="dispatched", task_id=task_id, dispatched_at=_now(), error=None)

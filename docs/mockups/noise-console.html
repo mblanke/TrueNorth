@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Background noise mockup</title>
+<!--
+  Slice 3 mockup: the white cell's Background noise page, on an exercise's range,
+  in the approved app shell (docs/mockups/app-shell.html on the redesign branch).
+  Static, fictional data, local interactions only. The dial maths matches
+  control-plane/api/app/noise/dial.py. Deep links: #state=live&tab=live|personas|setup,
+  #state=setup, #state=student
+-->
+<style>
+  :root {
+    --tn-bg:#fff7f7; --tn-surface:#ffffff; --tn-ink:#292326; --tn-muted:#655b60;
+    --tn-line:#eadbdd; --tn-accent:#b5122b; --tn-soft:#fcecef; --tn-warm:#fff0f2;
+    --tn-warm-ink:#961b30; --tn-button:#bd1631; --tn-button-ink:#ffffff;
+    --tn-ok:#1f6b45; --tn-ok-soft:#e6f3ec; --tn-space:22px;
+    color-scheme: light;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--tn-bg); }
+  body { font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; color:var(--tn-ink); }
+  button,select,input,textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:3px solid var(--tn-accent); outline-offset:3px; }
+
+  .mk-bar { padding:8px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#292326; color:#fff; font-size:12px; }
+  .mk-bar select { background:#fff; color:var(--tn-ink); border:0; border-radius:6px; padding:5px 7px; }
+  .mk-bar label { display:flex; gap:8px; align-items:center; }
+
+  .tn-app { display:grid; grid-template-columns:200px minmax(0,1fr); min-height:calc(100vh - 38px); }
+  .tn-side { background:var(--tn-surface); border-right:1px solid var(--tn-line); padding:18px 12px; display:flex; flex-direction:column; }
+  .tn-brand { font-size:18px; font-weight:650; letter-spacing:-.5px; padding:0 10px 18px; }
+  .tn-brand span { color:var(--tn-accent); }
+  .tn-switch { margin:0 6px 18px; }
+  .tn-switch label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--tn-muted); margin:0 4px 6px; }
+  .tn-switch select { width:100%; background:var(--tn-bg); border:1px solid var(--tn-line); border-radius:7px; padding:7px 8px; }
+  .tn-side-title { font-size:11px; text-transform:uppercase; letter-spacing:1.3px; color:var(--tn-muted); padding:0 10px 10px; }
+  .tn-nav { display:flex; flex-direction:column; gap:3px; }
+  .tn-nav button { border:0; background:transparent; padding:10px; text-align:left; border-radius:7px; width:100%; cursor:pointer; }
+  .tn-nav button[aria-current="page"] { background:var(--tn-soft); color:var(--tn-accent); font-weight:600; }
+  .tn-nav button:hover { background:var(--tn-soft); }
+  .tn-side-foot { margin-top:auto; border-top:1px solid var(--tn-line); padding:14px 10px 0; font-size:12px; color:var(--tn-muted); }
+  .tn-side-foot strong { display:block; color:var(--tn-ink); font-weight:500; }
+  .tn-side-foot button { border:0; background:none; padding:6px 0 0; color:var(--tn-accent); cursor:pointer; }
+
+  .tn-top { display:flex; align-items:center; gap:10px; padding:12px var(--tn-space); border-bottom:1px solid var(--tn-line); background:var(--tn-surface); font-size:12px; color:var(--tn-muted); min-height:45px; }
+  .tn-top strong { color:var(--tn-ink); font-weight:500; }
+  .tn-menu-btn { display:none; border:1px solid var(--tn-line); background:var(--tn-surface); border-radius:7px; padding:5px 10px; }
+  main { min-width:0; padding:var(--tn-space); max-width:1180px; }
+
+  h1 { font-size:27px; line-height:1.18; font-weight:600; letter-spacing:-.8px; margin:5px 0 9px; }
+  h2 { font-size:17px; font-weight:600; margin:0 0 13px; }
+  h3 { font-size:14px; font-weight:600; margin:0 0 5px; }
+  p { margin:0 0 12px; }
+  .tn-muted { color:var(--tn-muted); }
+  .tn-small { font-size:12px; }
+  .tn-eyebrow { font-size:11px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--tn-accent); }
+  .tn-pagehead { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+  .tn-pagehead p { max-width:62ch; margin:0; }
+  .tn-panel { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:10px; padding:18px; min-width:0; }
+  .tn-panel + .tn-panel { margin-top:15px; }
+  .tn-grid { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:16px; align-items:start; }
+  .tn-stack { display:grid; gap:16px; }
+  .tn-stack .tn-panel { margin:0; }
+  .tn-hero { background:var(--tn-soft); border:0; margin-bottom:18px; }
+  .tn-hero h2 { font-size:22px; line-height:1.25; margin:7px 0 9px; letter-spacing:-.4px; }
+  .tn-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; }
+  .tn-action { border:1px solid var(--tn-line); border-radius:7px; padding:8px 13px; background:var(--tn-surface); cursor:pointer; }
+  .tn-primary { background:var(--tn-button); color:var(--tn-button-ink); border-color:transparent; }
+  .tn-link { background:transparent; border:0; color:var(--tn-accent); padding:4px 0; cursor:pointer; text-align:left; white-space:nowrap; }
+  .tn-link::after { content:" →"; }
+  .tn-row { padding:12px 0; border-top:1px solid var(--tn-line); display:flex; justify-content:space-between; gap:14px; align-items:center; }
+  .tn-row:first-of-type { border-top:0; padding-top:0; }
+  .tn-row:last-child { padding-bottom:0; }
+  .tn-row p { margin:3px 0 0; }
+  .tn-row strong { font-weight:600; }
+  .tn-row-end { display:flex; gap:10px; align-items:center; flex-shrink:0; }
+  .tn-chip { display:inline-block; padding:3px 7px; border-radius:5px; background:var(--tn-soft); color:var(--tn-accent); font-size:11px; font-weight:500; white-space:nowrap; }
+  .tn-chip.warm { color:var(--tn-warm-ink); background:var(--tn-warm); border:1px solid var(--tn-line); }
+  .tn-chip.neutral { background:var(--tn-bg); color:var(--tn-muted); }
+  .tn-chip.ok { background:var(--tn-ok-soft); color:var(--tn-ok); }
+  .tn-meta { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
+  .tn-tabs { display:flex; gap:5px; flex-wrap:wrap; border-bottom:1px solid var(--tn-line); margin-bottom:18px; padding-bottom:9px; }
+  .tn-tabs button { background:transparent; border:0; padding:7px 11px; border-radius:6px; color:var(--tn-muted); cursor:pointer; }
+  .tn-tabs button[aria-pressed="true"] { color:var(--tn-accent); background:var(--tn-soft); }
+  .tn-note { padding:13px 15px; border-left:3px solid var(--tn-accent); background:var(--tn-soft); margin:16px 0; }
+  .tn-note p:last-child { margin:0; }
+  .tn-kv { display:grid; grid-template-columns:120px minmax(0,1fr); gap:7px 12px; font-size:13px; margin:0; }
+  .tn-kv dt { color:var(--tn-muted); }
+  .tn-kv dd { margin:0; }
+  .tn-path { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; margin:0 0 22px; }
+  .tn-path button { border:1px solid var(--tn-line); border-radius:8px; padding:12px 9px; background:var(--tn-surface); text-align:left; cursor:pointer; }
+  .tn-path button[aria-pressed="true"] { background:var(--tn-soft); border-color:var(--tn-accent); }
+  .tn-path strong,.tn-path span { display:block; }
+  .tn-path strong { font-size:12px; font-weight:600; }
+  .tn-path span { font-size:11px; color:var(--tn-muted); margin-top:5px; }
+  .tn-back { margin-bottom:14px; }
+  .tn-back::after { content:none; }
+  .tn-back::before { content:"← "; }
+  .tn-bar-meter { height:6px; background:var(--tn-bg); border-radius:3px; overflow:hidden; width:120px; border:1px solid var(--tn-line); }
+  .tn-bar-meter i { display:block; height:100%; background:var(--tn-accent); }
+
+  .tn-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .tn-input { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:7px; padding:8px 10px; min-width:0; }
+  .tn-toolbar .tn-input { flex:1 1 220px; max-width:320px; }
+  .tn-table-wrap { overflow-x:auto; }
+  .tn-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .tn-table th { text-align:left; color:var(--tn-muted); font-weight:500; font-size:12px; }
+  .tn-table th,.tn-table td { padding:11px 10px; border-bottom:1px solid var(--tn-line); vertical-align:middle; }
+  .tn-table tr:last-child td { border-bottom:0; }
+  .tn-table td:last-child,.tn-table th:last-child { text-align:right; }
+  .tn-pager { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--tn-muted); padding-top:12px; }
+
+  .tn-form { max-width:520px; }
+  .tn-field { display:block; margin-bottom:16px; }
+  .tn-field span { display:block; font-weight:500; margin-bottom:5px; }
+  .tn-field small { display:block; color:var(--tn-muted); margin-top:4px; font-size:12px; }
+  .tn-field .tn-input { width:100%; }
+  .tn-field.error .tn-input { border-color:var(--tn-accent); }
+  .tn-field.error small { color:var(--tn-accent); }
+
+  .tn-canvas-wrap { display:grid; grid-template-columns:minmax(0,1fr) 260px; gap:0; border:1px solid var(--tn-line); border-radius:10px; overflow:hidden; background:var(--tn-surface); }
+  .tn-canvas-tools { grid-column:1 / -1; display:flex; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--tn-line); flex-wrap:wrap; }
+  .tn-canvas-tools .tn-sep { width:1px; align-self:stretch; background:var(--tn-line); }
+  .tn-canvas { min-height:420px; background-image:radial-gradient(var(--tn-line) 1px, transparent 1px); background-size:18px 18px; position:relative; }
+  .tn-canvas .node { position:absolute; border:1px solid var(--tn-line); background:var(--tn-surface); border-radius:8px; padding:8px 10px; font-size:12px; }
+  .tn-canvas .node.sel { border-color:var(--tn-accent); box-shadow:0 0 0 3px var(--tn-soft); }
+  .tn-canvas svg { position:absolute; inset:0; width:100%; height:100%; }
+  .tn-inspector { border-left:1px solid var(--tn-line); padding:16px; }
+
+  .tn-skel { height:12px; background:linear-gradient(90deg,var(--tn-bg),var(--tn-soft),var(--tn-bg)); border-radius:4px; margin:10px 0; }
+  .tn-state { text-align:left; padding:6px 0; }
+  .tn-state h3 { margin-bottom:4px; }
+
+  .tn-embed { display:block; width:100%; height:1080px; border:1px solid var(--tn-line); border-radius:10px; background:#fafafa; }
+  .tn-code { font-weight:600; font-size:12px; color:var(--tn-muted); margin-right:6px; }
+  .tn-term { margin-top:18px; }
+  .tn-term:first-child { margin-top:0; }
+  .tn-term h3 { display:flex; justify-content:space-between; gap:10px; }
+  .tn-term h3 span { font-weight:400; font-size:12px; color:var(--tn-muted); }
+  .tn-bare { min-height:calc(100vh - 38px); display:grid; place-items:center; padding:24px 16px; }
+  .tn-bare .tn-panel { width:100%; max-width:560px; padding:28px; }
+
+  .tn-live { position:fixed; bottom:14px; right:14px; background:#292326; color:#fff; padding:10px 14px; border-radius:8px; font-size:12px; max-width:340px; }
+  .tn-live:empty { display:none; }
+
+  @media (max-width:800px) {
+    .tn-app { grid-template-columns:minmax(0,1fr); }
+    .tn-side { position:fixed; z-index:20; top:38px; bottom:0; left:0; width:240px; transform:translateX(-100%); transition:transform .2s; box-shadow:0 0 0 100vmax transparent; }
+    .tn-app.open .tn-side { transform:none; box-shadow:0 0 0 100vmax rgba(41,35,38,.35); }
+    .tn-menu-btn { display:inline-block; }
+    .tn-grid { grid-template-columns:1fr; }
+    .tn-path { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .tn-canvas-wrap { grid-template-columns:1fr; }
+    .tn-inspector { border-left:0; border-top:1px solid var(--tn-line); }
+  }
+  @media (max-width:550px) {
+    :root { --tn-space:14px; }
+    h1 { font-size:23px; }
+    .tn-path { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .tn-row { align-items:flex-start; flex-wrap:wrap; }
+    .tn-kv { grid-template-columns:100px minmax(0,1fr); }
+    .tn-table .hide-sm { display:none; }
+    .tn-bare .tn-panel { padding:20px; }
+  }
+  @media (pointer:coarse) { button,select,input { min-height:44px; } }
+  code { font-size:12px; background:var(--tn-bg); border:1px solid var(--tn-line); border-radius:4px; padding:1px 4px; }
+  .tn-action[aria-pressed="true"] { border-color:var(--tn-accent); color:var(--tn-accent); background:var(--tn-soft); }
+</style></head><body>
+<div class="mk-bar">
+  <span>Mockup · Background noise (white cell) · fictional data, nothing is sent</span>
+  <label>State
+    <select id="mk-state" aria-label="Mockup state">
+      <option value="live">Running</option>
+      <option value="setup">Not deployed yet</option>
+      <option value="student">What a student sees</option>
+    </select>
+  </label>
+</div>
+<div class="tn-app" id="app">
+  <aside class="tn-side">
+    <div class="tn-brand">True<span>North</span></div>
+    <div id="side"></div>
+  </aside>
+  <div>
+    <div class="tn-top"><button class="tn-menu-btn" id="menu">Menu</button>Exercises <span>/</span> Cyber Shield 26-3 <span>/</span> <strong>Team Bravo range</strong></div>
+    <main id="main"></main>
+  </div>
+</div>
+<div class="tn-live" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  // The same dial as control-plane/api/app/noise/dial.py, so the numbers here are real.
+  const PRESETS = [['quiet','Quiet',10],['office','Office day',40],['busy','Busy',70],['chaos','Chaos',95]];
+  function dial(lv){
+    if (lv<=0) return {active:0, rate:0, after:0, look:0};
+    const x = lv/100;
+    return { active: Math.round((0.15+0.85*x)*100), rate: Math.round(2*Math.pow(30,x)),
+             after: Math.round(Math.max(0.03,0.6*x)*100), look: lv<=20?0:Math.round(15*(lv-20)/80*10)/10 };
+  }
+  const S = { level: 40, applied: 40, paused: false, tab: 'live' };
+  const $ = (id) => document.getElementById(id);
+  const toast = (t) => { $('toast').textContent = t; clearTimeout(toast.h); toast.h = setTimeout(() => $('toast').textContent = '', 3200); };
+
+  const head = (eyebrow, title, text, right='') => `<div class="tn-pagehead"><div><div class="tn-eyebrow">${eyebrow}</div><h1>${title}</h1><p class="tn-muted">${text}</p></div>${right}</div>`;
+  const panel = (title, body, extra='') => `<section class="tn-panel"${extra}>${title?`<h2>${title}</h2>`:''}${body}</section>`;
+  const row = (title, sub, end='') => `<div class="tn-row"><div><strong>${title}</strong>${sub?`<p class="tn-small tn-muted">${sub}</p>`:''}</div><div class="tn-row-end">${end}</div></div>`;
+  const chip = (t, k='') => `<span class="tn-chip ${k}">${t}</span>`;
+  const link = (t, a) => `<button class="tn-link" data-action="${a}">${t}</button>`;
+  const meter = (pct) => `<div class="tn-bar-meter" aria-hidden="true"><i style="width:${pct}%"></i></div>`;
+  const tabs = () => `<div class="tn-tabs" role="tablist">${[['live','Live'],['personas','Personas'],['setup','Setup']].map(([k,l]) => `<button aria-pressed="${S.tab===k}" data-tab="${k}">${l}</button>`).join('')}</div>`;
+
+  const AGENTS = [
+    ['lnx01','corporate_lan','10.255.0.14','ok','seen 12 s ago','11 personas'],
+    ['lnx02','corporate_lan','10.255.0.15','ok','seen 40 s ago','10 personas'],
+    ['tgen01','corporate_lan','10.255.0.16','lost','not reporting for 6 min','9 personas'],
+  ];
+  const FEED = [
+    ['14:02:51','lnx01','Lane Fraser','Logon','dc01 · 10.30.0.10','',''],
+    ['14:02:44','lnx02','Avery Desrosiers','DNS lookup','mx01.corp.local','',''],
+    ['14:02:31','lnx01','Sam Okafor','Inventory scan','10.10.0.0/24','lookalike',''],
+    ['14:02:12','lnx02','Kai Tremblay','Sent email','to hr team · mx01','',''],
+    ['14:01:58','lnx01','Riley Nguyen','Browsed intranet','web01 · 3 pages','',''],
+    ['14:01:40','lnx02','Jordan Patel','Failed logons ×3','mx01 · SMTP AUTH','lookalike',''],
+    ['14:01:22','lnx01','Harper Singh','File share','fs01 · SMB','','failed'],
+  ];
+  const MIX = [['Browsed intranet',31],['Read or sent email',22],['DNS lookups',18],['File shares',14],['Logons',8],['Admin SSH',4],['Lookalikes',3]];
+
+  function hero(){
+    const d = dial(S.paused?0:S.level);
+    const pending = S.level !== S.applied;
+    return `<section class="tn-panel tn-hero">
+      <div class="tn-eyebrow">${S.paused?'Paused':'Running'} · 30 personas on 3 machines</div>
+      <h2>${S.paused?'All noise is paused.':`Noise level ${S.applied} — ${label(S.applied)}`}</h2>
+      <p class="tn-muted">${S.paused?'Agents stay connected and pick up where they left off when you resume.':'Staff are logging on, reading mail, browsing the intranet and copying files to shares. Turning it up hides an inject; turning it down makes it obvious.'}</p>
+      <div class="tn-actions" style="gap:14px">
+        <label style="display:flex;align-items:center;gap:10px;flex:1 1 260px;max-width:420px">
+          <span class="tn-small tn-muted">0</span>
+          <input id="lv" type="range" min="0" max="100" value="${S.level}" style="flex:1;accent-color:var(--tn-accent)" aria-label="Noise level">
+          <span class="tn-small tn-muted">100</span>
+          <strong id="lvn" style="min-width:2.5ch;text-align:right">${S.level}</strong>
+        </label>
+        ${PRESETS.map(([k,l,v]) => `<button class="tn-action" data-preset="${v}" aria-pressed="${S.level===v}">${l}</button>`).join('')}
+      </div>
+      <p class="tn-small tn-muted" style="margin:12px 0 0">At ${S.level}: ${d.active}% of staff at work · about ${d.rate} actions per person per hour · after hours ${d.after}% as busy · ${d.look?`${d.look}% of IT admins’ actions are lookalikes`:'no lookalikes'}.</p>
+      <div class="tn-actions">
+        ${pending?`<button class="tn-action tn-primary" data-action="apply">Set level to ${S.level}</button>`:''}
+        ${link(S.paused?'Resume noise':'Pause all noise','pause')}
+      </div>
+    </section>`;
+  }
+  const label = (v) => v===0?'silent':v<=20?'quiet':v<=55?'an ordinary office day':v<=80?'busy':'chaos';
+
+  function live(){
+    return `${hero()}<div class="tn-grid"><div class="tn-stack">
+      ${panel('What the staff did · last hour', MIX.map(([k,p]) => row(k, '', `<span class="tn-small tn-muted">${p}%</span>${meter(p*3)}`)).join('') +
+        `<div class="tn-note"><p><strong>Lookalikes</strong> are harmless actions that look like an attack: an IT admin’s inventory scan, someone mistyping a password three times. If a student reports one, the debrief marks it as a false positive.</p></div>`)}
+      ${panel('Ground truth', `<p class="tn-small tn-muted">Every action the personas took. This is how the debrief tells a real find from noise. Students never see it.</p>
+        <div class="tn-toolbar"><select class="tn-input" aria-label="Filter"><option>All activity</option><option>Lookalikes only</option><option>Failed only</option></select></div>
+        <div class="tn-table-wrap"><table class="tn-table"><thead><tr><th>Time</th><th class="hide-sm">Machine</th><th>Who</th><th>What</th><th class="hide-sm">Against</th><th></th></tr></thead><tbody>
+        ${FEED.map(([t,m,w,a,g,l,f]) => `<tr><td>${t}</td><td class="hide-sm">${m}</td><td>${w}</td><td>${a}</td><td class="hide-sm tn-muted">${g}</td><td>${l?chip('Lookalike','warm'):''}${f?chip('Failed','neutral'):''}</td></tr>`).join('')}
+        </tbody></table></div><div class="tn-pager"><span>Showing 7 of 412 in the last hour</span>${link('Export for the debrief','toast:Would download the ground truth as CSV.')}</div>`)}
+    </div><div class="tn-stack">
+      ${panel('Agents', AGENTS.map(([n,z,ip,st,seen,p]) => row(n, `${p} · ${seen}`, st==='ok'?chip('Reporting','ok'):chip('Not reporting','warm'))).join('') +
+        `<div class="tn-note"><p>tgen01 stopped reporting. Someone may have stopped the service. The agent is out of bounds, so this is worth a word with the team. ${link('Re-deploy to tgen01','toast:Would issue a new key and reinstall the agent on tgen01.')}</p></div>
+        <p class="tn-small tn-muted" style="margin:0">ws01–ws04 are Windows and have no agent yet.</p>`)}
+      ${panel('By zone', row('corporate_lan','Follows the range level', link('Override','toast:Opens a level for this zone.')) + row('dmz','Held at 80 for the web defacement inject', chip('80','neutral')))}
+      ${panel('Scheduled changes', row('14:30 · raise to 85','Hides the phishing inject at 14:35', link('Edit','toast:Opens the scenario timeline.')) + row('15:15 · back to 40','After the inject window', ''))}
+    </div></div>`;
+  }
+
+  const PEOPLE = [
+    ['Lane Fraser','Operations Officer','Operations','lnx01','08:00–17:00',''],
+    ['Sam Okafor','Systems Administrator','IT','lnx01','07:00–16:00','Lookalikes'],
+    ['Avery Desrosiers','Supply Technician','Logistics','lnx02','08:00–17:00',''],
+    ['Jordan Patel','Systems Administrator','IT','lnx02','09:00–18:00','Lookalikes'],
+    ['Kai Tremblay','HR Administrator','HR','lnx02','08:00–17:00',''],
+    ['Harper Singh','Finance Clerk','Finance','lnx01','08:00–17:00',''],
+    ['Riley Nguyen','Staff Officer','Command','lnx01','07:00–16:00',''],
+  ];
+  function personas(){
+    return panel('', `<div class="tn-toolbar"><input class="tn-input" type="search" placeholder="Search staff" aria-label="Search staff">
+        <span class="tn-small tn-muted">30 people from the built-in roster</span></div>
+      <div class="tn-table-wrap"><table class="tn-table"><thead><tr><th>Name</th><th>Role</th><th class="hide-sm">Department</th><th class="hide-sm">Machine</th><th class="hide-sm">Hours</th><th></th></tr></thead><tbody>
+      ${PEOPLE.map(([n,r,d,m,h,l]) => `<tr><td>${n}</td><td>${r}</td><td class="hide-sm">${d}</td><td class="hide-sm">${m}</td><td class="hide-sm">${h}</td><td>${l?chip(l,'warm'):''}</td></tr>`).join('')}
+      </tbody></table></div><div class="tn-pager"><span>Showing 7 of 30</span>${link('Replace with an organisation pack','toast:Org packs (a whole unit with photos) come in a later step.')}</div>`);
+  }
+
+  function setup(deployed){
+    return `${deployed?'':`<section class="tn-panel tn-hero"><div class="tn-eyebrow">Not deployed</div>
+      <h2>This range is ready for background noise.</h2>
+      <p class="tn-muted">The template asks for 30 staff at “Office day”. Check what will happen below, then deploy. Agents install over the management network; students cannot see it.</p>
+      <div class="tn-actions"><button class="tn-action tn-primary" data-action="deploy">Deploy noise</button>${link('Change the template','toast:Opens the range template.')}</div></section>`}
+    <div class="tn-grid"><div class="tn-stack">
+      ${panel('Agents', [['lnx01','corporate_lan · 10.10.0.50','10.255.0.14'],['lnx02','corporate_lan · 10.10.0.51','10.255.0.15'],['tgen01','corporate_lan · 10.10.0.99','10.255.0.16']].map(([n,s,m]) => row(n, s, `<span class="tn-small tn-muted">mgmt ${m}</span>`)).join('') +
+        `<p class="tn-small tn-muted" style="margin:12px 0 0">Skipped: ws01, ws02, ws03, ws04 (Windows agent not available yet). Excluded zones: red_team, blue_team, management.</p>`)}
+      ${panel('What the staff will talk to', row('Web','web01, web02, rproxy01, webapp01','') + row('Mail','mx01, exch01','') + row('Logons and time','dc01, dc02','') + row('File shares','fs01','') + row('Admin SSH','bak01','') + row('Name lookups','11 names in corp.local',''))}
+    </div><div class="tn-stack">
+      ${panel('From the template', `<dl class="tn-kv"><dt>Starting level</dt><dd>Office day (40)</dd><dt>Staff</dt><dd>30, built-in roster</dd><dt>Seed</dt><dd>7 — the same seed replays the same day</dd><dt>Management</dt><dd>VLAN 4001 · 10.255.0.0/24 · portgroup TN-Noise-Mgmt</dd></dl>`)}
+      ${deployed?panel('Re-deploy', `<p class="tn-small tn-muted">Re-deploying issues new keys to every agent and reinstalls it. Staff and settings are kept.</p>${link('Re-deploy all agents','toast:Would re-key and reinstall all agents.')}`):''}
+    </div></div>`;
+  }
+
+  function student(){
+    return `<div class="tn-pagehead"><div><div class="tn-eyebrow">Cyber Shield 26-3</div><h1>Team Bravo range</h1><p class="tn-muted">Your range for this exercise.</p></div></div>
+      ${panel('Rules of engagement', `<p>Defend the corporate network. The following are <strong>out of bounds</strong> and must not be scanned, stopped, or tampered with:</p>
+        <ul style="margin:0 0 6px 18px;padding:0"><li>the <code>tn-noise</code> service and <code>/opt/tn-noise</code> on any machine</li><li>the 10.255.0.0/24 network</li></ul>
+        <p class="tn-small tn-muted" style="margin:0">There is no “Background noise” page in a student’s menu, and nothing here says which activity on the network is synthetic.</p>`)}`;
+  }
+
+  function side(isStudent){
+    const menu = isStudent ? ['Home','My learning','Exercises','Progress','Career path'] : ['Home','Courses','Exercises','Scoring &amp; debrief','Authoring'];
+    const nav = menu.map((m) => `<button${m==='Exercises'?' aria-current="page"':''}>${m}</button>`).join('');
+    return (isStudent ? '' : `<div class="tn-switch"><label for="ws">Workspace</label><select id="ws"><option>Teaching</option><option>My training</option></select></div>`) +
+      `<div class="tn-side-title">${isStudent?'My training':'Teaching'}</div><nav class="tn-nav" aria-label="Main">${nav}</nav>` +
+      `<div class="tn-side-foot"><strong>${isStudent?'Cpl Alex Laurent':'WO Morgan Roy'}</strong>${isStudent?'Student':'Instructor'}<br><button>Sign out</button></div>`;
+  }
+
+  function render(){
+    const state = $('mk-state').value;
+    $('side').outerHTML = `<div id="side" style="display:contents">${side(state === 'student')}</div>`;
+    let html;
+    if (state === 'student') html = student();
+    else {
+      const deployed = state === 'live';
+      html = head('Cyber Shield 26-3 · Team Bravo range','Background noise','Synthetic staff going about their day, so the attack is not the only thing on the network. Only the white cell sees this page.') +
+        (deployed ? tabs() : '') + (deployed ? (S.tab==='live'?live():S.tab==='personas'?personas():setup(true)) : setup(false));
+    }
+    $('main').innerHTML = html;
+    const lv = $('lv');
+    if (lv) lv.oninput = () => { S.level = +lv.value; render(); $('lv').focus(); };
+  }
+
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-tab],[data-preset],[data-action]');
+    if (!t) return;
+    if (t.dataset.tab) { S.tab = t.dataset.tab; render(); return; }
+    if (t.dataset.preset) { S.level = +t.dataset.preset; render(); return; }
+    const a = t.dataset.action;
+    if (a === 'apply') { S.applied = S.level; S.paused = false; toast(`Level set to ${S.level}. Agents pick it up within a minute.`); render(); }
+    else if (a === 'pause') { S.paused = !S.paused; toast(S.paused?'All noise paused.':'Noise resumed.'); render(); }
+    else if (a === 'deploy') { $('mk-state').value = 'live'; S.tab='live'; toast('Deploying to 3 machines. Agents report in within a few minutes.'); render(); }
+    else if (a.startsWith('toast:')) toast(a.slice(6) + ' (mockup)');
+  });
+  $('mk-state').onchange = render;
+  $('menu').onclick = () => $('app').classList.toggle('open');
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('state')) $('mk-state').value = h.get('state');
+  if (h.get('tab')) S.tab = h.get('tab');
+  render();
+})();
+</script>
+
+</body></html>

@@ -77,6 +77,22 @@
       "description": "",
       "queue": "provision"
     },
+    "worker.tasks.deploy_noise_agents": {
+      "args": {
+        "maxItems": 1,
+        "minItems": 1,
+        "prefixItems": [
+          {
+            "description": "range_id, controller_url, mgmt_cidr, domain, agents",
+            "title": "inventory",
+            "type": "object"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Install the noise agent on a range's agent nodes over the management network (Ansible).",
+      "queue": "provision"
+    },
     "worker.tasks.destroy_range": {
       "args": {
         "maxItems": 1,

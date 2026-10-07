@@ -52,8 +52,15 @@ def _registered() -> set[str]:
     return {n for n in app.tasks if n.startswith("worker.")}
 
 
+# Tasks added since the split, each in its own module. New names, so nothing queued
+# before them can be stranded; listed so that any other change still fails here.
+ADDED_SINCE_SPLIT = {
+    "worker.tasks.deploy_noise_agents",  # worker/noise_tasks.py (background noise)
+}
+
+
 def test_registered_task_names_are_unchanged():
-    assert _registered() == REGISTERED_BEFORE_SPLIT
+    assert _registered() == REGISTERED_BEFORE_SPLIT | ADDED_SINCE_SPLIT
 
 
 @pytest.mark.parametrize(

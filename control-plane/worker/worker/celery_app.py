@@ -99,6 +99,7 @@ from . import (
     chaos,  # noqa: F401, E402
     exercise_run,  # noqa: F401, E402
     lab_tasks,  # noqa: F401, E402
+    noise_tasks,  # noqa: F401, E402
     power_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
 )
