@@ -40,6 +40,16 @@ ASYMMETRIC_ALGORITHMS: dict[str, str] = {
 }
 
 
+def unverified_kid(token: str) -> str | None:
+    """The header kid, unverified: only for picking (or refreshing) keys. None if the
+    header cannot be read; decode() rejects such a token with the real reason."""
+    try:
+        kid = jwt.get_unverified_header(token).get("kid")
+    except jwt.PyJWTError:
+        return None
+    return kid if isinstance(kid, str) else None
+
+
 def check_algorithms(algorithms: list[str]) -> list[str]:
     """Validate a configured allow-list. Raises ValueError on a symmetric or unknown alg."""
     bad = [a for a in algorithms if a not in ASYMMETRIC_ALGORITHMS]
