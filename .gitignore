@@ -65,3 +65,9 @@ build/vcsim/
 build/greyspace/
 tests/e2e/playwright-report/
 tests/e2e/test-results/
+
+# Session coordinator: mutable state and the generated dashboard (main checkout only)
+.coord/state.sqlite
+.coord/state.sqlite-*
+.coord/dashboard.html
+.coord/dashboard.tmp
