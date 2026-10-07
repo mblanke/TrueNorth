@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -36,7 +35,6 @@ from .tables import (
     learning_recommendations,
     network_reservations,
     objectives,
-    range_leases,
     range_snapshots,
     ranges,
     scenario_executions,
@@ -58,11 +56,9 @@ def update_range_state(
     output: str | None = None,
     only_from: Sequence[str] | None = None,
     clear_error: bool = False,
-    lease_holder: str | None = None,
 ) -> int:
-    """Set a range's state; conditional on its current state when ``only_from`` is given,
-    and, when ``lease_holder`` is, on that holder still having the range's lease unexpired
-    (worker/fencing.py, guarded_range_update): one statement, no window between the two."""
+    """Set a range's state; conditional on its current state when ``only_from`` is given.
+    A fenced task's writes come through worker/fencing.py's guarded_range_update."""
     values: dict[str, Any] = {"state": new_state, "updated_at": _now()}
     if error:
         values["error_message"] = error
@@ -74,14 +70,12 @@ def update_range_state(
     if only_from:
         # CAST: `state` is a native enum on Postgres and plain text on SQLite.
         stmt = stmt.where(sa.cast(ranges.c.state, sa.Text).in_(list(only_from)))
-    if lease_holder is not None:
-        held = sa.select(range_leases.c.range_id).where(
-            range_leases.c.range_id == range_id,
-            range_leases.c.holder == lease_holder,
-            range_leases.c.expires_at > datetime.now(UTC),  # the worker's clock, as it writes expires_at
-        )
-        stmt = stmt.where(held.exists())
     return db.execute(stmt).rowcount
+
+
+def lock_range(db, range_id: str) -> None:
+    """Row-lock the range until commit (PostgreSQL; SQLite serialises writes)."""
+    db.execute(sa.select(ranges.c.id).where(ranges.c.id == range_id).with_for_update())
 
 
 def range_template_and_backend(db, range_id: str):

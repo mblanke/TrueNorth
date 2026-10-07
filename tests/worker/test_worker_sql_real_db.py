@@ -679,8 +679,9 @@ class _PgRecorder:
 ID = str(uuid.uuid4())
 PG_CALLS = {
     "update_range_state": lambda db: db_ops.update_range_state(
-        db, ID, "failed", error="e", output="o", only_from=("ready", "stopped"), lease_holder="provision:x"
+        db, ID, "failed", error="e", output="o", only_from=("ready", "stopped")
     ),
+    "lock_range": lambda db: db_ops.lock_range(db, ID),
     "range_template_and_backend": lambda db: db_ops.range_template_and_backend(db, ID),
     "range_output_and_backend": lambda db: db_ops.range_output_and_backend(db, ID),
     "active_ranges": db_ops.active_ranges,

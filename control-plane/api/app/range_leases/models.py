@@ -22,8 +22,11 @@ class RangeLease(Base):
     redelivered copy shares). Released when the task ends, however it ends, except after
     a soft time limit, when the hypervisor call may still be running. While the task runs
     a heartbeat renews ``expires_at`` a few minutes ahead, so a worker that died holds it
-    only minutes. Abandoning the range operation deletes the lease of that operation's
-    action (app/range_ops/service.py, release_lease); the worker, if alive, is fenced out.
+    only minutes. Abandoning the range operation renames the lease of that operation's
+    action to a short tombstone, ``abandoned:<holder>`` (app/range_ops/service.py,
+    fence_lease): the worker, if alive, is fenced out and renews the tombstone until its
+    in-flight work ends; if dead, the tombstone expires within minutes. Expiry is
+    written and compared in database time.
     """
 
     __tablename__ = "range_leases"

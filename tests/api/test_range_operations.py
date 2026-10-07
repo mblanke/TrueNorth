@@ -374,24 +374,35 @@ def _leases(db_session, rid: str) -> list[str]:
     return [h for (h,) in db_session.query(RangeLease.holder).filter(RangeLease.range_id == uuid.UUID(rid))]
 
 
-def test_abandon_releases_a_dead_workers_lease_and_the_range_can_be_built_at_once(client, db_session, no_real_broker):
-    """The s7 interruption exercise: a worker killed mid-provision left its lease. After the
-    operator abandoned the operation every new provision was refused for up to an hour."""
+def test_abandon_fences_the_lease_and_the_range_is_free_once_the_tombstone_expires(
+    client, db_session, no_real_broker, monkeypatch
+):
+    """The s7 interruption exercise: a worker killed mid-provision left its lease, and after
+    the abandon every new provision was refused for up to an hour. The abandon now turns the
+    lease into a tombstone of one lease length (here 1 s), not the lease's remaining life;
+    it is not deleted, because a worker that is in fact alive may still have vCenter work in
+    flight that a new build would collide with (#95 review)."""
+    import time
+
     from app.models import AuditLog
 
+    monkeypatch.setenv("RANGE_LEASE_SECONDS", "1")
     rid = _range(client, db_session)
     op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
-    _lease(db_session, rid, "provision:killed-worker", 180)  # what the dead task left
+    _lease(db_session, rid, "provision:killed-worker", 3600)  # what the dead task left
     op = client.post(f"/ranges/{rid}/operations/{op_id}/abandon").json()
-    assert op["status"] == "failed" and "lease on the range was released" in op["error"]["message"]
-    assert _leases(db_session, rid) == []
+    assert op["status"] == "failed" and "lease on the range was fenced" in op["error"]["message"]
+    assert _leases(db_session, rid) == ["abandoned:provision:killed-worker"]
     audit = db_session.query(AuditLog).filter(AuditLog.action == "abandon_operation", AuditLog.resource_id == rid).one()
-    assert "worker lease released" in audit.detail
+    assert "worker lease fenced" in audit.detail
     assert audit.tenant_id == db_session.get(Range, uuid.UUID(rid)).tenant_id
+    resp = client.post(f"/ranges/{rid}/provision")
+    assert resp.status_code == 409 and "abandoned operation's worker" in resp.json()["detail"]
+    time.sleep(2.1)  # the tombstone's life (SQLite compares to the whole second)
     assert client.post(f"/ranges/{rid}/provision").status_code == 202, "refused although the worker is gone"
 
 
-def test_abandon_releases_only_the_lease_of_the_operations_own_action(client, db_session, no_real_broker):
+def test_abandon_fences_only_the_lease_of_the_operations_own_action(client, db_session, no_real_broker):
     """A restore's lease (or a superseded build's, under a destroy) belongs to work the
     abandoned operation did not start: it is left to its own task."""
     rid = _range(client, db_session)
@@ -402,6 +413,35 @@ def test_abandon_releases_only_the_lease_of_the_operations_own_action(client, db
     assert _leases(db_session, rid) == ["restore:running"]
     resp = client.post(f"/ranges/{rid}/provision")
     assert resp.status_code == 409 and "worker is still acting" in resp.json()["detail"]
+
+
+def test_abandon_fences_a_legacy_lease_only_when_its_operation_is_the_only_one_in_flight(
+    client, db_session, no_real_broker
+):
+    """Leases written before holders named their action (a bare token). One can only be the
+    abandoned operation's task's when no other operation of the range is in flight."""
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _lease(db_session, rid, "3f2c" * 8, 3600)
+    client.post(f"/ranges/{rid}/operations/{op_id}/abandon")
+    assert _leases(db_session, rid) == ["abandoned:" + "3f2c" * 8]
+
+    rid = _range(client, db_session)
+    stop = RangeOperation(
+        id=uuid.uuid4(), tenant_id=db_session.get(Range, uuid.UUID(rid)).tenant_id, range_id=uuid.UUID(rid),
+        action="stop", generation=1, request_hash="x", status="dispatched", dispatch_attempts=1,
+    )
+    db_session.add(stop)
+    db_session.commit()
+    provision = RangeOperation(
+        id=uuid.uuid4(), tenant_id=stop.tenant_id, range_id=stop.range_id, action="provision", generation=2,
+        request_hash="y", status="dispatched", dispatch_attempts=1,
+    )
+    db_session.add(provision)
+    db_session.commit()
+    _lease(db_session, rid, "9a" * 16, 3600)
+    client.post(f"/ranges/{rid}/operations/{provision.id}/abandon")
+    assert _leases(db_session, rid) == ["9a" * 16], "a legacy lease that may be the stop's was fenced"
 
 
 def test_a_dead_workers_lease_stops_blocking_once_it_expires(client, db_session, no_real_broker):

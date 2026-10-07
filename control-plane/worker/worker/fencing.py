@@ -29,29 +29,37 @@ visibility timeout, so a running task is not redelivered.
 **Heartbeat.** The lease is short (``LEASE_SECONDS``, minutes) and a thread renews it
 every ``LEASE_HEARTBEAT_SECONDS`` while the task runs, however long it runs. A worker
 that dies (killed, OOM, host lost) stops renewing, and its lease expires within
-``LEASE_SECONDS``; it used to be held for an hour, refusing every new provision. A kept
-lease (soft limit) is set once to ``KEPT_LEASE_SECONDS`` and not renewed.
+``LEASE_SECONDS``; it used to be held for an hour, refusing every new provision. A
+renewal never shortens a lease, and re-takes this execution's own lease even after it
+expired (a database outage longer than the lease), unless another execution took it.
+A kept lease (soft limit) is set once to ``KEPT_LEASE_SECONDS`` and not renewed. Expiry
+is written and compared in database time (PostgreSQL ``now()``), not the hosts' clocks.
 
-**Losing the lease.** An operator's abandon of the range operation deletes the lease of
-that operation's action (app/range_ops/service.py: holders are ``<action>:<token>``), and
-a lease the heartbeat could not renew for ``LEASE_SECONDS`` may be taken by another
-execution. Either way the execution no longer holds it, and from then on it does nothing:
+**Abandoned: a tombstone.** An operator's abandon of the range operation does not delete
+the lease: it renames it ``abandoned:<holder>`` (app/range_ops/service.py; holders are
+``<action>:<token>``), expiring ``LEASE_SECONDS`` later. The range stays blocked while
+the tombstone lives, so no new build can collide with VMs, port groups or a teardown the
+old execution still has in flight on vCenter. Then:
 
-* the heartbeat that finds the lease gone cancels the task's hypervisor call (``run_async``);
-* ``run_async`` re-checks the lease in the database before each hypervisor call;
-* every range state write of a fenced task (``guarded_range_update``) is conditional, in
-  the same UPDATE, on the lease still being this execution's and unexpired.
+* a dead worker renews nothing: the tombstone expires and the range is free within
+  ``LEASE_SECONDS``;
+* a live one is fenced: it starts no further hypervisor call (``run_async`` checks the
+  lease first), makes no reservation, and writes no range state (``guarded_range_update``
+  locks the range and lease rows and finds the holder renamed). Its heartbeat renews the
+  tombstone instead, so the range stays blocked while its call runs to the end (it is not
+  cancelled: cancelling stops neither its threads nor vCenter's tasks). A finished build
+  sees its ``ready`` refused and tears down what it built (``discard_built``), still under
+  the tombstone; a failure is not retried. Then it deletes the tombstone.
 
-Each raises ``LeaseLost``, a ``BaseException`` so that the tasks' ``except Exception``
-failure paths (write ``failed``, retry) do not run; ``fenced`` returns
-``{"status": "lease_lost"}``. Work already done on the hypervisor is not undone: it is
-logged, and the abandon told the operator to check the hypervisor.
+**Taken over.** A lease that expired unrenewed and that another execution then claimed
+is lost for good: ``LeaseLost``, a ``BaseException`` so that the tasks' ``except
+Exception`` paths (write ``failed``, retry) do not run. ``fenced`` returns
+``{"status": "lease_lost"}`` and nothing is recorded; what the call built is logged.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import contextvars
 import functools
 import logging
@@ -90,11 +98,19 @@ FINAL_ERRORS = (SoftTimeLimitExceeded, AllocationError)  # a full VLAN/address p
 
 
 class LeaseLost(BaseException):  # noqa: N818 — a fence, not an error the task handles
-    """This execution no longer holds its range's lease (abandoned, or expired and taken).
+    """This execution may not act on its range any more (abandoned, or expired and taken).
 
     A ``BaseException``: the range tasks' ``except Exception`` paths (record ``failed``,
     retry) must not run for an execution that is no longer the range's. ``fenced`` turns
-    it into a ``lease_lost`` result."""
+    it into a ``lease_lost`` (or ``abandoned``) result."""
+
+
+# An abandon renames a lease to this prefix + its holder (app/range_ops/service.py).
+ABANDONED = "abandoned:"
+
+
+def tombstone(holder: str) -> str:
+    return ABANDONED + holder
 
 
 # The lease of the fenced task running in this context (set by ``fenced``).
@@ -122,21 +138,22 @@ def run_async(coro):
     ``async with``: vCenter sessions, HTTP clients), then propagates without waiting for
     those threads. A thread may keep running after that; the range's lease covers it.
 
-    In a fenced task the lease is checked in the database first (``LeaseLost``: the call
-    is not made), and a heartbeat that finds the lease gone cancels the call the same way.
+    In a fenced task the lease is checked in the database first: an abandoned or lost
+    execution starts no hypervisor call (``LeaseLost``). A call already running when its
+    operation is abandoned is not cancelled; if it then fails (not by the time limit), its
+    threads are waited for while the heartbeat keeps the tombstone, so that the range is
+    not handed to a new operation under them.
     """
     lease = _current.get()
+    if lease is not None:
+        try:
+            lease.verify()
+        except BaseException:
+            coro.close()  # never started
+            raise
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    if lease is not None:
-        lease.loop = loop  # before the check: a loss found after it cancels the call
     try:
-        if lease is not None:
-            try:
-                lease.verify()
-            except BaseException:
-                coro.close()  # never started
-                raise
         result = loop.run_until_complete(coro)
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.run_until_complete(loop.shutdown_default_executor())  # finished: nothing to wait for
@@ -147,12 +164,10 @@ def run_async(coro):
             t.cancel()
         if pending:
             loop.run_until_complete(asyncio.wait(pending, timeout=CLEANUP_GRACE))
-        if lease is not None and lease.lost.is_set() and not isinstance(exc, LeaseLost):
-            raise LeaseLost(f"range {lease.range_id}: lease lost during the hypervisor call") from exc
+        if lease is not None and not isinstance(exc, SoftTimeLimitExceeded) and lease.refresh() == "abandoned":
+            loop.run_until_complete(loop.shutdown_default_executor())  # drain, under the tombstone
         raise
     finally:
-        if lease is not None:
-            lease.loop = None
         asyncio.set_event_loop(None)
         loop.close()  # shuts the executor down without waiting for its threads
 
@@ -160,124 +175,151 @@ def run_async(coro):
 # ── the lease ─────────────────────────────────────────────────────────
 
 
+def _postgres(db) -> bool:
+    return db.get_bind().dialect.name == "postgresql"
+
+
+def _db_time(db, seconds: float = 0):
+    """Now, plus ``seconds``, in database time: every worker and the API compare one clock.
+    SQLite (the tests) has no interval arithmetic; there it is this process's clock."""
+    if _postgres(db):
+        return sa.func.now() + timedelta(seconds=seconds) if seconds else sa.func.now()
+    return datetime.now(UTC) + timedelta(seconds=seconds)
+
+
 def _claim_lease(db, range_id: str, holder: str) -> bool:
-    """Take the range's lease for ``holder`` unless another unexpired holder has it."""
-    now = datetime.now(UTC)
-    values = {"range_id": range_id, "holder": holder, "expires_at": now + timedelta(seconds=LEASE_SECONDS)}
-    if db.get_bind().dialect.name == "postgresql":
+    """Take the range's lease for ``holder`` unless another unexpired holder has it (an
+    expired one, a tombstone included, is taken over)."""
+    if _postgres(db):
         from sqlalchemy.dialects.postgresql import insert
     else:
         from sqlalchemy.dialects.sqlite import insert
-    stmt = insert(range_leases).values(**values)
+    expires = _db_time(db, LEASE_SECONDS)
+    stmt = insert(range_leases).values(range_id=range_id, holder=holder, expires_at=expires)
     stmt = stmt.on_conflict_do_update(
         index_elements=[range_leases.c.range_id],
-        set_={"holder": holder, "expires_at": values["expires_at"]},
-        where=range_leases.c.expires_at < now,
+        set_={"holder": holder, "expires_at": expires},
+        where=range_leases.c.expires_at < _db_time(db),
     )
     # RETURNING, not rowcount: psycopg reports -1 for an upsert.
     return db.execute(stmt.returning(range_leases.c.holder)).first() is not None
 
 
 def _release_lease(db, range_id: str, holder: str) -> None:
-    db.execute(sa.delete(range_leases).where(range_leases.c.range_id == range_id, range_leases.c.holder == holder))
+    """Delete ``holder``'s lease, or its tombstone (abandoned)."""
+    db.execute(
+        sa.delete(range_leases).where(
+            range_leases.c.range_id == range_id, range_leases.c.holder.in_([holder, tombstone(holder)])
+        )
+    )
 
 
 def _extend_lease(db, range_id: str, holder: str, seconds: int | None = None) -> bool:
-    """Push the lease's expiry ``seconds`` (``LEASE_SECONDS``) from now, if ``holder``
-    still has it unexpired. False when it does not: released (abandoned), or expired and
-    possibly taken. An expired lease is not revived: in the meantime the API may have
-    taken the range as free (app/range_ops/service.py, worker_acting)."""
-    now = datetime.now(UTC)
-    return (
-        db.execute(
-            sa.update(range_leases)
-            .where(
-                range_leases.c.range_id == range_id,
-                range_leases.c.holder == holder,
-                range_leases.c.expires_at > now,
-            )
-            .values(expires_at=now + timedelta(seconds=seconds or LEASE_SECONDS))
-        ).rowcount
-        > 0
+    """Make ``holder``'s lease last at least ``seconds`` (``LEASE_SECONDS``) from now.
+    False when ``holder`` does not have it.
+
+    Never shortens it (a renewal racing ``keep``). Re-takes ``holder``'s own lease even
+    after it expired: a database outage longer than the lease must not cost a healthy
+    task its range. Safe because nothing hands the range on while it is in progress
+    except a takeover of the lease (the holder changes) or an abandon (renamed)."""
+    later = _db_time(db, seconds or LEASE_SECONDS)
+    greater = sa.func.greatest if _postgres(db) else sa.func.max  # SQLite's two-argument max()
+    stmt = (
+        sa.update(range_leases)
+        .where(range_leases.c.range_id == range_id, range_leases.c.holder == holder)
+        .values(expires_at=greater(range_leases.c.expires_at, later))
     )
+    return db.execute(stmt).rowcount > 0
 
 
-def _holds(db, range_id: str, holder: str) -> bool:
-    """Whether ``holder`` has the range's lease, unexpired."""
-    stmt = sa.select(range_leases.c.range_id).where(
-        range_leases.c.range_id == range_id,
-        range_leases.c.holder == holder,
-        range_leases.c.expires_at > datetime.now(UTC),
-    )
-    return db.execute(stmt).first() is not None
+def _lease_holder(db, range_id: str, lock: bool = False) -> str | None:
+    """Who holds the range's lease, expired or not; ``lock`` row-locks it until commit."""
+    stmt = sa.select(range_leases.c.holder).where(range_leases.c.range_id == range_id)
+    row = db.execute(stmt.with_for_update() if lock else stmt).first()
+    return row[0] if row else None
 
 
 class _Lease:
     """The lease a running fenced task holds, and the heartbeat that renews it.
 
     The heartbeat is a daemon thread: it dies with the process, so a dead worker's lease
-    expires ``LEASE_SECONDS`` after its last renewal. It stops on the first renewal that
-    finds the lease no longer this execution's (``lose``)."""
+    expires ``LEASE_SECONDS`` after its last renewal. Once the operation is abandoned it
+    renews the tombstone instead (``current``), until the task ends; once the lease is
+    taken over it stops."""
 
     def __init__(self, session_factory, range_id: str, holder: str):
         self.session_factory, self.range_id, self.holder = session_factory, range_id, holder
-        self.lost = threading.Event()
-        self.loop: asyncio.AbstractEventLoop | None = None  # the hypervisor call's (run_async)
+        self.current = holder  # what the heartbeat renews: the lease, or its tombstone
+        self.abandoned = threading.Event()  # renamed to tombstone(holder) by an abandon
+        self.lost = threading.Event()  # taken over by another execution, or gone
         self._stopped = threading.Event()
-        self._lock = threading.Lock()  # no renewal after stop(): keep() must have the last word
         self._thread = threading.Thread(target=self._beat, name=f"lease-{range_id}", daemon=True)
 
     def start(self) -> None:
         self._thread.start()
 
     def stop(self) -> None:
-        with self._lock:
-            self._stopped.set()
+        """Stop renewing. A renewal still in flight cannot shorten a ``keep`` (never
+        shortens) nor revive a released lease (no row)."""
+        self._stopped.set()
         if self._thread.is_alive() and self._thread is not threading.current_thread():
             self._thread.join(timeout=5)
 
     def _beat(self) -> None:
         while not self._stopped.wait(LEASE_HEARTBEAT_SECONDS):
-            with self._lock:
-                if self._stopped.is_set():
-                    return
-                try:
-                    with self.session_factory() as db:
-                        ours = _extend_lease(db, self.range_id, self.holder)
-                except Exception:  # noqa: BLE001 — a database blip: the lease has LEASE_SECONDS to spare
-                    logger.warning("could not renew the lease on range %s", self.range_id, exc_info=True)
-                    continue
-            if not ours:
-                self.lose("the heartbeat found it gone")
+            try:
+                with self.session_factory() as db:
+                    if _extend_lease(db, self.range_id, self.current):
+                        continue
+                    if self.observe(_lease_holder(db, self.range_id)) == "abandoned":
+                        _extend_lease(db, self.range_id, self.current)
+            except Exception:  # noqa: BLE001 — a database blip: renewal re-takes the lease when it is back
+                logger.warning("could not renew the lease on range %s", self.range_id, exc_info=True)
+                continue
+            if self.lost.is_set():
                 return
 
-    def lose(self, why: str) -> None:
-        """Record that this execution no longer holds the lease, and cancel its hypervisor
-        call if one is running (``run_async`` then raises ``LeaseLost``)."""
+    def observe(self, holder_now: str | None) -> str:
+        """Classify the lease's current holder: ``held``, ``abandoned`` (our tombstone; from
+        now on the heartbeat renews that) or ``lost``."""
+        if holder_now == self.holder and not self.abandoned.is_set():
+            return "held"
+        if holder_now == tombstone(self.holder):
+            if not self.abandoned.is_set():
+                logger.warning(
+                    "range %s: the operation was abandoned. This execution starts nothing more and writes "
+                    "nothing; it keeps the range blocked until the work it has in flight ends.", self.range_id,
+                )
+            self.current = holder_now
+            self.abandoned.set()
+            return "abandoned"
         if not self.lost.is_set():
-            logger.error(
-                "range %s: this execution lost its lease (%s): abandoned, or expired and taken over. "
-                "It stops acting on the range.", self.range_id, why,
-            )
+            logger.error("range %s: this execution's lease was taken over (now %r); it stops acting on the range",
+                         self.range_id, holder_now)
         self.lost.set()
-        loop = self.loop
-        if loop is not None:
-            with contextlib.suppress(RuntimeError):  # the call finished and its loop closed meanwhile
-                loop.call_soon_threadsafe(_cancel_all, loop)
+        return "lost"
+
+    def refresh(self) -> str:
+        """``observe`` the database now; ``unknown`` when it cannot be read."""
+        try:
+            with self.session_factory() as db:
+                return self.observe(_lease_holder(db, self.range_id))
+        except Exception:  # noqa: BLE001
+            logger.warning("could not read the lease on range %s", self.range_id, exc_info=True)
+            return "unknown"
 
     def verify(self) -> None:
         """Raise ``LeaseLost`` unless this execution still holds the lease (database check)."""
-        if not self.lost.is_set():
-            with self.session_factory() as db:
-                if _holds(db, self.range_id, self.holder):
-                    return
-            self.lose("checked before a hypervisor call")
-        raise LeaseLost(f"range {self.range_id}: this execution no longer holds its lease")
+        with self.session_factory() as db:
+            status = self.observe(_lease_holder(db, self.range_id))
+        if status != "held":
+            raise LeaseLost(f"range {self.range_id}: {status}; no hypervisor call is started")
 
+    def keep(self) -> None:
+        keep(self.session_factory, self.range_id, self.current)
 
-def _cancel_all(loop) -> None:
-    for t in asyncio.all_tasks(loop):
-        t.cancel()
+    def release(self) -> None:
+        release(self.session_factory, self.range_id, self.holder)
 
 
 def ensure_held(db, range_id: str) -> None:
@@ -286,26 +328,42 @@ def ensure_held(db, range_id: str) -> None:
     lease = _current.get()
     if lease is None or lease.range_id != str(range_id):
         return
-    if lease.lost.is_set() or not _holds(db, range_id, lease.holder):
-        lease.lose("checked before a database side effect")
-        raise LeaseLost(f"range {range_id}: this execution no longer holds its lease")
+    status = lease.observe(_lease_holder(db, range_id))
+    if status != "held":
+        raise LeaseLost(f"range {range_id}: {status}; nothing reserved")
 
 
 def guarded_range_update(db, range_id: str, new_state: str, **kwargs) -> int:
-    """``db_ops.update_range_state``, fenced: inside a fenced task, for its own range, the
-    UPDATE also requires that the task still holds the range's lease, unexpired. When it
-    does not, nothing is written and ``LeaseLost`` is raised. Outside one (the claim's
-    state check, untasked callers) it is the plain update."""
+    """``db_ops.update_range_state``, fenced: inside a fenced task, for its own range, it
+    writes only while the task holds the range's lease.
+
+    The range row, then the lease row, are locked first (in the order the API's accept
+    and abandon lock them: no deadlock), so neither an abandon nor a takeover can land
+    between the check and the write. Abandoned: nothing is written and 0 returned, as
+    for a range whose state moved on (a finished build then discards what it built,
+    still under the tombstone). Taken over: nothing is written, ``LeaseLost``. Outside a
+    fenced task (the claim's own state check, untasked callers) it is the plain update."""
     lease = _current.get()
     if lease is None or lease.range_id != str(range_id):
         return db_ops.update_range_state(db, range_id, new_state, **kwargs)
-    written = db_ops.update_range_state(db, range_id, new_state, lease_holder=lease.holder, **kwargs)
-    if written or _holds(db, range_id, lease.holder):
-        return written  # 0 with the lease held: the state moved on (only_from), as before
-    lease.lose(f"refused to write state {new_state!r}")
+    db_ops.lock_range(db, range_id)
+    status = lease.observe(_lease_holder(db, range_id, lock=True))
+    if status == "held":
+        return db_ops.update_range_state(db, range_id, new_state, **kwargs)
+    if status == "abandoned":
+        logger.warning("range %s: its operation was abandoned; not recording %r", range_id, new_state)
+        return 0
     if kwargs.get("output"):
         logger.error("range %s: built but not recorded, check the hypervisor: %s", range_id, kwargs["output"][:2000])
-    raise LeaseLost(f"range {range_id}: not writing {new_state!r}, this execution no longer holds its lease")
+    raise LeaseLost(f"range {range_id}: not writing {new_state!r}, the lease was taken over")
+
+
+def snapshot_back_to_ready(range_id: str, snapshot_id: str, *args, **kwargs) -> None:
+    """``on_lost`` for restore_snapshot: a fenced-out restore gives its snapshot back
+    (``restoring`` -> ``ready``), as a final failure does, so it is not stuck."""
+    from .tasks import _update_snapshot_state  # tasks imports this module
+
+    _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))
 
 
 def claim(session_factory, in_state, range_id: str, state: str | None, action: str = "range") -> str | None:
@@ -358,7 +416,8 @@ def keep(session_factory, range_id: str, holder: str) -> None:
 
 
 def release(session_factory, range_id: str, holder: str) -> None:
-    """Give the range's lease back (the task ended, or will be retried)."""
+    """Give the range's lease back (the task ended, or will be retried), or its tombstone
+    (the task's operation was abandoned, and its work has ended)."""
     try:
         with session_factory() as db:
             _release_lease(db, range_id, holder)
@@ -366,12 +425,16 @@ def release(session_factory, range_id: str, holder: str) -> None:
         logger.warning("could not release the lease on range %s", range_id, exc_info=True)
 
 
-def fenced(action: str, state: str | None):
+def fenced(action: str, state: str | None, on_lost=None):
     """Decorate a bound range task ``fn(task, range_id, ...)``: ``claim`` first (``skipped``
     or ``defer`` when it cannot); renew the lease by heartbeat while it runs; when it ends,
-    ``release`` the lease, except after a soft time limit, when the call may still run in a
-    thread and the lease is ``keep``-ed. An execution that lost the lease (``LeaseLost``)
-    ends with ``lease_lost``: nothing recorded, no retry."""
+    ``release`` the lease (or its tombstone), except after a soft time limit, when the call
+    may still run in a thread and the lease is ``keep``-ed.
+
+    An execution fenced out (``LeaseLost``), or one that fails after its operation was
+    abandoned, ends with ``lease_lost`` / ``abandoned``: not retried, nothing recorded.
+    ``on_lost(range_id, *args, **kwargs)`` then gives back what the task had taken (a
+    restore's snapshot)."""
 
     def wrap(fn):
         @functools.wraps(fn)
@@ -388,23 +451,35 @@ def fenced(action: str, state: str | None):
             lease.start()
             try:
                 result = fn(task, range_id, *args, **kwargs)
-            except LeaseLost as exc:
-                lease.stop()
-                release(_db_session, range_id, holder)  # only if still ours (expired, not taken)
-                logger.error("[%s] range %s: %s; stopped, nothing recorded", action, range_id, exc)
-                return {"status": "lease_lost", "range_id": range_id}
             except SoftTimeLimitExceeded:
                 lease.stop()
-                keep(_db_session, range_id, holder)
+                lease.keep()  # the lease, or the tombstone: the call may still be running
                 raise
+            except (Exception, LeaseLost) as exc:
+                lease.stop()
+                fenced_out = isinstance(exc, LeaseLost) or lease.abandoned.is_set() or lease.lost.is_set()
+                if not (fenced_out or lease.refresh() in ("abandoned", "lost")):
+                    lease.release()
+                    raise
+                lease.release()  # the tombstone: run_async drained the call's threads first
+                outcome = "abandoned" if lease.abandoned.is_set() else "lease_lost"
+                logger.error("[%s] range %s: %s (%s); not retried, nothing recorded", action, range_id, outcome, exc)
+                if on_lost is not None:
+                    try:
+                        on_lost(range_id, *args, **kwargs)
+                    except Exception:  # noqa: BLE001
+                        logger.warning("[%s] range %s: on_lost failed", action, range_id, exc_info=True)
+                return {"status": outcome, "range_id": range_id}
             except BaseException:
                 lease.stop()
-                release(_db_session, range_id, holder)
+                lease.release()
                 raise
             finally:
                 lease.stop()
                 _current.reset(token)
-            release(_db_session, range_id, holder)
+            lease.release()
+            if lease.abandoned.is_set():
+                logger.warning("[%s] range %s: finished after its operation was abandoned: %s", action, range_id, result)
             return result
 
         return run

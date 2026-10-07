@@ -18,7 +18,8 @@ def lease_always_free(monkeypatch):
     monkeypatch.setattr(fencing, "_claim_lease", lambda db, range_id, holder: True)
     monkeypatch.setattr(fencing, "_release_lease", lambda db, range_id, holder: None)
     monkeypatch.setattr(fencing, "_extend_lease", lambda db, range_id, holder, seconds=None: True)
-    monkeypatch.setattr(fencing, "_holds", lambda db, range_id, holder: True)
+    monkeypatch.setattr(fencing, "_lease_holder", lambda db, range_id, lock=False: None)
+    monkeypatch.setattr(fencing._Lease, "observe", lambda self, holder_now: "held")
 
 
 # ── A real (SQLite) worker database, for the range-task tests ────────────

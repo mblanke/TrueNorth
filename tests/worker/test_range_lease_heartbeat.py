@@ -1,13 +1,16 @@
 """The range lease is renewed while its task runs, expires soon after its worker dies,
-and an execution that lost it does nothing more (worker/fencing.py).
+and an abandon fences a still-running execution out without handing the range to a new
+operation under its in-flight work (worker/fencing.py).
 
 Found by rerunning the s7 interruption exercise: a worker killed mid-provision left its
 range's lease for LEASE_SECONDS (then an hour), and nothing could release it. After the
 operator abandoned the operation every new provision was refused with 409 "a worker is
-still acting on this range" until it expired.
+still acting on this range" until it expired. A first fix deleted the lease on abandon;
+review of #95 found that let a new build start beside a live worker's vCenter work, so
+an abandon now leaves a short tombstone instead.
 
-These run the real tasks against SQLite with the hypervisor stubbed, and the lease
-shortened to about a second.
+These run the real tasks against SQLite (and PostgreSQL where marked) with the
+hypervisor stubbed, and the lease shortened to about a second.
 """
 
 from __future__ import annotations
@@ -71,12 +74,17 @@ def _lease(db, rid: str):
 
 def _abandon(db, rid: str, action: str = "provision") -> int:
     """What app/range_ops/service.py's abandon does to the worker's tables: the range to
-    failed, and the lease of the operation's action deleted."""
+    failed, and the lease of the operation's action renamed to a tombstone expiring one
+    lease from now."""
     _set_state(db, rid, "failed", f"{action} abandoned by an operator")
+    leases = fencing.range_leases
     with db.begin() as conn:
         return conn.execute(
-            sa.delete(fencing.range_leases).where(
-                fencing.range_leases.c.range_id == rid, fencing.range_leases.c.holder.like(f"{action}:%")
+            sa.update(leases)
+            .where(leases.c.range_id == rid, leases.c.holder.like(f"{action}:%"))
+            .values(
+                holder=sa.literal(fencing.ABANDONED).concat(leases.c.holder),
+                expires_at=datetime.now(UTC) + timedelta(seconds=fencing.LEASE_SECONDS),
             )
         ).rowcount
 
@@ -164,22 +172,45 @@ def test_a_dead_workers_lease_expires_and_a_new_build_proceeds(db):
     assert tasks.provision_range.run(rid)["status"] == "ready"
 
 
-def test_an_expired_lease_is_not_revived_by_its_holder(db):
+def test_a_database_outage_longer_than_the_lease_does_not_cost_a_healthy_build_its_range(db):
+    """The heartbeat could not renew for longer than a lease (the database was down), but
+    nobody took the lease: when the database is back the task re-takes its own lease and
+    finishes, instead of giving up a healthy build with the range stuck in provisioning."""
+    rid = _range(db, "provisioning")
+    backend = SlowBackend()
+    results: dict = {}
+    with patch.object(tasks, "_get_backend", return_value=backend):
+        build = _run_in_thread(lambda: tasks.provision_range.run(rid), results, "build")
+        assert backend.started.wait(10)
+        with db.begin() as conn:  # what the outage left: the lease long expired
+            conn.execute(sa.update(fencing.range_leases).where(fencing.range_leases.c.range_id == rid)
+                         .values(expires_at=datetime.now(UTC) - timedelta(seconds=30)))
+        time.sleep(0.5)
+        assert _expiry(_lease(db, rid)[1]) > datetime.now(UTC), "the heartbeat did not re-take its own lease"
+        backend.release.set()
+        build.join(20)
+    assert results["build"]["status"] == "ready"
+
+
+def test_an_expired_lease_another_execution_took_is_not_renewed(db):
     rid = _range(db, "provisioning")
     with db.begin() as conn:
         conn.execute(
             fencing.range_leases.insert().values(
-                range_id=rid, holder="provision:slow", expires_at=datetime.now(UTC) - timedelta(seconds=1)
+                range_id=rid, holder="provision:new", expires_at=datetime.now(UTC) + timedelta(seconds=60)
             )
         )
     with tasks._db_session() as s:
         assert fencing._extend_lease(s, rid, "provision:slow") is False
+        assert fencing._extend_lease(s, rid, "provision:new") is True
 
 
-def test_after_the_soft_limit_the_kept_lease_lasts_long_and_is_not_renewed(db):
+def test_after_the_soft_limit_the_kept_lease_lasts_long_and_a_renewal_never_shortens_it(db):
     rid = _range(db, "provisioning")
     holder = fencing.claim(tasks._db_session, tasks._in_state, rid, "provisioning", "provision")
     fencing.keep(tasks._db_session, rid, holder)
+    with tasks._db_session() as s:  # a heartbeat that was in flight when the task stopped
+        assert fencing._extend_lease(s, rid, holder)
     expires = _expiry(_lease(db, rid)[1])
     assert expires > datetime.now(UTC) + timedelta(seconds=fencing.KEPT_LEASE_SECONDS - 60)
 
@@ -187,9 +218,12 @@ def test_after_the_soft_limit_the_kept_lease_lasts_long_and_is_not_renewed(db):
 # ── abandoned: the stale execution is fenced out ────────────────────────
 
 
-def test_a_lease_released_during_the_hypervisor_call_cancels_it_and_records_nothing(db):
-    """The operator abandoned the build (its lease deleted) while the worker was in fact
-    alive: its heartbeat sees the lease gone and cancels the call; nothing is written."""
+def test_an_abandon_during_the_build_keeps_the_range_blocked_until_the_work_ends(db, requeued):
+    """The operator abandoned the build while the worker was in fact alive. Its call is
+    not cancelled (that stops neither its threads nor vCenter's tasks); its heartbeat keeps
+    the tombstone past the tombstone's own life, so no new operation's task can take the
+    range under it. When the call ends the build tears down what it built, writes
+    nothing, is not retried, and only then gives the range back."""
     rid = _range(db, "provisioning")
     backend = SlowBackend()
     results: dict = {}
@@ -197,21 +231,29 @@ def test_a_lease_released_during_the_hypervisor_call_cancels_it_and_records_noth
         build = _run_in_thread(lambda: tasks.provision_range.run(rid), results, "build")
         assert backend.started.wait(10)
         assert _abandon(db, rid) == 1
-        _set_state(db, rid, "provisioning")  # and a new build was accepted at once
-        build.join(10)
-        assert not build.is_alive(), "the stale task kept running after losing its lease"
-    assert results["build"]["status"] == "lease_lost" and backend.cancelled
-    assert _state(db, rid) == ("provisioning", None, None), "the stale task wrote over the new operation's range"
-    backend.release.set()
-    # The new operation's task is not held up by the stale one: it claims and builds.
+        time.sleep(2.5)  # past the tombstone's own expiry: alive only if the stale worker renews it
+        holder, expires = _lease(db, rid)
+        assert holder.startswith("abandoned:provision:") and _expiry(expires) > datetime.now(UTC)
+        assert fencing.claim(tasks._db_session, tasks._in_state, rid, None, "provision") == fencing.LEASE_HELD, (
+            "a new operation's task took the range while the abandoned build was still running"
+        )
+        assert not backend.cancelled
+        backend.release.set()
+        build.join(20)
+    assert results["build"]["status"] == "discarded" and backend.destroys == 1
+    assert _state(db, rid) == ("failed", "provision abandoned by an operator", None)
+    assert _lease(db, rid) is None, "the tombstone is deleted once the work has ended"
+    assert requeued == []
+    _set_state(db, rid, "provisioning")  # the next operation, accepted now
     assert tasks.provision_range.run(rid)["status"] == "ready"
 
 
-def test_a_lease_lost_after_the_build_records_nothing_and_does_not_retry(db, requeued):
+def test_an_abandon_after_the_build_discards_it_under_the_tombstone(db, requeued):
     """The abandon lands between the hypervisor call's end and the state write: the
-    write is refused in the same statement, the result is not recorded, the error path
-    (write failed, retry) does not run, and nothing is torn down."""
+    write is refused (range and lease rows locked), the result is not recorded, and what
+    was built is torn down while the range is still blocked."""
     rid = _range(db, "provisioning")
+    blocked_during_teardown = []
 
     class AbandonedDuringBuild(SlowBackend):
         async def provision(self, range_id, template, allocations):
@@ -219,35 +261,108 @@ def test_a_lease_lost_after_the_build_records_nothing_and_does_not_retry(db, req
             _abandon(db, range_id)
             return ProvisionResult(status="ok", vms=[{"name": "x", "vm_id": "vm-9"}])
 
+        async def destroy(self, range_id, output):
+            blocked_during_teardown.append(_lease(db, range_id)[0].startswith("abandoned:"))
+            return await super().destroy(range_id, output)
+
     backend = AbandonedDuringBuild()
     with (
         patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60),  # the heartbeat does not notice first
         patch.object(tasks, "_get_backend", return_value=backend),
-        patch.object(tasks, "_last_attempt", return_value=False),
     ):
-        assert tasks.provision_range.run(rid)["status"] == "lease_lost"
-    state, error, output = _state(db, rid)
-    assert state == "failed" and error == "provision abandoned by an operator" and output is None
-    assert backend.destroys == 0, "a fenced-out build must not tear down VMs the operator now owns"
-    assert requeued == [], "a fenced-out task is not retried"
+        assert tasks.provision_range.run(rid)["status"] == "discarded"
+    assert _state(db, rid) == ("failed", "provision abandoned by an operator", None)
+    assert blocked_during_teardown == [True]
+    assert _lease(db, rid) is None and requeued == []
 
 
-def test_a_lease_lost_before_the_hypervisor_call_makes_no_call(db):
+def test_after_an_abandon_no_hypervisor_call_is_started(db):
     rid = _range(db, "provisioning")
     backend = SlowBackend()
 
     def abandoned_then_backend(*a, **k):
         _abandon(db, rid)
-        _set_state(db, rid, "provisioning")  # a new build accepted: the state alone would let it through
         return backend
 
     with (
         patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60),
         patch.object(tasks, "_get_backend", side_effect=abandoned_then_backend),
     ):
-        assert tasks.provision_range.run(rid)["status"] == "lease_lost"
-    assert backend.calls == 0, "the hypervisor was called by an execution that no longer held the lease"
-    assert _state(db, rid)[0] == "provisioning"
+        assert tasks.provision_range.run(rid)["status"] == "abandoned"
+    assert backend.calls == 0, "the hypervisor was called by an execution whose operation was abandoned"
+    assert _state(db, rid)[0] == "failed" and _lease(db, rid) is None
+
+
+def test_a_failure_after_an_abandon_waits_for_its_threads_writes_nothing_and_is_not_retried(db, requeued):
+    """The call fails after the abandon but left a thread running (a clone): the range is
+    not handed back until that thread is done; the abandon's message is not overwritten."""
+    rid = _range(db, "provisioning")
+    straggler_done = threading.Event()
+
+    class FailsLeavingAThread(SlowBackend):
+        async def provision(self, range_id, template, allocations):
+            asyncio.get_running_loop().run_in_executor(None, lambda: (time.sleep(1), straggler_done.set()))
+            _abandon(db, range_id)
+            raise RuntimeError("vCenter refused the clone")
+
+    with (
+        patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60),
+        patch.object(tasks, "_get_backend", return_value=FailsLeavingAThread()),
+    ):
+        result = tasks.provision_range.run(rid)  # called directly: the last attempt, which writes failed
+    assert result["status"] == "abandoned"
+    assert straggler_done.is_set(), "the range was handed back while the call's thread was still running"
+    assert _state(db, rid)[:2] == ("failed", "provision abandoned by an operator")
+    assert _lease(db, rid) is None and requeued == []
+
+
+def test_an_abandoned_dead_workers_tombstone_expires_and_frees_the_range(db):
+    rid = _range(db, "provisioning")
+    with db.begin() as conn:  # a killed worker's lease, recently renewed
+        conn.execute(
+            fencing.range_leases.insert().values(
+                range_id=rid, holder="provision:dead", expires_at=datetime.now(UTC) + timedelta(seconds=60)
+            )
+        )
+    assert _abandon(db, rid) == 1  # the tombstone lasts one lease, not the lease's remaining minute
+    _set_state(db, rid, "provisioning")  # the next operation
+    assert tasks.provision_range.run(rid)["status"] == "deferred"
+    time.sleep(1.2)
+    assert tasks.provision_range.run(rid)["status"] == "ready"
+
+
+def test_a_restore_fenced_out_gives_its_snapshot_back(db):
+    """restore_snapshot's on_lost: a fenced-out restore must not leave its snapshot in
+    ``restoring``, which blocks further restores and its deletion."""
+    rid = _range(db, "ready")
+    with db.begin() as conn:
+        conn.execute(sa.text("UPDATE ranges SET provisioner_output = :o WHERE id = :i"),
+                     {"o": '{"vms": [{"name": "r-dc01", "vm_id": "vm-1"}]}', "i": rid})
+        conn.execute(
+            sa.text(
+                "INSERT INTO range_snapshots (id, range_id, snapshot_state, snapshot_data, range_state_at_snapshot) "
+                "VALUES ('s1', :r, 'restoring', '{\"snapshot_name\": \"tnx\"}', 'ready')"
+            ),
+            {"r": rid},
+        )
+
+    class TakenOverDuringRestore:
+        async def restore(self, range_id, output, name, power_on=True):
+            with db.begin() as conn:
+                conn.execute(sa.update(fencing.range_leases).where(fencing.range_leases.c.range_id == range_id)
+                             .values(holder="restore:other", expires_at=datetime.now(UTC) + timedelta(seconds=60)))
+            from worker.provisioners.results import RestoreResult
+
+            return RestoreResult(status="ok", vms_reverted=1)
+
+    with (
+        patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60),
+        patch.object(tasks, "_get_backend", return_value=TakenOverDuringRestore()),
+    ):
+        assert tasks.restore_snapshot.run(rid, "s1")["status"] == "lease_lost"
+    with db.connect() as conn:
+        snap = conn.execute(sa.text("SELECT snapshot_state FROM range_snapshots WHERE id = 's1'")).scalar()
+    assert snap == "ready"
 
 
 def test_a_lease_taken_over_after_expiry_fences_the_old_execution(db):
@@ -266,13 +381,15 @@ def test_a_lease_taken_over_after_expiry_fences_the_old_execution(db):
                 )
             return ProvisionResult(status="ok", vms=[{"name": "x", "vm_id": "vm-9"}])
 
+    backend = TakenOver()
     with (
         patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60),
-        patch.object(tasks, "_get_backend", return_value=TakenOver()),
+        patch.object(tasks, "_get_backend", return_value=backend),
     ):
         assert tasks.provision_range.run(rid)["status"] == "lease_lost"
     assert _state(db, rid)[0] == "provisioning"
     assert _lease(db, rid)[0] == "provision:new", "the old execution released the new holder's lease"
+    assert backend.destroys == 0, "port groups are named by range: a teardown now could hit the new holder's build"
 
 
 def test_the_holder_names_the_action_an_abandon_releases_by(db):
@@ -283,13 +400,12 @@ def test_the_holder_names_the_action_an_abandon_releases_by(db):
     assert _abandon(db, rid, "destroy") == 1
 
 
-def test_on_postgres_an_abandoned_build_is_fenced_out_and_renewal_works(postgres_engine, monkeypatch):
-    """The same on the migrated schema: the heartbeat's UPDATE and the guarded state
-    write's EXISTS against timestamptz, and the API's own abandon deleting the lease."""
+def _pg(postgres_engine, monkeypatch):
+    """A session factory on the migrated PostgreSQL schema, the tasks pointed at it, and
+    one range in ``provisioning``."""
     from contextlib import contextmanager
 
     from app import models as m
-    from app.range_leases import RangeLease
     from sqlalchemy.orm import Session, sessionmaker
 
     factory = sessionmaker(bind=postgres_engine, class_=Session, expire_on_commit=False)
@@ -316,9 +432,22 @@ def test_on_postgres_an_abandoned_build_is_fenced_out_and_renewal_works(postgres
         rng = m.Range(name="r", template_id=tmpl.id, tenant_id=tenant.id, state=m.RangeState.provisioning)
         s.add(rng)
         s.commit()
-        rid = str(rng.id)
     monkeypatch.setattr(tasks, "_db_session", session)
     monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
+    return factory, rng.id
+
+
+def test_on_postgres_an_abandoned_build_is_fenced_and_keeps_the_range_until_done(postgres_engine, monkeypatch):
+    """On the migrated schema, with the API's own fence_lease: renewal in database time,
+    the tombstone renewed by the live stale worker, the API refusing a new provision
+    meanwhile, and the range handed back once the build has torn down what it built."""
+    from app import models as m
+    from app.range_leases import RangeLease
+    from app.range_ops import service as ops
+
+    factory, range_uuid = _pg(postgres_engine, monkeypatch)
+    monkeypatch.setenv("RANGE_LEASE_SECONDS", "1")  # the API's tombstone: alive after 2.5 s only if renewed
+    rid = str(range_uuid)
     backend = SlowBackend()
     results: dict = {}
     with patch.object(tasks, "_get_backend", return_value=backend):
@@ -326,19 +455,71 @@ def test_on_postgres_an_abandoned_build_is_fenced_out_and_renewal_works(postgres
         assert backend.started.wait(10)
         time.sleep(1.5)  # past the first lease: alive only if renewed
         with factory() as s:
-            lease = s.get(RangeLease, rng.id)
-            assert lease is not None and lease.expires_at > datetime.now(UTC)
-            from app.range_ops.service import release_lease
-
-            assert release_lease(s, rng.id, "provision")  # the abandon's release
-            s.get(m.Range, rng.id).state = m.RangeState.failed
+            assert ops.worker_acting(s, range_uuid), "the running build's lease expired"
+            assert ops.fence_lease(s, range_uuid, "provision")  # the abandon
+            s.get(m.Range, range_uuid).state = m.RangeState.failed
             s.commit()
-        build.join(10)
-    backend.release.set()
-    assert results["build"]["status"] == "lease_lost" and backend.cancelled
+        time.sleep(2.5)  # past the tombstone's own life
+        with factory() as s:
+            holder = ops.worker_acting(s, range_uuid)
+            assert holder and holder.startswith("abandoned:"), "a new provision would be accepted beside the build"
+        backend.release.set()
+        build.join(20)
+    assert results["build"]["status"] == "discarded" and backend.destroys == 1
     with factory() as s:
-        assert s.get(m.Range, rng.id).state == m.RangeState.failed
-        assert s.get(m.Range, rng.id).provisioner_output is None
+        assert s.get(m.Range, range_uuid).state == m.RangeState.failed
+        assert s.get(m.Range, range_uuid).provisioner_output is None
+        assert s.get(RangeLease, range_uuid) is None
+
+
+@pytest.mark.parametrize("racer", ["abandon", "takeover"])
+def test_on_postgres_the_guarded_write_waits_for_a_racing_abandon_or_takeover(postgres_engine, monkeypatch, racer):
+    """The check and the write cannot be split: an abandon (which locks the range row) or
+    a takeover (which locks the lease row) that commits while the write waits on its
+    lock is seen by the write, which then records nothing."""
+    from app import models as m
+    from app.range_leases import RangeLease
+
+    factory, range_uuid = _pg(postgres_engine, monkeypatch)
+    rid = str(range_uuid)
+    holder = "provision:old"
+    with factory() as s:
+        s.add(RangeLease(range_id=range_uuid, holder=holder, expires_at=datetime.now(UTC) + timedelta(seconds=60)))
+        s.commit()
+    racing = factory()
+    if racer == "abandon":  # the API: range row first, then the lease
+        racing.query(m.Range).filter(m.Range.id == range_uuid).with_for_update().one().state = m.RangeState.failed
+        racing.flush()
+        racing.query(RangeLease).filter(RangeLease.range_id == range_uuid).update(
+            {RangeLease.holder: fencing.tombstone(holder)}, synchronize_session=False
+        )
+    else:  # another execution's claim of a lease it found expired: the lease row only
+        racing.query(RangeLease).filter(RangeLease.range_id == range_uuid).update(
+            {RangeLease.holder: "provision:new"}, synchronize_session=False
+        )
+    racing.flush()
+    outcome: dict = {}
+
+    def write():
+        token = fencing._current.set(fencing._Lease(tasks._db_session, rid, holder))
+        try:
+            outcome["rows"] = tasks._update_range_state(rid, "ready", output='{"vms": []}', only_from=("provisioning",))
+        except fencing.LeaseLost:
+            outcome["rows"] = "lease_lost"
+        finally:
+            fencing._current.reset(token)
+
+    writer = threading.Thread(target=write)
+    writer.start()
+    time.sleep(0.5)
+    assert writer.is_alive(), "the guarded write did not wait for the racing transaction's lock"
+    racing.commit()
+    racing.close()
+    writer.join(10)
+    assert outcome["rows"] == (0 if racer == "abandon" else "lease_lost")
+    with factory() as s:
+        rng = s.get(m.Range, range_uuid)
+        assert rng.provisioner_output is None and rng.state != m.RangeState.ready
 
 
 def test_outside_a_fenced_task_state_writes_are_unguarded(db):
