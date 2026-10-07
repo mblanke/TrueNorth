@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from . import auth
 from .auth import CurrentUser
 from .models import Exercise, Range, UserRole
+from .rbac import Permission, user_has_permission
 
 SUBPROTOCOL = "bearer"
 
@@ -59,12 +60,23 @@ async def ws_user(websocket: WebSocket, db: Session) -> WsIdentity | None:
         return None
 
 
-def _owned(db: Session, model, raw_id: str, user: CurrentUser) -> bool:
+def canonical_id(raw: str) -> uuid.UUID | None:
+    """The id in its one canonical form, or None. ``uuid.UUID`` also takes upper case,
+    bare hex, ``urn:uuid:`` and braces; each became a separate channel or room, so
+    clients using different forms never saw each other."""
     try:
-        oid = uuid.UUID(raw_id)
-    except ValueError:
+        oid = uuid.UUID(raw)
+    except (ValueError, AttributeError, TypeError):
+        return None
+    return oid if str(oid) == raw else None
+
+
+def _owned(db: Session, model, raw_id: str, user: CurrentUser) -> bool:
+    """A live (not soft-deleted) row of the user's tenant."""
+    oid = canonical_id(raw_id)
+    if oid is None:
         return False
-    tenant = db.query(model.tenant_id).filter(model.id == oid).scalar()
+    tenant = db.query(model.tenant_id).filter(model.id == oid, model.deleted_at.is_(None)).scalar()
     return tenant is not None and str(tenant) == user.tenant_id
 
 
@@ -76,7 +88,15 @@ def authorize(channel: str, user: CurrentUser, db: Session) -> bool:
     * ``system.*``: admins.
     """
     if channel.startswith("range."):
-        return _owned(db, Range, channel[len("range.") :], user)
+        raw = channel[len("range.") :]
+        if not _owned(db, Range, raw, user):
+            return False
+        # As the HTTP read: a student's lab is not visible to people without infrastructure rights.
+        if user_has_permission(user, Permission.INFRA_READ):
+            return True
+        from .lab_sessions.service import lab_range_ids
+
+        return not lab_range_ids(db, [uuid.UUID(raw)])
     if channel.startswith("exercise."):
         return _owned(db, Exercise, channel[len("exercise.") :], user)
     if channel.startswith("tenant."):
@@ -91,6 +111,16 @@ def room_allowed(room_id: str, user: CurrentUser, db: Session) -> bool:
     return _owned(db, Exercise, room_id, user)
 
 
+CLIENT_ROOM_TYPES = ("room_chat", "room_cursor")
+MAX_FRAME_BYTES = 64 * 1024
+MAX_DISPLAY_NAME = 100
+
+
 def room_message_type(requested: object) -> str:
-    """A client may only send room_* frames into a room, never e.g. an inject."""
-    return requested if isinstance(requested, str) and requested.startswith("room_") else "room_chat"
+    """What a client may send into a room: chat or a cursor, never e.g. an inject, nor a
+    room_member_left in someone else's name (the server sends those)."""
+    return requested if requested in CLIENT_ROOM_TYPES else "room_chat"
+
+
+def display_name(requested: object) -> str | None:
+    return requested[:MAX_DISPLAY_NAME] if isinstance(requested, str) else None

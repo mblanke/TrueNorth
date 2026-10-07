@@ -207,3 +207,145 @@ async def test_a_socket_closes_when_its_token_expires():
     await m.connect(forever, "ranges", user_id="u3", tenant_id="t")  # AUTH_DISABLED: no token
     assert await m.close_expired() == 1
     assert {c.user_id for c in m.connections.values()} == {"u1", "u3"}
+
+
+# ── From the security review of 45066a2 ────────────────────────────────
+
+
+def _user(db, kc: str, role: UserRole, tenant=TENANT_A):
+    _tenant(db, tenant)
+    db.add(
+        User(
+            id=uuid.uuid4(),
+            email=f"{kc}@example.test",
+            display_name=kc,
+            role=role,
+            tenant_id=tenant,
+            keycloak_id=kc,
+            is_active=True,
+        )
+    )
+    db.commit()
+    return ["bearer", f"good-{kc}"]
+
+
+def test_the_api_starts_the_heartbeat_that_closes_expired_sockets(client):
+    """Nothing started the manager: close_expired never ran outside the tests."""
+    from app.main import app as fastapi_app
+
+    manager = fastapi_app.state.ws_manager
+    assert manager._running and manager._tasks, "the lifespan must start the heartbeat"
+
+
+@pytest.mark.asyncio
+async def test_the_heartbeat_closes_an_expired_socket(monkeypatch):
+    import asyncio
+
+    from app import websocket_manager
+
+    monkeypatch.setattr(websocket_manager, "HEARTBEAT_INTERVAL_S", 0.05)
+    m = WebSocketManager()
+    expired = FakeSocket()
+    await m.connect(expired, "tenant.t", user_id="u1", tenant_id="t", expires_at=time.time() - 1)
+    await m.start_local()
+    try:
+        await asyncio.sleep(0.3)
+    finally:
+        await m.shutdown()
+    assert m.connections == {}
+
+
+def test_a_room_member_can_post_only_chat_or_cursor_and_the_server_names_the_sender(client, auth_on, db_session):
+    a2 = _user(db_session, "kc-a2", UserRole.student)
+    ex = _exercise(db_session, TENANT_A)
+    room = str(ex.id)
+    with (
+        client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=A) as a,
+        client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=a2) as b,
+    ):
+        a.send_text(json.dumps({"action": "join_room", "room_id": room, "display_name": "A"}))
+        assert a.receive_json()["type"] == "room_member_joined"
+        b.send_text(json.dumps({"action": "join_room", "room_id": room, "display_name": {"x": 1}}))
+        joined = a.receive_json()
+        assert joined["data"]["display_name"] == "Anonymous", "a display name must be a string"
+        b.receive_json()
+        b.send_text(
+            json.dumps(
+                {
+                    "action": "room_message",
+                    "room_id": room,
+                    "type": "instructor_inject",
+                    "data": {"sender_user_id": "x"},
+                }
+            )
+        )
+        frame = a.receive_json()
+        assert frame["type"] == "room_chat", "an inject (or any non-chat type) must not reach a room"
+        assert frame["data"]["sender_user_id"] != "x", "the server stamps the sender"
+
+
+def test_an_admin_opens_system_channels(client, auth_on, db_session):
+    admin = _user(db_session, "kc-admin", UserRole.admin)
+    with client.websocket_connect("/ws/system.alerts", subprotocols=admin) as ws:
+        assert ws.accepted_subprotocol == "bearer"
+
+
+@pytest.mark.parametrize("action", ["room_message", "room_members", "leave_room"])
+def test_a_same_tenant_socket_that_has_not_joined_cannot_use_the_room(client, auth_on, db_session, action):
+    ex = _exercise(db_session, TENANT_A)
+    with client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=A) as ws:
+        ws.send_text(json.dumps({"action": action, "room_id": str(ex.id), "type": "room_chat", "data": {}}))
+        ws.send_text("probe")  # always answered with an ack: a missing refusal fails, never hangs
+        assert ws.receive_json() == {"type": "error", "detail": "room not allowed"}
+
+
+def test_another_tenant_cannot_leave_into_a_room(client, user_b, db_session):
+    """leave_room broadcast room_member_left into any room, unchecked."""
+    ex = _exercise(db_session, TENANT_A)
+    with client.websocket_connect(f"/ws/tenant.{TENANT_B}", subprotocols=B) as b:
+        b.send_text(json.dumps({"action": "leave_room", "room_id": str(ex.id)}))
+        b.send_text("probe")  # always answered with an ack: a missing refusal fails, never hangs
+        assert b.receive_json() == {"type": "error", "detail": "room not allowed"}
+
+
+def test_a_soft_deleted_exercise_is_neither_a_channel_nor_a_room(client, auth_on, db_session):
+    from datetime import UTC, datetime
+
+    ex = _exercise(db_session, TENANT_A)
+    ex.deleted_at = datetime.now(UTC)
+    db_session.commit()
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect(f"/ws/exercise.{ex.id}", subprotocols=A):
+        pass
+    with client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=A) as ws:
+        ws.send_text(json.dumps({"action": "join_room", "room_id": str(ex.id)}))
+        assert ws.receive_json() == {"type": "error", "detail": "room not allowed"}
+
+
+def test_only_the_canonical_id_names_a_channel_or_a_room(client, auth_on, db_session):
+    """Upper case, bare hex and urn:uuid: forms each made a separate channel."""
+    ex = _exercise(db_session, TENANT_A)
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(f"/ws/exercise.{str(ex.id).upper()}", subprotocols=A),
+    ):
+        pass
+    with client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=A) as ws:
+        for alias in (str(ex.id).upper(), ex.id.hex, f"urn:uuid:{ex.id}"):
+            ws.send_text(json.dumps({"action": "join_room", "room_id": alias}))
+            assert ws.receive_json() == {"type": "error", "detail": "room not allowed"}
+
+
+def test_a_students_lab_range_is_not_a_channel_for_another_student(client, auth_on, db_session, monkeypatch):
+    from app.lab_sessions import service as labs
+
+    rng = _range(db_session, TENANT_A)
+    student = _user(db_session, "kc-s", UserRole.student)
+    monkeypatch.setattr(labs, "lab_range_ids", lambda db, ids: set(ids))
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect(f"/ws/range.{rng.id}", subprotocols=student):
+        pass
+
+
+def test_an_oversized_frame_is_refused(client, auth_on):
+    with client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=A) as ws:
+        ws.send_text("x" * (64 * 1024 + 1))
+        assert ws.receive_json() == {"type": "error", "detail": "frame too large"}

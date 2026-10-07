@@ -103,6 +103,15 @@ class WebSocketManager:
             self._tasks.append(asyncio.create_task(self._redis_listener()))
         logger.info("WebSocketManager started (redis=%s)", "yes" if self._redis_url else "no")
 
+    async def start_local(self) -> None:
+        """Start the heartbeat only: pings, dropping dead sockets, and closing sockets whose
+        token expired (``close_expired``). The API's lifespan starts this; before, nothing
+        started the manager at all, so an expired or disabled user's socket stayed open."""
+        if self._running:
+            return
+        self._running = True
+        self._tasks.append(asyncio.create_task(self._heartbeat_loop()))
+
     async def shutdown(self) -> None:
         """Gracefully close every connection and cancel background tasks."""
         self._running = False

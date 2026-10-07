@@ -74,6 +74,11 @@ async def lifespan(app: FastAPI):
 
         lab_sweep = asyncio.create_task(lab_loop())
 
+    # WebSocket heartbeat (no Redis): drops dead sockets and closes those whose token has
+    # expired (app/ws_auth.py). Nothing started it before, so a socket outlived its user.
+    if _env_flag("WS_HEARTBEAT"):
+        await app.state.ws_manager.start_local()
+
     yield
 
     if lab_sweep is not None:
@@ -398,7 +403,9 @@ async def websocket_endpoint(ws: WebSocket, channel: str):
     )
 
     def room_ok(room_id: str, *, joined: bool) -> bool:
-        """A room of the user's tenant; for sending or listing, one this socket joined."""
+        """A room of the user's tenant; for leaving, sending or listing, one this socket joined."""
+        if ws_auth.canonical_id(room_id) is None:
+            return False
         conn = ws_manager.connections.get(conn_id)
         if joined and (conn is None or f"room.{room_id}" not in conn.channels):
             return False
@@ -411,6 +418,9 @@ async def websocket_endpoint(ws: WebSocket, channel: str):
     try:
         while True:
             data = await ws.receive_text()
+            if len(data) > ws_auth.MAX_FRAME_BYTES:
+                await ws_manager.send_to_connection(conn_id, {"type": "error", "detail": "frame too large"})
+                continue
             try:
                 msg = json.loads(data)
             except (json.JSONDecodeError, TypeError):
@@ -422,21 +432,22 @@ async def websocket_endpoint(ws: WebSocket, channel: str):
                 continue
             action = msg.get("action") if isinstance(msg, dict) else None
             room_id = str(msg.get("room_id", "")) if isinstance(msg, dict) else ""
-            if action in ("join_room", "room_message", "room_members") and not room_ok(
+            if action in ("join_room", "leave_room", "room_message", "room_members") and not room_ok(
                 room_id, joined=action != "join_room"
             ):
                 await ws_manager.send_to_connection(conn_id, {"type": "error", "detail": "room not allowed"})
                 continue
             if action == "join_room":
-                await ws_manager.join_room(conn_id, room_id, msg.get("display_name"))
+                await ws_manager.join_room(conn_id, room_id, ws_auth.display_name(msg.get("display_name")))
             elif action == "leave_room":
                 await ws_manager.leave_room(conn_id, room_id)
             elif action == "room_message":
+                payload = msg.get("data") if isinstance(msg.get("data"), dict) else {}
                 await ws_manager.broadcast_to_room(
                     room_id,
                     conn_id,
                     ws_auth.room_message_type(msg.get("type")),
-                    msg.get("data", {}),
+                    {**payload, "sender_user_id": user.id},  # stamped here: a client cannot speak for another
                 )
             elif action == "room_members":
                 members = ws_manager.get_room_members(room_id)
