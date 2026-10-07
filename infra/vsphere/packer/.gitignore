@@ -1,0 +1,4 @@
+# Local vars (vCenter and Windows admin passwords) and build logs: never committed.
+lab.auto.pkrvars.hcl
+*.auto.pkrvars.hcl
+logs/

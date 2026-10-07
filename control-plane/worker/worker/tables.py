@@ -247,6 +247,20 @@ learning_recommendations = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+network_reservations = sa.Table(
+    "network_reservations",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("range_id", GUID(), nullable=False),
+    sa.Column("domain", sa.String(255), nullable=False),
+    sa.Column("kind", sa.String(32), nullable=False),
+    sa.Column("value", sa.String(64), nullable=False),
+    sa.Column("holder", sa.String(255), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 objectives = sa.Table(
     "objectives",
     metadata,
@@ -420,6 +434,7 @@ __all__ = [
     "inject_records",
     "learning_recommendations",
     "metadata",
+    "network_reservations",
     "objectives",
     "range_leases",
     "range_snapshots",

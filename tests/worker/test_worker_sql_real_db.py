@@ -807,6 +807,14 @@ PG_CALLS = {
     "competency_profile": lambda db: db_ops.competency_profile(db, ID),
     "published_courses": db_ops.published_courses,
     "insert_learning_recommendation": lambda db: db_ops.insert_learning_recommendation(db, ID, {}, "", "m"),
+    "lock_range_in_state": lambda db: db_ops.lock_range_in_state(db, ID, "provisioning"),
+    "lock_reservation_domain": lambda db: db_ops.lock_reservation_domain(db, 12345),
+    "range_reservations": lambda db: db_ops.range_reservations(db, ID, "vlan"),
+    "drop_range_reservations": lambda db: db_ops.drop_range_reservations(db, ID, "vlan", ["200"]),
+    "taken_reservation_values": lambda db: db_ops.taken_reservation_values(db, "vsphere:vlans", "vlan"),
+    "insert_reservations": lambda db: db_ops.insert_reservations(db, ID, "vsphere:vlans", "vlan", {"200": "100"}),
+    "release_destroyed_range": lambda db: db_ops.release_destroyed_range(db, ID),
+    "merge_range_output": lambda db: db_ops.merge_range_output(db, ID, {"k": 1}),
 }
 
 
@@ -817,7 +825,8 @@ class TestPostgresRendering:
         PG_CALLS[name](db)
         assert db.sql, f"{name} executed nothing"
         for sql in db.sql:
-            assert "now()" in sql.lower() or sql.lstrip().upper().startswith("SELECT"), sql
+            # A write stamps updated_at; a DELETE leaves no row to stamp (network reservations).
+            assert "now()" in sql.lower() or sql.lstrip().upper().startswith(("SELECT", "DELETE")), sql
 
     def test_every_public_helper_is_covered(self):
         public = {n for n, f in vars(db_ops).items() if callable(f) and getattr(f, "__module__", "") == db_ops.__name__

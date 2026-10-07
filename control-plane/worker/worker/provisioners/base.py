@@ -5,11 +5,15 @@ All provisioner backends must implement this interface.
 
 from __future__ import annotations
 
+import contextlib
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 from .results import (
     DestroyResult,
     HealthResult,
+    MetricsResult,
     ProvisionResult,
     RestoreResult,
     SnapshotDeleteResult,
@@ -19,8 +23,35 @@ from .results import (
 )
 
 
+@dataclass(frozen=True)
+class AllocationNeed:
+    """Values on shared infrastructure a build needs reserved first (``allocation_needs``).
+
+    The worker reserves ``holders`` out of ``pool`` on the ``network_reservations`` table
+    (unique per domain and kind across all tenants; worker/range_alloc.py) and hands the
+    result to ``provision`` as ``allocations[key]``: ``{holder: value}``, or the one value
+    when ``single``.
+    """
+
+    key: str  # where provision() finds the result in ``allocations``
+    kind: str  # a network_reservations kind: "vlan", "uplink_ip", ...
+    domain: str  # the shared network the values must be unique in
+    pool: list[str]  # candidate values, in the order they are handed out
+    holders: list[str]  # what in the range holds a value (a logical VLAN, "edge")
+    single: bool = False
+
+
 class BaseProvisioner(ABC):
     """Abstract base class for range provisioning backends."""
+
+    def allocation_needs(self, range_id: str, template: dict) -> list[AllocationNeed]:
+        """Shared values (VLANs, addresses) to reserve before ``provision``. Default: none."""
+        return []
+
+    def planned_output(self, range_id: str, allocations: dict) -> dict:
+        """What to record in provisioner_output before the build, so a destroy after a
+        build that died half-way still finds what was reserved. Default: nothing."""
+        return {}
 
     @abstractmethod
     async def provision(
@@ -120,3 +151,27 @@ class BaseProvisioner(ABC):
         ``[{"vm_id", "name"}]``. Reconciliation uses it to find what a range left behind
         after its records were lost; a backend that cannot list VMs returns []."""
         return []
+
+    async def collect_metrics(
+        self,
+        range_id: str,
+        provision_output: dict,
+    ) -> MetricsResult:
+        """Resource usage of every VM in a range (see MetricsResult for the fields).
+
+        Concrete, like restore: a backend that cannot read metrics says so, rather than
+        anyone filling the gap with made-up numbers.
+        """
+        return MetricsResult(
+            status="unsupported",
+            errors=[f"{type(self).__name__} does not report VM metrics"],
+        )
+
+    @contextlib.asynccontextmanager
+    async def session(self) -> AsyncIterator[BaseProvisioner]:
+        """Scope for several calls in a row (one scheduled run over many ranges).
+
+        A backend that logs in to its hypervisor may keep one login for the whole scope
+        and log out at its end, instead of one login per range per run. Default: nothing.
+        """
+        yield self
