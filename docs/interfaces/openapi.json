@@ -31802,7 +31802,7 @@
     },
     "/ranges/{range_id}/operations/{operation_id}/abandon": {
       "post": {
-        "description": "Give up on an in-flight operation that will not finish (a lost task, a dead worker).\n\nCheck the hypervisor first: the API cannot see whether work is still running there.\nThe range goes to ``failed``, from where it can be destroyed or provisioned again.\n**Permission: range:destroy**",
+        "description": "Give up on an in-flight operation that will not finish (a lost task, a dead worker).\n\nCheck the hypervisor first: the API cannot see whether work is still running there.\nThe range goes to ``failed``, from where it can be destroyed or provisioned again at\nonce: the lease held by the operation's task is released, and a worker still running\nthat task stops acting on the range.\n**Permission: range:destroy**",
         "operationId": "abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post",
         "parameters": [
           {

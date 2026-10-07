@@ -18,10 +18,12 @@ class RangeLease(Base):
     A range task takes this lease before it touches the hypervisor. A second copy that
     arrives while the first holds it is re-queued and comes back to find the range
     finished (it then skips) or the lease expired (it then takes over). The holder is
-    one execution (a random token, not the Celery task id, which a redelivered copy
-    shares). Released when the task ends, however it ends, except after a soft time
-    limit, when the hypervisor call may still be running; ``expires_at`` bounds how long
-    a worker that died can hold it.
+    one execution: ``<action>:<random token>`` (not the Celery task id, which a
+    redelivered copy shares). Released when the task ends, however it ends, except after
+    a soft time limit, when the hypervisor call may still be running. While the task runs
+    a heartbeat renews ``expires_at`` a few minutes ahead, so a worker that died holds it
+    only minutes. Abandoning the range operation deletes the lease of that operation's
+    action (app/range_ops/service.py, release_lease); the worker, if alive, is fenced out.
     """
 
     __tablename__ = "range_leases"

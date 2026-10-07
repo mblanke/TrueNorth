@@ -5136,7 +5136,9 @@ export interface paths {
          * @description Give up on an in-flight operation that will not finish (a lost task, a dead worker).
          *
          *     Check the hypervisor first: the API cannot see whether work is still running there.
-         *     The range goes to ``failed``, from where it can be destroyed or provisioned again.
+         *     The range goes to ``failed``, from where it can be destroyed or provisioned again at
+         *     once: the lease held by the operation's task is released, and a worker still running
+         *     that task stops acting on the range.
          *     **Permission: range:destroy**
          */
         post: operations["abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post"];

@@ -358,6 +358,59 @@ def test_no_new_operation_while_a_worker_still_holds_the_range(client, db_sessio
     assert client.post(f"/ranges/{rid}/destroy").status_code == 202, "a destroy waits for the lease itself"
 
 
+def _lease(db_session, rid: str, holder: str, seconds: float):
+    from app.range_leases import RangeLease
+
+    db_session.add(
+        RangeLease(range_id=uuid.UUID(rid), holder=holder, expires_at=datetime.now(UTC) + timedelta(seconds=seconds))
+    )
+    db_session.commit()
+
+
+def _leases(db_session, rid: str) -> list[str]:
+    from app.range_leases import RangeLease
+
+    db_session.expire_all()
+    return [h for (h,) in db_session.query(RangeLease.holder).filter(RangeLease.range_id == uuid.UUID(rid))]
+
+
+def test_abandon_releases_a_dead_workers_lease_and_the_range_can_be_built_at_once(client, db_session, no_real_broker):
+    """The s7 interruption exercise: a worker killed mid-provision left its lease. After the
+    operator abandoned the operation every new provision was refused for up to an hour."""
+    from app.models import AuditLog
+
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _lease(db_session, rid, "provision:killed-worker", 180)  # what the dead task left
+    op = client.post(f"/ranges/{rid}/operations/{op_id}/abandon").json()
+    assert op["status"] == "failed" and "lease on the range was released" in op["error"]["message"]
+    assert _leases(db_session, rid) == []
+    audit = db_session.query(AuditLog).filter(AuditLog.action == "abandon_operation", AuditLog.resource_id == rid).one()
+    assert "worker lease released" in audit.detail
+    assert audit.tenant_id == db_session.get(Range, uuid.UUID(rid)).tenant_id
+    assert client.post(f"/ranges/{rid}/provision").status_code == 202, "refused although the worker is gone"
+
+
+def test_abandon_releases_only_the_lease_of_the_operations_own_action(client, db_session, no_real_broker):
+    """A restore's lease (or a superseded build's, under a destroy) belongs to work the
+    abandoned operation did not start: it is left to its own task."""
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _lease(db_session, rid, "restore:running", 180)
+    op = client.post(f"/ranges/{rid}/operations/{op_id}/abandon").json()
+    assert op["status"] == "failed" and "lease" not in op["error"]["message"]
+    assert _leases(db_session, rid) == ["restore:running"]
+    resp = client.post(f"/ranges/{rid}/provision")
+    assert resp.status_code == 409 and "worker is still acting" in resp.json()["detail"]
+
+
+def test_a_dead_workers_lease_stops_blocking_once_it_expires(client, db_session, no_real_broker):
+    """Without an abandon: nothing renews a dead worker's lease, and a lease is minutes."""
+    rid = _range(client, db_session, "failed")
+    _lease(db_session, rid, "provision:killed-worker", -1)  # its last renewal, LEASE_SECONDS ago
+    assert client.post(f"/ranges/{rid}/provision").status_code == 202
+
+
 def test_on_postgres_refused_requests_do_not_stall_the_api_process(postgres_engine, no_real_broker):
     """Acceptance row-locks the range. In async handlers a refused request held the lock
     until its teardown, which needs the event loop, while a second request for the same

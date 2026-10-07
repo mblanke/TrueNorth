@@ -27,7 +27,7 @@ from celery import group
 from . import db_ops, greyspace, range_alloc
 from .base_tasks import ReliableTask, _get_backend
 from .celery_app import app
-from .fencing import FINAL_ERRORS, fenced, run_async
+from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async
 from .fencing import last_attempt as _last_attempt
 from .provisioners import discard_built
 
@@ -93,7 +93,7 @@ def _update_range_state(
     ``clear_error`` drops a stale error_message, for a success after a failed attempt.
     """
     with _db_session() as db:
-        return db_ops.update_range_state(
+        return guarded_range_update(  # in a fenced task, only while it holds the lease (fencing.py)
             db, range_id, new_state, error=error, output=output, only_from=only_from, clear_error=clear_error
         )
 

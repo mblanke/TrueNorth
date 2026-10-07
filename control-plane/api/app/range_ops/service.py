@@ -181,7 +181,11 @@ def _check(db: Session, rng: Range, action: str) -> None:
     if action != "destroy" and worker_acting(db, rng.id):
         # An abandoned or superseded task may still be running: its result would be taken
         # for the new operation's, and the new task skipped (worker/fencing.py).
-        raise HTTPException(409, f"Cannot {action}: a worker is still acting on this range; try again later")
+        raise HTTPException(
+            409,
+            f"Cannot {action}: a worker is still acting on this range; try again later. A dead worker's lease "
+            "expires within minutes; abandoning its operation releases it at once.",
+        )
     if action == "destroy":
         for op in in_flight:
             op.status, op.finished_at = "superseded", _now()
@@ -351,21 +355,44 @@ def reconcile(db: Session, rng: Range) -> None:
     db.flush()
 
 
-def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> None:
+def release_lease(db: Session, range_id: uuid.UUID, action: str) -> bool:
+    """Delete the range's lease if a task of ``action`` holds it (worker/fencing.py: holders
+    are ``<action>:<token>``). Does not commit. A worker still running that task finds the
+    lease gone and stops: its next hypervisor call and every state write are refused.
+    Another action's lease (a restore, a superseded build under a destroy) is left alone."""
+    from ..range_leases import RangeLease
+
+    released = (
+        db.query(RangeLease)
+        .filter(RangeLease.range_id == range_id, RangeLease.holder.like(f"{action}:%"))
+        .delete(synchronize_session=False)
+    )
+    return bool(released)
+
+
+def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> bool:
     """An operator's decision that an in-flight operation will not finish. Does not commit.
 
     The range goes to ``failed`` (from where it can be destroyed or provisioned again) and
-    the operation records who gave up on it. Not automatic: the API cannot see whether the
-    hypervisor is still working.
+    the operation records who gave up on it. The lease held by the operation's task is
+    released in the same transaction (``release_lease``), so a new operation is not
+    refused while a dead worker's lease runs out; if that worker is in fact alive, it is
+    fenced out. Not automatic: the API cannot see whether the hypervisor is still working,
+    and work the task already did there is not undone. Returns whether a lease was released.
     """
     reconcile(db, rng)  # it may have finished since anyone looked
     if op.status not in IN_FLIGHT:
         raise HTTPException(409, f"Operation is already {op.status}")
+    released = release_lease(db, rng.id, op.action)
     op.status, op.finished_at = "failed", _now()
-    op.error = {"code": "abandoned", "message": f"Abandoned by {user.email or user.id}"}
+    message = f"Abandoned by {user.email or user.id}"
+    if released:
+        message += "; the worker's lease on the range was released"
+    op.error = {"code": "abandoned", "message": message}
     if rng.state == ACTIONS[op.action].in_progress:
         rng.state = RangeState.failed
         rng.error_message = f"{op.action} abandoned by an operator; check the hypervisor for the VMs' real state"
+    return released
 
 
 # ── the API process's re-send loop ────────────────────────────────────
