@@ -2987,6 +2987,270 @@ export interface paths {
         patch: operations["update_device_network_devices__device_id__patch"];
         trace?: never;
     };
+    "/noise/agent/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Plan
+         * @description The calling node's actions for the next ``minutes``. Doubles as the heartbeat.
+         *
+         *     Each action is signed; ``lookalike`` is withheld (the agent has no use for it, and a
+         *     stolen token should not learn which upcoming activity is cover).
+         */
+        get: operations["agent_plan_noise_agent_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/agent/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Agent Report
+         * @description Record what the agent did. Only signed, planned actions are accepted; each is
+         *     recorded once. ``lookalike`` is derived from the kind, never taken from the agent.
+         */
+        post: operations["agent_report_noise_agent_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Presets
+         * @description The named dial positions and the activity vocabulary.
+         */
+        get: operations["presets_noise_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profile
+         * @description The range's noise settings (defaults, ``configured: false``, if none yet).
+         */
+        get: operations["get_profile_noise_ranges__range_id__get"];
+        /**
+         * Put Profile
+         * @description Create or change the range's noise settings: the dial, ``enabled`` (start/stop),
+         *     ``paused``, per-node or per-zone overrides, and target pools. Only the fields sent
+         *     change.
+         */
+        put: operations["put_profile_noise_ranges__range_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Activity
+         * @description Ground truth, newest first. Which events on the wire were synthetic.
+         */
+        get: operations["list_activity_noise_ranges__range_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agents
+         * @description The range's live (not revoked) agents and whether they are polling.
+         */
+        get: operations["list_agents_noise_ranges__range_id__agents_get"];
+        put?: never;
+        /**
+         * Register Agents
+         * @description Register (or re-key) agents. Each token is returned once and never again.
+         *
+         *     Re-registering an existing node issues a fresh token and invalidates the old one,
+         *     which is also how a compromised token is rotated.
+         */
+        post: operations["register_agents_noise_ranges__range_id__agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Agent
+         * @description Revoke an agent's token. Its ground truth is kept for the AAR.
+         */
+        delete: operations["revoke_agent_noise_ranges__range_id__agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy
+         * @description Put noise on a provisioned range, from its template's ``noise:`` block.
+         *
+         *     Derives the target pools from the template's servers, registers an agent on every
+         *     agent node (fresh tokens), creates the built-in roster if there is none, and hands
+         *     the worker an Ansible run that installs the agent over the management network.
+         *     ``dry_run`` shows all of that without changing anything.
+         *
+         *     Windows nodes are listed under ``skipped`` until the Windows agent exists.
+         */
+        post: operations["deploy_noise_ranges__range_id__deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/personas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Personas
+         * @description The synthetic people whose routines make the range's noise.
+         */
+        get: operations["list_personas_noise_ranges__range_id__personas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/personas/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Roster
+         * @description Fill the range with the built-in roster, spread over the registered agents' nodes.
+         */
+        post: operations["generate_roster_noise_ranges__range_id__personas_roster_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Plan
+         * @description What ``node``'s agent will be told to do next — the same plan the agent gets.
+         */
+        get: operations["preview_plan_noise_ranges__range_id__plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity Stats
+         * @description Counts over the last ``minutes``: actions by kind, failures, lookalikes, agents by state.
+         */
+        get: operations["activity_stats_noise_ranges__range_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/onboarding/complete": {
         parameters: {
             query?: never;
@@ -4416,6 +4680,27 @@ export interface paths {
          * @description Detach a document and remove its stored bytes.
          */
         delete: operations["delete_range_document_ranges__range_id__documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/network-reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Network Reservations
+         * @description Addresses and VLANs this range holds on shared networks (app/network_inventory/).
+         *     **Permission: range:read**
+         */
+        get: operations["list_network_reservations_ranges__range_id__network_reservations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5861,6 +6146,54 @@ export interface components {
              */
             notes?: string;
         };
+        /**
+         * ActivityReport
+         * @description One executed action, echoing the planned fields and their signature verbatim.
+         */
+        ActivityReport: {
+            /** At */
+            at: string;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /**
+             * Ok
+             * @default true
+             */
+            ok?: boolean;
+            /**
+             * Persona
+             * @default
+             */
+            persona?: string;
+            /** Ran At */
+            ran_at?: string | null;
+            /** Sig */
+            sig: string;
+            /**
+             * Target
+             * @default
+             */
+            target?: string;
+        };
+        /** AgentIn */
+        AgentIn: {
+            /** Node */
+            node: string;
+            /**
+             * Zone
+             * @default
+             */
+            zone?: string;
+        };
+        /** AgentsIn */
+        AgentsIn: {
+            /** Agents */
+            agents: components["schemas"]["AgentIn"][];
+        };
         /** AnnotationIn */
         AnnotationIn: {
             /**
@@ -6987,6 +7320,19 @@ export interface components {
              * @default
              */
             term_code?: string;
+        };
+        /** DeployIn */
+        DeployIn: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run?: boolean;
+            /**
+             * Refresh Targets
+             * @default true
+             */
+            refresh_targets?: boolean;
         };
         /** DetectionDraftIn */
         DetectionDraftIn: {
@@ -8329,6 +8675,20 @@ export interface components {
             /** Vendor */
             vendor?: string;
         };
+        /**
+         * NetworkReservationOut
+         * @description One address or VLAN a range holds on a shared network.
+         */
+        NetworkReservationOut: {
+            /** Domain */
+            domain: string;
+            /** Holder */
+            holder: string;
+            /** Kind */
+            kind: string;
+            /** Value */
+            value: string;
+        };
         /** NetworkSummaryOut */
         NetworkSummaryOut: {
             /**
@@ -8345,6 +8705,301 @@ export interface components {
              * @default 0
              */
             total_devices?: number;
+        };
+        /**
+         * NoiseActivityOut
+         * @description Ground truth: one action an agent reported having run.
+         */
+        NoiseActivityOut: {
+            /** At */
+            at: string;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /** Lookalike */
+            lookalike: boolean;
+            /** Node */
+            node: string;
+            /** Ok */
+            ok: boolean;
+            /** Persona */
+            persona?: string | null;
+            /** Target */
+            target?: string | null;
+        };
+        /**
+         * NoiseAgentAction
+         * @description A planned action as an agent receives it: signed, and without ``lookalike``.
+         */
+        NoiseAgentAction: {
+            /** At */
+            at: string;
+            /** Kind */
+            kind: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Persona */
+            persona: string;
+            /** Sig */
+            sig: string;
+            /** Target */
+            target: string;
+        };
+        /**
+         * NoiseAgentIssuedOut
+         * @description A newly (re-)keyed agent. The token is shown this once and never again.
+         */
+        NoiseAgentIssuedOut: {
+            /** Id */
+            id: string;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Node */
+            node: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "ok" | "lost";
+            /** Token */
+            token: string;
+            /** Version */
+            version?: string | null;
+            /** Zone */
+            zone?: string | null;
+        };
+        /**
+         * NoiseAgentOut
+         * @description A registered agent. ``state`` is ``pending`` until its first poll, ``lost``
+         *     after five missed polls.
+         */
+        NoiseAgentOut: {
+            /** Id */
+            id: string;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Node */
+            node: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "ok" | "lost";
+            /** Version */
+            version?: string | null;
+            /** Zone */
+            zone?: string | null;
+        };
+        /** NoiseAgentPlanOut */
+        NoiseAgentPlanOut: {
+            /** Actions */
+            actions: components["schemas"]["NoiseAgentAction"][];
+            /** Level */
+            level: number;
+            /** Node */
+            node: string;
+            /** Poll Seconds */
+            poll_seconds: number;
+        };
+        /** NoiseDeployAgent */
+        NoiseDeployAgent: {
+            /** Ip */
+            ip: string;
+            /** Mgmt Ip */
+            mgmt_ip: string;
+            /** Node */
+            node: string;
+            /** Platform */
+            platform: string;
+            /** Zone */
+            zone: string;
+        };
+        /**
+         * NoiseDeployOut
+         * @description What a deploy does (``dry_run``) or did. ``task_id`` only when it was handed to
+         *     the worker.
+         */
+        NoiseDeployOut: {
+            /** Agents */
+            agents: components["schemas"]["NoiseDeployAgent"][];
+            /** Controller Url */
+            controller_url: string;
+            /** Dropped Targets */
+            dropped_targets: string[];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Mgmt Cidr */
+            mgmt_cidr: string;
+            /** Skipped */
+            skipped: components["schemas"]["NoiseDeploySkipped"][];
+            /** Targets */
+            targets: {
+                [key: string]: string[];
+            };
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** NoiseDeploySkipped */
+        NoiseDeploySkipped: {
+            /** Node */
+            node: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * NoiseDialOut
+         * @description What the effective level means: how much of the roster works, and how hard.
+         */
+        NoiseDialOut: {
+            /** Actions Per Hour */
+            actions_per_hour: number;
+            /** Active Fraction */
+            active_fraction: number;
+            /** Diurnal Amplitude */
+            diurnal_amplitude: number;
+            /** Lookalike Share */
+            lookalike_share: number;
+        };
+        /** NoisePersonaOut */
+        NoisePersonaOut: {
+            /** Attrs */
+            attrs: {
+                [key: string]: unknown;
+            };
+            /** Department */
+            department?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Habits */
+            habits: {
+                [key: string]: unknown;
+            };
+            /** Handle */
+            handle: string;
+            /** Id */
+            id: string;
+            /** Lookalikes */
+            lookalikes?: boolean | null;
+            /** Node */
+            node?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Work End */
+            work_end?: number | null;
+            /** Work Start */
+            work_start?: number | null;
+        };
+        /** NoisePlanOut */
+        NoisePlanOut: {
+            /** Actions */
+            actions: components["schemas"]["NoisePlannedAction"][];
+            /** Level */
+            level: number;
+            /** Node */
+            node: string;
+        };
+        /**
+         * NoisePlannedAction
+         * @description One action in a node's plan. ``lookalike`` is shown to the white cell only.
+         */
+        NoisePlannedAction: {
+            /** At */
+            at: string;
+            /** Kind */
+            kind: string;
+            /** Lookalike */
+            lookalike: boolean;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Persona */
+            persona: string;
+            /** Target */
+            target: string;
+        };
+        /**
+         * NoisePresetsOut
+         * @description Named dial positions and the activity vocabulary.
+         */
+        NoisePresetsOut: {
+            /** Activities */
+            activities: string[];
+            /** Lookalikes */
+            lookalikes: string[];
+            /** Presets */
+            presets: {
+                [key: string]: number;
+            };
+            /** Target Pools */
+            target_pools: string[];
+        };
+        /**
+         * NoiseProfileOut
+         * @description A range's noise settings. ``configured`` is false until anyone set them; the
+         *     other fields are then the defaults a first PUT would start from.
+         */
+        NoiseProfileOut: {
+            /** Configured */
+            configured: boolean;
+            dial: components["schemas"]["NoiseDialOut"];
+            /** Effective Level */
+            effective_level: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Level */
+            level: number;
+            /** Overrides */
+            overrides: {
+                [key: string]: number;
+            };
+            /** Pack */
+            pack: string;
+            /** Paused */
+            paused: boolean;
+            /** Range Id */
+            range_id: string;
+            /** Seed */
+            seed: number;
+            /** Targets */
+            targets: {
+                [key: string]: string[];
+            };
+            /** Utc Offset */
+            utc_offset: number;
+        };
+        /** NoiseReportOut */
+        NoiseReportOut: {
+            /** Accepted */
+            accepted: number;
+            /** Duplicate */
+            duplicate: number;
+            /** Rejected */
+            rejected: number;
+        };
+        /** NoiseStatsOut */
+        NoiseStatsOut: {
+            /** Agents */
+            agents: {
+                [key: string]: number;
+            };
+            /** By Kind */
+            by_kind: {
+                [key: string]: number;
+            };
+            /** Failed */
+            failed: number;
+            /** Lookalikes */
+            lookalikes: number;
+            /** Minutes */
+            minutes: number;
+            /** Total */
+            total: number;
         };
         /** OUIn */
         OUIn: {
@@ -8632,6 +9287,29 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** ProfileIn */
+        ProfileIn: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Level */
+            level?: number | null;
+            /** Overrides */
+            overrides?: {
+                [key: string]: number;
+            } | null;
+            /** Paused */
+            paused?: boolean | null;
+            /** Preset */
+            preset?: string | null;
+            /** Seed */
+            seed?: number | null;
+            /** Targets */
+            targets?: {
+                [key: string]: string[];
+            } | null;
+            /** Utc Offset */
+            utc_offset?: number | null;
         };
         /** ProgressSummaryOut */
         ProgressSummaryOut: {
@@ -9241,6 +9919,34 @@ export interface components {
             tenant_id?: string | null;
             /** Tenant Name */
             tenant_name?: string | null;
+        };
+        /** ReportIn */
+        ReportIn: {
+            /** Results */
+            results?: components["schemas"]["ActivityReport"][];
+            /**
+             * Version
+             * @default
+             */
+            version?: string;
+        };
+        /** RosterIn */
+        RosterIn: {
+            /**
+             * Count
+             * @default 20
+             */
+            count?: number;
+            /**
+             * Domain
+             * @default corp.local
+             */
+            domain?: string;
+            /**
+             * Replace
+             * @default false
+             */
+            replace?: boolean;
         };
         /** ScenarioDraftIn */
         ScenarioDraftIn: {
@@ -16136,6 +16842,458 @@ export interface operations {
             };
         };
     };
+    agent_plan_noise_agent_plan_get: {
+        parameters: {
+            query?: {
+                minutes?: number;
+            };
+            header: {
+                "X-Noise-Agent-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseAgentPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_report_noise_agent_report_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Noise-Agent-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    presets_noise_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoisePresetsOut"];
+                };
+            };
+        };
+    };
+    get_profile_noise_ranges__range_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_profile_noise_ranges__range_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_activity_noise_ranges__range_id__activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                lookalike?: boolean | null;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseActivityOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agents_noise_ranges__range_id__agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseAgentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_agents_noise_ranges__range_id__agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseAgentIssuedOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_agent_noise_ranges__range_id__agents__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deploy_noise_ranges__range_id__deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseDeployOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_personas_noise_ranges__range_id__personas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoisePersonaOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_roster_noise_ranges__range_id__personas_roster_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RosterIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoisePersonaOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_plan_noise_ranges__range_id__plan_get: {
+        parameters: {
+            query: {
+                node: string;
+                minutes?: number;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoisePlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_stats_noise_ranges__range_id__stats_get: {
+        parameters: {
+            query?: {
+                minutes?: number;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseStatsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     complete_onboarding_complete_post: {
         parameters: {
             query?: never;
@@ -18735,6 +19893,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_network_reservations_ranges__range_id__network_reservations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkReservationOut"][];
+                };
             };
             /** @description Validation Error */
             422: {

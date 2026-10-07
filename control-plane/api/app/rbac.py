@@ -111,6 +111,11 @@ class Permission(str, Enum):
     AAR_GENERATE = "aar:generate"
     AAR_READ = "aar:read"
 
+    # Background noise (synthetic personas). NOISE_READ exposes ground truth — which
+    # activity on the wire was synthetic — so it must never reach students.
+    NOISE_READ = "noise:read"
+    NOISE_CONTROL = "noise:control"
+
 
 # ── Role → Permission Mapping ─────────────────────────────────────────
 ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
@@ -160,6 +165,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.AAR_READ,
         Permission.TELEMETRY_READ,
         Permission.TELEMETRY_WRITE,
+        # White cell: runs the background noise and sees its ground truth.
+        Permission.NOISE_READ,
+        Permission.NOISE_CONTROL,
     },
     # Range-ops: infrastructure-focused, no exercises/scenarios write
     UserRole.range_ops: {

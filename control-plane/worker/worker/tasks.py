@@ -124,7 +124,7 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
 @fenced("provision", "provisioning")  # only a range its sender moved to provisioning; one copy at a time
-def provision_range(self, range_id: str):
+def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
     """Provision a range: render its template, build it with its backend, store the result.
     A range torn down while it was being built gets what was built destroyed, not recorded."""
     logger.info(f"[provision] Starting range {range_id}")
@@ -160,7 +160,7 @@ def provision_range(self, range_id: str):
             with _db_session() as db2:
                 resolver = golden_image_resolver(db2, hv)
                 creds = _hypervisor_creds(db2, hv)
-            rendered = render_topology(template, range_id, resolver)
+            rendered = render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt)
             template = {
                 **template,
                 "name": rendered["range_name"],

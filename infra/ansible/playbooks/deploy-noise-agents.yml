@@ -1,0 +1,17 @@
+---
+# ============================================================
+# TrueNorth Range — Deploy background-noise agents
+# ============================================================
+# Run by the worker task deploy_noise_agents (control-plane/worker/worker/noise_tasks.py)
+# against an inventory of management-network addresses. Not part of setup-range.yml:
+# noise is switched on by the white cell once the range is ready.
+#
+#   ansible-playbook -i inventory.ini playbooks/deploy-noise-agents.yml -e @vars.json
+
+- name: "Background noise — Linux agents"
+  hosts: noise_agents
+  become: true
+  gather_facts: false
+  roles:
+    - noise_agent
+  tags: [noise]
