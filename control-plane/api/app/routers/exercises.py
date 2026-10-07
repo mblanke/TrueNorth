@@ -60,7 +60,7 @@ from ..schemas import (
     ObjectiveOut,
 )
 from ..tenancy import get_owned
-from ..xapi import emit_lifecycle
+from ..xapi import emit_lifecycle, exercise_result
 
 logger = logging.getLogger("truenorth.api.exercises")
 
@@ -351,7 +351,6 @@ async def complete_exercise(
         background_tasks.add_task(
             _push_exercise_lti_grade, uuid.UUID(user.id), ex.id, ex.total_score or 0, ex.max_score or 100
         )
-        max_score = max(ex.max_score or 1, 1)
         emit_lifecycle(
             background_tasks,
             verb_key="completed",
@@ -360,15 +359,7 @@ async def complete_exercise(
             activity_type="exercise",
             activity_id=str(ex.id),
             activity_name=ex.name,
-            result={
-                "score": {
-                    "raw": ex.total_score or 0,
-                    "max": ex.max_score or 0,
-                    "scaled": (ex.total_score or 0) / max_score,
-                },
-                "completion": True,
-                "success": (ex.total_score or 0) >= max_score * 0.7,
-            },
+            result=exercise_result(ex.total_score, ex.max_score),
         )
     return ex
 
