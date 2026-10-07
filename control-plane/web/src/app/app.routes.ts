@@ -91,6 +91,13 @@ export const routes: Routes = [
         title: 'Authoring · Range Designer - TrueNorth Range',
       },
       {
+        // Greyspace (simulated internet) for one range; :rangeId binds to the panel's input.
+        path: 'ranges/:rangeId/greyspace',
+        loadComponent: () =>
+          import('./features/greyspace/greyspace-panel.component').then(m => m.GreyspacePanelComponent),
+        title: 'Authoring · Greyspace - TrueNorth Range',
+      },
+      {
         path: 'scenarios',
         loadComponent: () =>
           import('./features/scenario-studio/scenario-studio.component').then(m => m.ScenarioStudioComponent),
