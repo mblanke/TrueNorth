@@ -983,7 +983,7 @@ export interface paths {
         put?: never;
         /**
          * Create Course
-         * @description Create a new course with optional ordered modules.
+         * @description Create a new course with optional ordered modules.  **Permission: course:author**
          */
         post: operations["create_course_courses_post"];
         delete?: never;
@@ -1083,14 +1083,14 @@ export interface paths {
         post?: never;
         /**
          * Delete Course
-         * @description Delete a course and its modules.
+         * @description Delete a course and its modules.  **Permission: course:author**
          */
         delete: operations["delete_course_courses__course_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Course
-         * @description Update course metadata.
+         * @description Update course metadata.  **Permission: course:author**
          */
         patch: operations["update_course_courses__course_id__patch"];
         trace?: never;
@@ -2752,7 +2752,7 @@ export interface paths {
         put?: never;
         /**
          * Create Learning Path
-         * @description Create a learning path (ordered sequence of courses).
+         * @description Create a learning path (ordered sequence of courses).  **Permission: course:author**
          */
         post: operations["create_learning_path_learning_paths_post"];
         delete?: never;
@@ -2777,14 +2777,14 @@ export interface paths {
         post?: never;
         /**
          * Delete Learning Path
-         * @description Delete a learning path.
+         * @description Delete a learning path.  **Permission: course:author**
          */
         delete: operations["delete_learning_path_learning_paths__lp_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Learning Path
-         * @description Update a learning path.
+         * @description Update a learning path.  **Permission: course:author**
          */
         patch: operations["update_learning_path_learning_paths__lp_id__patch"];
         trace?: never;
@@ -3914,7 +3914,8 @@ export interface paths {
          * Import Competency Crosswalk
          * @description Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).
          *
-         *     **Permission: course:author.**
+         *     **Permission: course:author + tenant:read** — platform admin only; it rewrites the
+         *     shared spine's PO links (see ``SPINE_WRITE``).
          *
          *     Upload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.
          */
@@ -3938,7 +3939,8 @@ export interface paths {
          * Import Crosswalk
          * @description Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).
          *
-         *     **Permission: course:author** (was: any signed-in user, Students included).
+         *     **Permission: course:author + tenant:read** — platform admin only (was: any
+         *     signed-in user, Students included). See ``SPINE_WRITE``.
          */
         post: operations["import_crosswalk_qsp_import_crosswalk_post"];
         delete?: never;

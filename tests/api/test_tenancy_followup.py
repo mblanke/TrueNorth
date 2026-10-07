@@ -225,3 +225,56 @@ class TestAuthoringNeedsCourseAuthor:
     def test_instructor_may_generate(self, client, path):
         with acting_as(UserRole.instructor):
             assert client.post(path).status_code == 200
+
+    def test_competency_framework_import_needs_course_author(self, client):
+        with acting_as(UserRole.student):
+            assert client.post("/competency/frameworks/import-nice").status_code == 403
+
+
+# ── Shared qualification spine ─────────────────────────────────────────
+SPINE_IMPORTS = ["/qsp/import-crosswalk", "/qsp/import-competency-crosswalk"]
+
+
+class TestSpineImportIsPlatformLevel:
+    """``Qualification.qsp_code`` is unique across tenants and the imports upsert by it,
+    so one tenant's course author could rewrite every tenant's POs/EOs."""
+
+    @pytest.mark.parametrize("path", SPINE_IMPORTS)
+    @pytest.mark.parametrize("role", [UserRole.instructor, UserRole.student])
+    def test_tenant_level_roles_are_403(self, client, path, role):
+        with acting_as(role):
+            assert client.post(path).status_code == 403
+
+    @pytest.mark.parametrize("path", SPINE_IMPORTS)
+    def test_platform_admin_gets_past_the_permission_check(self, client, path):
+        # No upload attached: 422 (validation), i.e. authorised and handed to the handler.
+        assert client.post(path).status_code == 422
+
+
+# ── Course and learning-path writes ────────────────────────────────────
+class TestCatalogueWritesNeedCourseAuthor:
+    def test_student_cannot_create_update_or_delete(self, client, db_session):
+        mine = client.post("/courses", json={"name": "Owned Course"})
+        assert mine.status_code == 201, mine.text
+        cid = mine.json()["id"]
+        lp = client.post("/learning-paths", json={"name": "Owned Path"})
+        assert lp.status_code == 201, lp.text
+        lpid = lp.json()["id"]
+        with acting_as(UserRole.student):
+            assert client.post("/courses", json={"name": "Student Course"}).status_code == 403
+            assert client.patch(f"/courses/{cid}", json={"name": "x"}).status_code == 403
+            assert client.delete(f"/courses/{cid}").status_code == 403
+            assert client.post("/learning-paths", json={"name": "Student Path"}).status_code == 403
+            assert client.patch(f"/learning-paths/{lpid}", json={"name": "x"}).status_code == 403
+            assert client.delete(f"/learning-paths/{lpid}").status_code == 403
+            # reading the catalogue is unaffected
+            assert client.get(f"/courses/{cid}").status_code == 200
+        assert client.get(f"/courses/{cid}").json()["name"] == "Owned Course"
+
+    def test_instructor_may_author(self, client):
+        with acting_as(UserRole.instructor):
+            r = client.post("/courses", json={"name": "Instructor Course"})
+            assert r.status_code == 201, r.text
+            cid = r.json()["id"]
+            assert client.patch(f"/courses/{cid}", json={"name": "Renamed"}).status_code == 200
+            assert client.delete(f"/courses/{cid}").status_code == 204

@@ -129,13 +129,9 @@ DB_GET = re.compile(r"db\.get\((\w+)\s*,")
 # - lab_sessions.py (3), curriculum.py (2), integrations.py (1): already scoped (tenant
 #   compared on the next line, signed lab/deep-link token, or ids from a handler that
 #   passed get_owned); waived in place.
-DB_GET_BASELINE = {
-    # quizzes.py:~408 `db.get(Quiz, attempt.quiz_id)` is safe — the attempt was fetched
-    # by id AND the caller's user_id — but is not waived yet: quizzes.py is being changed
-    # by PR #77 (claude/s4-lms-curriculum). Add the `# tenant-safe:` comment and drop
-    # this entry once that lands.
-    "quizzes.py": 1,
-}
+# - quizzes.py (1): the quiz of an attempt fetched by the caller's user_id; waived.
+# The ratchet is empty: every router must now have none.
+DB_GET_BASELINE: dict[str, int] = {}
 
 
 def _db_get_findings() -> dict[str, list[str]]:
@@ -173,6 +169,7 @@ def test_no_new_unscoped_db_get_on_tenant_models():
         "directory.py", "auth_zones.py", "storage.py", "ad_sync.py", "admin.py",
         # reviewed in the 2026-10-07 tenancy follow-up
         "ai_config.py", "hypervisors.py", "lab_sessions.py", "curriculum.py", "integrations.py",
+        "quizzes.py",
     ],
 )
 def test_platform_routers_have_no_unscoped_db_get(router):

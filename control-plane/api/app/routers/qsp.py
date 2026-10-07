@@ -361,15 +361,25 @@ def _template_curriculum(db: Session, template: Template) -> dict:
     }
 
 
+# The qualification spine is platform-global in practice: ``Qualification.qsp_code`` is
+# unique across all tenants, and both crosswalk imports upsert by that code, so an
+# import rewrites the POs/EOs (and their competency links) that every tenant's courses,
+# ranges and progress hang off — whichever tenant first created the row. Changing it is
+# therefore a platform action and needs the platform-level ``tenant:read`` (the
+# convention /audit-log uses), not only ``course:author``.
+SPINE_WRITE = require_permission(Permission.COURSE_AUTHOR, Permission.TENANT_READ)
+
+
 @router.post("/import-crosswalk")
 async def import_crosswalk(
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
+    user: CurrentUser = Depends(SPINE_WRITE),
 ) -> dict:
     """Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).
 
-    **Permission: course:author** (was: any signed-in user, Students included)."""
+    **Permission: course:author + tenant:read** — platform admin only (was: any
+    signed-in user, Students included). See ``SPINE_WRITE``."""
     raw = await file.read()
     if len(raw) > MAX_CSV_BYTES:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="crosswalk too large")
@@ -587,11 +597,12 @@ async def import_competency_crosswalk(
     taxonomy: UploadFile,
     crosswalk: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
+    user: CurrentUser = Depends(SPINE_WRITE),
 ) -> dict:
     """Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).
 
-    **Permission: course:author.**
+    **Permission: course:author + tenant:read** — platform admin only; it rewrites the
+    shared spine's PO links (see ``SPINE_WRITE``).
 
     Upload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.
     """

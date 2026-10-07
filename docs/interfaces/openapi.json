@@ -14730,7 +14730,7 @@
         ]
       },
       "post": {
-        "description": "Create a new course with optional ordered modules.",
+        "description": "Create a new course with optional ordered modules.  **Permission: course:author**",
         "operationId": "create_course_courses_post",
         "requestBody": {
           "content": {
@@ -14904,7 +14904,7 @@
     },
     "/courses/{course_id}": {
       "delete": {
-        "description": "Delete a course and its modules.",
+        "description": "Delete a course and its modules.  **Permission: course:author**",
         "operationId": "delete_course_courses__course_id__delete",
         "parameters": [
           {
@@ -14991,7 +14991,7 @@
         ]
       },
       "patch": {
-        "description": "Update course metadata.",
+        "description": "Update course metadata.  **Permission: course:author**",
         "operationId": "update_course_courses__course_id__patch",
         "parameters": [
           {
@@ -20348,7 +20348,7 @@
         ]
       },
       "post": {
-        "description": "Create a learning path (ordered sequence of courses).",
+        "description": "Create a learning path (ordered sequence of courses).  **Permission: course:author**",
         "operationId": "create_learning_path_learning_paths_post",
         "requestBody": {
           "content": {
@@ -20395,7 +20395,7 @@
     },
     "/learning-paths/{lp_id}": {
       "delete": {
-        "description": "Delete a learning path.",
+        "description": "Delete a learning path.  **Permission: course:author**",
         "operationId": "delete_learning_path_learning_paths__lp_id__delete",
         "parameters": [
           {
@@ -20482,7 +20482,7 @@
         ]
       },
       "patch": {
-        "description": "Update a learning path.",
+        "description": "Update a learning path.  **Permission: course:author**",
         "operationId": "update_learning_path_learning_paths__lp_id__patch",
         "parameters": [
           {
@@ -23421,7 +23421,7 @@
     },
     "/qsp/import-competency-crosswalk": {
       "post": {
-        "description": "Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).\n\n**Permission: course:author.**\n\nUpload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.",
+        "description": "Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).\n\n**Permission: course:author + tenant:read** \u2014 platform admin only; it rewrites the\nshared spine's PO links (see ``SPINE_WRITE``).\n\nUpload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.",
         "operationId": "import_competency_crosswalk_qsp_import_competency_crosswalk_post",
         "requestBody": {
           "content": {
@@ -23470,7 +23470,7 @@
     },
     "/qsp/import-crosswalk": {
       "post": {
-        "description": "Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).\n\n**Permission: course:author** (was: any signed-in user, Students included).",
+        "description": "Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).\n\n**Permission: course:author + tenant:read** \u2014 platform admin only (was: any\nsigned-in user, Students included). See ``SPINE_WRITE``.",
         "operationId": "import_crosswalk_qsp_import_crosswalk_post",
         "requestBody": {
           "content": {
