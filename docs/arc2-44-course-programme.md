@@ -451,3 +451,22 @@ Primary local references: `content/catalogue/cyber_operator_programme.csv`,
 `docs/lms-development-design.md`, `docs/moodle-integration.md`, `docs/arc2-plan-v3.md`,
 and the ARC worktree's `tools/arc2/`, `tests/arc2/`, `.claude/commands/arc2.md` and
 `docs/arc2-course-studio.md`. Older status/effort claims are not used as estimates.
+
+## 12. Production status (2026-10-07)
+
+The per-course state is `content/catalogue/production_register.csv`; run directories are
+`build/arc2/<slug>/` (git-ignored). All 44 outlines were accepted by the programme owner.
+
+| Outcome | Count | Courses |
+| --- | --- | --- |
+| Pilot: released, published to the test Moodle, student walk-through passed | 3 | C105 (T), C108 (R; live lab needs vCenter), C208 (P) |
+| Draft: content generated, draft QA pass | 34 | the rest, except below |
+| Partial draft: defensive modules written, the rest AUTHOR-REQUIRED | 3 | C305, C306, RMC C207 |
+| Held for a cleared author (AI drafting stopped by safety checks) | 4 | C302, RMC C202, RMC C205, RMC C211 |
+
+Drafts went through outline, content and QA only: no instructor pack, sensors, range build
+or package, and nothing is SME-reviewed. Each run lists its open human actions; the common
+ones are the defaulted qualification (ALJQ for DP 1, TEMP67 for DP 2), reference gaps, SME
+verification of commands that could not be run here, and the range build for R courses.
+Labs are sized for realism (up to 20 VMs per student). Offensive and evasion content is never
+drafted by ARC²; it is left to a cleared Standards author.
