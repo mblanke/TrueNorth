@@ -38,6 +38,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from .. import scenario_objectives
 from ..aar_html import pdf_text
 from ..aar_html import render_html as render_aar_html
 from ..aar_report import build_report as build_aar_report
@@ -136,6 +137,12 @@ def create_exercise(
         max_score=body.max_score or 100,
     )
     db.add(ex)
+    db.flush()
+    # The scenario's objectives are what the exercise is scored on, and out of their points
+    # (they were never made here, so a scenario exercise scored 0/0).
+    points = scenario_objectives.materialise(db, ex.id, sc.yaml)
+    if points:
+        ex.max_score = points
     db.commit()
     db.refresh(ex)
     _audit(db, user, "create", "exercise", str(ex.id))
