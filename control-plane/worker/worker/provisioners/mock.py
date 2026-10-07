@@ -17,6 +17,7 @@ from .base import BaseProvisioner
 from .results import (
     DestroyResult,
     HealthResult,
+    MetricsResult,
     ProvisionResult,
     RestoreResult,
     SnapshotDeleteResult,
@@ -320,5 +321,43 @@ class MockProvisioner(BaseProvisioner):
             healthy=all_healthy,
             status=overall,
             vm_statuses=vm_statuses,
+            duration_seconds=time.monotonic() - start,
+        )
+
+    # ------------------------------------------------------------------ #
+    # collect_metrics
+    # ------------------------------------------------------------------ #
+    async def collect_metrics(
+        self,
+        range_id: str,
+        provision_output: dict,
+    ) -> MetricsResult:
+        """Fixed, made-up numbers, marked ``synthetic``: the same input gives the same output.
+
+        Nothing is measured here. The values only let the metrics pipeline run end to end
+        in development; ``synthetic=True`` travels with them into every event.
+        """
+        start = time.monotonic()
+        vms = []
+        for vm in self._vms(range_id, provision_output):
+            on = vm.get("status", "running") == "running"
+            cpus = int(vm.get("cpu", 2) or 2)
+            memory = int(vm.get("memory_mb", 4096) or 4096)
+            vms.append({
+                "vm_id": vm.get("vm_id", ""),
+                "name": vm.get("name", ""),
+                "power_state": "poweredOn" if on else "poweredOff",
+                "tools_status": "guestToolsRunning" if on else "guestToolsNotRunning",
+                "cpu_usage_mhz": 100 * cpus if on else 0,
+                "cpu_capacity_mhz": 2000 * cpus,
+                "memory_active_mb": memory // 4 if on else 0,
+                "memory_configured_mb": memory,
+                "uptime_seconds": 3600 if on else 0,
+            })
+        return MetricsResult(
+            status="ok",
+            vms=vms,
+            source="mock",
+            synthetic=True,
             duration_seconds=time.monotonic() - start,
         )
