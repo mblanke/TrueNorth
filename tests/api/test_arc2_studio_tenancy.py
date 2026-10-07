@@ -251,3 +251,76 @@ def test_text_cannot_name_another_run_on_the_engines_command_line(client, runs, 
         before = queue_files(runs)
         assert client.post(f"/arc2/runs/{slug}/reply", json={"action": "feedback", "text": text}).status_code == 422
         assert queue_files(runs) == before
+
+
+@pytest.mark.parametrize("link", ["manifest.json", "01-blueprint/outline.yaml", "request.txt"])
+def test_run_files_symlinked_to_another_tenants_run_are_not_read(client, runs, foreign_run, link):
+    (runs / foreign_run / "request.txt").write_text("their request")
+    with acting_as(UserRole.instructor, DEV_TENANT):
+        mine = client.post("/arc2/runs", json={"name": "Mine", "request": REQUEST}).json()["slug"]
+        meta = runs / "_studio" / f"{mine}.json"
+        meta.write_text(json.dumps({k: v for k, v in json.loads(meta.read_text()).items() if k != "request"}))
+        target = runs / mine / link
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(runs / foreign_run / link)
+        body = client.get(f"/arc2/runs/{mine}").text
+    assert "Capture basics" not in body and "Packet Sniffing with Wireshark" not in body
+    assert "their request" not in body
+
+
+def test_a_run_directory_that_is_a_symlink_to_another_run_is_not_read(client, runs, foreign_run):
+    with acting_as(UserRole.instructor, DEV_TENANT):
+        mine = client.post("/arc2/runs", json={"name": "Mine", "request": REQUEST}).json()["slug"]
+        (runs / mine).symlink_to(runs / foreign_run, target_is_directory=True)
+        body = client.get(f"/arc2/runs/{mine}").text
+        assert client.get(f"/arc2/runs/{mine}/package.zip").status_code == 404
+        assert client.get(f"/arc2/runs/{mine}/file", params={"path": "01-blueprint/outline.yaml"}).status_code == 404
+    assert "Capture basics" not in body
+
+
+def test_a_folder_in_the_run_linked_to_another_run_is_not_read_or_served(client, runs, foreign_run):
+    with acting_as(UserRole.instructor, DEV_TENANT):
+        mine = client.post("/arc2/runs", json={"name": "Mine", "request": REQUEST}).json()["slug"]
+        (runs / mine).mkdir()
+        (runs / mine / "01-blueprint").symlink_to(runs / foreign_run / "01-blueprint", target_is_directory=True)
+        (runs / mine / "07-bundle").symlink_to(runs / foreign_run / "07-bundle", target_is_directory=True)
+        assert "Capture basics" not in client.get(f"/arc2/runs/{mine}").text
+        assert client.get(f"/arc2/runs/{mine}/file", params={"path": "01-blueprint/outline.yaml"}).status_code == 404
+        assert client.get(f"/arc2/runs/{mine}/package.zip").status_code == 404
+
+
+def test_a_yaml_alias_bomb_in_a_run_is_not_expanded(client, runs):
+    write_run(runs, "arc2-bomb")
+    levels = ['a0: &a0 ["xxxxxxxxxx"]'] + [f"a{i}: &a{i} [{', '.join([f'*a{i - 1}'] * 10)}]" for i in range(1, 8)]
+    (runs / "arc2-bomb" / "01-blueprint" / "outline.yaml").write_text("\n".join(levels) + "\n")
+    r = client.get("/arc2/runs/arc2-bomb")
+    assert r.status_code == 200
+    assert r.json()["outline"] is None
+    assert len(r.content) < 100_000
+
+
+def test_pages_and_course_files_are_listed_without_following_links(client, runs, foreign_run):
+    (runs / foreign_run / "02-content" / "mod_001" / "content").mkdir(parents=True)
+    (runs / foreign_run / "02-content" / "mod_001" / "content" / "their-case-study.html").write_text("x")
+    (runs / foreign_run / "02-content" / "theirs.yaml").write_text("modules: [{title: Their module}]\n")
+    write_run(runs, "arc2-pages")
+    (runs / "arc2-pages" / "02-content" / "mod_001" / "content").mkdir(parents=True)
+    (runs / "arc2-pages" / "02-content" / "mod_001" / "content" / "page-01.html").write_text("<p>ok</p>")
+    (runs / "arc2-pages" / "02-content" / "c.yaml").write_text("modules: [{title: Mine}]\n")
+    d = client.get("/arc2/runs/arc2-pages").json()
+    assert d["pages"] == ["02-content/mod_001/content/page-01.html"]
+    assert [m["title"] for m in d["modules"]] == ["Mine"]
+
+    write_run(runs, "arc2-linked")
+    (runs / "arc2-linked" / "02-content").symlink_to(runs / foreign_run / "02-content", target_is_directory=True)
+    d = client.get("/arc2/runs/arc2-linked").json()
+    assert d["pages"] == [] and d["modules"] == []
+
+
+def test_an_oversized_run_file_is_not_parsed(client, runs, monkeypatch):
+    from app.routers import arc2_studio
+
+    monkeypatch.setattr(arc2_studio, "MAX_READ_BYTES", 64)
+    write_run(runs, "arc2-big")
+    (runs / "arc2-big" / "01-blueprint" / "outline.yaml").write_text("course: X\n" + "# pad\n" * 50)
+    assert client.get("/arc2/runs/arc2-big").json()["outline"] is None

@@ -326,10 +326,84 @@ Request and feedback text may not contain `--slug` or `--resume`. The API return
 the runner fails the job, because that text is placed on `/arc2`'s argument line after
 the run's own slug. `package.zip` serves only files that resolve inside the caller's run.
 
-**Open (S1b, runner isolation).** The API enforces the boundary, but the engine does not.
-A headless `/arc2` may write anywhere under `build/arc2/`, including other tenants' runs
-and `_studio/` where ownership is recorded. It may read the whole repository and run
-`.venv/bin/python`. Prompt text from one tenant could therefore steer it into another
-tenant's run. `_detail` still reads a run's files (outline, course YAML, manifest) without
-resolving symlinks. Confining each job to `build/arc2/<slug>/**` and keeping `_studio/`
-out of the agent's reach is the S1b deliverable.
+**Runner isolation (S1b).** Request and feedback text from any tenant drives the engine,
+and its tools include arbitrary Python, so Claude Code's `--allowedTools` rules are not a
+boundary. The runner runs the whole `claude` process tree for each job in an OS sandbox
+where file writes are denied by default (`tools/arc2/confine.py`, Seatbelt via `sandbox-exec` on macOS):
+
+| While a job runs | Allowed |
+|---|---|
+| Write `build/arc2/<slug>/`, `build/arc2/<slug>.request.txt`, the job's own home | yes |
+| Write anything else: other runs, `_studio/` (ownership), `_queue/`, `_jobs/`, `_history/`, the repository, the runner account's home (`~/.claude`, `~/.gitconfig`, shell profiles, launch agents), shared temp | no |
+| Read the repository (except `.env*`) and the `claude` installation | yes |
+| Read other runs, `_studio/`, `_queue/`, `_jobs/`, anything else in the runner's home (other jobs' sessions, `~/.ssh`, `~/.docker`), including through symlinks | no |
+| Read `build/arc2/` or `.claude/worktrees/` anywhere in the repository (other checkouts' runs) | no |
+| Signal processes outside the sandbox | no |
+| Unix sockets (Docker) and localhost (API, Redis, Postgres) | no, except DNS and the local model fallback's port |
+| Internet (the model API) | yes |
+
+A job can still read the original arguments and environment of any process in the same
+account (`sysctl KERN_PROCARGS2`); Seatbelt has no rule for it. So neither may hold
+anything worth reading: the runner re-executes itself with a scrubbed environment (its own
+`ARC2_*` settings, `RUNNER_ENV` and the `ARC2_JOB_ENV` names), and prompts go to `claude`
+on stdin, never on its command line. The API bounds every read of a run file (2 MB; a
+package at 200 MB), refuses YAML aliases (a few hundred bytes of nested aliases expand to
+gigabytes), and lists a run's pages without following links.
+
+Each job gets a fresh `HOME` and `CLAUDE_CONFIG_DIR` (its Claude sessions, memory and temp
+files), deleted when it ends. It also gets an allow-listed environment (`JOB_ENV` plus
+`ARC2_JOB_ENV`) and `--setting-sources project --strict-mcp-config`, so no user hooks,
+settings or MCP servers load. Its `Write`/`Edit` tool rules name only its own run.
+
+The course history is a runner-owned git directory, `build/arc2/_history/<slug>.git`, with
+the run as its work tree. Step transcripts sit beside it. Git runs with hooks, fsmonitor
+and global/system config disabled, and inside the same sandbox, so it can read the run but
+write only the history. A run folder that has been replaced by a link is not recorded.
+Older runs keep their in-run `.git`, which is now ignored.
+
+The API reads run files one path component at a time with `O_NOFOLLOW`. A link anywhere in
+a run, including the run folder itself, is never followed, even if it is swapped in while
+the read is in progress.
+
+The runner fails closed. With `ARC2_CONFINE=auto` (the default) and no sandbox it exits
+with status 2 and runs nothing. `ARC2_CONFINE=none` runs jobs unconfined with the runner's
+own config and environment, and is for single-tenant hosts only. Each job record carries
+`confinement`.
+
+**Runner account (one-time setup, by an administrator).** A confined job cannot use the
+operator's interactive Claude login, so the runner signs in with a long-lived token. Run it
+under a dedicated macOS account, so that this token and the account's home are all a job
+could ever reach:
+
+1. Create a standard user, for example `arc2runner` (System Settings → Users & Groups).
+   Do not make it an administrator, and do not add it to the `docker` group.
+2. As that user, check out the repository, create the venv (`uv venv .venv --python 3.11`,
+   `uv pip install -r requirements-test.txt`), install Claude Code, then run
+   `claude setup-token`. Save the token to `~/.arc2/oauth-token` and `chmod 600` it.
+   `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` in the runner's environment work too.
+3. Give it the runs folder that the API reads (`build/arc2`, or `ARC2_RUNS_DIR` for both),
+   writable by `arc2runner` and readable by the API.
+4. Start it as that user with `make arc2-runner`. It prints `confinement: seatbelt`. If it
+   cannot find a token, it warns that confined jobs cannot sign in.
+
+A job can still read its own token from its environment and send it out over the
+internet. Use a token for this account only, and revoke it if a run looks hostile.
+
+Evidence:
+- `tests/arc2/test_arc2_confinement.py` runs a hostile fake engine through `runner.main`.
+  It covers own run/home writes, other runs, `_studio`, `_queue`, `_history`, the repo, the
+  runner's home, `.env`, symlinks, a localhost service, a Unix socket, signalling the
+  runner, the runner's environment, and git hooks and config planted for the snapshot.
+  Everything outside the job is denied. Linked run folders are not recorded.
+- A real `claude -p` starts under the profile and keeps all its state in the job's home.
+  Without a token it stops at "Not logged in".
+- An adversarial review of the first version reproduced the hook, link, socket and home
+  escapes that this version closes.
+
+Still open:
+- There is no Linux backend (bubblewrap).
+- The internet stays open, so the token can be exfiltrated (see above).
+- `/arc2` always uses `<repo>/build/arc2`, so `ARC2_RUNS_DIR` must point there for the
+  engine, runner and API to agree.
+- A descendant that calls `setsid()` survives the job's process-group kill. It stays
+  confined to that run.

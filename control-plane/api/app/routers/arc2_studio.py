@@ -26,9 +26,10 @@ import json
 import os
 import re
 import secrets
+import stat
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -69,6 +70,9 @@ STAGES = [
 ]
 TEXT_SUFFIXES = {".html", ".json", ".yaml", ".yml", ".md", ".csv", ".txt", ".xml", ".js"}
 MAX_FILE_BYTES = 512 * 1024
+# Run files are written by the engine, which runs untrusted text: every read is bounded.
+MAX_READ_BYTES = 2 * 1024 * 1024  # one manifest, outline or course file
+MAX_PACKAGE_BYTES = 200 * 1024 * 1024  # a whole cmi5 package
 
 
 def runs_dir() -> Path:
@@ -80,10 +84,56 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def _read_json(path: Path) -> dict | None:
+def _walk(parts: tuple[str, ...]) -> int:
+    """A directory fd for ``runs_dir()/parts``, opened one component at a time with no
+    symlink followed. The caller closes it. Raises OSError."""
+    fd = os.open(runs_dir(), os.O_RDONLY | os.O_DIRECTORY)
     try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
+        for part in parts:
+            if part in ("", ".", ".."):
+                raise OSError(f"bad path component {part!r}")
+            nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nfd
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _read_bytes(path: Path, limit: int = MAX_READ_BYTES) -> bytes | None:
+    """The bytes of a regular file under the runs root, or None.
+
+    Run directories are written by the engine, so no symlink is followed anywhere below
+    the runs root: not the run directory, not a folder in it, not the file. Each step
+    opens relative to the previous one's fd, so swapping a link in while this runs does
+    not redirect it. Every read of a file under the runs root goes through here.
+    """
+    try:
+        rel = path.relative_to(runs_dir())
+    except ValueError:
+        return None
+    if not rel.parts:
+        return None
+    try:
+        dir_fd = _walk(rel.parts[:-1])
+        try:
+            fd = os.open(rel.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+        finally:
+            os.close(dir_fd)
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                return None
+            return f.read(limit)
+    except OSError:
+        return None
+
+
+def _read_json(path: Path) -> dict | None:
+    data = _read_bytes(path)
+    try:
+        return json.loads(data) if data is not None else None
+    except ValueError:
         return None
 
 
@@ -106,7 +156,7 @@ def _is_owner(slug: str, user: CurrentUser) -> bool:
 def _owned_run(slug: str, user: CurrentUser) -> Path:
     """The run directory for ``slug`` if the caller's tenant owns it, else 404 (never 403)."""
     run = _run_path(slug)
-    if not _is_owner(slug, user):
+    if not _is_owner(slug, user) or run.is_symlink():  # reads below also refuse links
         raise HTTPException(404, "No such run")
     return run
 
@@ -245,17 +295,51 @@ def _mtime(path: Path) -> str | None:
 
 
 def _safe_text(path: Path, limit: int = 4000) -> str | None:
-    try:
-        return path.read_text()[:limit]
-    except OSError:
-        return None
+    data = _read_bytes(path, limit * 4)
+    return data.decode(errors="replace")[:limit] if data is not None else None
+
+
+class _NoAliasLoader(yaml.SafeLoader):
+    """SafeLoader without anchors/aliases: a few hundred bytes of nested aliases expand to
+    gigabytes when the result is serialised. The engine's YAML never needs them."""
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            raise yaml.YAMLError("YAML aliases are not accepted in run files")
+        return super().compose_node(parent, index)
 
 
 def _safe_yaml(path: Path):
-    try:
-        return yaml.safe_load(path.read_text())
-    except (OSError, yaml.YAMLError):
+    data = _read_bytes(path)
+    if data is None or len(data) >= MAX_READ_BYTES:
         return None
+    try:
+        return yaml.load(data, Loader=_NoAliasLoader)  # noqa: S506 - SafeLoader subclass
+    except yaml.YAMLError:
+        return None
+
+
+def _list(run: Path, *parts: str, depth: int) -> list[str]:
+    """Relative paths of regular files ``depth`` folders below ``run/parts``, with no
+    symlink followed (a linked folder in a run must not list another run's files)."""
+    try:
+        top = _walk((run.name, *parts))
+    except OSError:
+        return []
+    out: list[str] = []
+    try:
+        for here, dirs, files, here_fd in os.fwalk(".", dir_fd=top, follow_symlinks=False):
+            level = 0 if here == "." else here.count("/")
+            if level >= depth:
+                dirs.clear()
+            if level != depth:
+                continue
+            for name in files:
+                if stat.S_ISREG(os.stat(name, dir_fd=here_fd, follow_symlinks=False).st_mode):
+                    out.append(str(PurePosixPath(*parts, here.removeprefix("./"), name)))
+    finally:
+        os.close(top)
+    return sorted(out)
 
 
 def _messages(slug: str, manifest: dict | None) -> list[dict]:
@@ -284,13 +368,16 @@ def _detail(slug: str) -> dict:
     out["messages"] = _messages(slug, manifest)
     out["outline"] = _safe_yaml(run / "01-blueprint" / "outline.yaml")
     out["objectives"] = manifest.get("objectives") or []
-    course_yaml = next(iter(sorted((run / "02-content").glob("*.yaml"))), None) if (run / "02-content").is_dir() else None
-    course = _safe_yaml(course_yaml) if course_yaml else None
+    course_yaml = next((p for p in _list(run, "02-content", depth=0) if p.endswith(".yaml")), None)
+    course = _safe_yaml(run / course_yaml) if course_yaml else None
     out["modules"] = [
         {"title": m.get("title"), "quiz": (m.get("quiz") or {}).get("questions") or []}
         for m in ((course or {}).get("modules") or [])
     ]
-    out["pages"] = sorted(str(p.relative_to(run)) for p in (run / "02-content").glob("mod_*/content/*.html")) if (run / "02-content").is_dir() else []
+    out["pages"] = [
+        p for p in _list(run, "02-content", depth=2)
+        if p.endswith(".html") and PurePosixPath(p).parts[1].startswith("mod_") and PurePosixPath(p).parts[2] == "content"
+    ]
     scenario = (_safe_yaml(run / "05-sensor" / "scenario.yaml") or {}).get("scenario") or {}
     timeline = (_safe_yaml(run / "03-range" / "timeline.yaml") or {}).get("scenario") or {}
     out["lab"] = {
@@ -443,28 +530,50 @@ def reply(slug: str, body: Reply, user: CurrentUser = Depends(author)):
 
 @router.get("/runs/{slug}/file", response_model=RunFile)
 def get_file(slug: str, path: str = Query(..., max_length=300), user: CurrentUser = Depends(author)):
-    run = _owned_run(slug, user).resolve()
-    target = (run / path).resolve()
-    if run not in target.parents or target.suffix not in TEXT_SUFFIXES or not target.is_file():
+    run = _owned_run(slug, user)
+    rel = PurePosixPath(path)
+    if rel.is_absolute() or not rel.parts or any(p in ("", ".", "..") for p in rel.parts) \
+            or rel.suffix not in TEXT_SUFFIXES:
         raise HTTPException(404, "No such file")
-    if target.stat().st_size > MAX_FILE_BYTES:
+    data = _read_bytes(run.joinpath(*rel.parts), MAX_FILE_BYTES + 1)
+    if data is None:
+        raise HTTPException(404, "No such file")
+    if len(data) > MAX_FILE_BYTES:
         raise HTTPException(413, "File too large to show")
-    rel = target.relative_to(run)
-    return {"path": str(rel), "text": target.read_text(errors="replace"),
-            "instructor_only": "instructor" in rel.parts}
+    return {"path": str(rel), "text": data.decode(errors="replace"), "instructor_only": "instructor" in rel.parts}
 
 
 @router.get("/runs/{slug}/package.zip")
 def package_zip(slug: str, user: CurrentUser = Depends(author)):
-    run = _owned_run(slug, user).resolve()
-    root = (run / "07-bundle" / "cmi5").resolve()
-    if run not in root.parents or not (root / "cmi5.xml").is_file():
-        raise HTTPException(404, "No package yet")
+    _owned_run(slug, user)
+    try:
+        root_fd = _walk((slug, "07-bundle", "cmi5"))
+    except OSError:
+        raise HTTPException(404, "No package yet") from None
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(root.rglob("*")):
-            if f.is_file() and root in f.resolve().parents:
-                z.write(f, f.relative_to(root))
+    try:
+        if not stat.S_ISREG(os.stat("cmi5.xml", dir_fd=root_fd, follow_symlinks=False).st_mode):
+            raise HTTPException(404, "No package yet")
+        budget = MAX_PACKAGE_BYTES
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            # fwalk does not descend into linked folders; files are opened without following links.
+            for top, dirs, files, dir_fd in os.fwalk(".", dir_fd=root_fd, follow_symlinks=False):
+                dirs.sort()
+                for name in sorted(files):
+                    try:
+                        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
+                    except OSError:
+                        continue
+                    with os.fdopen(fd, "rb") as f:
+                        if stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                            budget -= os.fstat(f.fileno()).st_size
+                            if budget < 0:
+                                raise HTTPException(413, "Package too large to download")
+                            z.writestr(str(PurePosixPath(top, name)).removeprefix("./"), f.read(MAX_PACKAGE_BYTES))
+    except FileNotFoundError:
+        raise HTTPException(404, "No package yet") from None
+    finally:
+        os.close(root_fd)
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/zip",
                              headers={"Content-Disposition": f'attachment; filename="{slug}-cmi5.zip"'})

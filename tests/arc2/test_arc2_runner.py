@@ -18,6 +18,7 @@ from arc2 import runner
 FAKE = r"""#!/usr/bin/env python3
 import json, os, sys, time
 open(os.environ["FAKE_ARGS"], "w").write(json.dumps(sys.argv[1:]))
+open(os.environ["FAKE_ARGS"] + ".stdin", "w").write(sys.stdin.read())
 mode = os.environ.get("FAKE_MODE", "ok")
 def emit(e): print(json.dumps(e), flush=True)
 emit({"type": "system", "subtype": "init"})
@@ -68,11 +69,14 @@ def test_start_runs_arc2_with_the_callers_slug_and_records_the_result(tmp_path, 
     assert runner.main(["--runs", str(runs), "--claude", str(exe), "--once"]) == 0
 
     args = json.loads(args_file.read_text())
-    assert args[:2] == ["-p", "/arc2 --slug arc2-wireshark-basics 60 min beginner course on packet sniffing and Wireshark"]
+    prompt = "/arc2 --slug arc2-wireshark-basics 60 min beginner course on packet sniffing and Wireshark"
+    assert args[0] == "-p" and Path(f"{args_file}.stdin").read_text() == prompt
+    assert not any("Wireshark" in a for a in args), "the request is on stdin, never on the command line"
     assert "--dangerously-skip-permissions" not in args
     assert args[args.index("--permission-mode") + 1] == "dontAsk"
     tools = args[args.index("--allowedTools") + 1:]
-    assert "Write(./build/arc2/**)" in tools and "Write" not in tools and "Edit" not in tools
+    assert "Write(./build/arc2/arc2-wireshark-basics/**)" in tools and "Write(./build/arc2/**)" not in tools
+    assert "Write" not in tools and "Edit" not in tools
 
     [rec] = records(runs)
     assert rec["state"] == "done"
@@ -88,7 +92,7 @@ def test_resume_passes_the_reply_verbatim_on_one_line(tmp_path, fake_claude):
     runs = tmp_path / "runs"
     queue_job(runs, action="resume", text="Add a module on\nTLS decryption")
     runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
-    assert json.loads(args_file.read_text())[1] == "/arc2 --resume arc2-wireshark-basics Add a module on TLS decryption"
+    assert Path(f"{args_file}.stdin").read_text() == "/arc2 --resume arc2-wireshark-basics Add a module on TLS decryption"
 
 
 def test_a_failed_run_is_recorded_with_the_engines_message(tmp_path, fake_claude, monkeypatch):
@@ -200,12 +204,14 @@ def test_each_job_is_committed_to_the_courses_own_history(tmp_path, fake_claude)
     runner.main(["--runs", str(runs), "--claude", str(exe), "--once"])
     [rec] = records(runs)
     assert rec["history_commit"]
-    course = runs / "arc2-wireshark-basics"
-    log = subprocess.run(["git", "-C", str(course), "log", "--format=%s"], capture_output=True, text=True).stdout
+    git = ["git", f"--git-dir={runs / '_history' / 'arc2-wireshark-basics.git'}"]
+    log = subprocess.run([*git, "log", "--format=%s"], capture_output=True, text=True).stdout
     assert log.strip() == "start · done on claude"
-    files = subprocess.run(["git", "-C", str(course), "ls-files"], capture_output=True, text=True).stdout.split()
+    files = subprocess.run([*git, "ls-files"], capture_output=True, text=True).stdout.split()
     assert "01-blueprint/outline.yaml" in files
-    assert any(f.startswith("_transcripts/") and f.endswith(f"-{rec['id']}.jsonl") for f in files)
+    assert not (runs / "arc2-wireshark-basics" / ".git").exists(), "the history lives outside the run"
+    [transcript] = (runs / "_history" / "arc2-wireshark-basics.transcripts").glob(f"*-{rec['id']}.jsonl")
+    assert transcript.read_text().count("\n") == 3
 
 
 def test_no_history_when_the_run_was_never_created(tmp_path, fake_claude, monkeypatch):
