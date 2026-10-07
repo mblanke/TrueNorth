@@ -18,12 +18,42 @@ import httpx
 from fastapi import HTTPException
 
 from .base import BaseSearchBackend
+from .query import ParsedQuery, QueryError, parse_query
 
 logger = logging.getLogger("truenorth.search.opensearch")
 
+# Free text only: no FUZZY, NEAR or SLOP. simple_query_string never raises on bad syntax.
+SIMPLE_QUERY_FLAGS = "AND|OR|NOT|PHRASE|PREFIX|PRECEDENCE|WHITESPACE|ESCAPE"
+
+
+def build_query(parsed: ParsedQuery) -> dict:
+    """The OpenSearch query DSL for a parsed telemetry query (never ``query_string``)."""
+    if parsed.match_all:
+        return {"match_all": {}}
+    must: list[dict] = []
+    for term in parsed.terms:
+        if term.kind == "exists":
+            must.append({"exists": {"field": term.field}})
+        elif term.kind == "prefix":
+            must.append({"prefix": {term.field: {"value": term.value}}})
+        else:
+            must.append({"match_phrase": {term.field: term.value}})
+    if parsed.text:
+        must.append(
+            {
+                "simple_query_string": {
+                    "query": parsed.text,
+                    "flags": SIMPLE_QUERY_FLAGS,
+                    "default_operator": "and",
+                    "lenient": True,
+                }
+            }
+        )
+    return {"bool": {"must": must}}
+
 
 class OpenSearchBackend(BaseSearchBackend):
-    """OpenSearch / Elasticsearch bulk ingest + query-string search."""
+    """OpenSearch / Elasticsearch bulk ingest + constrained search (see query.py)."""
 
     def __init__(
         self,
@@ -73,8 +103,12 @@ class OpenSearchBackend(BaseSearchBackend):
             return 0
 
     async def search(self, index: str, query: str, size: int = 50) -> dict:
+        try:
+            dsl = build_query(parse_query(query))
+        except QueryError as exc:
+            raise HTTPException(422, f"Invalid search query: {exc}") from exc
         body = {
-            "query": {"query_string": {"query": query}},
+            "query": dsl,
             "size": size,
             "sort": [{"@timestamp": {"order": "desc", "unmapped_type": "date"}}],
         }
@@ -84,6 +118,8 @@ class OpenSearchBackend(BaseSearchBackend):
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 400:  # e.g. a prefix on a date field
+                raise HTTPException(422, "Search query rejected by the search backend") from exc
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
         except Exception as exc:
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc

@@ -27663,7 +27663,7 @@
     },
     "/telemetry/{range_id}/events": {
       "post": {
-        "description": "Ingest telemetry events into a range's index.  **Permission: telemetry:write**\n\nThe range must belong to the caller's tenant (404 otherwise). Students cannot write:\ndetection objectives are scored against this index.",
+        "description": "Ingest telemetry events into a range's index.  **Permission: telemetry:write**\n\nThe range must belong to the caller's tenant (404 otherwise). Students cannot write:\ndetection objectives are scored against this index. Each event is stored with a\n``mitre_technique`` list when one is known: its own ``mitre_technique`` /\n``technique_id`` if that is an ATT&CK ID, else one mapped from ``event_type``.",
         "operationId": "ingest_telemetry_telemetry__range_id__events_post",
         "parameters": [
           {
@@ -27725,7 +27725,7 @@
     },
     "/telemetry/{range_id}/search": {
       "get": {
-        "description": "Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).",
+        "description": "Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).\n\n``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch\n``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.\nA query outside it is a 422.",
         "operationId": "search_telemetry_telemetry__range_id__search_get",
         "parameters": [
           {
@@ -27739,13 +27739,14 @@
             }
           },
           {
-            "description": "OpenSearch query string",
+            "description": "field:value, field:\"a phrase\", field:prefix*, field:* (exists) and free text, ANDed",
             "in": "query",
             "name": "q",
             "required": false,
             "schema": {
               "default": "*",
-              "description": "OpenSearch query string",
+              "description": "field:value, field:\"a phrase\", field:prefix*, field:* (exists) and free text, ANDed",
+              "maxLength": 512,
               "title": "Q",
               "type": "string"
             }
@@ -27757,6 +27758,7 @@
             "schema": {
               "default": 50,
               "maximum": 500,
+              "minimum": 1,
               "title": "Size",
               "type": "integer"
             }
