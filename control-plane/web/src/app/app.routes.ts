@@ -63,6 +63,7 @@ export const routes: Routes = [
         { label: 'Ranges', path: 'ranges' },
         { label: 'Scenarios', path: 'scenarios' },
         { label: 'Detections', path: 'detections' },
+        { label: 'Threat intel', path: 'threat-intel' },
         { label: 'MESL', path: 'mesl' },
         { label: 'Forge', path: 'forge' },
         { label: 'Content', path: 'content' },
@@ -101,6 +102,12 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
         title: 'Authoring · Detections - TrueNorth Range',
+      },
+      {
+        path: 'threat-intel',
+        loadComponent: () =>
+          import('./features/threat-intel/threat-intel-feeds.component').then(m => m.ThreatIntelFeedsComponent),
+        title: 'Authoring · Threat intel - TrueNorth Range',
       },
       {
         path: 'mesl',
