@@ -25,6 +25,23 @@ export function telemetryEventTime(e: TelemetryEvent): string {
   return t ? String(t) : '';
 }
 
+/** ATT&CK techniques the API tagged the event with (a list; older events may hold a string). */
+export function telemetryTechniques(e: TelemetryEvent): string {
+  const t = e.mitre_technique;
+  if (Array.isArray(t)) return t.join(', ');
+  return typeof t === 'string' ? t : '';
+}
+
+/** The API answers 422 with a reason for a query outside the search grammar. */
+export function telemetrySearchError(err: unknown): string {
+  const e = err as { status?: number; error?: { detail?: unknown } };
+  if (e?.status === 422) {
+    const detail = e.error?.detail;
+    return typeof detail === 'string' ? detail : 'Invalid search query';
+  }
+  return 'Search failed';
+}
+
 @Component({
   selector: 'tn-telemetry',
   imports: [
@@ -72,12 +89,17 @@ export function telemetryEventTime(e: TelemetryEvent): string {
         </mat-form-field>
         <mat-form-field appearance="outline" class="query-field">
           <mat-label>Query</mat-label>
-          <input matInput [(ngModel)]="query" placeholder="event_type:process_create AND process_name:powershell*">
+          <input matInput [(ngModel)]="query" (keyup.enter)="search()"
+                 placeholder="event_type:process_exec process_name:power* mitre_technique:T1059">
+          <mat-hint>field:value, field:"a phrase", field:prefix*, field:* or free text, all ANDed</mat-hint>
         </mat-form-field>
         <button mat-raised-button color="primary" (click)="search()" [disabled]="!selectedRangeId">
           <mat-icon>search</mat-icon> Search
         </button>
       </div>
+      @if (searchError()) {
+        <p class="search-error" role="alert">{{ searchError() }}</p>
+      }
 
       @if (events().length > 0) {
         <div class="charts-row">
@@ -101,10 +123,11 @@ export function telemetryEventTime(e: TelemetryEvent): string {
           <ng-container matColumnDef="hostname"><th mat-header-cell *matHeaderCellDef>Host</th><td mat-cell *matCellDef="let e">{{ e.hostname || '—' }}</td></ng-container>
           <ng-container matColumnDef="source_ip"><th mat-header-cell *matHeaderCellDef>Src IP</th><td mat-cell *matCellDef="let e">{{ e.source_ip || '—' }}</td></ng-container>
           <ng-container matColumnDef="process_name"><th mat-header-cell *matHeaderCellDef>Process</th><td mat-cell *matCellDef="let e">{{ e.process_name || '—' }}</td></ng-container>
+          <ng-container matColumnDef="mitre_technique"><th mat-header-cell *matHeaderCellDef>ATT&amp;CK</th><td mat-cell *matCellDef="let e">{{ techniques(e) || '—' }}</td></ng-container>
           <tr mat-header-row *matHeaderRowDef="columns"></tr>
           <tr mat-row *matRowDef="let row; columns: columns"></tr>
         </table>
-      } @else if (searched) {
+      } @else if (searched && !searchError()) {
         <mat-card class="mt-2 empty-state">
           <tn-lottie name="radar-scan" [size]="120" />
           <p>No events matched this query. The range may be quiet — or the hunt continues.</p>
@@ -118,6 +141,7 @@ export function telemetryEventTime(e: TelemetryEvent): string {
     .query-field { flex: 1; min-width: 300px; }
     .full-width { width: 100%; }
     .subtitle { color: var(--text-muted); }
+    .search-error { color: var(--mat-sys-error, #b3261e); margin: 4px 0 0; }
 
     .charts-row {
       display: grid;
@@ -149,12 +173,13 @@ export class TelemetryComponent implements OnInit, OnDestroy {
   timelineOption = signal<EChartsOption>({});
   donutOption = signal<EChartsOption>({});
   topHostsOption = signal<EChartsOption>({});
+  searchError = signal('');
 
   selectedRangeId = '';
   query = '*';
   searched = false;
   autoRefresh = false;
-  columns = ['timestamp', 'event_type', 'hostname', 'source_ip', 'process_name'];
+  columns = ['timestamp', 'event_type', 'hostname', 'source_ip', 'process_name', 'mitre_technique'];
 
   private refreshSub?: Subscription;
 
@@ -182,18 +207,24 @@ export class TelemetryComponent implements OnInit, OnDestroy {
   }
 
   search(): void {
+    if (!this.selectedRangeId) return;
     this.searched = true;
     this.api.searchTelemetry(this.selectedRangeId, this.query).subscribe({
       next: res => {
         const hits = (res.hits?.hits || []).map(h => h._source);
+        this.searchError.set('');
         this.events.set(hits);
         this.buildCharts(hits);
       },
-      error: () => this.events.set([]),
+      error: err => {
+        this.searchError.set(telemetrySearchError(err));
+        this.events.set([]);
+      },
     });
   }
 
   readonly eventTime = telemetryEventTime;
+  readonly techniques = telemetryTechniques;
 
   private buildCharts(events: TelemetryEvent[]): void {
     const c = tnChartColors();

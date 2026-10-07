@@ -5483,7 +5483,9 @@ export interface paths {
          * @description Ingest telemetry events into a range's index.  **Permission: telemetry:write**
          *
          *     The range must belong to the caller's tenant (404 otherwise). Students cannot write:
-         *     detection objectives are scored against this index.
+         *     detection objectives are scored against this index. Each event is stored with a
+         *     ``mitre_technique`` list when one is known: its own ``mitre_technique`` /
+         *     ``technique_id`` if that is an ATT&CK ID, else one mapped from ``event_type``.
          */
         post: operations["ingest_telemetry_telemetry__range_id__events_post"];
         delete?: never;
@@ -5502,6 +5504,10 @@ export interface paths {
         /**
          * Search Telemetry
          * @description Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+         *
+         *     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
+         *     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
+         *     A query outside it is a 422.
          */
         get: operations["search_telemetry_telemetry__range_id__search_get"];
         put?: never;
@@ -21565,7 +21571,7 @@ export interface operations {
     search_telemetry_telemetry__range_id__search_get: {
         parameters: {
             query?: {
-                /** @description OpenSearch query string */
+                /** @description field:value, field:"a phrase", field:prefix*, field:* (exists) and free text, ANDed */
                 q?: string;
                 size?: number;
             };
