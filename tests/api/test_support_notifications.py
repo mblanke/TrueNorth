@@ -145,3 +145,57 @@ class TestOwnOnly:
         with acting_as(outsider):
             assert client.get("/notifications").json() == []
             assert client.post(f"/notifications/{nid}/read").status_code == 404
+
+
+class TestWikiToTicketToAssignee:
+    """The Support flow end to end in-process: runbook page -> ticket citing it -> assignee told.
+
+    tests/integration/test_support_flow.py drives the same flow against the live stack,
+    but that stack runs AUTH_DISABLED (one identity), so it cannot read the assignee's
+    own inbox; this is where that half is asserted.
+    """
+
+    def test_assignee_is_told_and_can_follow_both_links(self, client, db_session, people):
+        admin = _person(db_session, UserRole.admin, "Maj Admin")
+        with acting_as(admin):
+            space = client.post("/wiki/spaces", json={"name": "Runbooks", "slug": "flow-runbooks"})
+            assert space.status_code == 201, space.text
+        with acting_as(people["shaw"]):
+            page = client.post(
+                "/wiki/spaces/flow-runbooks/pages",
+                json={"title": "Rebooting dc01", "body": "1. Console in.\n2. Reboot.", "is_published": True},
+            )
+            assert page.status_code == 201, page.text
+            page_id = page.json()["id"]
+            t = client.post(
+                "/tickets",
+                json={
+                    "subject": "dc01 won't boot",
+                    "description": f"Following [Rebooting dc01](/wiki/pages/{page_id}) did not help.",
+                    "assignee_id": people["chen"].id,
+                },
+            )
+            assert t.status_code == 201, t.text
+            ticket = t.json()
+            assert ticket["assignee_id"] == people["chen"].id
+            # The actor is never told about their own change.
+            assert client.get("/notifications/unread-count").json() == {"unread": 0}
+
+        with acting_as(people["chen"]):
+            inbox = client.get("/notifications", params={"unread_only": True}).json()
+            assigned = [n for n in inbox if n["kind"] == "ticket_assigned"]
+            assert len(assigned) == 1
+            note = assigned[0]
+            assert note["title"] == f"{ticket['key']}: assigned to you"
+            assert note["link"] == f"/support/{ticket['id']}"
+            assert note["read"] is False
+            # The notification leads to the ticket, and the ticket to the wiki page.
+            assert f"/wiki/pages/{page_id}" in client.get(f"/tickets/{ticket['id']}").json()["description"]
+            assert client.get(f"/wiki/pages/{page_id}").json()["title"] == "Rebooting dc01"
+            read = client.post(f"/notifications/{note['id']}/read")
+            assert read.status_code == 200 and read.json()["read"] is True
+
+        # The reporter-student is not involved; the instructor who assigned is not told.
+        with acting_as(people["student"]):
+            assert client.get("/notifications").json() == []
+        assert (f"{ticket['key']}: assigned to you", "ticket_assigned") not in _inbox(client, people["shaw"])
