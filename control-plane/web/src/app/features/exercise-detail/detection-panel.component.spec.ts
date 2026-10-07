@@ -89,6 +89,22 @@ describe('DetectionPanelComponent', () => {
     expect(changed).toBe(1);
   });
 
+  it('says nothing was credited when the exercise closed while judging', () => {
+    api.submitDetection.and.returnValue(of(attempt({ verdict: 'closed', attempts_left: 4 })));
+    setup();
+    submit();
+    expect(msg()).toBe('The exercise closed before your detection was judged; nothing was credited.');
+  });
+
+  it('shows why a query did not parse (422) and that no attempt was used', () => {
+    api.submitDetection.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 422, error: { detail: 'Your query could not be parsed (no attempt used): Failed to parse query' },
+    })));
+    setup();
+    submit();
+    expect(msg()).toContain('no attempt used');
+  });
+
   it('disables submitting once no attempts are left (429)', () => {
     api.submitDetection.and.returnValue(throwError(() => new HttpErrorResponse({
       status: 429, error: { detail: 'No attempts left for this objective (5 used)' },

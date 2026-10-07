@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from .base import BaseSearchBackend, SearchMatch
+from .base import BaseSearchBackend, SearchBackendError, SearchMatch
 
 logger = logging.getLogger("truenorth.search.null")
 
@@ -29,7 +29,8 @@ class NullSearchBackend(BaseSearchBackend):
         return {"hits": {"total": {"value": 0}, "hits": []}}
 
     async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
-        return SearchMatch(total=0)
+        # No store means nothing can be judged: an outage, not "nothing matched".
+        raise SearchBackendError("no search backend is configured (SEARCH_BACKEND=null)")
 
     async def health_check(self) -> bool:
         return True

@@ -16,10 +16,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 from ..models import GUID
 
-ACHIEVED = "achieved"  # found enough of the attack, precisely enough
+PENDING = "pending"  # attempt reserved, being judged
+ACHIEVED = "achieved"  # found enough of the attack, precisely enough, and credited
 MISSED = "missed"  # judged, and it did not
 UNSCORED = "unscored"  # the event store could not answer; not counted as an attempt
-VERDICTS = (ACHIEVED, MISSED, UNSCORED)
+INVALID = "invalid"  # the query does not parse; not counted as an attempt
+CLOSED = "closed"  # the exercise closed while it was being judged; nothing credited
+ATTEMPTS = (PENDING, ACHIEVED, MISSED, CLOSED)  # what uses one of the Student's attempts
+VERDICTS = (PENDING, ACHIEVED, MISSED, UNSCORED, INVALID, CLOSED)
 
 
 class DetectionSubmission(Base):

@@ -99,6 +99,7 @@ class TestRunScenarioV2:
 
         with (
             patch("worker.tasks._db_session", return_value=mock_session),
+            patch("worker.db_ops.exercise_range_backend", return_value="mock"),
             patch("worker.tasks._notify_api") as mock_notify,
         ):
             try:
@@ -128,7 +129,11 @@ class TestRunScenarioV2:
 
         scenario_def = {"timeline": [], "objectives": [], "inject_packs": []}
 
-        with patch("worker.tasks._db_session", return_value=mock_session), patch("worker.tasks._notify_api"):
+        with (
+            patch("worker.tasks._db_session", return_value=mock_session),
+            patch("worker.tasks._notify_api"),
+            patch("worker.db_ops.exercise_range_backend", return_value="mock"),
+        ):
             try:
                 from worker.tasks import run_scenario_v2
 

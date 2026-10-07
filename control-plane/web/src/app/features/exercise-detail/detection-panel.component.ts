@@ -150,6 +150,8 @@ export class DetectionPanelComponent {
         if (d.verdict === 'achieved') {
           this.message.set({ text: 'Achieved: your query found the attack.', tone: 'ok' });
           this.open.set(false);
+        } else if (d.verdict === 'closed') {
+          this.message.set({ text: 'The exercise closed before your detection was judged; nothing was credited.', tone: 'err' });
         } else {
           const left = d.attempts_left ?? null;
           const tail = left == null ? '' : ` ${left} attempt${left === 1 ? '' : 's'} left.`;

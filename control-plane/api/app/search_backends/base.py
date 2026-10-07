@@ -17,6 +17,10 @@ class SearchBackendError(RuntimeError):
     """The store could not answer (down, refused, timed out). Not the same as "no matches"."""
 
 
+class SearchQueryError(ValueError):
+    """The store refused the query itself (it does not parse). The caller's mistake, not an outage."""
+
+
 @dataclass
 class SearchMatch:
     total: int
@@ -49,8 +53,9 @@ class BaseSearchBackend(ABC):
     async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
         """How many events in *index* match the query DSL *query*, and the ids of up to *size*.
 
-        A missing index is zero matches. Raises ``SearchBackendError`` when the store cannot
-        answer, so a caller never mistakes an outage for "nothing matched".
+        A missing index is zero matches. Raises ``SearchQueryError`` for a query the store
+        cannot parse, and ``SearchBackendError`` when the store cannot answer, so a caller
+        never mistakes either for "nothing matched".
         """
         ...
 

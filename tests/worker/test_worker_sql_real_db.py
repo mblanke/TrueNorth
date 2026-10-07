@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import uuid
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -29,7 +29,7 @@ from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 tasks = pytest.importorskip("worker.tasks")
-from worker import db_ops, exercise_clock  # noqa: E402
+from worker import db_ops  # noqa: E402
 from worker.provisioners.results import (  # noqa: E402
     DestroyResult,
     HealthResult,
@@ -280,10 +280,27 @@ def _detection(ex, ref, points, query="event_type:email"):
 
 
 class TestRealBackendExercise:
+    def test_start_keeps_the_api_start_time_and_does_not_reopen_a_closed_exercise(self, world):
+        # The API sets started_at when it dispatches the run; it opens the detection window.
+        ex = world.exercise
+        api_start = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+        ex.state, ex.started_at = m.ExerciseState.running, api_start
+        world.db.commit()
+        with tasks._db_session() as db:
+            db_ops.start_exercise(db, str(ex.id))
+        assert _fresh(world.db, ex).started_at.replace(tzinfo=UTC) == api_start
+        ex.state = m.ExerciseState.completed
+        world.db.commit()
+        with tasks._db_session() as db:
+            db_ops.start_exercise(db, str(ex.id))
+        assert _fresh(world.db, ex).state == m.ExerciseState.completed
+
     def test_timeline_end_leaves_it_running_and_achieves_nothing(self, world, monkeypatch, notify):
         # The blocker: the run used to score the attack's own telemetry and then close the
         # exercise seconds later. Credit now comes only from Student detections (API).
-        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+        # The range's own backend decides, not the worker's environment.
+        monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
+        world.range.provisioner_backend = "vsphere_api"
         _add(world.db, _detection(world.exercise, "phish", 10))
 
         out = tasks.run_scenario_v2(str(world.exercise.id), {"timeline": [{"t": "0:00"}], "objectives": []})
@@ -307,40 +324,6 @@ class TestRealBackendExercise:
         assert world.db.scalars(select(m.Objective.achieved)).one() is False
         e = _fresh(world.db, ex)
         assert (e.state, e.total_score) == (closed, 0)
-
-
-class TestExerciseClock:
-    def _running(self, world, minutes_ago, yaml_text):
-        ex = world.exercise
-        world.scenario.yaml = yaml_text
-        ex.state, ex.started_at = m.ExerciseState.running, datetime.now(UTC) - timedelta(minutes=minutes_ago)
-        world.db.commit()
-        return ex
-
-    def test_an_exercise_past_its_duration_is_completed_and_scored(self, world, notify):
-        ex = self._running(world, 91, "duration_minutes: 90\n")
-        _add(world.db, _detection(ex, "phish", 10), _detection(ex, "c2", 30))
-        world.db.execute(m.Objective.__table__.update().where(m.Objective.ref_id == "c2").values(achieved=True))
-        world.db.commit()
-
-        assert exercise_clock.close_overdue_exercises() == {"completed": [str(ex.id)]}
-
-        e = _fresh(world.db, ex)
-        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.completed, 30, 40)
-        assert notify.call_args.args[1] == {"id": str(ex.id), "state": "completed", "reason": "duration elapsed"}
-
-    @pytest.mark.parametrize(
-        ("minutes_ago", "yaml_text"),
-        [(89, "duration_minutes: 90\n"), (500, "name: no duration\n"), (500, "duration_min: 0\n"), (500, "[")],
-    )
-    def test_still_running_when_time_is_left_or_no_duration_is_set(self, world, minutes_ago, yaml_text):
-        ex = self._running(world, minutes_ago, yaml_text)
-        assert exercise_clock.close_overdue_exercises() == {"completed": []}
-        assert _fresh(world.db, ex).state == m.ExerciseState.running
-
-    def test_duration_min_spelling_counts(self, world):
-        ex = self._running(world, 31, "duration_min: 30\n")
-        assert exercise_clock.close_overdue_exercises() == {"completed": [str(ex.id)]}
 
 
 # -- after-action reports --------------------------------------------------------------
@@ -658,7 +641,7 @@ PG_CALLS = {
     "exercise_scores_and_yaml": lambda db: db_ops.exercise_scores_and_yaml(db, ID),
     "start_exercise": lambda db: db_ops.start_exercise(db, ID),
     "achieve_objective": lambda db: db_ops.achieve_objective(db, ID, "o1"),
-    "running_exercises": lambda db: db_ops.running_exercises(db),
+    "exercise_range_backend": lambda db: db_ops.exercise_range_backend(db, ID),
     "complete_exercise": lambda db: db_ops.complete_exercise(db, ID),
     "cancel_exercise": lambda db: db_ops.cancel_exercise(db, ID),
     "exercise_for_aar": lambda db: db_ops.exercise_for_aar(db, ID),

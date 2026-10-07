@@ -74,11 +74,18 @@ async def lifespan(app: FastAPI):
         from .lab_sessions.runner import loop as lab_loop
 
         lab_sweep = asyncio.create_task(lab_loop())
+    # Real-backend exercises end when their scenario's duration runs out (ADR 0005 §6).
+    exercise_clock = None
+    if os.getenv("EXERCISE_CLOCK", "true").lower() == "true":
+        from .exercise_completion import loop as exercise_loop
+
+        exercise_clock = asyncio.create_task(exercise_loop())
 
     yield
 
-    if lab_sweep is not None:
-        lab_sweep.cancel()
+    for sweep in (lab_sweep, exercise_clock):
+        if sweep is not None:
+            sweep.cancel()
 
     # Graceful shutdown of any started subsystems
     ws_mgr = getattr(app.state, "ws_manager", None)

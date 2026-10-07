@@ -141,6 +141,16 @@ def exercise_scenario_yaml(db, exercise_id: str):
     return db.execute(stmt).first()
 
 
+def exercise_range_backend(db, exercise_id: str) -> str | None:
+    """The provisioner backend of the range an exercise runs on, or None."""
+    stmt = (
+        sa.select(ranges.c.provisioner_backend)
+        .select_from(exercises.join(ranges, exercises.c.range_id == ranges.c.id))
+        .where(exercises.c.id == exercise_id)
+    )
+    return db.execute(stmt).scalar_one_or_none()
+
+
 def exercise_scores_and_yaml(db, exercise_id: str):
     """(total_score, max_score, scenario yaml), or None."""
     stmt = (
@@ -152,10 +162,13 @@ def exercise_scores_and_yaml(db, exercise_id: str):
 
 
 def start_exercise(db, exercise_id: str) -> None:
+    """Mark a pending exercise running. The API already did so when it dispatched the run, and
+    its started_at opens the detection window (ADR 0005), so a run that reaches the worker late
+    keeps that start; a paused, completed or cancelled exercise is not brought back."""
     db.execute(
         sa.update(exercises)
-        .where(exercises.c.id == exercise_id)
-        .values(state="running", started_at=_now(), updated_at=_now())
+        .where(exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(("pending", "running")))
+        .values(state="running", started_at=sa.func.coalesce(exercises.c.started_at, _now()), updated_at=_now())
     )
 
 
@@ -200,16 +213,6 @@ def _score_values(exercise_id: str) -> dict[str, Any]:
         )
 
     return {"total_score": _points(o.c.achieved == sa.true()), "max_score": _points()}
-
-
-def running_exercises(db) -> list:
-    """(id, started_at, scenario yaml or None) of every running exercise."""
-    stmt = (
-        sa.select(exercises.c.id, exercises.c.started_at, scenarios.c.yaml)
-        .select_from(exercises.outerjoin(scenarios, exercises.c.scenario_id == scenarios.c.id))
-        .where(sa.cast(exercises.c.state, sa.Text) == "running", exercises.c.started_at.is_not(None))
-    )
-    return db.execute(stmt).fetchall()
 
 
 def complete_exercise(db, exercise_id: str) -> None:

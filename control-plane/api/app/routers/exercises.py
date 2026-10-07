@@ -61,7 +61,7 @@ from ..schemas import (
     ObjectiveOut,
 )
 from ..tenancy import get_owned
-from ..xapi import emit_lifecycle, exercise_result
+from ..xapi import emit_lifecycle
 
 logger = logging.getLogger("truenorth.api.exercises")
 
@@ -270,6 +270,7 @@ async def run_exercise(
         for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():
             obj.achieved = False
             obj.achieved_at = None
+            obj.evidence = None  # the last run's credit; its submissions stay on record
         ex.state = ExerciseState.pending
         ex.total_score = 0
         ex.completed_at = None
@@ -331,39 +332,22 @@ async def complete_exercise(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
 ) -> Exercise:
-    """Complete an exercise and tally scores.  **Permission: exercise:complete**"""
+    """Complete an exercise and tally scores.  **Permission: exercise:complete**
+
+    Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
+    and to every Student who submitted a detection in this run (app/exercise_completion).
+    """
+    from ..exercise_completion import Participant, close
+
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    if ex.state not in (ExerciseState.running, ExerciseState.paused):
+    closer = Participant(uuid.UUID(user.id), user.email or "", user.display_name)
+    closed = close(db, ex.id, background_tasks, closer)
+    if closed is None:
+        db.refresh(ex)
         raise HTTPException(409, f"Exercise is {ex.state.value}, cannot complete")
-    ex.state = ExerciseState.completed
-    ex.completed_at = datetime.now(UTC)
-    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
-    ex.total_score = sum(o.points for o in objectives if o.achieved)
+    _audit(db, user, "complete", "exercise", str(closed.id))
     db.commit()
-    db.refresh(ex)
-    _audit(db, user, "complete", "exercise", str(ex.id))
-    db.commit()
-    # Trigger competency auto-assessment (EPIC 3). This used to import worker.celery_app,
-    # which is not in the API image, so the ImportError was swallowed below and no
-    # auto-assessment was ever queued outside the test suite.
-    if _dispatch_task("auto_assess_competency", str(ex.id), str(user.id)) is None:
-        logger.warning("Failed to dispatch auto-assess task for exercise %s", ex.id)
-    if background_tasks is not None:
-        # Moodle/LTI grade pass-back (no-op unless launched via LTI)
-        background_tasks.add_task(
-            _push_exercise_lti_grade, uuid.UUID(user.id), ex.id, ex.total_score or 0, ex.max_score or 100
-        )
-        emit_lifecycle(
-            background_tasks,
-            verb_key="completed",
-            user_email=user.email or f"{user.id}@truenorth.local",
-            user_name=user.display_name,
-            activity_type="exercise",
-            activity_id=str(ex.id),
-            activity_name=ex.name,
-            result=exercise_result(ex.total_score, ex.max_score),
-        )
-    return ex
+    return closed
 
 
 async def _push_exercise_lti_grade(user_id: uuid.UUID, exercise_id: uuid.UUID, score: int, max_score: int) -> None:

@@ -188,7 +188,7 @@ objectives:
     description: "Detect USB device insertion and data copy"
     validator: opensearch_query
     params:
-      query: 'EventID:6416 OR (EventID:4663 AND ObjectName:E\\:*)'
+      query: 'EventID:6416 OR (EventID:4663 AND ObjectName:E\:*)'
       min_hits: 1
     points: 15
 

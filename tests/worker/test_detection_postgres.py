@@ -12,9 +12,11 @@ drops its own scratch database. CI's test-python job sets it.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
@@ -151,10 +153,13 @@ def test_a_student_detection_is_credited_on_postgres(pg, monkeypatch):
     assert db.get(Exercise, ex.id).total_score == 40
 
 
-def test_worker_guards_and_clock_work_against_the_native_enum(pg):
+def test_worker_guards_and_api_clock_work_against_the_native_enum(pg, monkeypatch):
+    from app import celery_client
     from app import models as m
-    from worker import db_ops, exercise_clock
+    from app.exercise_completion import sweep_overdue
+    from worker import db_ops
 
+    monkeypatch.setattr(celery_client, "dispatch", lambda *a: "id")
     db, _ = pg
     _, overdue, _ = _world(db, started_minutes_ago=200, scenario_yaml="duration_minutes: 90\n" + SCENARIO)
     _, live, _ = _world(db, started_minutes_ago=5, scenario_yaml="duration_minutes: 90\n" + SCENARIO)
@@ -162,15 +167,70 @@ def test_worker_guards_and_clock_work_against_the_native_enum(pg):
     closed.state = m.ExerciseState.cancelled
     db.commit()
 
-    assert set(exercise_clock.close_overdue_exercises()["completed"]) == {str(overdue.id)}
+    assert overdue.id in set(sweep_overdue(db))
     with db_ops_session(pg) as s:
         db_ops.achieve_objective(s, str(closed.id), "detect_c2", evidence="late")
         db_ops.complete_exercise(s, str(closed.id))
+        db_ops.start_exercise(s, str(closed.id))
     db.expire_all()
     assert db.get(m.Exercise, overdue.id).state == m.ExerciseState.completed
     assert db.get(m.Exercise, live.id).state == m.ExerciseState.running
     assert db.get(m.Exercise, closed.id).state == m.ExerciseState.cancelled
     assert db.query(m.Objective).filter(m.Objective.exercise_id == closed.id).one().achieved is False
+
+
+class _Slow(FakeStore):
+    async def match(self, index, query, size=0):
+        await asyncio.sleep(0.2)
+        return await super().match(index, query, size)
+
+
+def test_concurrent_submissions_cannot_exceed_the_attempt_cap(pg, monkeypatch):
+    # Review M1: twenty parallel submissions all saw "0 used" and were all judged.
+    import time
+
+    from app.db import get_db
+    from app.main import app as fastapi_app
+    from app.models import UserRole
+    from app.routers import detections
+    from app.routers.detections import search_backend
+    from fastapi.testclient import TestClient
+
+    counted = detections._attempts
+
+    def slow_count(*args):  # widen the count-then-insert window so a missing lock shows
+        out = counted(*args)
+        time.sleep(0.05)
+        return out
+
+    monkeypatch.setattr(detections, "_attempts", slow_count)
+
+    db, factory = pg
+    tenant, ex, student = _world(db)
+
+    def _db():
+        s = factory()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    fastapi_app.dependency_overrides[get_db] = _db
+    fastapi_app.dependency_overrides[search_backend] = lambda: _Slow([])
+    try:
+        with acting_as(UserRole.student, tenant=str(tenant.id)) as who:
+            who.id = str(student.id)
+
+            def submit(_):  # no lifespan: each thread is one more client of the same app
+                c = TestClient(fastapi_app)
+                return c.post(f"/exercises/{ex.id}/objectives/detect_c2/detections", json={"query": "nope:x"})
+
+            with ThreadPoolExecutor(max_workers=12) as pool:
+                codes = sorted(r.status_code for r in pool.map(submit, range(12)))
+    finally:
+        fastapi_app.dependency_overrides.pop(get_db, None)
+        fastapi_app.dependency_overrides.pop(search_backend, None)
+    assert codes.count(201) == 5 and codes.count(429) == 7, codes
 
 
 @contextmanager

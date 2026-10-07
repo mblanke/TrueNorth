@@ -345,9 +345,9 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     logger.info(f"[scenario_v2] Starting exercise {exercise_id}")
     _notify_api("exercise", {"id": exercise_id, "state": "running", "phase": "starting"})
 
-    backend = os.getenv("PROVISIONER_BACKEND", "mock")
-
     try:
+        with _db_session() as db:  # the range's own backend decides, as for provisioning
+            backend = db_ops.exercise_range_backend(db, exercise_id) or os.getenv("PROVISIONER_BACKEND", "mock")
         timeline = scenario_definition.get("timeline", [])
         objectives = scenario_definition.get("objectives", [])
 

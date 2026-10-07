@@ -117,6 +117,54 @@ and so is `scenario_engine` in the worker image; scoring happens when a submissi
 The `DETECTION_SCORING` flag is removed. There is nothing left to switch off: without a
 Student submission, nothing is credited.
 
+## Changes after the adversarial review (2026-10-06)
+
+The review of the first build found four blockers. All are fixed in the same branch:
+
+- **Self-award and forged telemetry.** Objective ack is instructor-only (PR #58), and
+  telemetry ingest needs `telemetry:write` on a range in the caller's tenant (PR #52).
+  Both PRs are merged into this branch.
+- **The answer key in the briefing.** The briefing is now an allowlist of keys. The
+  incident-response drill's own tasks named the indicators its objectives ask for; they now
+  refer to "the … you identified".
+- **Keys that never match on real OpenSearch.** `telemetry/pipelines/bootstrap.py`
+  installs a `range-*` template. It maps strings to `keyword` with a `.text` sub-field, and
+  sets `index.final_pipeline` to `truenorth-ingested-at`. That pipeline stamps
+  `truenorth.ingested_at` (`date_nanos`) on every document from every writer, including
+  Filebeat (`range-<id>-<date>`) and Logstash (now `range-<id>-<date>` when the event
+  carries `range_id`). It also drops any `truenorth` field the sender sent, flat or nested.
+  Credit searches `range-<id>,range-<id>-*`. `tests/api/test_detection_opensearch.py`
+  checks every shipped key against a real OpenSearch with an event it should find. That
+  test found `detect_usb`'s key did not parse; it is fixed.
+
+Also fixed:
+
+- **Attempt cap race.** The attempt is reserved, as a `pending` row under a lock on the
+  objective row, before judging.
+- **Closing while judging.** Credit is applied under a lock on the exercise row, and only
+  while the exercise is running; otherwise the attempt is recorded as `closed`.
+- **Replays.** Attempts count per run (`window_start >= started_at`), and `/run` clears
+  the last run's evidence.
+- **Queries that do not parse.** These return 422 and use no attempt. Unparseable queries
+  and store outages are capped at 20 per Student per objective.
+- **Search backend.** `SEARCH_BACKEND=null` is an outage, not "nothing matched".
+- **Staff detections.** These are recorded as `staff_detection`, not Student evidence.
+- **Worker start.** `start_exercise` in the worker no longer moves `started_at` or reopens
+  a closed exercise.
+- **Participants.** Both `/complete` and the clock assess, grade and send xAPI for every
+  Student who submitted a detection in the run, plus whoever closed it.
+
+Left as they are:
+
+- Mock runs still auto-achieve every objective. A mock range has no telemetry, so it is a
+  simulation, not a graded exercise.
+- Students keep `exercise:start` and `exercise:complete` (PR #58 kept completion
+  deliberately), so a Student can still replay or close a team exercise.
+- The answer key is read from the scenario at submission time, so editing a running
+  exercise's scenario changes its key.
+- There is no Student-to-exercise relation, so any Student in the tenant may submit on a
+  running exercise.
+
 ## Not in this decision (later ADRs)
 
 - **Alert triage credit.** No alert pipeline exists yet; when one does, an alert the

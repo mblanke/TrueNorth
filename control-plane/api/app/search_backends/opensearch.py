@@ -18,9 +18,19 @@ from datetime import UTC, datetime
 import httpx
 from fastapi import HTTPException
 
-from .base import BaseSearchBackend, SearchBackendError, SearchMatch
+from .base import BaseSearchBackend, SearchBackendError, SearchMatch, SearchQueryError
 
 logger = logging.getLogger("truenorth.search.opensearch")
+
+
+def _reason(resp: httpx.Response) -> str:
+    """The parse error OpenSearch gave, without index names or stack traces."""
+    try:
+        err = resp.json().get("error", {})
+        causes = err.get("root_cause") or [err]
+        return str(causes[0].get("reason", "query could not be parsed"))[:300]
+    except Exception:  # noqa: BLE001
+        return "query could not be parsed"
 
 
 def stamp_ingested(event: dict, now: str) -> dict:
@@ -103,14 +113,21 @@ class OpenSearchBackend(BaseSearchBackend):
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
 
     async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
-        body = {"query": query, "size": size, "track_total_hits": True, "_source": False, "timeout": "10s"}
+        # The server gives up (timed_out) before the client does, so a slow query is reported
+        # as such rather than as a dropped connection.
+        body = {"query": query, "size": size, "track_total_hits": True, "_source": False, "timeout": "5s"}
         try:
             async with httpx.AsyncClient(**self._client_kwargs()) as client:
                 resp = await client.post(
                     f"{self._url}/{index}/_search", params={"ignore_unavailable": "true"}, json=body
                 )
-                resp.raise_for_status()
-                data = resp.json()
+        except Exception as exc:
+            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
+        if resp.status_code == 400:
+            raise SearchQueryError(_reason(resp))
+        try:
+            resp.raise_for_status()
+            data = resp.json()
         except Exception as exc:
             raise SearchBackendError(f"OpenSearch error: {exc}") from exc
         if data.get("timed_out"):

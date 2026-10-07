@@ -100,7 +100,6 @@ TASKS: dict[str, TaskContract] = {
         # -- Periodic (beat) -------------------------------------------------
         TaskContract("health_check_ranges", "default"),
         TaskContract("collect_range_metrics", "telemetry"),
-        TaskContract("close_overdue_exercises", "default", (), "Complete running exercises past their duration."),
     )
 }
 
