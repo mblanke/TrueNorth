@@ -113,6 +113,37 @@ def test_exercise_completed(score, max_score):
     assert stmt["result"]["completion"] is True
 
 
+@pytest.mark.parametrize(
+    ("score", "max_score", "raw", "scaled", "success"),
+    [
+        (70, 100, 70, 0.7, True),  # exactly the pass threshold
+        (69, 100, 69, 0.69, False),
+        (150, 100, 100, 1.0, True),  # overflow: objective points exceed max_score -> clamped, not scaled > 1
+        (-5, 100, 0, 0.0, False),  # penalty below zero -> clamped to min
+        (None, 100, 0, 0.0, False),  # total_score never tallied
+    ],
+)
+def test_exercise_completed_with_max_is_bounded(score, max_score, raw, scaled, success):
+    stmt = xapi.exercise_completed(_EMAIL, _NAME, "ex-1", "Drill", score=score, max_score=max_score)
+    _assert_conformant(stmt)
+    result = stmt["result"]
+    assert result["score"] == {"raw": raw, "min": 0, "max": max_score, "scaled": pytest.approx(scaled)}
+    assert result["success"] is success
+
+
+@pytest.mark.parametrize(("score", "max_score"), [(0, 0), (40, 0), (40, None), (0, None), (40, -10)])
+def test_exercise_completed_without_max_omits_max_scaled_and_success(score, max_score):
+    # Regression: max_score 0/None used to emit raw > max (40 > 0) and success=True for
+    # an exercise with nothing to score. With no maximum there is nothing to pass or fail.
+    stmt = xapi.exercise_completed(_EMAIL, _NAME, "ex-1", "Drill", score=score, max_score=max_score)
+    _assert_conformant(stmt)
+    result = stmt["result"]
+    assert result["completion"] is True
+    assert "success" not in result
+    assert "max" not in result["score"] and "scaled" not in result["score"]
+    assert result["score"]["raw"] == score
+
+
 @pytest.mark.parametrize("points", [0, 50])
 def test_objective_achieved(points):
     stmt = xapi.objective_achieved(_EMAIL, _NAME, "obj-1", "Detect C2 beacon", points)
@@ -190,3 +221,75 @@ def test_schema_accepts_account_ifi_and_registration():
     stmt["actor"] = {"objectType": "Agent", "account": {"homePage": "https://lms.example", "name": "s-42"}}
     stmt["context"]["registration"] = str(uuid.uuid4())
     _assert_conformant(stmt)
+
+
+# ---------------------------------------------------------------------------
+# The real complete route (routers/exercises.py) emits a conformant statement
+# ---------------------------------------------------------------------------
+
+
+def _complete_and_capture(client, db_session, monkeypatch, *, max_score, points):
+    from app.models import Exercise, Objective, ObjectiveType
+
+    sent: list[dict] = []
+    monkeypatch.setattr(xapi, "emit_statement_sync", lambda stmt, timeout=2.0: sent.append(stmt) or True)
+
+    tmpl = client.post(
+        "/templates",
+        json={"name": f"t-{uuid.uuid4().hex[:8]}", "version": "1.0", "yaml": "id: t\nnodes: []", "is_public": True},
+    ).json()
+    sc = client.post(
+        "/scenarios",
+        json={"name": f"s-{uuid.uuid4().hex[:8]}", "version": "1.0", "yaml": "name: s", "is_public": True},
+    ).json()
+    rng = client.post("/ranges", json={"name": f"r-{uuid.uuid4().hex[:8]}", "template_id": tmpl["id"]}).json()
+    ex = client.post(
+        "/exercises", json={"name": f"e-{uuid.uuid4().hex[:8]}", "range_id": rng["id"], "scenario_id": sc["id"]}
+    ).json()
+    ex_id = uuid.UUID(ex["id"])
+    # Create the exercise through the API, then force max_score directly: the create
+    # route turns 0 into 100, but legacy and imported rows can carry 0.
+    db_session.query(Exercise).filter(Exercise.id == ex_id).update({"max_score": max_score})
+    for i, p in enumerate(points):
+        db_session.add(
+            Objective(
+                exercise_id=ex_id,
+                ref_id=f"o-{i}",
+                objective_type=ObjectiveType.detection,
+                description=f"objective {i}",
+                validator="manual",
+                points=p,
+                achieved=True,
+            )
+        )
+    db_session.commit()
+
+    assert client.post(f"/exercises/{ex['id']}/start").status_code == 200
+    r = client.post(f"/exercises/{ex['id']}/complete")
+    assert r.status_code == 200, r.text
+    completed = [s for s in sent if s["verb"]["id"] == xapi.VERBS["completed"]]
+    assert len(completed) == 1, f"expected one completed statement, got {[s['verb']['id'] for s in sent]}"
+    return completed[0]
+
+
+def test_complete_route_with_zero_max_score(client, db_session, monkeypatch):
+    # exercises.max_score is NOT NULL, so 0 is the only "no maximum" the route can see;
+    # None is covered at the builder level above.
+    stmt = _complete_and_capture(client, db_session, monkeypatch, max_score=0, points=[30, 20])
+    _assert_conformant(stmt)
+    assert stmt["result"]["score"] == {"raw": 50, "min": 0}
+    assert "success" not in stmt["result"]
+
+
+def test_complete_route_total_above_max_score(client, db_session, monkeypatch):
+    stmt = _complete_and_capture(client, db_session, monkeypatch, max_score=50, points=[40, 40])
+    _assert_conformant(stmt)
+    assert stmt["result"]["score"] == {"raw": 50, "min": 0, "max": 50, "scaled": 1.0}
+    assert stmt["result"]["success"] is True
+
+
+def test_complete_route_normal_score(client, db_session, monkeypatch):
+    stmt = _complete_and_capture(client, db_session, monkeypatch, max_score=100, points=[60])
+    _assert_conformant(stmt)
+    assert stmt["result"]["score"] == {"raw": 60, "min": 0, "max": 100, "scaled": 0.6}
+    assert stmt["result"]["success"] is False

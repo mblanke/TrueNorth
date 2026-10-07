@@ -26,10 +26,12 @@ from sqlalchemy.orm import Session
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
-from .models import Tenant, User, UserRole
+from .models import Range, Tenant, User, UserRole
+from .rbac import Permission, require_permission
 from .scheduler import clock as scheduler_clock
 from .schemas import HealthOut
 from .search_backends import get_search_backend
+from .tenancy import get_owned
 from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
 
 logger = logging.getLogger("truenorth.api")
@@ -396,9 +398,15 @@ async def websocket_endpoint(ws: WebSocket, channel: str):
 async def ingest_telemetry(
     range_id: uuid.UUID,
     events: list[dict],
-    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.TELEMETRY_WRITE)),
 ):
-    """Ingest telemetry events into OpenSearch."""
+    """Ingest telemetry events into a range's index.  **Permission: telemetry:write**
+
+    The range must belong to the caller's tenant (404 otherwise). Students cannot write:
+    detection objectives are scored against this index.
+    """
+    get_owned(db, Range, range_id, user, not_found="Range not found")
     index = f"range-{range_id}"
     for event in events:
         event["range_id"] = str(range_id)
@@ -414,8 +422,10 @@ async def search_telemetry(
     range_id: uuid.UUID,
     q: str = Query("*", description="OpenSearch query string"),
     size: int = Query(50, le=500),
+    db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Search telemetry events in OpenSearch."""
+    """Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise)."""
+    get_owned(db, Range, range_id, user, not_found="Range not found")
     index = f"range-{range_id}"
     return await get_search_backend().search(index, q, size)
