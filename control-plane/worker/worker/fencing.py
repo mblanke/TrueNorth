@@ -352,10 +352,32 @@ def guarded_range_update(db, range_id: str, new_state: str, **kwargs) -> int:
         return db_ops.update_range_state(db, range_id, new_state, **kwargs)
     if status == "abandoned":
         logger.warning("range %s: its operation was abandoned; not recording %r", range_id, new_state)
+        if kwargs.get("output"):  # a finished build: discarded next (discard_built), shown here in case that fails
+            logger.warning("range %s: built after the abandon, to be discarded: %s", range_id, kwargs["output"][:2000])
         return 0
     if kwargs.get("output"):
         logger.error("range %s: built but not recorded, check the hypervisor: %s", range_id, kwargs["output"][:2000])
     raise LeaseLost(f"range {range_id}: not writing {new_state!r}, the lease was taken over")
+
+
+def record_leftover(session_factory, range_id: str, result: dict) -> dict:
+    """Record on the range what a failed ``discard_built`` left on the hypervisor: its
+    VMs, port groups, mirrors and uplink go into ``provisioner_output`` (so the API's
+    "the range still has N VMs; destroy it first" refuses a new build over them, and a
+    destroy tears them down) with a warning. The range's state is not touched. Returns
+    the task's result without the bulky ``leftover``."""
+    leftover = result["leftover"]
+    warning = (
+        f"A build of this range that was no longer wanted (abandoned, or torn down meanwhile) could not be "
+        f"discarded: {'; '.join(result.get('errors') or []) or 'no detail'}. Its {len(leftover.get('vms') or [])} "
+        "VMs are recorded here; destroy the range before building it again."
+    )
+    try:
+        with session_factory() as db:
+            db_ops.merge_range_output(db, range_id, {**leftover, "warnings": [warning]})
+    except Exception:  # noqa: BLE001 — the error log of discard_built still lists them
+        logger.error("range %s: could not record the undiscarded build: %s", range_id, leftover, exc_info=True)
+    return {k: v for k, v in result.items() if k != "leftover"}
 
 
 def snapshot_back_to_ready(range_id: str, snapshot_id: str, *args, **kwargs) -> None:
@@ -477,7 +499,9 @@ def fenced(action: str, state: str | None, on_lost=None):
             finally:
                 lease.stop()
                 _current.reset(token)
-            lease.release()
+            if isinstance(result, dict) and result.get("leftover"):  # discard_built could not tear it down
+                result = record_leftover(_db_session, range_id, result)
+            lease.release()  # only now: the leftover is on the range before anyone can build over it
             if lease.abandoned.is_set():
                 logger.warning("[%s] range %s: finished after its operation was abandoned: %s", action, range_id, result)
             return result

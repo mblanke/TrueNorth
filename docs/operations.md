@@ -766,10 +766,24 @@ fenced (tombstone)`) say whether a lease was fenced.
   holder renamed, so it writes nothing (no `ready`, no `failed`) and is not retried. Its
   hypervisor call is **not cancelled**: cancelling stops neither its threads nor
   vCenter's own tasks. Its heartbeat renews the tombstone instead, so the range stays
-  blocked until that work ends. A finished build then tears down what it built
-  (`discard_built`), still under the tombstone. A failed call's threads are waited for.
-  Then it deletes the tombstone and ends with `discarded` or `abandoned`. The worker logs
-  "the operation was abandoned ..." when it notices.
+  blocked until that work ends. A finished build then tears down everything it built
+  (`discard_built`: VMs, port groups, mirror sessions, uplink), still under the
+  tombstone. A failed call's threads are waited for. Then it deletes the tombstone and
+  ends with `discarded` or `abandoned`. The worker logs "the operation was abandoned ..."
+  when it notices, and the build's output before discarding it.
+  - **If that teardown fails** (`discard_failed`, logged at ERROR with the build's
+    output), the build's VMs, port groups, mirrors and uplink are recorded in the range's
+    `provisioner_output` with a warning before the tombstone goes. The range keeps its
+    `failed` state; a provision is then refused ("the range still has N VMs ... destroy
+    it first"), so no new build goes over same-named leftovers, and a destroy tears them
+    down.
+  - A destroy that finishes after its operation was abandoned writes nothing, and does
+    not announce `destroyed` or reset Greyspace (`destroyed_unrecorded`). Destroy the
+    range again to record it.
+- **Worst case, a hung worker:** a live worker whose call never returns renews the
+  tombstone until its soft time limit (55 min), and then keeps it, unrenewed, for
+  `KEPT_LEASE_SECONDS` (1 h). The range can stay blocked for **about 1 h 55 min**. The
+  abandon message and the 409 say so. An admin can force-release the tombstone (below).
 - **Lease taken over** (the worker was cut off from the database for longer than a
   lease and another execution claimed it): the old execution writes nothing, tears
   nothing down (port groups are named by range, so a teardown could hit the new holder's
@@ -791,6 +805,22 @@ fenced (tombstone)`) say whether a lease was fenced.
 
 If you do not abandon, the dead worker's lease still expires by itself within
 `RANGE_LEASE_SECONDS`, but the operation stays in flight until it is abandoned.
+
+**Force-releasing a tombstone (admin only, dangerous).** When a hung worker holds an
+abandoned operation's tombstone and you cannot wait out the worst case:
+
+1. Confirm in vCenter (recent tasks, the range's folder) that nothing for this range is
+   still running, and stop or restart the worker if you can.
+2. `POST /api/ranges/{id}/lease/force-release` with
+   `{"confirm_range_id": "<the same id>", "reason": "<why, 10+ characters>"}`.
+   Permission `range:lease_force_release`, held by `admin` only; tenant-scoped (another
+   tenant's range is 404); audited as `force_release_lease` with the released holder and
+   your reason.
+3. Only a tombstone (`abandoned:...`) is released. A live task's lease is refused (409):
+   abandon its operation first.
+4. If that worker was in fact still running, its in-flight work continues beside whatever
+   runs next, and what it builds is no longer discarded (it finds its lease gone and ends
+   `lease_lost`, logging what it built). Destroy the range before building it again.
 
 **Rollout.** Leases written by workers before this change have holders without an action
 prefix (a bare token) and last up to an hour. An abandon also tombstones such a lease,
