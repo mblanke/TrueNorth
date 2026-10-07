@@ -28,6 +28,8 @@ os.environ.setdefault("RANGE_OP_REDISPATCH_SECONDS", "0")  # tests call redispat
 from app.db import Base, get_db
 from app.main import app as fastapi_app
 
+TESTS_DIR = Path(__file__).resolve().parent
+
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: mark test as slow-running")
@@ -46,15 +48,75 @@ def engine():
     return eng
 
 
+# Foreign keys are enforced in ``db_session`` the way PostgreSQL enforces them. SQLite
+# ignores them unless asked, and that hid an insert-order fault: with no relationship()
+# between two mappers the unit of work orders their inserts by class name, not by the
+# key, and PostgreSQL refused a release whose blob was flushed with it (course_releases).
+# These modules still insert rows that reference rows they never create (a random tenant
+# id, a platform id that is not registered), so they run without enforcement. The list
+# only shrinks: fix a module's fixtures and take it off.
+SQLITE_FK_EXEMPT = frozenset(
+    f"api/{name}.py"
+    for name in (
+        "test_adaptive_learning",
+        "test_developmental_path_binding",
+        "test_integration",
+        "test_integrations_authz",
+        "test_lti13",
+        "test_moodle_sso",
+        "test_onboarding_flow",
+        "test_platform_tenancy",
+        "test_qsp_curriculum_map",
+        "test_qsp_tenant_isolation",
+        "test_range_delete",
+        "test_range_description",
+        "test_registration_flow",
+        "test_snapshot_endpoints",
+        "test_telemetry_access",
+        "test_tenant_isolation",
+        "test_token_validation",
+    )
+)
+DEV_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")  # app.auth's AUTH_DISABLED user and tenant
+
+
+def _seed_dev_principal(session: Session) -> None:
+    """The tenant and admin AUTH_DISABLED acts as. app.main seeds them at startup, but into
+    the app's own engine, not this one; with keys enforced, every row they own needs them."""
+    from app.models import Tenant, User, UserRole
+
+    session.add(Tenant(id=DEV_ID, name="Default Org", slug="default"))
+    session.flush()
+    session.add(
+        User(
+            id=DEV_ID,
+            email="admin@truenorth.local",
+            display_name="Dev Admin",
+            role=UserRole.admin,
+            tenant_id=DEV_ID,
+            keycloak_id="dev-admin",
+        )
+    )
+    session.flush()
+
+
 @pytest.fixture
-def db_session(engine) -> Generator[Session, None, None]:
-    """Yield a DB session, rolled back after each test."""
+def db_session(engine, request) -> Generator[Session, None, None]:
+    """Yield a DB session, rolled back after each test. Like the API's (app.db.SessionLocal)
+    it does not autoflush, so a test sees the write order production sends."""
+    enforce = Path(request.path).resolve().relative_to(TESTS_DIR).as_posix() not in SQLITE_FK_EXEMPT
     connection = engine.connect()
+    # Outside a transaction, or SQLite ignores the pragma. The pool shares this one
+    # connection, so switch it back off for the next test.
+    connection.connection.dbapi_connection.execute(f"PRAGMA foreign_keys={'ON' if enforce else 'OFF'}")
     transaction = connection.begin()
-    session = sessionmaker(bind=connection)()
+    session = sessionmaker(bind=connection, autoflush=False)()
+    if enforce:
+        _seed_dev_principal(session)
     yield session
     session.close()
     transaction.rollback()
+    connection.connection.dbapi_connection.execute("PRAGMA foreign_keys=OFF")
     connection.close()
 
 
