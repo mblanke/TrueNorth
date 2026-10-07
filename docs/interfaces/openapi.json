@@ -15130,6 +15130,7 @@
     },
     "/ai-config/backends/{backend_id}": {
       "delete": {
+        "description": "Delete a backend with its fleet nodes and the model routes that point at it.\n\nNodes and routes have no use without their backend, so they go with it.",
         "operationId": "delete_backend_ai_config_backends__backend_id__delete",
         "parameters": [
           {
@@ -18038,7 +18039,7 @@
     },
     "/courses/{course_id}": {
       "delete": {
-        "description": "Delete a course and its modules.  **Permission: course:author**",
+        "description": "Delete a course and its modules.  **Permission: course:author**\n\n409 while it has enrollments, releases or publications: Student records and\nwhat was published are history (unpublish the course instead); also while a\nscheduled event not yet completed or cancelled books it (finished ones keep their\nrow without the course). Module content links go with the modules; quizzes are\nkept, detached from them.",
         "operationId": "delete_course_courses__course_id__delete",
         "parameters": [
           {
@@ -19471,6 +19472,7 @@
     },
     "/directory/groups/{group_id}": {
       "delete": {
+        "description": "Delete a security group and its memberships (they mean nothing without it).",
         "operationId": "delete_group_directory_groups__group_id__delete",
         "parameters": [
           {
@@ -19935,6 +19937,7 @@
     },
     "/directory/ous/{ou_id}": {
       "delete": {
+        "description": "Delete an OU.  409 while sub-OUs, security groups or teams sit under it.",
         "operationId": "delete_ou_directory_ous__ou_id__delete",
         "parameters": [
           {
@@ -21521,6 +21524,7 @@
     },
     "/hypervisors/connections/{conn_id}": {
       "delete": {
+        "description": "Delete a connection with the hosts and pools discovered through it.\n\nThose rows are inventory read from the hypervisor, with no meaning once the\nconnection is gone, so they go with it.",
         "operationId": "delete_connection_hypervisors_connections__conn_id__delete",
         "parameters": [
           {
@@ -22390,7 +22394,7 @@
     },
     "/integrations/platforms/{platform_id}": {
       "delete": {
-        "description": "Remove a registered platform.",
+        "description": "Remove a registered platform.\n\n409 while Student activity records synced from it, or course publications to it,\nexist: those are history (deactivate the platform instead). Its LTI nonces and\nlaunches only serve talking to the platform, so they go with it.",
         "operationId": "deregister_platform_integrations_platforms__platform_id__delete",
         "parameters": [
           {
@@ -23529,7 +23533,7 @@
     },
     "/learning-paths/{lp_id}": {
       "delete": {
-        "description": "Delete a learning path.  **Permission: course:author**",
+        "description": "Delete a learning path.  **Permission: course:author**\n\n409 while a registration request names it: the request records what the person\nasked to join (unpublish the path instead).",
         "operationId": "delete_learning_path_learning_paths__lp_id__delete",
         "parameters": [
           {
@@ -30557,7 +30561,7 @@
     },
     "/scenarios/{scenario_id}": {
       "delete": {
-        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a soft-deleted one) still references it.",
+        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a soft-deleted one) still references it, or a\nscheduled event not yet completed or cancelled will run it. Finished events keep\ntheir row without the scenario.",
         "operationId": "delete_scenario_scenarios__scenario_id__delete",
         "parameters": [
           {
@@ -31700,6 +31704,7 @@
     },
     "/storage/appliances/{appliance_id}": {
       "delete": {
+        "description": "Delete an appliance.  409 while volumes are still recorded on it.",
         "operationId": "delete_appliance_storage_appliances__appliance_id__delete",
         "parameters": [
           {
@@ -32659,7 +32664,7 @@
     },
     "/templates/{template_id}": {
       "delete": {
-        "description": "Delete a template.  **Permission: template:delete**",
+        "description": "Delete a template.  **Permission: template:delete**\n\n409 while a range built from it exists, or an event not yet completed or\ncancelled reserves it. Its PO mapping goes with it; finished events keep their row without it.",
         "operationId": "delete_template_templates__template_id__delete",
         "parameters": [
           {

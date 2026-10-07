@@ -32,6 +32,7 @@ from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Scenario, UserRole
 from ..rbac import Permission, require_permission
+from ..scheduler import service as scheduler
 from ..schemas import ScenarioIn, ScenarioListOut, ScenarioOut, ScenarioUpdate
 from ..tenancy import get_owned
 
@@ -159,9 +160,14 @@ def delete_scenario(
 ):
     """Delete a scenario.  **Permission: scenario:delete**
 
-    409 while any exercise (including a soft-deleted one) still references it.
+    409 while any exercise (including a soft-deleted one) still references it, or a
+    scheduled event not yet completed or cancelled will run it. Finished events keep
+    their row without the scenario.
     """
     sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
+    if booked := scheduler.reserving_events_for(db, "scenario", sc.id):
+        raise HTTPException(409, f"Scenario is booked by {booked} scheduled event(s); cancel them first")
+    scheduler.detach(db, "scenario", sc.id)
     db.delete(sc)
     try:
         db.commit()

@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
+from ..delete_guard import commit_delete, refuse_if
 from ..models import (
     Coalition,
     CoalitionMembership,
@@ -26,6 +27,7 @@ from ..models import (
     OrganizationalUnit,
     SecurityGroup,
     SecurityGroupMembership,
+    Team,
     User,
 )
 from ..rbac import Permission, require_permission
@@ -182,9 +184,20 @@ def update_ou(
 
 @router.delete("/ous/{ou_id}", status_code=204, response_class=Response, dependencies=WRITE)
 def delete_ou(ou_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Delete an OU.  409 while sub-OUs, security groups or teams sit under it."""
     ou = get_owned(db, OrganizationalUnit, ou_id, user, not_found="OU not found")
+    # tenant-safe (all three): ou came from get_owned(); counts disclose no row.
+    refuse_if(
+        db.query(OrganizationalUnit.id).filter(OrganizationalUnit.parent_id == ou.id),
+        "OU has {n} sub-OU(s); move or delete them first",
+    )
+    refuse_if(
+        db.query(SecurityGroup.id).filter(SecurityGroup.ou_id == ou.id),
+        "OU has {n} security group(s); move or delete them first",
+    )
+    refuse_if(db.query(Team.id).filter(Team.ou_id == ou.id), "OU is assigned to {n} team(s); reassign them first")
     db.delete(ou)
-    db.commit()
+    commit_delete(db, "OU")
 
 
 # -- Security Groups -----------------------------------------------------
@@ -238,9 +251,15 @@ def update_group(
 
 @router.delete("/groups/{group_id}", status_code=204, response_class=Response, dependencies=WRITE)
 def delete_group(group_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Delete a security group and its memberships (they mean nothing without it)."""
     sg = get_owned(db, SecurityGroup, group_id, user, not_found="Group not found")
+    # tenant-safe: sg came from get_owned().
+    db.query(SecurityGroupMembership).filter(SecurityGroupMembership.group_id == sg.id).delete(
+        synchronize_session=False
+    )
+    db.flush()
     db.delete(sg)
-    db.commit()
+    commit_delete(db, "Group")
 
 
 @router.post("/groups/{group_id}/members", status_code=201, dependencies=WRITE)
