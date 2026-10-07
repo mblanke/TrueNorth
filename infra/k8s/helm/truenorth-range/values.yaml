@@ -323,31 +323,6 @@ scenarioEngine:
   extraEnv: []
 
 # ---------------------------------------------------------------------------
-# Telemetry Pipeline — Redis→OpenSearch ingestion pipeline
-# ---------------------------------------------------------------------------
-telemetryPipeline:
-  enabled: true
-  image:
-    repository: truenorth-range/telemetry-pipeline
-    tag: ""
-    pullPolicy: IfNotPresent
-  replicaCount: 2
-  resources:
-    requests:
-      cpu: 500m
-      memory: 512Mi
-    limits:
-      cpu: "1"
-      memory: 1Gi
-  config:
-    batchSize: "500"
-    flushIntervalMs: "2000"
-    indexPrefix: "truenorth-telemetry"
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  extraEnv: []
-# ---------------------------------------------------------------------------
 # PostgreSQL (Bitnami sub-chart)
 # ---------------------------------------------------------------------------
 postgresql:
