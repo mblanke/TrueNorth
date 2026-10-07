@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from .. import moodle_sso
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import (
@@ -158,6 +159,30 @@ async def test_connectivity(
         return {"platform_id": str(p.id), "reachable": False, "error": str(e)}
 
     return {"platform_id": str(p.id), "reachable": reachable, "status_code": resp.status_code}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Moodle single sign-on (the app hands a signed-in Student into Moodle)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@router.post("/moodle/sso", response_model=moodle_sso.MoodleSsoOut)
+def moodle_sso_ticket(
+    body: moodle_sso.MoodleSsoIn,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """A one-minute, single-use ticket that signs the caller into their unit's Moodle.
+
+    The browser POSTs ``token`` to ``action``. Students need an active enrolment in
+    the course; staff (``learning_record:write``) enter as teachers. A course in
+    another tenant is 404. Never put the ticket in a URL: it would land in Moodle's
+    access log and browser history.
+    """
+    try:
+        return moodle_sso.mint_ticket(db, user, body.course_id)
+    except moodle_sso.NotAvailableError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
 
 
 # ══════════════════════════════════════════════════════════════════════════

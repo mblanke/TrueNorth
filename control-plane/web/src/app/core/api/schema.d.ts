@@ -2348,6 +2348,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/moodle/sso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Moodle Sso Ticket
+         * @description A one-minute, single-use ticket that signs the caller into their unit's Moodle.
+         *
+         *     The browser POSTs ``token`` to ``action``. Students need an active enrolment in
+         *     the course; staff (``learning_record:write``) enter as teachers. A course in
+         *     another tenant is 404. Never put the ticket in a URL: it would land in Moodle's
+         *     access log and browser history.
+         */
+        post: operations["moodle_sso_ticket_integrations_moodle_sso_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/platforms": {
         parameters: {
             query?: never;
@@ -8153,6 +8178,21 @@ export interface components {
             score: number;
             /** Status */
             status: string;
+        };
+        /** MoodleSsoIn */
+        MoodleSsoIn: {
+            /** Course Id */
+            course_id?: string | null;
+        };
+        /**
+         * MoodleSsoOut
+         * @description POST ``token`` (form field) to ``action``. Never put it in a URL.
+         */
+        MoodleSsoOut: {
+            /** Action */
+            action: string;
+            /** Token */
+            token: string;
         };
         /** NationOut */
         NationOut: {
@@ -14822,6 +14862,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExternalActivityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    moodle_sso_ticket_integrations_moodle_sso_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoodleSsoIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoodleSsoOut"];
                 };
             };
             /** @description Validation Error */

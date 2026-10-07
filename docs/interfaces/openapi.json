@@ -6190,6 +6190,43 @@
         "title": "ModuleProgressOut",
         "type": "object"
       },
+      "MoodleSsoIn": {
+        "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          }
+        },
+        "title": "MoodleSsoIn",
+        "type": "object"
+      },
+      "MoodleSsoOut": {
+        "description": "POST ``token`` (form field) to ``action``. Never put it in a URL.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "token"
+        ],
+        "title": "MoodleSsoOut",
+        "type": "object"
+      },
       "NationOut": {
         "properties": {
           "flag_emoji": {
@@ -19089,6 +19126,53 @@
           }
         ],
         "summary": "Record External Activity",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/integrations/moodle/sso": {
+      "post": {
+        "description": "A one-minute, single-use ticket that signs the caller into their unit's Moodle.\n\nThe browser POSTs ``token`` to ``action``. Students need an active enrolment in\nthe course; staff (``learning_record:write``) enter as teachers. A course in\nanother tenant is 404. Never put the ticket in a URL: it would land in Moodle's\naccess log and browser history.",
+        "operationId": "moodle_sso_ticket_integrations_moodle_sso_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoodleSsoIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoodleSsoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Moodle Sso Ticket",
         "tags": [
           "integrations"
         ]
