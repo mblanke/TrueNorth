@@ -365,9 +365,11 @@ def _template_curriculum(db: Session, template: Template) -> dict:
 async def import_crosswalk(
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ) -> dict:
-    """Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent)."""
+    """Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).
+
+    **Permission: course:author** (was: any signed-in user, Students included)."""
     raw = await file.read()
     if len(raw) > MAX_CSV_BYTES:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="crosswalk too large")
@@ -585,9 +587,11 @@ async def import_competency_crosswalk(
     taxonomy: UploadFile,
     crosswalk: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ) -> dict:
     """Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).
+
+    **Permission: course:author.**
 
     Upload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.
     """
@@ -610,9 +614,11 @@ async def import_competency_crosswalk(
 @router.post("/generate-learning-paths")
 def generate_learning_paths(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ) -> dict:
-    """Build per-PO courses, qualification paths, role paths, and the developmental progression."""
+    """Build per-PO courses, qualification paths, role paths, and the developmental progression.
+
+    **Permission: course:author.**"""
     try:
         stats = qsp_paths.generate_learning_paths(db, tenant_id=user.tenant_id or None)
     except Exception as exc:  # noqa: BLE001
@@ -625,9 +631,11 @@ def generate_learning_paths(
 @router.post("/generate-exercises")
 def generate_exercises(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR, Permission.EXERCISE_CREATE)),
 ) -> dict:
-    """Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range)."""
+    """Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).
+
+    **Permission: course:author and exercise:create.**"""
     try:
         stats = qsp_paths.generate_exercises(db, tenant_id=user.tenant_id or None)
     except Exception as exc:  # noqa: BLE001

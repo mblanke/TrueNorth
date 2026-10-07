@@ -23,8 +23,16 @@ sys.path.insert(0, str(API))
 
 
 def _tenanted_models() -> set[str]:
+    import importlib
+
     from app.models import Base
 
+    # Section modules (app/<section>/models.py: lab_sessions, course_releases, ...) map
+    # onto the same Base but only register once imported. Without this the set depended
+    # on whether another test had imported app.main first, so a run of this file alone
+    # missed LabSession and CourseRelease.
+    for mod in sorted((API / "app").glob("*/models.py")):
+        importlib.import_module(f"app.{mod.parent.name}.models")
     return {m.class_.__name__ for m in Base.registry.mappers if "tenant_id" in m.class_.__table__.columns}
 
 
@@ -111,16 +119,21 @@ def test_the_guard_detects_every_by_id_idiom(sample):
 # the preceding 4 lines, or should be `app.tenancy.get_owned()`.
 DB_GET = re.compile(r"db\.get\((\w+)\s*,")
 
-# Known unscoped `db.get` calls, per router file, when this check was added. A ratchet:
-# a count may go down (lower it here), never up, and a file not listed must have none.
-# These are outside the platform-core slot that added the check and have not been
-# reviewed; some may be scoped by a later check in the handler, some may be leaks.
+# Known unscoped `db.get` calls, per router file. A ratchet: a count may go down (lower
+# it here), never up, and a file not listed must have none.
+#
+# Reviewed 2026-10-07 (tenancy follow-up); every other file is at 0:
+# - hypervisors.py (6): real leaks, fixed with get_owned.
+# - ai_config.py (6): platform-wide config behind a platform-admin-only router; one
+#   waived helper.
+# - lab_sessions.py (3), curriculum.py (2), integrations.py (1): already scoped (tenant
+#   compared on the next line, signed lab/deep-link token, or ids from a handler that
+#   passed get_owned); waived in place.
 DB_GET_BASELINE = {
-    "ai_config.py": 6,
-    "curriculum.py": 2,
-    "hypervisors.py": 6,
-    "integrations.py": 1,
-    "lab_sessions.py": 3,
+    # quizzes.py:~408 `db.get(Quiz, attempt.quiz_id)` is safe — the attempt was fetched
+    # by id AND the caller's user_id — but is not waived yet: quizzes.py is being changed
+    # by PR #77 (claude/s4-lms-curriculum). Add the `# tenant-safe:` comment and drop
+    # this entry once that lands.
     "quizzes.py": 1,
 }
 
@@ -154,9 +167,16 @@ def test_no_new_unscoped_db_get_on_tenant_models():
     )
 
 
-@pytest.mark.parametrize("router", ["directory.py", "auth_zones.py", "storage.py", "ad_sync.py", "admin.py"])
+@pytest.mark.parametrize(
+    "router",
+    [
+        "directory.py", "auth_zones.py", "storage.py", "ad_sync.py", "admin.py",
+        # reviewed in the 2026-10-07 tenancy follow-up
+        "ai_config.py", "hypervisors.py", "lab_sessions.py", "curriculum.py", "integrations.py",
+    ],
+)
 def test_platform_routers_have_no_unscoped_db_get(router):
-    """The platform-core routers were fixed outright; they carry no baseline."""
+    """These routers were fixed or reviewed outright; they carry no baseline."""
     assert router not in DB_GET_BASELINE
     assert not _db_get_findings().get(router), _db_get_findings()[router]
 

@@ -438,6 +438,10 @@ export interface paths {
         /**
          * List Audit Log
          * @description Query the audit log.  **Permission: audit:read**
+         *
+         *     Scoped to the caller's tenant. A caller who also holds the platform-level
+         *     ``tenant:read`` (the platform admin, who already lists every tenant) sees every
+         *     tenant's entries, including legacy rows written before writers recorded a tenant.
          */
         get: operations["list_audit_log_audit_log_get"];
         put?: never;
@@ -1001,6 +1005,8 @@ export interface paths {
          * Generate Programme Paths
          * @description Build unpublished LearningPaths for the imported programme, term by term.
          *
+         *     **Permission: course:author** (was: any signed-in user).
+         *
          *     Delivery schedule only. These paths carry no qualification claim and are separate
          *     from the CFITES developmental paths generated from the QSP spine.
          */
@@ -1024,6 +1030,8 @@ export interface paths {
          * Import Course Content
          * @description Upload an authored course YAML and attach its modules/quizzes (idempotent).
          *
+         *     **Permission: course:author** (was: any signed-in user).
+         *
          *     The course must already exist in the programme catalogue. Everything created
          *     here is unpublished.
          */
@@ -1046,6 +1054,8 @@ export interface paths {
         /**
          * Import Programme
          * @description Upload a programme catalogue CSV and upsert its courses (idempotent).
+         *
+         *     **Permission: course:author** (was: any signed-in user).
          *
          *     Courses are created unpublished and, unless the row names a real ``qsp_code``,
          *     unbound from the qualification spine. See ``programme_ingest`` for why.
@@ -1873,6 +1883,9 @@ export interface paths {
         /**
          * List Objectives
          * @description List objectives for an exercise.  **Permission: exercise:read**
+         *
+         *     Own-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this
+         *     listed any tenant's objectives, validators and evidence by exercise id).
          */
         get: operations["list_objectives_exercises__exercise_id__objectives_get"];
         put?: never;
@@ -1895,6 +1908,8 @@ export interface paths {
         /**
          * Acknowledge Objective
          * @description Acknowledge (achieve) an objective.  **Permission: exercise:complete**
+         *
+         *     Own-tenant exercises only (foreign id = 404).
          */
         post: operations["acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post"];
         delete?: never;
@@ -2267,8 +2282,9 @@ export interface paths {
         };
         /**
          * List All Nodes
-         * @description Every discovered host across all connections, as last discovered. Read-only; the
-         *     dashboard's cluster panel. No hypervisor is contacted — run discovery to refresh.
+         * @description Every discovered host across the caller's tenant's connections, as last discovered.
+         *     Read-only; the dashboard's cluster panel. No hypervisor is contacted — run discovery to
+         *     refresh.
          */
         get: operations["list_all_nodes_hypervisors_nodes_get"];
         put?: never;
@@ -3853,6 +3869,8 @@ export interface paths {
         /**
          * Generate Exercises
          * @description Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).
+         *
+         *     **Permission: course:author and exercise:create.**
          */
         post: operations["generate_exercises_qsp_generate_exercises_post"];
         delete?: never;
@@ -3873,6 +3891,8 @@ export interface paths {
         /**
          * Generate Learning Paths
          * @description Build per-PO courses, qualification paths, role paths, and the developmental progression.
+         *
+         *     **Permission: course:author.**
          */
         post: operations["generate_learning_paths_qsp_generate_learning_paths_post"];
         delete?: never;
@@ -3893,6 +3913,8 @@ export interface paths {
         /**
          * Import Competency Crosswalk
          * @description Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).
+         *
+         *     **Permission: course:author.**
          *
          *     Upload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.
          */
@@ -3915,6 +3937,8 @@ export interface paths {
         /**
          * Import Crosswalk
          * @description Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).
+         *
+         *     **Permission: course:author** (was: any signed-in user, Students included).
          */
         post: operations["import_crosswalk_qsp_import_crosswalk_post"];
         delete?: never;

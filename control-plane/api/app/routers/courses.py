@@ -355,9 +355,11 @@ def delete_course(
 async def import_programme(
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ) -> dict:
     """Upload a programme catalogue CSV and upsert its courses (idempotent).
+
+    **Permission: course:author** (was: any signed-in user).
 
     Courses are created unpublished and, unless the row names a real ``qsp_code``,
     unbound from the qualification spine. See ``programme_ingest`` for why.
@@ -385,9 +387,11 @@ async def import_programme(
 async def import_course_content(
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ) -> dict:
     """Upload an authored course YAML and attach its modules/quizzes (idempotent).
+
+    **Permission: course:author** (was: any signed-in user).
 
     The course must already exist in the programme catalogue. Everything created
     here is unpublished.
@@ -414,9 +418,11 @@ async def import_course_content(
 @router.post("/generate-programme-paths")
 def generate_programme_paths(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ) -> dict:
     """Build unpublished LearningPaths for the imported programme, term by term.
+
+    **Permission: course:author** (was: any signed-in user).
 
     Delivery schedule only. These paths carry no qualification claim and are separate
     from the CFITES developmental paths generated from the QSP spine.

@@ -12759,7 +12759,7 @@
     },
     "/audit-log": {
       "get": {
-        "description": "Query the audit log.  **Permission: audit:read**",
+        "description": "Query the audit log.  **Permission: audit:read**\n\nScoped to the caller's tenant. A caller who also holds the platform-level\n``tenant:read`` (the platform admin, who already lists every tenant) sees every\ntenant's entries, including legacy rows written before writers recorded a tenant.",
         "operationId": "list_audit_log_audit_log_get",
         "parameters": [
           {
@@ -14777,7 +14777,7 @@
     },
     "/courses/generate-programme-paths": {
       "post": {
-        "description": "Build unpublished LearningPaths for the imported programme, term by term.\n\nDelivery schedule only. These paths carry no qualification claim and are separate\nfrom the CFITES developmental paths generated from the QSP spine.",
+        "description": "Build unpublished LearningPaths for the imported programme, term by term.\n\n**Permission: course:author** (was: any signed-in user).\n\nDelivery schedule only. These paths carry no qualification claim and are separate\nfrom the CFITES developmental paths generated from the QSP spine.",
         "operationId": "generate_programme_paths_courses_generate_programme_paths_post",
         "responses": {
           "200": {
@@ -14806,7 +14806,7 @@
     },
     "/courses/import-course-content": {
       "post": {
-        "description": "Upload an authored course YAML and attach its modules/quizzes (idempotent).\n\nThe course must already exist in the programme catalogue. Everything created\nhere is unpublished.",
+        "description": "Upload an authored course YAML and attach its modules/quizzes (idempotent).\n\n**Permission: course:author** (was: any signed-in user).\n\nThe course must already exist in the programme catalogue. Everything created\nhere is unpublished.",
         "operationId": "import_course_content_courses_import_course_content_post",
         "requestBody": {
           "content": {
@@ -14855,7 +14855,7 @@
     },
     "/courses/import-programme": {
       "post": {
-        "description": "Upload a programme catalogue CSV and upsert its courses (idempotent).\n\nCourses are created unpublished and, unless the row names a real ``qsp_code``,\nunbound from the qualification spine. See ``programme_ingest`` for why.",
+        "description": "Upload a programme catalogue CSV and upsert its courses (idempotent).\n\n**Permission: course:author** (was: any signed-in user).\n\nCourses are created unpublished and, unless the row names a real ``qsp_code``,\nunbound from the qualification spine. See ``programme_ingest`` for why.",
         "operationId": "import_programme_courses_import_programme_post",
         "requestBody": {
           "content": {
@@ -17638,7 +17638,7 @@
     },
     "/exercises/{exercise_id}/objectives": {
       "get": {
-        "description": "List objectives for an exercise.  **Permission: exercise:read**",
+        "description": "List objectives for an exercise.  **Permission: exercise:read**\n\nOwn-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this\nlisted any tenant's objectives, validators and evidence by exercise id).",
         "operationId": "list_objectives_exercises__exercise_id__objectives_get",
         "parameters": [
           {
@@ -17691,7 +17691,7 @@
     },
     "/exercises/{exercise_id}/objectives/{ref_id}/ack": {
       "post": {
-        "description": "Acknowledge (achieve) an objective.  **Permission: exercise:complete**",
+        "description": "Acknowledge (achieve) an objective.  **Permission: exercise:complete**\n\nOwn-tenant exercises only (foreign id = 404).",
         "operationId": "acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post",
         "parameters": [
           {
@@ -18774,7 +18774,7 @@
     },
     "/hypervisors/nodes": {
       "get": {
-        "description": "Every discovered host across all connections, as last discovered. Read-only; the\ndashboard's cluster panel. No hypervisor is contacted \u2014 run discovery to refresh.",
+        "description": "Every discovered host across the caller's tenant's connections, as last discovered.\nRead-only; the dashboard's cluster panel. No hypervisor is contacted \u2014 run discovery to\nrefresh.",
         "operationId": "list_all_nodes_hypervisors_nodes_get",
         "responses": {
           "200": {
@@ -23363,7 +23363,7 @@
     },
     "/qsp/generate-exercises": {
       "post": {
-        "description": "Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).",
+        "description": "Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).\n\n**Permission: course:author and exercise:create.**",
         "operationId": "generate_exercises_qsp_generate_exercises_post",
         "responses": {
           "200": {
@@ -23392,7 +23392,7 @@
     },
     "/qsp/generate-learning-paths": {
       "post": {
-        "description": "Build per-PO courses, qualification paths, role paths, and the developmental progression.",
+        "description": "Build per-PO courses, qualification paths, role paths, and the developmental progression.\n\n**Permission: course:author.**",
         "operationId": "generate_learning_paths_qsp_generate_learning_paths_post",
         "responses": {
           "200": {
@@ -23421,7 +23421,7 @@
     },
     "/qsp/import-competency-crosswalk": {
       "post": {
-        "description": "Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).\n\nUpload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.",
+        "description": "Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).\n\n**Permission: course:author.**\n\nUpload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.",
         "operationId": "import_competency_crosswalk_qsp_import_competency_crosswalk_post",
         "requestBody": {
           "content": {
@@ -23470,7 +23470,7 @@
     },
     "/qsp/import-crosswalk": {
       "post": {
-        "description": "Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).",
+        "description": "Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).\n\n**Permission: course:author** (was: any signed-in user, Students included).",
         "operationId": "import_crosswalk_qsp_import_crosswalk_post",
         "requestBody": {
           "content": {
