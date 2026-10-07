@@ -1,7 +1,7 @@
 """add range greyspace
 
 Revision ID: a2b3c4d5e6f7
-Revises: a9b0c1d2e3f4
+Revises: d8e9f0a1b2c3
 Create Date: 2026-10-07 12:00:00.000000
 
 One row per range with a Greyspace (simulated internet) block attached (app/greyspace,
@@ -15,7 +15,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "a2b3c4d5e6f7"
-down_revision: str | None = "a9b0c1d2e3f4"
+down_revision: str | None = "d8e9f0a1b2c3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

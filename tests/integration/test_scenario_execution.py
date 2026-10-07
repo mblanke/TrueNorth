@@ -2,18 +2,12 @@
 
 create range -> provision -> load scenario -> execute -> verify timeline + objectives.
 
-**Half of this file tests an API that does not exist.** `/scenarios` is CRUD only —
-create, read, update, delete. There is no `POST /scenarios/execute`, no
-`GET /scenarios/executions/{id}/results` and no `GET /scenarios/executions/{id}/timeline`,
-and there never has been: the file was written against a planned contract and then hidden
-behind an env-gated skip, so nothing ever reported the gap.
-
-Rather than delete those tests or leave them silently skipped, they are marked `xfail`
-with the missing endpoint named. That keeps the gap visible in every run and makes the
-tests turn green by themselves — as `XPASS`, which is a failure under `strict=True` — the
-day the endpoints land. Note that execution *is* reachable today through the exercise
-API (`POST /exercises/{id}/start`, see `test_exercise_lifecycle.py`); what is absent is a
-scenario-level execution surface independent of an exercise.
+The execution API (`POST /scenarios/execute`, `GET /scenarios/executions/{id}/results`
+and `/timeline`, app/routers/scenario_executions.py) runs a scenario's timeline against a
+range without an exercise. Until it existed these four tests were strict `xfail`s naming
+the missing endpoints; they now assert what the run did. On the integration stack's mock
+backend `simulated_execution` fires and `dns_spike` (needs range hosts) is skipped.
+Objectives are reported `unassessed`: an execution scores nothing.
 """
 
 from __future__ import annotations
@@ -27,14 +21,22 @@ pytestmark = pytest.mark.integration
 POLL_INTERVAL = 2
 POLL_TIMEOUT = 120
 
-NO_EXECUTION_API = pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "no scenario-level execution API: POST /scenarios/execute, "
-        "GET /scenarios/executions/{id}/results and /timeline do not exist. "
-        "Scenarios run through POST /exercises/{id}/start instead."
-    ),
-)
+SCENARIO_YAML = """\
+name: integ-scenario-execution
+timeline:
+  - t: "00:00"
+    action: simulated_execution
+    params: {technique: T1003, target: dc-01}
+  - t: "00:01"
+    action: inject.dns_spike
+    params: {domains: [evil.test], count: 3}
+objectives:
+  - id: obj-detect
+    type: detection
+    validator: validate.opensearch_query
+    points: 10
+    description: Detect the credential dump
+"""
 
 
 def _poll_range_state(client, range_id: str, target: str) -> dict:
@@ -76,11 +78,7 @@ class TestScenarioExecution:
     def test_load_scenario(self, api_client):
         resp = api_client.post(
             "/scenarios",
-            json={
-                "name": "integ-scenario-execution",
-                "yaml": "name: integ-scenario-execution\nobjectives: []\n",
-                "is_public": False,
-            },
+            json={"name": "integ-scenario-execution", "yaml": SCENARIO_YAML, "is_public": False},
         )
         assert resp.status_code in (200, 201), resp.text
         self.__class__._scenario_id = resp.json()["id"]
@@ -90,7 +88,6 @@ class TestScenarioExecution:
         assert resp.status_code == 200
         assert resp.json()["name"] == "integ-scenario-execution"
 
-    @NO_EXECUTION_API
     def test_execute_scenario(self, api_client, execution_env):
         resp = api_client.post(
             "/scenarios/execute",
@@ -99,29 +96,44 @@ class TestScenarioExecution:
                 "range_id": execution_env["range_id"],
             },
         )
-        assert resp.status_code in (200, 201, 202)
+        assert resp.status_code in (200, 201, 202), resp.text
         self.__class__._execution_id = resp.json()["id"]
 
-    @NO_EXECUTION_API
     def test_wait_for_completion(self, api_client):
         eid = self.__class__._execution_id
-        resp = api_client.get(f"/scenarios/executions/{eid}/results")
-        assert resp.status_code == 200
+        deadline = time.time() + POLL_TIMEOUT
+        state = None
+        while time.time() < deadline:
+            resp = api_client.get(f"/scenarios/executions/{eid}/results")
+            assert resp.status_code == 200, resp.text
+            state = resp.json()["state"]
+            if state in ("completed", "failed"):
+                break
+            time.sleep(POLL_INTERVAL)
+        assert state == "completed", f"execution {eid} ended {state!r}"
 
-    @NO_EXECUTION_API
     def test_verify_timeline_events(self, api_client):
         eid = self.__class__._execution_id
         resp = api_client.get(f"/scenarios/executions/{eid}/timeline")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        timeline = resp.json()
+        assert isinstance(timeline, list)
+        assert [(e["seq"], e["status"]) for e in timeline] == [(0, "fired"), (1, "skipped")], timeline
+        assert timeline[0]["execution_mode"] == "simulated" and timeline[0]["telemetry_count"] >= 1
 
-    @NO_EXECUTION_API
     def test_evaluate_objectives(self, api_client):
         eid = self.__class__._execution_id
         resp = api_client.get(f"/scenarios/executions/{eid}/results")
         assert resp.status_code == 200
-        assert "objectives" in resp.json()
+        body = resp.json()
+        assert "objectives" in body
+        # Nothing is scored without Students and evidence: absence of evidence is not a pass.
+        assert body["objectives"] == [
+            {"ref_id": "obj-detect", "description": "Detect the credential dump", "status": "unassessed"}
+        ]
+        assert body["injects"] == {"total": 2, "fired": 1, "skipped": 1, "failed": 0, "pending": 0}
 
     def test_cleanup_scenario(self, api_client):
+        """An execution does not pin its scenario (unlike an exercise, which answers 409)."""
         resp = api_client.delete(f"/scenarios/{self.__class__._scenario_id}")
         assert resp.status_code in (200, 202, 204)

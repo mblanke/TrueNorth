@@ -1894,6 +1894,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/exercises/{exercise_id}/injects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Injects
+         * @description What each inject did (timeline and instructor), oldest first, every run kept.
+         *     **Permission: exercise:read**
+         */
+        get: operations["list_injects_exercises__exercise_id__injects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/exercises/{exercise_id}/objectives": {
         parameters: {
             query?: never;
@@ -5290,6 +5311,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scenarios/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Scenario
+         * @description Run a scenario's timeline against a ready range.  **Permission: exercise:start**
+         *
+         *     202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.
+         *     422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is
+         *     down (the execution is recorded ``failed``).
+         */
+        post: operations["execute_scenario_scenarios_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenarios/executions/{execution_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Results
+         * @description State, inject counts and objectives (always ``unassessed``) of an execution.
+         */
+        get: operations["get_execution_results_scenarios_executions__execution_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenarios/executions/{execution_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Timeline
+         * @description Each timeline event with its recorded outcome (``pending`` until the worker reaches it).
+         */
+        get: operations["get_execution_timeline_scenarios_executions__execution_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scenarios/validate": {
         parameters: {
             query?: never;
@@ -5338,9 +5423,12 @@ export interface paths {
          * Delete Scenario
          * @description Delete a scenario.  **Permission: scenario:delete**
          *
-         *     409 while any exercise (including a soft-deleted one) still references it, or a
-         *     scheduled event not yet completed or cancelled will run it. Finished events keep
-         *     their row without the scenario.
+         *     409 while any exercise (including a finished or soft-deleted one, whose AAR still
+         *     reads the scenario) references it. Checked up front (SQLite does not enforce the FK)
+         *     and again at commit, for an exercise created in between. Also 409 while a scheduled
+         *     event not yet completed or cancelled will run it; finished events keep their row
+         *     without the scenario. Scenario executions do not block: they keep their record and
+         *     lose the link.
          */
         delete: operations["delete_scenario_scenarios__scenario_id__delete"];
         options?: never;
@@ -9345,6 +9433,78 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /** InjectCounts */
+        InjectCounts: {
+            /** Failed */
+            failed: number;
+            /** Fired */
+            fired: number;
+            /** Pending */
+            pending: number;
+            /** Skipped */
+            skipped: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * InjectRecordOut
+         * @description One recorded inject outcome.
+         */
+        InjectRecordOut: {
+            /** Action */
+            action: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /**
+             * Execution Mode
+             * @description simulated (synthetic records) | live; null if not run
+             */
+            execution_mode?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mitre Technique */
+            mitre_technique?: string | null;
+            /**
+             * Run Id
+             * @description the run that fired it; a replay is a new run
+             */
+            run_id?: string | null;
+            /**
+             * Seq
+             * @description timeline position; null for an instructor inject
+             */
+            seq?: number | null;
+            /**
+             * Source
+             * @description timeline | instructor
+             */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "fired" | "failed" | "skipped";
+            /** T */
+            t?: string | null;
+            /**
+             * Telemetry Count
+             * @default 0
+             */
+            telemetry_count?: number;
+            /**
+             * Telemetry Shipped
+             * @default false
+             */
+            telemetry_shipped?: boolean;
+        };
         /** InstructorInjectIn */
         InstructorInjectIn: {
             /**
@@ -10237,6 +10397,23 @@ export interface components {
             /** Validator */
             validator: string;
         };
+        /** ObjectiveResultOut */
+        ObjectiveResultOut: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Ref Id */
+            ref_id: string;
+            /**
+             * Status
+             * @description an execution has no Students or evidence review, so nothing is scored
+             * @default unassessed
+             * @constant
+             */
+            status?: "unassessed";
+        };
         /** OnboardingPathIn */
         OnboardingPathIn: {
             /** Learning Path Id */
@@ -11112,6 +11289,76 @@ export interface components {
             duration_minutes?: number;
             /** Objectives */
             objectives: string[];
+        };
+        /** ScenarioExecuteIn */
+        ScenarioExecuteIn: {
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * Scenario Id
+             * Format: uuid
+             */
+            scenario_id: string;
+        };
+        /** ScenarioExecutionOut */
+        ScenarioExecutionOut: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id: string | null;
+            /** Scenario Name */
+            scenario_name: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "running" | "completed" | "failed";
+        };
+        /** ScenarioExecutionResultsOut */
+        ScenarioExecutionResultsOut: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            injects: components["schemas"]["InjectCounts"];
+            /** Objectives */
+            objectives: components["schemas"]["ObjectiveResultOut"][];
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id: string | null;
+            /** Scenario Name */
+            scenario_name: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "running" | "completed" | "failed";
         };
         /** ScenarioIn */
         ScenarioIn: {
@@ -12260,6 +12507,39 @@ export interface components {
             time: string;
             /** Vcpu Committed */
             vcpu_committed: number;
+        };
+        /**
+         * TimelineEntryOut
+         * @description A timeline event and what happened to it (``pending`` until the worker records it).
+         */
+        TimelineEntryOut: {
+            /** Action */
+            action: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /** Execution Mode */
+            execution_mode?: string | null;
+            /** Mitre Technique */
+            mitre_technique?: string | null;
+            /** Recorded At */
+            recorded_at?: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "fired" | "failed" | "skipped";
+            /** T */
+            t?: string | null;
+            /**
+             * Telemetry Count
+             * @default 0
+             */
+            telemetry_count?: number;
         };
         /** TimelineOut */
         TimelineOut: {
@@ -16624,6 +16904,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExerciseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_injects_exercises__exercise_id__injects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InjectRecordOut"][];
                 };
             };
             /** @description Validation Error */
@@ -22806,6 +23117,101 @@ export interface operations {
             };
         };
     };
+    execute_scenario_scenarios_execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScenarioExecuteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenarioExecutionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_results_scenarios_executions__execution_id__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenarioExecutionResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_timeline_scenarios_executions__execution_id__timeline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineEntryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     validate_scenario_scenarios_validate_post: {
         parameters: {
             query?: never;
@@ -22920,6 +23326,13 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An exercise references the scenario */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

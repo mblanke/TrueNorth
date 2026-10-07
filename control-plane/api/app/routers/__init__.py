@@ -37,6 +37,7 @@ from .qsp import router as qsp_router
 from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
 from .registration import router as registration_router
+from .scenario_executions import router as scenario_executions_router
 from .scenarios import router as scenarios_router
 from .storage import router as storage_router
 from .templates import router as templates_router
@@ -86,6 +87,7 @@ __all__ = [
     "course_publications_router",
     "lab_sessions_router",
     "greyspace_router",
+    "scenario_executions_router",
     "wiki_router",
     "tickets_router",
     "notifications_router",

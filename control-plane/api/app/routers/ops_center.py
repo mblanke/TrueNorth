@@ -231,8 +231,23 @@ async def instructor_inject(
             inject_event,
         )
 
+    # Fire it on the range too: the worker's run_inject runs the injector, ships its
+    # telemetry and records the outcome (GET /exercises/{id}/injects); an exercise that is
+    # not running gets a "skipped" record. A "custom" inject is narrative only: broadcast.
+    dispatch: dict = {"queued": False, "task_id": None, "reason": None}
+    if body.inject_type == "custom":
+        dispatch["reason"] = "custom inject: broadcast only"
+    else:
+        from ..celery_client import dispatch as send
+
+        task_id = send("run_inject", str(exercise.id), body.inject_type, dict(body.params or {}))
+        dispatch.update(queued=task_id is not None, task_id=task_id)
+        if task_id is None:
+            dispatch["reason"] = "worker broker unavailable"
+            logger.warning("Instructor inject for exercise %s not queued: broker unavailable", exercise_id)
+
     logger.info("Instructor inject exercise=%s type=%s by=%s", exercise_id, body.inject_type, user.id)
-    return {"status": "injected", "inject": inject_event}
+    return {"status": "injected", "inject": inject_event, "dispatch": dispatch}
 
 
 # ── Ops Stats ──────────────────────────────────────────────────────────

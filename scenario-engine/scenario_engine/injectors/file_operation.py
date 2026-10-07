@@ -29,6 +29,7 @@ class FileOperationInjector(BaseInjector):
         "modifying system files, deleting logs, and ransomware encryption."
     )
     required_params: list[str] = ["operation", "target_host"]
+    touches_range_hosts = False  # synthetic records only; safe on the mock backend
 
     _OPERATIONS = (
         "drop_tools",

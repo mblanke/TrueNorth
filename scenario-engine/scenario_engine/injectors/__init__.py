@@ -21,6 +21,7 @@ import importlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,11 @@ class InjectResult:
     telemetry: list[dict] | None = None  # events to ship to OpenSearch
     mitre_technique: str | None = None
     raw: dict[str, Any] | None = None  # full dict result from BaseInjector
+    # True when the inject was deliberately not run (e.g. it needs range hosts and the
+    # range has none). A skipped inject is neither a success nor an injector failure.
+    skipped: bool = False
+    # "simulated" (synthetic records, nothing touched) or "live"; None when nothing ran.
+    execution_mode: str | None = None
 
 
 # ── BaseInjector (params-in-constructor convention) ─────────────────────
@@ -68,6 +74,9 @@ class BaseInjector(ABC):
     name: str = ""
     description: str = ""
     required_params: list[str] = []
+    # Same contract flags as base.BaseInjector (see there).
+    touches_range_hosts: bool = True
+    execution_mode: str = "simulated"
 
     def __init__(self, params: dict[str, Any] | None = None) -> None:
         self.params = params or {}
@@ -133,17 +142,92 @@ def list_injectors() -> list[str]:
     return sorted(_INJECTOR_REGISTRY.keys())
 
 
-def run_inject(action: str, params: dict, ctx: RangeContext) -> InjectResult:
-    """Execute an inject by action name, returning an ``InjectResult``.
+INJECT_PREFIX = "inject."
 
-    Bridges the two conventions: calls ``BaseInjector.execute(context)``
-    and wraps the dict result into an ``InjectResult``. If no injector is
-    registered for *action*, returns a failed ``InjectResult``.
+
+def canonical_action(action: str) -> str:
+    """The registry key for a timeline action.
+
+    Two dialects name the same injector: the engine's examples say ``dns_spike``; authored
+    scenarios (the ai-orchestrator prompt, QSP paths, ``/scenarios/validate`` fixtures) say
+    ``inject.dns_spike``. This is the one adapter between them. Anything else is returned
+    as is and fails as an unknown action.
     """
-    inj = get_injector(action)
-    if inj is None:
+    a = str(action or "").strip()
+    return a[len(INJECT_PREFIX) :] if a.startswith(INJECT_PREFIX) else a
+
+
+def injector_profile(action: str) -> dict[str, Any] | None:
+    """The contract flags of the injector registered for *action*, or None if there is none."""
+    cls = _INJECTOR_REGISTRY.get(canonical_action(action))
+    if cls is None:
+        return None
+    return {
+        "touches_range_hosts": bool(getattr(cls, "touches_range_hosts", True)),
+        "execution_mode": str(getattr(cls, "execution_mode", "simulated")),
+    }
+
+
+def inject_telemetry(action: str, raw: dict[str, Any], ctx: RangeContext, *, execution_mode: str) -> list[dict]:
+    """Telemetry for one executed inject: the injector's own events, else one summary event.
+
+    Fields are flat so a range index can be searched by ``exercise_id`` / ``inject_action``
+    without a mapping. ``truenorth_simulated`` says the record is synthetic: a simulated
+    inject must never be mistaken for activity observed on a host.
+    """
+    own = raw.get("telemetry")
+    events = [dict(e) for e in own if isinstance(e, dict)] if isinstance(own, list) else []
+    if not events:
+        technique = raw.get("technique_id") or raw.get("technique")
+        events = [
+            {
+                "event.kind": "event",
+                "event.module": "truenorth.inject",
+                "event.action": action,
+                "message": f"inject {action} ({execution_mode})",
+                "threat.technique.id": technique,
+                "inject_target": raw.get("target") or raw.get("target_host") or raw.get("target_dc"),
+            }
+        ]
+    for e in events:
+        e.setdefault("@timestamp", datetime.now(UTC).isoformat())
+        e.update(
+            {
+                "range_id": ctx.range_id,
+                "tenant_id": ctx.tenant_id,
+                "exercise_id": ctx.exercise_id,
+                "inject_action": action,
+                "truenorth_simulated": execution_mode != "live",
+            }
+        )
+    return events
+
+
+def run_inject(action: str, params: dict, ctx: RangeContext, *, allow_host_effects: bool = True) -> InjectResult:
+    """Execute an inject by action name, returning an ``InjectResult``. Never raises.
+
+    Bridges the two conventions: builds the ``BaseInjector`` with *params*, calls
+    ``execute(context)`` and wraps the dict result into an ``InjectResult`` carrying the
+    telemetry to ship. An unknown *action*, invalid params or an injector exception give
+    a failed result. With ``allow_host_effects=False`` (a range with no hosts, e.g. the
+    mock backend) an injector whose contract touches range hosts is not run: the result
+    is ``skipped``.
+    """
+    cls = _INJECTOR_REGISTRY.get(canonical_action(action))
+    if cls is None:
         return InjectResult(success=False, action=action, detail=f"No injector registered for action '{action}'")
+    action = canonical_action(action)
+    profile = injector_profile(action) or {}
+    mode = profile.get("execution_mode", "simulated")
+    if profile.get("touches_range_hosts", True) and not allow_host_effects:
+        return InjectResult(
+            success=False,
+            action=action,
+            detail="skipped: mock backend (injector needs range hosts)",
+            skipped=True,
+        )
     try:
+        inj = cls(dict(params or {}))
         inj.validate_params()
         raw = inj.execute(
             {
@@ -155,6 +239,11 @@ def run_inject(action: str, params: dict, ctx: RangeContext) -> InjectResult:
                 "exercise_id": ctx.exercise_id,
             }
         )
+        if not isinstance(raw, dict):
+            raise TypeError(f"injector returned {type(raw).__name__}, expected dict")
+        telemetry = inject_telemetry(action, raw, ctx, execution_mode=mode)
+    except AssertionError as exc:  # validate_params() uses assert for missing params
+        return InjectResult(success=False, action=action, detail=f"Invalid params: {exc or 'missing required param'}")
     except Exception as exc:  # noqa: BLE001 — injectors must not crash the run
         logger.exception("Injector %s failed", action)
         return InjectResult(success=False, action=action, detail=f"Injector error: {exc}")
@@ -162,8 +251,10 @@ def run_inject(action: str, params: dict, ctx: RangeContext) -> InjectResult:
         success=bool(raw.get("success", True)),
         action=action,
         detail=str(raw.get("detail", raw.get("injector", ""))),
-        mitre_technique=raw.get("technique_id"),
+        telemetry=telemetry,
+        mitre_technique=raw.get("technique_id") or raw.get("technique"),
         raw=raw,
+        execution_mode=mode,
     )
 
 
@@ -215,5 +306,8 @@ __all__ = [
     "register_injector",
     "get_injector",
     "list_injectors",
+    "canonical_action",
+    "injector_profile",
+    "inject_telemetry",
     "run_inject",
 ]

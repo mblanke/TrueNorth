@@ -48,6 +48,7 @@ class NetworkScanInjector(BaseInjector):
     name: str = "network_scan"
     description: str = "Simulates network reconnaissance: port scanning, ARP discovery, and service enumeration."
     required_params: list[str] = ["scan_type", "target_network"]
+    touches_range_hosts = False  # synthetic records only; safe on the mock backend
 
     _SCAN_TYPES = ("port_scan", "arp_discovery", "service_enum")
 

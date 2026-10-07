@@ -10,6 +10,7 @@ class SimulatedExecutionInjector(BaseInjector):
     name = "simulated_execution"
     description = "Simulates execution of a MITRE technique on a target host."
     required_params: list[str] = []
+    touches_range_hosts = False  # synthetic records only; safe on the mock backend
 
     def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         return {
