@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from _shared import (  # noqa: F401 — store is a fixture
+from _shared import (
     DEV_TENANT,
     OTHER_TENANT,
     SCENARIO,
@@ -22,7 +22,6 @@ from _shared import (  # noqa: F401 — store is a fixture
     acting_as,
     beacon,
     noise,
-    store,
 )
 from app.detections.models import DetectionSubmission
 from app.main import app as fastapi_app
@@ -30,6 +29,14 @@ from app.models import Exercise, ExerciseState, Objective, ObjectiveType, Scenar
 from app.rbac import ROLE_PERMISSIONS, Permission
 from app.routers.detections import search_backend
 from app.search_backends import SearchQueryError
+
+
+@pytest.fixture
+def store():
+    s = FakeStore()
+    fastapi_app.dependency_overrides[search_backend] = lambda: s
+    yield s
+    fastapi_app.dependency_overrides.pop(search_backend, None)
 
 
 def _exercise(db, *, tenant=DEV_TENANT, state=ExerciseState.running, started=STARTED) -> Exercise:

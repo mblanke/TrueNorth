@@ -17,11 +17,9 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
 from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
 from app.models import UserRole
-from app.routers.detections import search_backend
 from app.search_backends import BaseSearchBackend, SearchBackendError, SearchMatch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -161,12 +159,5 @@ def acting_as(role: UserRole, tenant: str = DEV_TENANT):
     finally:
         fastapi_app.dependency_overrides.pop(get_current_user, None)
 
-
-@pytest.fixture
-def store():
-    s = FakeStore()
-    fastapi_app.dependency_overrides[search_backend] = lambda: s
-    yield s
-    fastapi_app.dependency_overrides.pop(search_backend, None)
 
 
