@@ -4773,7 +4773,10 @@ export interface paths {
         put?: never;
         /**
          * Ingest Telemetry
-         * @description Ingest telemetry events into OpenSearch.
+         * @description Ingest telemetry events into a range's index.  **Permission: telemetry:write**
+         *
+         *     The range must belong to the caller's tenant (404 otherwise). Students cannot write:
+         *     detection objectives are scored against this index.
          */
         post: operations["ingest_telemetry_telemetry__range_id__events_post"];
         delete?: never;
@@ -4791,7 +4794,7 @@ export interface paths {
         };
         /**
          * Search Telemetry
-         * @description Search telemetry events in OpenSearch.
+         * @description Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
          */
         get: operations["search_telemetry_telemetry__range_id__search_get"];
         put?: never;
