@@ -13082,7 +13082,7 @@
         ]
       },
       "post": {
-        "description": "Add a certification record for a user.",
+        "description": "Add a certification record for a user (self-reported, or by an instructor).",
         "operationId": "add_certification_certifications_users__user_id__post",
         "parameters": [
           {
@@ -13798,7 +13798,7 @@
     },
     "/competency/users/{user_id}/assertions": {
       "post": {
-        "description": "Record a competency assertion for a user.",
+        "description": "Record a competency assertion for a user (``learning_record:write``, never self-service).",
         "operationId": "create_assertion_competency_users__user_id__assertions_post",
         "parameters": [
           {

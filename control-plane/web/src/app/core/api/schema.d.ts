@@ -516,7 +516,7 @@ export interface paths {
         put?: never;
         /**
          * Add Certification
-         * @description Add a certification record for a user.
+         * @description Add a certification record for a user (self-reported, or by an instructor).
          */
         post: operations["add_certification_certifications_users__user_id__post"];
         delete?: never;
@@ -726,7 +726,7 @@ export interface paths {
         put?: never;
         /**
          * Create Assertion
-         * @description Record a competency assertion for a user.
+         * @description Record a competency assertion for a user (``learning_record:write``, never self-service).
          */
         post: operations["create_assertion_competency_users__user_id__assertions_post"];
         delete?: never;
