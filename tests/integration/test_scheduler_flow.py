@@ -4,8 +4,13 @@ Book a session from a template and a scenario with no range linked -> run the sc
 clock (POST /schedule/tick, platform admin; the background clock may get there first,
 which the guarded claims make harmless) -> the booking now holds a range built from the
 template, through a range operation, and a pending exercise on it -> the booking is in
-the event list and in the caller's iCalendar feed. Cancelling it at the end tears down
-the range it built and withdraws the unstarted exercise.
+the event list and in the caller's iCalendar feed -> cancelling it tears down the range
+it built (polled until ``destroyed``) and withdraws the unstarted exercise.
+
+Leftovers: the withdrawn exercise is history and keeps its range, so the range keeps its
+template (ranges.template_id). The fixture deletes what it can, logs what it cannot, and
+never deletes a template a range still references: that DELETE used to fail on the
+foreign key with a 500, and the dropped connection broke every later teardown.
 
 Runs against the live stack (API_BASE_URL; AUTH_DISABLED, so the caller is the dev
 admin, who is the platform admin when PLATFORM_TENANT_ID is unset).
@@ -13,6 +18,8 @@ admin, who is the platform admin when PLATFORM_TENANT_ID is unset).
 
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -20,11 +27,15 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
+logger = logging.getLogger("tests.integration.scheduler")
+
 # One small VM: the template must declare its VMs, or the booking cannot be sized (422).
 TEMPLATE_YAML = (
     "name: integ-scheduler\nnodes:\n  - id: ws\n    os: ubuntu22\n    vcpu: 1\n    ram_mb: 512\n    disk_gb: 8\n"
 )
 SCENARIO_YAML = "name: integ-scheduler-scenario\nobjectives: []\n"
+POLL_INTERVAL = 2
+POLL_TIMEOUT = 120
 
 
 def _created(resp, what: str) -> dict:
@@ -32,8 +43,29 @@ def _created(resp, what: str) -> dict:
     return resp.json()
 
 
+def _range_state(api_client, range_id: str) -> str | None:
+    """The range's state, or None once it is gone (404)."""
+    r = api_client.get(f"/ranges/{range_id}")
+    if r.status_code == 404:
+        return None
+    assert r.status_code == 200, f"GET /ranges/{range_id} => {r.status_code} {r.text}"
+    return r.json()["state"]
+
+
+def _wait_torn_down(api_client, range_id: str) -> str | None:
+    """Poll until the range is destroyed or gone; returns the last state seen."""
+    deadline = time.time() + POLL_TIMEOUT
+    state = _range_state(api_client, range_id)
+    while state not in (None, "destroyed") and time.time() < deadline:
+        time.sleep(POLL_INTERVAL)
+        state = _range_state(api_client, range_id)
+    return state
+
+
 @pytest.fixture
-def booking_inputs(api_client):
+def booking_inputs(api_client, teardown_delete):
+    """A template, a scenario and the caller's id; and, afterwards, best-effort cleanup
+    of the booking and everything it created (``made`` is filled in by the test)."""
     tag = uuid.uuid4().hex[:8]
     tpl = _created(
         api_client.post("/templates", json={"name": f"integ-sched-{tag}", "yaml": TEMPLATE_YAML, "is_public": False}),
@@ -45,12 +77,37 @@ def booking_inputs(api_client):
     )
     me = api_client.get("/auth/me")
     assert me.status_code == 200, me.text
-    yield {"tag": tag, "template_id": tpl["id"], "scenario_id": scn["id"], "me": me.json()["user"]["id"]}
-    api_client.delete(f"/scenarios/{scn['id']}")
-    api_client.delete(f"/templates/{tpl['id']}")
+    made: dict[str, str | None] = {"event_id": None, "range_id": None}
+    yield {"tag": tag, "template_id": tpl["id"], "scenario_id": scn["id"], "me": me.json()["user"]["id"], "made": made}
+
+    # Best effort from here on: log, never raise, so a leftover cannot fail later tests.
+    teardown_delete("/schedule/feed-token")
+    if made["event_id"]:
+        # Cancelling again is a no-op on a cancelled booking (the test normally did it);
+        # on an earlier failure it is what tears the range down.
+        try:
+            api_client.post(f"/schedule/events/{made['event_id']}/cancel")
+        except Exception as exc:  # noqa: BLE001 - teardown must not raise
+            logger.warning("teardown: cancel booking %s failed: %s", made["event_id"], exc)
+    range_left = False
+    if made["range_id"]:
+        try:
+            state = _wait_torn_down(api_client, made["range_id"])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("teardown: could not read range %s: %s", made["range_id"], exc)
+            state = "unknown"
+        if state is not None:
+            # 409 while its (withdrawn) exercise is on record: kept as history.
+            range_left = teardown_delete(f"/ranges/{made['range_id']}") not in (204, 404)
+    teardown_delete(f"/scenarios/{scn['id']}")  # 409 while that exercise references it
+    if range_left:
+        logger.warning("teardown: template %s left in place; range %s still references it", tpl["id"], made["range_id"])
+    else:
+        teardown_delete(f"/templates/{tpl['id']}")
 
 
 def test_a_booking_creates_its_range_and_exercise_and_shows_in_the_feed(api_client, booking_inputs):
+    made = booking_inputs["made"]
     # Inside the provisioning lead (30 min by default), so the next tick builds it.
     start = (datetime.now(UTC) + timedelta(minutes=10)).replace(microsecond=0)
     end = start + timedelta(hours=1)
@@ -70,54 +127,61 @@ def test_a_booking_creates_its_range_and_exercise_and_shows_in_the_feed(api_clie
         ),
         "POST /schedule/events",
     )
-    event_id = evt["id"]
-    try:
-        assert evt["state"] == "scheduled"
-        assert evt["range_id"] is None and evt["exercise_id"] is None
-        assert evt["vm_count"] == 1  # sized from the template
+    event_id = made["event_id"] = evt["id"]
+    assert evt["state"] == "scheduled"
+    assert evt["range_id"] is None and evt["exercise_id"] is None
+    assert evt["vm_count"] == 1  # sized from the template
 
-        tick = api_client.post("/schedule/tick")
-        assert tick.status_code == 200, tick.text
+    tick = api_client.post("/schedule/tick")
+    assert tick.status_code == 200, tick.text
 
-        got = api_client.get(f"/schedule/events/{event_id}")
-        assert got.status_code == 200, got.text
-        evt = got.json()
-        assert evt["state"] == "provisioning", evt
-        assert evt["range_id"] and evt["exercise_id"], evt
+    got = api_client.get(f"/schedule/events/{event_id}")
+    assert got.status_code == 200, got.text
+    evt = got.json()
+    made["range_id"] = evt["range_id"]
+    assert evt["state"] == "provisioning", evt
+    assert evt["range_id"] and evt["exercise_id"], evt
 
-        # The range came from the booking's template and was built through range_ops.
-        rng = api_client.get(f"/ranges/{evt['range_id']}")
-        assert rng.status_code == 200, rng.text
-        assert rng.json()["template_id"] == booking_inputs["template_id"]
-        assert rng.json()["state"] in ("provisioning", "ready"), rng.json()
-        ops = api_client.get(f"/ranges/{evt['range_id']}/operations")
-        assert ops.status_code == 200, ops.text
-        assert [o["action"] for o in ops.json()] == ["provision"], ops.json()
+    # The range came from the booking's template and was built through range_ops.
+    rng = api_client.get(f"/ranges/{evt['range_id']}")
+    assert rng.status_code == 200, rng.text
+    assert rng.json()["template_id"] == booking_inputs["template_id"]
+    assert rng.json()["state"] in ("provisioning", "ready"), rng.json()
+    ops = api_client.get(f"/ranges/{evt['range_id']}/operations")
+    assert ops.status_code == 200, ops.text
+    assert [o["action"] for o in ops.json()] == ["provision"], ops.json()
 
-        # A pending exercise on that range, running the booked scenario.
-        ex = api_client.get(f"/exercises/{evt['exercise_id']}")
-        assert ex.status_code == 200, ex.text
-        assert ex.json()["range_id"] == evt["range_id"]
-        assert ex.json()["scenario_id"] == booking_inputs["scenario_id"]
-        assert ex.json()["state"] == "pending"
+    # A pending exercise on that range, running the booked scenario.
+    ex = api_client.get(f"/exercises/{evt['exercise_id']}")
+    assert ex.status_code == 200, ex.text
+    assert ex.json()["range_id"] == evt["range_id"]
+    assert ex.json()["scenario_id"] == booking_inputs["scenario_id"]
+    assert ex.json()["state"] == "pending"
 
-        # In the schedule: the event list, and the caller's calendar feed.
-        listed = api_client.get(
-            "/schedule/events",
-            params={"start": (start - timedelta(minutes=1)).isoformat(), "end": end.isoformat(), "limit": 200},
-        )
-        assert listed.status_code == 200, listed.text
-        assert event_id in {e["id"] for e in listed.json()["items"]}
+    # In the schedule: the event list, and the caller's calendar feed.
+    listed = api_client.get(
+        "/schedule/events",
+        params={"start": (start - timedelta(minutes=1)).isoformat(), "end": end.isoformat(), "limit": 200},
+    )
+    assert listed.status_code == 200, listed.text
+    assert event_id in {e["id"] for e in listed.json()["items"]}
 
-        issued = api_client.post("/schedule/feed-token")
-        assert issued.status_code == 200, issued.text
-        token = issued.json()["url"].rsplit("/", 1)[1].removesuffix(".ics")
-        ics = api_client.get(f"/schedule/feed/{token}.ics")
-        assert ics.status_code == 200, ics.text
-        assert ics.headers["content-type"].startswith("text/calendar")
-        assert f"UID:{event_id}@" in ics.text
-        assert name in ics.text
-    finally:
-        cancelled = api_client.post(f"/schedule/events/{event_id}/cancel")
-        assert cancelled.status_code == 200, cancelled.text
-        api_client.delete("/schedule/feed-token")
+    issued = api_client.post("/schedule/feed-token")
+    assert issued.status_code == 200, issued.text
+    token = issued.json()["url"].rsplit("/", 1)[1].removesuffix(".ics")
+    ics = api_client.get(f"/schedule/feed/{token}.ics")
+    assert ics.status_code == 200, ics.text
+    assert ics.headers["content-type"].startswith("text/calendar")
+    assert f"UID:{event_id}@" in ics.text
+    assert name in ics.text
+
+    # Cancelling tears down what the booking built and withdraws its unstarted exercise.
+    cancelled = api_client.post(f"/schedule/events/{event_id}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["state"] == "cancelled"
+    final = _wait_torn_down(api_client, evt["range_id"])
+    assert final in (None, "destroyed"), f"range {evt['range_id']} still {final} after {POLL_TIMEOUT}s"
+    if final is not None:
+        actions = [o["action"] for o in api_client.get(f"/ranges/{evt['range_id']}/operations").json()]
+        assert actions[-1] == "destroy", actions
+    assert api_client.get(f"/exercises/{evt['exercise_id']}").json()["state"] == "cancelled"
