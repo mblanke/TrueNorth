@@ -81,6 +81,25 @@ TASKS: dict[str, TaskContract] = {
             "scenario",
             (_EXERCISE, Arg("scenario_definition", "object", description="validated scenario YAML as JSON")),
         ),
+        TaskContract(
+            "run_inject",
+            "scenario",
+            (
+                _EXERCISE,
+                Arg("action", description="injector action name (GET /injectors)"),
+                Arg("params", "object", required=False, description="injector params"),
+            ),
+            "Fire one instructor inject into a running exercise; the outcome goes to inject_records.",
+        ),
+        TaskContract(
+            "run_scenario_execution",
+            "scenario",
+            (
+                Arg("execution_id", description="scenario_executions.id (UUID)"),
+                Arg("scenario_definition", "object", description="validated scenario YAML as JSON"),
+            ),
+            "Run a scenario's timeline against a range without an exercise (POST /scenarios/execute).",
+        ),
         TaskContract("generate_aar", "default", (_EXERCISE,), "Write the after-action review."),
         TaskContract(
             "forge_exercise",

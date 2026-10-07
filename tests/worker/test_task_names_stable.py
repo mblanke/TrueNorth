@@ -17,7 +17,7 @@ import pytest
 
 pytest.importorskip("celery")
 
-from worker import aar_tasks, db_ops, exercise_run, inject_dispatch, tasks  # noqa: E402
+from worker import aar_tasks, db_ops, exercise_run, tasks  # noqa: E402
 from worker.celery_app import app  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,13 +47,20 @@ REGISTERED_BEFORE_SPLIT = {
 }
 
 
+# Added since the split, in worker/exercise_run.py (contracts.py lists them).
+ADDED_SINCE_SPLIT = {
+    "worker.tasks.run_inject",
+    "worker.tasks.run_scenario_execution",
+}
+
+
 def _registered() -> set[str]:
     app.finalize()
     return {n for n in app.tasks if n.startswith("worker.")}
 
 
 def test_registered_task_names_are_unchanged():
-    assert _registered() == REGISTERED_BEFORE_SPLIT
+    assert _registered() == REGISTERED_BEFORE_SPLIT | ADDED_SINCE_SPLIT
 
 
 @pytest.mark.parametrize(
@@ -95,13 +102,6 @@ def test_module_imports_first_in_a_fresh_interpreter(module):
     assert proc.stdout.strip() == "worker.tasks.run_scenario_v2"
 
 
-def test_seam_is_a_no_op_until_wired():
-    assert inject_dispatch.dispatch_inject("ex-1", "deploy_malware", {"target": "ws-001"}) == {
-        "dispatched": False,
-        "reason": "not wired",
-    }
-
-
 def _session():
     s = MagicMock()
     s.__enter__ = MagicMock(return_value=s)
@@ -117,55 +117,64 @@ TIMELINE = [
 
 
 @pytest.fixture
-def real_backend(monkeypatch):
-    """Off the mock backend (where the stub comment was), with detection scoring off."""
-    monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+def running_exercise(monkeypatch):
+    """db_ops answers as for a running exercise; no database, detection scoring off.
+    Outcomes on a real database: tests/worker/test_inject_dispatch.py."""
     monkeypatch.delenv("DETECTION_SCORING", raising=False)
+    monkeypatch.setattr(db_ops, "start_exercise", lambda db, eid: 1)
+    monkeypatch.setattr(db_ops, "exercise_state", lambda db, eid: "running")
+    monkeypatch.setattr(db_ops, "recorded_seqs", lambda db, run_id: set())
+    monkeypatch.setattr(db_ops, "achieve_objective", lambda db, eid, ref: None)
+    monkeypatch.setattr(exercise_run.time, "sleep", lambda s: None)
 
 
-def test_run_scenario_v2_calls_the_seam_once_per_inject(real_backend):
-    """Each timeline event goes through dispatch_inject exactly once, in order, with the exercise id."""
+@pytest.mark.parametrize("backend", ["mock", "vsphere_api"])
+def test_run_scenario_v2_calls_the_seam_once_per_inject_on_every_backend(monkeypatch, running_exercise, backend):
+    """Each timeline event goes through dispatch_inject exactly once, in order, with the
+    exercise id: on the mock backend too (it used to skip the seam there)."""
+    monkeypatch.setenv("PROVISIONER_BACKEND", backend)
     definition = {"timeline": TIMELINE, "objectives": [], "inject_packs": []}
     with (
         patch("worker.tasks._db_session", return_value=_session()),
         patch("worker.tasks._notify_api"),
-        patch("worker.inject_dispatch.dispatch_inject", return_value={"dispatched": False}) as seam,
+        patch.object(db_ops, "complete_exercise", return_value=1),
+        patch("worker.inject_dispatch.dispatch_inject", return_value={"status": "fired"}) as seam,
     ):
         result = exercise_run.run_scenario_v2(exercise_id="ex-seam", scenario_definition=definition)
-    assert result["events_executed"] == 3
+    assert result["status"] == "completed" and result["events_executed"] == 3
     assert [c.args for c in seam.call_args_list] == [
         ("ex-seam", "deploy_malware", {"target": "ws-001"}),
         ("ex-seam", "exfil_data", {"target": "dc-01"}),
         ("ex-seam", "cleanup", {}),
     ]
+    assert [c.kwargs["seq"] for c in seam.call_args_list] == [0, 1, 2]
 
 
-def test_run_scenario_v2_on_the_mock_backend_does_not_call_the_seam(monkeypatch):
-    """Behaviour-preserving: the stub sat on the non-mock branch only."""
-    monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
+def test_run_scenario_v2_counts_only_fired_injects(monkeypatch, running_exercise):
+    monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
+    answers = iter([{"status": "fired"}, {"status": "skipped"}, {"status": "failed"}])
     definition = {"timeline": TIMELINE, "objectives": [], "inject_packs": []}
     with (
         patch("worker.tasks._db_session", return_value=_session()),
-        patch("worker.tasks._notify_api"),
-        patch("worker.inject_dispatch.dispatch_inject") as seam,
+        patch("worker.tasks._notify_api") as notify,
+        patch.object(db_ops, "complete_exercise", return_value=1),
+        patch("worker.inject_dispatch.dispatch_inject", side_effect=lambda *a, **k: next(answers)),
     ):
-        result = exercise_run.run_scenario_v2(exercise_id="ex-mock", scenario_definition=definition)
-    assert result["events_executed"] == 3
-    seam.assert_not_called()
-
-
-def test_run_scenario_v2_result_ignores_the_seams_answer(real_backend):
-    """The not-wired answer neither fails nor skips an event."""
-    definition = {"timeline": TIMELINE, "objectives": [], "inject_packs": []}
-    with patch("worker.tasks._db_session", return_value=_session()), patch("worker.tasks._notify_api") as notify:
         result = exercise_run.run_scenario_v2(exercise_id="ex-nw", scenario_definition=definition)
-    assert result == {"status": "completed", "exercise_id": "ex-nw", "events_executed": 3, "objectives_completed": 0}
+    assert result == {
+        "status": "completed",
+        "exercise_id": "ex-nw",
+        "events_executed": 3,
+        "injects_fired": 1,
+        "objectives_completed": 0,
+    }
     assert notify.call_args_list[-1].args[1]["state"] == "completed"
 
 
-def test_run_scenario_v2_seam_failure_cancels_the_exercise(real_backend):
-    """A seam that raises takes the existing failure path: exercise cancelled, failed
-    notification, exception re-raised for the retry policy; never marked complete."""
+def test_run_scenario_v2_seam_failure_cancels_the_exercise(monkeypatch, running_exercise):
+    """A seam that raises on the last attempt takes the failure path: exercise cancelled,
+    failed notification, exception re-raised; never marked complete."""
+    monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
     session = _session()
     definition = {"timeline": TIMELINE, "objectives": [], "inject_packs": []}
     with (
@@ -182,7 +191,8 @@ def test_run_scenario_v2_seam_failure_cancels_the_exercise(real_backend):
     assert notify.call_args_list[-1].args[1] == {"id": "ex-fail", "state": "failed", "error": "injector down"}
 
 
-def test_run_scenario_calls_the_seam_once_per_inject():
+def test_run_scenario_calls_the_seam_once_per_inject(monkeypatch):
+    monkeypatch.setattr(exercise_run.time, "sleep", lambda s: None)
     yaml_doc = "timeline:\n" + "".join(f"  - {{t: '0:00', action: {e['action']}}}\n" for e in TIMELINE)
     with (
         patch("worker.tasks._db_session", return_value=_session()),

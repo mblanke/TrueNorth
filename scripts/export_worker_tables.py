@@ -34,11 +34,13 @@ WORKER_TABLES = (
     "forged_exercises",
     "golden_images",
     "hypervisor_connections",
+    "inject_records",
     "learning_recommendations",
     "objectives",
     "range_leases",
     "range_snapshots",
     "ranges",
+    "scenario_executions",
     "scenarios",
     "templates",
     "users",
@@ -69,6 +71,7 @@ def _type_src(t) -> str:
 
 def render() -> str:
     import app.range_leases  # noqa: F401 — section models register their tables on import
+    import app.scenario_runs  # noqa: F401
     from app import models
     from app.db import Base
 

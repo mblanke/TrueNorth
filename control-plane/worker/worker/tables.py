@@ -206,6 +206,29 @@ hypervisor_connections = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+inject_records = sa.Table(
+    "inject_records",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("exercise_id", GUID()),
+    sa.Column("execution_id", GUID()),
+    sa.Column("range_id", GUID()),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("run_id", sa.String(64)),
+    sa.Column("source", sa.String(16), nullable=False),
+    sa.Column("seq", sa.Integer()),
+    sa.Column("t", sa.String(16)),
+    sa.Column("action", sa.String(100), nullable=False),
+    sa.Column("status", sa.String(16), nullable=False),
+    sa.Column("detail", sa.Text(), nullable=False),
+    sa.Column("execution_mode", sa.String(16)),
+    sa.Column("mitre_technique", sa.String(32)),
+    sa.Column("telemetry_count", sa.Integer(), nullable=False),
+    sa.Column("telemetry_shipped", sa.Boolean(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 learning_recommendations = sa.Table(
     "learning_recommendations",
     metadata,
@@ -301,6 +324,25 @@ ranges = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+scenario_executions = sa.Table(
+    "scenario_executions",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("scenario_id", GUID()),
+    sa.Column("scenario_name", sa.String(255), nullable=False),
+    sa.Column("range_id", GUID()),
+    sa.Column("state", sa.String(16), nullable=False),
+    sa.Column("definition", sa.JSON(), nullable=False),
+    sa.Column("requested_by", GUID()),
+    sa.Column("task_id", sa.String(255)),
+    sa.Column("error", sa.Text()),
+    sa.Column("started_at", sa.DateTime(timezone=True)),
+    sa.Column("completed_at", sa.DateTime(timezone=True)),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 scenarios = sa.Table(
     "scenarios",
     metadata,
@@ -375,12 +417,14 @@ __all__ = [
     "forged_exercises",
     "golden_images",
     "hypervisor_connections",
+    "inject_records",
     "learning_recommendations",
     "metadata",
     "objectives",
     "range_leases",
     "range_snapshots",
     "ranges",
+    "scenario_executions",
     "scenarios",
     "templates",
     "users",

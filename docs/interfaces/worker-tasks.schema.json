@@ -250,6 +250,32 @@
       "description": "",
       "queue": "provision"
     },
+    "worker.tasks.run_inject": {
+      "args": {
+        "maxItems": 3,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "exercises.id (UUID)",
+            "title": "exercise_id",
+            "type": "string"
+          },
+          {
+            "description": "injector action name (GET /injectors)",
+            "title": "action",
+            "type": "string"
+          },
+          {
+            "description": "injector params",
+            "title": "params",
+            "type": "object"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Fire one instructor inject into a running exercise; the outcome goes to inject_records.",
+      "queue": "scenario"
+    },
     "worker.tasks.run_scenario": {
       "args": {
         "maxItems": 1,
@@ -264,6 +290,27 @@
         "type": "array"
       },
       "description": "",
+      "queue": "scenario"
+    },
+    "worker.tasks.run_scenario_execution": {
+      "args": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "description": "scenario_executions.id (UUID)",
+            "title": "execution_id",
+            "type": "string"
+          },
+          {
+            "description": "validated scenario YAML as JSON",
+            "title": "scenario_definition",
+            "type": "object"
+          }
+        ],
+        "type": "array"
+      },
+      "description": "Run a scenario's timeline against a range without an exercise (POST /scenarios/execute).",
       "queue": "scenario"
     },
     "worker.tasks.run_scenario_v2": {

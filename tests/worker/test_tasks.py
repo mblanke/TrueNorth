@@ -64,79 +64,8 @@ class TestWorkerTasks:
 # ========================================================================
 
 
-class TestRunScenarioV2:
-    """Tests for run_scenario_v2 task."""
-
-    def test_run_scenario_mock(self):
-        if not _WORKER_IMPORTABLE:
-            pytest.skip("Worker package not installed (celery missing)")
-        """Test run_scenario_v2 with mock backend and in-memory stubs."""
-        import os
-
-        os.environ["PROVISIONER_BACKEND"] = "mock"
-        os.environ["DATABASE_URL"] = "sqlite://"
-
-        scenario_def = {
-            "timeline": [
-                {"t": "0:00", "action": "deploy_malware", "params": {"target": "ws-001"}},
-                {"t": "0:30", "action": "exfil_data", "params": {"target": "dc-01"}},
-                {"t": "1:00", "action": "cleanup", "params": {}},
-            ],
-            "objectives": [
-                {"ref_id": "obj-1", "description": "Detect malware", "validator": "manual", "points": 50},
-                {"ref_id": "obj-2", "description": "Block exfil", "validator": "manual", "points": 50},
-            ],
-            "inject_packs": [],
-        }
-
-        # Patch _db_session and _notify_api so we don't need real DB/Redis
-        from unittest.mock import MagicMock, patch
-
-        mock_session = MagicMock()
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.execute = MagicMock()
-
-        with (
-            patch("worker.tasks._db_session", return_value=mock_session),
-            patch("worker.tasks._notify_api") as mock_notify,
-        ):
-            try:
-                from worker.tasks import run_scenario_v2
-
-                result = run_scenario_v2(exercise_id="ex-test-001", scenario_definition=scenario_def)
-                assert result["status"] == "completed"
-                assert result["events_executed"] == 3
-                assert result["objectives_completed"] == 2
-                assert mock_notify.called
-            except ImportError:
-                pytest.skip("Worker module not importable in test env")
-
-    def test_run_scenario_empty_timeline(self):
-        """Test run_scenario_v2 with empty timeline."""
-        if not _WORKER_IMPORTABLE:
-            pytest.skip("Worker package not installed (celery missing)")
-        import os
-
-        os.environ["PROVISIONER_BACKEND"] = "mock"
-        from unittest.mock import MagicMock, patch
-
-        mock_session = MagicMock()
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.execute = MagicMock()
-
-        scenario_def = {"timeline": [], "objectives": [], "inject_packs": []}
-
-        with patch("worker.tasks._db_session", return_value=mock_session), patch("worker.tasks._notify_api"):
-            try:
-                from worker.tasks import run_scenario_v2
-
-                result = run_scenario_v2(exercise_id="ex-empty", scenario_definition=scenario_def)
-                assert result["status"] == "completed"
-                assert result["events_executed"] == 0
-            except ImportError:
-                pytest.skip("Worker module not importable in test env")
+# run_scenario_v2 on a real worker database (mock and live backends, state guards, retries,
+# malformed events): tests/worker/test_inject_dispatch.py and test_worker_sql_real_db.py.
 
 
 class TestGenerateAAR:
