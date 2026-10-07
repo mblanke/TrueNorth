@@ -339,8 +339,8 @@ where file writes are denied by default (`tools/arc2/confine.py`: Seatbelt via `
 | Read other runs, `_studio/`, `_queue/`, `_jobs/`, anything else in the runner's home (other jobs' sessions, `~/.ssh`, `~/.docker`), including through symlinks | no |
 | Read `build/arc2/` or `.claude/worktrees/` anywhere in the repository (other checkouts' runs) | no |
 | Signal processes outside the sandbox | no |
-| Unix sockets (Docker) and localhost (API, Redis, Postgres) | no, except DNS and the local model fallback's port |
-| Internet (the model API) | yes |
+| Unix sockets (Docker) and localhost (API, Redis, Postgres) | no, except the local model fallback's port |
+| Internet | only through the runner's egress proxy, which tunnels to `api.anthropic.com:443` and nothing else (`ARC2_EGRESS_ALLOW`; `tools/arc2/egress.py`) |
 
 A job can still read the original arguments and environment of any process in the same
 account (`sysctl KERN_PROCARGS2`); Seatbelt has no rule for it. So neither may hold
@@ -396,8 +396,11 @@ could ever reach:
 4. Start it as that user with `make arc2-runner`. It prints `confinement: seatbelt`. If it
    cannot find a token, it warns that confined jobs cannot sign in.
 
-A job can still read its own token from its environment and send it out over the
-internet. Use a token for this account only, and revoke it if a run looks hostile.
+A job can read its own token from its environment, but it can only reach the model
+API, through the egress proxy (macOS: Seatbelt denies every other outbound connection;
+Linux: the job has a network namespace of its own and reaches only the proxy and the
+local fallback, bridged in as Unix sockets by `tools/arc2/netbridge.py`). Use a token
+for this account only all the same. `ARC2_EGRESS=open` turns the proxy off.
 
 Evidence:
 - `tests/arc2/test_arc2_confinement.py` runs a hostile fake engine through `runner.main`.
@@ -411,8 +414,6 @@ Evidence:
   escapes that this version closes.
 
 Still open:
-- Linux (bubblewrap, `confine.Bubblewrap`) shares the network namespace: localhost services and filesystem sockets stay reachable. Block the runner account's loopback traffic on the host, e.g. `iptables -A OUTPUT -o lo -m owner --uid-owner arc2runner -j REJECT`, and keep it out of the `docker` group.
-- The internet stays open, so the token can be exfiltrated (see above).
 - `/arc2` always uses `<repo>/build/arc2`, so `ARC2_RUNS_DIR` must point there for the
   engine, runner and API to agree.
 - A descendant that calls `setsid()` survives the job's process-group kill. It stays

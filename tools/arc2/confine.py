@@ -25,7 +25,9 @@ and other processes are denied where they matter; the job gets only what it need
   it re-executes itself with a scrubbed environment and passes prompts on stdin.
 * **Network**: no Unix-domain sockets (the Docker socket) and no localhost (the API,
   Redis, Postgres), except the DNS resolver socket and, when configured, the local
-  model fallback's port. Internet access to the model API stays open.
+  model fallback's port. With an egress proxy (the runner's default, arc2/egress.py)
+  every other outbound connection is denied too, so the internet is reachable only
+  through the proxy's allow-list (the model API).
 
 The kernel checks paths after resolving symlinks, so a link inside the run reaches
 nothing. The job's credentials are in its environment, so a job can always use them.
@@ -65,6 +67,13 @@ class Jail:
     writable_files: tuple[Path, ...] = ()  # read-write single files (the request file)
     readable: tuple[Path, ...] = ()  # extra read-only subtrees (the claude installation)
     local_ports: tuple[int, ...] = ()  # localhost ports the job may connect to
+    # When set, the only way out: every other outbound IP connection is denied and the
+    # job reaches the internet through this 127.0.0.1 proxy (arc2/egress.py).
+    egress_port: int | None = None
+    # Linux: (port, unix socket) pairs. When given, the job gets a network namespace of its
+    # own (nothing reachable) and 127.0.0.1:<port> inside it forwards to the socket
+    # (arc2/netbridge.py): the egress proxy and the local fallback, nothing else.
+    bridges: tuple[tuple[int, Path], ...] = ()
     readable_inner: tuple[Path, ...] = ()  # read-only subtrees inside the runs root
 
 
@@ -112,9 +121,19 @@ class Seatbelt(Confinement):
             "(deny signal (target others))",
             "(deny process-info* (target others))",
             "(deny network-outbound (remote unix-socket))",
-            f'(allow network-outbound (remote unix-socket (path-literal "{DNS_SOCKET}")))',
+            # DNS only without an egress proxy: with one, the proxy resolves hosts outside the
+            # sandbox, and a job that can query DNS can leak data in the names it looks up.
+            *(
+                []
+                if jail.egress_port
+                else [f'(allow network-outbound (remote unix-socket (path-literal "{DNS_SOCKET}")))']
+            ),
             '(deny network-outbound (remote ip "localhost:*"))',
-            *(f'(allow network-outbound (remote ip "localhost:{port}"))' for port in jail.local_ports),
+            *(['(deny network-outbound (remote ip "*:*"))'] if jail.egress_port else []),
+            *(
+                f'(allow network-outbound (remote ip "localhost:{port}"))'
+                for port in (*jail.local_ports, *([jail.egress_port] if jail.egress_port else []))
+            ),
             "",
         ]
         return "\n".join(rules)
@@ -134,11 +153,12 @@ class Bubblewrap(Confinement):
     ``--unshare-pid`` means the job cannot see, signal or read the arguments of any
     process outside it, which is stronger than Seatbelt here.
 
-    Known gap: the network namespace is shared, so localhost services and filesystem
-    sockets outside the hidden paths stay reachable (``--unshare-net`` would also cut the
-    model API). On a Linux runner host, block the runner account's loopback traffic,
-    for example ``iptables -A OUTPUT -o lo -m owner --uid-owner arc2runner -j REJECT``,
-    and keep the Docker socket out of its reach (no ``docker`` group).
+    Network: with ``bridges`` (the runner's default, with its egress proxy) the job gets
+    a network namespace of its own (``--unshare-net``): no host, no localhost service, no
+    internet. Its only routes are 127.0.0.1 ports that arc2/netbridge.py forwards to
+    bind-mounted Unix sockets, the egress proxy and the local model fallback. Without
+    bridges (``ARC2_EGRESS=open``) the network namespace is shared, so localhost services
+    and the internet stay reachable; keep the runner account out of the ``docker`` group.
     """
 
     name = "bubblewrap"
@@ -179,6 +199,9 @@ class Bubblewrap(Confinement):
             "/proc",
         ]
         out += ["--tmpfs", str(home)]  # 1. the runner's home: empty
+        for shared in ("/tmp", "/run"):  # a private, empty /tmp and /run: no host sockets (docker, redis, ...)
+            if Path(shared).is_dir() and not Path(shared).is_symlink():
+                out += ["--tmpfs", shared]
         for path in (repo, *jail.readable):  # 2. what the job may read, back on top, read-only
             if Path(path).exists():
                 out += ["--ro-bind", str(Path(path).resolve()), str(Path(path).resolve())]
@@ -203,7 +226,14 @@ class Bubblewrap(Confinement):
         return out
 
     def wrap(self, cmd: list[str], jail: Jail) -> list[str]:
-        return [*self.args(jail), "--", *cmd]
+        if not jail.bridges:
+            return [*self.args(jail), "--", *cmd]
+        isolated = [*self.args(jail), "--unshare-net"]
+        maps = []
+        for port, sock in jail.bridges:
+            isolated += ["--ro-bind", str(sock), str(sock)]
+            maps += ["--map", f"127.0.0.1:{port}={sock}"]
+        return [*isolated, "--", sys.executable, "-m", "arc2.netbridge", *maps, "--", *cmd]
 
 
 class Unconfined(Confinement):
