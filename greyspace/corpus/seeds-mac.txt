@@ -1,0 +1,15 @@
+# Greyspace T1 (Mac test sample) seeds — permissive-licence content only.
+# Columns: fqdn  category  licence  start-url  [include-dirs, comma separated]
+# build-sample.sh mirrors each one shallowly (depth 2, page requisites, WARC kept) until
+# the 5 GB cap. Licences are recorded per site in manifest.json; check each source's terms
+# again before a tier leaves the Mac (docs/greyspace-corpus.md, "Sources and licensing").
+en.wikipedia.org      reference  CC-BY-SA-4.0  https://en.wikipedia.org/wiki/Canada                 /wiki,/w/load.php,/static
+en.wikinews.org       news       CC-BY-2.5     https://en.wikinews.org/wiki/Main_Page               /wiki,/w/load.php,/static
+en.wikivoyage.org     travel     CC-BY-SA-4.0  https://en.wikivoyage.org/wiki/Ottawa                /wiki,/w/load.php,/static
+en.wikibooks.org      reference  CC-BY-SA-4.0  https://en.wikibooks.org/wiki/Computer_Networks     /wiki,/w/load.php,/static
+en.wiktionary.org     reference  CC-BY-SA-4.0  https://en.wiktionary.org/wiki/network               /wiki,/w/load.php,/static
+wiki.openstreetmap.org reference CC-BY-SA-2.0  https://wiki.openstreetmap.org/wiki/Main_Page        /wiki,/w/load.php
+docs.python.org       dev        PSF-2.0       https://docs.python.org/3/library/index.html        /3
+developer.mozilla.org dev        CC-BY-SA-2.5  https://developer.mozilla.org/en-US/docs/Web/HTTP   /en-US/docs/Web/HTTP,/static
+www.debian.org        dev        OPL-or-GPL    https://www.debian.org/doc/                         /doc,/Pics,/debian.css
+www.rfc-editor.org    reference  IETF-Trust    https://www.rfc-editor.org/rfc/                     /rfc

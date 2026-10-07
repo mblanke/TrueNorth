@@ -92,6 +92,13 @@ export const routes: Routes = [
         title: 'Authoring · Range Designer - TrueNorth Range',
       },
       {
+        // Greyspace (simulated internet) for one range; :rangeId binds to the panel's input.
+        path: 'ranges/:rangeId/greyspace',
+        loadComponent: () =>
+          import('./features/greyspace/greyspace-panel.component').then(m => m.GreyspacePanelComponent),
+        title: 'Authoring · Greyspace - TrueNorth Range',
+      },
+      {
         // Background noise for one range: white cell only (instructorGuard on the hub;
         // the API checks noise:read / noise:control on every call).
         path: 'ranges/:id/noise',

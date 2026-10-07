@@ -1894,6 +1894,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/exercises/{exercise_id}/injects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Injects
+         * @description What each inject did (timeline and instructor), oldest first, every run kept.
+         *     **Permission: exercise:read**
+         */
+        get: operations["list_injects_exercises__exercise_id__injects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/exercises/{exercise_id}/objectives": {
         parameters: {
             query?: never;
@@ -2110,6 +2131,27 @@ export interface paths {
          *     **Permission: infra:write** — the registry is platform-wide, so only operators edit it.
          */
         patch: operations["update_image_golden_images__image_id__patch"];
+        trace?: never;
+    };
+    "/greyspace/corpora": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Corpora
+         * @description The corpus tiers (T0 CI fixture, T1 Mac sample, T2 lab, full) and what the control
+         *     plane can read of each one's manifest.
+         */
+        get: operations["greyspace_list_corpora"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/health": {
@@ -4813,6 +4855,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/greyspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description The range's Greyspace block and its status (``not_attached`` when there is none).
+         */
+        get: operations["greyspace_get_status"];
+        /**
+         * Attach
+         * @description Attach a Greyspace block to the range, or replace the one it has. With no body, the
+         *     block the range's template declares is used, else the defaults (T0 corpus, all packs).
+         */
+        put: operations["greyspace_attach"];
+        post?: never;
+        /**
+         * Detach
+         * @description Detach the range's Greyspace block. The shared corpus is untouched.
+         */
+        delete: operations["greyspace_detach"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/greyspace/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config
+         * @description What the range's Greyspace stack is generated to be: address plan, ISPs, services,
+         *     DNS zones and the generated file list.
+         */
+        get: operations["greyspace_get_config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/network-reservations": {
         parameters: {
             query?: never;
@@ -5219,6 +5311,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scenarios/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Scenario
+         * @description Run a scenario's timeline against a ready range.  **Permission: exercise:start**
+         *
+         *     202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.
+         *     422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is
+         *     down (the execution is recorded ``failed``).
+         */
+        post: operations["execute_scenario_scenarios_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenarios/executions/{execution_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Results
+         * @description State, inject counts and objectives (always ``unassessed``) of an execution.
+         */
+        get: operations["get_execution_results_scenarios_executions__execution_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenarios/executions/{execution_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Timeline
+         * @description Each timeline event with its recorded outcome (``pending`` until the worker reaches it).
+         */
+        get: operations["get_execution_timeline_scenarios_executions__execution_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scenarios/validate": {
         parameters: {
             query?: never;
@@ -5267,9 +5423,12 @@ export interface paths {
          * Delete Scenario
          * @description Delete a scenario.  **Permission: scenario:delete**
          *
-         *     409 while any exercise (including a soft-deleted one) still references it, or a
-         *     scheduled event not yet completed or cancelled will run it. Finished events keep
-         *     their row without the scenario.
+         *     409 while any exercise (including a finished or soft-deleted one, whose AAR still
+         *     reads the scenario) references it. Checked up front (SQLite does not enforce the FK)
+         *     and again at commit, for an exercise created in between. Also 409 while a scheduled
+         *     event not yet completed or cancelled will run it; finished events keep their row
+         *     without the scenario. Scenario executions do not block: they keep their record and
+         *     lose the link.
          */
         delete: operations["delete_scenario_scenarios__scenario_id__delete"];
         options?: never;
@@ -7637,6 +7796,41 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** CorpusSummary */
+        CorpusSummary: {
+            /**
+             * Available
+             * @description Whether the control plane can read this tier's manifest.
+             */
+            available: boolean;
+            /** Builder */
+            builder: string;
+            /** Bytes */
+            bytes?: number | null;
+            /** Cap Bytes */
+            cap_bytes: number | null;
+            /** Categories */
+            categories?: {
+                [key: string]: number;
+            } | null;
+            /** Description */
+            description: string;
+            /** Location */
+            location: string;
+            /** Sites */
+            sites?: number | null;
+            /** Threat Domains */
+            threat_domains?: number | null;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "t0" | "t1" | "t2" | "full";
+            /** Title */
+            title: string;
+            /** Version */
+            version?: string | null;
+        };
         /** CourseGenerateIn */
         CourseGenerateIn: {
             /**
@@ -8873,6 +9067,127 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * GreyspaceBlock
+         * @description A range's Greyspace block: the template ``greyspace:`` key, or attached through the API.
+         *     Same fields as ``scenario-engine/schemas/template.schema.json#/properties/greyspace``.
+         */
+        GreyspaceBlock: {
+            /**
+             * Corpus Tier
+             * @default t0
+             * @enum {string}
+             */
+            corpus_tier?: "t0" | "t1" | "t2" | "full";
+            /**
+             * Npc Profile
+             * @description Simulated users. Recorded only: NPC traffic is a later slice.
+             * @default off
+             * @enum {string}
+             */
+            npc_profile?: "off" | "office-day" | "quiet-night";
+            /**
+             * Public Prefix
+             * @description IPv4 CIDR covering every ISP prefix of the corpus. Omit to use the corpus's own.
+             */
+            public_prefix?: string | null;
+            /**
+             * Site Packs
+             * @description Site categories to serve (news, search, social, ...). Omit for all.
+             */
+            site_packs?: string[] | null;
+            /**
+             * Threat Infra
+             * @description Serve the corpus's threat-actor domains (C2, phishing stubs).
+             * @default true
+             */
+            threat_infra?: boolean;
+            /**
+             * Trust Ca
+             * @description Recorded only: the Greyspace root CA is a later slice.
+             * @default true
+             */
+            trust_ca?: boolean;
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version?: 1;
+        };
+        /** GreyspaceConfigOut */
+        GreyspaceConfigOut: {
+            /** Address Plan */
+            address_plan: {
+                [key: string]: unknown;
+            };
+            /**
+             * Corpus Tier
+             * @enum {string}
+             */
+            corpus_tier: "t0" | "t1" | "t2" | "full";
+            /** Corpus Version */
+            corpus_version: string;
+            /** Files */
+            files: string[];
+            /** Isps */
+            isps: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Services */
+            services: string[];
+            /** Site Packs */
+            site_packs: string[];
+            /** Sites */
+            sites: number;
+            /** Threat Domains */
+            threat_domains: {
+                [key: string]: unknown;
+            }[];
+            /** Tlds */
+            tlds: string[];
+            /** Zones */
+            zones: string[];
+        };
+        /** GreyspaceStatusOut */
+        GreyspaceStatusOut: {
+            /** Attached */
+            attached: boolean;
+            block?: components["schemas"]["GreyspaceBlock"] | null;
+            corpus?: components["schemas"]["CorpusSummary"] | null;
+            /** Deployed At */
+            deployed_at?: string | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Problems
+             * @description Why the block cannot render on its corpus now.
+             */
+            problems?: string[];
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Range State */
+            range_state: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_attached" | "configured" | "deployed" | "pending_infrastructure" | "failed";
+            /** @description The block the range's template declares, if any; attaching with no body uses it. */
+            template_block?: components["schemas"]["GreyspaceBlock"] | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -9117,6 +9432,78 @@ export interface components {
             success: boolean;
             /** Version */
             version?: string | null;
+        };
+        /** InjectCounts */
+        InjectCounts: {
+            /** Failed */
+            failed: number;
+            /** Fired */
+            fired: number;
+            /** Pending */
+            pending: number;
+            /** Skipped */
+            skipped: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * InjectRecordOut
+         * @description One recorded inject outcome.
+         */
+        InjectRecordOut: {
+            /** Action */
+            action: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /**
+             * Execution Mode
+             * @description simulated (synthetic records) | live; null if not run
+             */
+            execution_mode?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mitre Technique */
+            mitre_technique?: string | null;
+            /**
+             * Run Id
+             * @description the run that fired it; a replay is a new run
+             */
+            run_id?: string | null;
+            /**
+             * Seq
+             * @description timeline position; null for an instructor inject
+             */
+            seq?: number | null;
+            /**
+             * Source
+             * @description timeline | instructor
+             */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "fired" | "failed" | "skipped";
+            /** T */
+            t?: string | null;
+            /**
+             * Telemetry Count
+             * @default 0
+             */
+            telemetry_count?: number;
+            /**
+             * Telemetry Shipped
+             * @default false
+             */
+            telemetry_shipped?: boolean;
         };
         /** InstructorInjectIn */
         InstructorInjectIn: {
@@ -10010,6 +10397,23 @@ export interface components {
             /** Validator */
             validator: string;
         };
+        /** ObjectiveResultOut */
+        ObjectiveResultOut: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Ref Id */
+            ref_id: string;
+            /**
+             * Status
+             * @description an execution has no Students or evidence review, so nothing is scored
+             * @default unassessed
+             * @constant
+             */
+            status?: "unassessed";
+        };
         /** OnboardingPathIn */
         OnboardingPathIn: {
             /** Learning Path Id */
@@ -10885,6 +11289,76 @@ export interface components {
             duration_minutes?: number;
             /** Objectives */
             objectives: string[];
+        };
+        /** ScenarioExecuteIn */
+        ScenarioExecuteIn: {
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * Scenario Id
+             * Format: uuid
+             */
+            scenario_id: string;
+        };
+        /** ScenarioExecutionOut */
+        ScenarioExecutionOut: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id: string | null;
+            /** Scenario Name */
+            scenario_name: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "running" | "completed" | "failed";
+        };
+        /** ScenarioExecutionResultsOut */
+        ScenarioExecutionResultsOut: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            injects: components["schemas"]["InjectCounts"];
+            /** Objectives */
+            objectives: components["schemas"]["ObjectiveResultOut"][];
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id: string | null;
+            /** Scenario Name */
+            scenario_name: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "running" | "completed" | "failed";
         };
         /** ScenarioIn */
         ScenarioIn: {
@@ -12033,6 +12507,39 @@ export interface components {
             time: string;
             /** Vcpu Committed */
             vcpu_committed: number;
+        };
+        /**
+         * TimelineEntryOut
+         * @description A timeline event and what happened to it (``pending`` until the worker records it).
+         */
+        TimelineEntryOut: {
+            /** Action */
+            action: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /** Execution Mode */
+            execution_mode?: string | null;
+            /** Mitre Technique */
+            mitre_technique?: string | null;
+            /** Recorded At */
+            recorded_at?: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "fired" | "failed" | "skipped";
+            /** T */
+            t?: string | null;
+            /**
+             * Telemetry Count
+             * @default 0
+             */
+            telemetry_count?: number;
         };
         /** TimelineOut */
         TimelineOut: {
@@ -16410,6 +16917,37 @@ export interface operations {
             };
         };
     };
+    list_injects_exercises__exercise_id__injects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InjectRecordOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_objectives_exercises__exercise_id__objectives_get: {
         parameters: {
             query?: never;
@@ -16768,6 +17306,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_list_corpora: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorpusSummary"][];
                 };
             };
         };
@@ -21663,6 +22221,179 @@ export interface operations {
             };
         };
     };
+    greyspace_get_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceStatusOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_attach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GreyspaceBlock"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceStatusOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The block cannot run on its corpus; the body lists the problems */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    greyspace_detach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_get_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceConfigOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_network_reservations_ranges__range_id__network_reservations_get: {
         parameters: {
             query?: never;
@@ -22386,6 +23117,101 @@ export interface operations {
             };
         };
     };
+    execute_scenario_scenarios_execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScenarioExecuteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenarioExecutionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_results_scenarios_executions__execution_id__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenarioExecutionResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_timeline_scenarios_executions__execution_id__timeline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineEntryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     validate_scenario_scenarios_validate_post: {
         parameters: {
             query?: never;
@@ -22500,6 +23326,13 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An exercise references the scenario */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

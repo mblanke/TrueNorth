@@ -272,11 +272,53 @@ class TestExercisesAndObjectives:
     def test_run_scenario_v2_failure_cancels_the_exercise(self, world, notify, monkeypatch):
         # Production defect: the failure handler also set exercises.error_message, which does
         # not exist, so it raised in turn and the exercise stayed `running` forever.
+        from worker import inject_dispatch
+
         monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
+
+        def _down(*a, **k):
+            raise ValueError("injector down")
+
+        monkeypatch.setattr(inject_dispatch, "dispatch_inject", _down)
         with pytest.raises(ValueError):
-            tasks.run_scenario_v2(str(world.exercise.id), {"timeline": [{"t": "x:y"}]})
+            tasks.run_scenario_v2(str(world.exercise.id), {"timeline": [{"t": "0:01", "action": "phish"}]})
         assert _fresh(world.db, world.exercise).state == m.ExerciseState.cancelled
         assert notify.call_args.args[1]["state"] == "failed"
+
+    def test_a_malformed_event_is_recorded_failed_not_a_crash(self, world, monkeypatch):
+        from app.scenario_runs import InjectRecord
+
+        monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
+        out = tasks.run_scenario_v2(str(world.exercise.id), {"timeline": [{"t": "x:y", "action": "phish"}]})
+        assert out["status"] == "completed"
+        [rec] = world.db.scalars(select(InjectRecord)).all()
+        assert (rec.status, rec.detail) == ("failed", "invalid event: timeline offset 'x:y' is not m:ss")
+
+    @pytest.mark.parametrize("state", [m.ExerciseState.paused, m.ExerciseState.completed, m.ExerciseState.cancelled])
+    def test_state_changes_are_guarded_on_the_enum_column(self, world, state):
+        ex = world.exercise
+        ex.state = state
+        world.db.commit()
+        with tasks._db_session() as db:
+            assert db_ops.start_exercise(db, str(ex.id)) == 0
+            assert db_ops.complete_exercise(db, str(ex.id)) == 0
+            assert db_ops.cancel_exercise(db, str(ex.id)) == 0
+            assert db_ops.exercise_state(db, str(ex.id)) == state.value
+        assert _fresh(world.db, ex).state == state
+
+    def test_inject_records_and_execution_state_on_the_api_schema(self, world):
+        from app.scenario_runs import InjectRecord, ScenarioExecution
+
+        x = _add(world.db, ScenarioExecution(tenant_id=world.tenant.id, scenario_name="s", range_id=world.range.id,
+                                             state="pending", definition={}))
+        with tasks._db_session() as db:
+            assert db_ops.set_execution_state(db, str(x.id), "running", only_from=("pending",)) == 1
+            assert db_ops.set_execution_state(db, str(x.id), "running", only_from=("pending",)) == 0
+            db_ops.record_inject(db, execution_id=str(x.id), run_id="r1", seq=0, t="0:00", action="a", status="fired")
+            db_ops.record_inject(db, execution_id=str(x.id), run_id="r2", seq=1, t="0:01", action="b", status="skipped")
+            assert db_ops.recorded_seqs(db, "r1") == {0}
+            assert db_ops.execution_context(db, str(x.id))[2] == "running"
+        assert {r.status for r in world.db.scalars(select(InjectRecord))} == {"fired", "skipped"}
 
 
 # -- detection objectives on a real backend (worker/detection.py) -------------------
@@ -734,6 +776,16 @@ PG_CALLS = {
     "refresh_exercise_score": lambda db: db_ops.refresh_exercise_score(db, ID),
     "complete_exercise": lambda db: db_ops.complete_exercise(db, ID),
     "cancel_exercise": lambda db: db_ops.cancel_exercise(db, ID),
+    "exercise_state": lambda db: db_ops.exercise_state(db, ID),
+    "exercise_context": lambda db: db_ops.exercise_context(db, ID),
+    "execution_context": lambda db: db_ops.execution_context(db, ID),
+    "set_execution_state": lambda db: db_ops.set_execution_state(
+        db, ID, "failed", only_from=("pending", "running"), error="e"
+    ),
+    "recorded_seqs": lambda db: db_ops.recorded_seqs(db, "run-1"),
+    "record_inject": lambda db: db_ops.record_inject(
+        db, exercise_id=ID, run_id="run-1", seq=0, t="0:00", action="simulated_execution", status="fired"
+    ),
     "exercise_for_aar": lambda db: db_ops.exercise_for_aar(db, ID),
     "objectives_for_aar": lambda db: db_ops.objectives_for_aar(db, ID),
     "recent_completed_exercises": lambda db: db_ops.recent_completed_exercises(db, ID),

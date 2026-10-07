@@ -20,6 +20,7 @@ from .exercise_forge import router as exercise_forge_router
 from .exercises import router as exercises_router
 from .exercises_collective import router as collective_exercises_router
 from .golden_images import router as golden_images_router
+from .greyspace import router as greyspace_router
 from .hypervisors import router as hypervisors_router
 from .injectors import router as injectors_router
 from .integrations import lti_router
@@ -36,6 +37,7 @@ from .qsp import router as qsp_router
 from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
 from .registration import router as registration_router
+from .scenario_executions import router as scenario_executions_router
 from .scenarios import router as scenarios_router
 from .storage import router as storage_router
 from .templates import router as templates_router
@@ -84,6 +86,8 @@ __all__ = [
     "course_releases_router",
     "course_publications_router",
     "lab_sessions_router",
+    "greyspace_router",
+    "scenario_executions_router",
     "wiki_router",
     "tickets_router",
     "notifications_router",

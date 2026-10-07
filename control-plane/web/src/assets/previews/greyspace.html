@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Greyspace preview</title><style>html{color-scheme:light}body{margin:0;background:#fff7f7}</style></head><body>
+<div id="tn-gs">
+<style>
+/* Layout: text-only rail + one main column; tabs switch Designer / Live / Breadcrumbs / Threat infra. Red/white only (2026-09-28 decision). */
+#tn-gs{--tn-bg:#fff7f7;--tn-panel:#ffffff;--tn-text:#292326;--tn-muted:#655b60;--tn-line:#eadbdd;--tn-accent:#b5122b;--tn-soft:#fcecef;--tn-warn:#961b30;--tn-warnbg:#fff0f2;--tn-ok:#2f6b45;--tn-okbg:#ecf5ef;--tn-grey:#e9e4e6;--tn-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--tn-text);background:var(--tn-bg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+#tn-gs *{box-sizing:border-box}#tn-gs h1,#tn-gs h2,#tn-gs h3,#tn-gs p{margin:0}
+#tn-gs h1{font-size:26px;line-height:1.2;font-weight:600;letter-spacing:-.5px;text-wrap:balance}#tn-gs h2{font-size:17px;font-weight:600}#tn-gs h3{font-size:14px;font-weight:600}
+#tn-gs small{font-size:12px;color:var(--tn-muted)}#tn-gs code{font:12px var(--tn-mono);background:var(--tn-bg);padding:1px 5px;border-radius:3px;overflow-wrap:anywhere}
+#tn-gs button,#tn-gs select,#tn-gs input{font:inherit;color:inherit}
+#tn-gs button{background:var(--tn-panel);border:1px solid var(--tn-line);padding:7px 12px;border-radius:6px;cursor:pointer}
+#tn-gs button:hover{background:var(--tn-soft)}#tn-gs button.primary{background:var(--tn-accent);border-color:var(--tn-accent);color:#fff}#tn-gs button.primary:hover{background:#9a0f24}
+#tn-gs :focus-visible{outline:3px solid var(--tn-accent);outline-offset:2px}
+#tn-gs select,#tn-gs input[type=text]{background:var(--tn-panel);border:1px solid var(--tn-line);padding:7px 8px;border-radius:6px;width:100%}
+#tn-gs .top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 22px;background:#bd1631;color:#fff;flex-wrap:wrap}
+#tn-gs .brand{font-weight:650;letter-spacing:1.5px}#tn-gs .brand span{font-weight:400;letter-spacing:0;margin-left:14px;opacity:.9}
+#tn-gs .test{font-size:11px;letter-spacing:1px;background:#fff;color:var(--tn-accent);padding:4px 8px;border-radius:4px}
+#tn-gs .layout{display:grid;grid-template-columns:176px minmax(0,1fr)}
+#tn-gs aside{padding:22px 12px;background:var(--tn-panel);border-right:1px solid var(--tn-line)}
+#tn-gs .navlabel{font-size:11px;color:var(--tn-muted);letter-spacing:1px;margin:0 9px 10px}
+#tn-gs .navitem{padding:9px 10px;margin-bottom:3px;border-radius:6px;color:var(--tn-muted)}#tn-gs .navitem.active{background:var(--tn-soft);color:var(--tn-accent);font-weight:600}
+#tn-gs .navgroup{margin-top:24px}
+#tn-gs main{padding:24px;min-width:0}
+#tn-gs .eyebrow{font-size:11px;letter-spacing:1.3px;color:var(--tn-accent);margin-bottom:8px}
+#tn-gs .heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+#tn-gs .subtitle{color:var(--tn-muted);margin-top:8px}
+#tn-gs .tabs{display:flex;gap:4px;border-bottom:1px solid var(--tn-line);margin:20px 0;flex-wrap:wrap}
+#tn-gs .tabs button{border:0;border-radius:0;background:transparent;padding:10px 12px;color:var(--tn-muted)}
+#tn-gs .tabs button[aria-selected=true]{border-bottom:3px solid var(--tn-accent);color:var(--tn-accent);font-weight:600}
+#tn-gs .grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px}
+#tn-gs .grid.even{grid-template-columns:repeat(2,minmax(0,1fr))}
+#tn-gs .panel{background:var(--tn-panel);border:1px solid var(--tn-line);border-radius:9px;padding:18px;min-width:0}
+#tn-gs .panelhead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+#tn-gs .pill{font-size:11px;padding:3px 7px;border-radius:4px;background:var(--tn-soft);color:var(--tn-accent);display:inline-block;white-space:nowrap}
+#tn-gs .pill.ok{background:var(--tn-okbg);color:var(--tn-ok)}#tn-gs .pill.off{background:var(--tn-grey);color:var(--tn-muted)}#tn-gs .pill.warn{background:var(--tn-warnbg);color:var(--tn-warn)}
+#tn-gs .row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;border-top:1px solid var(--tn-line);padding:11px 0}
+#tn-gs .row small{display:block}
+#tn-gs .field{display:grid;gap:5px;margin-bottom:13px}#tn-gs .field>span{font-size:12px;color:var(--tn-muted)}
+#tn-gs .checks{display:flex;flex-wrap:wrap;gap:6px}
+#tn-gs .chk{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--tn-line);border-radius:6px;padding:5px 9px;font-size:13px}
+#tn-gs .chk input{accent-color:var(--tn-accent);margin:0}
+#tn-gs .switch{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid var(--tn-line);padding:11px 0}
+#tn-gs .switch input{accent-color:var(--tn-accent);width:18px;height:18px}
+#tn-gs .canvas{overflow-x:auto;border:1px solid var(--tn-line);border-radius:8px;background:repeating-linear-gradient(0deg,transparent 0 23px,#f6eef0 23px 24px),repeating-linear-gradient(90deg,transparent 0 23px,#f6eef0 23px 24px),var(--tn-panel)}
+#tn-gs .canvas svg{display:block;min-width:620px;width:100%;height:auto}
+#tn-gs svg text{font-family:system-ui,sans-serif;fill:var(--tn-text)}
+#tn-gs .gszone{cursor:pointer}#tn-gs .gszone:hover rect.zone{fill:#fbe3e8}
+#tn-gs .stencils{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+#tn-gs .stencil{font-size:12px;padding:5px 9px;border:1px solid var(--tn-line);border-radius:5px;color:var(--tn-muted);background:var(--tn-panel)}
+#tn-gs .stencil.new{border-color:var(--tn-accent);color:var(--tn-accent);font-weight:600}
+#tn-gs .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+#tn-gs .stat{background:var(--tn-panel);border:1px solid var(--tn-line);border-radius:9px;padding:13px 15px}
+#tn-gs .stat b{display:block;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+#tn-gs .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--tn-ok);margin-right:7px}#tn-gs .dot.off{background:#b9adb1}#tn-gs .dot.warn{background:var(--tn-accent)}
+#tn-gs .tablewrap{overflow-x:auto}
+#tn-gs table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+#tn-gs th{text-align:left;font-size:11px;letter-spacing:.8px;color:var(--tn-muted);font-weight:500;padding:8px 10px;border-bottom:1px solid var(--tn-line);white-space:nowrap}
+#tn-gs td{padding:10px;border-bottom:1px solid var(--tn-line);vertical-align:top}
+#tn-gs tr.sel td{background:var(--tn-soft)}#tn-gs tbody tr{cursor:pointer}
+#tn-gs .yes{color:var(--tn-ok);font-weight:600}#tn-gs .no{color:#b9adb1}
+#tn-gs .bar{height:34px;display:flex;align-items:flex-end;gap:2px}#tn-gs .bar i{flex:1;background:#e7b9c1;border-radius:2px 2px 0 0}#tn-gs .bar i.hi{background:var(--tn-accent)}
+#tn-gs .code{font:12px/1.6 var(--tn-mono);background:var(--tn-bg);border:1px solid var(--tn-line);border-radius:6px;padding:11px;white-space:pre;overflow-x:auto;margin-top:10px}
+#tn-gs .note{margin-top:12px;padding:11px 13px;background:var(--tn-bg);border-radius:6px;color:var(--tn-muted);font-size:13px}
+#tn-gs .foot{margin-top:20px;padding-top:13px;border-top:1px solid var(--tn-line);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--tn-muted);font-size:11px}
+#tn-gs [hidden]{display:none!important}
+@media(max-width:900px){#tn-gs .grid,#tn-gs .grid.even{grid-template-columns:1fr}#tn-gs .stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){#tn-gs .layout{grid-template-columns:1fr}#tn-gs aside{display:none}}
+@media(max-width:450px){#tn-gs main{padding:16px}#tn-gs .top{padding:12px 16px}#tn-gs .brand span{display:block;margin:3px 0 0}#tn-gs h1{font-size:22px}}
+@media(pointer:coarse){#tn-gs button,#tn-gs select{min-height:44px}}
+@media(prefers-reduced-motion:no-preference){#tn-gs .panel{transition:border-color .15s}}
+</style>
+<header class="top"><div class="brand">TRUE NORTH <span>Range operations</span></div><span class="test">DESIGN PREVIEW · FICTIONAL DATA</span></header>
+<div class="layout">
+<aside aria-label="Range operations menu"><div class="navlabel">RANGE OPS</div><div class="navitem">Ranges</div><div class="navitem active">Range Designer</div><div class="navitem">Exercises</div><div class="navitem">Golden images</div><div class="navgroup"><div class="navlabel">GREYSPACE</div><div class="navitem">Corpus</div><div class="navitem">Site packs</div><div class="navitem">NPC profiles</div></div></aside>
+<main>
+<div class="eyebrow">RANGE · RVB-ALDER-02 · TENANT CPT NORTH</div>
+<div class="heading"><div><h1>Give the range an internet.</h1><p class="subtitle">Greyspace adds backbone routing, root DNS, rehosted sites, attacker infrastructure and simulated users. The site content is read from one shared corpus.</p></div><span class="pill" id="tn-state">Range state · created</span></div>
+<nav class="tabs" aria-label="Greyspace views">
+<button type="button" data-view="designer" aria-selected="true">Designer</button>
+<button type="button" data-view="live" aria-selected="false">Live status</button>
+<button type="button" data-view="crumbs" aria-selected="false">Breadcrumbs</button>
+<button type="button" data-view="threat" aria-selected="false">Threat infra</button>
+</nav>
+
+<section data-panel="designer">
+<div class="grid">
+<div class="panel">
+<div class="panelhead"><h2>Topology</h2><small>Click the Greyspace zone to configure it</small></div>
+<div class="stencils" aria-label="Stencils"><span class="stencil">Workstation</span><span class="stencil">Server</span><span class="stencil">DC</span><span class="stencil">Router</span><span class="stencil">Firewall</span><span class="stencil">Subnet</span><span class="stencil new">Greyspace (replaces Internet/Cloud)</span></div>
+<div class="canvas"><svg viewBox="0 0 700 380" role="img" aria-label="Range topology: corporate LAN and DMZ behind a firewall and edge router, connected to a locked Greyspace zone">
+  <g>
+    <rect x="16" y="20" width="250" height="200" rx="8" fill="#ffffff" stroke="#d9c6ca"/>
+    <text x="30" y="42" font-size="12" font-weight="600">Corporate LAN · 10.10.0.0/24</text>
+    <g font-size="11">
+      <rect x="32" y="60" width="98" height="34" rx="5" fill="#fff7f7" stroke="#d9c6ca"/><text x="44" y="81">dc01 · DC</text>
+      <rect x="150" y="60" width="98" height="34" rx="5" fill="#fff7f7" stroke="#d9c6ca"/><text x="162" y="81">file01</text>
+      <rect x="32" y="108" width="98" height="34" rx="5" fill="#fff7f7" stroke="#d9c6ca"/><text x="44" y="129">ws01–04</text>
+      <rect x="150" y="108" width="98" height="34" rx="5" fill="#fff7f7" stroke="#d9c6ca"/><text x="160" y="129">usersim ×6</text>
+      <text x="32" y="170" font-size="11" fill="#655b60">usersim runs GHOSTS clients</text>
+      <text x="32" y="186" font-size="11" fill="#655b60">driven by the Greyspace NPC brain</text>
+    </g>
+    <rect x="16" y="240" width="250" height="120" rx="8" fill="#ffffff" stroke="#d9c6ca"/>
+    <text x="30" y="262" font-size="12" font-weight="600">DMZ · 10.10.5.0/24</text>
+    <g font-size="11"><rect x="32" y="280" width="98" height="34" rx="5" fill="#fff7f7" stroke="#d9c6ca"/><text x="44" y="301">web01</text>
+    <rect x="150" y="280" width="98" height="34" rx="5" fill="#fff7f7" stroke="#d9c6ca"/><text x="162" y="301">mail01</text></g>
+  </g>
+  <g font-size="11">
+    <rect x="296" y="150" width="86" height="40" rx="5" fill="#fff7f7" stroke="#b5122b"/><text x="307" y="168">fw01</text><text x="307" y="182" fill="#655b60" font-size="10">pfSense · 3 NICs</text>
+    <rect x="296" y="62" width="86" height="40" rx="5" fill="#fff7f7" stroke="#b5122b"/><text x="307" y="80">edge01</text><text x="307" y="94" fill="#655b60" font-size="10">AS 64601</text>
+  </g>
+  <g stroke="#b9adb1" stroke-width="1.5" fill="none">
+    <path d="M266 120 H296 V170"/><path d="M266 300 H339 V190"/><path d="M339 150 V102"/><path d="M382 82 H410"/>
+  </g>
+  <g class="gszone" id="tn-gszone" tabindex="0" role="button" aria-label="Greyspace zone, configure">
+    <rect class="zone" x="410" y="20" width="274" height="340" rx="10" fill="#fcecef" stroke="#b5122b" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="426" y="44" font-size="13" font-weight="700" fill="#b5122b">GREYSPACE</text>
+    <text x="426" y="60" font-size="11" fill="#655b60">block v1 · locked · 198.18.0.0/15</text>
+    <g font-size="11">
+      <rect x="426" y="76" width="242" height="148" rx="6" fill="#ffffff" stroke="#d9c6ca"/>
+      <text x="438" y="96" font-weight="600">gs-core · Docker host</text>
+      <text x="438" y="116" fill="#655b60">frr · BGP AS 64500 (3 ISPs)</text>
+      <text x="438" y="132" fill="#655b60">dns-root · TLD · resolver</text>
+      <text x="438" y="148" fill="#655b60">webfarm · video · search</text>
+      <text x="438" y="164" fill="#655b60">mail · fake root CA</text>
+      <text x="438" y="180" fill="#655b60">ghosts-api · log-ship</text>
+      <text x="438" y="208" fill="#b5122b">NFS ro → corpus@2026.10 (10.4 TB)</text>
+      <rect x="426" y="238" width="242" height="70" rx="6" fill="#ffffff" stroke="#d9c6ca" id="tn-threatbox"/>
+      <text x="438" y="258" font-weight="600">gs-threat · per exercise</text>
+      <text x="438" y="276" fill="#655b60" id="tn-threattxt">C2 · phishing · payload host</text>
+      <text x="438" y="294" fill="#655b60">scenario-controlled DNS</text>
+      <text x="426" y="334" fill="#655b60">Overlay for breadcrumbs: 2.1 MB, per range</text>
+    </g>
+  </g>
+</svg></div>
+<p class="note">The Greyspace zone is one block in the template (<code>includes: [{block: greyspace, version: 1}]</code>). Its inner nodes are locked; you set it up through the panel on the right.</p>
+</div>
+
+<div class="panel" id="tn-props">
+<div class="panelhead"><h2>Greyspace settings</h2><span class="pill">Block v1</span></div>
+<label class="field"><span>Corpus version</span><select id="tn-corpus"><option>corpus@2026.10 · 10.4 TB · 18,240 sites</option><option>corpus@2026.07 · 9.1 TB · 16,902 sites</option></select></label>
+<div class="field"><span>Site packs</span><div class="checks" id="tn-packs"></div></div>
+<label class="field"><span>Public address space</span><input type="text" id="tn-prefix" value="198.18.0.0/15"></label>
+<label class="field"><span>Simulated users</span><select id="tn-npc"><option value="office">Office day · 6 users · 08:00–17:00</option><option value="quiet">Quiet night · 2 users</option><option value="surge">Patch-Tuesday surge · 12 users</option><option value="off">Off</option></select></label>
+<div class="switch"><div><h3>Threat-actor infrastructure</h3><small>Scenarios can start C2, phishing and payload sites</small></div><input type="checkbox" id="tn-threat" checked aria-label="Threat-actor infrastructure"></div>
+<div class="switch"><div><h3>Trust the Greyspace root CA</h3><small>Push the CA to range VMs so HTTPS sites show as valid</small></div><input type="checkbox" id="tn-ca" checked aria-label="Trust the Greyspace root CA"></div>
+<div class="row"><div><h3>Estimated cost</h3><small id="tn-cost"></small></div><span class="pill ok">Corpus shared · 0 GB copied</span></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button type="button" class="primary">Save topology</button><button type="button" data-view="live">Preview live status</button></div>
+</div>
+</div>
+</section>
+
+<section data-panel="live" hidden>
+<div class="stats">
+<div class="stat"><small>Rehosted sites</small><b id="tn-sites">18,240</b><small>across 5 packs</small></div>
+<div class="stat"><small>DNS zones</small><b>1,412</b><small>root + 38 TLDs</small></div>
+<div class="stat"><small>Requests, last 15 min</small><b>9,806</b><small>82% from simulated users</small></div>
+<div class="stat"><small>Breadcrumbs found</small><b>7 / 12</b><small>across 3 teams</small></div>
+</div>
+<div class="grid">
+<div class="panel"><div class="panelhead"><h2>Services on gs-core</h2><span class="pill ok">All healthy</span></div>
+<div id="tn-svc"></div></div>
+<div class="panel"><div class="panelhead"><h2>Simulated users</h2><span class="pill" id="tn-npcpill">Office day</span></div>
+<small>Requests per minute, last 30 minutes</small>
+<div class="bar" id="tn-bars" aria-hidden="true"></div>
+<div class="row"><div><h3>Most visited</h3><small>search, webmail, news, video, code hosting</small></div><span class="pill off">Example</span></div>
+<div class="row"><div><h3>Noise ratio</h3><small>Benign traffic around each scenario inject</small></div><b>14 : 1</b></div>
+<div class="row"><div><h3>Logs</h3><small>Webfarm, DNS and mail logs to <code>greyspace-*</code> in OpenSearch</small></div><span class="pill ok">Streaming</span></div>
+</div>
+</div>
+</section>
+
+<section data-panel="crumbs" hidden>
+<div class="grid">
+<div class="panel"><div class="panelhead"><h2>Breadcrumbs in this exercise</h2><label style="display:flex;gap:8px;align-items:center"><small>Team</small><select id="tn-team" style="width:auto"><option value="0">Blue 1</option><option value="1">Blue 2</option><option value="2">Blue 3</option></select></label></div>
+<div class="tablewrap"><table><thead><tr><th>SITE / PATH</th><th>HIDDEN AS</th><th>PLANTED</th><th>FOUND</th></tr></thead><tbody id="tn-crumbs"></tbody></table></div>
+<p class="note">Breadcrumbs are written to the range overlay and never to the shared corpus. They are removed on reset. "Found" means the team's traffic fetched the URL, checked by the <code>opensearch_query</code> validator.</p>
+</div>
+<div class="panel" id="tn-crumbdetail"></div>
+</div>
+</section>
+
+<section data-panel="threat" hidden>
+<div class="panel"><div class="panelhead"><h2>Attacker infrastructure</h2><span class="pill" id="tn-threatpill">Scenario controlled</span></div>
+<div class="tablewrap"><table><thead><tr><th>DOMAIN</th><th>ADDRESS</th><th>ROLE</th><th>INJECT</th><th>STATE</th></tr></thead><tbody id="tn-threatrows"></tbody></table></div>
+<p class="note">Injectors start and stop these and register their DNS records at runtime. Scenario placeholders like <code>{{ c2_domain }}</code> resolve to these names. Each domain gets its own address and announced prefix, so blue teams see a separate host and not a shared proxy.</p>
+</div>
+</section>
+
+<footer class="foot"><span>Fictional domains, addresses and teams · Not a real rehosted site list</span><span>Mock interaction only · Nothing is provisioned</span></footer>
+</main></div>
+<script>
+(()=>{const root=document.getElementById('tn-gs');const q=s=>root.querySelector(s);const qa=s=>[...root.querySelectorAll(s)];
+const packs=[['News',4120,true],['Search & portals',310,true],['Social',2240,true],['Webmail',90,true],['Video',1880,false],['Gov & military',3260,true],['Dev & code',1950,false],['Shopping',4390,false]];
+const services=[['frr','BGP · 3 peers · 14 prefixes','ok'],['dns-root','root + 38 TLDs · 1,412 zones','ok'],['dns-resolver','198.18.0.53 · cache 91% hit','ok'],['webfarm','nginx · 18,240 vhosts · overlay on','ok'],['video','HLS from corpus · 2 streams','ok'],['search','index corpus@2026.10','ok'],['mail','SMTP · IMAP · webmail','ok'],['ghosts-api','6 clients connected','ok'],['log-ship','→ OpenSearch greyspace-*','ok']];
+const crumbs=[
+ {site:'northwire-news.com',path:'/2026/09/alder-port-outage',hid:'Comment in page source',planted:'T+00:05',found:[1,1,0],tmpl:'<!-- maint: rotate creds on {{ team.host }} -->',why:'Points to the compromised jump host.'},
+ {site:'pastebox.io',path:'/r/7Hq2xL',hid:'Public paste',planted:'T+00:40',found:[1,0,1],tmpl:'user={{ team.svc_account }}\nhash={{ team.ntlm_hash }}',why:'Leaked credential that matches the AD logon in the inject.'},
+ {site:'codehub.dev',path:'/acme-it/ops-scripts/blob/main/sync.ps1',hid:'Hard-coded token in script',planted:'T+01:10',found:[0,0,1],tmpl:'$Token = "{{ team.flag }}"',why:'Per-team flag; the answer differs for each team.'},
+ {site:'img.photoshare.net',path:'/u/harbourcam/IMG_2291.jpg',hid:'EXIF GPS + comment',planted:'T+02:00',found:[1,1,1],tmpl:'EXIF UserComment: {{ team.flag }}',why:'OSINT step: links the persona to the staging site.'}];
+const threat=[['update-cdn-sync.net','198.19.44.10','C2 redirector','c2_beacon','up'],['acme-payroll-portal.com','198.19.61.7','Phishing site','email_phish','up'],['dl.fileshare-sync.org','198.19.12.88','Payload host','http_burst','planned'],['ns1.update-cdn-sync.net','198.19.44.53','Attacker DNS','dns_spike','planned']];
+let state={view:'designer',team:0,crumb:0};
+try{const s=JSON.parse(localStorage.getItem('tn-gs')||'{}');if(['designer','live','crumbs','threat'].includes(s.view))state.view=s.view}catch(e){}
+function save(){try{localStorage.setItem('tn-gs',JSON.stringify({view:state.view}))}catch(e){}}
+q('#tn-packs').innerHTML=packs.map((p,i)=>`<label class="chk"><input type="checkbox" id="tn-pack${i}" ${p[2]?'checked':''}>${p[0]} <small>${p[1].toLocaleString()}</small></label>`).join('');
+q('#tn-svc').innerHTML=services.map(s=>`<div class="row"><div><h3><span class="dot"></span>${s[0]}</h3><small>${s[1]}</small></div><span class="pill ok">Healthy</span></div>`).join('');
+function bars(){const npc=q('#tn-npc').value;const base={office:22,quiet:5,surge:40,off:0}[npc];q('#tn-bars').innerHTML=Array.from({length:30},(_,i)=>{const h=npc==='off'?2:Math.max(4,Math.min(34,base*(.6+.4*Math.sin(i/3)+(i%7===0?.5:0))));return`<i style="height:${h}px" class="${i===29?'hi':''}"></i>`}).join('');q('#tn-npcpill').textContent=q('#tn-npc').selectedOptions[0].textContent.split(' · ')[0]}
+function cost(){const n=packs.filter((_,i)=>q('#tn-pack'+i).checked).reduce((a,p)=>a+p[1],0);q('#tn-sites').textContent=n.toLocaleString();q('#tn-cost').textContent=`gs-core 8 vCPU · 16 GB · 40 GB disk${q('#tn-threat').checked?' + gs-threat 2 vCPU · 4 GB':''} · ${n.toLocaleString()} sites served`}
+function renderCrumbs(){const t=state.team;q('#tn-crumbs').innerHTML=crumbs.map((c,i)=>`<tr class="${i===state.crumb?'sel':''}" data-crumb="${i}" tabindex="0"><td><b>${c.site}</b><br><small><code>${c.path}</code></small></td><td>${c.hid}</td><td>${c.planted}</td><td class="${c.found[t]?'yes':'no'}">${c.found[t]?'Found':'Not yet'}</td></tr>`).join('');
+const c=crumbs[state.crumb];const team=['Blue 1','Blue 2','Blue 3'][t];
+q('#tn-crumbdetail').innerHTML=`<div class="panelhead"><h2>Breadcrumb detail</h2><span class="pill ${c.found[t]?'ok':'off'}">${team} · ${c.found[t]?'found':'not yet'}</span></div>
+<div class="row"><div><h3>Where</h3><small>https://${c.site}${c.path}</small></div></div>
+<div class="row"><div><h3>Why it is there</h3><small>${c.why}</small></div></div>
+<div class="row"><div><h3>Template</h3><small>Rendered per team when planted</small></div><span class="pill">per team</span></div>
+<div class="code">${c.tmpl.replace(/</g,'&lt;')}</div>
+<div class="code">greyspace:
+  breadcrumbs:
+    - site: ${c.site}
+      path: ${c.path}
+      hint_style: ${c.hid.toLowerCase().replace(/[^a-z]+/g,'_')}
+      per_team: true</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button type="button" class="primary">Preview in site</button><button type="button">Remove from overlay</button></div>`}
+function renderThreat(){const on=q('#tn-threat').checked;q('#tn-threatpill').textContent=on?'Scenario controlled':'Disabled for this range';q('#tn-threatpill').className='pill'+(on?'':' off');
+q('#tn-threatrows').innerHTML=threat.map(r=>`<tr><td><b>${r[0]}</b></td><td><code>${r[1]}</code></td><td>${r[2]}</td><td><code>${r[3]}</code></td><td><span class="pill ${!on?'off':r[4]==='up'?'warn':'off'}">${!on?'disabled':r[4]==='up'?'Live':'At inject time'}</span></td></tr>`).join('');
+q('#tn-threattxt').textContent=on?'C2 · phishing · payload host':'disabled';q('#tn-threatbox').setAttribute('stroke-dasharray',on?'':'4 3')}
+function render(){qa('[data-view]').forEach(b=>{if(b.closest('.tabs'))b.setAttribute('aria-selected',String(b.dataset.view===state.view))});qa('[data-panel]').forEach(p=>p.hidden=p.dataset.panel!==state.view);q('#tn-team').value=String(state.team);cost();bars();renderCrumbs();renderThreat()}
+root.addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b){state.view=b.dataset.view;render();save();return}const r=e.target.closest('[data-crumb]');if(r){state.crumb=Number(r.dataset.crumb);renderCrumbs()}});
+root.addEventListener('keydown',e=>{if(e.key!=='Enter'&&e.key!==' ')return;const r=e.target.closest('[data-crumb]');if(r){e.preventDefault();state.crumb=Number(r.dataset.crumb);renderCrumbs();root.querySelector(`[data-crumb="${state.crumb}"]`).focus()}if(e.target.id==='tn-gszone'){e.preventDefault();q('#tn-corpus').focus()}});
+q('#tn-gszone').addEventListener('click',()=>{const p=q('#tn-props');p.style.borderColor='var(--tn-accent)';setTimeout(()=>p.style.borderColor='',900);q('#tn-corpus').focus()});
+root.addEventListener('change',e=>{if(e.target.id==='tn-team')state.team=Number(e.target.value);render()});
+render();
+})();
+</script>
+</div>
+</body></html>

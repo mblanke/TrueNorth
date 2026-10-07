@@ -23,16 +23,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import (  # noqa: F401 — network_inventory, noise, range_leases, range_ops: register their tables
+from . import (  # noqa: F401 — network_inventory, noise, range_leases, range_ops, scenario_runs: register tables
     network_inventory,
     noise,
     range_leases,
     range_ops,
+    scenario_runs,
     ws_auth,
 )
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
+from .greyspace import models as _greyspace_models  # noqa: F401 — registers range_greyspace
 from .log_format import configure_logging
 from .models import Range, Tenant, User, UserRole
 from .rbac import Permission, require_permission
@@ -262,6 +264,7 @@ from .routers import (
     exercise_forge_router,
     exercises_router,
     golden_images_router,
+    greyspace_router,
     hypervisors_router,
     injectors_router,
     integrations_router,
@@ -279,6 +282,7 @@ from .routers import (
     quizzes_router,
     ranges_router,
     registration_router,
+    scenario_executions_router,
     scenarios_router,
     storage_router,
     templates_router,
@@ -303,6 +307,7 @@ app.include_router(exercises_router)
 app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)
+app.include_router(scenario_executions_router)
 app.include_router(injectors_router)
 app.include_router(noise_router)
 app.include_router(ai_authoring_router)
@@ -345,6 +350,8 @@ app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
+# Greyspace: a simulated internet attached to a range (ADR 0007)
+app.include_router(greyspace_router)
 # Knowledge base, trouble tickets ("Support") and the in-app notification bell
 app.include_router(wiki_router)
 app.include_router(tickets_router)

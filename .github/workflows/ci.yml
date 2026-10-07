@@ -392,3 +392,27 @@ jobs:
       - name: Tear down
         if: always()
         run: $VCSIM_COMPOSE down -v
+
+  # Greyspace (ADR 0007): build the T0 corpus, render the simulated-internet stack from
+  # its manifest and run it under its own compose project. The script asserts DNS through
+  # the root -> TLD -> authoritative chain, a BGP route learned between the two ISPs,
+  # HTTP by name across both ISPs, the threat-actor stub, and the per-range overlay in
+  # front of the read-only corpus; it tears the stack down on exit. Separate from the
+  # `integration` job so the itest stack does not grow (the API side of Greyspace is
+  # tests/integration/test_greyspace_flow.py there). Stdlib Python only.
+  greyspace:
+    runs-on: ubuntu-latest
+    needs: lint-python
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: ffmpeg (the T0 test-pattern video)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      - name: T0 stack check (DNS, BGP, HTTP, threat stub, overlay)
+        run: bash greyspace/scripts/check-t0.sh
+        env:
+          PY: python
+          GS_PROJECT: gs-ci

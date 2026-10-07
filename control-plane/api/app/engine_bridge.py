@@ -119,5 +119,9 @@ def injector_catalogue() -> list[dict[str, Any]]:
             "description": getattr(inst, "description", "") or "",
             "required_params": list(getattr(inst, "required_params", []) or []),
             "mitre_techniques": sorted(set(technique_map.values())),
+            # Contract flags (docs/scenario-inject-execution.md): an injector that touches
+            # range hosts is recorded "skipped" on the mock backend instead of run.
+            "touches_range_hosts": bool(getattr(inst, "touches_range_hosts", True)),
+            "execution_mode": str(getattr(inst, "execution_mode", "simulated")),
         })
     return catalogue
