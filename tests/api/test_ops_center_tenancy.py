@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 import pytest
 from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
-from app.models import AnalystAnnotation, Exercise, Range, Scenario, SharedCommand, Template, Tenant, UserRole
+from app.models import AnalystAnnotation, Exercise, Range, Scenario, SharedCommand, Template, Tenant, User, UserRole
 
 THEIRS = uuid.UUID("00000000-0000-0000-0000-0000000000bb")
 MINE = uuid.UUID("00000000-0000-0000-0000-000000000001")  # the AUTH_DISABLED user's tenant
@@ -42,13 +42,23 @@ def _exercise(db, tenant: uuid.UUID) -> Exercise:
     return ex
 
 
+def _user(db, user_id: uuid.UUID, tenant: uuid.UUID, name: str) -> User:
+    """A users row: annotations and commands reference their author (keys are enforced)."""
+    u = User(id=user_id, email=f"{user_id.hex[:8]}@example.test", display_name=name,
+             role=UserRole.admin, tenant_id=tenant, keycloak_id=f"kc-{user_id.hex[:8]}")
+    db.add(u)
+    db.flush()
+    return u
+
+
 @pytest.fixture
 def theirs(db_session):
     ex = _exercise(db_session, THEIRS)
+    analyst = _user(db_session, uuid.uuid4(), THEIRS, "their analyst")
     note = AnalystAnnotation(
         id=uuid.uuid4(),
         exercise_id=ex.id,
-        user_id=uuid.uuid4(),
+        user_id=analyst.id,
         user_display_name="their analyst",
         content="their finding",
         annotation_type="note",
@@ -59,7 +69,7 @@ def theirs(db_session):
     cmd = SharedCommand(
         id=uuid.uuid4(),
         exercise_id=ex.id,
-        user_id=uuid.uuid4(),
+        user_id=analyst.id,
         user_display_name="their analyst",
         command="nmap -sV 10.0.0.0/24",
         shared_at=datetime.now(UTC),
@@ -127,7 +137,7 @@ def _nameless_user():
     )
     fastapi_app.dependency_overrides[get_current_user] = lambda: who
     try:
-        yield
+        yield who
     finally:
         fastapi_app.dependency_overrides.pop(get_current_user, None)
 
@@ -135,7 +145,8 @@ def _nameless_user():
 def test_a_user_without_a_display_name_can_post(client, db_session, broadcasts):
     """``user.display_name or user.username``: CurrentUser has no ``username`` (500)."""
     ex = _exercise(db_session, MINE)
-    with _nameless_user():
+    with _nameless_user() as who:
+        _user(db_session, uuid.UUID(who.id), MINE, "")
         r = client.post(f"/ops/exercises/{ex.id}/commands", json={"command": "id"})
         assert r.status_code == 201, r.text
         assert r.json()["user_display_name"] == "n@example.test"

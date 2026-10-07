@@ -184,6 +184,7 @@ class TestLaunch:
         act(db_session, service.advance, session)
         assert session.state == "provisioning" and json.loads(session.probes)[0]["ok"] is False
         session.provisioning_at = datetime.now(UTC) - timedelta(hours=2)
+        db_session.flush()  # the session does not autoflush; run_locked re-reads the row
         act(db_session, service.advance, session)
         assert session.state in ("cleaning", "destroyed") and "not ready within" in session.error
 
@@ -272,6 +273,7 @@ class TestFailureAndExpiry:
         until(db_session, b, "ready")
         act(db_session, service.add_evidence, a, {"kind": "submission", "data": {"flag": "abc"}})
         a.max_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        db_session.flush()  # the session does not autoflush; run_locked re-reads the row
         act(db_session, service.advance, a)
         assert a.state in ("expired", "destroyed") and a.end_reason == "expired"
         until(db_session, a, "destroyed")
@@ -727,6 +729,7 @@ class TestBoundaries:
                     keycloak_id=who.keycloak_id,
                 )
             )
+            db_session.flush()  # the user before the enrollment that references it
             ensure_enrollment(db_session, user_id=uuid.UUID(who.id), course_id=course_id, tenant_id=DEV_TENANT)
             db_session.commit()
             sid = client.post("/lab-sessions", json={"course_id": str(course_id), "activity_id": "mod_006"}).json()[

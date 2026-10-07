@@ -424,3 +424,36 @@ def _with_revised_question(root):
     meta["parts"] = {n: {"digest": arc_release.digest_files(f), "files": f} for n, f in parts.items()}
     meta["release_digest"] = arc_release.release_digest(meta)
     return arc_release._tarball(run, meta)
+
+
+# -- PostgreSQL (skipped without TEST_POSTGRES_ADMIN_URL) ----------------------------
+
+
+def test_the_first_upload_is_stored_on_postgresql(postgres_engine, tmp_path):
+    """The API's sessions do not autoflush (app.db.SessionLocal), and nothing relates
+    CourseRelease to CourseReleaseBlob, so the unit of work orders their inserts by class
+    name: the release first. PostgreSQL refused course_releases_blob_sha256_fkey and the
+    very first upload was answered 409 "another upload ... at the same moment"."""
+    from app import programme_ingest, qsp_ingest
+    from app.course_releases import service
+    from app.course_releases.models import CourseReleaseBlob
+    from app.models import Tenant
+    from sqlalchemy.orm import Session
+
+    data = build(tmp_path)
+    with Session(postgres_engine, autoflush=False, expire_on_commit=False) as s:
+        tenant = Tenant(name="t", slug=f"t-{uuid.uuid4().hex[:6]}")
+        s.add(tenant)
+        s.commit()
+        qsp_ingest.import_crosswalk(s, CROSSWALK.read_text(encoding="utf-8"), tenant_id=tenant.id)
+        programme_ingest.import_programme(s, CATALOGUE.read_text(encoding="utf-8"), tenant_id=tenant.id)
+        s.commit()
+
+        release, created = service.create_candidate(s, data, tenant_id=tenant.id, user_id=None)
+        s.commit()
+        assert created and release.version == 1
+        assert s.get(CourseReleaseBlob, release.blob_sha256) is not None
+
+        again, created = service.create_candidate(s, data, tenant_id=tenant.id, user_id=None)
+        assert not created and again.id == release.id
+        assert s.query(CourseRelease).count() == 1
