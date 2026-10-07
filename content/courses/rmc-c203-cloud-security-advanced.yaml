@@ -3,7 +3,7 @@
 # `refs` are keys into content/catalogue/references.yaml.
 
 course_code: RMC C203
-title: Cloud Security - Advanced
+title: Cloud Security — Advanced
 version: '1.0'
 difficulty: intermediate
 duration_hours: 100
