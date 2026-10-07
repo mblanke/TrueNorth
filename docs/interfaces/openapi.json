@@ -525,6 +525,106 @@
         "title": "AcceptIn",
         "type": "object"
       },
+      "ActivityReport": {
+        "description": "One executed action, echoing the planned fields and their signature verbatim.",
+        "properties": {
+          "at": {
+            "maxLength": 40,
+            "title": "At",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "kind": {
+            "maxLength": 64,
+            "title": "Kind",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "ran_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ran At"
+          },
+          "sig": {
+            "maxLength": 64,
+            "title": "Sig",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "maxLength": 512,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "kind",
+          "sig"
+        ],
+        "title": "ActivityReport",
+        "type": "object"
+      },
+      "AgentIn": {
+        "properties": {
+          "node": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Node",
+            "type": "string"
+          },
+          "zone": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "title": "AgentIn",
+        "type": "object"
+      },
+      "AgentsIn": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentIn"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Agents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "agents"
+        ],
+        "title": "AgentsIn",
+        "type": "object"
+      },
       "AnnotationIn": {
         "properties": {
           "annotation_type": {
@@ -3028,6 +3128,22 @@
           "module_title"
         ],
         "title": "DeliveredBy",
+        "type": "object"
+      },
+      "DeployIn": {
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "refresh_targets": {
+            "default": true,
+            "title": "Refresh Targets",
+            "type": "boolean"
+          }
+        },
+        "title": "DeployIn",
         "type": "object"
       },
       "DetectionDraftIn": {
@@ -6344,6 +6460,43 @@
         "title": "ModuleProgressOut",
         "type": "object"
       },
+      "MoodleSsoIn": {
+        "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          }
+        },
+        "title": "MoodleSsoIn",
+        "type": "object"
+      },
+      "MoodleSsoOut": {
+        "description": "POST ``token`` (form field) to ``action``. Never put it in a URL.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "token"
+        ],
+        "title": "MoodleSsoOut",
+        "type": "object"
+      },
       "NationOut": {
         "properties": {
           "flag_emoji": {
@@ -6586,6 +6739,35 @@
         "title": "NetworkDeviceUpdate",
         "type": "object"
       },
+      "NetworkReservationOut": {
+        "description": "One address or VLAN a range holds on a shared network.",
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "holder": {
+            "title": "Holder",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "kind",
+          "value",
+          "holder"
+        ],
+        "title": "NetworkReservationOut",
+        "type": "object"
+      },
       "NetworkSummaryOut": {
         "properties": {
           "active_devices": {
@@ -6607,6 +6789,770 @@
           }
         },
         "title": "NetworkSummaryOut",
+        "type": "object"
+      },
+      "NoiseActivityOut": {
+        "description": "Ground truth: one action an agent reported having run.",
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lookalike": {
+            "title": "Lookalike",
+            "type": "boolean"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "persona": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Persona"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "at",
+          "node",
+          "kind",
+          "lookalike",
+          "ok",
+          "detail"
+        ],
+        "title": "NoiseActivityOut",
+        "type": "object"
+      },
+      "NoiseAgentAction": {
+        "description": "A planned action as an agent receives it: signed, and without ``lookalike``.",
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "persona": {
+            "title": "Persona",
+            "type": "string"
+          },
+          "sig": {
+            "title": "Sig",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "persona",
+          "kind",
+          "target",
+          "params",
+          "sig"
+        ],
+        "title": "NoiseAgentAction",
+        "type": "object"
+      },
+      "NoiseAgentIssuedOut": {
+        "description": "A newly (re-)keyed agent. The token is shown this once and never again.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "ok",
+              "lost"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "zone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone"
+          }
+        },
+        "required": [
+          "id",
+          "node",
+          "state",
+          "token"
+        ],
+        "title": "NoiseAgentIssuedOut",
+        "type": "object"
+      },
+      "NoiseAgentOut": {
+        "description": "A registered agent. ``state`` is ``pending`` until its first poll, ``lost``\nafter five missed polls.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "ok",
+              "lost"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "zone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone"
+          }
+        },
+        "required": [
+          "id",
+          "node",
+          "state"
+        ],
+        "title": "NoiseAgentOut",
+        "type": "object"
+      },
+      "NoiseAgentPlanOut": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/NoiseAgentAction"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "poll_seconds": {
+            "title": "Poll Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "node",
+          "level",
+          "poll_seconds",
+          "actions"
+        ],
+        "title": "NoiseAgentPlanOut",
+        "type": "object"
+      },
+      "NoiseDeployAgent": {
+        "properties": {
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "mgmt_ip": {
+            "title": "Mgmt Ip",
+            "type": "string"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "zone",
+          "platform",
+          "ip",
+          "mgmt_ip"
+        ],
+        "title": "NoiseDeployAgent",
+        "type": "object"
+      },
+      "NoiseDeployOut": {
+        "description": "What a deploy does (``dry_run``) or did. ``task_id`` only when it was handed to\nthe worker.",
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/NoiseDeployAgent"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "controller_url": {
+            "title": "Controller Url",
+            "type": "string"
+          },
+          "dropped_targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dropped Targets",
+            "type": "array"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "mgmt_cidr": {
+            "title": "Mgmt Cidr",
+            "type": "string"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/NoiseDeploySkipped"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "targets": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Targets",
+            "type": "object"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "dry_run",
+          "agents",
+          "skipped",
+          "targets",
+          "dropped_targets",
+          "controller_url",
+          "mgmt_cidr"
+        ],
+        "title": "NoiseDeployOut",
+        "type": "object"
+      },
+      "NoiseDeploySkipped": {
+        "properties": {
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "reason"
+        ],
+        "title": "NoiseDeploySkipped",
+        "type": "object"
+      },
+      "NoiseDialOut": {
+        "description": "What the effective level means: how much of the roster works, and how hard.",
+        "properties": {
+          "actions_per_hour": {
+            "title": "Actions Per Hour",
+            "type": "number"
+          },
+          "active_fraction": {
+            "title": "Active Fraction",
+            "type": "number"
+          },
+          "diurnal_amplitude": {
+            "title": "Diurnal Amplitude",
+            "type": "number"
+          },
+          "lookalike_share": {
+            "title": "Lookalike Share",
+            "type": "number"
+          }
+        },
+        "required": [
+          "active_fraction",
+          "actions_per_hour",
+          "diurnal_amplitude",
+          "lookalike_share"
+        ],
+        "title": "NoiseDialOut",
+        "type": "object"
+      },
+      "NoisePersonaOut": {
+        "properties": {
+          "attrs": {
+            "additionalProperties": true,
+            "title": "Attrs",
+            "type": "object"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "habits": {
+            "additionalProperties": true,
+            "title": "Habits",
+            "type": "object"
+          },
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lookalikes": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lookalikes"
+          },
+          "node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "work_end": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work End"
+          },
+          "work_start": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Start"
+          }
+        },
+        "required": [
+          "id",
+          "handle",
+          "display_name",
+          "habits",
+          "attrs"
+        ],
+        "title": "NoisePersonaOut",
+        "type": "object"
+      },
+      "NoisePlanOut": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/NoisePlannedAction"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "level",
+          "actions"
+        ],
+        "title": "NoisePlanOut",
+        "type": "object"
+      },
+      "NoisePlannedAction": {
+        "description": "One action in a node's plan. ``lookalike`` is shown to the white cell only.",
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lookalike": {
+            "title": "Lookalike",
+            "type": "boolean"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "persona": {
+            "title": "Persona",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "persona",
+          "kind",
+          "target",
+          "lookalike",
+          "params"
+        ],
+        "title": "NoisePlannedAction",
+        "type": "object"
+      },
+      "NoisePresetsOut": {
+        "description": "Named dial positions and the activity vocabulary.",
+        "properties": {
+          "activities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "lookalikes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Lookalikes",
+            "type": "array"
+          },
+          "presets": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Presets",
+            "type": "object"
+          },
+          "target_pools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Pools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "presets",
+          "activities",
+          "lookalikes",
+          "target_pools"
+        ],
+        "title": "NoisePresetsOut",
+        "type": "object"
+      },
+      "NoiseProfileOut": {
+        "description": "A range's noise settings. ``configured`` is false until anyone set them; the\nother fields are then the defaults a first PUT would start from.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "dial": {
+            "$ref": "#/components/schemas/NoiseDialOut"
+          },
+          "effective_level": {
+            "title": "Effective Level",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "overrides": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Overrides",
+            "type": "object"
+          },
+          "pack": {
+            "title": "Pack",
+            "type": "string"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "range_id": {
+            "title": "Range Id",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "targets": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Targets",
+            "type": "object"
+          },
+          "utc_offset": {
+            "title": "Utc Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "range_id",
+          "configured",
+          "enabled",
+          "paused",
+          "level",
+          "effective_level",
+          "seed",
+          "utc_offset",
+          "overrides",
+          "targets",
+          "pack",
+          "dial"
+        ],
+        "title": "NoiseProfileOut",
+        "type": "object"
+      },
+      "NoiseReportOut": {
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "integer"
+          },
+          "duplicate": {
+            "title": "Duplicate",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted",
+          "rejected",
+          "duplicate"
+        ],
+        "title": "NoiseReportOut",
+        "type": "object"
+      },
+      "NoiseStatsOut": {
+        "properties": {
+          "agents": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Agents",
+            "type": "object"
+          },
+          "by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Kind",
+            "type": "object"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "lookalikes": {
+            "title": "Lookalikes",
+            "type": "integer"
+          },
+          "minutes": {
+            "title": "Minutes",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "minutes",
+          "total",
+          "failed",
+          "lookalikes",
+          "by_kind",
+          "agents"
+        ],
+        "title": "NoiseStatsOut",
         "type": "object"
       },
       "OUIn": {
@@ -7404,6 +8350,115 @@
           "offset"
         ],
         "title": "PaginatedResponse[ExternalActivityOut]",
+        "type": "object"
+      },
+      "ProfileIn": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "maxProperties": 500,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overrides"
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "maxProperties": 32,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targets"
+          },
+          "utc_offset": {
+            "anyOf": [
+              {
+                "maximum": 14.0,
+                "minimum": -12.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utc Offset"
+          }
+        },
+        "title": "ProfileIn",
         "type": "object"
       },
       "ProgressSummaryOut": {
@@ -9079,6 +10134,51 @@
           }
         },
         "title": "RegistrationSuggestions",
+        "type": "object"
+      },
+      "ReportIn": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityReport"
+            },
+            "maxItems": 500,
+            "title": "Results",
+            "type": "array"
+          },
+          "version": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "ReportIn",
+        "type": "object"
+      },
+      "RosterIn": {
+        "properties": {
+          "count": {
+            "default": 20,
+            "maximum": 2000.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "domain": {
+            "default": "corp.local",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Domain",
+            "type": "string"
+          },
+          "replace": {
+            "default": false,
+            "title": "Replace",
+            "type": "boolean"
+          }
+        },
+        "title": "RosterIn",
         "type": "object"
       },
       "ScenarioDraftIn": {
@@ -11948,7 +13048,7 @@
     },
     "/ad-sync/status": {
       "get": {
-        "description": "Return current AD sync status and statistics.  **Permission: user:read**",
+        "description": "Return current AD sync status and statistics.  **Permission: user:read**\n\nCounts are the caller's tenant only \u2014 a count of another tenant's directory\nusers is still disclosure. The Keycloak federation fields describe the shared\nidentity provider and are the same for everyone.",
         "operationId": "ad_sync_status_ad_sync_status_get",
         "responses": {
           "200": {
@@ -13224,7 +14324,7 @@
     },
     "/audit-log": {
       "get": {
-        "description": "Query the audit log.  **Permission: audit:read**",
+        "description": "Query the audit log.  **Permission: audit:read**\n\nScoped to the caller's tenant. A caller who also holds the platform-level\n``tenant:read`` (the platform admin, who already lists every tenant) sees every\ntenant's entries, including legacy rows written before writers recorded a tenant.",
         "operationId": "list_audit_log_audit_log_get",
         "parameters": [
           {
@@ -13584,7 +14684,7 @@
         ]
       },
       "post": {
-        "description": "Add a certification record for a user.",
+        "description": "Add a certification record for a user (self-reported, or by an instructor).",
         "operationId": "add_certification_certifications_users__user_id__post",
         "parameters": [
           {
@@ -14300,7 +15400,7 @@
     },
     "/competency/users/{user_id}/assertions": {
       "post": {
-        "description": "Record a competency assertion for a user.",
+        "description": "Record a competency assertion for a user (``learning_record:write``, never self-service).",
         "operationId": "create_assertion_competency_users__user_id__assertions_post",
         "parameters": [
           {
@@ -15195,7 +16295,7 @@
         ]
       },
       "post": {
-        "description": "Create a new course with optional ordered modules.",
+        "description": "Create a new course with optional ordered modules.  **Permission: course:author**",
         "operationId": "create_course_courses_post",
         "requestBody": {
           "content": {
@@ -15242,7 +16342,7 @@
     },
     "/courses/generate-programme-paths": {
       "post": {
-        "description": "Build unpublished LearningPaths for the imported programme, term by term.\n\nDelivery schedule only. These paths carry no qualification claim and are separate\nfrom the CFITES developmental paths generated from the QSP spine.",
+        "description": "Build unpublished LearningPaths for the imported programme, term by term.\n\n**Permission: course:author** (was: any signed-in user).\n\nDelivery schedule only. These paths carry no qualification claim and are separate\nfrom the CFITES developmental paths generated from the QSP spine.",
         "operationId": "generate_programme_paths_courses_generate_programme_paths_post",
         "responses": {
           "200": {
@@ -15271,7 +16371,7 @@
     },
     "/courses/import-course-content": {
       "post": {
-        "description": "Upload an authored course YAML and attach its modules/quizzes (idempotent).\n\nThe course must already exist in the programme catalogue. Everything created\nhere is unpublished.",
+        "description": "Upload an authored course YAML and attach its modules/quizzes (idempotent).\n\n**Permission: course:author** (was: any signed-in user).\n\nThe course must already exist in the programme catalogue. Everything created\nhere is unpublished.",
         "operationId": "import_course_content_courses_import_course_content_post",
         "requestBody": {
           "content": {
@@ -15320,7 +16420,7 @@
     },
     "/courses/import-programme": {
       "post": {
-        "description": "Upload a programme catalogue CSV and upsert its courses (idempotent).\n\nCourses are created unpublished and, unless the row names a real ``qsp_code``,\nunbound from the qualification spine. See ``programme_ingest`` for why.",
+        "description": "Upload a programme catalogue CSV and upsert its courses (idempotent).\n\n**Permission: course:author** (was: any signed-in user).\n\nCourses are created unpublished and, unless the row names a real ``qsp_code``,\nunbound from the qualification spine. See ``programme_ingest`` for why.",
         "operationId": "import_programme_courses_import_programme_post",
         "requestBody": {
           "content": {
@@ -15369,7 +16469,7 @@
     },
     "/courses/{course_id}": {
       "delete": {
-        "description": "Delete a course and its modules.",
+        "description": "Delete a course and its modules.  **Permission: course:author**",
         "operationId": "delete_course_courses__course_id__delete",
         "parameters": [
           {
@@ -15456,7 +16556,7 @@
         ]
       },
       "patch": {
-        "description": "Update course metadata.",
+        "description": "Update course metadata.  **Permission: course:author**",
         "operationId": "update_course_courses__course_id__patch",
         "parameters": [
           {
@@ -17958,7 +19058,7 @@
     },
     "/exercises/{exercise_id}/aar/html": {
       "get": {
-        "description": "Retrieve AAR as rendered HTML.  **Permission: aar:read**",
+        "description": "Retrieve AAR as rendered HTML.  **Permission: aar:read**\n\nRendered from the stored report JSON on every read, so reports written by the worker\nor before this renderer existed get the full page and are escaped the same way.",
         "operationId": "get_aar_html_exercises__exercise_id__aar_html_get",
         "parameters": [
           {
@@ -18007,7 +19107,7 @@
     },
     "/exercises/{exercise_id}/aar/pdf": {
       "get": {
-        "description": "Retrieve AAR as downloadable PDF.  **Permission: aar:read**\n\nRenders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps).",
+        "description": "Retrieve AAR as downloadable PDF.  **Permission: aar:read**\n\nRenders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps). Its core\nfonts are latin-1 only; text outside it is transliterated (``aar_html.pdf_text``).",
         "operationId": "get_aar_pdf_exercises__exercise_id__aar_pdf_get",
         "parameters": [
           {
@@ -18156,7 +19256,7 @@
     },
     "/exercises/{exercise_id}/objectives": {
       "get": {
-        "description": "List objectives for an exercise.  **Permission: exercise:read**",
+        "description": "List objectives for an exercise.  **Permission: exercise:read**\n\nOwn-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this\nlisted any tenant's objectives, validators and evidence by exercise id).",
         "operationId": "list_objectives_exercises__exercise_id__objectives_get",
         "parameters": [
           {
@@ -18209,7 +19309,7 @@
     },
     "/exercises/{exercise_id}/objectives/{ref_id}/ack": {
       "post": {
-        "description": "Acknowledge (achieve) an objective.  **Permission: exercise:complete**",
+        "description": "Acknowledge (achieve) an objective.  **Permission: exercise:complete**\n\nOwn-tenant exercises only (foreign id = 404).",
         "operationId": "acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post",
         "parameters": [
           {
@@ -19292,7 +20392,7 @@
     },
     "/hypervisors/nodes": {
       "get": {
-        "description": "Every discovered host across all connections, as last discovered. Read-only; the\ndashboard's cluster panel. No hypervisor is contacted \u2014 run discovery to refresh.",
+        "description": "Every discovered host across the caller's tenant's connections, as last discovered.\nRead-only; the dashboard's cluster panel. No hypervisor is contacted \u2014 run discovery to\nrefresh.",
         "operationId": "list_all_nodes_hypervisors_nodes_get",
         "responses": {
           "200": {
@@ -19644,6 +20744,53 @@
           }
         ],
         "summary": "Record External Activity",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
+    "/integrations/moodle/sso": {
+      "post": {
+        "description": "A one-minute, single-use ticket that signs the caller into their unit's Moodle.\n\nThe browser POSTs ``token`` to ``action``. Students need an active enrolment in\nthe course; staff (``learning_record:write``) enter as teachers. A course in\nanother tenant is 404. Never put the ticket in a URL: it would land in Moodle's\naccess log and browser history.",
+        "operationId": "moodle_sso_ticket_integrations_moodle_sso_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoodleSsoIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoodleSsoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Moodle Sso Ticket",
         "tags": [
           "integrations"
         ]
@@ -20819,7 +21966,7 @@
         ]
       },
       "post": {
-        "description": "Create a learning path (ordered sequence of courses).",
+        "description": "Create a learning path (ordered sequence of courses).  **Permission: course:author**",
         "operationId": "create_learning_path_learning_paths_post",
         "requestBody": {
           "content": {
@@ -20866,7 +22013,7 @@
     },
     "/learning-paths/{lp_id}": {
       "delete": {
-        "description": "Delete a learning path.",
+        "description": "Delete a learning path.  **Permission: course:author**",
         "operationId": "delete_learning_path_learning_paths__lp_id__delete",
         "parameters": [
           {
@@ -20953,7 +22100,7 @@
         ]
       },
       "patch": {
-        "description": "Update a learning path.",
+        "description": "Update a learning path.  **Permission: course:author**",
         "operationId": "update_learning_path_learning_paths__lp_id__patch",
         "parameters": [
           {
@@ -21234,6 +22381,21 @@
         ]
       }
     },
+    "/lti/public-key.pem": {
+      "get": {
+        "description": "The tool's public key as PEM, for Moodle farm nodes.\n\nA node fetches this when it starts (``infra/platform/moodle/hooks/04-truenorth-bootstrap.sh``)\nand trusts it for LTI messages, sign-in tickets and course sync, so a key rotation\nreaches every node on its next restart. It is the public half only.",
+        "operationId": "lti_public_key_pem_lti_public_key_pem_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Lti Public Key Pem",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
     "/network-devices/": {
       "get": {
         "operationId": "list_devices_network_devices__get",
@@ -21428,6 +22590,789 @@
         "summary": "Update Device",
         "tags": [
           "network"
+        ]
+      }
+    },
+    "/noise/agent/plan": {
+      "get": {
+        "description": "The calling node's actions for the next ``minutes``. Doubles as the heartbeat.\n\nEach action is signed; ``lookalike`` is withheld (the agent has no use for it, and a\nstolen token should not learn which upcoming activity is cover).",
+        "operationId": "agent_plan_noise_agent_plan_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "minutes",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 60,
+              "minimum": 1,
+              "title": "Minutes",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Noise-Agent-Token",
+            "required": true,
+            "schema": {
+              "title": "X-Noise-Agent-Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoiseAgentPlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agent Plan",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/agent/report": {
+      "post": {
+        "description": "Record what the agent did. Only signed, planned actions are accepted; each is\nrecorded once. ``lookalike`` is derived from the kind, never taken from the agent.",
+        "operationId": "agent_report_noise_agent_report_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Noise-Agent-Token",
+            "required": true,
+            "schema": {
+              "title": "X-Noise-Agent-Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoiseReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agent Report",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/presets": {
+      "get": {
+        "description": "The named dial positions and the activity vocabulary.",
+        "operationId": "presets_noise_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoisePresetsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Presets",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}": {
+      "get": {
+        "description": "The range's noise settings (defaults, ``configured: false``, if none yet).",
+        "operationId": "get_profile_noise_ranges__range_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoiseProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Profile",
+        "tags": [
+          "noise"
+        ]
+      },
+      "put": {
+        "description": "Create or change the range's noise settings: the dial, ``enabled`` (start/stop),\n``paused``, per-node or per-zone overrides, and target pools. Only the fields sent\nchange.",
+        "operationId": "put_profile_noise_ranges__range_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoiseProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Profile",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}/activity": {
+      "get": {
+        "description": "Ground truth, newest first. Which events on the wire were synthetic.",
+        "operationId": "list_activity_noise_ranges__range_id__activity_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lookalike",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lookalike"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NoiseActivityOut"
+                  },
+                  "title": "Response List Activity Noise Ranges  Range Id  Activity Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Activity",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}/agents": {
+      "get": {
+        "description": "The range's live (not revoked) agents and whether they are polling.",
+        "operationId": "list_agents_noise_ranges__range_id__agents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NoiseAgentOut"
+                  },
+                  "title": "Response List Agents Noise Ranges  Range Id  Agents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Agents",
+        "tags": [
+          "noise"
+        ]
+      },
+      "post": {
+        "description": "Register (or re-key) agents. Each token is returned once and never again.\n\nRe-registering an existing node issues a fresh token and invalidates the old one,\nwhich is also how a compromised token is rotated.",
+        "operationId": "register_agents_noise_ranges__range_id__agents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NoiseAgentIssuedOut"
+                  },
+                  "title": "Response Register Agents Noise Ranges  Range Id  Agents Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Agents",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}/agents/{agent_id}": {
+      "delete": {
+        "description": "Revoke an agent's token. Its ground truth is kept for the AAR.",
+        "operationId": "revoke_agent_noise_ranges__range_id__agents__agent_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke Agent",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}/deploy": {
+      "post": {
+        "description": "Put noise on a provisioned range, from its template's ``noise:`` block.\n\nDerives the target pools from the template's servers, registers an agent on every\nagent node (fresh tokens), creates the built-in roster if there is none, and hands\nthe worker an Ansible run that installs the agent over the management network.\n``dry_run`` shows all of that without changing anything.\n\nWindows nodes are listed under ``skipped`` until the Windows agent exists.",
+        "operationId": "deploy_noise_ranges__range_id__deploy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoiseDeployOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Deploy",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}/personas": {
+      "get": {
+        "description": "The synthetic people whose routines make the range's noise.",
+        "operationId": "list_personas_noise_ranges__range_id__personas_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NoisePersonaOut"
+                  },
+                  "title": "Response List Personas Noise Ranges  Range Id  Personas Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Personas",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}/personas/roster": {
+      "post": {
+        "description": "Fill the range with the built-in roster, spread over the registered agents' nodes.",
+        "operationId": "generate_roster_noise_ranges__range_id__personas_roster_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RosterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NoisePersonaOut"
+                  },
+                  "title": "Response Generate Roster Noise Ranges  Range Id  Personas Roster Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate Roster",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}/plan": {
+      "get": {
+        "description": "What ``node``'s agent will be told to do next \u2014 the same plan the agent gets.",
+        "operationId": "preview_plan_noise_ranges__range_id__plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Node",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minutes",
+            "required": false,
+            "schema": {
+              "default": 15,
+              "maximum": 60,
+              "minimum": 1,
+              "title": "Minutes",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoisePlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Plan",
+        "tags": [
+          "noise"
+        ]
+      }
+    },
+    "/noise/ranges/{range_id}/stats": {
+      "get": {
+        "description": "Counts over the last ``minutes``: actions by kind, failures, lookalikes, agents by state.",
+        "operationId": "activity_stats_noise_ranges__range_id__stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minutes",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "maximum": 1440,
+              "minimum": 1,
+              "title": "Minutes",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoiseStatsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Activity Stats",
+        "tags": [
+          "noise"
         ]
       }
     },
@@ -23819,7 +25764,7 @@
     },
     "/qsp/generate-exercises": {
       "post": {
-        "description": "Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).",
+        "description": "Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).\n\n**Permission: course:author and exercise:create.**",
         "operationId": "generate_exercises_qsp_generate_exercises_post",
         "responses": {
           "200": {
@@ -23848,7 +25793,7 @@
     },
     "/qsp/generate-learning-paths": {
       "post": {
-        "description": "Build per-PO courses, qualification paths, role paths, and the developmental progression.",
+        "description": "Build per-PO courses, qualification paths, role paths, and the developmental progression.\n\n**Permission: course:author.**",
         "operationId": "generate_learning_paths_qsp_generate_learning_paths_post",
         "responses": {
           "200": {
@@ -23877,7 +25822,7 @@
     },
     "/qsp/import-competency-crosswalk": {
       "post": {
-        "description": "Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).\n\nUpload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.",
+        "description": "Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).\n\n**Permission: course:author + tenant:read** \u2014 platform admin only; it rewrites the\nshared spine's PO links (see ``SPINE_WRITE``).\n\nUpload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.",
         "operationId": "import_competency_crosswalk_qsp_import_competency_crosswalk_post",
         "requestBody": {
           "content": {
@@ -23926,7 +25871,7 @@
     },
     "/qsp/import-crosswalk": {
       "post": {
-        "description": "Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).",
+        "description": "Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).\n\n**Permission: course:author + tenant:read** \u2014 platform admin only (was: any\nsigned-in user, Students included). See ``SPINE_WRITE``.",
         "operationId": "import_crosswalk_qsp_import_crosswalk_post",
         "requestBody": {
           "content": {
@@ -24717,7 +26662,7 @@
     },
     "/quizzes/{quiz_id}/questions": {
       "get": {
-        "description": "Instructor view with answer key (any authenticated user with tenant access in v1).",
+        "description": "Instructor view with the answer key (``course:author`` only).",
         "operationId": "get_quiz_questions_quizzes__quiz_id__questions_get",
         "parameters": [
           {
@@ -25627,6 +27572,59 @@
           }
         ],
         "summary": "Download Range Document",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/network-reservations": {
+      "get": {
+        "description": "Addresses and VLANs this range holds on shared networks (app/network_inventory/).\n**Permission: range:read**",
+        "operationId": "list_network_reservations_ranges__range_id__network_reservations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NetworkReservationOut"
+                  },
+                  "title": "Response List Network Reservations Ranges  Range Id  Network Reservations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Network Reservations",
         "tags": [
           "ranges"
         ]
@@ -28137,6 +30135,7 @@
         ]
       },
       "patch": {
+        "description": "Update a team.  **Permission: user:update**\n\nUntil 2026-10-07 this needed only a login: a student could rename or resize\nany team in their tenant.",
         "operationId": "update_team_teams__team_id__patch",
         "parameters": [
           {
@@ -28370,7 +30369,7 @@
     },
     "/telemetry/{range_id}/events": {
       "post": {
-        "description": "Ingest telemetry events into a range's index.  **Permission: telemetry:write**\n\nThe range must belong to the caller's tenant (404 otherwise). Students cannot write:\ndetection objectives are scored against this index.",
+        "description": "Ingest telemetry events into a range's index.  **Permission: telemetry:write**\n\nThe range must belong to the caller's tenant (404 otherwise). Students cannot write:\ndetection objectives are scored against this index. Each event is stored with a\n``mitre_technique`` list when one is known: its own ``mitre_technique`` /\n``technique_id`` if that is an ATT&CK ID, else one mapped from ``event_type``.",
         "operationId": "ingest_telemetry_telemetry__range_id__events_post",
         "parameters": [
           {
@@ -28432,7 +30431,7 @@
     },
     "/telemetry/{range_id}/search": {
       "get": {
-        "description": "Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).",
+        "description": "Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).\n\n``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch\n``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.\nA query outside it is a 422.",
         "operationId": "search_telemetry_telemetry__range_id__search_get",
         "parameters": [
           {
@@ -28446,13 +30445,14 @@
             }
           },
           {
-            "description": "OpenSearch query string",
+            "description": "field:value, field:\"a phrase\", field:prefix*, field:* (exists) and free text, ANDed",
             "in": "query",
             "name": "q",
             "required": false,
             "schema": {
               "default": "*",
-              "description": "OpenSearch query string",
+              "description": "field:value, field:\"a phrase\", field:prefix*, field:* (exists) and free text, ANDed",
+              "maxLength": 512,
               "title": "Q",
               "type": "string"
             }
@@ -28464,6 +30464,7 @@
             "schema": {
               "default": 50,
               "maximum": 500,
+              "minimum": 1,
               "title": "Size",
               "type": "integer"
             }

@@ -94,6 +94,8 @@ export interface TelemetryEvent {
   range_id?: string;
   tenant_id?: string;
   inject?: boolean;
+  /** ATT&CK technique IDs the API tagged the event with on ingest. */
+  mitre_technique?: string[] | string;
   [key: string]: unknown;
 }
 

@@ -1,7 +1,7 @@
 """The tasks.py split (ADR 0003) changed no Celery name, and the run loop calls the inject seam.
 
-run_scenario / run_scenario_v2 moved to worker/exercise_run.py and generate_aar to
-worker/aar_tasks.py. Their registered names are a contract with the API (contracts.py)
+run_scenario / run_scenario_v2 moved to worker/exercise_run.py, generate_aar to
+worker/aar_tasks.py and ingest_telemetry_batch to worker/telemetry_tasks.py. Their registered names are a contract with the API (contracts.py)
 and with messages already queued, so they must stay ``worker.tasks.<name>``.
 """
 
@@ -17,7 +17,7 @@ import pytest
 
 pytest.importorskip("celery")
 
-from worker import aar_tasks, db_ops, exercise_run, tasks  # noqa: E402
+from worker import aar_tasks, db_ops, exercise_run, tasks, telemetry_tasks  # noqa: E402
 from worker.celery_app import app  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,16 +47,18 @@ REGISTERED_BEFORE_SPLIT = {
 }
 
 
-# Added since the split, in worker/exercise_run.py (contracts.py lists them).
-ADDED_SINCE_SPLIT = {
-    "worker.tasks.run_inject",
-    "worker.tasks.run_scenario_execution",
-}
-
-
 def _registered() -> set[str]:
     app.finalize()
     return {n for n in app.tasks if n.startswith("worker.")}
+
+
+# Tasks added since the split, each in its own module. New names, so nothing queued
+# before them can be stranded; listed so that any other change still fails here.
+ADDED_SINCE_SPLIT = {
+    "worker.tasks.deploy_noise_agents",  # worker/noise_tasks.py (background noise)
+    "worker.tasks.run_inject",  # worker/exercise_run.py (instructor inject)
+    "worker.tasks.run_scenario_execution",  # worker/exercise_run.py (POST /scenarios/execute)
+}
 
 
 def test_registered_task_names_are_unchanged():
@@ -69,6 +71,7 @@ def test_registered_task_names_are_unchanged():
         (exercise_run, "run_scenario", False),
         (exercise_run, "run_scenario_v2", True),
         (aar_tasks, "generate_aar", True),
+        (telemetry_tasks, "ingest_telemetry_batch", False),
     ],
 )
 def test_moved_tasks_keep_name_base_and_old_import_path(module, name, reliable):
@@ -89,7 +92,14 @@ def test_unknown_attribute_on_tasks_still_raises():
 
 @pytest.mark.parametrize(
     "module",
-    ["worker.exercise_run", "worker.aar_tasks", "worker.task_plumbing", "worker.inject_dispatch", "worker.tasks"],
+    [
+        "worker.exercise_run",
+        "worker.aar_tasks",
+        "worker.task_plumbing",
+        "worker.inject_dispatch",
+        "worker.tasks",
+        "worker.telemetry_tasks",
+    ],
 )
 def test_module_imports_first_in_a_fresh_interpreter(module):
     """celery_app imports every task module at its end; a moved module imported first

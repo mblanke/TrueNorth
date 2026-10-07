@@ -101,6 +101,7 @@ def _session_for(
     """The caller's own session, or one in their tenant when they hold the staff right.
     404 otherwise (never "exists but not yours"). A student whose enrollment has closed
     (withdrawn, failed) cannot act on their lab any more, signed in or by token (CR1-17)."""
+    # tenant-safe: the tenant is compared on the very next line (404 on mismatch).
     s = db.get(LabSession, session_id)
     if s is None or s.tenant_id != tenant_uuid(user):
         raise HTTPException(404, "lab session not found")
@@ -122,6 +123,8 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None, *, act
         claims = tokens.verify(db, token, session_id)
     except tokens.LabTokenError as exc:
         raise HTTPException(401, str(exc)) from exc
+    # tenant-safe: no signed-in user here; the signed lab token was verified for this
+    # session_id above and its uid must be the session's owner.
     s = db.get(LabSession, session_id)
     if s is None or claims.get("uid") != str(s.user_id):
         raise HTTPException(404, "lab session not found")
@@ -138,6 +141,7 @@ def _enrollment_closed(db: Session, s: LabSession) -> bool:
     from ..course_releases.models import CourseRelease
     from ..models import Enrollment, EnrollmentStatus
 
+    # tenant-safe: the release a session (already tenant- or token-checked) points at.
     release = db.get(CourseRelease, s.release_id)
     if release is None:
         return False

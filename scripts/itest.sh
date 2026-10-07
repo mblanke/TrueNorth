@@ -27,7 +27,8 @@ API_URL="http://127.0.0.1:18081"
 COMPOSE=(docker compose -p "$PROJECT"
   -f infra/platform/docker/compose.dev.yml -f infra/platform/docker/compose.itest.yml)
 STORES=(postgres pgbouncer redis opensearch)
-APP=(api worker-provision worker-scenario worker-telemetry)
+# ai-orchestrator runs the mock backend here (compose.itest.yml); test_ai_forge_flow.py needs it.
+APP=(api worker-provision worker-scenario worker-telemetry ai-orchestrator)
 WEB=(keycloak web)
 
 say() { echo "== itest: $*"; }

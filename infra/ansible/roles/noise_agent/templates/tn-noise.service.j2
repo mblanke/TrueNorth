@@ -1,0 +1,28 @@
+# TrueNorth background-noise agent — white-cell infrastructure, OUT OF BOUNDS for students.
+[Unit]
+Description=TrueNorth background-noise agent (tn-noise)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ noise_agent_dir }}
+Environment=PYTHONPATH={{ noise_agent_dir }}
+ExecStart=/usr/bin/python3 -m tn_noise_agent \
+  --controller {{ noise_controller_url }} \
+  --token-file {{ noise_agent_conf_dir }}/token \
+{% if noise_agent_ca_file | length > 0 %}
+  --ca-file {{ noise_agent_conf_dir }}/ca.pem \
+{% endif %}
+  --mgmt-net {{ noise_mgmt_cidr }} \
+  --domain {{ noise_domain }}
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths={{ noise_agent_dir }} {{ noise_agent_conf_dir }}
+
+[Install]
+WantedBy=multi-user.target

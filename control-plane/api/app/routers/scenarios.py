@@ -46,7 +46,15 @@ class YamlValidateIn(BaseModel):
 
 
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
-    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid))
+    db.add(
+        AuditLog(
+            user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),
+            action=action,
+            resource_type=rtype,
+            resource_id=rid,
+        )
+    )
 
 
 @router.post("/validate")

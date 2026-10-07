@@ -39,9 +39,10 @@ def acting_as(role: UserRole):
         fastapi_app.dependency_overrides.pop(get_current_user, None)
 
 
-def _vcenter(db) -> HypervisorConnection:
+def _vcenter(db, tenant: str = DEV_TENANT) -> HypervisorConnection:
     conn = HypervisorConnection(
         id=uuid.uuid4(),
+        tenant_id=uuid.UUID(tenant),
         name="Range vCenter",
         hypervisor_type="vsphere",
         host="vcsa.range.test",
@@ -183,3 +184,67 @@ class TestHypervisorPermissions:
     def test_range_ops_can_list_connections(self, client):
         with acting_as(UserRole.range_ops):
             assert client.get("/hypervisors/connections").status_code == 200
+
+
+OTHER_TENANT = "00000000-0000-0000-0000-0000000000ff"
+
+
+class TestHypervisorTenancy:
+    """Connections are tenant-owned. Until 2026-10-07 every by-id route used ``db.get``,
+    so one tenant's range_ops could read, repoint or delete another tenant's vCenter."""
+
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            ("get", "/hypervisors/connections/{id}"),
+            ("patch", "/hypervisors/connections/{id}"),
+            ("delete", "/hypervisors/connections/{id}"),
+            ("post", "/hypervisors/connections/{id}/test"),
+            ("post", "/hypervisors/connections/{id}/discover"),
+            ("get", "/hypervisors/connections/{id}/nodes"),
+            ("get", "/hypervisors/connections/{id}/pools"),
+            ("post", "/hypervisors/connections/{id}/set-primary"),
+        ],
+    )
+    def test_foreign_connection_is_404(self, client, db_session, method, path):
+        theirs = _vcenter(db_session, OTHER_TENANT)
+        db_session.commit()
+        kwargs = {"json": {"name": "pwned"}} if method == "patch" else {}
+        r = getattr(client, method)(path.format(id=theirs.id), **kwargs)
+        assert r.status_code == 404, (method, path, r.status_code)
+        db_session.refresh(theirs)
+        assert theirs.name == "Range vCenter"
+
+    def test_own_connection_is_200(self, client, db_session):
+        mine = _vcenter(db_session)
+        db_session.commit()
+        assert client.get(f"/hypervisors/connections/{mine.id}").status_code == 200
+        r = client.patch(f"/hypervisors/connections/{mine.id}", json={"name": "Renamed"})
+        assert r.status_code == 200 and r.json()["name"] == "Renamed"
+        assert client.get(f"/hypervisors/connections/{mine.id}/nodes").status_code == 200
+
+    def test_lists_inventory_and_summary_exclude_other_tenants(self, client, db_session):
+        mine = _vcenter(db_session)
+        theirs = _vcenter(db_session, OTHER_TENANT)
+        db_session.add(HypervisorNode(connection_id=mine.id, node_name="mine-esx", status="online", vm_count=1))
+        db_session.add(HypervisorNode(connection_id=theirs.id, node_name="their-esx", status="online", vm_count=9))
+        db_session.commit()
+        ids = {c["id"] for c in client.get("/hypervisors/connections").json()}
+        assert str(mine.id) in ids and str(theirs.id) not in ids
+        names = {n["node_name"] for n in client.get("/hypervisors/nodes").json()}
+        assert "mine-esx" in names and "their-esx" not in names
+        summary = client.get("/hypervisors/summary").json()
+        assert summary["total_connections"] == len(ids)
+
+    def test_create_stamps_tenant_and_set_primary_stays_in_tenant(self, client, db_session):
+        theirs = _vcenter(db_session, OTHER_TENANT)
+        theirs.is_primary = True
+        db_session.commit()
+        body = {"name": "New", "hypervisor_type": "vsphere", "host": "vc.mine.test", "port": 443, "username": "u"}
+        r = client.post("/hypervisors/connections", json=body)
+        assert r.status_code == 201, r.text
+        created = db_session.get(HypervisorConnection, uuid.UUID(r.json()["id"]))
+        assert str(created.tenant_id) == DEV_TENANT
+        assert client.post(f"/hypervisors/connections/{created.id}/set-primary").status_code == 200
+        db_session.refresh(theirs)
+        assert theirs.is_primary is True

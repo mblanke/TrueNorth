@@ -98,7 +98,15 @@ def execute_scenario(
         requested_by=uuid.UUID(user.id),
     )
     db.add(x)
-    db.add(AuditLog(user_id=uuid.UUID(user.id), action="execute", resource_type="scenario", resource_id=str(sc.id)))
+    db.add(
+        AuditLog(
+            user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),
+            action="execute",
+            resource_type="scenario",
+            resource_id=str(sc.id),
+        )
+    )
     db.commit()
     task_id = _dispatch("run_scenario_execution", str(x.id), definition)
     if task_id is None:
