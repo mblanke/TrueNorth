@@ -22,6 +22,7 @@ from app.course_publishing.models import CoursePublication
 from app.course_releases.models import CourseRelease, CourseReleaseBlob
 from app.db import Base, get_db
 from app.main import app as fastapi_app
+from app.scheduler.models import EventState, ScheduledEvent
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, event
 from sqlalchemy.exc import IntegrityError
@@ -270,15 +271,21 @@ def _template(db):
     return _add(db, m.Template(name=f"tmpl-{uuid.uuid4().hex[:6]}", yaml="vms: []", tenant_id=DEV_TENANT))
 
 
-def _event(db, template, state):
+def _event(db, state, **link):
+    """A booking in ``state`` linked by ``template_id=`` / ``course_id=`` / ``scenario_id=``."""
     start = datetime.now(UTC)
     return _add(
         db,
-        m.ScheduledEvent(
-            name="ev", state=m.EventState(state), tenant_id=DEV_TENANT, template_id=template.id,
-            start_time=start, end_time=start + timedelta(hours=1),
+        ScheduledEvent(
+            name="ev", state=EventState(state), tenant_id=DEV_TENANT, start_time=start,
+            end_time=start + timedelta(hours=1), **link,
         ),
     )
+
+
+# Reserving: draft plus everything the scheduler holds capacity for. Finished: history.
+RESERVING = ["draft", "scheduled", "provisioning", "active"]
+FINISHED = ["completed", "cancelled"]
 
 
 def test_template_with_range_is_409(fk_client, fk_db):
@@ -290,24 +297,26 @@ def test_template_with_range_is_409(fk_client, fk_db):
     assert not _gone(fk_db, m.Template, t.id)
 
 
-def test_template_reserved_by_event_is_409(fk_client, fk_db):
+@pytest.mark.parametrize("state", RESERVING)
+def test_template_reserved_by_event_is_409(fk_client, fk_db, state):
     t = _template(fk_db)
-    _event(fk_db, t, "scheduled")
+    _event(fk_db, state, template_id=t.id)
     resp = fk_client.delete(f"/templates/{t.id}")
     assert resp.status_code == 409
     assert "scheduled event" in resp.json()["detail"]
 
 
-def test_template_delete_takes_po_map_and_detaches_finished_events(fk_client, fk_db):
+@pytest.mark.parametrize("state", FINISHED)
+def test_template_delete_takes_po_map_and_detaches_finished_events(fk_client, fk_db, state):
     t = _template(fk_db)
     q = _add(fk_db, m.Qualification(qsp_code="Q1", nqual="N1", tenant_id=DEV_TENANT))
     po = _add(fk_db, m.PerformanceObjective(qualification_id=q.id, po_code="PO1"))
     rom = _add(fk_db, m.RangeObjectiveMap(template_id=t.id, po_id=po.id, tenant_id=DEV_TENANT))
-    ev = _event(fk_db, t, "completed")
+    ev = _event(fk_db, state, template_id=t.id)
     assert fk_client.delete(f"/templates/{t.id}").status_code == 204
     assert _gone(fk_db, m.Template, t.id)
     assert _gone(fk_db, m.RangeObjectiveMap, rom.id)
-    kept = _reloaded(fk_db, m.ScheduledEvent, ev.id)
+    kept = _reloaded(fk_db, ScheduledEvent, ev.id)
     assert kept is not None and kept.template_id is None
     assert fk_db.get(m.PerformanceObjective, po.id) is not None
 
@@ -356,6 +365,85 @@ def test_course_delete_takes_module_content_and_keeps_quizzes(fk_client, fk_db):
 
 def test_course_delete_plain(fk_client, fk_db):
     assert fk_client.delete(f"/courses/{_course(fk_db).id}").status_code == 204
+
+
+@pytest.mark.parametrize("state", RESERVING)
+def test_course_booked_by_event_is_409(fk_client, fk_db, state):
+    c = _course(fk_db)
+    _event(fk_db, state, course_id=c.id)
+    resp = fk_client.delete(f"/courses/{c.id}")
+    assert resp.status_code == 409
+    assert "scheduled event" in resp.json()["detail"]
+    assert not _gone(fk_db, m.Course, c.id)
+
+
+@pytest.mark.parametrize("state", FINISHED)
+def test_course_delete_detaches_finished_events(fk_client, fk_db, state):
+    c = _course(fk_db)
+    ev = _event(fk_db, state, course_id=c.id)
+    assert fk_client.delete(f"/courses/{c.id}").status_code == 204
+    kept = _reloaded(fk_db, ScheduledEvent, ev.id)
+    assert kept is not None and kept.course_id is None
+
+
+def test_stub_purge_skips_a_booked_course(fk_db):
+    """qsp_paths.purge_orphaned_stubs deletes courses outside any handler."""
+    from app import qsp_paths
+
+    stub, free = _course(fk_db), _course(fk_db)
+    _event(fk_db, "completed", course_id=stub.id)
+    assert qsp_paths.purge_orphaned_stubs(fk_db, str(DEV_TENANT)) == 1
+    fk_db.commit()
+    assert not _gone(fk_db, m.Course, stub.id)
+    assert _gone(fk_db, m.Course, free.id)
+
+
+def test_placeholder_with_booking_is_retired_not_deleted(fk_db):
+    from app import course_content_ingest
+
+    stub = _course(fk_db)
+    _event(fk_db, "scheduled", course_id=stub.id)
+    meta: dict = {}
+    stats: dict = {}
+    course_content_ingest._remove_placeholder(fk_db, stub, "REAL-101", meta, stats)
+    fk_db.commit()
+    assert meta["retired"] is True and stats == {"placeholders_retired": 1}
+    assert not _gone(fk_db, m.Course, stub.id)
+
+
+# -- Scenarios: bookings came with the scheduler (scheduled_events.scenario_id) -----
+
+
+def _scenario(db):
+    return _add(db, m.Scenario(name=f"sc-{uuid.uuid4().hex[:6]}", version="1.0", yaml="id: x", tenant_id=DEV_TENANT))
+
+
+@pytest.mark.parametrize("state", RESERVING)
+def test_scenario_booked_by_event_is_409(fk_client, fk_db, state):
+    sc = _scenario(fk_db)
+    _event(fk_db, state, scenario_id=sc.id)
+    resp = fk_client.delete(f"/scenarios/{sc.id}")
+    assert resp.status_code == 409
+    assert "scheduled event" in resp.json()["detail"]
+    assert not _gone(fk_db, m.Scenario, sc.id)
+
+
+@pytest.mark.parametrize("state", FINISHED)
+def test_scenario_delete_detaches_finished_events(fk_client, fk_db, state):
+    sc = _scenario(fk_db)
+    ev = _event(fk_db, state, scenario_id=sc.id)
+    assert fk_client.delete(f"/scenarios/{sc.id}").status_code == 204
+    kept = _reloaded(fk_db, ScheduledEvent, ev.id)
+    assert kept is not None and kept.scenario_id is None
+
+
+def test_scenario_used_by_exercise_is_409_under_real_fks(fk_client, fk_db):
+    sc = _scenario(fk_db)
+    rng = _add(fk_db, m.Range(name="r", template_id=_template(fk_db).id, tenant_id=DEV_TENANT))
+    _add(fk_db, m.Exercise(name="ex", range_id=rng.id, scenario_id=sc.id, tenant_id=DEV_TENANT))
+    resp = fk_client.delete(f"/scenarios/{sc.id}")
+    assert resp.status_code == 409
+    assert "exercises" in resp.json()["detail"]
 
 
 # -- Learning paths: 409 while a registration request names one ---------------------

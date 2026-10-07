@@ -16490,7 +16490,7 @@
     },
     "/courses/{course_id}": {
       "delete": {
-        "description": "Delete a course and its modules.  **Permission: course:author**\n\n409 while it has enrollments, releases or publications: Student records and\nwhat was published are history (unpublish the course instead). Module content\nlinks go with the modules; quizzes are kept, detached from them.",
+        "description": "Delete a course and its modules.  **Permission: course:author**\n\n409 while it has enrollments, releases or publications: Student records and\nwhat was published are history (unpublish the course instead); also while a\nscheduled event not yet completed or cancelled books it (finished ones keep their\nrow without the course). Module content links go with the modules; quizzes are\nkept, detached from them.",
         "operationId": "delete_course_courses__course_id__delete",
         "parameters": [
           {
@@ -28848,7 +28848,7 @@
     },
     "/scenarios/{scenario_id}": {
       "delete": {
-        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a soft-deleted one) still references it.",
+        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a soft-deleted one) still references it, or a\nscheduled event not yet completed or cancelled will run it. Finished events keep\ntheir row without the scenario.",
         "operationId": "delete_scenario_scenarios__scenario_id__delete",
         "parameters": [
           {
@@ -30951,7 +30951,7 @@
     },
     "/templates/{template_id}": {
       "delete": {
-        "description": "Delete a template.  **Permission: template:delete**\n\n409 while a range built from it exists, or a draft, scheduled or active event\nreserves it. Its PO mapping goes with it; finished events keep their row without it.",
+        "description": "Delete a template.  **Permission: template:delete**\n\n409 while a range built from it exists, or an event not yet completed or\ncancelled reserves it. Its PO mapping goes with it; finished events keep their row without it.",
         "operationId": "delete_template_templates__template_id__delete",
         "parameters": [
           {

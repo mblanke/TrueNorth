@@ -44,6 +44,7 @@ from ..models import (
     User,
 )
 from ..rbac import Permission, require_permission
+from ..scheduler import service as scheduler
 from ..schemas import (
     CourseIn,
     CourseListOut,
@@ -354,8 +355,10 @@ def delete_course(
     """Delete a course and its modules.  **Permission: course:author**
 
     409 while it has enrollments, releases or publications: Student records and
-    what was published are history (unpublish the course instead). Module content
-    links go with the modules; quizzes are kept, detached from them.
+    what was published are history (unpublish the course instead); also while a
+    scheduled event not yet completed or cancelled books it (finished ones keep their
+    row without the course). Module content links go with the modules; quizzes are
+    kept, detached from them.
     """
     course = get_owned(db, Course, course_id, user)
     if not course:
@@ -378,6 +381,9 @@ def delete_course(
         db.query(ModuleProgress.id).filter(ModuleProgress.module_id.in_(module_ids)),
         "Course has {n} module progress record(s) and is kept as part of the Students' records",
     )
+    if booked := scheduler.reserving_events_for(db, "course", course.id):
+        raise HTTPException(409, f"Course is booked by {booked} scheduled event(s); cancel them first")
+    scheduler.detach(db, "course", course.id)
     db.query(ModuleContent).filter(ModuleContent.module_id.in_(module_ids)).delete(synchronize_session=False)
     db.query(Quiz).filter(Quiz.module_id.in_(module_ids)).update({Quiz.module_id: None}, synchronize_session=False)
     db.query(CourseModule).filter(CourseModule.course_id == course.id).delete(synchronize_session=False)

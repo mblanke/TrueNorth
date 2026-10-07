@@ -389,18 +389,41 @@ def to_out(e: ScheduledEvent, warnings: list[str] | None = None) -> dict:
 
 
 # -- For other sections -------------------------------------------------------
+# What a booking can point at that its owner may delete. Every one of these foreign
+# keys is nullable: a booking in a reserving state blocks the delete (409 at the
+# caller), a finished one keeps its row without the link.
+_LINKS = {
+    "range": ScheduledEvent.range_id,
+    "template": ScheduledEvent.template_id,
+    "course": ScheduledEvent.course_id,
+    "scenario": ScheduledEvent.scenario_id,
+}
+
+
+def reserving_events_for(db: Session, link: str, parent_id: uuid.UUID) -> int:
+    """How many draft/scheduled/provisioning/active events still use this range,
+    template, course or scenario. The caller has already tenant-checked the parent."""
+    col = _LINKS[link]
+    return db.query(ScheduledEvent.id).filter(col == parent_id, ScheduledEvent.state.in_(RESERVING_STATES)).count()
+
+
+def events_for(db: Session, link: str, parent_id: uuid.UUID) -> int:
+    """How many events, in any state, point at this range, template, course or scenario."""
+    return db.query(ScheduledEvent.id).filter(_LINKS[link] == parent_id).count()
+
+
+def detach(db: Session, link: str, parent_id: uuid.UUID) -> None:
+    """Unlink a range, template, course or scenario being deleted. Finished events are
+    history: they keep their row, without the link. Does not commit."""
+    col = _LINKS[link]
+    db.query(ScheduledEvent).filter(col == parent_id).update({col: None}, synchronize_session=False)
+
+
 def reserving_event_count(db: Session, range_id: uuid.UUID) -> int:
     """How many events still hold this range. The caller has already tenant-checked it."""
-    return (
-        db.query(ScheduledEvent.id)
-        .filter(ScheduledEvent.range_id == range_id, ScheduledEvent.state.in_(RESERVING_STATES))
-        .count()
-    )
+    return reserving_events_for(db, "range", range_id)
 
 
 def detach_range(db: Session, range_id: uuid.UUID) -> None:
-    """Unlink a range being deleted. Finished events are history: they keep their row,
-    without the range. Does not commit; the caller's transaction does."""
-    db.query(ScheduledEvent).filter(ScheduledEvent.range_id == range_id).update(
-        {ScheduledEvent.range_id: None}, synchronize_session=False
-    )
+    """Unlink a range being deleted (see :func:`detach`)."""
+    detach(db, "range", range_id)

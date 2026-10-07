@@ -1091,8 +1091,10 @@ export interface paths {
          * @description Delete a course and its modules.  **Permission: course:author**
          *
          *     409 while it has enrollments, releases or publications: Student records and
-         *     what was published are history (unpublish the course instead). Module content
-         *     links go with the modules; quizzes are kept, detached from them.
+         *     what was published are history (unpublish the course instead); also while a
+         *     scheduled event not yet completed or cancelled books it (finished ones keep their
+         *     row without the course). Module content links go with the modules; quizzes are
+         *     kept, detached from them.
          */
         delete: operations["delete_course_courses__course_id__delete"];
         options?: never;
@@ -5197,7 +5199,9 @@ export interface paths {
          * Delete Scenario
          * @description Delete a scenario.  **Permission: scenario:delete**
          *
-         *     409 while any exercise (including a soft-deleted one) still references it.
+         *     409 while any exercise (including a soft-deleted one) still references it, or a
+         *     scheduled event not yet completed or cancelled will run it. Finished events keep
+         *     their row without the scenario.
          */
         delete: operations["delete_scenario_scenarios__scenario_id__delete"];
         options?: never;
@@ -5839,8 +5843,8 @@ export interface paths {
          * Delete Template
          * @description Delete a template.  **Permission: template:delete**
          *
-         *     409 while a range built from it exists, or a draft, scheduled or active event
-         *     reserves it. Its PO mapping goes with it; finished events keep their row without it.
+         *     409 while a range built from it exists, or an event not yet completed or
+         *     cancelled reserves it. Its PO mapping goes with it; finished events keep their row without it.
          */
         delete: operations["delete_template_templates__template_id__delete"];
         options?: never;
