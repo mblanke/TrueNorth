@@ -1977,3 +1977,12 @@ class TestNoiseMgmtNic:
         meta = _guestinfo_meta(noise_vc.vms[next(v["vm_id"] for v in result.vms if "mgmt_ip" in v)])
         assert meta["network"]["ethernets"]["nic0"]["nameservers"] == {
             "addresses": ["10.30.0.10", "10.30.0.11"], "search": ["corp.local"]}
+
+
+def test_nic_order_follows_unit_numbers_not_device_keys():
+    """govmomi's vcsim gives an added card key 205 after the template's 4000 (unit 7, then 8)."""
+    template_card = vim.vm.device.VirtualE1000(key=4000, unitNumber=7)
+    added = vim.vm.device.VirtualVmxnet3(key=205, unitNumber=8)
+    disk = vim.vm.device.VirtualDisk(key=2000, unitNumber=0)
+    assert infra.nic_cards([added, disk, template_card]) == [template_card, added]
+    assert infra.nic_cards([vim.vm.device.VirtualVmxnet3(key=4001), template_card])[0] is template_card

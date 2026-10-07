@@ -358,3 +358,44 @@ def test_a_missing_vm_is_reported_not_counted(env, si):
     assert result.errors and result.errors[0].startswith("VM ghost:")
     with pytest.raises(vmodl.fault.ManagedObjectNotFound):
         vim.VirtualMachine("vm-999999", si._stub).runtime  # noqa: B018 -- the simulator agrees it is gone
+
+
+def test_a_noise_agent_gets_its_management_nic(env, si, range_id, monkeypatch):
+    """The background-noise management NIC, on a port group made here for the test."""
+    dvs = _named(si, vim.DistributedVirtualSwitch, DVS)
+    noise_pg = f"tn-sim-noise-{range_id[:8]}"
+    _wait(si, dvs.CreateDVPortgroup_Task(infra.dvs_portgroup_spec(noise_pg, 4001, False)))
+    monkeypatch.setattr(mod, "VSPHERE_NOISE_NETWORK", noise_pg)
+    try:
+        prov = mod.VsphereAPIProvisioner()
+        template = _template(range_id)
+        agent = next(v for v in template["vms"] if v["node_id"] == "victim")
+        agent["mgmt"] = {"vlan_id": 4001, "ip": "10.255.0.21", "prefix": 24}
+        built = _run(prov.provision(range_id, template, _reserve(prov, range_id, template)))
+        assert built.status == "ok", built.errors
+        out = next(v for v in built.vms if v["name"] == agent["name"])
+        assert out["mgmt_ip"] == "10.255.0.21"
+        vm = vim.VirtualMachine(out["vm_id"], si._stub)
+        noise_key = _named(si, vim.dvs.DistributedVirtualPortgroup, noise_pg).key
+        keys = [n.backing.port.portgroupKey for n in infra.nic_cards(vm.config.hardware.device)]
+        assert len(keys) == 2 and keys[1] == noise_key
+        # The guest gets the management address on the noise NIC's MAC, the training one on the other.
+        import base64
+
+        import yaml
+
+        extra = {o.key: o.value for o in vm.config.extraConfig}
+        eth = yaml.safe_load(base64.b64decode(extra["guestinfo.metadata"]))["network"]["ethernets"]
+        cards = infra.nic_cards(vm.config.hardware.device)
+        by_mac = {e["match"]["macaddress"]: e.get("addresses") for e in eth.values()}
+        assert by_mac[cards[1].macAddress.lower()] == ["10.255.0.21/24"]
+        assert by_mac[cards[0].macAddress.lower()] == [f"{agent['ip']}/24"]
+        other = next(v for v in built.vms if v["name"] != agent["name"])
+        assert "mgmt_ip" not in other
+        assert _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks})
+                    ).status == "ok"
+        assert _named(si, vim.dvs.DistributedVirtualPortgroup, noise_pg) is not None  # shared: never removed
+    finally:
+        pg = _named(si, vim.dvs.DistributedVirtualPortgroup, noise_pg)
+        if pg is not None:
+            _wait(si, pg.Destroy_Task())

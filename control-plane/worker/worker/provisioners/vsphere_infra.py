@@ -293,8 +293,15 @@ def _backing(ref: dict):
 
 
 def nic_cards(devices) -> list:
-    """The VM's network cards in device-key order, which is the guest's NIC order."""
-    return sorted((d for d in devices if isinstance(d, vim.vm.device.VirtualEthernetCard)), key=lambda d: d.key)
+    """The VM's network cards in the guest's NIC order: by unit number (ethernetN is unit
+    N+7), then device key. Not by key alone: a server may give an added card a key below
+    the template's (govmomi's vcsim gives 205 after 4000), which put the training address
+    on the noise management NIC when MACs were matched in key order."""
+    def order(card):
+        unit = getattr(card, "unitNumber", None)
+        return (unit if isinstance(unit, int) else 1 << 30, card.key)
+
+    return sorted((d for d in devices if isinstance(d, vim.vm.device.VirtualEthernetCard)), key=order)
 
 
 def nic_device_changes(devices, refs: list[dict]) -> list:
