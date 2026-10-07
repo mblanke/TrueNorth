@@ -1,0 +1,6 @@
+---
+- name: restart tn-noise
+  ansible.builtin.systemd:
+    name: tn-noise
+    state: restarted
+    daemon_reload: true

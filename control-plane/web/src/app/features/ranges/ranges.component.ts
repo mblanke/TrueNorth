@@ -134,6 +134,9 @@ import { CountUpDirective } from '../../shared/motion';
                routerLink="/authoring/ranges/designer" [queryParams]="{ range: r.id }">
               <mat-icon>architecture</mat-icon>
             </a>
+            <a mat-icon-button matTooltip="Background noise" [routerLink]="['/authoring/ranges', r.id, 'noise']">
+              <mat-icon>graphic_eq</mat-icon>
+            </a>
             @if (r.state === 'created' || r.state === 'stopped') {
               <button mat-icon-button (click)="startEdit(r)" matTooltip="Rename" [disabled]="saving">
                 <mat-icon>edit</mat-icon>

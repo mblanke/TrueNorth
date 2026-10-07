@@ -7,6 +7,7 @@ Configuration (env vars):
     OPENAI_API_KEY   — API key     (required unless using Azure MSI)
     OPENAI_BASE_URL  — Base URL    (default: https://api.openai.com/v1)
     OPENAI_DEFAULT_MODEL — Default model (default: gpt-4o)
+    AI_EMBED_MODEL   — Embedding model for embed() (default: embed)
 """
 
 from __future__ import annotations
@@ -74,6 +75,22 @@ class OpenAIBackend(BaseAIBackend):
             raise HTTPException(502, f"OpenAI error {exc.response.status_code}: {exc.response.text[:200]}") from exc
         except Exception as exc:
             raise HTTPException(503, f"OpenAI backend unavailable: {exc}") from exc
+
+    async def embed(self, text: str, model: str = "") -> tuple[list[float], str]:
+        """``POST {base}/embeddings`` (LiteLLM ``embed`` alias by default).
+
+        Transport errors propagate unwrapped so the orchestrator can retry them.
+        """
+        use_model = model or os.getenv("AI_EMBED_MODEL", "embed")
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            resp = await client.post(
+                f"{self._base_url}/embeddings",
+                json={"model": use_model, "input": text},
+                headers=self._headers(),
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["data"][0]["embedding"], data.get("model", use_model)
 
     async def health_check(self) -> bool:
         if not self._api_key:

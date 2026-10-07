@@ -102,8 +102,9 @@ require external services (27 skips across `tests/integration/`).
 
 OpenSearch 2.13 + Dashboards, MinIO, PostgreSQL 16 + pgbouncer, Redis 7, Keycloak 24,
 an LRS (`yetanalytics/lrsql`), OTel collector, telemetry-pipeline — all running.
-xAPI (`xapi.py`) and AAR/PDF reporting (`reporting.py`, fpdf2) present with tests
-(`test_xapi.py`, `test_reporting.py`).
+xAPI (`xapi.py`) present with tests (`test_xapi.py`). The AAR is built from the database
+(`aar_report.py`, worker `aar.py`) and served as JSON, HTML and PDF (fpdf2) by
+`routers/exercises.py`. The old `reporting.py`, which returned hard-coded figures, was removed.
 
 ## Sensor integrations — `PARTIAL` / `PLANNED`
 

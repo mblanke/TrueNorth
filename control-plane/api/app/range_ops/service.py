@@ -214,6 +214,8 @@ def accept(
                 raise HTTPException(409, "This Idempotency-Key was already used for a different request")
             return existing, rng, False
     _check(db, rng, action)
+    if action == "provision":
+        _reserve_for_provision(db, rng)
     generation = (
         db.query(func.max(RangeOperation.generation)).filter(RangeOperation.range_id == rng.id).scalar() or 0
     ) + 1
@@ -236,6 +238,33 @@ def accept(
     return op, rng, True
 
 
+def _reserve_for_provision(db: Session, rng: Range) -> None:
+    """Shared-network addresses the worker will build with, held from acceptance on.
+
+    Today only noise agents' management NICs (app/noise/mgmt.py). In the acceptance
+    transaction, so a refused or failed acceptance holds nothing.
+    """
+    from ..network_inventory import PoolExhaustedError
+    from ..noise import mgmt as noise_mgmt
+
+    try:
+        noise_mgmt.reserve(db, rng, noise_mgmt.range_template(rng))
+    except PoolExhaustedError as exc:
+        raise HTTPException(409, f"Cannot provision: {exc}") from exc
+
+
+def _task_args(db: Session, op: RangeOperation) -> tuple:
+    """What the operation's task is sent: the range id, and for a provision the reserved
+    noise management addresses when it holds any (``noise_mgmt``, provision_range's
+    optional second argument; worker/contracts.py)."""
+    if op.action == "provision":
+        from ..noise import mgmt as noise_mgmt
+
+        if held := noise_mgmt.reserved(db, op.range_id):
+            return (str(op.range_id), held)
+    return (str(op.range_id),)
+
+
 def dispatch(db: Session, op: RangeOperation) -> bool:
     """Send a pending operation's task, after its acceptance has committed. Commits.
 
@@ -255,7 +284,7 @@ def dispatch(db: Session, op: RangeOperation) -> bool:
     if held is None:  # being sent by someone else, or already sent
         db.commit()
         return False
-    task_id = send(ACTIONS[op.action].task, str(op.range_id))
+    task_id = send(ACTIONS[op.action].task, *_task_args(db, op))
     values: dict = {"dispatch_attempts": RangeOperation.dispatch_attempts + 1}
     if task_id:
         values.update(status="dispatched", task_id=task_id, dispatched_at=_now(), error=None)
@@ -311,6 +340,10 @@ def reconcile(db: Session, rng: Range) -> None:
                 }
             continue
         op.status, op.finished_at = outcome, _now()
+        if op.action == "destroy" and outcome == "succeeded":
+            from ..network_inventory import release_range
+
+            release_range(db, rng.id)  # its addresses and VLANs are free for other ranges
         if outcome == "failed":
             op.error = {"code": "range_failed", "message": (rng.error_message or "The worker reported a failure")[:500]}
     # Sessions here do not autoflush: write the outcomes now, so the in-flight check that

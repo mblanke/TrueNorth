@@ -3,7 +3,7 @@
 # `refs` are keys into content/catalogue/references.yaml.
 
 course_code: RMC C202
-title: Threat Hunting - Advanced
+title: Threat Hunting — Advanced
 version: '1.0'
 difficulty: intermediate
 duration_hours: 100

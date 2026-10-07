@@ -11,7 +11,16 @@ from sqlalchemy import engine_from_config, pool
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Imported to register their tables on Base.metadata.
-from app import course_publishing, course_releases, lab_sessions, models, range_leases, range_ops  # noqa: F401
+from app import (  # noqa: F401
+    course_publishing,
+    course_releases,
+    lab_sessions,
+    models,
+    network_inventory,
+    noise,
+    range_leases,
+    range_ops,
+)
 from app.db import Base
 from app.greyspace import models as greyspace_models  # noqa: F401
 

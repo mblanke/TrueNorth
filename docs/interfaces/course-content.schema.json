@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://truenorth.local/schemas/course-content.schema.json",
+  "title": "TrueNorth authored course file (content/courses/*.yaml)",
+  "description": "The structure app.course_content_ingest.parse_course_content reads, with the value domains tools/arc2/qa.py course_rules admits. Cross-field rules JSON Schema cannot express (contiguous ordinals, minutes_breakdown summing to duration_minutes, verified reference keys, unique stems and titles) are asserted in tests/contracts/test_course_content_schema.py and tests/api/test_course_content_ingest.py. A course file is never the publication record: status stays draft or proposed and is_published stays false; acceptance and publication are course_releases / course_publications state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "course_code",
+    "title",
+    "version",
+    "difficulty",
+    "duration_hours",
+    "provenance",
+    "status",
+    "is_published",
+    "qsp_code",
+    "source",
+    "modules"
+  ],
+  "properties": {
+    "course_code": {
+      "description": "Catalogue code (C105, RMC C206) or an ARC² run code (ARC2-C105); a release maps the latter onto its catalogue code.",
+      "type": "string",
+      "pattern": "^((RMC )?C[0-9]{3}|ARC2-[A-Z0-9]{2,8})$"
+    },
+    "title": {"$ref": "#/definitions/text"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "difficulty": {
+      "description": "beginner/intermediate/advanced in the hand-authored drafts; ARC² requests use foundation/intermediate/advanced.",
+      "enum": ["beginner", "foundation", "intermediate", "advanced"]
+    },
+    "duration_hours": {"type": "integer", "minimum": 1},
+    "provenance": {"const": "unsourced"},
+    "status": {"enum": ["draft", "proposed"]},
+    "is_published": {"const": false},
+    "qsp_code": {
+      "description": "A qualification in the ingested spine. QSP-TODO belongs to the catalogue row only.",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{2,15}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "notes"],
+      "properties": {
+        "origin": {"$ref": "#/definitions/text"},
+        "citations_verified": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "notes": {"$ref": "#/definitions/texts"}
+      }
+    },
+    "modules": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/module"}}
+  },
+  "definitions": {
+    "text": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "texts": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/text"}},
+    "minutes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "title",
+        "content_type",
+        "duration_minutes",
+        "is_required",
+        "pass_threshold",
+        "objectives",
+        "topics",
+        "refs"
+      ],
+      "properties": {
+        "ordinal": {"type": "integer", "minimum": 1},
+        "title": {"$ref": "#/definitions/text"},
+        "content_type": {
+          "description": "app.models.ModuleContentType. The ingest silently maps anything else to reading, so the schema refuses it instead.",
+          "enum": ["scenario", "external_lti", "reading", "quiz", "video"]
+        },
+        "duration_minutes": {"type": "integer", "minimum": 1},
+        "is_required": {"type": "boolean"},
+        "pass_threshold": {"type": "integer", "minimum": 0, "maximum": 100},
+        "activity": {"enum": ["theory", "practical", "range"]},
+        "objectives": {"$ref": "#/definitions/texts"},
+        "topics": {"$ref": "#/definitions/texts"},
+        "practice": {"$ref": "#/definitions/texts"},
+        "lab": {"type": "string"},
+        "minutes_breakdown": {
+          "description": "Planned Student minutes by kind of work (contact, reading, practice, range_lab, quiz, ...); the parts sum to duration_minutes.",
+          "allOf": [{"$ref": "#/definitions/minutes"}, {"propertyNames": {"pattern": "^[a-z][a-z_]*$"}}]
+        },
+        "refs": {
+          "description": "Keys into content/catalogue/references.yaml.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"}
+        },
+        "po": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["qsp_code", "po_code"],
+          "properties": {
+            "qsp_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9]{2,15}$"},
+            "po_code": {
+              "description": "A crosswalk po_id (PO_001, or a range row such as PO_001-005). PO_TODO is a placeholder and never bindable.",
+              "type": "string",
+              "pattern": "^PO_[0-9]{3}(-[0-9]{3})?$"
+            }
+          }
+        },
+        "quiz": {"$ref": "#/definitions/quiz"},
+        "tools": {"description": "ARC²: software a Student needs for the module.", "$ref": "#/definitions/texts"},
+        "source_gaps": {"description": "ARC²: sources the reference library does not hold yet.", "$ref": "#/definitions/texts"},
+        "critical_events": {
+          "description": "ARC²: critical events the module's range work carries.",
+          "type": "array",
+          "items": {"type": "string", "pattern": "^CE-[0-9]{2,}$"}
+        },
+        "lab_parts_minutes": {"description": "ARC²: minutes per part of a range lab.", "$ref": "#/definitions/minutes"}
+      },
+      "allOf": [
+        {
+          "description": "A theory or practical module carries no range lab brief; a range module (or one with no declared activity, which predates activities) must.",
+          "if": {"required": ["activity"], "properties": {"activity": {"enum": ["theory", "practical"]}}},
+          "then": {"properties": {"lab": {"maxLength": 0}}},
+          "else": {"required": ["lab"], "properties": {"lab": {"$ref": "#/definitions/text"}}}
+        }
+      ]
+    },
+    "quiz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "pass_threshold", "questions"],
+      "properties": {
+        "title": {"$ref": "#/definitions/text"},
+        "pass_threshold": {"type": "integer", "minimum": 0, "maximum": 100},
+        "questions": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/question"}}
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "options", "answer"],
+      "properties": {
+        "question": {"$ref": "#/definitions/text"},
+        "options": {
+          "description": "Four options; an 'A) ' prefix is optional (the ingest strips it).",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {"$ref": "#/definitions/text"}
+        },
+        "answer": {"enum": ["A", "B", "C", "D"]}
+      }
+    }
+  }
+}
