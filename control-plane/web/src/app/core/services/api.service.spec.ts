@@ -193,4 +193,33 @@ describe('ApiService', () => {
     expect(req.request.params.get('size')).toBe('10');
     req.flush({ hits: { hits: [] } });
   });
+
+  // ── Detections (ADR 0005) ──────────────────────────────────────────
+  it('submitDetection() POSTs the query to the objective detections endpoint', () => {
+    service.submitDetection('ex1', 'OBJ-1', 'process.name:cmd.exe').subscribe(d => {
+      expect(d.verdict).toBe('missed');
+      expect(d.attempts_left).toBe(4);
+    });
+    const req = httpMock.expectOne(`${base}/exercises/ex1/objectives/OBJ-1/detections`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ query: 'process.name:cmd.exe' });
+    req.flush({
+      id: 'd1', objective_ref: 'OBJ-1', user_id: 'u1', query: 'process.name:cmd.exe',
+      submitted_at: '2026-10-06T10:00:00Z', verdict: 'missed', events_matched: 3, attempts_left: 4,
+    });
+  });
+
+  it('submitDetection() encodes the objective ref', () => {
+    service.submitDetection('ex1', 'a/b', 'x').subscribe();
+    const req = httpMock.expectOne(`${base}/exercises/ex1/objectives/a%2Fb/detections`);
+    expect(req.request.method).toBe('POST');
+    req.flush({});
+  });
+
+  it('listDetections() GETs the exercise attempts', () => {
+    service.listDetections('ex1').subscribe(rows => expect(rows.length).toBe(1));
+    const req = httpMock.expectOne(`${base}/exercises/ex1/detections`);
+    expect(req.request.method).toBe('GET');
+    req.flush([{ id: 'd1', objective_ref: 'OBJ-1', user_id: 'u1', query: 'q', submitted_at: null, verdict: 'missed', events_matched: 0 }]);
+  });
 });

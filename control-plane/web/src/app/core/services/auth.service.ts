@@ -71,6 +71,11 @@ export class AuthService {
     const role = this.userSignal()?.role;
     return role === 'admin' || role === 'instructor';
   });
+  /** Mirrors `detection:submit` in rbac.py: Students, instructors and admins; not observers. */
+  readonly canSubmitDetections = computed(() => {
+    const role = this.userSignal()?.role;
+    return role === 'student' || role === 'admin' || role === 'instructor';
+  });
   readonly userId = computed(() => this.userSignal()?.id ?? null);
   readonly onboardingState = computed(() => this.userSignal()?.onboarding_state ?? 'not_started');
   readonly needsOnboarding = computed(() => {

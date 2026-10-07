@@ -293,7 +293,9 @@ export const routes: Routes = [
   },
   {
     path: 'exercises/:id',
-    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    // Students run their assessment and submit detections here (ADR 0005); the API
+    // redacts the answer key for them and gates every action by permission.
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/exercise-detail/exercise-detail.component').then(m => m.ExerciseDetailComponent),
     title: 'Exercise - TrueNorth Range',
