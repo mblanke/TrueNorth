@@ -27,7 +27,7 @@ import httpx
 import pytest
 from _shared import acting_as
 from app import search_backends
-from app.models import Objective, ObjectiveType, UserRole
+from app.models import User, UserRole
 
 pytestmark = pytest.mark.integration
 
@@ -158,13 +158,11 @@ class TestDetectionFlow:
                                                         "is_public": False}), 201)
         ex = _ok(client.post("/exercises", json={"name": "integ-detect", "range_id": rng["id"],
                                                   "scenario_id": scenario["id"], "max_score": 50}), 201)
-        # POST /exercises makes no objective rows (the forge and QSP paths do). Seed them as
-        # QSP-made rows look: no params, so the answer key comes from the scenario.
-        for ref, kind, validator, points in (("detect_c2", ObjectiveType.detection, "opensearch_query", 40),
-                                             ("write_report", ObjectiveType.deliverable, "deliverable_check", 10)):
-            db_session.add(Objective(exercise_id=uuid.UUID(ex["id"]), ref_id=ref, objective_type=kind,
-                                     description=ref, validator=validator, points=points))
-        db_session.commit()
+        # POST /exercises makes the scenario's objective rows (PR #28); nothing is seeded here.
+        made = {o["ref_id"]: (o["objective_type"], o["points"])
+                for o in _ok(client.get(f"/exercises/{ex['id']}/objectives"))}
+        assert made == {"detect_c2": ("detection", 40), "write_report": ("deliverable", 10)}
+        assert ex["max_score"] == 50
         _ok(client.post(f"/exercises/{ex['id']}/start"), 200, 202)
         assert _ok(client.get(f"/exercises/{ex['id']}"))["state"] == "running"
 
@@ -175,7 +173,12 @@ class TestDetectionFlow:
         event_store.post(f"/{index}/_refresh").raise_for_status()
 
         # -- the Student: nothing is credited for being idle; a precise detection is -------
-        with acting_as(UserRole.student):
+        with acting_as(UserRole.student) as who:
+            # A real users row: the submission references it, and db_session enforces keys.
+            db_session.add(User(id=uuid.UUID(who.id), email=who.email, display_name=who.display_name,
+                                role=UserRole.student, tenant_id=uuid.UUID(who.tenant_id),
+                                keycloak_id=f"kc-{who.id}"))
+            db_session.flush()
             assert _ok(client.get(f"/exercises/{ex['id']}/detections")) == []
             before = {o["ref_id"]: o["achieved"] for o in _ok(client.get(f"/exercises/{ex['id']}/objectives"))}
             assert before == {"detect_c2": False, "write_report": False}

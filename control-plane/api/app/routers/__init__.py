@@ -5,6 +5,7 @@ from .adaptive_learning import router as adaptive_learning_router
 from .admin import router as admin_router
 from .ai_authoring import router as ai_authoring_router
 from .ai_config import router as ai_config_router
+from .arc2_studio import router as arc2_studio_router
 from .auth_zones import router as auth_zones_router
 from .competency import certs_router as certifications_router
 from .competency import router as competency_router
@@ -70,6 +71,7 @@ __all__ = [
     "lti_router",
     "hypervisors_router",
     "ai_config_router",
+    "arc2_studio_router",
     "directory_router",
     "golden_images_router",
     "ad_sync_router",
