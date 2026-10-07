@@ -27222,7 +27222,7 @@
     },
     "/telemetry/{range_id}/events": {
       "post": {
-        "description": "Ingest telemetry events into OpenSearch.",
+        "description": "Ingest telemetry events into a range's index.  **Permission: telemetry:write**\n\nThe range must belong to the caller's tenant (404 otherwise). Students cannot write:\ndetection objectives are scored against this index.",
         "operationId": "ingest_telemetry_telemetry__range_id__events_post",
         "parameters": [
           {
@@ -27284,7 +27284,7 @@
     },
     "/telemetry/{range_id}/search": {
       "get": {
-        "description": "Search telemetry events in OpenSearch.",
+        "description": "Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).",
         "operationId": "search_telemetry_telemetry__range_id__search_get",
         "parameters": [
           {

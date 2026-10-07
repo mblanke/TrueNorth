@@ -16,13 +16,15 @@ import logging
 import os
 import random
 import time
-import uuid as _uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from celery import Task, group
 
+from . import db_ops
+from .aar import build_report as build_aar_report
 from .celery_app import app
+from .detection import detection_scorer, range_index
 from .provisioners import discard_built, get_provisioner
 
 logger = logging.getLogger("truenorth.worker")
@@ -81,25 +83,9 @@ def _update_range_state(
     ``clear_error`` drops a stale error_message, for a success after a failed attempt.
     """
     with _db_session() as db:
-        from sqlalchemy import text
-
-        params: dict = {"state": new_state, "range_id": range_id}
-        sql = "UPDATE ranges SET state = :state, updated_at = NOW()"
-        if error:
-            sql += ", error_message = :error"
-            params["error"] = error
-        elif clear_error:
-            sql += ", error_message = NULL"
-        if output:
-            sql += ", provisioner_output = :output"
-            params["output"] = output
-        sql += " WHERE id = :range_id"
-        if only_from:
-            keys = [f"from_{i}" for i in range(len(only_from))]
-            # CAST: `state` is a native enum on Postgres and plain text on SQLite.
-            sql += f" AND CAST(state AS TEXT) IN ({', '.join(':' + k for k in keys)})"
-            params.update(zip(keys, only_from, strict=True))
-        return db.execute(text(sql), params).rowcount
+        return db_ops.update_range_state(
+            db, range_id, new_state, error=error, output=output, only_from=only_from, clear_error=clear_error
+        )
 
 
 def _notify_api(channel: str, message: dict):
@@ -127,16 +113,7 @@ class ReliableTask(Task):
 # -- Provisioning -------------------------------------------------------
 def _hypervisor_creds(db, hypervisor_type: str) -> dict:
     """Look up the primary/active hypervisor connection's endpoint+creds (empty → env fallback)."""
-    from sqlalchemy import text
-
-    row = db.execute(
-        text(
-            "SELECT host, port, username, password_encrypted, api_token, verify_ssl, datacenter "
-            "FROM hypervisor_connections WHERE hypervisor_type = :t AND is_active = TRUE "
-            "ORDER BY is_primary DESC LIMIT 1"
-        ),
-        {"t": hypervisor_type},
-    ).first()
+    row = db_ops.hypervisor_connection(db, hypervisor_type)
     if row is None:
         return {}
     return {
@@ -160,16 +137,7 @@ def provision_range(self, range_id: str):
     try:
         # Fetch template, allocations, and provisioner_backend from DB
         with _db_session() as db:
-            from sqlalchemy import text
-
-            row = db.execute(
-                text(
-                    "SELECT t.yaml, r.provisioner_backend "
-                    "FROM ranges r JOIN templates t ON r.template_id = t.id "
-                    "WHERE r.id = :rid"
-                ),
-                {"rid": range_id},
-            ).first()
+            row = db_ops.range_template_and_backend(db, range_id)
 
         # The template column holds YAML (see content/ranges/*.yaml); tolerate JSON too.
         raw = row[0] if row and row[0] else ""
@@ -279,12 +247,7 @@ def destroy_range(self, range_id: str):
     try:
         # Get provisioner output and backend from DB
         with _db_session() as db:
-            from sqlalchemy import text
-
-            row = db.execute(
-                text("SELECT provisioner_output, provisioner_backend FROM ranges WHERE id = :rid"),
-                {"rid": range_id},
-            ).first()
+            row = db_ops.range_output_and_backend(db, range_id)
 
         prov_output = json.loads(row[0]) if row and row[0] else {}
         backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
@@ -314,12 +277,7 @@ def run_scenario(self, exercise_id: str):
     logger.info(f"[scenario] Starting exercise {exercise_id}")
 
     with _db_session() as db:
-        from sqlalchemy import text
-
-        row = db.execute(
-            text("SELECT e.id, s.yaml FROM exercises e JOIN scenarios s ON e.scenario_id = s.id WHERE e.id = :eid"),
-            {"eid": exercise_id},
-        ).first()
+        row = db_ops.exercise_scenario_yaml(db, exercise_id)
 
         if not row:
             logger.error(f"[scenario] Exercise {exercise_id} not found")
@@ -364,7 +322,7 @@ def ingest_telemetry_batch(self, range_id: str, events: list[dict]):
     import httpx
 
     os_url = os.getenv("OPENSEARCH_URL", "http://opensearch:9200")
-    index = f"range-{range_id}"
+    index = range_index(range_id)
 
     bulk_body = ""
     for event in events:
@@ -417,16 +375,11 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     try:
         timeline = scenario_definition.get("timeline", [])
         objectives = scenario_definition.get("objectives", [])
-        scenario_definition.get("inject_packs", [])
+        detections = detection_scorer(exercise_id, _db_session, backend)  # None unless DETECTION_SCORING=on
 
         # â”€â”€ Update exercise state to running â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         with _db_session() as db:
-            from sqlalchemy import text
-
-            db.execute(
-                text("UPDATE exercises SET state = 'running', started_at = NOW(), updated_at = NOW() WHERE id = :eid"),
-                {"eid": exercise_id},
-            )
+            db_ops.start_exercise(db, exercise_id)
 
         # â”€â”€ Execute timeline events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         executed = 0
@@ -442,13 +395,10 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
 
             logger.info(f"[scenario_v2] [{t}] event {idx + 1}/{total_events} action={action} params={params}")
 
-            if backend == "mock":
-                time.sleep(min(offset_seconds * 0.01, 1))
-            else:
-                # Production: dispatch to injector registry
-                # _dispatch_inject(action, params, range_context)
-                time.sleep(min(offset_seconds * 0.01, 2))
-
+            # Production: dispatch to injector registry (_dispatch_inject(action, params, range_context))
+            time.sleep(min(offset_seconds * 0.01, 1 if backend == "mock" else 2))
+            if detections:  # score the telemetry so far, so the scoreboard moves mid-run
+                detections.score()
             executed += 1
 
             # Publish progress
@@ -464,38 +414,17 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
             )
 
         # â”€â”€ Track objective completion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        completed_objectives = 0
-        for obj in objectives:
-            ref_id = obj.get("ref_id", "")
-            obj.get("validator", "manual")
-            if backend == "mock":
-                # Auto-complete objectives in mock mode
-                with _db_session() as db:
-                    from sqlalchemy import text
-
-                    db.execute(
-                        text(
-                            "UPDATE objectives SET achieved = TRUE, achieved_at = NOW() "
-                            "WHERE exercise_id = :eid AND ref_id = :rid"
-                        ),
-                        {"eid": exercise_id, "rid": ref_id},
-                    )
-                completed_objectives += 1
+        if detections:  # final pass against the range's telemetry (worker/detection.py)
+            completed_objectives = detections.score()
+        else:  # mock auto-completes every objective; a real backend with scoring off achieves none
+            with _db_session() as db:
+                for obj in objectives if backend == "mock" else []:
+                    db_ops.achieve_objective(db, exercise_id, obj.get("ref_id", ""))
+            completed_objectives = len(objectives) if backend == "mock" else 0
 
         # â”€â”€ Mark exercise complete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         with _db_session() as db:
-            from sqlalchemy import text
-
-            db.execute(
-                text(
-                    "UPDATE exercises SET state = 'completed', completed_at = NOW(), updated_at = NOW(), "
-                    "total_score = COALESCE((SELECT SUM(points) FROM objectives "
-                    "WHERE exercise_id = :eid AND achieved = TRUE), 0), "
-                    "max_score = COALESCE((SELECT SUM(points) FROM objectives WHERE exercise_id = :eid), 0) "
-                    "WHERE id = :eid"
-                ),
-                {"eid": exercise_id},
-            )
+            db_ops.complete_exercise(db, exercise_id)
 
         _notify_api(
             "exercise",
@@ -519,14 +448,7 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
 
     except Exception as e:
         with _db_session() as db:
-            from sqlalchemy import text
-
-            db.execute(
-                text(
-                    "UPDATE exercises SET state = 'cancelled', error_message = :err, updated_at = NOW() WHERE id = :eid"
-                ),
-                {"eid": exercise_id, "err": str(e)},
-            )
+            db_ops.cancel_exercise(db, exercise_id)  # exercises has no error_message column
         _notify_api("exercise", {"id": exercise_id, "state": "failed", "error": str(e)})
         logger.error(f"[scenario_v2] Exercise {exercise_id} FAILED: {e}")
         raise
@@ -547,55 +469,15 @@ def generate_aar(self, exercise_id: str):
     try:
         # â”€â”€ Gather exercise data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         with _db_session() as db:
-            from sqlalchemy import text
-
-            exercise_row = db.execute(
-                text(
-                    "SELECT id, name, state, total_score, max_score, started_at, "
-                    "completed_at FROM exercises WHERE id = :eid"
-                ),
-                {"eid": exercise_id},
-            ).first()
+            exercise_row = db_ops.exercise_for_aar(db, exercise_id)
 
             if not exercise_row:
                 raise ValueError(f"Exercise {exercise_id} not found")
 
-            objectives = db.execute(
-                text(
-                    "SELECT ref_id, description, objective_type, points, achieved, "
-                    "evidence, achieved_at FROM objectives WHERE exercise_id = :eid"
-                ),
-                {"eid": exercise_id},
-            ).fetchall()
+            objectives = db_ops.objectives_for_aar(db, exercise_id)
 
         # â”€â”€ Build report â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        aar_report = {
-            "exercise_id": exercise_id,
-            "exercise_name": exercise_row[1],
-            "state": exercise_row[2],
-            "total_score": exercise_row[3] or 0,
-            "max_score": exercise_row[4] or 0,
-            "started_at": str(exercise_row[5]) if exercise_row[5] else None,
-            "completed_at": str(exercise_row[6]) if exercise_row[6] else None,
-            "generated_at": datetime.now(UTC).isoformat(),
-            "objectives": [
-                {
-                    "ref_id": obj[0],
-                    "description": obj[1],
-                    "type": obj[2],
-                    "points": obj[3],
-                    "achieved": obj[4],
-                    "evidence": obj[5],
-                    "achieved_at": str(obj[6]) if obj[6] else None,
-                }
-                for obj in objectives
-            ],
-            "summary": {
-                "total_objectives": len(objectives),
-                "achieved": sum(1 for o in objectives if o[4]),
-                "score_pct": round(((exercise_row[3] or 0) / max(exercise_row[4] or 1, 1)) * 100, 1),
-            },
-        }
+        aar_report, report_html = build_aar_report(exercise_id, exercise_row, objectives)
 
         # â”€â”€ Optional AI analysis (if orchestrator available) â”€â”€â”€â”€â”€â”€â”€â”€â”€
         ai_url = os.getenv("AI_ORCHESTRATOR_URL")
@@ -617,17 +499,9 @@ def generate_aar(self, exercise_id: str):
         # â”€â”€ Store AAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         report_json = json.dumps(aar_report)
         with _db_session() as db:
-            from sqlalchemy import text
-
-            aar_id = str(_uuid.uuid4())
-            db.execute(
-                text(
-                    "INSERT INTO aars (id, exercise_id, report_json, created_at) "
-                    "VALUES (:id, :eid, :rpt, NOW()) "
-                    "ON CONFLICT (exercise_id) DO UPDATE SET report_json = :rpt, created_at = NOW()"
-                ),
-                {"id": aar_id, "eid": exercise_id, "rpt": report_json},
-            )
+            # Was `INSERT INTO aars`, a table that does not exist. Never replaces an existing
+            # (API-generated, possibly AI-enhanced) report; returns whichever row is stored.
+            aar_id = db_ops.upsert_aar(db, exercise_id, report_json, report_html)
 
         _notify_api(
             "exercise",
@@ -669,11 +543,7 @@ def health_check_ranges(self):
 
     try:
         with _db_session() as db:
-            from sqlalchemy import text
-
-            active_ranges = db.execute(
-                text("SELECT id, name, provisioner_output FROM ranges WHERE state IN ('ready', 'running')")
-            ).fetchall()
+            active_ranges = db_ops.active_ranges(db)
 
         if not active_ranges:
             logger.info("[health] No active ranges to check")
@@ -684,7 +554,7 @@ def health_check_ranges(self):
         unhealthy_ids = []
 
         for row in active_ranges:
-            range_id, name, prov_output = row[0], row[1], row[2]
+            range_id, name, prov_output = str(row[0]), row[1], row[2]
 
             try:
                 prov_dict = json.loads(prov_output) if prov_output else {}
@@ -753,11 +623,7 @@ def collect_range_metrics(self):
 
     try:
         with _db_session() as db:
-            from sqlalchemy import text
-
-            active_ranges = db.execute(
-                text("SELECT id, name, provisioner_output FROM ranges WHERE state IN ('ready', 'running')")
-            ).fetchall()
+            active_ranges = db_ops.active_ranges(db)
 
         if not active_ranges:
             logger.info("[metrics] No active ranges for metrics collection")
@@ -767,7 +633,7 @@ def collect_range_metrics(self):
         now = datetime.now(UTC).isoformat()
 
         for row in active_ranges:
-            range_id, name, prov_output = row[0], row[1], row[2]
+            range_id, name, prov_output = str(row[0]), row[1], row[2]
             prov_dict = json.loads(prov_output) if prov_output else {}
 
             # Use provisioner health check for VM status awareness
@@ -806,9 +672,7 @@ def collect_range_metrics(self):
 
             # Update range resource_usage field
             with _db_session() as db:
-                from sqlalchemy import text
-
-                db.execute(text("UPDATE ranges SET updated_at = NOW() WHERE id = :rid"), {"rid": range_id})
+                db_ops.touch_range(db, range_id)
 
         logger.info(f"[metrics] Collected metrics for {len(all_metrics)} ranges")
         return {"status": "ok", "ranges_collected": len(all_metrics)}
@@ -866,38 +730,13 @@ def _update_snapshot_state(
     `deleted` brought the row back pointing at nothing.
     """
     with _db_session() as db:
-        from sqlalchemy import text
-
-        params: dict = {"state": new_state, "snapshot_id": snapshot_id}
-        sql = "UPDATE range_snapshots SET snapshot_state = :state, updated_at = NOW()"
-        if data is not None:
-            sql += ", snapshot_data = :data"
-            params["data"] = data
-        if size is not None:
-            sql += ", size_bytes = :size"
-            params["size"] = size
-        sql += " WHERE id = :snapshot_id"
-        if only_from:
-            keys = [f"from_{i}" for i in range(len(only_from))]
-            sql += f" AND snapshot_state IN ({', '.join(':' + k for k in keys)})"
-            params.update(zip(keys, only_from, strict=True))
-        return db.execute(text(sql), params).rowcount
+        return db_ops.update_snapshot_state(db, snapshot_id, new_state, data=data, size=size, only_from=only_from)
 
 
 def _snapshot_context(snapshot_id: str, range_id: str):
     """(snapshot_state, snapshot_data, range_state_at_snapshot), (state, provisioner_output, provisioner_backend)."""
     with _db_session() as db:
-        from sqlalchemy import text
-
-        snap = db.execute(
-            text("SELECT snapshot_state, snapshot_data, range_state_at_snapshot FROM range_snapshots WHERE id = :sid"),
-            {"sid": snapshot_id},
-        ).first()
-        rng = db.execute(
-            text("SELECT state, provisioner_output, provisioner_backend FROM ranges WHERE id = :rid"),
-            {"rid": range_id},
-        ).first()
-    return snap, rng
+        return db_ops.snapshot_context(db, snapshot_id, range_id)
 
 
 def _range_backend(rng) -> str:
@@ -1118,64 +957,29 @@ def forge_exercise(self, request_id: str, tenant_id: str, indicators: list, conf
 
     # 3. Create DB records
     with _db_session() as db:
-        from sqlalchemy import text
-
-        # Create scenario
-        scenario_id = str(_uuid.uuid4())
-        db.execute(
-            text(
-                "INSERT INTO scenarios (id, name, version, yaml, tenant_id, created_at, updated_at) "
-                "VALUES (:id, :name, '1.0', :yaml, :tid, NOW(), NOW())"
-            ),
-            {"id": scenario_id, "name": scenario_name, "yaml": cleaned, "tid": tenant_id},
-        )
+        scenario_id = db_ops.insert_forged_scenario(db, scenario_name, cleaned, tenant_id)
 
         # Find a range for this tenant
-        row = db.execute(text("SELECT id FROM ranges WHERE tenant_id = :tid LIMIT 1"), {"tid": tenant_id}).first()
+        row = db_ops.first_range_for_tenant(db, tenant_id)
         if not row:
             _notify_api("forge", {"request_id": request_id, "status": "failed", "error": "No range available"})
             raise ValueError("No range available in tenant")
         range_id = row[0]
 
-        # Create exercise
-        exercise_id = str(_uuid.uuid4())
-        db.execute(
-            text(
-                "INSERT INTO exercises (id, name, range_id, scenario_id, state, tenant_id, created_at, updated_at) "
-                "VALUES (:id, :name, :rid, :sid, 'pending', :tid, NOW(), NOW())"
-            ),
-            {
-                "id": exercise_id,
-                "name": scenario_name,
-                "rid": range_id,
-                "sid": scenario_id,
-                "tid": tenant_id,
-            },
-        )
+        exercise_id = db_ops.insert_forged_exercise(db, scenario_name, range_id, scenario_id, tenant_id)
 
         # Create forged_exercises tracking record
-        mitre_techniques = sorted(set(re.findall(r"T\d{4}(?:\.\d{3})?", cleaned)))
-        indicator_ids = [str(i.get("id", "")) for i in indicators if i.get("id")]
-        forged_id = str(_uuid.uuid4())
-        db.execute(
-            text(
-                "INSERT INTO forged_exercises "
-                "(id, exercise_id, scenario_id, feed_id, indicator_ids, scenario_yaml, "
-                "mitre_techniques, difficulty, model_used, tenant_id, created_at, updated_at) "
-                "VALUES (:id, :eid, :sid, :fid, :iids, :yaml, :mitre, :diff, :model, :tid, NOW(), NOW())"
-            ),
-            {
-                "id": forged_id,
-                "eid": exercise_id,
-                "sid": scenario_id,
-                "fid": config.get("feed_id"),
-                "iids": json.dumps(indicator_ids),
-                "yaml": cleaned,
-                "mitre": json.dumps(mitre_techniques),
-                "diff": config.get("difficulty", "intermediate"),
-                "model": model_used,
-                "tid": tenant_id,
-            },
+        db_ops.insert_forged_exercise_record(
+            db,
+            exercise_id=exercise_id,
+            scenario_id=scenario_id,
+            feed_id=config.get("feed_id"),
+            indicator_ids=[str(i.get("id", "")) for i in indicators if i.get("id")],
+            scenario_yaml=cleaned,
+            mitre_techniques=sorted(set(re.findall(r"T\d{4}(?:\.\d{3})?", cleaned))),
+            difficulty=config.get("difficulty", "intermediate"),
+            model_used=model_used,
+            tenant_id=tenant_id,
         )
 
     _notify_api(
@@ -1211,17 +1015,8 @@ def auto_assess_competency(self, exercise_id: str, user_id: str):
     logger.info(f"[adaptive] Auto-assessing competency for exercise={exercise_id} user={user_id}")
 
     with _db_session() as db:
-        from sqlalchemy import text
-
         # Gather exercise data
-        row = db.execute(
-            text(
-                "SELECT e.total_score, e.max_score, s.yaml "
-                "FROM exercises e JOIN scenarios s ON e.scenario_id = s.id "
-                "WHERE e.id = :eid"
-            ),
-            {"eid": exercise_id},
-        ).first()
+        row = db_ops.exercise_scores_and_yaml(db, exercise_id)
 
         if not row:
             logger.warning(f"[adaptive] Exercise {exercise_id} not found")
@@ -1234,16 +1029,7 @@ def auto_assess_competency(self, exercise_id: str, user_id: str):
         # competency_code (Curriculum Forge generates these).
         competency_mappings = []
         mapped_codes: set[str] = set()
-        objective_rows = db.execute(
-            text(
-                "SELECT o.competency_code, o.points, o.achieved, o.description, c.id "
-                "FROM objectives o "
-                "LEFT JOIN competencies c ON c.code = o.competency_code "
-                "WHERE o.exercise_id = :eid AND o.competency_code IS NOT NULL "
-                "AND o.competency_code != ''"
-            ),
-            {"eid": exercise_id},
-        ).fetchall()
+        objective_rows = db_ops.objective_competency_rows(db, exercise_id)
         for code, points, achieved, description, comp_id in objective_rows:
             mapped_codes.add(code)
             delta = round((points or 10) / 10, 1) if achieved else round(-(points or 10) / 20, 1)
@@ -1271,10 +1057,7 @@ def auto_assess_competency(self, exercise_id: str, user_id: str):
             # Determine competency category from technique range
             category = _mitre_to_nice_category(technique)
             # Find matching competency
-            comp_row = db.execute(
-                text("SELECT id, code, name FROM competencies WHERE framework = 'nice' AND category = :cat LIMIT 1"),
-                {"cat": category},
-            ).first()
+            comp_row = db_ops.nice_competency_in_category(db, category)
 
             if comp_row and comp_row[1] not in mapped_codes:
                 # Calculate delta: positive if good score, negative if poor
@@ -1291,27 +1074,16 @@ def auto_assess_competency(self, exercise_id: str, user_id: str):
                 )
 
         # Create auto-assessment record
-        assessment_id = str(_uuid.uuid4())
-        db.execute(
-            text(
-                "INSERT INTO competency_auto_assessments "
-                "(id, user_id, exercise_id, competency_mappings, raw_score, max_score, "
-                "assessed_at, created_at, updated_at) "
-                "VALUES (:id, :uid, :eid, :mappings, :raw, :max, NOW(), NOW(), NOW())"
-            ),
-            {
-                "id": assessment_id,
-                "uid": user_id,
-                "eid": exercise_id,
-                "mappings": json.dumps(competency_mappings),
-                "raw": total_score,
-                "max": max_score,
-            },
+        assessment_id = db_ops.insert_auto_assessment(
+            db, user_id, exercise_id, competency_mappings, total_score, max_score
         )
 
-        # Update competency assertions for each mapped competency
+        # Update competency assertions for each mapped competency. An objective whose code
+        # matches no competency has no id to assert against; writing "" as the id raised
+        # on Postgres (invalid uuid) and failed the whole assessment.
         for mapping in competency_mappings:
-            _upsert_competency_assertion(db, user_id, mapping["competency_id"], pct, exercise_id)
+            if mapping["competency_id"]:
+                _upsert_competency_assertion(db, user_id, mapping["competency_id"], pct, exercise_id)
 
     _notify_api(
         "adaptive",
@@ -1339,35 +1111,15 @@ def generate_learning_recommendation(self, user_id: str, target_role: str = ""):
     logger.info(f"[adaptive] Generating learning recommendations for user={user_id}")
 
     with _db_session() as db:
-        from sqlalchemy import text
-
         # Gather user's competency profile
-        assertions = db.execute(
-            text(
-                "SELECT c.code, c.name, c.category, ca.proficiency "
-                "FROM competency_assertions ca "
-                "JOIN competencies c ON ca.competency_id = c.id "
-                "WHERE ca.user_id = :uid "
-                "ORDER BY ca.assessed_at DESC"
-            ),
-            {"uid": user_id},
-        ).fetchall()
+        assertions = db_ops.competency_profile(db, user_id)
 
         profile = {
             "assertions": [{"code": r[0], "name": r[1], "category": r[2], "proficiency": r[3]} for r in assertions]
         }
 
         # Gather recent exercise history
-        exercises = db.execute(
-            text(
-                "SELECT e.name, e.total_score, e.max_score, e.completed_at "
-                "FROM exercises e "
-                "WHERE e.tenant_id = (SELECT tenant_id FROM users WHERE id = :uid) "
-                "AND e.state = 'completed' "
-                "ORDER BY e.completed_at DESC LIMIT 10"
-            ),
-            {"uid": user_id},
-        ).fetchall()
+        exercises = db_ops.recent_completed_exercises(db, user_id, limit=10)
 
         exercise_history = [
             {
@@ -1380,11 +1132,7 @@ def generate_learning_recommendation(self, user_id: str, target_role: str = ""):
         ]
 
         # Gather available courses
-        courses = db.execute(
-            text(
-                "SELECT name, description, difficulty, nice_work_roles FROM courses WHERE is_published = true LIMIT 20"
-            )
-        ).fetchall()
+        courses = db_ops.published_courses(db, limit=20)
 
         available_courses = [
             {"name": r[0], "description": r[1], "difficulty": r[2], "nice_work_roles": r[3]} for r in courses
@@ -1430,31 +1178,7 @@ def generate_learning_recommendation(self, user_id: str, target_role: str = ""):
 
     # Store recommendation
     with _db_session() as db:
-        from sqlalchemy import text
-
-        rec_id = str(_uuid.uuid4())
-        db.execute(
-            text(
-                "INSERT INTO learning_recommendations "
-                "(id, user_id, summary, strengths, gaps, recommendations, "
-                "target_role, target_role_readiness, next_milestone, model_used, "
-                "generated_at, created_at, updated_at) "
-                "VALUES (:id, :uid, :summary, :strengths, :gaps, :recs, "
-                ":role, :readiness, :milestone, :model, NOW(), NOW(), NOW())"
-            ),
-            {
-                "id": rec_id,
-                "uid": user_id,
-                "summary": rec.get("summary", ""),
-                "strengths": json.dumps(rec.get("strengths", [])),
-                "gaps": json.dumps(rec.get("gaps", [])),
-                "recs": json.dumps(rec.get("recommendations", [])),
-                "role": target_role or None,
-                "readiness": rec.get("target_role_readiness", 0.0),
-                "milestone": rec.get("next_milestone", ""),
-                "model": model_used,
-            },
-        )
+        rec_id = db_ops.insert_learning_recommendation(db, user_id, rec, target_role, model_used)
 
     _notify_api(
         "adaptive",
@@ -1487,8 +1211,6 @@ def _mitre_to_nice_category(technique: str) -> str:
 
 def _upsert_competency_assertion(db, user_id: str, competency_id: str, score_pct: float, exercise_id: str):
     """Update or create a competency assertion based on exercise score."""
-    from sqlalchemy import text
-
     # Determine proficiency level from score
     if score_pct >= 90:
         proficiency = "expert"
@@ -1501,37 +1223,4 @@ def _upsert_competency_assertion(db, user_id: str, competency_id: str, score_pct
     else:
         proficiency = "novice"
 
-    existing = db.execute(
-        text("SELECT id, evidence_refs FROM competency_assertions WHERE user_id = :uid AND competency_id = :cid"),
-        {"uid": user_id, "cid": competency_id},
-    ).first()
-
-    if existing:
-        # Update with new evidence
-        evidence = json.loads(existing[1]) if existing[1] else []
-        evidence.append(exercise_id)
-        evidence = evidence[-10:]  # Keep last 10
-        db.execute(
-            text(
-                "UPDATE competency_assertions "
-                "SET proficiency = :prof, evidence_refs = :ev, assessed_at = NOW(), updated_at = NOW() "
-                "WHERE id = :id"
-            ),
-            {"prof": proficiency, "ev": json.dumps(evidence), "id": existing[0]},
-        )
-    else:
-        db.execute(
-            text(
-                "INSERT INTO competency_assertions "
-                "(id, user_id, competency_id, proficiency, evidence_refs, "
-                "source, assessed_at, created_at, updated_at) "
-                "VALUES (:id, :uid, :cid, :prof, :ev, 'truenorth', NOW(), NOW(), NOW())"
-            ),
-            {
-                "id": str(_uuid.uuid4()),
-                "uid": user_id,
-                "cid": competency_id,
-                "prof": proficiency,
-                "ev": json.dumps([exercise_id]),
-            },
-        )
+    db_ops.upsert_competency_assertion(db, user_id, competency_id, proficiency, exercise_id)
