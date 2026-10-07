@@ -678,7 +678,7 @@ services:
   #  WEB FRONTEND (Angular SPA behind nginx)
   # ================================================================
   # Required: nginx/conf.d/upstream.conf declares `upstream web_frontend
-  # { server web:80; }`. Without this service nginx aborts at config load with
+  # { server web:8080; }`. Without this service nginx aborts at config load with
   # "host not found in upstream" and the entire stack fails to start.
   web:
     build:
@@ -689,7 +689,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -768,7 +768,7 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
-      # upstream.conf resolves `web:80` at config load; without this nginx
+      # upstream.conf resolves `web:8080` at config load; without this nginx
       # can start before the name exists and abort on "host not found".
       web:
         condition: service_healthy

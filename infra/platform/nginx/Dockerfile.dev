@@ -1,4 +1,5 @@
-FROM nginx:1.25-alpine
+# 1.25-alpine is Alpine 3.19 (end of life). Root master for 80/443, as in Dockerfile.
+FROM nginx:1.30-alpine
 
 LABEL maintainer="TrueNorth Range DevOps"
 LABEL description="Development reverse proxy for TrueNorth Range platform"
