@@ -418,6 +418,7 @@ def submit_attempt(
     if attempt.submitted_at:
         raise HTTPException(409, "Attempt already submitted.")
 
+    # tenant-safe: the quiz of an attempt fetched above by id AND the caller's user_id.
     quiz = db.get(Quiz, attempt.quiz_id)
     questions = {str(q.id): q for q in quiz.questions}
 

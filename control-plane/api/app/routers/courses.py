@@ -65,6 +65,11 @@ MAX_CSV_BYTES = 4 * 1024 * 1024
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
+# Writing the catalogue (courses, learning paths, imports) is authoring. Until
+# 2026-10-07 create/update/delete needed only a sign-in, so a Student could delete a
+# course in their tenant.
+AUTHOR = require_permission(Permission.COURSE_AUTHOR)
+
 
 # ══════════════════════════════════════════════════════════════════════════
 # Course CRUD
@@ -75,9 +80,9 @@ router = APIRouter(prefix="/courses", tags=["courses"])
 def create_course(
     body: CourseIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Create a new course with optional ordered modules."""
+    """Create a new course with optional ordered modules.  **Permission: course:author**"""
     course = Course(
         name=body.name,
         description=body.description,
@@ -318,9 +323,9 @@ def update_course(
     course_id: uuid.UUID,
     body: CourseUpdate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Update course metadata."""
+    """Update course metadata.  **Permission: course:author**"""
     course = get_owned(db, Course, course_id, user)
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
@@ -340,9 +345,9 @@ def update_course(
 def delete_course(
     course_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Delete a course and its modules."""
+    """Delete a course and its modules.  **Permission: course:author**"""
     course = get_owned(db, Course, course_id, user)
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
@@ -355,9 +360,11 @@ def delete_course(
 async def import_programme(
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ) -> dict:
     """Upload a programme catalogue CSV and upsert its courses (idempotent).
+
+    **Permission: course:author** (was: any signed-in user).
 
     Courses are created unpublished and, unless the row names a real ``qsp_code``,
     unbound from the qualification spine. See ``programme_ingest`` for why.
@@ -385,9 +392,11 @@ async def import_programme(
 async def import_course_content(
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ) -> dict:
     """Upload an authored course YAML and attach its modules/quizzes (idempotent).
+
+    **Permission: course:author** (was: any signed-in user).
 
     The course must already exist in the programme catalogue. Everything created
     here is unpublished.
@@ -414,9 +423,11 @@ async def import_course_content(
 @router.post("/generate-programme-paths")
 def generate_programme_paths(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ) -> dict:
     """Build unpublished LearningPaths for the imported programme, term by term.
+
+    **Permission: course:author** (was: any signed-in user).
 
     Delivery schedule only. These paths carry no qualification claim and are separate
     from the CFITES developmental paths generated from the QSP spine.
@@ -570,9 +581,9 @@ lp_router = APIRouter(prefix="/learning-paths", tags=["learning-paths"])
 def create_learning_path(
     body: LearningPathIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Create a learning path (ordered sequence of courses)."""
+    """Create a learning path (ordered sequence of courses).  **Permission: course:author**"""
     duplicate = (
         db.query(LearningPath)
         .filter(LearningPath.tenant_id == user.tenant_id, LearningPath.name == body.name)
@@ -628,9 +639,9 @@ def update_learning_path(
     lp_id: uuid.UUID,
     body: LearningPathUpdate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Update a learning path."""
+    """Update a learning path.  **Permission: course:author**"""
     lp = (
         db.query(LearningPath)
         .filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id)
@@ -668,9 +679,9 @@ def update_learning_path(
 def delete_learning_path(
     lp_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Delete a learning path."""
+    """Delete a learning path.  **Permission: course:author**"""
     lp = (
         db.query(LearningPath)
         .filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id)

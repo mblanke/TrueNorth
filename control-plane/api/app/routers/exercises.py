@@ -68,7 +68,16 @@ router = APIRouter(prefix="/exercises", tags=["exercises"])
 
 
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str, detail: str = "") -> None:
-    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid, detail=detail))
+    db.add(
+        AuditLog(
+            user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),
+            action=action,
+            resource_type=rtype,
+            resource_id=rid,
+            detail=detail,
+        )
+    )
 
 
 def _dispatch_task(task_name: str, *args: Any) -> str | None:
@@ -387,8 +396,12 @@ def list_objectives(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
 ) -> list[Objective]:
-    """List objectives for an exercise.  **Permission: exercise:read**"""
-    return db.query(Objective).filter(Objective.exercise_id == exercise_id).all()
+    """List objectives for an exercise.  **Permission: exercise:read**
+
+    Own-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this
+    listed any tenant's objectives, validators and evidence by exercise id)."""
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    return db.query(Objective).filter(Objective.exercise_id == ex.id).all()
 
 
 @router.post("/{exercise_id}/objectives/{ref_id}/ack", response_model=ObjectiveOut)
@@ -400,11 +413,14 @@ async def acknowledge_objective(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
 ) -> Objective:
-    """Acknowledge (achieve) an objective.  **Permission: exercise:complete**"""
+    """Acknowledge (achieve) an objective.  **Permission: exercise:complete**
+
+    Own-tenant exercises only (foreign id = 404)."""
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
     obj = (
         db.query(Objective)
         .filter(
-            Objective.exercise_id == exercise_id,
+            Objective.exercise_id == ex.id,
             Objective.ref_id == ref_id,
         )
         .first()
