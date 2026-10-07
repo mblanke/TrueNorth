@@ -10,7 +10,13 @@ from sqlalchemy import engine_from_config, pool
 # Add parent dir to path for model imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app import course_publishing, course_releases, lab_sessions, models  # noqa: F401 — ensure models are registered
+from app import (  # noqa: F401 — ensure models are registered
+    course_publishing,
+    course_releases,
+    detections,
+    lab_sessions,
+    models,
+)
 from app.db import Base
 
 config = context.config

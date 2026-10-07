@@ -43,10 +43,11 @@ never achieves anything.
 ### 2. A detection is achieved when a Student's submitted detection finds the attack
 
 A Student submits a detection for an objective during the exercise:
-`POST /exercises/{id}/objectives/{ref}/detections` with `{query}`, written in Lucene or as a
-Sigma rule from the detection-rule editor and compiled to Lucene. The server evaluates it
-with service credentials against `range-<range_id>`, restricted to the **exercise window**
-(see 3):
+`POST /exercises/{id}/objectives/{ref}/detections` with `{query}` in Lucene, under the new
+permission `detection:submit` (Student, instructor, admin). Sigma rules from the
+detection-rule editor follow once a Sigma-to-Lucene compiler is in the repo; the editor
+only validates Sigma today. The server evaluates the query with service credentials
+against `range-<range_id>`, restricted to the **exercise window** (see 3):
 
 - `GT` = events matched by the ground-truth query in the window
 - `S` = events matched by the Student's query in the window
@@ -64,8 +65,13 @@ achieved objective, `objectives.evidence` points at the submission
 (`{"source":"student_detection","submission_id":…,"student":…}`). The points go to the
 exercise, as they do today, and the evidence names the Student.
 
-Attempts per objective are capped (default 5) so the query cannot be brute-forced. The
-instructor can see every attempt.
+Attempts are capped per Student per objective (`max_attempts`, default 5) so the key cannot
+be brute-forced. A store outage returns 503, is stored as `unscored`, and does not use an
+attempt. A Student sees the verdict, how many events their query matched, and how many
+attempts are left. Staff who may edit scenarios (`scenario:update`) see every attempt,
+including how many matched events were the attack and the precision
+(`GET /exercises/{id}/detections`). Built in `app/detections/` and
+`app/routers/detections.py`.
 
 ### 3. The exercise window is server time
 

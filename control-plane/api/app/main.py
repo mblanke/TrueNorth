@@ -224,6 +224,7 @@ from .routers import (
     courses_router,
     curriculum_router,
     detection_rules_router,
+    detections_router,
     directory_router,
     exercise_forge_router,
     exercises_router,
@@ -260,6 +261,7 @@ app.include_router(onboarding_router)
 # Core routers
 app.include_router(ranges_router)
 app.include_router(exercises_router)
+app.include_router(detections_router)
 app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import os
 
-from .base import BaseSearchBackend
+from .base import BaseSearchBackend, SearchBackendError, SearchMatch
 from .null import NullSearchBackend
 from .opensearch import OpenSearchBackend
 
@@ -32,6 +32,8 @@ __all__ = [
     "BaseSearchBackend",
     "NullSearchBackend",
     "OpenSearchBackend",
+    "SearchBackendError",
+    "SearchMatch",
     "get_search_backend",
 ]
 

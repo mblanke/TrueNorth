@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 import httpx
 from fastapi import HTTPException
 
-from .base import BaseSearchBackend
+from .base import BaseSearchBackend, SearchBackendError, SearchMatch
 
 logger = logging.getLogger("truenorth.search.opensearch")
 
@@ -101,6 +101,24 @@ class OpenSearchBackend(BaseSearchBackend):
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
         except Exception as exc:
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
+
+    async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
+        body = {"query": query, "size": size, "track_total_hits": True, "_source": False, "timeout": "10s"}
+        try:
+            async with httpx.AsyncClient(**self._client_kwargs()) as client:
+                resp = await client.post(
+                    f"{self._url}/{index}/_search", params={"ignore_unavailable": "true"}, json=body
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:
+            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
+        if data.get("timed_out"):
+            raise SearchBackendError("OpenSearch query timed out")
+        hits = data.get("hits", {})
+        total = hits.get("total", 0)
+        total = total.get("value", 0) if isinstance(total, dict) else int(total or 0)
+        return SearchMatch(total=total, ids=[str(h.get("_id")) for h in hits.get("hits", [])])
 
     async def health_check(self) -> bool:
         try:

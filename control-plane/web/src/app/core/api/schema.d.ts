@@ -1859,6 +1859,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/exercises/{exercise_id}/detections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Detections
+         * @description Detection attempts on an exercise: a Student's own; every attempt for staff.  **Permission: exercise:read**
+         */
+        get: operations["list_detections_exercises__exercise_id__detections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/exercises/{exercise_id}/objectives": {
         parameters: {
             query?: never;
@@ -1893,6 +1913,26 @@ export interface paths {
          * @description Acknowledge (achieve) an objective.  **Permission: exercise:complete**
          */
         post: operations["acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercises/{exercise_id}/objectives/{ref_id}/detections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Detection
+         * @description Submit a detection for an objective; it is credited if it finds the attack.  **Permission: detection:submit**
+         */
+        post: operations["submit_detection_exercises__exercise_id__objectives__ref_id__detections_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6847,6 +6887,48 @@ export interface components {
             format?: string;
             /** Technique */
             technique: string;
+        };
+        /** DetectionIn */
+        DetectionIn: {
+            /**
+             * Query
+             * @description Lucene query string
+             */
+            query: string;
+        };
+        /**
+         * DetectionOut
+         * @description One attempt. ``on_target`` and ``precision`` are shown only to staff who may see the key.
+         */
+        DetectionOut: {
+            /** Attempts Left */
+            attempts_left?: number | null;
+            /** Events Matched */
+            events_matched: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Objective Ref */
+            objective_ref: string;
+            /** On Target */
+            on_target?: number | null;
+            /** Precision */
+            precision?: number | null;
+            /** Query */
+            query: string;
+            /** Reason */
+            reason?: string | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Verdict */
+            verdict: string;
         };
         /** DetectionRuleIn */
         DetectionRuleIn: {
@@ -13844,6 +13926,37 @@ export interface operations {
             };
         };
     };
+    list_detections_exercises__exercise_id__detections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_objectives_exercises__exercise_id__objectives_get: {
         parameters: {
             query?: never;
@@ -13906,6 +14019,63 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    submit_detection_exercises__exercise_id__objectives__ref_id__detections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+                ref_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionOut"];
+                };
+            };
+            /** @description Exercise not running, objective already achieved, or not a detection objective */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description No attempts left for this objective */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The event store could not answer; the attempt was not counted */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from .base import BaseSearchBackend
+from .base import BaseSearchBackend, SearchMatch
 
 logger = logging.getLogger("truenorth.search.null")
 
@@ -27,6 +27,9 @@ class NullSearchBackend(BaseSearchBackend):
     async def search(self, index: str, query: str, size: int = 50) -> dict:
         logger.debug("NullSearchBackend: search index=%s query=%s → empty", index, query)
         return {"hits": {"total": {"value": 0}, "hits": []}}
+
+    async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
+        return SearchMatch(total=0)
 
     async def health_check(self) -> bool:
         return True

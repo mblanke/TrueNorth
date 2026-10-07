@@ -119,6 +119,29 @@ class TestOpenSearchBackend:
         assert forged["truenorth"]["ingested_at"].startswith("1999")  # the caller's dict is not mutated
 
     @pytest.mark.asyncio
+    async def test_match_returns_total_and_ids(self, respx_mock):
+        route = respx_mock.post("http://mock-os:9200/range-1/_search").mock(
+            return_value=httpx.Response(200, json={"hits": {"total": {"value": 7}, "hits": [{"_id": "a"}, {"_id": "b"}]}})
+        )
+        found = await self._make_backend().match("range-1", {"match_all": {}}, size=2)
+        assert (found.total, found.ids) == (7, ["a", "b"])
+        sent = json.loads(route.calls.last.request.content)
+        assert sent["track_total_hits"] is True and sent["_source"] is False
+        assert route.calls.last.request.url.params["ignore_unavailable"] == "true"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "response",
+        [httpx.Response(503), httpx.Response(200, json={"timed_out": True, "hits": {"total": 0, "hits": []}})],
+    )
+    async def test_match_outage_or_timeout_raises_not_zero(self, respx_mock, response):
+        from app.search_backends import SearchBackendError
+
+        respx_mock.post("http://mock-os:9200/range-1/_search").mock(return_value=response)
+        with pytest.raises(SearchBackendError):
+            await self._make_backend().match("range-1", {"match_all": {}})
+
+    @pytest.mark.asyncio
     async def test_search_success(self, respx_mock):
         respx_mock.post("http://mock-os:9200/range-1/_search").mock(
             return_value=httpx.Response(200, json=_MOCK_SEARCH_RESPONSE)

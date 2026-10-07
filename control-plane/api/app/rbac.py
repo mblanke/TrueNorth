@@ -53,6 +53,8 @@ class Permission(str, Enum):
     EXERCISE_START = "exercise:start"
     EXERCISE_COMPLETE = "exercise:complete"
     EXERCISE_PAUSE = "exercise:pause"
+    # A Student's detection, judged by the server against the objective's answer key (ADR 0005)
+    DETECTION_SUBMIT = "detection:submit"
 
     # User management
     USER_CREATE = "user:create"
@@ -135,6 +137,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_START,
         Permission.EXERCISE_COMPLETE,
         Permission.EXERCISE_PAUSE,
+        Permission.DETECTION_SUBMIT,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
@@ -187,6 +190,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_READ,
         Permission.EXERCISE_START,
         Permission.EXERCISE_COMPLETE,
+        Permission.DETECTION_SUBMIT,
         Permission.AAR_READ,
     },
     # Observer: read-only plus telemetry
