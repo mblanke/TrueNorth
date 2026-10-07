@@ -57,7 +57,9 @@ echo "+ Worker table mirror drift"
 # green mean the same thing (its lint-python job runs scripts/ruff-gate.sh too). tests/integration
 # needs OpenSearch and live provisioners and is a separate CI job (`integration`); running
 # it here just produces errors that teach people to ignore this script.
-run "$PY" -m pytest tests/ --tb=short -q --ignore=tests/integration
+# -P: do not put the repo root on sys.path. CI runs plain `pytest`, which does not, so a
+# test that imports another test module (`from tests.api...`) must fail here too.
+run "$PY" -P -m pytest tests/ --tb=short -q --ignore=tests/integration
 
 # Angular is opt-in until the repo actually carries a karma.conf.js and CHROME_BIN is
 # set (see .claude/agents/test-engineer.md). Leaving an unrunnable step in the default

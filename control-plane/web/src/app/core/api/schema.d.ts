@@ -9797,6 +9797,25 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** JobView */
+        JobView: {
+            /** Action */
+            action?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Current Agent */
+            current_agent?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** State */
+            state?: string | null;
+        };
         /** KitDefinitionIn */
         KitDefinitionIn: {
             /** Description */
@@ -11567,6 +11586,122 @@ export interface components {
              */
             replace?: boolean;
         };
+        /** RunDetail */
+        RunDetail: {
+            /** Actions Blocking */
+            actions_blocking: number;
+            /** Actions Open */
+            actions_open: number;
+            /** Code */
+            code?: string | null;
+            /** Files */
+            files: {
+                [key: string]: unknown;
+            }[];
+            /** Findings */
+            findings: unknown[];
+            /** Gates */
+            gates: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Human Actions */
+            human_actions: unknown[];
+            job?: components["schemas"]["JobView"] | null;
+            /** Lab */
+            lab: {
+                [key: string]: unknown;
+            };
+            /** Messages */
+            messages: {
+                [key: string]: unknown;
+            }[];
+            /** Modules */
+            modules: {
+                [key: string]: unknown;
+            }[];
+            /** Name */
+            name: string;
+            /** Objectives */
+            objectives: unknown[];
+            /** Outline */
+            outline?: unknown;
+            /** Package Ready */
+            package_ready: boolean;
+            /** Pages */
+            pages: string[];
+            /** Phase */
+            phase: string;
+            /** Phase Text */
+            phase_text: string;
+            /** Qa */
+            qa: {
+                [key: string]: unknown;
+            };
+            /** Request */
+            request?: string | null;
+            /** Slug */
+            slug: string;
+            /** Stages */
+            stages: components["schemas"]["StageView"][];
+            /** Title */
+            title?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** RunFile */
+        RunFile: {
+            /** Instructor Only */
+            instructor_only: boolean;
+            /** Path */
+            path: string;
+            /** Text */
+            text: string;
+        };
+        /** RunList */
+        RunList: {
+            /** Runner Seen */
+            runner_seen?: string | null;
+            /** Runs */
+            runs: components["schemas"]["RunSummary"][];
+        };
+        /** RunSummary */
+        RunSummary: {
+            /** Actions Blocking */
+            actions_blocking: number;
+            /** Actions Open */
+            actions_open: number;
+            /** Code */
+            code?: string | null;
+            /** Gates */
+            gates: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            job?: components["schemas"]["JobView"] | null;
+            /** Name */
+            name: string;
+            /** Phase */
+            phase: string;
+            /** Phase Text */
+            phase_text: string;
+            /** Qa */
+            qa: {
+                [key: string]: unknown;
+            };
+            /** Request */
+            request?: string | null;
+            /** Slug */
+            slug: string;
+            /** Stages */
+            stages: components["schemas"]["StageView"][];
+            /** Title */
+            title?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** ScenarioDraftIn */
         ScenarioDraftIn: {
             /**
@@ -11936,6 +12071,17 @@ export interface components {
              * @default false
              */
             vmstate?: boolean;
+        };
+        /** StageView */
+        StageView: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** State */
+            state: string;
+            /** Stop Reason */
+            stop_reason?: unknown;
         };
         /** StorageApplianceIn */
         StorageApplianceIn: {
@@ -14277,7 +14423,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RunList"];
                 };
             };
         };
@@ -14301,7 +14447,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RunDetail"];
                 };
             };
             /** @description Validation Error */
@@ -14332,7 +14478,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RunDetail"];
                 };
             };
             /** @description Validation Error */
@@ -14365,7 +14511,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RunFile"];
                 };
             };
             /** @description Validation Error */
@@ -14431,7 +14577,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RunDetail"];
                 };
             };
             /** @description Validation Error */
@@ -14462,7 +14608,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RunDetail"];
                 };
             };
             /** @description Validation Error */
