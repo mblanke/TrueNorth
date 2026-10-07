@@ -28,6 +28,7 @@ import { RangeNotesComponent } from '../../shared/components/range-notes/range-n
 import { RangeSummary, TemplateSummary } from '@core/models';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { GreyspacePanelComponent } from '../greyspace/greyspace-panel.component';
 
 /* ----------------------------------------------------------------
    Stencil types for the palette
@@ -241,7 +242,8 @@ export class TextPromptDialogComponent {
     MatDialogModule,
     FilterCategoryPipe,
     RangeNotesComponent,
-    EmptyStateComponent
+    EmptyStateComponent,
+    GreyspacePanelComponent
 ],
   template: `
     <div class="designer-layout">
@@ -301,6 +303,19 @@ export class TextPromptDialogComponent {
               <span class="stencil-label">{{ item.label }}</span>
             </div>
           }
+        </div>
+
+        <mat-divider></mat-divider>
+
+        <!-- Greyspace is a block, not a node: it is set up in its panel (ADR 0007) -->
+        <div class="palette-section">
+          <div class="section-label">Simulated internet</div>
+          <button type="button" class="stencil-item" data-test="palette-greyspace" [disabled]="!rangeId()"
+                  (click)="openGreyspace()"
+                  [matTooltip]="rangeId() ? 'Configure Greyspace for this range' : 'Save the range first'">
+            <mat-icon class="stencil-icon">public</mat-icon>
+            <span class="stencil-label">Greyspace</span>
+          </button>
         </div>
 
         <mat-divider></mat-divider>
@@ -523,6 +538,9 @@ export class TextPromptDialogComponent {
               (descriptionChange)="rangeDescription.set($event)"
             />
           </div>
+          <div class="props-notes" id="greyspace-panel">
+            <tn-greyspace-panel [rangeId]="rid" [showPageLink]="true" />
+          </div>
         }
       </aside>
     </div>
@@ -585,6 +603,8 @@ export class TextPromptDialogComponent {
       color: var(--text-primary);
     }
     .stencil-item:active { cursor: grabbing; }
+    button.stencil-item { width: 100%; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+    button.stencil-item:disabled { opacity: .5; cursor: default; }
     .stencil-icon { font-size: 20px; width: 20px; height: 20px; color: var(--accent); }
     .stencil-label { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .canvas-controls { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -1213,6 +1233,11 @@ export class RangeDesignerComponent implements AfterViewInit, OnDestroy {
       width: '420px',
       data: { title, message, confirmText },
     }).afterClosed();
+  }
+
+  /** The Greyspace palette item: bring the range's Greyspace panel (right column) into view. */
+  openGreyspace(): void {
+    document.getElementById('greyspace-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   /* --- Drag & Drop from palette --- */

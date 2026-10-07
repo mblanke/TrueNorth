@@ -5,6 +5,7 @@ import {
   instructorGuard,
   onboardingGuard,
   pendingGuard,
+  scheduleGuard,
   registrationGuard,
 } from './core/guards/auth.guard';
 
@@ -90,6 +91,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/range-designer/range-designer.component').then(m => m.RangeDesignerComponent),
         title: 'Authoring · Range Designer - TrueNorth Range',
+      },
+      {
+        // Greyspace (simulated internet) for one range; :rangeId binds to the panel's input.
+        path: 'ranges/:rangeId/greyspace',
+        loadComponent: () =>
+          import('./features/greyspace/greyspace-panel.component').then(m => m.GreyspacePanelComponent),
+        title: 'Authoring · Greyspace - TrueNorth Range',
       },
       {
         // Background noise for one range: white cell only (instructorGuard on the hub;
@@ -237,6 +245,14 @@ export const routes: Routes = [
     title: 'Exercises - TrueNorth Range',
   },
   {
+    // Bookings, capacity and the calendar feed (docs/adr/0004-scheduler-module.md). Staff only.
+    path: 'schedule',
+    canActivate: [authGuard, onboardingGuard, scheduleGuard],
+    loadComponent: () =>
+      import('./features/schedule/schedule.component').then(m => m.ScheduleComponent),
+    title: 'Schedule - TrueNorth Range',
+  },
+  {
     path: 'scoring',
     canActivate: [authGuard, onboardingGuard, instructorGuard],
     loadComponent: () =>
@@ -293,6 +309,18 @@ export const routes: Routes = [
       import('./features/ai-orchestrator/ai-orchestrator.component').then(m => m.AiOrchestratorComponent),
     title: 'AI Orchestrator - TrueNorth Range',
   },
+  // -- Knowledge base + trouble tickets --
+  {
+    path: 'wiki',
+    canActivate: [authGuard, onboardingGuard],
+    loadChildren: () => import('./features/wiki/wiki.routes').then(m => m.WIKI_ROUTES),
+  },
+  {
+    path: 'support',
+    canActivate: [authGuard, onboardingGuard],
+    loadChildren: () => import('./features/tickets/tickets.routes').then(m => m.SUPPORT_ROUTES),
+  },
+  { path: 'tickets', redirectTo: 'support', pathMatch: 'full' },
   {
     path: 'login',
     loadComponent: () =>

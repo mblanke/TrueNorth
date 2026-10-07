@@ -228,6 +228,27 @@ def _console_factory(key, mp):
     from app.console_backends import get_console_backend
 
     return get_console_backend(key)
+def _calendar_abc():
+    from app.scheduler.calendar_backends import BaseCalendarBackend
+
+    return BaseCalendarBackend
+
+
+def _calendar_registry():
+    from app.scheduler import calendar_backends
+
+    return calendar_backends._REGISTRY
+
+
+def _calendar_factory(key, mp):
+    from app.scheduler import calendar_backends
+
+    mp.setenv("CALENDAR_BACKEND", key)
+    calendar_backends.reset_calendar_backend()
+    try:
+        return calendar_backends.get_calendar_backend()
+    finally:
+        calendar_backends.reset_calendar_backend()
 
 
 def _threat_intel_abc():
@@ -261,6 +282,7 @@ SEAMS: dict[str, Seam] = {
         Seam("moodle", _moodle_abc, _moodle_registry, _moodle_factory, "fake", ValueError),
         Seam("console", _console_abc, _console_registry, _console_factory, "mock", ValueError),
         Seam("threat_intel", _threat_intel_abc, _threat_intel_registry, _threat_intel_factory, "null", ValueError),
+        Seam("calendar", _calendar_abc, _calendar_registry, _calendar_factory, "null", ValueError),
     )
 }
 
@@ -545,3 +567,16 @@ def test_null_threat_intel(monkeypatch):
     for pull in (backend.fetch("https://feeds.invalid/x.csv"), backend.fetch(None, content=b"type,value\nipv4,1.2.3.4\n")):
         assert isinstance(pull, FeedPull) and pull.indicators == [] and pull.rejected == []
     assert backend.health_check() is True
+
+
+def test_null_calendar(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from app.scheduler.ics import IcsEvent, booking_uid
+
+    backend = _build(SEAMS["calendar"], SEAMS["calendar"].null_key, monkeypatch)
+    start = datetime(2026, 10, 15, 13, 0, tzinfo=UTC)
+    event = IcsEvent(uid=booking_uid("b-1"), sequence=0, start=start, end=start + timedelta(hours=2), summary="x")
+    assert _run(backend.health_check()) is True
+    assert _run(backend.publish(event)) is None
+    assert _run(backend.cancel(event)) is None

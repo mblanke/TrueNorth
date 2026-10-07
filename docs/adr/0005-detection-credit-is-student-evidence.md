@@ -109,8 +109,11 @@ ends. The exercise stays `running` until the instructor completes it or `duratio
 (`worker/exercise_clock.py`, every minute) completes overdue exercises. It measures wall
 time since start, so paused time counts. An exercise whose scenario sets no duration stays
 running until an instructor completes it. Submissions are accepted only while it is
-`running`. The worker's in-loop `DetectionScorer` is gone (`worker/detection.py` deleted),
-and so is `scenario_engine` in the worker image; scoring happens when a submission arrives.
+`running`. The worker's in-loop `DetectionScorer` is gone (`worker/detection.py` deleted);
+scoring happens when a submission arrives. (Amended at the merge with the scenario engine,
+2026-10-07: the run loop is `worker/exercise_run.py`, the overdue close runs in the API
+(`app/exercise_completion.py`), and `scenario_engine` stays in the worker image because
+inject dispatch uses its injectors, not for scoring.)
 
 ### 7. Turning it on
 

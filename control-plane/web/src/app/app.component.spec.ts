@@ -1,15 +1,25 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
+import { of } from 'rxjs';
 import { AppComponent } from './app.component';
+import { AuthService } from './core/services/auth.service';
+import { NotificationsApiService } from '@core/services/notifications-api.service';
 
 describe('AppComponent', () => {
   let component: AppComponent;
   let fixture: ComponentFixture<AppComponent>;
+  const canViewSchedule = signal(true);
 
   beforeEach(async () => {
+    canViewSchedule.set(true);
     await TestBed.configureTestingModule({
       imports: [AppComponent, NoopAnimationsModule, RouterTestingModule],
+      providers: [
+        { provide: AuthService, useValue: { canViewSchedule } },
+        { provide: NotificationsApiService, useValue: { unreadCount: () => of({ unread: 0 }), list: () => of([]) } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AppComponent);
@@ -101,5 +111,15 @@ describe('AppComponent', () => {
         expect(item.route.startsWith('/')).toBeTrue();
       }
     }
+  });
+
+  it('hides Schedule from Students (ADR 0004)', () => {
+    fixture.detectChanges();
+    const routes = () => Array.from(fixture.nativeElement.querySelectorAll('mat-nav-list a[mat-list-item]') as NodeListOf<HTMLAnchorElement>)
+      .map(a => a.getAttribute('href'));
+    expect(routes()).toContain('/schedule');
+    canViewSchedule.set(false);
+    fixture.detectChanges();
+    expect(routes()).not.toContain('/schedule');
   });
 });

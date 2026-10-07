@@ -8,6 +8,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { ApiService, Detection } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
+import type { InjectRecord } from '@core/models';
 import { DetectionPanelComponent, isDetectionObjective } from './detection-panel.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 
@@ -154,6 +155,26 @@ const NODE_ICON: Record<string, string> = {
               </div>
             }
           </mat-card>
+          <!-- Inject log: what each inject actually did (GET /exercises/{id}/injects) -->
+          <mat-card class="panel inject-panel">
+            <h3><mat-icon>bolt</mat-icon> Inject log</h3>
+            @if (injects.length) {
+              @for (i of injects; track i.id) {
+                <div class="inj" [attr.data-status]="i.status">
+                  <span class="tl-t">{{ i.t || (i.source === 'instructor' ? 'live' : '') }}</span>
+                  <span class="inj-status chip">{{ i.status }}</span>
+                  <span class="inj-action">{{ i.action }}</span>
+                  @if (i.execution_mode === 'simulated') {
+                    <span class="muted small" title="Synthetic records: nothing ran on a host">simulated</span>
+                  }
+                  <span class="spacer"></span>
+                  <span class="muted small inj-detail">{{ i.detail }}</span>
+                </div>
+              }
+            } @else {
+              <p class="muted">No injects recorded yet.</p>
+            }
+          </mat-card>
           <!-- Range -->
           <mat-card class="panel range-panel">
             <h3><mat-icon>dns</mat-icon> Range Topology</h3>
@@ -260,6 +281,12 @@ const NODE_ICON: Record<string, string> = {
       .error-panel mat-icon { font-size: 42px; width: 42px; height: 42px; color: var(--text-muted); }
       .range-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
       .range-notes { margin: 12px 0; padding-top: 12px; border-top: 1px solid var(--border); }
+      .inject-panel { grid-column: 1 / -1; }
+      .inj { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, var(--text-muted) 12%, transparent); }
+      .inj-action { font-weight: 600; }
+      .inj-detail { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .inj[data-status='fired'] .inj-status { background: color-mix(in srgb, var(--success) 22%, transparent); }
+      .inj[data-status='failed'] .inj-status { background: color-mix(in srgb, var(--error, #e53935) 22%, transparent); }
       @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } .grid .panel:first-child { grid-row: auto; } }
     `,
   ],
@@ -275,6 +302,7 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   rangeName = '';
   rangeState = '';
   rangeDescription = '';
+  injects: InjectRecord[] = [];
   running = false;
   error = '';
   /** Attempts grouped by objective ref; stable arrays so bindings do not churn. */
@@ -396,8 +424,16 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
           }
         }
         if (d.state === 'running' && !this.poll) this.startPolling();
+        this.loadInjects();
       },
       error: () => (this.error = 'Exercise not found.'),
+    });
+  }
+
+  private loadInjects(): void {
+    this.api.listInjects(this.id).subscribe({
+      next: rows => (this.injects = rows),
+      error: () => {},
     });
   }
 
@@ -421,6 +457,7 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
       this.api.get<ScenarioDetail>(`/exercises/${this.id}/scenario-detail`).subscribe({
         next: d => {
           this.detail = d;
+          this.loadInjects();
           if (d.state === 'completed' || d.state === 'cancelled') {
             this.running = false;
             if (this.poll) { clearInterval(this.poll); this.poll = null; }

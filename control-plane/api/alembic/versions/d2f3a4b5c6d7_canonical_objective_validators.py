@@ -1,7 +1,7 @@
 """canonical objective validator names
 
 Revision ID: d2f3a4b5c6d7
-Revises: a9b0c1d2e3f4
+Revises: a2b3c4d5e6f7
 Create Date: 2026-10-06 18:00:00.000000
 
 Objective rows said ``validate.opensearch_query``, ``validate.opensearch.query`` and
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d2f3a4b5c6d7"
-down_revision: str | None = "a9b0c1d2e3f4"
+down_revision: str | None = "a2b3c4d5e6f7"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

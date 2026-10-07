@@ -25,6 +25,8 @@ from .models import (
     EnrollmentStatus,
     LearningPath,
     ModuleProgress,
+    User,
+    UserRole,
 )
 
 logger = logging.getLogger(__name__)
@@ -128,4 +130,34 @@ def ensure_path_enrollment(
     courses = courses_for_learning_path(db, learning_path_id)
     return [
         ensure_enrollment(db, user_id=user_id, course_id=c.id, tenant_id=tenant_id) for c in courses
+    ]
+
+
+# -- Who is in a course (the scheduler's class of Students, ADR 0004) ----------
+ACTIVE_STATUSES = (EnrollmentStatus.enrolled, EnrollmentStatus.in_progress)
+
+
+def active_students(db: Session, course_id: uuid.UUID) -> list[User]:
+    """Active Students enrolled in a course and still studying it."""
+    return (
+        db.query(User)
+        .join(Enrollment, Enrollment.user_id == User.id)
+        .filter(
+            Enrollment.course_id == course_id,
+            Enrollment.status.in_(ACTIVE_STATUSES),
+            User.role == UserRole.student,
+            User.is_active == True,  # noqa: E712
+            User.deleted_at.is_(None),
+        )
+        .all()
+    )
+
+
+def active_course_ids(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
+    """Courses a user is enrolled in and still studying."""
+    return [
+        cid
+        for (cid,) in db.query(Enrollment.course_id)
+        .filter(Enrollment.user_id == user_id, Enrollment.status.in_(ACTIVE_STATUSES))
+        .all()
     ]

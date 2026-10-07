@@ -1470,6 +1470,23 @@
         "title": "Body_lti_launch_lti_launch_post",
         "type": "object"
       },
+      "Body_upload_attachments_tickets__ticket_id__attachments_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_attachments_tickets__ticket_id__attachments_post",
+        "type": "object"
+      },
       "Body_upload_course_release_course_releases_post": {
         "properties": {
           "file": {
@@ -1642,6 +1659,18 @@
             "title": "Start Time",
             "type": "string"
           },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Size the check from this template; overrides the *_needed values",
+            "title": "Template Id"
+          },
           "vcpu_needed": {
             "default": 0,
             "title": "Vcpu Needed",
@@ -1665,6 +1694,11 @@
             "title": "Disk Gb Committed",
             "type": "integer"
           },
+          "disk_gb_needed": {
+            "default": 0,
+            "title": "Disk Gb Needed",
+            "type": "integer"
+          },
           "disk_gb_total": {
             "title": "Disk Gb Total",
             "type": "integer"
@@ -1681,6 +1715,11 @@
             "title": "Overlapping Events",
             "type": "integer"
           },
+          "policy": {
+            "default": "block",
+            "title": "Policy",
+            "type": "string"
+          },
           "ram_mb_available": {
             "title": "Ram Mb Available",
             "type": "integer"
@@ -1689,9 +1728,28 @@
             "title": "Ram Mb Committed",
             "type": "integer"
           },
+          "ram_mb_needed": {
+            "default": 0,
+            "title": "Ram Mb Needed",
+            "type": "integer"
+          },
           "ram_mb_total": {
             "title": "Ram Mb Total",
             "type": "integer"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "supply_source": {
+            "default": "env",
+            "description": "Where cluster totals came from: env fallback, or discovery",
+            "title": "Supply Source",
+            "type": "string"
           },
           "vcpu_available": {
             "title": "Vcpu Available",
@@ -1701,8 +1759,18 @@
             "title": "Vcpu Committed",
             "type": "integer"
           },
+          "vcpu_needed": {
+            "default": 0,
+            "title": "Vcpu Needed",
+            "type": "integer"
+          },
           "vcpu_total": {
             "title": "Vcpu Total",
+            "type": "integer"
+          },
+          "vm_count_needed": {
+            "default": 0,
+            "title": "Vm Count Needed",
             "type": "integer"
           }
         },
@@ -2289,6 +2357,121 @@
           "expires_in"
         ],
         "title": "ConsoleOut",
+        "type": "object"
+      },
+      "CorpusSummary": {
+        "properties": {
+          "available": {
+            "description": "Whether the control plane can read this tier's manifest.",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "builder": {
+            "title": "Builder",
+            "type": "string"
+          },
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes"
+          },
+          "cap_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Bytes"
+          },
+          "categories": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categories"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "sites": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sites"
+          },
+          "threat_domains": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threat Domains"
+          },
+          "tier": {
+            "enum": [
+              "t0",
+              "t1",
+              "t2",
+              "full"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "tier",
+          "title",
+          "cap_bytes",
+          "location",
+          "builder",
+          "description",
+          "available"
+        ],
+        "title": "CorpusSummary",
         "type": "object"
       },
       "CourseGenerateIn": {
@@ -3913,6 +4096,18 @@
       },
       "EventIn": {
         "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The class: this course's active Students attend",
+            "title": "Course Id"
+          },
           "description": {
             "anyOf": [
               {
@@ -3930,10 +4125,40 @@
             "title": "Disk Gb Total",
             "type": "integer"
           },
+          "draft": {
+            "default": false,
+            "description": "Create as a draft: holds nothing and is not checked until scheduled",
+            "title": "Draft",
+            "type": "boolean"
+          },
           "end_time": {
             "format": "date-time",
             "title": "End Time",
             "type": "string"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Use this existing exercise (and its range) instead",
+            "title": "Exercise Id"
+          },
+          "instructor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who teaches it; defaults to the caller when they are an instructor",
+            "title": "Instructor Id"
           },
           "name": {
             "maxLength": 255,
@@ -3958,6 +4183,18 @@
             ],
             "title": "Range Id"
           },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Run this scenario: a pending exercise is created when the range is built",
+            "title": "Scenario Id"
+          },
           "start_time": {
             "format": "date-time",
             "title": "Start Time",
@@ -3972,6 +4209,7 @@
                 "type": "null"
               }
             ],
+            "description": "Size the booking from this template's VM specs",
             "title": "Template Id"
           },
           "vcpu_total": {
@@ -3993,6 +4231,198 @@
           "end_time"
         ],
         "title": "EventIn",
+        "type": "object"
+      },
+      "EventListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "EventListOut",
+        "type": "object"
+      },
+      "EventOut": {
+        "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "disk_gb_total": {
+            "title": "Disk Gb Total",
+            "type": "integer"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructor Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ram_mb_total": {
+            "title": "Ram Mb Total",
+            "type": "integer"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "vcpu_total": {
+            "title": "Vcpu Total",
+            "type": "integer"
+          },
+          "vm_count": {
+            "title": "Vm Count",
+            "type": "integer"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "state",
+          "tenant_id",
+          "range_id",
+          "template_id",
+          "start_time",
+          "end_time",
+          "vm_count",
+          "vcpu_total",
+          "ram_mb_total",
+          "disk_gb_total",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EventOut",
         "type": "object"
       },
       "EvidenceIn": {
@@ -4715,6 +5145,58 @@
         "title": "FeedRejectionOut",
         "type": "object"
       },
+      "FeedTokenIssued": {
+        "description": "Shown once: only a hash of the token is kept.",
+        "properties": {
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "url": {
+            "description": "HTTPS subscription URL; paste into Outlook 'Subscribe from web'",
+            "title": "Url",
+            "type": "string"
+          },
+          "webcal_url": {
+            "description": "The same URL as webcal://, for one-click subscribe",
+            "title": "Webcal Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "webcal_url",
+          "issued_at"
+        ],
+        "title": "FeedTokenIssued",
+        "type": "object"
+      },
+      "FeedTokenStatus": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "issued_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issued At"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "FeedTokenStatus",
+        "type": "object"
+      },
       "FleetNodeCreateIn": {
         "properties": {
           "gpu_model": {
@@ -5225,6 +5707,292 @@
           "max_score"
         ],
         "title": "GradePushIn",
+        "type": "object"
+      },
+      "GreyspaceBlock": {
+        "additionalProperties": false,
+        "description": "A range's Greyspace block: the template ``greyspace:`` key, or attached through the API.\nSame fields as ``scenario-engine/schemas/template.schema.json#/properties/greyspace``.",
+        "properties": {
+          "corpus_tier": {
+            "default": "t0",
+            "enum": [
+              "t0",
+              "t1",
+              "t2",
+              "full"
+            ],
+            "title": "Corpus Tier",
+            "type": "string"
+          },
+          "npc_profile": {
+            "default": "off",
+            "description": "Simulated users. Recorded only: NPC traffic is a later slice.",
+            "enum": [
+              "off",
+              "office-day",
+              "quiet-night"
+            ],
+            "title": "Npc Profile",
+            "type": "string"
+          },
+          "public_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IPv4 CIDR covering every ISP prefix of the corpus. Omit to use the corpus's own.",
+            "title": "Public Prefix"
+          },
+          "site_packs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Site categories to serve (news, search, social, ...). Omit for all.",
+            "title": "Site Packs"
+          },
+          "threat_infra": {
+            "default": true,
+            "description": "Serve the corpus's threat-actor domains (C2, phishing stubs).",
+            "title": "Threat Infra",
+            "type": "boolean"
+          },
+          "trust_ca": {
+            "default": true,
+            "description": "Recorded only: the Greyspace root CA is a later slice.",
+            "title": "Trust Ca",
+            "type": "boolean"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "GreyspaceBlock",
+        "type": "object"
+      },
+      "GreyspaceConfigOut": {
+        "properties": {
+          "address_plan": {
+            "additionalProperties": true,
+            "title": "Address Plan",
+            "type": "object"
+          },
+          "corpus_tier": {
+            "enum": [
+              "t0",
+              "t1",
+              "t2",
+              "full"
+            ],
+            "title": "Corpus Tier",
+            "type": "string"
+          },
+          "corpus_version": {
+            "title": "Corpus Version",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "isps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Isps",
+            "type": "array"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "site_packs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Site Packs",
+            "type": "array"
+          },
+          "sites": {
+            "title": "Sites",
+            "type": "integer"
+          },
+          "threat_domains": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Threat Domains",
+            "type": "array"
+          },
+          "tlds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tlds",
+            "type": "array"
+          },
+          "zones": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "range_id",
+          "corpus_tier",
+          "corpus_version",
+          "address_plan",
+          "isps",
+          "services",
+          "sites",
+          "site_packs",
+          "tlds",
+          "zones",
+          "threat_domains",
+          "files"
+        ],
+        "title": "GreyspaceConfigOut",
+        "type": "object"
+      },
+      "GreyspaceStatusOut": {
+        "properties": {
+          "attached": {
+            "title": "Attached",
+            "type": "boolean"
+          },
+          "block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreyspaceBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "corpus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CorpusSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deployed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployed At"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "problems": {
+            "description": "Why the block cannot render on its corpus now.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "range_state": {
+            "title": "Range State",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "not_attached",
+              "configured",
+              "deployed",
+              "pending_infrastructure",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "template_block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreyspaceBlock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The block the range's template declares, if any; attaching with no body uses it."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "range_id",
+          "attached",
+          "status",
+          "range_state"
+        ],
+        "title": "GreyspaceStatusOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -5813,6 +6581,160 @@
           "message"
         ],
         "title": "HypervisorTestResult",
+        "type": "object"
+      },
+      "InjectCounts": {
+        "properties": {
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "fired": {
+            "title": "Fired",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "fired",
+          "skipped",
+          "failed",
+          "pending"
+        ],
+        "title": "InjectCounts",
+        "type": "object"
+      },
+      "InjectRecordOut": {
+        "description": "One recorded inject outcome.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "simulated (synthetic records) | live; null if not run",
+            "title": "Execution Mode"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mitre_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitre Technique"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the run that fired it; a replay is a new run",
+            "title": "Run Id"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "timeline position; null for an instructor inject",
+            "title": "Seq"
+          },
+          "source": {
+            "description": "timeline | instructor",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "fired",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T"
+          },
+          "telemetry_count": {
+            "default": 0,
+            "title": "Telemetry Count",
+            "type": "integer"
+          },
+          "telemetry_shipped": {
+            "default": false,
+            "title": "Telemetry Shipped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "action",
+          "status"
+        ],
+        "title": "InjectRecordOut",
         "type": "object"
       },
       "InstructorInjectIn": {
@@ -6541,6 +7463,54 @@
           "token"
         ],
         "title": "MoodleSsoOut",
+        "type": "object"
+      },
+      "MySessionOut": {
+        "description": "A session as a Student sees it: no capacity, no other people.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "state",
+          "start_time",
+          "end_time"
+        ],
+        "title": "MySessionOut",
         "type": "object"
       },
       "NationOut": {
@@ -7601,6 +8571,75 @@
         "title": "NoiseStatsOut",
         "type": "object"
       },
+      "NotificationOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "default": "info",
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "read": {
+            "title": "Read",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "message",
+          "level",
+          "read",
+          "created_at"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
+      "NotificationUnreadCountOut": {
+        "properties": {
+          "unread": {
+            "title": "Unread",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unread"
+        ],
+        "title": "NotificationUnreadCountOut",
+        "type": "object"
+      },
       "OUIn": {
         "properties": {
           "name": {
@@ -7899,6 +8938,31 @@
         "title": "ObjectiveOut",
         "type": "object"
       },
+      "ObjectiveResultOut": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "ref_id": {
+            "title": "Ref Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "unassessed",
+            "default": "unassessed",
+            "description": "an execution has no Students or evidence review, so nothing is scored",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref_id"
+        ],
+        "title": "ObjectiveResultOut",
+        "type": "object"
+      },
       "OnboardingPathIn": {
         "properties": {
           "learning_path_id": {
@@ -8140,6 +9204,15 @@
         "title": "OpsStatsOut",
         "type": "object"
       },
+      "OvercapacityPolicy": {
+        "description": "What happens to a booking that does not fit (ADR 0004, \"Booking rules\").",
+        "enum": [
+          "block",
+          "warn"
+        ],
+        "title": "OvercapacityPolicy",
+        "type": "string"
+      },
       "POOut": {
         "properties": {
           "assessment_type": {
@@ -8371,6 +9444,36 @@
           "offset"
         ],
         "title": "PaginatedResponse[ExternalActivityOut]",
+        "type": "object"
+      },
+      "PolicyIn": {
+        "properties": {
+          "overcapacity": {
+            "$ref": "#/components/schemas/OvercapacityPolicy"
+          }
+        },
+        "required": [
+          "overcapacity"
+        ],
+        "title": "PolicyIn",
+        "type": "object"
+      },
+      "PolicyOut": {
+        "properties": {
+          "can_change": {
+            "default": false,
+            "description": "Whether the caller may change it (platform administrators only)",
+            "title": "Can Change",
+            "type": "boolean"
+          },
+          "overcapacity": {
+            "$ref": "#/components/schemas/OvercapacityPolicy"
+          }
+        },
+        "required": [
+          "overcapacity"
+        ],
+        "title": "PolicyOut",
         "type": "object"
       },
       "ProfileIn": {
@@ -10232,6 +11335,244 @@
         "title": "ScenarioDraftIn",
         "type": "object"
       },
+      "ScenarioExecuteIn": {
+        "properties": {
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "scenario_id": {
+            "format": "uuid",
+            "title": "Scenario Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "range_id"
+        ],
+        "title": "ScenarioExecuteIn",
+        "type": "object"
+      },
+      "ScenarioExecutionOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scenario_id",
+          "scenario_name",
+          "range_id",
+          "state"
+        ],
+        "title": "ScenarioExecutionOut",
+        "type": "object"
+      },
+      "ScenarioExecutionResultsOut": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "injects": {
+            "$ref": "#/components/schemas/InjectCounts"
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectiveResultOut"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scenario_id",
+          "scenario_name",
+          "range_id",
+          "state",
+          "injects",
+          "objectives"
+        ],
+        "title": "ScenarioExecutionResultsOut",
+        "type": "object"
+      },
       "ScenarioIn": {
         "properties": {
           "is_public": {
@@ -11143,6 +12484,93 @@
         "title": "StorageVolumeOut",
         "type": "object"
       },
+      "SupportQueueIn": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ],
+        "title": "SupportQueueIn",
+        "type": "object"
+      },
+      "SupportQueueOut": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "description",
+          "is_default"
+        ],
+        "title": "SupportQueueOut",
+        "type": "object"
+      },
+      "SupportQueueUpdate": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "SupportQueueUpdate",
+        "type": "object"
+      },
       "TeamFullIn": {
         "properties": {
           "color_hex": {
@@ -11987,6 +13415,959 @@
         "title": "ThreatIntelFeedUpdate",
         "type": "object"
       },
+      "TicketActivityOut": {
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_name": {
+            "default": "",
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "new_value": {
+            "title": "New Value",
+            "type": "string"
+          },
+          "old_value": {
+            "title": "Old Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "actor_id",
+          "field",
+          "old_value",
+          "new_value",
+          "created_at"
+        ],
+        "title": "TicketActivityOut",
+        "type": "object"
+      },
+      "TicketAssigneeOut": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "role"
+        ],
+        "title": "TicketAssigneeOut",
+        "type": "object"
+      },
+      "TicketAttachmentOut": {
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "uploaded_by": {
+            "format": "uuid",
+            "title": "Uploaded By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "uploaded_by",
+          "created_at"
+        ],
+        "title": "TicketAttachmentOut",
+        "type": "object"
+      },
+      "TicketBoardColumn": {
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tickets": {
+            "items": {
+              "$ref": "#/components/schemas/TicketListOut"
+            },
+            "title": "Tickets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "tickets"
+        ],
+        "title": "TicketBoardColumn",
+        "type": "object"
+      },
+      "TicketCommentIn": {
+        "properties": {
+          "body": {
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "is_internal": {
+            "default": false,
+            "title": "Is Internal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "TicketCommentIn",
+        "type": "object"
+      },
+      "TicketCommentOut": {
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "author_name": {
+            "default": "",
+            "title": "Author Name",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_internal": {
+            "title": "Is Internal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "author_id",
+          "body",
+          "is_internal",
+          "created_at"
+        ],
+        "title": "TicketCommentOut",
+        "type": "object"
+      },
+      "TicketIn": {
+        "properties": {
+          "assignee_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "category": {
+            "default": "other",
+            "maxLength": 50,
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 50000,
+            "title": "Description",
+            "type": "string"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Id"
+          },
+          "labels": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Labels",
+            "type": "string"
+          },
+          "priority": {
+            "default": "medium",
+            "pattern": "^(low|medium|high|critical)$",
+            "title": "Priority",
+            "type": "string"
+          },
+          "queue_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Id"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "subject": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          },
+          "type": {
+            "default": "incident",
+            "pattern": "^(incident|bug|task|request)$",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "title": "TicketIn",
+        "type": "object"
+      },
+      "TicketListOut": {
+        "properties": {
+          "assignee_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "assignee_name": {
+            "default": "",
+            "title": "Assignee Name",
+            "type": "string"
+          },
+          "board_order": {
+            "title": "Board Order",
+            "type": "number"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "default": "",
+            "title": "Key",
+            "type": "string"
+          },
+          "labels": {
+            "title": "Labels",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "queue_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Id"
+          },
+          "queue_name": {
+            "default": "",
+            "title": "Queue Name",
+            "type": "string"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "reporter_id": {
+            "format": "uuid",
+            "title": "Reporter Id",
+            "type": "string"
+          },
+          "reporter_name": {
+            "default": "",
+            "title": "Reporter Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "type",
+          "subject",
+          "status",
+          "priority",
+          "category",
+          "labels",
+          "reporter_id",
+          "board_order",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TicketListOut",
+        "type": "object"
+      },
+      "TicketMoveIn": {
+        "properties": {
+          "board_order": {
+            "default": 0.0,
+            "title": "Board Order",
+            "type": "number"
+          },
+          "status": {
+            "pattern": "^(open|in_progress|waiting|resolved|closed)$",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "TicketMoveIn",
+        "type": "object"
+      },
+      "TicketOut": {
+        "properties": {
+          "assignee_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "assignee_name": {
+            "default": "",
+            "title": "Assignee Name",
+            "type": "string"
+          },
+          "board_order": {
+            "title": "Board Order",
+            "type": "number"
+          },
+          "can_work": {
+            "default": false,
+            "title": "Can Work",
+            "type": "boolean"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Id"
+          },
+          "exercise_name": {
+            "default": "",
+            "title": "Exercise Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "default": "",
+            "title": "Key",
+            "type": "string"
+          },
+          "labels": {
+            "title": "Labels",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "queue_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Id"
+          },
+          "queue_name": {
+            "default": "",
+            "title": "Queue Name",
+            "type": "string"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "range_name": {
+            "default": "",
+            "title": "Range Name",
+            "type": "string"
+          },
+          "reporter_id": {
+            "format": "uuid",
+            "title": "Reporter Id",
+            "type": "string"
+          },
+          "reporter_name": {
+            "default": "",
+            "title": "Reporter Name",
+            "type": "string"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "type",
+          "subject",
+          "status",
+          "priority",
+          "category",
+          "labels",
+          "reporter_id",
+          "board_order",
+          "created_at",
+          "updated_at",
+          "description"
+        ],
+        "title": "TicketOut",
+        "type": "object"
+      },
+      "TicketUpdate": {
+        "properties": {
+          "assignee_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 50000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Id"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "pattern": "^(low|medium|high|critical)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "queue_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Id"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "pattern": "^(open|in_progress|waiting|resolved|closed)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "pattern": "^(incident|bug|task|request)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "unassign": {
+            "default": false,
+            "title": "Unassign",
+            "type": "boolean"
+          },
+          "unlink_exercise": {
+            "default": false,
+            "title": "Unlink Exercise",
+            "type": "boolean"
+          },
+          "unlink_range": {
+            "default": false,
+            "title": "Unlink Range",
+            "type": "boolean"
+          }
+        },
+        "title": "TicketUpdate",
+        "type": "object"
+      },
+      "TimelineBucket": {
+        "properties": {
+          "disk_gb_committed": {
+            "title": "Disk Gb Committed",
+            "type": "integer"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "ram_mb_committed": {
+            "title": "Ram Mb Committed",
+            "type": "integer"
+          },
+          "time": {
+            "format": "date-time",
+            "title": "Time",
+            "type": "string"
+          },
+          "vcpu_committed": {
+            "title": "Vcpu Committed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "vcpu_committed",
+          "ram_mb_committed",
+          "disk_gb_committed",
+          "event_count"
+        ],
+        "title": "TimelineBucket",
+        "type": "object"
+      },
+      "TimelineEntryOut": {
+        "description": "A timeline event and what happened to it (``pending`` until the worker records it).",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
+          },
+          "mitre_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitre Technique"
+          },
+          "recorded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "fired",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "t": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T"
+          },
+          "telemetry_count": {
+            "default": 0,
+            "title": "Telemetry Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "action",
+          "status"
+        ],
+        "title": "TimelineEntryOut",
+        "type": "object"
+      },
+      "TimelineOut": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "cluster_disk_gb": {
+            "title": "Cluster Disk Gb",
+            "type": "integer"
+          },
+          "cluster_ram_mb": {
+            "title": "Cluster Ram Mb",
+            "type": "integer"
+          },
+          "cluster_vcpu": {
+            "title": "Cluster Vcpu",
+            "type": "integer"
+          },
+          "grace_minutes": {
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "lead_minutes": {
+            "title": "Lead Minutes",
+            "type": "integer"
+          },
+          "resolution_minutes": {
+            "title": "Resolution Minutes",
+            "type": "integer"
+          },
+          "supply_source": {
+            "title": "Supply Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "buckets",
+          "cluster_vcpu",
+          "cluster_ram_mb",
+          "cluster_disk_gb",
+          "supply_source",
+          "resolution_minutes",
+          "lead_minutes",
+          "grace_minutes"
+        ],
+        "title": "TimelineOut",
+        "type": "object"
+      },
       "TranscriptEntry": {
         "description": "A single learning record in a user's unified transcript.",
         "properties": {
@@ -12691,6 +15072,599 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "WikiPageIn": {
+        "properties": {
+          "body": {
+            "default": "",
+            "title": "Body",
+            "type": "string"
+          },
+          "is_published": {
+            "default": true,
+            "title": "Is Published",
+            "type": "boolean"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "tags": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Tags",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "WikiPageIn",
+        "type": "object"
+      },
+      "WikiPageOut": {
+        "properties": {
+          "author_id": {
+            "format": "uuid",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "breadcrumbs": {
+            "items": {
+              "$ref": "#/components/schemas/WikiPageRef"
+            },
+            "title": "Breadcrumbs",
+            "type": "array"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/WikiPageRef"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_published": {
+            "title": "Is Published",
+            "type": "boolean"
+          },
+          "last_editor_id": {
+            "format": "uuid",
+            "title": "Last Editor Id",
+            "type": "string"
+          },
+          "last_editor_name": {
+            "default": "",
+            "title": "Last Editor Name",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "space_archived": {
+            "default": false,
+            "title": "Space Archived",
+            "type": "boolean"
+          },
+          "space_id": {
+            "format": "uuid",
+            "title": "Space Id",
+            "type": "string"
+          },
+          "space_slug": {
+            "default": "",
+            "title": "Space Slug",
+            "type": "string"
+          },
+          "tags": {
+            "title": "Tags",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "space_id",
+          "title",
+          "slug",
+          "body",
+          "tags",
+          "ordinal",
+          "is_published",
+          "author_id",
+          "last_editor_id",
+          "revision_number",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WikiPageOut",
+        "type": "object"
+      },
+      "WikiPageRef": {
+        "description": "A link to another page: enough to name it and route to it.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "WikiPageRef",
+        "type": "object"
+      },
+      "WikiPageUpdate": {
+        "properties": {
+          "base_revision": {
+            "description": "revision_number the edit started from",
+            "minimum": 1.0,
+            "title": "Base Revision",
+            "type": "integer"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "edit_summary": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Edit Summary",
+            "type": "string"
+          },
+          "is_published": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Published"
+          },
+          "move_to_root": {
+            "default": false,
+            "title": "Move To Root",
+            "type": "boolean"
+          },
+          "ordinal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinal"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "base_revision"
+        ],
+        "title": "WikiPageUpdate",
+        "type": "object"
+      },
+      "WikiRestoreRequest": {
+        "properties": {
+          "base_revision": {
+            "description": "revision_number the restore was decided against",
+            "minimum": 1.0,
+            "title": "Base Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base_revision"
+        ],
+        "title": "WikiRestoreRequest",
+        "type": "object"
+      },
+      "WikiRevisionListOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "edit_summary": {
+            "title": "Edit Summary",
+            "type": "string"
+          },
+          "editor_id": {
+            "format": "uuid",
+            "title": "Editor Id",
+            "type": "string"
+          },
+          "editor_name": {
+            "default": "",
+            "title": "Editor Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision_number",
+          "title",
+          "editor_id",
+          "edit_summary",
+          "created_at"
+        ],
+        "title": "WikiRevisionListOut",
+        "type": "object"
+      },
+      "WikiRevisionOut": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "edit_summary": {
+            "title": "Edit Summary",
+            "type": "string"
+          },
+          "editor_id": {
+            "format": "uuid",
+            "title": "Editor Id",
+            "type": "string"
+          },
+          "editor_name": {
+            "default": "",
+            "title": "Editor Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision_number",
+          "title",
+          "editor_id",
+          "edit_summary",
+          "created_at",
+          "body"
+        ],
+        "title": "WikiRevisionOut",
+        "type": "object"
+      },
+      "WikiSearchHit": {
+        "properties": {
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "space_name": {
+            "title": "Space Name",
+            "type": "string"
+          },
+          "space_slug": {
+            "title": "Space Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "space_slug",
+          "space_name",
+          "title",
+          "snippet",
+          "updated_at"
+        ],
+        "title": "WikiSearchHit",
+        "type": "object"
+      },
+      "WikiSpaceIn": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "icon": {
+            "default": "folder",
+            "maxLength": 50,
+            "title": "Icon",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Slug",
+            "type": "string"
+          },
+          "visibility": {
+            "default": "all",
+            "pattern": "^(all|staff)$",
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ],
+        "title": "WikiSpaceIn",
+        "type": "object"
+      },
+      "WikiSpaceOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "icon": {
+            "title": "Icon",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_archived": {
+            "title": "Is Archived",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "description",
+          "icon",
+          "visibility",
+          "is_archived",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WikiSpaceOut",
+        "type": "object"
+      },
+      "WikiSpaceUpdate": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "icon": {
+            "maxLength": 50,
+            "title": "Icon",
+            "type": "string"
+          },
+          "is_archived": {
+            "title": "Is Archived",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "visibility": {
+            "pattern": "^(all|staff)$",
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "title": "WikiSpaceUpdate",
+        "type": "object"
+      },
+      "WikiTreeNode": {
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/WikiTreeNode"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_published": {
+            "title": "Is Published",
+            "type": "boolean"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "is_published"
+        ],
+        "title": "WikiTreeNode",
+        "type": "object"
+      },
       "YamlValidateIn": {
         "properties": {
           "yaml": {
@@ -13259,6 +16233,7 @@
     },
     "/ai-config/backends/{backend_id}": {
       "delete": {
+        "description": "Delete a backend with its fleet nodes and the model routes that point at it.\n\nNodes and routes have no use without their backend, so they go with it.",
         "operationId": "delete_backend_ai_config_backends__backend_id__delete",
         "parameters": [
           {
@@ -16167,7 +19142,7 @@
     },
     "/courses/{course_id}": {
       "delete": {
-        "description": "Delete a course and its modules.  **Permission: course:author**",
+        "description": "Delete a course and its modules.  **Permission: course:author**\n\n409 while it has enrollments, releases or publications: Student records and\nwhat was published are history (unpublish the course instead); also while a\nscheduled event not yet completed or cancelled books it (finished ones keep their\nrow without the course). Module content links go with the modules; quizzes are\nkept, detached from them.",
         "operationId": "delete_course_courses__course_id__delete",
         "parameters": [
           {
@@ -17600,6 +20575,7 @@
     },
     "/directory/groups/{group_id}": {
       "delete": {
+        "description": "Delete a security group and its memberships (they mean nothing without it).",
         "operationId": "delete_group_directory_groups__group_id__delete",
         "parameters": [
           {
@@ -18064,6 +21040,7 @@
     },
     "/directory/ous/{ou_id}": {
       "delete": {
+        "description": "Delete an OU.  409 while sub-OUs, security groups or teams sit under it.",
         "operationId": "delete_ou_directory_ous__ou_id__delete",
         "parameters": [
           {
@@ -18952,6 +21929,59 @@
         ]
       }
     },
+    "/exercises/{exercise_id}/injects": {
+      "get": {
+        "description": "What each inject did (timeline and instructor), oldest first, every run kept.\n**Permission: exercise:read**",
+        "operationId": "list_injects_exercises__exercise_id__injects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InjectRecordOut"
+                  },
+                  "title": "Response List Injects Exercises  Exercise Id  Injects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Injects",
+        "tags": [
+          "exercises"
+        ]
+      }
+    },
     "/exercises/{exercise_id}/objectives": {
       "get": {
         "description": "List objectives for an exercise.  **Permission: exercise:read**\n\nOwn-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this\nlisted any tenant's objectives, validators and evidence by exercise id). Students\nget evidence with the answer key redacted (ADR 0005).",
@@ -19643,6 +22673,37 @@
         ]
       }
     },
+    "/greyspace/corpora": {
+      "get": {
+        "description": "The corpus tiers (T0 CI fixture, T1 Mac sample, T2 lab, full) and what the control\nplane can read of each one's manifest.",
+        "operationId": "greyspace_list_corpora",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CorpusSummary"
+                  },
+                  "title": "Response Greyspace List Corpora",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Corpora",
+        "tags": [
+          "greyspace"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Quick health check - liveness + dependency flags.",
@@ -19781,6 +22842,7 @@
     },
     "/hypervisors/connections/{conn_id}": {
       "delete": {
+        "description": "Delete a connection with the hosts and pools discovered through it.\n\nThose rows are inventory read from the hypervisor, with no meaning once the\nconnection is gone, so they go with it.",
         "operationId": "delete_connection_hypervisors_connections__conn_id__delete",
         "parameters": [
           {
@@ -20650,7 +23712,7 @@
     },
     "/integrations/platforms/{platform_id}": {
       "delete": {
-        "description": "Remove a registered platform.",
+        "description": "Remove a registered platform.\n\n409 while Student activity records synced from it, or course publications to it,\nexist: those are history (deactivate the platform instead). Its LTI nonces and\nlaunches only serve talking to the platform, so they go with it.",
         "operationId": "deregister_platform_integrations_platforms__platform_id__delete",
         "parameters": [
           {
@@ -21789,7 +24851,7 @@
     },
     "/learning-paths/{lp_id}": {
       "delete": {
-        "description": "Delete a learning path.  **Permission: course:author**",
+        "description": "Delete a learning path.  **Permission: course:author**\n\n409 while a registration request names it: the request records what the person\nasked to join (unpublish the path instead).",
         "operationId": "delete_learning_path_learning_paths__lp_id__delete",
         "parameters": [
           {
@@ -23149,6 +26211,170 @@
         "summary": "Activity Stats",
         "tags": [
           "noise"
+        ]
+      }
+    },
+    "/notifications": {
+      "get": {
+        "operationId": "list_notifications_notifications_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "unread_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Unread Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationOut"
+                  },
+                  "title": "Response List Notifications Notifications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Notifications",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/read-all": {
+      "post": {
+        "operationId": "mark_all_read_notifications_read_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationUnreadCountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark All Read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/unread-count": {
+      "get": {
+        "operationId": "unread_count_notifications_unread_count_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationUnreadCountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unread Count",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/{notification_id}/read": {
+      "post": {
+        "operationId": "mark_read_notifications__notification_id__read_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notification_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Notification Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mark Read",
+        "tags": [
+          "notifications"
         ]
       }
     },
@@ -27353,6 +30579,222 @@
         ]
       }
     },
+    "/ranges/{range_id}/greyspace": {
+      "delete": {
+        "description": "Detach the range's Greyspace block. The shared corpus is untouched.",
+        "operationId": "greyspace_detach",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Range not found in your tenant, or no Greyspace block attached"
+          },
+          "409": {
+            "description": "The range is changing, belongs to a lab session, or its corpus is not readable here"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detach",
+        "tags": [
+          "greyspace"
+        ]
+      },
+      "get": {
+        "description": "The range's Greyspace block and its status (``not_attached`` when there is none).",
+        "operationId": "greyspace_get_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreyspaceStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Range not found in your tenant, or no Greyspace block attached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Status",
+        "tags": [
+          "greyspace"
+        ]
+      },
+      "put": {
+        "description": "Attach a Greyspace block to the range, or replace the one it has. With no body, the\nblock the range's template declares is used, else the defaults (T0 corpus, all packs).",
+        "operationId": "greyspace_attach",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GreyspaceBlock"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Block"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreyspaceStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Range not found in your tenant, or no Greyspace block attached"
+          },
+          "409": {
+            "description": "The range is changing, belongs to a lab session, or its corpus is not readable here"
+          },
+          "422": {
+            "description": "The block cannot run on its corpus; the body lists the problems"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Attach",
+        "tags": [
+          "greyspace"
+        ]
+      }
+    },
+    "/ranges/{range_id}/greyspace/config": {
+      "get": {
+        "description": "What the range's Greyspace stack is generated to be: address plan, ISPs, services,\nDNS zones and the generated file list.",
+        "operationId": "greyspace_get_config",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreyspaceConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Range not found in your tenant, or no Greyspace block attached"
+          },
+          "409": {
+            "description": "The range is changing, belongs to a lab session, or its corpus is not readable here"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Config",
+        "tags": [
+          "greyspace"
+        ]
+      }
+    },
     "/ranges/{range_id}/network-reservations": {
       "get": {
         "description": "Addresses and VLANs this range holds on shared networks (app/network_inventory/).\n**Permission: range:read**",
@@ -28602,6 +32044,155 @@
         ]
       }
     },
+    "/scenarios/execute": {
+      "post": {
+        "description": "Run a scenario's timeline against a ready range.  **Permission: exercise:start**\n\n202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.\n422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is\ndown (the execution is recorded ``failed``).",
+        "operationId": "execute_scenario_scenarios_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioExecuteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioExecutionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Execute Scenario",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/scenarios/executions/{execution_id}/results": {
+      "get": {
+        "description": "State, inject counts and objectives (always ``unassessed``) of an execution.",
+        "operationId": "get_execution_results_scenarios_executions__execution_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioExecutionResultsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Execution Results",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
+    "/scenarios/executions/{execution_id}/timeline": {
+      "get": {
+        "description": "Each timeline event with its recorded outcome (``pending`` until the worker reaches it).",
+        "operationId": "get_execution_timeline_scenarios_executions__execution_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TimelineEntryOut"
+                  },
+                  "title": "Response Get Execution Timeline Scenarios Executions  Execution Id  Timeline Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Execution Timeline",
+        "tags": [
+          "scenarios"
+        ]
+      }
+    },
     "/scenarios/validate": {
       "post": {
         "description": "Validate scenario YAML against the engine's canonical schema.\n\nReturns ``{valid, errors: [{path, message}], normalized}`` \u2014 ``normalized``\nis the parsed document whenever the YAML parses, even when schema-invalid,\nso the Scenario Studio can load a document and show its problems at once.\nCreate/update stay permissive on purpose (forge output and older seeds are\nnot schema-clean); this endpoint is the contract for authored content.",
@@ -28653,7 +32244,7 @@
     },
     "/scenarios/{scenario_id}": {
       "delete": {
-        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a soft-deleted one) still references it.",
+        "description": "Delete a scenario.  **Permission: scenario:delete**\n\n409 while any exercise (including a finished or soft-deleted one, whose AAR still\nreads the scenario) references it. Checked up front (SQLite does not enforce the FK)\nand again at commit, for an exercise created in between. Also 409 while a scheduled\nevent not yet completed or cancelled will run it; finished events keep their row\nwithout the scenario. Scenario executions do not block: they keep their record and\nlose the link.",
         "operationId": "delete_scenario_scenarios__scenario_id__delete",
         "parameters": [
           {
@@ -28670,6 +32261,9 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "An exercise references the scenario"
           },
           "422": {
             "content": {
@@ -28862,7 +32456,7 @@
     },
     "/schedule/check": {
       "post": {
-        "description": "Check whether a proposed deployment fits within the cluster at the given time.",
+        "description": "Check whether a proposed deployment fits within the cluster at the given time.\n\nWith `template_id`, the need is that template's VM specs. The window includes the\nprovisioning lead and teardown grace, exactly as booking it would.",
         "operationId": "check_capacity_schedule_check_post",
         "requestBody": {
           "content": {
@@ -28909,7 +32503,7 @@
     },
     "/schedule/events": {
       "get": {
-        "description": "List all scheduled events, optionally filtered by state.",
+        "description": "List the caller's tenant's scheduled events, optionally filtered by state and by a\nwindow they overlap (the calendar's week).",
         "operationId": "list_events_schedule_events_get",
         "parameters": [
           {
@@ -28926,6 +32520,44 @@
                 }
               ],
               "title": "State"
+            }
+          },
+          {
+            "description": "Only events ending after this",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events ending after this",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Only events starting before this",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events starting before this",
+              "title": "End"
             }
           },
           {
@@ -28955,7 +32587,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventListOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28982,7 +32616,7 @@
         ]
       },
       "post": {
-        "description": "Create a new event with resource reservation.  Will reject if it\nwould cause an over-commitment.",
+        "description": "Book a session. Refused with 409 when its range or instructor is already booked\nthen. One that does not fit the cluster is refused with 409 (policy `block`) or\ncreated with warnings (policy `warn`). A draft holds nothing and is checked when it\nis scheduled.",
         "operationId": "create_event_schedule_events_post",
         "requestBody": {
           "content": {
@@ -28998,7 +32632,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29027,6 +32663,7 @@
     },
     "/schedule/events/{event_id}": {
       "delete": {
+        "description": "Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking\nis history, like a completed one.",
         "operationId": "delete_event_schedule_events__event_id__delete",
         "parameters": [
           {
@@ -29059,7 +32696,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Cancel/delete event",
+        "summary": "Cancel an event",
         "tags": [
           "scheduling"
         ]
@@ -29081,7 +32718,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29108,6 +32747,7 @@
         ]
       },
       "put": {
+        "description": "Reschedule or resize a draft or scheduled booking (409 once it is being built).",
         "operationId": "update_event_schedule_events__event_id__put",
         "parameters": [
           {
@@ -29134,7 +32774,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29163,6 +32805,7 @@
     },
     "/schedule/events/{event_id}/activate": {
       "post": {
+        "description": "scheduled or provisioning -> active.",
         "operationId": "activate_event_schedule_events__event_id__activate_post",
         "parameters": [
           {
@@ -29179,7 +32822,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29206,8 +32851,57 @@
         ]
       }
     },
+    "/schedule/events/{event_id}/cancel": {
+      "post": {
+        "description": "Any state before completed -> cancelled. The row stays as history.",
+        "operationId": "cancel_event_schedule_events__event_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel an event",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/events/{event_id}/complete": {
       "post": {
+        "description": "active -> completed.",
         "operationId": "complete_event_schedule_events__event_id__complete_post",
         "parameters": [
           {
@@ -29224,7 +32918,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29251,9 +32947,294 @@
         ]
       }
     },
+    "/schedule/events/{event_id}/schedule": {
+      "post": {
+        "description": "draft -> scheduled, checked for conflicts and capacity exactly as a new booking.",
+        "operationId": "schedule_event_schedule_events__event_id__schedule_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Schedule a draft",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/feed-token": {
+      "delete": {
+        "operationId": "feed_token_revoke_schedule_feed_token_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke your calendar feed URL",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "get": {
+        "operationId": "feed_token_status_schedule_feed_token_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedTokenStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Whether you have a calendar feed",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "post": {
+        "description": "Returns the subscription URL once. Regenerating stops the previous URL working.",
+        "operationId": "feed_token_issue_schedule_feed_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedTokenIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create or regenerate your calendar feed URL",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/feed/{token}.ics": {
+      "get": {
+        "operationId": "calendar_feed_schedule_feed__token__ics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Unknown or revoked feed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calendar feed (iCalendar)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/mine": {
+      "get": {
+        "description": "Sessions you teach, and for Students the sessions of courses they are enrolled in.",
+        "operationId": "my_sessions_schedule_mine_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MySessionOut"
+                  },
+                  "title": "Response My Sessions Schedule Mine Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Your upcoming sessions",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/policy": {
+      "get": {
+        "description": "`block`: a booking that does not fit is refused for everyone. `warn`: it is\ncreated, with warnings in the response, and the warning is audit-logged.",
+        "operationId": "get_policy_schedule_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Over-capacity policy",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "put": {
+        "description": "Platform-wide, because every tenant books against the same cluster. Audit-logged.",
+        "operationId": "put_policy_schedule_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set the over-capacity policy (platform admin)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/tick": {
+      "post": {
+        "description": "One clock pass, as the background clock runs every minute: provision at the lead,\nactivate at the start, complete and tear down after the grace, send reminders.",
+        "operationId": "run_tick_schedule_tick_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run the scheduler clock now (platform admin)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/timeline": {
       "get": {
-        "description": "Return hourly resource commitment buckets for the next N days.\nUsed to render the capacity timeline chart in the dashboard.",
+        "description": "Committed capacity per slot, build and teardown time included, so back-to-back\nsessions are not counted as concurrent at a fine enough resolution. Feeds the\nscheduler's load bars and the Range Ops heatmap.",
         "operationId": "resource_timeline_schedule_timeline_get",
         "parameters": [
           {
@@ -29267,13 +33248,46 @@
               "title": "Days",
               "type": "integer"
             }
+          },
+          {
+            "description": "First slot (default: the current hour)",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First slot (default: the current hour)",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Slot length: 15, 30 or 60",
+            "in": "query",
+            "name": "resolution_minutes",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "description": "Slot length: 15, 30 or 60",
+              "title": "Resolution Minutes",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -29376,6 +33390,7 @@
     },
     "/storage/appliances/{appliance_id}": {
       "delete": {
+        "description": "Delete an appliance.  409 while volumes are still recorded on it.",
         "operationId": "delete_appliance_storage_appliances__appliance_id__delete",
         "parameters": [
           {
@@ -30335,7 +34350,7 @@
     },
     "/templates/{template_id}": {
       "delete": {
-        "description": "Delete a template.  **Permission: template:delete**",
+        "description": "Delete a template.  **Permission: template:delete**\n\n409 while a range built from it exists, or an event not yet completed or\ncancelled reserves it. Its PO mapping goes with it; finished events keep their row without it.",
         "operationId": "delete_template_templates__template_id__delete",
         "parameters": [
           {
@@ -31261,6 +35276,1055 @@
         ]
       }
     },
+    "/tickets": {
+      "get": {
+        "operationId": "list_tickets_tickets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "pattern": "^(mine|assigned|all)$",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "description": "comma-separated statuses",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "comma-separated statuses",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "priority",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(low|medium|high|critical)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(incident|bug|task|request)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "queue_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Queue Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketListOut"
+                  },
+                  "title": "Response List Tickets Tickets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Tickets",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "post": {
+        "operationId": "create_ticket_tickets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/assignees": {
+      "get": {
+        "operationId": "list_assignees_tickets_assignees_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketAssigneeOut"
+                  },
+                  "title": "Response List Assignees Tickets Assignees Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Assignees",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/attachments/{attachment_id}": {
+      "delete": {
+        "operationId": "delete_attachment_tickets_attachments__attachment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Attachment",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "get": {
+        "operationId": "download_attachment_tickets_attachments__attachment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Attachment",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/board": {
+      "get": {
+        "operationId": "board_tickets_board_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "queue_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Queue Id"
+            }
+          },
+          {
+            "description": "'me' or a user id",
+            "in": "query",
+            "name": "assignee",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "'me' or a user id",
+              "title": "Assignee"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketBoardColumn"
+                  },
+                  "title": "Response Board Tickets Board Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Board",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/queues": {
+      "get": {
+        "operationId": "list_queues_tickets_queues_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SupportQueueOut"
+                  },
+                  "title": "Response List Queues Tickets Queues Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Queues",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "post": {
+        "operationId": "create_queue_tickets_queues_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportQueueIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportQueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Queue",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/queues/{queue_id}": {
+      "delete": {
+        "operationId": "delete_queue_tickets_queues__queue_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "queue_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Queue Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Queue",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "put": {
+        "operationId": "update_queue_tickets_queues__queue_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "queue_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Queue Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportQueueUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportQueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Queue",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/{ticket_id}": {
+      "delete": {
+        "operationId": "delete_ticket_tickets__ticket_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Ticket",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "get": {
+        "operationId": "get_ticket_tickets__ticket_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Ticket",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "patch": {
+        "operationId": "update_ticket_tickets__ticket_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/{ticket_id}/activity": {
+      "get": {
+        "operationId": "list_activity_tickets__ticket_id__activity_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketActivityOut"
+                  },
+                  "title": "Response List Activity Tickets  Ticket Id  Activity Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Activity",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/{ticket_id}/attachments": {
+      "get": {
+        "operationId": "list_attachments_tickets__ticket_id__attachments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketAttachmentOut"
+                  },
+                  "title": "Response List Attachments Tickets  Ticket Id  Attachments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Attachments",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "post": {
+        "operationId": "upload_attachments_tickets__ticket_id__attachments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_attachments_tickets__ticket_id__attachments_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketAttachmentOut"
+                  },
+                  "title": "Response Upload Attachments Tickets  Ticket Id  Attachments Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Attachments",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/{ticket_id}/comments": {
+      "get": {
+        "operationId": "list_comments_tickets__ticket_id__comments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketCommentOut"
+                  },
+                  "title": "Response List Comments Tickets  Ticket Id  Comments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Comments",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "post": {
+        "operationId": "add_comment_tickets__ticket_id__comments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketCommentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketCommentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Comment",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/{ticket_id}/move": {
+      "post": {
+        "description": "Drag-and-drop on the board: change column and/or position within it.",
+        "operationId": "move_ticket_tickets__ticket_id__move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketMoveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move Ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/users": {
       "get": {
         "description": "List users in the caller's tenant.  **Permission: user:read**",
@@ -31785,6 +36849,742 @@
         "summary": "Get Transcript",
         "tags": [
           "transcript"
+        ]
+      }
+    },
+    "/wiki/pages/{page_id}": {
+      "delete": {
+        "description": "Soft-delete the page and everything under it; revisions are kept.",
+        "operationId": "delete_page_wiki_pages__page_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Page",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "get": {
+        "operationId": "get_page_wiki_pages__page_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Page",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "put": {
+        "operationId": "update_page_wiki_pages__page_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiPageUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/pages/{page_id}/revisions": {
+      "get": {
+        "operationId": "list_revisions_wiki_pages__page_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WikiRevisionListOut"
+                  },
+                  "title": "Response List Revisions Wiki Pages  Page Id  Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Revisions",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/pages/{page_id}/revisions/{n}": {
+      "get": {
+        "operationId": "get_revision_wiki_pages__page_id__revisions__n__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "N",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiRevisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Revision",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/pages/{page_id}/revisions/{n}/restore": {
+      "post": {
+        "description": "Bring an old version back as a NEW revision; history is never rewritten.\n\nLike an edit, it names the revision it was decided against (``base_revision``): a\nrestore chosen while looking at revision 4 must not wipe out a revision 5 saved\nsince. A stale base is a 409 with the current page.",
+        "operationId": "restore_revision_wiki_pages__page_id__revisions__n__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "N",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiRestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "The page changed since base_revision; body carries the current page"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Restore Revision",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/search": {
+      "get": {
+        "operationId": "search_wiki_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WikiSearchHit"
+                  },
+                  "title": "Response Search Wiki Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/spaces": {
+      "get": {
+        "operationId": "list_spaces_wiki_spaces_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WikiSpaceOut"
+                  },
+                  "title": "Response List Spaces Wiki Spaces Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Spaces",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "post": {
+        "operationId": "create_space_wiki_spaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiSpaceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiSpaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Space",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/spaces/{slug}": {
+      "delete": {
+        "description": "Archive, not destroy: pages and their history stay restorable.",
+        "operationId": "archive_space_wiki_spaces__slug__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Archive Space",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "get": {
+        "operationId": "get_space_wiki_spaces__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiSpaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Space",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "put": {
+        "operationId": "update_space_wiki_spaces__slug__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiSpaceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiSpaceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Space",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/spaces/{slug}/pages": {
+      "post": {
+        "operationId": "create_page_wiki_spaces__slug__pages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiPageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/spaces/{slug}/tree": {
+      "get": {
+        "operationId": "space_tree_wiki_spaces__slug__tree_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WikiTreeNode"
+                  },
+                  "title": "Response Space Tree Wiki Spaces  Slug  Tree Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Space Tree",
+        "tags": [
+          "wiki"
         ]
       }
     }

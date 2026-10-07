@@ -183,6 +183,7 @@ jobs:
             context: control-plane/api
           - name: worker
             context: control-plane/worker
+            build_contexts: scenario_engine=scenario-engine
           - name: web
             context: control-plane/web
           - name: scenario-engine
@@ -195,6 +196,7 @@ jobs:
       - uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.service.context }}
+          build-contexts: ${{ matrix.service.build_contexts }}
           push: false
           tags: truenorth-range/${{ matrix.service.name }}:${{ github.sha }}
           cache-from: type=gha
@@ -356,13 +358,9 @@ jobs:
         if: always()
         run: TN_PUBLIC_KEY=unused $MOODLE_COMPOSE down -v
 
-  # govmomi's vCenter simulator (compose.vcsim.yml) for provisioner tests marked `vcsim`.
-  # The one lane where zero tests is tolerated, and only while none exist: pytest exit 5
-  # ("no tests collected") is a warning. Once a vcsim test exists, it must pass.
-  # TODO(provisioners slot): add `@pytest.mark.vcsim` tests for
-  # worker/provisioners/vsphere_api.py, then delete the exit-5 allowance below. Note
-  # vcsim v0.56.0 answers POST /rest/com/vmware/cis/session but 404s POST /api/session,
-  # the login vsphere_api.py uses today.
+  # govmomi's vCenter simulator (compose.vcsim.yml) for provisioner tests marked `vcsim`
+  # (tests/integration/test_vsphere_sim.py: the vsphere_api provisioner end to end). As in
+  # every other lane, nothing collected (exit 5) or nothing passed is a failure.
   vsphere-sim:
     runs-on: ubuntu-latest
     needs: lint-python
@@ -389,10 +387,6 @@ jobs:
           mkdir -p build/vcsim
           rc=0
           pytest tests/ -m vcsim -rs --tb=short --junitxml=build/vcsim/junit.xml || rc=$?
-          if [ "$rc" -eq 5 ]; then
-            echo "::warning::no tests are marked vcsim yet (TODO provisioners slot); nothing ran"
-            exit 0
-          fi
           python scripts/junit_require_pass.py build/vcsim/junit.xml || rc=1
           exit $rc
         env:
@@ -413,3 +407,27 @@ jobs:
       - name: Tear down
         if: always()
         run: $VCSIM_COMPOSE down -v
+
+  # Greyspace (ADR 0007): build the T0 corpus, render the simulated-internet stack from
+  # its manifest and run it under its own compose project. The script asserts DNS through
+  # the root -> TLD -> authoritative chain, a BGP route learned between the two ISPs,
+  # HTTP by name across both ISPs, the threat-actor stub, and the per-range overlay in
+  # front of the read-only corpus; it tears the stack down on exit. Separate from the
+  # `integration` job so the itest stack does not grow (the API side of Greyspace is
+  # tests/integration/test_greyspace_flow.py there). Stdlib Python only.
+  greyspace:
+    runs-on: ubuntu-latest
+    needs: lint-python
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: ffmpeg (the T0 test-pattern video)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      - name: T0 stack check (DNS, BGP, HTTP, threat stub, overlay)
+        run: bash greyspace/scripts/check-t0.sh
+        env:
+          PY: python
+          GS_PROJECT: gs-ci

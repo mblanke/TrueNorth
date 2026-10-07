@@ -79,6 +79,57 @@
     },
     "network": {
       "type": "object"
+    },
+    "greyspace": {
+      "description": "Attach a Greyspace simulated internet (ADR 0007). Same fields as the API's GreyspaceBlock.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "corpus_tier": {
+          "type": "string",
+          "enum": [
+            "t0",
+            "t1",
+            "t2",
+            "full"
+          ]
+        },
+        "site_packs": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "public_prefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "npc_profile": {
+          "type": "string",
+          "enum": [
+            "off",
+            "office-day",
+            "quiet-night"
+          ]
+        },
+        "threat_infra": {
+          "type": "boolean"
+        },
+        "trust_ca": {
+          "type": "boolean"
+        }
+      }
     }
   }
 }

@@ -16,14 +16,57 @@ repo publishes the API on 8081 (`8080/tcp -> 127.0.0.1:8081`), which is why the 
 
 from __future__ import annotations
 
+import logging
 import os
 
+import httpx
 import pytest
 
 pytestmark = pytest.mark.integration
 
 DEFAULT_API_URL = "http://localhost:8081"
 DEFAULT_OPENSEARCH_URL = "http://localhost:9200"
+
+logger = logging.getLogger("tests.integration")
+
+# Methods that may be sent again: the server did nothing, or doing it twice is the same.
+_IDEMPOTENT = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
+
+
+class _ReconnectingTransport(httpx.HTTPTransport):
+    """Resend an idempotent request once, on a fresh connection, when the server dropped
+    the pooled keep-alive one (``RemoteProtocolError: Server disconnected``).
+
+    A 500 in one teardown made the API close its connection, and every later request on
+    the session client then failed with "Server disconnected": one leftover row turned
+    into a row of teardown ERRORs for unrelated tests. httpx discards the dead connection,
+    so the resend opens a new one. POSTs are never resent.
+    """
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        try:
+            return super().handle_request(request)
+        except (httpx.RemoteProtocolError, httpx.ReadError):
+            if request.method not in _IDEMPOTENT:
+                raise
+            logger.warning("%s %s: server dropped the connection; resending once", request.method, request.url)
+            return super().handle_request(request)
+
+
+def cleanup(api_base_url: str, path: str) -> int | None:
+    """DELETE ``path`` for teardown, never raising: returns the status, or None when the
+    request failed outright. A refusal is logged, not raised, so one leftover cannot fail
+    the test that made it or the ones after it. Its own short-lived client, so a broken
+    session connection cannot affect it."""
+    try:
+        with httpx.Client(base_url=api_base_url, timeout=30.0, transport=_ReconnectingTransport()) as client:
+            status = client.delete(path).status_code
+    except httpx.HTTPError as exc:
+        logger.warning("teardown DELETE %s failed: %s", path, exc)
+        return None
+    if status >= 400 and status != 404:
+        logger.warning("teardown DELETE %s => %s; left in place", path, status)
+    return status
 
 
 def _reachable(url: str) -> bool:
@@ -41,7 +84,9 @@ def _reachable(url: str) -> bool:
 # Fixtures that reach the live API. Tests that use none of them (the Moodle publish and
 # vSphere lab tests run the API code in-process) carry their own configuration gates and
 # must not be skipped for a missing API: the Moodle CI lane has no API stack at all.
-_LIVE_API_FIXTURES = frozenset({"api_base_url", "api_client", "async_api_client", "range_template", "make_range"})
+_LIVE_API_FIXTURES = frozenset(
+    {"api_base_url", "api_client", "async_api_client", "range_template", "make_range", "teardown_delete"}
+)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -75,11 +120,17 @@ def api_base_url() -> str:
 
 @pytest.fixture(scope="session")
 def api_client(api_base_url):
-    """httpx client pointed at the live API."""
-    import httpx
-
-    with httpx.Client(base_url=api_base_url, timeout=30.0) as client:
+    """httpx client pointed at the live API. Recovers from a dropped keep-alive
+    connection by resending idempotent requests once (_ReconnectingTransport)."""
+    with httpx.Client(base_url=api_base_url, timeout=30.0, transport=_ReconnectingTransport()) as client:
         yield client
+
+
+@pytest.fixture(scope="session")
+def teardown_delete(api_base_url):
+    """``teardown_delete(path)``: a DELETE for teardown that logs a refusal instead of
+    raising, on its own connection (see ``cleanup``)."""
+    return lambda path: cleanup(api_base_url, path)
 
 
 @pytest.fixture(scope="session")
@@ -128,8 +179,8 @@ def range_template(api_client):
 
 
 @pytest.fixture
-def make_range(api_client, range_template):
-    """Create a range and clean it up afterwards."""
+def make_range(api_client, api_base_url, range_template):
+    """Create a range and clean it up afterwards (logged, not raised, if refused)."""
     created: list[str] = []
 
     def _make(name: str) -> str:
@@ -142,4 +193,4 @@ def make_range(api_client, range_template):
     yield _make
 
     for rid in created:
-        api_client.delete(f"/ranges/{rid}")
+        cleanup(api_base_url, f"/ranges/{rid}")

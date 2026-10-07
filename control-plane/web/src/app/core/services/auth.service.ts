@@ -82,6 +82,11 @@ export class AuthService {
     const role = this.userSignal()?.role;
     return role === 'student' || role === 'admin' || role === 'instructor';
   });
+  /** The schedule (calendar, capacity, timeline) is for staff; Students never see it (ADR 0004). */
+  readonly canViewSchedule = computed(() => {
+    const role = this.userSignal()?.role;
+    return !!role && role !== 'student';
+  });
   readonly userId = computed(() => this.userSignal()?.id ?? null);
   readonly onboardingState = computed(() => this.userSignal()?.onboarding_state ?? 'not_started');
   readonly needsOnboarding = computed(() => {

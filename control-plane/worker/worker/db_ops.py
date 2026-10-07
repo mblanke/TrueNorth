@@ -31,10 +31,13 @@ from .tables import (
     forged_exercises,
     golden_images,
     hypervisor_connections,
+    inject_records,
     learning_recommendations,
+    network_reservations,
     objectives,
     range_snapshots,
     ranges,
+    scenario_executions,
     scenarios,
     templates,
     users,
@@ -161,15 +164,33 @@ def exercise_scores_and_yaml(db, exercise_id: str):
     return db.execute(stmt).first()
 
 
-def start_exercise(db, exercise_id: str) -> None:
-    """Mark a pending exercise running. The API already did so when it dispatched the run, and
-    its started_at opens the detection window (ADR 0005), so a run that reaches the worker late
-    keeps that start; a paused, completed or cancelled exercise is not brought back."""
-    db.execute(
+def _exercise_state_in(states: Sequence[str]):
+    # CAST: `state` is a native enum on Postgres and plain text on SQLite.
+    return sa.cast(exercises.c.state, sa.Text).in_(list(states))
+
+
+def exercise_state(db, exercise_id: str) -> str | None:
+    """The exercise's state, or None when it does not exist."""
+    stmt = sa.select(sa.cast(exercises.c.state, sa.Text)).where(exercises.c.id == exercise_id)
+    row = db.execute(stmt).first()
+    return row[0] if row else None
+
+
+def exercise_context(db, exercise_id: str):
+    """(range_id, tenant_id, state) of an exercise, or None when it does not exist."""
+    e = exercises
+    stmt = sa.select(e.c.range_id, e.c.tenant_id, sa.cast(e.c.state, sa.Text)).where(e.c.id == exercise_id)
+    return db.execute(stmt).first()
+
+
+def start_exercise(db, exercise_id: str) -> int:
+    """pending|running -> running; returns the rowcount. A paused or finished exercise is
+    left alone, so a late or duplicate delivery of the run cannot revive it."""
+    return db.execute(
         sa.update(exercises)
-        .where(exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(("pending", "running")))
+        .where(exercises.c.id == exercise_id, _exercise_state_in(("pending", "running")))
         .values(state="running", started_at=sa.func.coalesce(exercises.c.started_at, _now()), updated_at=_now())
-    )
+    ).rowcount
 
 
 LIVE_EXERCISE = ("running", "paused")
@@ -215,24 +236,78 @@ def _score_values(exercise_id: str) -> dict[str, Any]:
     return {"total_score": _points(o.c.achieved == sa.true()), "max_score": _points()}
 
 
-def complete_exercise(db, exercise_id: str) -> None:
-    """Mark complete and total the score from its objectives, unless an instructor already
-    completed or cancelled it (that close stands)."""
-    db.execute(
+def complete_exercise(db, exercise_id: str) -> int:
+    """running -> completed, with the score totalled from its objectives; returns the
+    rowcount. Any other state is left alone, so a late retry cannot overwrite an
+    instructor's completion or cancellation."""
+    return db.execute(
         sa.update(exercises)
-        .where(exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(LIVE_EXERCISE))
+        .where(exercises.c.id == exercise_id, _exercise_state_in(("running",)))
         .values(state="completed", completed_at=_now(), updated_at=_now(), **_score_values(exercise_id))
-    )
+    ).rowcount
 
 
-def cancel_exercise(db, exercise_id: str) -> None:
-    """Mark an exercise cancelled after a failed run.
+def cancel_exercise(db, exercise_id: str) -> int:
+    """pending|running -> cancelled after a failed run; returns the rowcount. Never touches
+    a paused or finished exercise.
 
     The replaced SQL also set ``error_message``, a column ``exercises`` does not have, so
     on a real database the failure handler itself raised and the state never changed.
     The error still reaches the UI through the notification the caller sends.
     """
-    db.execute(sa.update(exercises).where(exercises.c.id == exercise_id).values(state="cancelled", updated_at=_now()))
+    return db.execute(
+        sa.update(exercises)
+        .where(exercises.c.id == exercise_id, _exercise_state_in(("pending", "running")))
+        .values(state="cancelled", updated_at=_now())
+    ).rowcount
+
+
+# -- scenario runs: inject outcomes and scenario executions (app/scenario_runs) ----------
+def execution_context(db, execution_id: str):
+    """(range_id, tenant_id, state) of a scenario execution, or None."""
+    x = scenario_executions
+    return db.execute(sa.select(x.c.range_id, x.c.tenant_id, x.c.state).where(x.c.id == execution_id)).first()
+
+
+def set_execution_state(
+    db, execution_id: str, new_state: str, *, only_from: Sequence[str], error: str | None = None
+) -> int:
+    """Move a scenario execution on, only from one of ``only_from``; returns the rowcount."""
+    x = scenario_executions
+    values: dict[str, Any] = {"state": new_state, "updated_at": _now()}
+    if new_state == "running":
+        values["started_at"] = _now()
+    if new_state in ("completed", "failed"):
+        values["completed_at"] = _now()
+    if error is not None:
+        values["error"] = error[:4000]
+    stmt = sa.update(x).where(x.c.id == execution_id, x.c.state.in_(list(only_from))).values(**values)
+    return db.execute(stmt).rowcount
+
+
+def recorded_seqs(db, run_id: str) -> set[int]:
+    """Timeline positions a run has already recorded (so its retry does not fire them twice)."""
+    r = inject_records
+    rows = db.execute(sa.select(r.c.seq).where(r.c.run_id == run_id, r.c.seq.isnot(None))).fetchall()
+    return {int(row[0]) for row in rows}
+
+
+def record_inject(db, **fields: Any) -> str:
+    """Insert one inject outcome; returns its id."""
+    rid = str(uuid.uuid4())
+    row: dict[str, Any] = {
+        "id": rid,
+        "source": "timeline",
+        "detail": "",
+        "telemetry_count": 0,
+        "telemetry_shipped": False,
+        "created_at": _now(),
+        "updated_at": _now(),
+        **fields,
+    }
+    row["detail"] = str(row.get("detail") or "")[:4000]
+    db.execute(sa.insert(inject_records).values(**row))
+    return rid
 
 
 def exercise_for_aar(db, exercise_id: str):
@@ -497,3 +572,71 @@ def insert_learning_recommendation(db, user_id: str, rec: dict, target_role: str
         )
     )
     return rid
+
+
+# -- network reservations (worker/range_alloc.py) ------------------------------
+# The worker's half of app/network_inventory/service.py, which it cannot import: the same lowest-free-value rule, the same "a destroyed range holds nothing".
+def lock_range_in_state(db, range_id: str, state: str) -> bool:
+    """Lock the range's row until commit; say whether it is still in ``state``."""
+    stmt = sa.select(ranges.c.id).where(ranges.c.id == range_id, sa.cast(ranges.c.state, sa.Text) == state)
+    return db.execute(stmt.with_for_update()).first() is not None
+
+
+def lock_reservation_domain(db, key: int) -> None:
+    """Serialise reservations in one (domain, kind) until the transaction ends (PostgreSQL);
+    ``key`` is range_alloc.lock_key's, the API's."""
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(sa.select(sa.func.pg_advisory_xact_lock(key)))
+
+
+def range_reservations(db, range_id: str, kind: str) -> list:
+    """(holder, value, domain) of every reservation of ``kind`` the range holds."""
+    nr = network_reservations
+    return db.execute(
+        sa.select(nr.c.holder, nr.c.value, nr.c.domain).where(nr.c.range_id == range_id, nr.c.kind == kind)
+    ).all()
+
+
+def drop_range_reservations(db, range_id: str, kind: str, holders: Iterable[str]) -> None:
+    nr = network_reservations
+    db.execute(sa.delete(nr).where(nr.c.range_id == range_id, nr.c.kind == kind, nr.c.holder.in_(list(holders))))
+
+
+def taken_reservation_values(db, domain: str, kind: str) -> set[str]:
+    """Values held in (domain, kind), after freeing those of destroyed ranges."""
+    nr = network_reservations
+    same = (nr.c.domain == domain, nr.c.kind == kind)
+    destroyed = sa.select(ranges.c.id).where(sa.cast(ranges.c.state, sa.Text) == "destroyed")
+    db.execute(sa.delete(nr).where(*same, nr.c.range_id.in_(destroyed)))
+    return set(db.execute(sa.select(nr.c.value).where(*same)).scalars())
+
+
+def insert_reservations(db, range_id: str, domain: str, kind: str, values: dict[str, str]) -> None:
+    """One row per {holder: value}; the unique constraints have the last word."""
+    tenant = db.execute(sa.select(ranges.c.tenant_id).where(ranges.c.id == range_id)).scalar_one()
+    rows = [
+        {"id": uuid.uuid4(), "tenant_id": tenant, "range_id": range_id, "domain": domain, "kind": kind,
+         "value": value, "holder": holder}
+        for holder, value in values.items()
+    ]
+    if rows:
+        db.execute(sa.insert(network_reservations).values(created_at=_now(), updated_at=_now()), rows)
+
+
+def release_destroyed_range(db, range_id: str) -> int:
+    """Free everything the range holds, only if it is recorded destroyed. Returns how many."""
+    destroyed = sa.select(ranges.c.id).where(ranges.c.id == range_id, sa.cast(ranges.c.state, sa.Text) == "destroyed")
+    nr = network_reservations
+    return db.execute(sa.delete(nr).where(nr.c.range_id.in_(destroyed))).rowcount
+
+
+def merge_range_output(db, range_id: str, updates: dict) -> None:
+    """Merge ``updates`` into the range's provisioner_output JSON; other keys are kept."""
+    raw = db.execute(sa.select(ranges.c.provisioner_output).where(ranges.c.id == range_id)).scalar()
+    try:
+        current = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        current = {}
+    merged = {**(current if isinstance(current, dict) else {}), **updates}
+    db.execute(sa.update(ranges).where(ranges.c.id == range_id)
+               .values(provisioner_output=json.dumps(merged), updated_at=_now()))

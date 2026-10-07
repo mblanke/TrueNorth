@@ -15,6 +15,7 @@ import json
 from sqlalchemy.orm import Session
 
 from . import range_topology
+from .scheduler import service as scheduler
 
 from .models import (
     CompetencyFramework,
@@ -447,8 +448,8 @@ def purge_orphaned_stubs(db: Session, tenant_id: str | None = None) -> int:
     released by an earlier run, which are otherwise invisible dead rows.
 
     Never touches authored content, the stub still holding an objective (PO_TODO has no
-    real deliverer), or anything with enrolments — learner history is not ours to discard
-    to tidy a catalogue. Scenarios, exercises and ranges survive: they are provisioned
+    real deliverer), or anything with enrolments or bookings — learner history is not
+    ours to discard to tidy a catalogue. Scenarios, exercises and ranges survive: they are provisioned
     infrastructure referenced by id.
     """
     course_q = db.query(Course)
@@ -465,6 +466,8 @@ def purge_orphaned_stubs(db: Session, tenant_id: str | None = None) -> int:
             continue  # still the deliverer of an objective
         if db.query(Enrollment).filter_by(course_id=course.id).count():
             continue  # someone's record depends on it
+        if scheduler.events_for(db, "course", course.id):
+            continue  # a booking names it (scheduled_events.course_id)
 
         drop_course_from_paths(db, str(course.id))
         for mod in modules:
