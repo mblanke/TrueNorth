@@ -275,7 +275,9 @@ class TestAccess:
         sent: list[dict] = []
         upsert = fake.FakeMoodle.upsert_course
         monkeypatch.setattr(
-            fake.FakeMoodle, "upsert_course", lambda self, p, payload: (sent.append(payload), upsert(self, p, payload))[1]
+            fake.FakeMoodle,
+            "upsert_course",
+            lambda self, p, payload: (sent.append(payload), upsert(self, p, payload))[1],
         )
         assert publish(client, rid, platform).json()["state"] == "published"
         bundle = load_bundle(db_session, db_session.get(CourseRelease, uuid.UUID(rid)))

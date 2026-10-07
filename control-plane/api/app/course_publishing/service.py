@@ -376,6 +376,7 @@ def waiting(db: Session, course_id: uuid.UUID, platform_id: uuid.UUID) -> Course
         )
         .all()
     )
+
     def version(p: CoursePublication) -> int:
         release = db.get(CourseRelease, p.release_id)
         return release.version if release is not None else 0
