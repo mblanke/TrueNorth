@@ -344,7 +344,10 @@ def _check_parent(db: Session, page: WikiPage | None, space: WikiSpace, parent_i
             raise HTTPException(422, "A page cannot be moved under itself or one of its children")
         if cursor.parent_id is None:
             break
-        cursor = db.get(WikiPage, cursor.parent_id)
+        # Walk up within the parent's tenant (parent came from get_owned above).
+        cursor = (
+            db.query(WikiPage).filter(WikiPage.id == cursor.parent_id, WikiPage.tenant_id == parent.tenant_id).first()
+        )
         hops += 1
 
 
