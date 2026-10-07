@@ -331,6 +331,98 @@ def test_an_abandoned_dead_workers_tombstone_expires_and_frees_the_range(db):
     assert tasks.provision_range.run(rid)["status"] == "ready"
 
 
+class _BuiltWithEverything(SlowBackend):
+    """A build that made VMs, port groups, a mirror session and an uplink, abandoned
+    before it could record them; its teardown answers ``teardown``."""
+
+    def __init__(self, db, teardown: str = "ok"):
+        super().__init__()
+        self.db, self.teardown, self.torn_down = db, teardown, []
+
+    async def provision(self, range_id, template, allocations):
+        self.calls += 1
+        _abandon(self.db, range_id)
+        return ProvisionResult(
+            status="ok", vms=[{"name": "r-dc01", "vm_id": "vm-1"}],
+            networks=[{"vlan_id": 10, "portgroup": "tn-r-10"}],
+            uplink={"vm": "r-fw01", "ip": "203.0.113.9"}, mirrors=[{"src": "r-dc01", "dst": "r-sensor"}],
+        )
+
+    async def destroy(self, range_id, output):
+        self.torn_down.append(output)
+        return DestroyResult(status=self.teardown, errors=[] if self.teardown == "ok" else ["vm-1: host unreachable"])
+
+
+def test_a_discarded_build_tears_down_its_mirrors_and_uplink_too(db):
+    rid = _range(db, "provisioning")
+    backend = _BuiltWithEverything(db)
+    with patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60), patch.object(tasks, "_get_backend", return_value=backend):
+        assert tasks.provision_range.run(rid)["status"] == "discarded"
+    (output,) = backend.torn_down
+    assert output["mirrors"] and output["uplink"] and output["networks"] and output["vms"], output
+
+
+def test_a_discard_that_fails_records_the_leftover_so_no_build_goes_over_it(db):
+    """The teardown of an abandoned build failed: its VMs are still on vCenter under the
+    range's names. They are recorded on the range (the API's "still has N VMs; destroy it
+    first" then refuses a provision) before the range is handed back."""
+    import json
+
+    rid = _range(db, "provisioning")
+    backend = _BuiltWithEverything(db, teardown="partial")
+    with patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60), patch.object(tasks, "_get_backend", return_value=backend):
+        result = tasks.provision_range.run(rid)
+    assert result["status"] == "discard_failed" and "leftover" not in result
+    state, error, output = _state(db, rid)
+    recorded = json.loads(output)
+    assert state == "failed" and error == "provision abandoned by an operator", "the range's state was touched"
+    assert [v["vm_id"] for v in recorded["vms"]] == ["vm-1"] and recorded["mirrors"] and recorded["uplink"]
+    assert "host unreachable" in recorded["warnings"][0]
+    assert _lease(db, rid) is None
+
+
+def test_a_discard_that_raises_is_recorded_too(db):
+    import json
+
+    rid = _range(db, "provisioning")
+    backend = _BuiltWithEverything(db)
+
+    async def boom(range_id, output):
+        raise RuntimeError("vCenter session expired")
+
+    backend.destroy = boom
+    with patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60), patch.object(tasks, "_get_backend", return_value=backend):
+        assert tasks.provision_range.run(rid)["status"] == "discard_failed"
+    assert json.loads(_state(db, rid)[2])["vms"][0]["vm_id"] == "vm-1"
+
+
+def test_an_abandoned_destroy_does_not_announce_a_destroyed_range(db):
+    """The destroy finished on the hypervisor after its operation was abandoned: the
+    write of ``destroyed`` is refused, so neither the API's channel nor Greyspace may be
+    told the range is destroyed."""
+    rid = _range(db, "destroying")
+    with db.begin() as conn:
+        conn.execute(sa.text("UPDATE ranges SET provisioner_output = :o WHERE id = :i"),
+                     {"o": '{"vms": [{"name": "r-dc01", "vm_id": "vm-1"}]}', "i": rid})
+    notified: list = []
+
+    class AbandonedDuringTeardown(SlowBackend):
+        async def destroy(self, range_id, output):
+            _abandon(db, range_id, "destroy")
+            return DestroyResult(status="ok", resources_removed=1)
+
+    with (
+        patch.object(fencing, "LEASE_HEARTBEAT_SECONDS", 60),
+        patch.object(tasks, "_get_backend", return_value=AbandonedDuringTeardown()),
+        patch.object(tasks, "_notify_api", lambda channel, msg: notified.append(msg)),
+        patch.object(tasks.greyspace, "after_destroy") as greyspace_after,
+    ):
+        assert tasks.destroy_range.run(rid)["status"] == "destroyed_unrecorded"
+    assert not any(m.get("state") == "destroyed" for m in notified), notified
+    greyspace_after.assert_not_called()
+    assert _state(db, rid)[0] == "failed"
+
+
 def test_a_restore_fenced_out_gives_its_snapshot_back(db):
     """restore_snapshot's on_lost: a fenced-out restore must not leave its snapshot in
     ``restoring``, which blocks further restores and its deletion."""
@@ -472,11 +564,16 @@ def test_on_postgres_an_abandoned_build_is_fenced_and_keeps_the_range_until_done
         assert s.get(RangeLease, range_uuid) is None
 
 
-@pytest.mark.parametrize("racer", ["abandon", "takeover"])
+@pytest.mark.parametrize("racer", ["tombstone_only", "abandon", "takeover"])
 def test_on_postgres_the_guarded_write_waits_for_a_racing_abandon_or_takeover(postgres_engine, monkeypatch, racer):
-    """The check and the write cannot be split: an abandon (which locks the range row) or
-    a takeover (which locks the lease row) that commits while the write waits on its
-    lock is seen by the write, which then records nothing."""
+    """The check and the write cannot be split: a rename of the lease (a tombstone, or a
+    takeover) that commits while the write waits on its lock is seen by the write, which
+    then records nothing.
+
+    ``tombstone_only`` renames the lease and leaves the range's state alone, so only the
+    lease row's lock (and the holder read after it) can refuse the write: the state check
+    would let it through. ``abandon`` is the API's whole abandon (range row, state, then
+    the lease); ``takeover`` another execution's claim of an expired lease."""
     from app import models as m
     from app.range_leases import RangeLease
 
@@ -490,6 +587,7 @@ def test_on_postgres_the_guarded_write_waits_for_a_racing_abandon_or_takeover(po
     if racer == "abandon":  # the API: range row first, then the lease
         racing.query(m.Range).filter(m.Range.id == range_uuid).with_for_update().one().state = m.RangeState.failed
         racing.flush()
+    if racer in ("abandon", "tombstone_only"):
         racing.query(RangeLease).filter(RangeLease.range_id == range_uuid).update(
             {RangeLease.holder: fencing.tombstone(holder)}, synchronize_session=False
         )
@@ -516,10 +614,12 @@ def test_on_postgres_the_guarded_write_waits_for_a_racing_abandon_or_takeover(po
     racing.commit()
     racing.close()
     writer.join(10)
-    assert outcome["rows"] == (0 if racer == "abandon" else "lease_lost")
+    assert outcome["rows"] == ("lease_lost" if racer == "takeover" else 0)
     with factory() as s:
         rng = s.get(m.Range, range_uuid)
         assert rng.provisioner_output is None and rng.state != m.RangeState.ready
+        if racer == "tombstone_only":
+            assert rng.state == m.RangeState.provisioning, "the state was meant to let the write through"
 
 
 def test_outside_a_fenced_task_state_writes_are_unguarded(db):

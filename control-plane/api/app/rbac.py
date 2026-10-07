@@ -35,6 +35,9 @@ class Permission(str, Enum):
     RANGE_PROVISION = "range:provision"
     RANGE_DESTROY = "range:destroy"
     RANGE_BATCH_PROVISION = "range:batch_provision"
+    # Force-release an abandoned operation's lease tombstone (app/range_ops/service.py).
+    # Admin only: done wrong, a hung worker's vCenter work runs beside the next build.
+    RANGE_LEASE_FORCE_RELEASE = "range:lease_force_release"
 
     # Template management
     TEMPLATE_CREATE = "template:create"

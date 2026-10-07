@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
@@ -132,6 +132,10 @@ def recorded_vms(rng: Range) -> int:
 
 
 ABANDONED = "abandoned:"  # worker/fencing.py's tombstone prefix
+# The longest a live but hung worker can keep its tombstone: it renews it until the soft
+# time limit (worker/fencing.py SOFT_TIME_LIMIT, 55 min), then keeps it unrenewed for
+# KEPT_LEASE_SECONDS (1 h). Force-release (``force_release_tombstone``) is the way out.
+TOMBSTONE_WORST_CASE = "about 1 h 55 min (a hung worker: its 55 min time limit, then 1 h kept)"
 
 
 def lease_seconds() -> float:
@@ -204,7 +208,8 @@ def _check(db: Session, rng: Range, action: str) -> None:
         if holder.startswith(ABANDONED):
             why = (
                 "the abandoned operation's worker may still be finishing on the hypervisor. If it is dead this "
-                f"clears within {lease_seconds():.0f} s; if alive, when its work ends"
+                f"clears within {lease_seconds():.0f} s; if alive, when its work ends, at worst "
+                f"{TOMBSTONE_WORST_CASE}; an admin can force-release it"
             )
         else:
             why = (
@@ -444,13 +449,67 @@ def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> b
     if released:
         message += (
             f"; the worker's lease on the range was fenced: the range is blocked for up to {lease_seconds():.0f} s, "
-            "or while that worker is still finishing"
+            f"or while that worker is still finishing (at worst {TOMBSTONE_WORST_CASE})"
         )
     op.error = {"code": "abandoned", "message": message}
     if rng.state == ACTIONS[op.action].in_progress:
         rng.state = RangeState.failed
         rng.error_message = f"{op.action} abandoned by an operator; check the hypervisor for the VMs' real state"
     return released
+
+
+# ── force-releasing an abandoned operation's tombstone ───────────────
+
+
+FORCE_RELEASE_WARNING = (
+    "Force-released an abandoned operation's lease tombstone. If that operation's worker is in fact still "
+    "running, its in-flight hypervisor work (clones, port groups, a teardown) continues beside whatever runs on "
+    "this range next, and what it builds is no longer discarded: check vCenter's recent tasks for this range "
+    "and destroy it before building it again."
+)
+
+
+class ForceReleaseIn(BaseModel):
+    """A deliberate act: the caller repeats the range's id and says why."""
+
+    confirm_range_id: uuid.UUID
+    reason: str = Field(min_length=10, max_length=500)
+
+
+class ForceReleaseOut(BaseModel):
+    range_id: uuid.UUID
+    released_holder: str
+    was_expired: bool
+    warning: str
+
+
+def force_release_tombstone(db: Session, rng: Range) -> tuple[str, bool]:
+    """Delete the range's lease if it is an abandoned operation's tombstone. Does not
+    commit; the caller has row-locked the range (the lock order of accept and abandon).
+    Returns (holder, whether it had expired already).
+
+    Only a tombstone: a live lease belongs to a task that is still the range's (abandon
+    its operation first; a dead worker's lease expires on its own). The tombstone of a
+    hung worker can otherwise block the range for ``TOMBSTONE_WORST_CASE``."""
+    from ..range_leases import RangeLease
+
+    lease = (
+        db.query(RangeLease).filter(RangeLease.range_id == rng.id).with_for_update().populate_existing().first()
+    )
+    if lease is None:
+        raise HTTPException(404, "This range has no lease to release")
+    if not lease.holder.startswith(ABANDONED):
+        raise HTTPException(
+            409,
+            "This lease is held by a task that is still the range's, not an abandoned operation's tombstone. "
+            "Abandon its operation first; a dead worker's lease expires on its own.",
+        )
+    expired = _aware(lease.expires_at) <= _now()
+    holder = lease.holder
+    db.delete(lease)
+    db.flush()
+    logger.warning("range %s: tombstone %s force-released", rng.id, holder)
+    return holder, expired
 
 
 # ── the API process's re-send loop ────────────────────────────────────

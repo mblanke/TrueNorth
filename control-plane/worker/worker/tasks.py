@@ -247,12 +247,12 @@ def destroy_range(self, range_id: str):
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
-        _update_range_state(range_id, "destroyed", only_from=("destroying",))
-        range_alloc.release_after_destroy(_db_session, range_id)  # its VLANs and addresses
-        _notify_api("range", {"id": range_id, "state": "destroyed"})
-        greyspace.after_destroy(range_id)  # Greyspace back to configured (ADR 0007); never raises
-        logger.info(f"[destroy] Range {range_id} destroyed ({result.resources_removed} resources)")
-        return {"status": "destroyed", "range_id": range_id}
+        if recorded := _update_range_state(range_id, "destroyed", only_from=("destroying",)):  # 0: abandoned/moved on
+            range_alloc.release_after_destroy(_db_session, range_id)  # its VLANs and addresses
+            _notify_api("range", {"id": range_id, "state": "destroyed"})
+            greyspace.after_destroy(range_id)  # Greyspace back to configured (ADR 0007); never raises
+        logger.info(f"[destroy] Range {range_id} torn down ({result.resources_removed} resources), recorded={recorded}")
+        return {"status": "destroyed" if recorded else "destroyed_unrecorded", "range_id": range_id}
 
     except Exception as e:
         if isinstance(e, FINAL_ERRORS) or _last_attempt(self):  # a retry must still find it destroying

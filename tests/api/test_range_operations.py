@@ -451,6 +451,65 @@ def test_a_dead_workers_lease_stops_blocking_once_it_expires(client, db_session,
     assert client.post(f"/ranges/{rid}/provision").status_code == 202
 
 
+def _force_release(client, rid: str, **overrides):
+    body = {"confirm_range_id": rid, "reason": "worker host lost; vCenter checked, no tasks", **overrides}
+    return client.post(f"/ranges/{rid}/lease/force-release", json=body)
+
+
+def test_a_hung_workers_tombstone_says_its_worst_case_and_an_admin_can_force_release_it(
+    client, db_session, no_real_broker
+):
+    """A live but hung worker renews its tombstone until its time limit and then keeps it
+    for an hour: about 1 h 55 min. The 409 and the abandon say so, and an admin can
+    release it, audited with the reason."""
+    from app.models import AuditLog
+
+    rid = _range(client, db_session)
+    op_id = client.post(f"/ranges/{rid}/provision").headers["Operation-Id"]
+    _lease(db_session, rid, "provision:hung", 3600)
+    op = client.post(f"/ranges/{rid}/operations/{op_id}/abandon").json()
+    assert "1 h 55 min" in op["error"]["message"]
+    refused = client.post(f"/ranges/{rid}/provision")
+    assert refused.status_code == 409 and "1 h 55 min" in refused.json()["detail"]
+    assert "force-release" in refused.json()["detail"]
+
+    resp = _force_release(client, rid)
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["released_holder"] == "abandoned:provision:hung" and out["was_expired"] is False
+    assert "still running" in out["warning"]
+    assert _leases(db_session, rid) == []
+    audit = db_session.query(AuditLog).filter(AuditLog.action == "force_release_lease", AuditLog.resource_id == rid).one()
+    assert "abandoned:provision:hung" in audit.detail and "vCenter checked" in audit.detail
+    assert audit.tenant_id == db_session.get(Range, uuid.UUID(rid)).tenant_id
+    assert client.post(f"/ranges/{rid}/provision").status_code == 202
+
+
+def test_force_release_takes_only_a_tombstone_and_a_deliberate_request(client, db_session, no_real_broker):
+    rid = _range(client, db_session)
+    assert _force_release(client, rid).status_code == 404, "no lease at all"
+    _lease(db_session, rid, "provision:running", 180)
+    resp = _force_release(client, rid)
+    assert resp.status_code == 409 and "Abandon its operation first" in resp.json()["detail"]
+    assert _leases(db_session, rid) == ["provision:running"], "a live task's lease was released"
+    assert _force_release(client, rid, confirm_range_id=str(uuid.uuid4())).status_code == 422
+    assert _force_release(client, rid, reason="because").status_code == 422
+
+
+def test_force_release_is_admin_only_and_tenant_scoped(client, db_session, no_real_broker):
+    from _shared import OTHER_TENANT, acting_as
+    from app.models import UserRole
+
+    rid = _range(client, db_session)
+    _lease(db_session, rid, "abandoned:provision:hung", 3600)
+    for role in (UserRole.range_ops, UserRole.instructor):
+        with acting_as(role):
+            assert _force_release(client, rid).status_code == 403, role
+    with acting_as(UserRole.admin, OTHER_TENANT):
+        assert _force_release(client, rid).status_code == 404, "another tenant's admin released the tombstone"
+    assert _leases(db_session, rid) == ["abandoned:provision:hung"]
+
+
 def test_on_postgres_refused_requests_do_not_stall_the_api_process(postgres_engine, no_real_broker):
     """Acceptance row-locks the range. In async handlers a refused request held the lock
     until its teardown, which needs the event loop, while a second request for the same

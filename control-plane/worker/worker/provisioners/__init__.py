@@ -45,12 +45,35 @@ def get_provisioner(backend: str) -> BaseProvisioner:
 
 
 def discard_built(provisioner, range_id: str, result) -> dict:
-    """Destroy VMs a provision built for a range that is no longer waiting for them (it was
-    torn down mid-build). Recording them would put live VMs under a destroyed range."""
-    import asyncio
+    """Destroy what a provision built for a range that is no longer waiting for it (torn
+    down mid-build, or its operation abandoned). Recording it would put live VMs under a
+    destroyed range.
 
-    asyncio.run(provisioner.destroy(range_id, {"vms": result.vms, "networks": result.networks}))
-    return {"status": "discarded", "range_id": range_id, "vm_count": len(result.vms)}
+    Everything the build made goes to the teardown: VMs, port groups, mirror sessions
+    (RSPAN) and the uplink. When the teardown is not ``ok`` (or raises), the result is
+    ``discard_failed`` with the build's output as ``leftover``: worker/fencing.py records
+    it on the range, so the API sees the VMs (``recorded_vms``) and refuses a new build
+    over same-named leftovers until the range is destroyed."""
+    import asyncio
+    import logging
+
+    output: dict = {"vms": result.vms, "networks": result.networks}
+    for key in ("uplink", "mirrors"):
+        if getattr(result, key, None):
+            output[key] = getattr(result, key)
+    try:
+        outcome = asyncio.run(provisioner.destroy(range_id, output))
+        status, errors = outcome.status, list(outcome.errors or [])
+    except Exception as exc:  # noqa: BLE001 — reported below, with what is left
+        status, errors = "failed", [str(exc) or type(exc).__name__]
+    if status == "ok":
+        return {"status": "discarded", "range_id": range_id, "vm_count": len(result.vms)}
+    logging.getLogger("truenorth.worker").error(
+        "range %s: discarding the %d VMs a build made FAILED (%s: %s); they are still on the hypervisor: %s",
+        range_id, len(result.vms), status, "; ".join(errors), output,
+    )
+    return {"status": "discard_failed", "range_id": range_id, "vm_count": len(result.vms), "errors": errors,
+            "leftover": output}
 
 
 __all__ = [
