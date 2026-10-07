@@ -95,6 +95,16 @@ describe('AuthService', () => {
     expect(service.isInstructor()).toBeFalse();
   });
 
+  it('canAcknowledgeObjectives matches objective:ack (admin, instructor only)', () => {
+    const expected: Record<string, boolean> = {
+      admin: true, instructor: true, student: false, observer: false, range_ops: false,
+    };
+    for (const [role, allowed] of Object.entries(expected)) {
+      service.setUser(user({ role: role as CurrentUser['role'] }));
+      expect(service.canAcknowledgeObjectives()).withContext(role).toBe(allowed);
+    }
+  });
+
   // ── Onboarding gate ──────────────────────────────────────────────
   it('needsOnboarding is true for an unfinished student', () => {
     service.setUser(user({ role: 'student', onboarding_state: 'profile' }));

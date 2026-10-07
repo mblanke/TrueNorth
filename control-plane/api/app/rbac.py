@@ -55,6 +55,9 @@ class Permission(str, Enum):
     EXERCISE_PAUSE = "exercise:pause"
     # A Student's detection, judged by the server against the objective's answer key (ADR 0005)
     DETECTION_SUBMIT = "detection:submit"
+    # Awarding an objective by hand. Deliberately separate from EXERCISE_COMPLETE, which
+    # Students hold: a Student must never be able to award themselves points (ADR 0005 §4).
+    OBJECTIVE_ACK = "objective:ack"
 
     # User management
     USER_CREATE = "user:create"
@@ -141,6 +144,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_COMPLETE,
         Permission.EXERCISE_PAUSE,
         Permission.DETECTION_SUBMIT,
+        Permission.OBJECTIVE_ACK,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.

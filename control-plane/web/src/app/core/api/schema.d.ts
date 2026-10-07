@@ -1910,7 +1910,12 @@ export interface paths {
         put?: never;
         /**
          * Acknowledge Objective
-         * @description Acknowledge (achieve) an objective.  **Permission: exercise:complete**
+         * @description Acknowledge (achieve) an objective on a running or paused exercise in the caller's
+         *     tenant, recording who acknowledged it, and re-total the exercise score.
+         *
+         *     **Permission: objective:ack** (instructors and admins; never Students).
+         *     404 if the exercise is not in the caller's tenant or the objective does not exist;
+         *     409 if the exercise is not running/paused or the objective is already achieved.
          */
         post: operations["acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post"];
         delete?: never;
