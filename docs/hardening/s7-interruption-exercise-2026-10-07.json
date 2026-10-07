@@ -1,0 +1,22 @@
+[
+  {"t": "2026-10-07T20:53:48+00:00", "step": "journey.provision.accepted", "status": 202, "op": "dispatched"},
+  {"t": "2026-10-07T20:53:51+00:00", "step": "journey.provision.done", "state": "ready", "secs": 2.7, "op": "succeeded"},
+  {"t": "2026-10-07T20:53:51+00:00", "step": "journey.stop.accepted", "status": 202, "state": "stopping"},
+  {"t": "2026-10-07T20:53:51+00:00", "step": "journey.stop.done", "state": "stopped", "op": "succeeded"},
+  {"t": "2026-10-07T20:53:51+00:00", "step": "journey.start.accepted", "status": 202, "state": "starting"},
+  {"t": "2026-10-07T20:53:52+00:00", "step": "journey.start.done", "state": "running", "op": "succeeded"},
+  {"t": "2026-10-07T20:53:52+00:00", "step": "journey.stop.accepted", "status": 202, "state": "stopping"},
+  {"t": "2026-10-07T20:53:53+00:00", "step": "journey.stop.done", "state": "stopped", "op": "succeeded"},
+  {"t": "2026-10-07T20:53:53+00:00", "step": "journey.destroy.accepted", "status": 202},
+  {"t": "2026-10-07T20:53:54+00:00", "step": "journey.destroy.done", "state": "destroyed", "op": "succeeded"},
+  {"t": "2026-10-07T20:53:54+00:00", "step": "broker.down.accepted", "status": 202, "op": "pending", "error": "broker_unavailable"},
+  {"t": "2026-10-07T20:53:58+00:00", "step": "broker.down.still_pending", "op": "pending", "state": "provisioning"},
+  {"t": "2026-10-07T20:54:12+00:00", "step": "broker.back.done", "state": "ready", "op": "succeeded", "attempts": 2, "secs_after_broker_back": 12.9},
+  {"t": "2026-10-07T20:54:17+00:00", "step": "worker.killed", "state": "provisioning", "op": "dispatched"},
+  {"t": "2026-10-07T20:54:34+00:00", "step": "worker.killed.no_outcome", "op": "dispatched", "error": "no_outcome", "conflicting_destroy": 409},
+  {"t": "2026-10-07T20:54:34+00:00", "step": "worker.killed.abandoned", "op": "failed", "state": "failed"},
+  {"t": "2026-10-07T20:54:34+00:00", "step": "worker.killed.reprovision.accepted", "status": 409, "detail": "Cannot provision: a worker is still acting on this range; try again later"},
+  {"t": "2026-10-07T20:54:36+00:00", "step": "partial.retrying", "state": "provisioning"},
+  {"t": "2026-10-07T20:54:53+00:00", "step": "partial.last_attempt", "state": "failed", "op": "failed", "error": "range_failed", "message": "Simulated provision failure"},
+  {"t": "2026-10-07T20:54:56+00:00", "step": "partial.healthy_retry", "state": "ready", "op": "succeeded"}
+]
