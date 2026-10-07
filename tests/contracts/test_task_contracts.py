@@ -66,7 +66,8 @@ def test_dispatch_sends_contracted_args_to_the_contracted_queue():
     [
         ("no_such_task", ()),
         ("provision_range", ()),  # missing arg
-        ("provision_range", ("r", "extra")),  # too many
+        ("provision_range", ("r", {}, "extra")),  # too many
+        ("provision_range", ("r", "not-a-dict")),  # noise_mgmt is {node: address}
         ("batch_provision", ("not-a-list",)),  # wrong type
         ("run_scenario_v2", ("ex", ["not", "a", "dict"])),
     ],
@@ -84,6 +85,15 @@ def test_optional_arg_may_be_omitted():
     with mock.patch.object(celery_client.celery_app, "send_task") as send:
         celery_client.dispatch("generate_learning_recommendation", "u-1")
     send.assert_called_once_with("worker.tasks.generate_learning_recommendation", args=["u-1"], ignore_result=True)
+
+
+def test_provision_takes_the_reserved_noise_addresses_or_none():
+    """noise_mgmt (app/noise/mgmt.py) is optional: a range without noise sends only its id."""
+    with mock.patch.object(celery_client.celery_app, "send_task") as send:
+        send.return_value.id = "t-1"
+        celery_client.dispatch("provision_range", "r-1")
+        celery_client.dispatch("provision_range", "r-1", {"lnx01": "10.255.0.10"})
+    assert [c.kwargs["args"] for c in send.call_args_list] == [["r-1"], ["r-1", {"lnx01": "10.255.0.10"}]]
 
 
 def test_broker_outage_returns_none_instead_of_raising():

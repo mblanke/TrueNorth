@@ -58,7 +58,20 @@ TASKS: dict[str, TaskContract] = {
     c.name: c
     for c in (
         # -- Range lifecycle ------------------------------------------------
-        TaskContract("provision_range", "provision", (_RANGE,), "Build a range's VMs on its hypervisor."),
+        TaskContract(
+            "provision_range",
+            "provision",
+            (
+                _RANGE,
+                Arg(
+                    "noise_mgmt",
+                    "object",
+                    required=False,
+                    description="{agent node: reserved noise management address} (app/noise/mgmt.py)",
+                ),
+            ),
+            "Build a range's VMs on its hypervisor.",
+        ),
         TaskContract("batch_provision", "provision", (Arg("range_ids", "array", description="ranges.id list"),)),
         TaskContract("destroy_range", "destroy", (_RANGE,), "Tear down a range's VMs."),
         TaskContract("stop_range", "provision", (_RANGE,), "Power off a range's VMs (POST /ranges/{id}/stop)."),

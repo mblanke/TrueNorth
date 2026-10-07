@@ -255,23 +255,14 @@ def _reserve_for_provision(db: Session, rng: Range) -> None:
 
 def _task_args(db: Session, op: RangeOperation) -> tuple:
     """What the operation's task is sent: the range id, and for a provision the reserved
-    noise management addresses when it holds any and the task contract takes them
-    (``noise_mgmt``, an optional second argument of provision_range)."""
-    if op.action == "provision" and _contract_takes("provision_range", "noise_mgmt"):
+    noise management addresses when it holds any (``noise_mgmt``, provision_range's
+    optional second argument; worker/contracts.py)."""
+    if op.action == "provision":
         from ..noise import mgmt as noise_mgmt
 
         if held := noise_mgmt.reserved(db, op.range_id):
             return (str(op.range_id), held)
     return (str(op.range_id),)
-
-
-def _contract_takes(task: str, arg: str) -> bool:
-    """Whether the published worker contract (app/task_contracts.py) has ``arg`` for
-    ``task``. The contract is checked against the worker's signature, so this is true
-    only once the worker accepts the argument."""
-    from ..task_contracts import TASKS
-
-    return any(a.name == arg for a in TASKS[task].args)
 
 
 def dispatch(db: Session, op: RangeOperation) -> bool:

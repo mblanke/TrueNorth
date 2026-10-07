@@ -210,13 +210,18 @@
     },
     "worker.tasks.provision_range": {
       "args": {
-        "maxItems": 1,
+        "maxItems": 2,
         "minItems": 1,
         "prefixItems": [
           {
             "description": "ranges.id (UUID)",
             "title": "range_id",
             "type": "string"
+          },
+          {
+            "description": "{agent node: reserved noise management address} (app/noise/mgmt.py)",
+            "title": "noise_mgmt",
+            "type": "object"
           }
         ],
         "type": "array"

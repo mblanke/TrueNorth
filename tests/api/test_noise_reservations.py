@@ -44,20 +44,6 @@ def sent(monkeypatch):
     return calls
 
 
-@pytest.fixture
-def worker_takes_addresses(monkeypatch):
-    """The provision contract once provision_range accepts ``noise_mgmt`` (an optional
-    second argument). Until worker/tasks.py does, the contract parity test
-    (tests/contracts) keeps the argument out, and the API sends only the range id."""
-    from app import task_contracts as tc
-
-    current = tc.TASKS["provision_range"]
-    extra = tc.Arg("noise_mgmt", "object", required=False, description="{agent node: reserved address}")
-    monkeypatch.setitem(
-        tc.TASKS, "provision_range", tc.TaskContract(current.name, current.queue, (*current.args, extra))
-    )
-
-
 def _template(client, template: dict) -> str:
     r = client.post(
         "/templates",
@@ -98,23 +84,14 @@ def test_two_ranges_from_one_noisy_template_get_different_mgmt_addresses(client,
     assert not set(got_a.values()) & set(got_b.values()), (got_a, got_b)
 
 
-def test_the_worker_is_handed_the_reserved_addresses(client, db_session, sent, worker_takes_addresses):
-    rid = _range(client, _template(client, _noisy()))
-    client.post(f"/ranges/{rid}/provision")
-    assert sent == [("provision_range", rid, _reserved(db_session, rid))]
-
-
-def test_addresses_are_reserved_but_not_sent_while_the_worker_cannot_take_them(client, db_session, sent):
-    """Today's contract: provision_range takes only the range id. The reservation still
-    happens (deploy registers agents at it); a send with an extra argument would fail
-    contract validation, and the worker would refuse it."""
+def test_the_worker_is_handed_the_reserved_addresses(client, db_session, sent):
     from app.task_contracts import validate_args
 
     rid = _range(client, _template(client, _noisy()))
-    assert client.post(f"/ranges/{rid}/provision").status_code == 202
-    assert _reserved(db_session, rid)
-    assert sent == [("provision_range", rid)]
-    validate_args("provision_range", (rid,))
+    client.post(f"/ranges/{rid}/provision")
+    held = _reserved(db_session, rid)
+    assert held and sent == [("provision_range", rid, held)]
+    validate_args("provision_range", (rid, held))  # what the real dispatch would check
 
 
 def test_a_range_without_noise_reserves_nothing_and_sends_only_its_id(client, db_session, sent):
@@ -124,7 +101,7 @@ def test_a_range_without_noise_reserves_nothing_and_sends_only_its_id(client, db
     assert _reserved(db_session, rid) == {}
 
 
-def test_a_redispatch_sends_the_same_addresses(client, db_session, monkeypatch, worker_takes_addresses):
+def test_a_redispatch_sends_the_same_addresses(client, db_session, monkeypatch):
     rid = _range(client, _template(client, _noisy()))
     monkeypatch.setattr(celery_client, "dispatch", lambda task, *args: None)
     client.post(f"/ranges/{rid}/provision")
@@ -167,9 +144,7 @@ def test_destroying_a_range_frees_its_addresses_for_the_next(client, db_session,
     assert set(_reserved(db_session, late).values()) == set(held.values())
 
 
-def test_running_an_exercise_on_a_noisy_range_reserves_like_a_provision(
-    client, db_session, sent, worker_takes_addresses
-):
+def test_running_an_exercise_on_a_noisy_range_reserves_like_a_provision(client, db_session, sent):
     """POST /exercises/{id}/run provisions the range itself: it must reserve too."""
     rid = _range(client, _template(client, _noisy()))
     sid = client.post(
@@ -287,16 +262,6 @@ def test_worker_derives_no_addresses_of_its_own():
     rendered = render_topology(_noisy(), "abcdef0123456789", lambda alias: alias)
     assert not any("mgmt" in vm for vm in rendered["vm_definitions"])
     assert not any(n["name"] == "noise_mgmt" for n in rendered["network_definitions"])
-
-
-def test_the_api_sends_addresses_exactly_when_the_worker_contract_takes_them():
-    """The send follows the published contract, which the worker's signature pins
-    (tests/contracts/test_task_contracts.py): no flag to forget when the worker changes."""
-    from app.range_ops import service
-    from worker import contracts as worker_contracts
-
-    takes = any(a.name == "noise_mgmt" for a in worker_contracts.TASKS["provision_range"].args)
-    assert service._contract_takes("provision_range", "noise_mgmt") is takes
 
 
 def test_on_postgres_concurrent_provisions_of_noisy_ranges_never_share_an_address():
