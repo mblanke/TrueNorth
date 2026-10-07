@@ -26,6 +26,8 @@ from .aar import build_report as build_aar_report
 from .base_tasks import ReliableTask, _get_backend
 from .celery_app import app
 from .detection import detection_scorer, range_index
+from .fencing import FINAL_ERRORS, fenced, run_async
+from .fencing import last_attempt as _last_attempt
 from .provisioners import discard_built
 
 logger = logging.getLogger("truenorth.worker")
@@ -34,7 +36,6 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://forge:forge@local
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 
-_DESTROYABLE = ("created", "provisioning", "ready", "running", "stopped", "destroying", "failed")
 # -- DB session management (one per task, no leaks) ---------------------
 @contextmanager
 def _db_session():
@@ -78,6 +79,10 @@ def _update_range_state(
         )
 
 
+def _in_state(range_id: str, state: str) -> bool:
+    return bool(_update_range_state(range_id, state, only_from=(state,)))
+
+
 def _notify_api(channel: str, message: dict):
     """Push state change notification via Redis pub/sub."""
     try:
@@ -103,14 +108,11 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
+@fenced("provision", "provisioning")  # only a range its sender moved to provisioning; one copy at a time
 def provision_range(self, range_id: str):
     """Provision a range: render its template, build it with its backend, store the result.
     A range torn down while it was being built gets what was built destroyed, not recorded."""
     logger.info(f"[provision] Starting range {range_id}")
-    # A redelivered task for a range that is already ready (or being torn down) must not
-    # build a second set of VMs: only a range still waiting to be built is provisioned.
-    if not _update_range_state(range_id, "provisioning", only_from=("created", "provisioning", "failed")):
-        return {"status": "skipped", "range_id": range_id}
     _notify_api("range", {"id": range_id, "state": "provisioning"})
 
     try:
@@ -162,7 +164,7 @@ def provision_range(self, range_id: str):
 
         provisioner = _get_backend(backend)
 
-        result = asyncio.run(provisioner.provision(range_id, template, allocations))
+        result = run_async(provisioner.provision(range_id, template, allocations))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
@@ -183,18 +185,17 @@ def provision_range(self, range_id: str):
         return {"status": "ready", "range_id": range_id, "vm_count": len(result.vms)}
 
     except Exception as e:
-        _update_range_state(range_id, "failed", error=str(e), only_from=("provisioning",))
-        _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        if isinstance(e, FINAL_ERRORS) or _last_attempt(self):  # a retry must still find it provisioning
+            _update_range_state(range_id, "failed", error=str(e), only_from=("provisioning",))
+            _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[provision] Range {range_id} FAILED: {e}")
         raise
 
 
-@app.task(bind=True, name="worker.tasks.batch_provision")
+@app.task(base=ReliableTask, bind=True, name="worker.tasks.batch_provision")
 def batch_provision(self, range_ids: list[str]):
-    """Provision multiple ranges in parallel using a Celery group.
-
-    At 70k-VM scale, ranges are queued with rate limiting.
-    The group dispatches individual provision tasks.
+    """Provision multiple ranges in parallel using a Celery group, rate limited. Retried
+    on a failure: the API moved every range to provisioning, and re-sent copies are fenced.
     """
     logger.info(f"[batch] Dispatching {len(range_ids)} ranges for provisioning")
 
@@ -212,6 +213,7 @@ def batch_provision(self, range_ids: list[str]):
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.destroy_range")
+@fenced("destroy", "destroying")  # only a range its sender moved to destroying; one copy at a time
 def destroy_range(self, range_id: str):
     """Destroy a provisioned range using the configured backend.
 
@@ -219,8 +221,6 @@ def destroy_range(self, range_id: str):
     the provisioner class hierarchy, and updates range state.
     """
     logger.info(f"[destroy] Starting range {range_id}")
-    if not _update_range_state(range_id, "destroying", only_from=_DESTROYABLE):
-        return {"status": "skipped", "range_id": range_id}  # already destroyed: a repeat
     _notify_api("range", {"id": range_id, "state": "destroying"})
 
     try:
@@ -232,19 +232,20 @@ def destroy_range(self, range_id: str):
         backend = (row[1] if row and row[1] else None) or os.getenv("PROVISIONER_BACKEND", "mock")
         provisioner = _get_backend(backend)
 
-        result = asyncio.run(provisioner.destroy(range_id, prov_output))
+        result = run_async(provisioner.destroy(range_id, prov_output))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
-        _update_range_state(range_id, "destroyed")
+        _update_range_state(range_id, "destroyed", only_from=("destroying",))
         _notify_api("range", {"id": range_id, "state": "destroyed"})
         logger.info(f"[destroy] Range {range_id} destroyed ({result.resources_removed} resources)")
         return {"status": "destroyed", "range_id": range_id}
 
     except Exception as e:
-        _update_range_state(range_id, "failed", error=str(e))
-        _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
+        if isinstance(e, FINAL_ERRORS) or _last_attempt(self):  # a retry must still find it destroying
+            _update_range_state(range_id, "failed", error=str(e), only_from=("destroying",))
+            _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[destroy] Range {range_id} FAILED: {e}")
         raise
 
@@ -665,7 +666,7 @@ def collect_range_metrics(self):
 # States routers/ranges.py:restore_snapshot accepts. A restore only ever writes to a
 # range still in one of them; if the range moved on (say, it was destroyed while the
 # task queued or retried), the range is left alone.
-_RESTORABLE_STATES = ("ready", "stopped", "failed")
+_RESTORABLE_STATES = ("ready", "running", "stopped", "failed")
 # Snapshot states the snapshot task may still write over: its first attempt, or a retry.
 _SNAPSHOT_PENDING = ("creating", "failed")
 
@@ -678,11 +679,6 @@ def _backend_snapshot_name(snapshot_id: str) -> str:
     with a digit ten times in sixteen, and Proxmox rejected those.
     """
     return "tn" + "".join(ch for ch in snapshot_id if ch.isalnum())[:38]
-
-
-def _last_attempt(task) -> bool:
-    """True when a failure now will not be retried, or the task was called directly."""
-    return bool(task.request.called_directly) or task.request.retries >= (task.max_retries or 0)
 
 
 def _discard_snapshot(provisioner, range_id: str, prov_output: dict, name: str) -> None:
@@ -756,7 +752,7 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
         # attempt's complete snapshot.
         _discard_snapshot(provisioner, range_id, prov_output, name)
 
-        result = asyncio.run(provisioner.snapshot(range_id, prov_output, name))
+        result = run_async(provisioner.snapshot(range_id, prov_output, name))
         if result.status != "ok":
             # Until this check, a failed or partial snapshot was stored as `ready`. A
             # partial one cannot restore the range as a whole, so take back what was
@@ -791,6 +787,7 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.restore_snapshot")
+@fenced("restore", None)  # the range's lease only: never alongside a build, teardown or another restore
 def restore_snapshot(self, range_id: str, snapshot_id: str):
     """Restore a range from a snapshot."""
     logger.info(f"[restore] Restoring range {range_id} from snapshot {snapshot_id}")
@@ -816,7 +813,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
         name = snapshot_data.get("snapshot_name") or snapshot_id
 
         provisioner = _get_backend(_range_backend(rng))
-        result = asyncio.run(provisioner.restore(range_id, prov_output, name, power_on=original_state == "ready"))
+        result = run_async(provisioner.restore(range_id, prov_output, name, power_on=original_state != "stopped"))
         changed = result.vms_reverted > 0
         if result.status != "ok":
             raise RuntimeError(f"restore {result.status}: {'; '.join(result.errors) or 'no detail'}")
@@ -828,7 +825,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
         return {"status": "restored", "range_id": range_id, "state": original_state}
 
     except Exception as e:
-        if changed:
+        if changed or isinstance(e, FINAL_ERRORS):  # cut off by the time limit: the revert may still be running
             # Some VMs reverted and some did not, so the range matches neither its old
             # state nor the snapshot. Guarded, because this runs on every failed attempt,
             # retries included: the old unconditional write stamped `failed` over a
@@ -842,7 +839,7 @@ def restore_snapshot(self, range_id: str, snapshot_id: str):
             # a backend without restore), so the range is exactly as it was and keeps
             # its state. Marking it `failed` blocked stop, start and expiry cleanup.
             _notify_api("range", {"id": range_id, "restore_failed": snapshot_id, "error": str(e)})
-        if _last_attempt(self):
+        if isinstance(e, FINAL_ERRORS) or _last_attempt(self):
             # Until then a retry still owns the snapshot, and `restoring` keeps the API
             # from starting another restore or deleting it underneath the retry.
             _update_snapshot_state(snapshot_id, "ready", only_from=("restoring",))

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser
 from ..course_publishing import service
 from ..course_publishing.models import CoursePublication
-from ..course_publishing.runner import run_by_id
+from ..course_publishing.runner import run_by_id, run_waiting
 from ..course_releases.models import CourseRelease
 from ..db import get_db
 from ..models import ExternalPlatform
@@ -68,6 +68,10 @@ def _start(db: Session, pub: CoursePublication, wait: bool, background: Backgrou
             service.run(db, pub)
         except service.PublishRefusedError as exc:
             raise HTTPException(exc.status, str(exc)) from exc
+        except service.LeaseLostError as exc:  # another process took the job over mid-run
+            raise HTTPException(409, str(exc)) from exc
+        finally:
+            background.add_task(run_waiting, pub.id)
     else:
         background.add_task(run_by_id, pub.id)
 

@@ -712,7 +712,7 @@ export class DashboardComponent implements OnInit {
     this.api.listRanges(5).subscribe({
       next: r => {
         this.ranges.set(r);
-        this.rangeCount.set(r.filter(x => ['provisioning', 'ready', 'running'].includes(x.state)).length);
+        this.rangeCount.set(r.filter(x => ['provisioning', 'ready', 'running', 'stopping', 'starting'].includes(x.state)).length);
       },
       error: () => {},
     });

@@ -36,6 +36,7 @@ WORKER_TABLES = (
     "hypervisor_connections",
     "learning_recommendations",
     "objectives",
+    "range_leases",
     "range_snapshots",
     "ranges",
     "scenarios",
@@ -67,6 +68,7 @@ def _type_src(t) -> str:
 
 
 def render() -> str:
+    import app.range_leases  # noqa: F401 — section models register their tables on import
     from app import models
     from app.db import Base
 

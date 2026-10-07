@@ -7951,6 +7951,116 @@
         "title": "RangeListOut",
         "type": "object"
       },
+      "RangeOperationOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "dispatch_attempts": {
+            "title": "Dispatch Attempts",
+            "type": "integer"
+          },
+          "dispatched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatched At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "id",
+          "range_id",
+          "action",
+          "generation",
+          "status",
+          "dispatch_attempts"
+        ],
+        "title": "RangeOperationOut",
+        "type": "object"
+      },
       "RangeOut": {
         "properties": {
           "created_at": {
@@ -24280,7 +24390,7 @@
     },
     "/ranges/batch-provision": {
       "post": {
-        "description": "Batch-provision multiple ranges.  **Permission: range:batch_provision**",
+        "description": "Batch-provision multiple ranges.  **Permission: range:batch_provision**\n\nEach range gets its own provision operation (app/range_ops), all accepted in one\ntransaction: one refusal (not the caller's, a lab's, wrong state, already busy)\naccepts none. Ranges are locked in id order so two overlapping batches cannot\ndeadlock. ``task_id`` carries the operations' ids, comma-separated.",
         "operationId": "batch_provision_ranges_ranges_batch_provision_post",
         "requestBody": {
           "content": {
@@ -24559,7 +24669,7 @@
     },
     "/ranges/{range_id}/destroy": {
       "post": {
-        "description": "Destroy a range (async Celery task).  **Permission: range:destroy**",
+        "description": "Destroy a range (async: ``destroying`` until the worker reports ``destroyed``). It\nsupersedes an operation still in flight, so a range whose power task was lost can\nalways be torn down.  **Permission: range:destroy**",
         "operationId": "destroy_range_ranges__range_id__destroy_post",
         "parameters": [
           {
@@ -24571,10 +24681,27 @@
               "title": "Range Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -24582,7 +24709,18 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
           },
           "422": {
             "content": {
@@ -24939,10 +25077,10 @@
         ]
       }
     },
-    "/ranges/{range_id}/provision": {
-      "post": {
-        "description": "Provision a range (async Celery task).  **Permission: range:provision**",
-        "operationId": "provision_range_ranges__range_id__provision_post",
+    "/ranges/{range_id}/operations": {
+      "get": {
+        "description": "The range's operations, newest first, with outcomes reconciled from its state.",
+        "operationId": "list_range_operations_ranges__range_id__operations_get",
         "parameters": [
           {
             "in": "path",
@@ -24960,11 +25098,209 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RangeOut"
+                  "items": {
+                    "$ref": "#/components/schemas/RangeOperationOut"
+                  },
+                  "title": "Response List Range Operations Ranges  Range Id  Operations Get",
+                  "type": "array"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Range Operations",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/operations/{operation_id}": {
+      "get": {
+        "operationId": "get_range_operation_ranges__range_id__operations__operation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOperationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Range Operation",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/operations/{operation_id}/abandon": {
+      "post": {
+        "description": "Give up on an in-flight operation that will not finish (a lost task, a dead worker).\n\nCheck the hypervisor first: the API cannot see whether work is still running there.\nThe range goes to ``failed``, from where it can be destroyed or provisioned again.\n**Permission: range:destroy**",
+        "operationId": "abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOperationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abandon Range Operation",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/provision": {
+      "post": {
+        "description": "Provision a range (async: ``provisioning`` until the worker reports ``ready``).\n**Permission: range:provision**",
+        "operationId": "provision_range_ranges__range_id__provision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOut"
+                }
+              }
+            },
+            "description": "Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
           },
           "422": {
             "content": {
@@ -25207,9 +25543,86 @@
         ]
       }
     },
+    "/ranges/{range_id}/start": {
+      "post": {
+        "description": "Power a stopped range's VMs on (async: ``starting`` until the worker reports\n``running``).  **Permission: range:provision**",
+        "operationId": "start_range_ranges__range_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RangeOut"
+                }
+              }
+            },
+            "description": "Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Range",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/stop": {
       "post": {
-        "description": "Stop a running range.  **Permission: range:provision**",
+        "description": "Power a range's VMs off (async: ``stopping`` until the worker reports ``stopped``).\nUntil CR1-05 this set ``stopped`` and sent nothing.  **Permission: range:provision**",
         "operationId": "stop_range_ranges__range_id__stop_post",
         "parameters": [
           {
@@ -25221,10 +25634,27 @@
               "title": "Range Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -25232,7 +25662,18 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Accepted: the operation is durably recorded. It may still be waiting for the task queue; see GET /ranges/{range_id}/operations/{Operation-Id}.",
+            "headers": {
+              "Operation-Id": {
+                "description": "The operation's id",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not allowed in the range's state, another operation is in flight, or the Idempotency-Key was used for a different request"
           },
           "422": {
             "content": {

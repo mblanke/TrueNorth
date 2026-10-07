@@ -140,8 +140,7 @@ def _drive(db, session, want: str, timeout: float = 1800) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         db.expire_all()
-        service.advance(db, session)
-        db.commit()
+        service.run_locked(db, session, service.advance, busy_ok=True)  # as the sweep does
         if session.state == want:
             return
         if session.state in ("failed", "destroyed") and want not in ("failed", "destroyed"):
@@ -159,10 +158,13 @@ def test_two_students_build_reset_expire_and_clean_up(world, monkeypatch):
     db, release, (alice, bob) = world
     monkeypatch.setattr(service, "_dispatch", _worker_dispatch)
 
+    # As the API does it: commit, then send the tasks (service.flush_outbox).
     a, _ = service.launch(db, tenant_id=TENANT, user_id=alice.id, release_id=release.id, activity_id="mod_006")
     db.commit()
+    service.flush_outbox(db)
     b, _ = service.launch(db, tenant_id=TENANT, user_id=bob.id, release_id=release.id, activity_id="mod_006")
     db.commit()
+    service.flush_outbox(db)
     _drive(db, a, "ready")
     _drive(db, b, "ready")
     print(f"\nreadiness: {a.readiness_seconds:.0f}s and {b.readiness_seconds:.0f}s (provision + tools + baseline)")
@@ -172,8 +174,7 @@ def test_two_students_build_reset_expire_and_clean_up(world, monkeypatch):
     vms = {s.id: json.loads(db.get(Range, s.range_id).provisioner_output)["vms"] for s in (a, b)}
     assert {v["vm_id"] for v in vms[a.id]}.isdisjoint({v["vm_id"] for v in vms[b.id]})
 
-    service.reset(db, a)
-    db.commit()
+    service.run_locked(db, a, service.reset)
     _drive(db, a, "active", timeout=900)
     assert b.state == "ready"  # untouched by a's reset
 
@@ -188,8 +189,7 @@ def test_two_students_build_reset_expire_and_clean_up(world, monkeypatch):
     assert asyncio.run(provisioner.find_vms(f"{a.range_id}-"))  # a's VM is still there
     assert not db.query(LabNetworkLease).filter_by(session_id=b.id).count()
 
-    service.end(db, a)
-    db.commit()
+    service.run_locked(db, a, service.end)
     _drive(db, a, "destroyed", timeout=900)
     assert asyncio.run(provisioner.find_vms(f"{a.range_id}-")) == []
     print(yaml.safe_dump({"a": a.readiness_seconds, "b": b.readiness_seconds}))

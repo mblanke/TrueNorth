@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from . import range_leases, range_ops  # noqa: F401 — register their tables
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
@@ -75,8 +76,18 @@ async def lifespan(app: FastAPI):
 
         lab_sweep = asyncio.create_task(lab_loop())
 
+    # Range operations the broker did not take (down, or a process that died between
+    # the commit and the send) are re-sent (app/range_ops). One sender per operation.
+    from .db import SessionLocal
+    from .range_ops.service import redispatch_interval, redispatch_loop
+
+    interval = redispatch_interval()
+    range_resend = asyncio.create_task(redispatch_loop(SessionLocal, interval)) if interval > 0 else None
+
     yield
 
+    if range_resend is not None:
+        range_resend.cancel()
     if lab_sweep is not None:
         lab_sweep.cancel()
 

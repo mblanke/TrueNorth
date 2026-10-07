@@ -32,6 +32,18 @@ jobs:
   test-python:
     runs-on: ubuntu-latest
     needs: lint-python
+    # PostgreSQL for the tests whose claim SQLite cannot prove: row locks, partial unique
+    # indexes under concurrency, the real migration chain (tests/conftest.py
+    # postgres_engine). Without TEST_POSTGRES_ADMIN_URL they skip.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tn_ci
+          POSTGRES_PASSWORD: tn_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tn_ci" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,8 +54,11 @@ jobs:
         env:
           AUTH_DISABLED: "true"
           DATABASE_URL: "sqlite://"
+          # tests/conftest.py overrides REDIS_URL with an unreachable address; no test
+          # reaches a real broker except through TEST_REDIS_URL.
           REDIS_URL: "redis://localhost:6379/15"
           RATE_LIMIT_ENABLED: "false"
+          TEST_POSTGRES_ADMIN_URL: "postgresql+psycopg://tn_ci:tn_ci@localhost:5432/postgres"
 
   # MOSA gates — same checks as scripts/dod.sh, so local green and CI green agree.
   # docs/adr/0002-interface-versioning.md, docs/adr/0003-mosa-ratchet.md

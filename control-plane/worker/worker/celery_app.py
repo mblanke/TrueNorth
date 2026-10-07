@@ -15,6 +15,9 @@ from celery import Celery
 from kombu import Exchange, Queue
 
 from .contracts import QUEUES, route_table
+from .fencing import SOFT_TIME_LIMIT, TASK_TIME_LIMIT
+
+RANGE_TASK_LIMITS = {"soft_time_limit": SOFT_TIME_LIMIT, "time_limit": TASK_TIME_LIMIT}
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
@@ -46,9 +49,16 @@ app.conf.update(
     # Rate limiting (applied per worker)
     # Provisioning: max 10 per minute per worker to avoid Proxmox overload
     # With 8 workers: 80 provisions/min = ~4,800/hr
+    # Range tasks (worker/fencing.py): the soft limit is raised inside the task (it records
+    # `failed` and keeps the range's lease); the hard limit kills the process, below the
+    # broker's visibility timeout, so a running task is never redelivered alongside itself.
     task_annotations={
-        "worker.tasks.provision_range": {"rate_limit": "10/m"},
-        "worker.tasks.destroy_range": {"rate_limit": "15/m"},
+        "worker.tasks.provision_range": {"rate_limit": "10/m", **RANGE_TASK_LIMITS},
+        "worker.tasks.destroy_range": {"rate_limit": "15/m", **RANGE_TASK_LIMITS},
+        "worker.tasks.stop_range": RANGE_TASK_LIMITS,
+        "worker.tasks.start_range": RANGE_TASK_LIMITS,
+        "worker.tasks.snapshot_range": RANGE_TASK_LIMITS,
+        "worker.tasks.restore_snapshot": RANGE_TASK_LIMITS,
         "worker.tasks.ingest_telemetry_batch": {"rate_limit": "100/m"},
     },
     # Retry
@@ -87,5 +97,6 @@ app.conf.beat_schedule = {
 from . import (
     chaos,  # noqa: F401, E402
     lab_tasks,  # noqa: F401, E402
+    power_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
 )

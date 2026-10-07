@@ -114,7 +114,7 @@ def test_a_port_group_outside_the_lab_pool_is_refused(monkeypatch):
         asyncio.run(prov._provision_one_vm(None, vm, "rid-r-x", "t", "f", "rp", "ds", "dc"))
 
 
-def test_vms_built_for_a_range_torn_down_mid_build_are_destroyed(monkeypatch):
+def test_vms_built_for_a_range_torn_down_mid_build_are_destroyed(monkeypatch, lease_always_free):
     from types import SimpleNamespace
 
     from worker import tasks
@@ -156,7 +156,7 @@ def test_vms_built_for_a_range_torn_down_mid_build_are_destroyed(monkeypatch):
     assert ("ready", ("provisioning",)) in calls
 
 
-def test_destroying_a_destroyed_range_is_a_no_op(monkeypatch):
+def test_destroying_a_destroyed_range_is_a_no_op(monkeypatch, lease_always_free):
     from worker import tasks
 
     monkeypatch.setattr(tasks, "_update_range_state", lambda *a, **k: 0)
