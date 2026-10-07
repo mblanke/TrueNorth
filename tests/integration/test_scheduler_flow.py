@@ -62,6 +62,15 @@ def _wait_torn_down(api_client, range_id: str) -> str | None:
     return state
 
 
+def _operations(api_client, range_id: str) -> list[dict]:
+    """The range's operations, oldest first. Sorted here on ``generation`` (the per-range
+    sequence range_ops assigns under the range's row lock) rather than relying on the
+    endpoint's order, which is newest first and not part of the contract."""
+    r = api_client.get(f"/ranges/{range_id}/operations")
+    assert r.status_code == 200, f"GET /ranges/{range_id}/operations => {r.status_code} {r.text}"
+    return sorted(r.json(), key=lambda o: o["generation"])
+
+
 @pytest.fixture
 def booking_inputs(api_client, teardown_delete):
     """A template, a scenario and the caller's id; and, afterwards, best-effort cleanup
@@ -147,9 +156,8 @@ def test_a_booking_creates_its_range_and_exercise_and_shows_in_the_feed(api_clie
     assert rng.status_code == 200, rng.text
     assert rng.json()["template_id"] == booking_inputs["template_id"]
     assert rng.json()["state"] in ("provisioning", "ready"), rng.json()
-    ops = api_client.get(f"/ranges/{evt['range_id']}/operations")
-    assert ops.status_code == 200, ops.text
-    assert [o["action"] for o in ops.json()] == ["provision"], ops.json()
+    ops = _operations(api_client, evt["range_id"])
+    assert [o["action"] for o in ops] == ["provision"], ops
 
     # A pending exercise on that range, running the booked scenario.
     ex = api_client.get(f"/exercises/{evt['exercise_id']}")
@@ -182,6 +190,9 @@ def test_a_booking_creates_its_range_and_exercise_and_shows_in_the_feed(api_clie
     final = _wait_torn_down(api_client, evt["range_id"])
     assert final in (None, "destroyed"), f"range {evt['range_id']} still {final} after {POLL_TIMEOUT}s"
     if final is not None:
-        actions = [o["action"] for o in api_client.get(f"/ranges/{evt['range_id']}/operations").json()]
-        assert actions[-1] == "destroy", actions
+        ops = _operations(api_client, evt["range_id"])
+        newest = ops[-1]  # highest generation
+        assert newest["action"] == "destroy", ops
+        assert newest["status"] == "succeeded", newest  # reconciled from `destroyed`
+        assert [o["action"] for o in ops] == ["provision", "destroy"], ops
     assert api_client.get(f"/exercises/{evt['exercise_id']}").json()["state"] == "cancelled"
