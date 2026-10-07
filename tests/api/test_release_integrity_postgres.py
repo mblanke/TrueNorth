@@ -134,14 +134,33 @@ def test_a_release_blob_is_never_rewritten_or_deleted(postgres_engine):
     _refused(postgres_engine, "DELETE FROM course_release_blobs WHERE sha256 = :h", h=w["blob"])
 
 
-def test_an_enrollments_pin_never_moves(postgres_engine):
-    """F10: a student's in-progress attempt keeps the release it started on."""
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE enrollment_release_pins SET release_id = :r WHERE enrollment_id = :e",
+        "UPDATE enrollment_release_pins SET pinned_at = now() WHERE enrollment_id = :e",
+        "DELETE FROM enrollment_release_pins WHERE enrollment_id = :e",  # then re-insert on v2
+    ],
+)
+def test_an_enrollments_pin_never_moves(postgres_engine, sql):
+    """F10: a student's in-progress attempt keeps the release it started on: not by an
+    update, nor by a delete and re-insert."""
+    w = _world(postgres_engine)
+    _refused(postgres_engine, sql, r=w["v2"], e=w["enrollment"])
+
+
+@pytest.mark.parametrize("table", ["course_releases", "course_release_blobs", "enrollment_release_pins"])
+def test_the_release_tables_cannot_be_truncated(postgres_engine, table):
+    """A row trigger does not see a TRUNCATE."""
+    _world(postgres_engine)
+    with pytest.raises(DBAPIError, match="never"), postgres_engine.begin() as conn:
+        conn.execute(text(f"TRUNCATE {table} CASCADE"))
+
+
+def test_when_a_release_was_made_is_fixed(postgres_engine):
     w = _world(postgres_engine)
     _refused(
-        postgres_engine,
-        "UPDATE enrollment_release_pins SET release_id = :r WHERE enrollment_id = :e",
-        r=w["v2"],
-        e=w["enrollment"],
+        postgres_engine, "UPDATE course_releases SET created_at = now() - interval '1 year' WHERE id = :id", id=w["v1"]
     )
 
 

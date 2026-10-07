@@ -210,6 +210,33 @@ class TestInterruption:
 
 
 class TestNewRelease:
+    def test_one_release_of_a_course_runs_at_a_time_and_the_waiting_one_runs_after(
+        self, ready, tmp_path, db_session, monkeypatch
+    ):
+        """All of a course's publications write one live Moodle course: two running at once
+        let an older release's upsert land after a newer one's, while the records said the
+        newer one was live (review of 53ffcc1)."""
+        from app import db as app_db
+        from app.course_publishing import service
+        from app.course_publishing.runner import run_waiting
+
+        client, platform = ready
+        first = accepted(client, build(tmp_path / "a"))
+        first_pub = db_session.get(
+            CoursePublication, uuid.UUID(publish(client, first, platform, wait=False).json()["id"])
+        )
+        assert service.claim(db_session, first_pub)  # v1's run is in progress
+        db_session.commit()
+        second = accepted(client, _edit_question(build(tmp_path / "b", slug="arc2-iot-b")))
+        resp = publish(client, second, platform)
+        assert resp.status_code == 409 and "another release of this course" in resp.json()["detail"]
+        first_pub.state, first_pub.lease_until, first_pub.lease_holder = "failed", None, None  # v1's run ends
+        db_session.commit()
+        monkeypatch.setattr(app_db, "SessionLocal", lambda: _Borrowed(db_session))
+        run_waiting(first_pub.id)
+        second_pub = db_session.query(CoursePublication).filter(CoursePublication.id != first_pub.id).one()
+        assert second_pub.state == "published"
+
     def test_a_second_release_supersedes_and_keeps_attempted_quizzes(self, ready, tmp_path, db_session):
         client, platform = ready
         first = accepted(client, build(tmp_path / "a"))
@@ -236,8 +263,9 @@ class TestNewRelease:
 
 class TestAccess:
     def test_the_moodle_payload_carries_no_instructor_or_platform_file(self, ready, tmp_path, db_session, monkeypatch):
-        """F11: Moodle is a student surface. Only the release's learner part may reach it."""
-        import json
+        """F11: Moodle is a student surface. Only the release's learner part may reach it,
+        under any name: files travel base64-encoded, so every one is decoded and compared."""
+        import base64
 
         from app.course_releases.models import CourseRelease
         from app.course_releases.service import load_bundle
@@ -247,20 +275,39 @@ class TestAccess:
         sent: list[dict] = []
         upsert = fake.FakeMoodle.upsert_course
         monkeypatch.setattr(
-            fake.FakeMoodle,
-            "upsert_course",
-            lambda self, p, payload: (sent.append(payload), upsert(self, p, payload))[1],
+            fake.FakeMoodle, "upsert_course", lambda self, p, payload: (sent.append(payload), upsert(self, p, payload))[1]
         )
         assert publish(client, rid, platform).json()["state"] == "published"
         bundle = load_bundle(db_session, db_session.get(CourseRelease, uuid.UUID(rid)))
-        wire = json.dumps(sent, default=str)
-        assert sent and bundle.files["instructor"], "the kit must carry instructor material to test this"
-        for part in ("instructor", "platform"):
-            for name, blob in bundle.files[part].items():
-                assert name not in wire, f"{part} file {name} reached Moodle"
-                text_ = blob.decode("utf-8", "ignore").strip()
-                if len(text_) >= 12 and text_ not in bundle.files["learner"].get(name, b"").decode("utf-8", "ignore"):
-                    assert text_ not in wire, f"the content of {part} file {name} reached Moodle"
+        learner = set(bundle.files["learner"].values())
+        secret = {blob for part in ("instructor", "platform") for blob in bundle.files[part].values()} - learner
+        lines = {
+            line.strip()
+            for blob in bundle.files["instructor"].values()
+            for line in blob.decode("utf-8", "ignore").splitlines()
+            if len(line.strip()) >= 12
+        }
+        assert sent and lines, "the kit must carry a real instructor file to test this"
+        texts: list[str] = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    if key == "content_b64":
+                        raw = base64.b64decode(value)
+                        assert raw not in secret, "an instructor or platform file reached Moodle"
+                        texts.append(raw.decode("utf-8", "ignore"))
+                    else:
+                        walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+            elif isinstance(node, str):
+                texts.append(node)
+
+        walk(sent)
+        for line in lines:
+            assert not any(line in t for t in texts), f"instructor text reached Moodle: {line!r}"
 
     def test_students_cannot_publish(self, ready, tmp_path):
         client, platform = ready

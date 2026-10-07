@@ -99,7 +99,8 @@ def write_run(
         ),
         "02-content/arc2-iot.yaml": yml,
         "04-artifacts/rubric.md": "| ID | Criterion |\n",
-        "04-artifacts/instructor/answer_key.md": "Q1: B\n",
+        # Multi-line, with quotes: the kind of text a JSON-escaped substring check misses.
+        "04-artifacts/instructor/answer_key.md": "Q1: B\nQ2: the \"jump host\" at 10.9.0.12 relays the beacon\n",
     }
     for m in mods:
         files[f"02-content/{m['id']}/content/page-01.html"] = f"<h2>{m['id']}</h2><p>Lesson.</p>"
