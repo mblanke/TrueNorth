@@ -16,12 +16,15 @@ from app import (  # noqa: F401
     course_releases,
     lab_sessions,
     models,
+    models_tickets,
+    models_wiki,
     network_inventory,
     noise,
     range_leases,
     range_ops,
 )
 from app.db import Base
+from app.notifications import models as notification_models  # noqa: F401
 
 config = context.config
 

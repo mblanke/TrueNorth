@@ -24,6 +24,7 @@ from pydantic import BaseModel, ValidationError
 IGNORES_NULL = {
     ("PATCH", "/golden-images/{image_id}"),
     ("PATCH", "/learning-paths/{lp_id}"),
+    ("PATCH", "/tickets/{ticket_id}"),
 }
 
 _TABLES = {m.class_.__name__: m.class_ for m in models.Base.registry.mappers}

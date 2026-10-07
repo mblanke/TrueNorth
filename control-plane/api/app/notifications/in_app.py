@@ -62,13 +62,14 @@ class InAppChannel(NotificationChannel):
                 subject,
             )
 
-        # Push via WebSocket if manager is available
+        # Push via WebSocket if manager is available: to the recipient's own sockets
+        # (keyed by user id), as message type "notification".
         if self._ws_manager:
             try:
                 await self._ws_manager.send_to_user(
                     recipient,
+                    "notification",
                     {
-                        "type": "notification",
                         "id": notification_id,
                         "subject": subject,
                         "body": body,

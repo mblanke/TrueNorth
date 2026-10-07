@@ -188,6 +188,11 @@ app = FastAPI(
     servers=[{"url": SERVER_PREFIX}],
 )
 
+# -- 422s that survive NaN/Infinity input (app/validation_errors.py) --------
+from .validation_errors import install as install_validation_errors  # noqa: E402
+
+install_validation_errors(app)
+
 # -- CORS ------------------------------------------------------------------
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:4200,http://localhost:3000").split(",")
 app.add_middleware(
@@ -264,6 +269,7 @@ from .routers import (
     lti_router,
     network_devices_router,
     noise_router,
+    notifications_router,
     onboarding_router,
     ops_center_router,
     proxmox_router,
@@ -275,7 +281,9 @@ from .routers import (
     storage_router,
     templates_router,
     threat_intel_router,
+    tickets_router,
     transcript_router,
+    wiki_router,
 )
 from .scheduler.router import feed_router as scheduling_feed_router  # noqa: E402
 from .scheduler.router import me_router as scheduling_me_router  # noqa: E402
@@ -335,6 +343,10 @@ app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
+# Knowledge base, trouble tickets ("Support") and the in-app notification bell
+app.include_router(wiki_router)
+app.include_router(tickets_router)
+app.include_router(notifications_router)
 
 # -- API versioning: /api/v1/... -> canonical route (docs/adr/0002) ---------
 # Added last so it is the outermost middleware: rate limiting, metrics and tracing all
