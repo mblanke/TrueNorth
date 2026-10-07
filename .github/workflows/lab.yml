@@ -1,0 +1,78 @@
+# Live vSphere lab test: tests/integration/test_lab_sessions_vsphere.py against the real
+# vCenter, on a self-hosted runner inside the lab network. Never on pull_request or push:
+# a self-hosted runner must not execute code from a fork or an unreviewed branch. Runner
+# setup and the secrets it needs: docs/runbooks/lab-runner.md.
+name: Lab (live vSphere)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * *" # nightly, 06:17 UTC
+
+permissions:
+  contents: read
+
+# One run at a time: the test builds and tears down real VMs on shared port groups.
+concurrency:
+  group: lab-vsphere
+  cancel-in-progress: false
+
+jobs:
+  lab-sessions-vsphere:
+    runs-on: [self-hosted, truenorth-lab]
+    timeout-minutes: 90
+    env:
+      LAB_PG_NAME: tn-lab-pg-${{ github.run_id }}
+      LAB_PG_PORT: "55499"
+      VSPHERE_URL: ${{ secrets.VSPHERE_URL }}
+      VSPHERE_USERNAME: ${{ secrets.VSPHERE_USERNAME }}
+      VSPHERE_PASSWORD: ${{ secrets.VSPHERE_PASSWORD }}
+      VSPHERE_DATACENTER: ${{ secrets.VSPHERE_DATACENTER }}
+      VSPHERE_CLUSTER: ${{ secrets.VSPHERE_CLUSTER }}
+      VSPHERE_DATASTORE: ${{ secrets.VSPHERE_DATASTORE }}
+      VSPHERE_CONTENT_LIBRARY: ${{ secrets.VSPHERE_CONTENT_LIBRARY }}
+      VSPHERE_VERIFY_SSL: ${{ secrets.VSPHERE_VERIFY_SSL }}
+      LAB_PORT_GROUPS: ${{ secrets.LAB_PORT_GROUPS }}
+      LAB_TEST_TEMPLATE: ${{ secrets.LAB_TEST_TEMPLATE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Python test environment (job-local venv)
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q -r requirements-test.txt
+      # The test wants an empty, disposable PostgreSQL. One container per run, loopback
+      # only, removed in the last step.
+      - name: Disposable PostgreSQL
+        run: |
+          docker run -d --name "$LAB_PG_NAME" -e POSTGRES_USER=lab -e POSTGRES_PASSWORD=lab \
+            -e POSTGRES_DB=lab -p "127.0.0.1:${LAB_PG_PORT}:5432" postgres:16
+          for _ in $(seq 1 60); do
+            if docker exec "$LAB_PG_NAME" pg_isready -U lab -d lab >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready" >&2
+          exit 1
+      # A skip is a failure here: the test skips when any variable is missing, and a
+      # nightly that silently skips proves nothing.
+      - name: Lab sessions on vSphere
+        run: |
+          mkdir -p build/lab
+          rc=0
+          "$RUNNER_TEMP/venv/bin/python" -m pytest tests/integration/test_lab_sessions_vsphere.py \
+            -m integration -rs --tb=short -s --junitxml=build/lab/junit.xml || rc=$?
+          "$RUNNER_TEMP/venv/bin/python" scripts/junit_require_pass.py build/lab/junit.xml || rc=1
+          exit $rc
+        env:
+          LAB_TEST_DATABASE_URL: postgresql+psycopg://lab:lab@127.0.0.1:${{ env.LAB_PG_PORT }}/lab
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lab-vsphere-junit
+          path: build/lab/junit.xml
+          if-no-files-found: ignore
+      - name: Remove PostgreSQL
+        if: always()
+        run: docker rm -f "$LAB_PG_NAME" >/dev/null 2>&1 || true
