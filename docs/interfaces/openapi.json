@@ -1401,6 +1401,21 @@
         "title": "Body_upload_documents_curricula__curriculum_id__documents_post",
         "type": "object"
       },
+      "Body_upload_feed_threat_intel_feeds__feed_id__upload_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The feed's content, e.g. a CSV",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_feed_threat_intel_feeds__feed_id__upload_post",
+        "type": "object"
+      },
       "Body_upload_range_documents_ranges__range_id__documents_post": {
         "properties": {
           "files": {
@@ -4518,6 +4533,70 @@
           }
         },
         "title": "ExternalPlatformUpdate",
+        "type": "object"
+      },
+      "FeedPullOut": {
+        "description": "What a pull did. ``rejections`` lists at most the first 50 rejected rows.",
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "deactivated": {
+            "title": "Deactivated",
+            "type": "integer"
+          },
+          "feed": {
+            "$ref": "#/components/schemas/ThreatIntelFeedOut"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "rejections": {
+            "items": {
+              "$ref": "#/components/schemas/FeedRejectionOut"
+            },
+            "title": "Rejections",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "feed",
+          "status",
+          "created",
+          "updated",
+          "deactivated",
+          "rejected",
+          "rejections"
+        ],
+        "title": "FeedPullOut",
+        "type": "object"
+      },
+      "FeedRejectionOut": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "row": {
+            "title": "Row",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row",
+          "reason"
+        ],
+        "title": "FeedRejectionOut",
         "type": "object"
       },
       "FleetNodeCreateIn": {
@@ -10608,7 +10687,7 @@
             "title": "Collection Id"
           },
           "feed_type": {
-            "pattern": "^(taxii|stix_file|custom_api)$",
+            "pattern": "^(csv|taxii|stix_file|custom_api)$",
             "title": "Feed Type",
             "type": "string"
           },
@@ -28872,6 +28951,114 @@
           }
         ],
         "summary": "List Feed Indicators",
+        "tags": [
+          "threat-intel"
+        ]
+      }
+    },
+    "/threat-intel/feeds/{feed_id}/pull": {
+      "post": {
+        "description": "Fetch the feed's URL now and store its indicators (502 when the feed cannot be reached).",
+        "operationId": "pull_feed_threat_intel_feeds__feed_id__pull_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feed_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Feed Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedPullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pull Feed",
+        "tags": [
+          "threat-intel"
+        ]
+      }
+    },
+    "/threat-intel/feeds/{feed_id}/upload": {
+      "post": {
+        "description": "Read an uploaded file as the feed's current content and store its indicators.",
+        "operationId": "upload_feed_threat_intel_feeds__feed_id__upload_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feed_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Feed Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_feed_threat_intel_feeds__feed_id__upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedPullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Feed",
         "tags": [
           "threat-intel"
         ]

@@ -5439,6 +5439,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/threat-intel/feeds/{feed_id}/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pull Feed
+         * @description Fetch the feed's URL now and store its indicators (502 when the feed cannot be reached).
+         */
+        post: operations["pull_feed_threat_intel_feeds__feed_id__pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/threat-intel/feeds/{feed_id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Feed
+         * @description Read an uploaded file as the feed's current content and store its indicators.
+         */
+        post: operations["upload_feed_threat_intel_feeds__feed_id__upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/threat-intel/indicators": {
         parameters: {
             query?: never;
@@ -6218,6 +6258,14 @@ export interface components {
         Body_upload_documents_curricula__curriculum_id__documents_post: {
             /** Files */
             files: string[];
+        };
+        /** Body_upload_feed_threat_intel_feeds__feed_id__upload_post */
+        Body_upload_feed_threat_intel_feeds__feed_id__upload_post: {
+            /**
+             * File
+             * @description The feed's content, e.g. a CSV
+             */
+            file: string;
         };
         /** Body_upload_range_documents_ranges__range_id__documents_post */
         Body_upload_range_documents_ranges__range_id__documents_post: {
@@ -7507,6 +7555,32 @@ export interface components {
             lti_token_url?: string | null;
             /** Name */
             name?: string;
+        };
+        /**
+         * FeedPullOut
+         * @description What a pull did. ``rejections`` lists at most the first 50 rejected rows.
+         */
+        FeedPullOut: {
+            /** Created */
+            created: number;
+            /** Deactivated */
+            deactivated: number;
+            feed: components["schemas"]["ThreatIntelFeedOut"];
+            /** Rejected */
+            rejected: number;
+            /** Rejections */
+            rejections: components["schemas"]["FeedRejectionOut"][];
+            /** Status */
+            status: string;
+            /** Updated */
+            updated: number;
+        };
+        /** FeedRejectionOut */
+        FeedRejectionOut: {
+            /** Reason */
+            reason: string;
+            /** Row */
+            row: number;
         };
         /** FleetNodeCreateIn */
         FleetNodeCreateIn: {
@@ -20982,6 +21056,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThreatIndicatorOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pull_feed_threat_intel_feeds__feed_id__pull_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPullOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_feed_threat_intel_feeds__feed_id__upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_feed_threat_intel_feeds__feed_id__upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPullOut"];
                 };
             };
             /** @description Validation Error */

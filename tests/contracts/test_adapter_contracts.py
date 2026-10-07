@@ -230,6 +230,24 @@ def _console_factory(key, mp):
     return get_console_backend(key)
 
 
+def _threat_intel_abc():
+    from app.threat_intel_backends import BaseFeedBackend
+
+    return BaseFeedBackend
+
+
+def _threat_intel_registry():
+    from app import threat_intel_backends
+
+    return threat_intel_backends._REGISTRY
+
+
+def _threat_intel_factory(key, mp):
+    from app.threat_intel_backends import get_feed_backend
+
+    return get_feed_backend(key)
+
+
 SEAMS: dict[str, Seam] = {
     s.name: s
     for s in (
@@ -242,6 +260,7 @@ SEAMS: dict[str, Seam] = {
         Seam("ai", _ai_abc, _ai_registry, _ai_factory, "mock", ValueError),
         Seam("moodle", _moodle_abc, _moodle_registry, _moodle_factory, "fake", ValueError),
         Seam("console", _console_abc, _console_registry, _console_factory, "mock", ValueError),
+        Seam("threat_intel", _threat_intel_abc, _threat_intel_registry, _threat_intel_factory, "null", ValueError),
     )
 }
 
@@ -517,3 +536,12 @@ def test_null_console(monkeypatch):
     access = console.open({"vm_id": "vm-1", "name": "lab-analyst"})
     assert access["kind"] == "mock" and access["url"].startswith("mock://console/vm-1") and access["expires_in"] > 0
     assert console.open({"vm_id": "vm-1"})["url"] != access["url"]  # one-time, not a standing link
+
+
+def test_null_threat_intel(monkeypatch):
+    from app.threat_intel_backends import FeedPull
+
+    backend = _build(SEAMS["threat_intel"], SEAMS["threat_intel"].null_key, monkeypatch)
+    for pull in (backend.fetch("https://feeds.invalid/x.csv"), backend.fetch(None, content=b"type,value\nipv4,1.2.3.4\n")):
+        assert isinstance(pull, FeedPull) and pull.indicators == [] and pull.rejected == []
+    assert backend.health_check() is True
