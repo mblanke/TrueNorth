@@ -26,6 +26,8 @@ export interface InjectorInfo {
 
 /** GET /ranges/stats. `by_state` may be absent. */
 export type RangeStats = components['schemas']['RangeStatsOut'];
+/** One detection attempt (POST/GET .../detections). */
+export type Detection = components['schemas']['DetectionOut'];
 
 /** One row of GET /exercise-forge/history. */
 export interface ForgeHistoryItem {
@@ -354,6 +356,19 @@ export class ApiService {
       `${this.base}/exercises/${exerciseId}/objectives/${refId}/ack`,
       { evidence }
     );
+  }
+
+  // ── Detections (ADR 0005) ────────────────────────────────
+  /** Submit a Lucene detection for an objective; credited only if it finds the attack. */
+  submitDetection(exerciseId: string, refId: string, query: string): Observable<Detection> {
+    const body: components['schemas']['DetectionIn'] = { query };
+    return this.http.post<Detection>(
+      `${this.base}/exercises/${exerciseId}/objectives/${encodeURIComponent(refId)}/detections`, body,
+    );
+  }
+  /** A Student's own attempts; every attempt (with on_target/precision) for staff. */
+  listDetections(exerciseId: string): Observable<Detection[]> {
+    return this.http.get<Detection[]>(`${this.base}/exercises/${exerciseId}/detections`);
   }
 
   // ── AAR ──────────────────────────────────────────────────
