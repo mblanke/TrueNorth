@@ -134,6 +134,11 @@ jobs:
         working-directory: control-plane/web
       - run: npx ng lint
         working-directory: control-plane/web
+      # Karma unit specs (src/**/*.spec.ts) in headless Chrome. The runner image ships
+      # Google Chrome; karma-chrome-launcher finds it on PATH.
+      - name: Unit tests (Karma, ChromeHeadless)
+        run: npx ng test --watch=false --browsers=ChromeHeadless
+        working-directory: control-plane/web
 
   build-angular:
     runs-on: ubuntu-latest
