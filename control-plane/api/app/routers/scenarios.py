@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from .. import engine_bridge
 from ..auth import CurrentUser
 from ..db import get_db
+from ..detections.redaction import redact_scenario_yaml, sees_answer_key
 from ..models import AuditLog, Scenario, UserRole
 from ..rbac import Permission, require_permission
 from ..schemas import ScenarioIn, ScenarioListOut, ScenarioOut, ScenarioUpdate
@@ -111,9 +112,15 @@ def get_scenario(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.SCENARIO_READ)),
 ) -> Scenario:
-    """Retrieve a single scenario.  **Permission: scenario:read**"""
+    """Retrieve a single scenario.  **Permission: scenario:read**
+
+    Without scenario:update the YAML is the briefing only: no objective params,
+    variables or inject playbook (ADR 0005 §5).
+    """
     sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
-    return sc
+    if sees_answer_key(user):
+        return sc
+    return ScenarioOut.model_validate(sc).model_copy(update={"yaml": redact_scenario_yaml(sc.yaml)})
 
 
 @router.put("/{scenario_id}", response_model=ScenarioOut)

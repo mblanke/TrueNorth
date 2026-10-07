@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
 from ..db import get_db
+from ..detections.redaction import redact_evidence, redact_timeline, sees_answer_key
 from ..models import (
     AfterActionReport,
     AuditLog,
@@ -226,6 +227,7 @@ def scenario_detail(
         except yaml.YAMLError:
             parsed = {}
     objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).order_by(Objective.ref_id).all()
+    key = sees_answer_key(user)  # Students get the briefing, not the answer key (ADR 0005 §5)
     return {
         "exercise_id": str(ex.id),
         "exercise_name": ex.name,
@@ -238,7 +240,7 @@ def scenario_detail(
         "po_id": parsed.get("po_id", ""),
         "environment": parsed.get("environment", ""),
         "duration_min": parsed.get("duration_min", 0),
-        "timeline": parsed.get("timeline", []),
+        "timeline": parsed.get("timeline", []) if key else redact_timeline(parsed.get("timeline")),
         "noise_floor": parsed.get("noise_floor", []),
         "objectives": [
             {
@@ -246,7 +248,7 @@ def scenario_detail(
                 "type": o.objective_type.value,
                 "points": o.points,
                 "achieved": o.achieved,
-                "evidence": o.evidence or "",
+                "evidence": (o.evidence if key else redact_evidence(o.evidence)) or "",
                 "validator": o.validator,
                 "competency_code": o.competency_code or "",
             }
@@ -385,7 +387,11 @@ def list_objectives(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
 ) -> list[Objective]:
     """List objectives for an exercise.  **Permission: exercise:read**"""
-    return db.query(Objective).filter(Objective.exercise_id == exercise_id).all()
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    rows = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
+    if sees_answer_key(user):
+        return rows
+    return [ObjectiveOut.model_validate(o).model_copy(update={"evidence": redact_evidence(o.evidence)}) for o in rows]
 
 
 @router.post("/{exercise_id}/objectives/{ref_id}/ack", response_model=ObjectiveOut)

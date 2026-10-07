@@ -93,9 +93,13 @@ keep working; the evidence records the instructor.
 
 ### 5. Students do not see the answer key
 
-`scenario-detail` and the scenario read endpoints strip `params` and the
-`evidence.query` / `events` fields for callers without `scenario:write`, and Students see
-the timeline only as the narrative fields.
+For callers without `scenario:update` (Students, observers), `GET /scenarios/{id}` returns
+the briefing YAML: no `variables:`, no objective `params`, and timeline entries cut to
+their narrative fields (`t`, `phase`, `name`, `title`, `description`, `narrative`).
+`scenario-detail` and `GET /exercises/{id}/objectives` do the same, and they drop
+`query` / `events` / `index` / `threshold` from evidence (older scorer evidence carried
+them). Built in `app/detections/redaction.py`. The AAR is left as it is: it is the debrief,
+read after the exercise.
 
 ### 6. A real-backend exercise stays live for its duration
 

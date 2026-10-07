@@ -26175,7 +26175,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a single scenario.  **Permission: scenario:read**",
+        "description": "Retrieve a single scenario.  **Permission: scenario:read**\n\nWithout scenario:update the YAML is the briefing only: no objective params,\nvariables or inject playbook (ADR 0005 \u00a75).",
         "operationId": "get_scenario_scenarios__scenario_id__get",
         "parameters": [
           {

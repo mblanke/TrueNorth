@@ -4738,6 +4738,9 @@ export interface paths {
         /**
          * Get Scenario
          * @description Retrieve a single scenario.  **Permission: scenario:read**
+         *
+         *     Without scenario:update the YAML is the briefing only: no objective params,
+         *     variables or inject playbook (ADR 0005 §5).
          */
         get: operations["get_scenario_scenarios__scenario_id__get"];
         /**
