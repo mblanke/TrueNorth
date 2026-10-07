@@ -36,7 +36,7 @@ def run_id() -> str:
 
 
 @pytest.fixture
-def runbook(api_client, run_id):
+def runbook(api_client, run_id, teardown_delete):
     """A wiki space with one published page; the space is archived afterwards."""
     slug = f"itest-support-{run_id}"
     space = api_client.post("/wiki/spaces", json={"name": f"Support runbooks {run_id}", "slug": slug})
@@ -47,11 +47,11 @@ def runbook(api_client, run_id):
     )
     assert page.status_code == 201, f"POST /wiki/spaces/{slug}/pages => {page.status_code} {page.text}"
     yield page.json()
-    api_client.delete(f"/wiki/spaces/{slug}")
+    teardown_delete(f"/wiki/spaces/{slug}")  # archives the space
 
 
 @pytest.fixture
-def assignee(api_client, run_id):
+def assignee(api_client, run_id, teardown_delete):
     """A second member of staff in the dev tenant, to assign the ticket to."""
     resp = api_client.post(
         "/users",
@@ -62,11 +62,14 @@ def assignee(api_client, run_id):
         },
     )
     assert resp.status_code == 201, f"POST /users => {resp.status_code} {resp.text}"
-    return resp.json()
+    yield resp.json()
+    # After the test's own ticket delete; a refusal (the soft-deleted ticket still
+    # references the user) is logged by teardown_delete, not raised.
+    teardown_delete(f"/users/{resp.json()['id']}")
 
 
 class TestSupportFlow:
-    def test_wiki_page_then_ticket_citing_it_assigned_to_staff(self, api_client, runbook, assignee):
+    def test_wiki_page_then_ticket_citing_it_assigned_to_staff(self, api_client, runbook, assignee, teardown_delete):
         page_id = runbook["id"]
         assert runbook["revision_number"] == 1
 
@@ -117,7 +120,7 @@ class TestSupportFlow:
             assert mine.status_code == 200, mine.text
             assert all(n.get("link") != f"/support/{ticket['id']}" for n in mine.json())
         finally:
-            api_client.delete(f"/tickets/{ticket['id']}")
+            teardown_delete(f"/tickets/{ticket['id']}")
 
     def test_notifications_are_private(self, api_client):
         """Someone else's (here: a random) notification id is 404, never another user's row."""
