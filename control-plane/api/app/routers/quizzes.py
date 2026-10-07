@@ -4,6 +4,13 @@ Moodle-style assessments: AI generation from ingested curriculum, instructor
 review, a student attempt flow with server-side grading, xAPI emission,
 module-progress updates, competency auto-assessment, and export to Moodle
 GIFT / XML question banks.
+
+Who may do what:
+
+- authoring (answer key, edit, generate, delete, export) needs ``course:author`` —
+  instructors and admins. A Student who could read ``/questions`` could read the key.
+- everyone in the tenant may list, view and attempt *published* quizzes; drafts are
+  invisible (404) to anyone without ``course:author``.
 """
 
 from __future__ import annotations
@@ -39,6 +46,7 @@ from ..models import (
     QuizQuestion,
     QuizQuestionType,
 )
+from ..rbac import Permission, require_permission, user_has_permission
 from ..xapi import emit_lifecycle
 
 logger = logging.getLogger("truenorth.api.quizzes")
@@ -46,6 +54,9 @@ logger = logging.getLogger("truenorth.api.quizzes")
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 
 AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
+
+# Instructors and admins: the people who write quizzes and may see their answer keys.
+author = require_permission(Permission.COURSE_AUTHOR)
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────
@@ -168,6 +179,8 @@ def list_quizzes(
     )
     if curriculum_id:
         q = q.filter(Quiz.curriculum_id == curriculum_id)
+    if not _is_author(user):
+        q = q.filter(Quiz.is_published.is_(True))
     quizzes = q.order_by(Quiz.created_at.desc()).all()
     return [_quiz_out(quiz) for quiz in quizzes]
 
@@ -178,16 +191,16 @@ def get_quiz(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return _quiz_out(_get_owned(quiz_id, db, user))
+    return _quiz_out(_get_visible(quiz_id, db, user))
 
 
 @router.get("/{quiz_id}/questions", response_model=list[QuestionFullOut])
 def get_quiz_questions(
     quiz_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(author),
 ):
-    """Instructor view with answer key (any authenticated user with tenant access in v1)."""
+    """Instructor view with the answer key (``course:author`` only)."""
     quiz = _get_owned(quiz_id, db, user)
     return [_question_full(q) for q in quiz.questions]
 
@@ -197,7 +210,7 @@ def update_quiz(
     quiz_id: uuid.UUID,
     body: QuizUpdate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(author),
 ):
     quiz = _get_owned(quiz_id, db, user)
     for field, value in body.model_dump(exclude_none=True).items():
@@ -212,7 +225,7 @@ def replace_questions(
     quiz_id: uuid.UUID,
     body: list[QuestionIn],
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(author),
 ):
     """Replace the full question set (instructor review/edit save)."""
     quiz = _get_owned(quiz_id, db, user)
@@ -244,7 +257,7 @@ def replace_questions(
 def delete_quiz(
     quiz_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(author),
 ):
     quiz = _get_owned(quiz_id, db, user)
     quiz.deleted_at = datetime.now(UTC)
@@ -258,7 +271,7 @@ def delete_quiz(
 async def generate_quiz(
     body: QuizGenerateIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(author),
 ):
     """Generate draft questions from the curriculum RAG index."""
     curriculum = (
@@ -345,7 +358,7 @@ def start_attempt(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    quiz = _get_owned(quiz_id, db, user)
+    quiz = _get_visible(quiz_id, db, user)
     if not quiz.is_published:
         raise HTTPException(409, "Quiz is not published.")
     if not quiz.questions:
@@ -542,7 +555,7 @@ def export_quiz(
     quiz_id: uuid.UUID,
     format: str = Query(default="gift", pattern=r"^(gift|moodlexml)$"),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(author),
 ):
     """Export the question bank in Moodle GIFT or Moodle XML format."""
     quiz = _get_owned(quiz_id, db, user)
@@ -664,6 +677,18 @@ def _get_owned(quiz_id: uuid.UUID, db: Session, user: CurrentUser) -> Quiz:
     return quiz
 
 
+def _is_author(user: CurrentUser) -> bool:
+    return user_has_permission(user, Permission.COURSE_AUTHOR)
+
+
+def _get_visible(quiz_id: uuid.UUID, db: Session, user: CurrentUser) -> Quiz:
+    """Like ``_get_owned``, but a draft is 404 to anyone who cannot author quizzes."""
+    quiz = _get_owned(quiz_id, db, user)
+    if not quiz.is_published and not _is_author(user):
+        raise HTTPException(404, "Quiz not found")
+    return quiz
+
+
 def _quiz_out(quiz: Quiz) -> QuizOut:
     out = QuizOut.model_validate(quiz)
     out.question_count = len(quiz.questions)
@@ -770,7 +795,15 @@ def _update_module_progress(db: Session, quiz: Quiz, user_id: uuid.UUID, pct: in
         .first()
     )
     if not progress:
-        progress = ModuleProgress(enrollment_id=enrollment.id, module_id=module.id)
+        # Column defaults apply only at flush, so set the counters the lines below add to;
+        # leaving them None made a submit 500 for a module added after enrollment.
+        progress = ModuleProgress(
+            enrollment_id=enrollment.id,
+            module_id=module.id,
+            status=ModuleProgressStatus.not_started,
+            score=0,
+            attempts=0,
+        )
         db.add(progress)
     progress.attempts += 1
     progress.score = max(progress.score, pct)

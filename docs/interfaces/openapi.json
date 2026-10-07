@@ -6656,6 +6656,43 @@
         "title": "ModuleProgressOut",
         "type": "object"
       },
+      "MoodleSsoIn": {
+        "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          }
+        },
+        "title": "MoodleSsoIn",
+        "type": "object"
+      },
+      "MoodleSsoOut": {
+        "description": "POST ``token`` (form field) to ``action``. Never put it in a URL.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "token"
+        ],
+        "title": "MoodleSsoOut",
+        "type": "object"
+      },
       "MySessionOut": {
         "description": "A session as a Student sees it: no capacity, no other people.",
         "properties": {
@@ -13031,7 +13068,7 @@
     },
     "/ad-sync/status": {
       "get": {
-        "description": "Return current AD sync status and statistics.  **Permission: user:read**",
+        "description": "Return current AD sync status and statistics.  **Permission: user:read**\n\nCounts are the caller's tenant only \u2014 a count of another tenant's directory\nusers is still disclosure. The Keycloak federation fields describe the shared\nidentity provider and are the same for everyone.",
         "operationId": "ad_sync_status_ad_sync_status_get",
         "responses": {
           "200": {
@@ -14667,7 +14704,7 @@
         ]
       },
       "post": {
-        "description": "Add a certification record for a user.",
+        "description": "Add a certification record for a user (self-reported, or by an instructor).",
         "operationId": "add_certification_certifications_users__user_id__post",
         "parameters": [
           {
@@ -15383,7 +15420,7 @@
     },
     "/competency/users/{user_id}/assertions": {
       "post": {
-        "description": "Record a competency assertion for a user.",
+        "description": "Record a competency assertion for a user (``learning_record:write``, never self-service).",
         "operationId": "create_assertion_competency_users__user_id__assertions_post",
         "parameters": [
           {
@@ -20679,6 +20716,53 @@
         ]
       }
     },
+    "/integrations/moodle/sso": {
+      "post": {
+        "description": "A one-minute, single-use ticket that signs the caller into their unit's Moodle.\n\nThe browser POSTs ``token`` to ``action``. Students need an active enrolment in\nthe course; staff (``learning_record:write``) enter as teachers. A course in\nanother tenant is 404. Never put the ticket in a URL: it would land in Moodle's\naccess log and browser history.",
+        "operationId": "moodle_sso_ticket_integrations_moodle_sso_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoodleSsoIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoodleSsoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Moodle Sso Ticket",
+        "tags": [
+          "integrations"
+        ]
+      }
+    },
     "/integrations/platforms": {
       "get": {
         "description": "List all registered external platforms for the tenant.",
@@ -22259,6 +22343,21 @@
           }
         },
         "summary": "Lti Oidc Login",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
+    "/lti/public-key.pem": {
+      "get": {
+        "description": "The tool's public key as PEM, for Moodle farm nodes.\n\nA node fetches this when it starts (``infra/platform/moodle/hooks/04-truenorth-bootstrap.sh``)\nand trusts it for LTI messages, sign-in tickets and course sync, so a key rotation\nreaches every node on its next restart. It is the public half only.",
+        "operationId": "lti_public_key_pem_lti_public_key_pem_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Lti Public Key Pem",
         "tags": [
           "lti"
         ]
@@ -26530,7 +26629,7 @@
     },
     "/quizzes/{quiz_id}/questions": {
       "get": {
-        "description": "Instructor view with answer key (any authenticated user with tenant access in v1).",
+        "description": "Instructor view with the answer key (``course:author`` only).",
         "operationId": "get_quiz_questions_quizzes__quiz_id__questions_get",
         "parameters": [
           {
@@ -30271,6 +30370,7 @@
         ]
       },
       "patch": {
+        "description": "Update a team.  **Permission: user:update**\n\nUntil 2026-10-07 this needed only a login: a student could rename or resize\nany team in their tenant.",
         "operationId": "update_team_teams__team_id__patch",
         "parameters": [
           {

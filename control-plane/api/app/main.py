@@ -33,6 +33,7 @@ from . import (  # noqa: F401 — network_inventory, noise, range_leases, range_
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
+from .log_format import configure_logging
 from .models import Range, Tenant, User, UserRole
 from .rbac import Permission, require_permission
 from .scheduler import clock as scheduler_clock
@@ -42,10 +43,7 @@ from .tenancy import get_owned
 from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
 
 logger = logging.getLogger("truenorth.api")
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+configure_logging()  # LOG_FORMAT=json for JSON lines; default text, as before
 
 APP_VERSION = "0.1.0"
 

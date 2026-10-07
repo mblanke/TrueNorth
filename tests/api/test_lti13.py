@@ -34,13 +34,15 @@ ISSUER = "http://moodle.test"
 JWKS_URL = "http://moodle.test/mod/lti/certs.php"
 
 
-def _platform(db, *, client_id="client-1", deployment_id="dep-1", tenant=TENANT_A) -> ExternalPlatform:
+def _platform(
+    db, *, client_id="client-1", deployment_id="dep-1", tenant=TENANT_A, base_url=ISSUER
+) -> ExternalPlatform:
     p = ExternalPlatform(
         id=uuid.uuid4(),
         name="Moodle",
         slug=f"moodle-{uuid.uuid4().hex[:6]}",
         platform_type="moodle",
-        base_url=ISSUER,
+        base_url=base_url,
         auth_type=IntegrationAuthType.lti13,
         tenant_id=tenant,
         lti_issuer=ISSUER,
@@ -133,6 +135,57 @@ class TestValidateLaunch:
         await lti13.validate_launch(db_session, token, state)
         with pytest.raises(ValueError, match="replayed"):
             await lti13.validate_launch(db_session, token, state)
+
+    async def test_keys_are_fetched_at_the_internal_address_with_the_public_host(self, db_session):
+        """Moodle redirects any request whose Host is not its wwwroot (found on 5.2.3)."""
+        platform = _platform(db_session, base_url="http://moodle:8080")
+        token, state = _launch(db_session, platform)
+        with respx.mock(assert_all_called=True) as mock:
+            route = mock.get("http://moodle:8080/mod/lti/certs.php").mock(
+                return_value=Response(200, json=lti13.jwks(db_session))
+            )
+            await lti13.validate_launch(db_session, token, state)
+        assert route.calls.last.request.headers["host"] == "moodle.test"
+
+
+class TestPlatformRoute:
+    """Farm nodes are registered by public URL but reached at their internal address."""
+
+    def _p(self, base_url, issuer="https://moodle.example"):
+        return ExternalPlatform(base_url=base_url, lti_issuer=issuer)
+
+    def test_a_public_url_is_sent_to_the_internal_origin_keeping_the_public_host(self):
+        url, headers = lti13.platform_route(
+            self._p("http://moodle:8080"),
+            "https://moodle.example/mod/lti/services.php/2/lineitems/2/lineitem?type_id=1",
+        )
+        assert url == "http://moodle:8080/mod/lti/services.php/2/lineitems/2/lineitem?type_id=1"
+        assert headers == {"Host": "moodle.example"}
+
+    def test_same_origin_platforms_are_untouched(self):
+        url = "https://moodle.example/mod/lti/token.php"
+        assert lti13.platform_route(self._p("https://moodle.example"), url) == (url, {})
+
+    def test_urls_off_the_issuer_origin_are_never_rerouted(self):
+        """A lineitem URL comes from the launch; it must not redirect our traffic elsewhere."""
+        url = "https://attacker.example/steal"
+        assert lti13.platform_route(self._p("http://moodle:8080"), url) == (url, {})
+
+    def test_a_different_scheme_on_the_issuer_host_is_not_rerouted(self):
+        url = "http://moodle.example/mod/lti/token.php"
+        assert lti13.platform_route(self._p("http://moodle:8080"), url) == (url, {})
+
+    def test_no_issuer_means_no_rerouting(self):
+        url = "https://moodle.example/mod/lti/token.php"
+        assert lti13.platform_route(self._p("http://moodle:8080", issuer=None), url) == (url, {})
+
+
+def test_farm_nodes_fetch_the_public_half_of_the_tool_key(client, db_session):
+    """Farm nodes fetch this at start (04-truenorth-bootstrap.sh); never the private key."""
+    resp = client.get("/lti/public-key.pem")
+    assert resp.status_code == 200
+    assert resp.text.strip() == lti13.get_tool_key(db_session).public_key_pem.strip()
+    assert "BEGIN PUBLIC KEY" in resp.text and "PRIVATE" not in resp.text
 
 
 def _user(db, *, email: str, tenant: uuid.UUID, role=UserRole.student) -> User:
