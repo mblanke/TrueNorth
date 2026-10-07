@@ -81,8 +81,13 @@ are `unassessed`.
 
 The worker image copies the `scenario_engine` package in (Dockerfile,
 `--build-context scenario_engine=scenario-engine`; compose `additional_contexts`), as
-detection scoring already requires. A worker built without it records every inject
+detection scoring already requires, and sets `PYTHONPATH=/app`: `celery -A` keeps the cwd
+on `sys.path` only while importing the app, so without it the engine was in the image but
+not importable in the running worker (every inject failed; detection scoring silently
+stayed off). A worker built without the engine records every inject
 `failed: scenario-engine not importable in this worker`.
+`tests/contracts/test_worker_image_contexts.py` checks every compose and CI build of the
+worker supplies the named context and that the Dockerfile keeps `/app` on the path.
 
 The dispatch does not read `OPENSEARCH_URL` (MOSA: only the ingest task does); no
 injector reads `RangeContext.opensearch_url`, so it keeps the engine default.
