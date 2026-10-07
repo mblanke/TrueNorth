@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ..event_stores import BaseEventStore, OpenSearchEventStore
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,8 +25,13 @@ class ScoringValidator:
         method: str,
         config: dict[str, Any],
         opensearch_url: str | None = None,
+        event_store: BaseEventStore | None = None,
     ) -> tuple[bool, list[dict[str, Any]]]:
-        """Route to the correct validator based on *method*."""
+        """Route to the correct validator based on *method*.
+
+        Query objectives run against ``event_store``; ``opensearch_url`` is the older way
+        to say the same thing and builds an OpenSearch store.
+        """
         dispatch = {
             "opensearch_query": ScoringValidator.validate_opensearch_query,
             "deliverable": ScoringValidator.validate_deliverable,
@@ -39,7 +46,9 @@ class ScoringValidator:
             logger.warning("Unknown validation method: %s", method)
             return False, []
         if method == "opensearch_query":
-            return await handler(config, opensearch_url)
+            if event_store is None and opensearch_url:
+                event_store = OpenSearchEventStore(opensearch_url)
+            return await handler(config, event_store)
         return await handler(config)
 
     # ── individual validators ───────────────────────────────
@@ -47,50 +56,32 @@ class ScoringValidator:
     @staticmethod
     async def validate_opensearch_query(
         config: dict[str, Any],
-        opensearch_url: str | None = None,
+        event_store: BaseEventStore | None = None,
     ) -> tuple[bool, list[dict[str, Any]]]:
-        """Check if expected events exist in OpenSearch.
+        """Check that expected events exist in the event store.
+
+        The method keeps its historical name because scenario content and objective rows
+        say ``opensearch_query``; any ``BaseEventStore`` can serve it.
 
         ``config`` keys:
             - ``index``: index pattern (e.g. ``truenorth-*``)
-            - ``query``: OpenSearch query DSL (dict)
-            - ``threshold``: minimum number of matching docs
+            - ``query``: Lucene query string, or query DSL (dict)
+            - ``threshold`` (or ``min_hits``): minimum number of matching docs
         """
-        if not opensearch_url:
-            logger.warning("No OpenSearch URL configured; skipping query validation")
+        if event_store is None:
+            logger.warning("No event store configured; skipping query validation")
             return False, []
 
         index = config.get("index", "truenorth-*")
         query = config.get("query", {"match_all": {}})
-        threshold = config.get("threshold", 1)
+        threshold = int(config.get("threshold", config.get("min_hits", 1)))
 
         try:
-            import aiohttp
-
-            url = f"{opensearch_url.rstrip('/')}/{index}/_search"
-            payload = {"query": query, "size": min(threshold, 100)}
-            async with (
-                aiohttp.ClientSession() as session,
-                session.post(
-                    url,
-                    json=payload,
-                    ssl=False,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as resp,
-            ):
-                data = await resp.json()
-                hits = data.get("hits", {}).get("hits", [])
-                total = data.get("hits", {}).get("total", {})
-                total_count = total.get("value", 0) if isinstance(total, dict) else total
-                evidence = [{"_id": h["_id"], "_source": h.get("_source", {})} for h in hits[:20]]
-                achieved = total_count >= threshold
-                return achieved, evidence
-        except ImportError:
-            logger.error("aiohttp is required for OpenSearch validation")
-            return False, []
+            found = await event_store.search(index, query, size=min(max(threshold, 1), 100))
         except Exception:
-            logger.exception("OpenSearch query validation failed")
+            logger.exception("Event store query validation failed")
             return False, []
+        return found.total >= threshold, found.hits[:20]
 
     @staticmethod
     async def validate_deliverable(
