@@ -54,7 +54,9 @@ class Judgement:
 
 
 def range_index(range_id: Any) -> str:
-    return f"range-{range_id}"
+    """The range's events: ``range-<id>`` (API and worker ingest) and ``range-<id>-<date>``
+    (Filebeat and Logstash in the range)."""
+    return f"range-{range_id},range-{range_id}-*"
 
 
 def _params(raw: str | None) -> dict[str, Any]:

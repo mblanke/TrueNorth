@@ -193,7 +193,7 @@ class TestCredit:
         assert evidence["student_id"] == student.id and evidence["submission_id"] == body["id"]
         assert "query" not in evidence  # the answer key never lands where Students can read it
         assert db_session.get(Exercise, ex.id).total_score == 40
-        assert store.indices == {f"range-{ex.range_id}"}
+        assert store.indices == {f"range-{ex.range_id},range-{ex.range_id}-*"}
 
     def test_a_catch_all_query_fails_the_precision_floor(self, client, db_session, store):
         store.events = [beacon(), beacon(), *noise(n=10)]
