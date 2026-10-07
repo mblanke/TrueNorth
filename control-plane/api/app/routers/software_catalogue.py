@@ -25,7 +25,12 @@ from ..auth import CurrentUser, get_current_user
 
 router = APIRouter(prefix="/software-catalogue", tags=["software-catalogue"])
 
-_REPO_COPY = Path(__file__).resolve().parents[4] / "content" / "catalogue" / "software_catalogue.yaml"
+# In the repository this file is control-plane/api/app/routers/; in the API image it is
+# /app/app/routers/, which has only three parents, so never index parents unguarded at
+# import time (tests/api/test_api_image_layout_import.py).
+_HERE = Path(__file__).resolve()
+_CATALOGUE_REL = Path("content") / "catalogue" / "software_catalogue.yaml"
+_REPO_COPY = (_HERE.parents[4] / _CATALOGUE_REL) if len(_HERE.parents) > 4 else _CATALOGUE_REL
 _CONTAINER_COPY = Path("/app/content/catalogue/software_catalogue.yaml")
 
 
