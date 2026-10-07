@@ -150,3 +150,38 @@ def test_the_learner_download_is_pages_and_cmi5_only(catalogue):
         names = tar.getnames()
     assert names and all(n.startswith(("02-content/mod_", "07-bundle/cmi5/")) for n in names)
     assert not arc_release.learner_leaks(names)
+
+
+# -- PostgreSQL (skipped without TEST_POSTGRES_ADMIN_URL) ----------------------------
+
+
+def test_the_first_upload_is_stored_on_postgresql(postgres_engine):
+    """The API's sessions do not autoflush (app.db.SessionLocal). The release and its
+    blob were flushed together and the unit of work, with no relationship() to order
+    them, inserted the release first: PostgreSQL refused the foreign key and the API
+    answered the very first upload with 409 "another upload ... at the same moment".
+    SQLite does not enforce the key, so only the integration stack saw it."""
+    import uuid
+
+    from app import programme_ingest, qsp_ingest
+    from app.course_releases import service
+    from app.course_releases.models import CourseRelease, CourseReleaseBlob
+    from app.models import Tenant
+    from sqlalchemy.orm import Session
+
+    with Session(postgres_engine, autoflush=False, expire_on_commit=False) as s:
+        tenant = Tenant(name="t", slug=f"t-{uuid.uuid4().hex[:6]}")
+        s.add(tenant)
+        s.commit()
+        qsp_ingest.import_crosswalk(s, CROSSWALK.read_text(encoding="utf-8"), tenant_id=tenant.id)
+        programme_ingest.import_programme(s, CATALOGUE.read_text(encoding="utf-8"), tenant_id=tenant.id)
+        s.commit()
+
+        release, created = service.create_candidate(s, _data(), tenant_id=tenant.id, user_id=None)
+        s.commit()
+        assert created and release.version == 1 and release.release_digest == RELEASE_DIGEST
+        assert s.get(CourseReleaseBlob, BUNDLE_SHA256) is not None
+
+        again, created = service.create_candidate(s, _data(), tenant_id=tenant.id, user_id=None)
+        assert not created and again.id == release.id
+        assert s.query(CourseRelease).count() == 1
