@@ -138,6 +138,9 @@ Launches are refused unless `lti_client_id` and `lti_deployment_id` are both set
 
 ## Phase 2: cmi5
 
+> **Deferred to stage 5 (2026-10-07):** cmi5 stays packaging-only; nothing below is
+> stage-4 scope. See `docs/cmi5-packaging-decision.md`.
+
 TrueNorth becomes a cmi5 **content provider**. Moodle and a cmi5 activity plugin act as the
 LMS: they launch AUs and issue `launched` / `satisfied` / `abandoned` / `waived`. TrueNorth's AUs
 issue `initialized` / `completed` / `passed` / `failed` / `terminated` (KB §9.3, §9.9). The

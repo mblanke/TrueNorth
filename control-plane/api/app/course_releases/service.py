@@ -59,6 +59,16 @@ def create_candidate(
         )
     if db.get(CourseReleaseBlob, parsed.sha256) is None:
         db.add(CourseReleaseBlob(sha256=parsed.sha256, size=len(data), data=data))
+        # Written now, not with the release: the API's sessions do not autoflush, and with
+        # no relationship() between the two mappers the unit of work is free to insert the
+        # release first, which PostgreSQL refuses (course_releases_blob_sha256_fkey).
+        # SQLite does not enforce the key, so only the real stack ever saw it.
+        try:
+            db.flush()
+        except IntegrityError as exc:  # the same bytes stored by a concurrent upload
+            logger.warning("course release blob for %s refused: %s", meta["catalogue_code"], exc.orig)
+            db.rollback()
+            raise ReleaseRefusedError("another upload of these bytes was stored at the same moment; upload again") from exc
     # Serialise uploads for one course (the course row lock) so two at once cannot both
     # take the next version; the unique (course, version) constraint backs it up.
     db.query(Course).filter(Course.id == course.id).with_for_update().one()
@@ -85,6 +95,7 @@ def create_candidate(
     try:
         db.flush()
     except IntegrityError as exc:
+        logger.warning("course release upload for %s refused: %s", meta["catalogue_code"], exc.orig)
         db.rollback()
         raise ReleaseRefusedError("another upload for this course was stored at the same moment; upload again") from exc
     logger.info("course release %s v%d candidate for %s", release.id, version, release.catalogue_code)

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from .. import moodle_sso
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import (
@@ -161,6 +162,30 @@ async def test_connectivity(
 
 
 # ══════════════════════════════════════════════════════════════════════════
+# Moodle single sign-on (the app hands a signed-in Student into Moodle)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@router.post("/moodle/sso", response_model=moodle_sso.MoodleSsoOut)
+def moodle_sso_ticket(
+    body: moodle_sso.MoodleSsoIn,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """A one-minute, single-use ticket that signs the caller into their unit's Moodle.
+
+    The browser POSTs ``token`` to ``action``. Students need an active enrolment in
+    the course; staff (``learning_record:write``) enter as teachers. A course in
+    another tenant is 404. Never put the ticket in a URL: it would land in Moodle's
+    access log and browser history.
+    """
+    try:
+        return moodle_sso.mint_ticket(db, user, body.course_id)
+    except moodle_sso.NotAvailableError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
+
+
+# ══════════════════════════════════════════════════════════════════════════
 # External Activities (cross-platform learning records)
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -263,6 +288,17 @@ lti_router = APIRouter(prefix="/lti", tags=["lti"])
 def lti_jwks(db: Session = Depends(get_db)):
     """Public JWKS for LTI 1.3 tool registration (Moodle fetches this)."""
     return lti13.jwks(db)
+
+
+@lti_router.get("/public-key.pem", response_class=Response)
+def lti_public_key_pem(db: Session = Depends(get_db)):
+    """The tool's public key as PEM, for Moodle farm nodes.
+
+    A node fetches this when it starts (``infra/platform/moodle/hooks/04-truenorth-bootstrap.sh``)
+    and trusts it for LTI messages, sign-in tickets and course sync, so a key rotation
+    reaches every node on its next restart. It is the public half only.
+    """
+    return Response(lti13.get_tool_key(db).public_key_pem, media_type="application/x-pem-file")
 
 
 # Two registrations, not api_route(methods=[...]): one route with two methods gets one

@@ -102,4 +102,5 @@ from . import (
     noise_tasks,  # noqa: F401, E402
     power_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
+    telemetry_tasks,  # noqa: F401, E402
 )

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
@@ -67,7 +68,7 @@ interface Section {
  */
 @Component({
   selector: 'tn-course-detail',
-  imports: [RouterLink, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule],
+  imports: [RouterLink, MatButtonModule, MatCardModule, MatExpansionModule, MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="cd tn-quiet">
@@ -96,11 +97,18 @@ interface Section {
               · {{ c.difficulty }}
             </p>
           </div>
-          <!-- Draft state is not decoration: none of this is validated courseware. -->
-          <span class="pill" [class.draft]="!c.is_published">
-            {{ c.is_published ? 'Published' : 'Draft — not for learners' }}
-          </span>
+          <div class="head-actions">
+            <!-- Moodle has no login of its own: the app hands the Student in (local_truenorth). -->
+            <button mat-flat-button type="button" (click)="openInMoodle(c)" [disabled]="opening()">
+              <mat-icon>open_in_new</mat-icon> Open in Moodle
+            </button>
+            <!-- Draft state is not decoration: none of this is validated courseware. -->
+            <span class="pill" [class.draft]="!c.is_published">
+              {{ c.is_published ? 'Published' : 'Draft — not for learners' }}
+            </span>
+          </div>
         </header>
+        @if (moodleError()) { <p class="moodle-err" role="alert">{{ moodleError() }}</p> }
 
         @if (c.description) { <p class="desc">{{ c.description }}</p> }
 
@@ -194,6 +202,8 @@ interface Section {
       .head p { margin: 0; font-size: 0.82rem; }
       .code { font-family: var(--font-mono, monospace); color: var(--accent); }
 
+      .head-actions { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+      .moodle-err { margin: 8px 0 0; font-size: 0.82rem; color: var(--warning); }
       .pill {
         flex: 0 0 auto;
         padding: 3px 10px;
@@ -262,6 +272,8 @@ export class CourseDetailComponent implements OnInit {
   protected readonly course = signal<CourseOutline | null>(null);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
+  protected readonly opening = signal(false);
+  protected readonly moodleError = signal<string | null>(null);
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -278,6 +290,42 @@ export class CourseDetailComponent implements OnInit {
       error: () => {
         this.error.set('That course could not be loaded. It may have been removed.');
         this.loading.set(false);
+      },
+    });
+  }
+
+  /**
+   * Sign the Student into this course in their unit's Moodle.
+   *
+   * The API returns a one-minute, single-use ticket that is POSTed to Moodle, never put
+   * in a URL. The tab is opened inside the click so pop-up blockers allow it.
+   */
+  protected openInMoodle(c: CourseOutline): void {
+    const target = 'tn-moodle';
+    const tab = window.open('about:blank', target);
+    if (tab) tab.opener = null;
+    this.opening.set(true);
+    this.moodleError.set(null);
+    this.api.post<{ action: string; token: string }>('/integrations/moodle/sso', { course_id: c.id }).subscribe({
+      next: ({ action, token }) => {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = action;
+        form.target = tab ? target : '_self';
+        const field = document.createElement('input');
+        field.type = 'hidden';
+        field.name = 'token';
+        field.value = token;
+        form.appendChild(field);
+        document.body.appendChild(form);
+        form.submit();
+        form.remove();
+        this.opening.set(false);
+      },
+      error: err => {
+        tab?.close();
+        this.moodleError.set(err?.error?.detail ?? 'Moodle could not be opened.');
+        this.opening.set(false);
       },
     });
   }

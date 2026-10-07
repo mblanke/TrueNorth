@@ -140,7 +140,8 @@ CACHE_MAX = int(os.getenv("AI_CACHE_MAX", "2000"))
 # ── Runtime state (set in lifespan) ────────────────────────────────────
 _llm_semaphore: asyncio.Semaphore | None = None
 _node_semaphores: dict[str, asyncio.Semaphore] = {}
-_ollama_clients: dict[str, httpx.AsyncClient] = {}
+# One OllamaBackend per fleet node; every Ollama HTTP call goes through these.
+_ollama_backends: dict[str, Any] = {}
 _cache: dict[str, tuple[float, Any]] = {}
 _health_task: asyncio.Task | None = None
 
@@ -358,17 +359,12 @@ async def lifespan(app: FastAPI):
 
     _llm_semaphore = asyncio.Semaphore(MAX_LLM_CONCURRENCY)
 
-    # Create Ollama clients (long-lived, connection-pooled). Generation on
-    # large local models (70B+) can exceed two minutes, so the read timeout
-    # is configurable via OLLAMA_TIMEOUT_S.
+    # One backend per Ollama node (long-lived, connection-pooled client).
+    # Generation on large local models (70B+) can exceed two minutes, so the
+    # read timeout is configurable via OLLAMA_TIMEOUT_S.
     ollama_timeout = float(os.getenv("OLLAMA_TIMEOUT_S", "300"))
     for name, node in FLEET.items():
-        _ollama_clients[name] = httpx.AsyncClient(
-            base_url=node.base_url,
-            timeout=httpx.Timeout(ollama_timeout, connect=5),
-            limits=httpx.Limits(max_connections=MAX_OLLAMA_PER_NODE + 2, max_keepalive_connections=MAX_OLLAMA_PER_NODE),
-        )
-        _node_semaphores[name] = asyncio.Semaphore(MAX_OLLAMA_PER_NODE)
+        _register_ollama_node(name, node.base_url, ollama_timeout)
 
     # Background health monitor
     _health_task = asyncio.create_task(_health_check_loop())
@@ -384,9 +380,22 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     _health_task.cancel()
-    for client in _ollama_clients.values():
-        await client.aclose()
+    for backend in _ollama_backends.values():
+        await backend.aclose()
     logger.info("AI Orchestrator shutdown")
+
+
+def _register_ollama_node(name: str, base_url: str, timeout: float) -> None:
+    """Build the OllamaBackend (and its semaphore) the fleet manager uses for *name*."""
+    from .backends.ollama import OllamaBackend  # lazy: avoids top-level package collision in tests
+
+    client = httpx.AsyncClient(
+        base_url=base_url,
+        timeout=httpx.Timeout(timeout, connect=5),
+        limits=httpx.Limits(max_connections=MAX_OLLAMA_PER_NODE + 2, max_keepalive_connections=MAX_OLLAMA_PER_NODE),
+    )
+    _ollama_backends[name] = OllamaBackend(base_url=base_url, client=client)
+    _node_semaphores[name] = asyncio.Semaphore(MAX_OLLAMA_PER_NODE)
 
 
 # ── Health check loop ──────────────────────────────────────────────────
@@ -397,29 +406,23 @@ async def _health_check_loop():
             await asyncio.sleep(HEALTH_CHECK_INTERVAL)
             for name, node in list(FLEET.items()):
                 try:
-                    client = _ollama_clients.get(name)
-                    if client is None:
+                    backend = _ollama_backends.get(name)
+                    if backend is None:
                         continue
                     start = time.perf_counter()
-                    resp = await client.get("/api/tags", timeout=5)
+                    live_models = await backend.list_models(timeout=5)
                     latency = (time.perf_counter() - start) * 1000
-                    if resp.status_code == 200:
-                        node.mark_healthy(latency)
-                        # Update model list from live data and rebuild tags
-                        data = resp.json()
-                        live_models = [m["name"] for m in data.get("models", [])]
-                        if live_models:
-                            node.models = live_models
-                            node.tagged_models = {m: _tag_model(m) for m in live_models}
-                        logger.debug(
-                            "Health OK: %s (%.0fms, %d models)",
-                            name,
-                            latency,
-                            len(live_models),
-                        )
-                    else:
-                        node.mark_unhealthy()
-                        logger.warning("Health FAIL: %s (status %d)", name, resp.status_code)
+                    node.mark_healthy(latency)
+                    # Update model list from live data and rebuild tags
+                    if live_models:
+                        node.models = live_models
+                        node.tagged_models = {m: _tag_model(m) for m in live_models}
+                    logger.debug(
+                        "Health OK: %s (%.0fms, %d models)",
+                        name,
+                        latency,
+                        len(live_models),
+                    )
                 except Exception as e:
                     node.mark_unhealthy()
                     logger.warning("Health FAIL: %s (%s)", name, e)
@@ -444,6 +447,7 @@ app.add_middleware(
 class GenerateRequest(BaseModel):
     task: str = Field(..., description="Task type: detection-rule, scenario-suggest, aar-analysis, general")
     prompt: str = Field(..., max_length=10000, description="Detailed prompt/instructions")
+    system_prompt: str = Field(default="", max_length=10000, description="Optional system prompt")
     context: dict = Field(default_factory=dict, description="Additional context data")
     model: str = Field(default="", description="Override model name (e.g. llama3.1:70b-instruct-q5_K_M)")
     node: str = Field(default="", description="Override node (wile/roadrunner)")
@@ -690,37 +694,20 @@ async def _call_ollama(
         raise HTTPException(503, f"No healthy node available for model {model}")
 
     name, node = target
-    client = _ollama_clients[name]
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
+    backend = _ollama_backends[name]
 
     async def _do():
         node._inflight += 1
         try:
             start = time.perf_counter()
-            # Use OpenAI-compatible endpoint
-            resp = await client.post(
-                "/v1/chat/completions",
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.7,
-                    "stream": False,
-                },
+            text, model_used, usage = await backend.generate(
+                prompt, model=model, max_tokens=max_tokens, system_prompt=system_prompt
             )
-            resp.raise_for_status()
             latency = (time.perf_counter() - start) * 1000
             node.mark_healthy(latency)
-            data = resp.json()
-            text = data["choices"][0]["message"]["content"]
-            usage = data.get("usage", {})
             usage["latency_ms"] = round(latency, 1)
             usage["node"] = name
-            return text, model, name, usage
+            return text, model_used, name, usage
         finally:
             node._inflight -= 1
 
@@ -735,55 +722,59 @@ async def _call_ollama_embedding(text: str, model: str = "bge-m3:latest") -> tup
     if not target:
         raise HTTPException(503, f"No healthy node for embedding model {model}")
 
-    name, node = target
-    client = _ollama_clients[name]
+    name, _node = target
+    backend = _ollama_backends[name]
 
     async def _do():
-        resp = await client.post("/api/embeddings", json={"model": model, "prompt": text})
-        resp.raise_for_status()
-        data = resp.json()
-        return data["embedding"], model, name
+        embedding, model_used = await backend.embed(text, model=model)
+        return embedding, model_used, name
 
     async with _node_semaphores[name]:
         return await _call_with_retry(_do, retries=2)
 
 
-async def _call_openai_embedding(text: str, model: str = "") -> tuple[list[float], str, str]:
-    """Get embeddings from the OpenAI-compatible engine (LiteLLM ``embed``)."""
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-    api_key = OPENAI_API_KEY
+# Where a non-fleet embedding backend's vectors are reported as coming from.
+_EMBED_NODE_LABEL = {"openai": "litellm"}
+
+
+async def _call_backend_embedding(backend_name: str, text: str, model: str = "") -> tuple[list[float], str, str]:
+    """Embeddings from a registry backend (``openai`` = LiteLLM ``embed``, ``mock``, ...)."""
+    from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
+
+    backend = get_cloud_backend(backend_name)
     use_model = model or AI_EMBED_MODEL
-    timeout = float(os.getenv("OPENAI_TIMEOUT_S", "600"))
 
     async def _do():
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(
-                f"{base_url}/embeddings",
-                json={"model": use_model, "input": text},
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data["data"][0]["embedding"], data.get("model", use_model), "litellm"
+        embedding, model_used = await backend.embed(text, model=use_model)
+        return embedding, model_used, _EMBED_NODE_LABEL.get(backend_name, backend_name)
 
     return await _call_with_retry(_do, retries=2)
 
 
 # ── Cloud backends ─────────────────────────────────────────────────────
+async def _call_backend(
+    backend_name: str, prompt: str, model: str = "", max_tokens: int = 2000, system_prompt: str = ""
+) -> tuple[str, str, str, dict]:
+    """Generate through a registry backend. Returns (text, model, backend_name, usage)."""
+    from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
+
+    text, model_used, usage = await get_cloud_backend(backend_name).generate(
+        prompt, model=model, max_tokens=max_tokens, system_prompt=system_prompt
+    )
+    return text, model_used, backend_name, usage
+
+
 async def _call_openai(
     prompt: str, model: str = "", max_tokens: int = 2000, system_prompt: str = ""
 ) -> tuple[str, str, str, dict]:
-    from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
-    text, model_used, usage = await get_cloud_backend("openai").generate(
-        prompt, model=model, max_tokens=max_tokens, system_prompt=system_prompt
-    )
-    return text, model_used, "openai", usage
+    return await _call_backend("openai", prompt, model, max_tokens, system_prompt)
 
 
-async def _call_anthropic(prompt: str, model: str = "", max_tokens: int = 2000) -> tuple[str, str, str, dict]:
-    from .backends import get_cloud_backend  # lazy: avoids top-level package collision in tests
-    text, model_used, usage = await get_cloud_backend("anthropic").generate(prompt, model=model, max_tokens=max_tokens)
-    return text, model_used, "anthropic", usage
+async def _call_anthropic(
+    prompt: str, model: str = "", max_tokens: int = 2000, system_prompt: str = ""
+) -> tuple[str, str, str, dict]:
+    # system_prompt used to be dropped here while the OpenAI path passed it.
+    return await _call_backend("anthropic", prompt, model, max_tokens, system_prompt)
 
 
 # ── Unified router ─────────────────────────────────────────────────────
@@ -810,7 +801,8 @@ async def _generate(
     else:
         best = _find_best_for_tags(route.tags)
         cache_model = best[0] if best else PRIMARY_BACKEND.value
-    key = _cache_key(prompt, cache_model)
+    # A different system prompt is a different request: keep it in the key.
+    key = _cache_key(f"{system_prompt}\x00{prompt}" if system_prompt else prompt, cache_model)
     if use_cache:
         cached = _cache_get(key)
         if cached:
@@ -852,7 +844,7 @@ async def _generate(
                 route.fallback_backend.value,
             )
             try:
-                result = await _cloud_fallback(prompt, route, effective_max)
+                result = await _cloud_fallback(prompt, route, effective_max, system_prompt=system_prompt)
                 if use_cache:
                     _cache_set(key, result)
                 return (*result, False)
@@ -865,27 +857,27 @@ async def _generate(
                 prompt, effective_model or route.fallback_model, effective_max, system_prompt=system_prompt
             )
         elif BackendType.anthropic == PRIMARY_BACKEND and ANTHROPIC_API_KEY:
-            result = await _call_anthropic(prompt, effective_model or route.fallback_model, effective_max)
+            result = await _call_anthropic(
+                prompt, effective_model or route.fallback_model, effective_max, system_prompt=system_prompt
+            )
         else:
-            from .backends import get_cloud_backend  # lazy
-            text, model_used, usage = await get_cloud_backend("mock").generate(prompt, max_tokens=effective_max)
-            result = (text, model_used, "mock", usage)
+            result = await _call_backend("mock", prompt, max_tokens=effective_max, system_prompt=system_prompt)
 
     if use_cache:
         _cache_set(key, result)
     return (*result, False)
 
 
-async def _cloud_fallback(prompt: str, route: ModelRoute, max_tokens: int) -> tuple[str, str, str, dict]:
+async def _cloud_fallback(
+    prompt: str, route: ModelRoute, max_tokens: int, system_prompt: str = ""
+) -> tuple[str, str, str, dict]:
     """Fall back to cloud provider."""
     if route.fallback_backend == BackendType.openai and OPENAI_API_KEY:
-        return await _call_openai(prompt, route.fallback_model, max_tokens)
+        return await _call_openai(prompt, route.fallback_model, max_tokens, system_prompt=system_prompt)
     elif route.fallback_backend == BackendType.anthropic and ANTHROPIC_API_KEY:
-        return await _call_anthropic(prompt, route.fallback_model, max_tokens)
+        return await _call_anthropic(prompt, route.fallback_model, max_tokens, system_prompt=system_prompt)
     else:
-        from .backends import get_cloud_backend  # lazy
-        text, model_used, usage = await get_cloud_backend("mock").generate(prompt, max_tokens=max_tokens)
-        return text, model_used, "mock", usage
+        return await _call_backend("mock", prompt, max_tokens=max_tokens, system_prompt=system_prompt)
 
 
 # ── Middleware ──────────────────────────────────────────────────────────
@@ -963,29 +955,19 @@ async def add_fleet_node(req: AddNodeRequest):
         raise HTTPException(409, f"Node '{req.name}' already exists")
     node = OllamaNode(name=req.name, base_url=req.url)
     FLEET[req.name] = node
-    _ollama_clients[req.name] = httpx.AsyncClient(
-        base_url=req.url,
-        timeout=httpx.Timeout(120, connect=5),
-        limits=httpx.Limits(
-            max_connections=MAX_OLLAMA_PER_NODE + 2,
-            max_keepalive_connections=MAX_OLLAMA_PER_NODE,
-        ),
-    )
-    _node_semaphores[req.name] = asyncio.Semaphore(MAX_OLLAMA_PER_NODE)
+    _register_ollama_node(req.name, req.url, 120)
     logger.info("Runtime node added: %s -> %s", req.name, req.url)
     return {"status": "added", "name": req.name, "url": req.url}
 
 
 @app.post("/fleet/{node_name}/pull")
-@app.post("/fleet/{node_name}/pull")
 async def pull_model(node_name: str, model: str):
     """Trigger a model pull on a specific node."""
     if node_name not in FLEET:
         raise HTTPException(404, f"Unknown node: {node_name}")
-    client = _ollama_clients[node_name]
+    backend = _ollama_backends[node_name]
     try:
-        resp = await client.post("/api/pull", json={"name": model, "stream": False}, timeout=600)
-        resp.raise_for_status()
+        await backend.pull_model(model, timeout=600)
         return {"status": "pulled", "node": node_name, "model": model}
     except Exception as e:
         raise HTTPException(502, f"Pull failed on {node_name}: {e}") from e
@@ -1006,6 +988,7 @@ async def generate(req: GenerateRequest):
         req.node,
         req.max_tokens,
         use_cache=not req.skip_cache,
+        system_prompt=req.system_prompt,
     )
     latency = (time.perf_counter() - start) * 1000
     logger.info(
@@ -1133,15 +1116,16 @@ Data:
 async def get_embedding(req: EmbeddingRequest):
     """Generate text embeddings via the configured backend.
 
-    ``AI_EMBED_BACKEND=openai`` (default) routes through the local LiteLLM
-    ``embed`` endpoint; ``ollama`` uses the legacy Ollama embedding API.
+    ``AI_EMBED_BACKEND=ollama`` uses the legacy Ollama fleet (honouring
+    ``req.model``); any other value names a registry backend — ``openai``
+    (default, the local LiteLLM ``embed`` alias via AI_EMBED_MODEL) or ``mock``.
     """
     start = time.perf_counter()
     try:
-        if AI_EMBED_BACKEND == "openai":
-            embedding, model_used, node_used = await _call_openai_embedding(req.text)
-        else:
+        if AI_EMBED_BACKEND == "ollama":
             embedding, model_used, node_used = await _call_ollama_embedding(req.text, req.model)
+        else:
+            embedding, model_used, node_used = await _call_backend_embedding(AI_EMBED_BACKEND, req.text)
     except Exception as e:
         raise HTTPException(503, f"Embedding failed: {e}") from e
     latency = (time.perf_counter() - start) * 1000
