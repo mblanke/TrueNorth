@@ -370,6 +370,16 @@ with status 2 and runs nothing. `ARC2_CONFINE=none` runs jobs unconfined with th
 own config and environment, and is for single-tenant hosts only. Each job record carries
 `confinement`.
 
+**One runner per runs root (S2b).** A runner holds an exclusive `flock` on
+`<runs>/_runner.lock` for as long as it runs. A second runner exits with status 3 and
+recovers nothing, so a live runner's jobs are never failed by someone else's startup.
+The kernel releases the lock however the holder dies. On startup the lock holder
+recovers: a job claimed but not yet recorded (`_jobs/<id>.claiming`) goes back on the
+queue, because it never started. A job left `running` is failed, because it did start
+and resuming it blind is unsafe. Every job record names its runner (`runner`: pid, host,
+start time). This is a single-host design; several hosts would need leases, which are not
+needed today.
+
 **Runner account (one-time setup, by an administrator).** A confined job cannot use the
 operator's interactive Claude login, so the runner signs in with a long-lived token. Run it
 under a dedicated macOS account, so that this token and the account's home are all a job
