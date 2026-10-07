@@ -47,6 +47,12 @@ echo "+ Worker task contract drift"
 "$PY" scripts/export_task_contracts.py --check \
   || fail "task contract drift — run: $PY scripts/export_task_contracts.py, review, commit"
 
+# The worker's typed view of API-owned tables (worker/worker/tables.py) must match the
+# API models, so a schema change the worker depends on is caught here, not in production.
+echo "+ Worker table mirror drift"
+"$PY" scripts/export_worker_tables.py --check 2>/dev/null \
+  || fail "worker table drift — run: $PY scripts/export_worker_tables.py, fix worker code, commit"
+
 # Match the test-python job in .github/workflows/ci.yml exactly, so local green and CI
 # green mean the same thing (its lint-python job runs scripts/ruff-gate.sh too). tests/integration
 # needs OpenSearch and live provisioners and is a separate CI job (`integration`); running
