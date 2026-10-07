@@ -5,14 +5,21 @@ Parses scenario YAML, executes timeline via injector registry,
 then validates objectives.
 
 Usage:
-    python -m scenario-engine.runner.run <scenario.yaml> [--range-id <id>] [--dry-run]
+    python scenario-engine/runner/run.py <scenario.yaml> [--range-id <id>] [--dry-run]
+        [--event-store opensearch|null]
+
+Objectives are scored by the same ScoringEngine the worker uses, against the range's
+index (``range-<range id>``) in the chosen event store (``EVENT_STORE`` / ``OPENSEARCH_URL``
+by default; ``null`` scores nothing, for a dry run without a store).
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
+import os
 import re
 import sys
 import time
@@ -20,8 +27,9 @@ from pathlib import Path
 
 import yaml
 
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+# The scenario_engine package sits beside runner/ (scenario-engine/ in the repo, /app in
+# the image), not under the repo root.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -130,45 +138,46 @@ def execute_timeline(scenario: dict, range_ctx: dict, dry_run: bool = False) -> 
     return results
 
 
-def evaluate_objectives(scenario: dict, range_ctx: dict) -> list[dict]:
-    """Evaluate scenario objectives via validators."""
-    try:
-        from importlib import import_module
+def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> list[dict]:
+    """Score scenario objectives with the ScoringEngine against the range's event index.
 
-        validators_mod = import_module("scenario-engine.validators")
-        get_validator = validators_mod.get_validator
-    except ImportError:
-        logger.warning("Validator registry not available")
+    Until 2026-10-03 this imported ``scenario-engine.validators``, which no module name can
+    be, so it always returned [] and every run scored 0.
+    """
+    from scenario_engine.event_stores import event_store_from_env
+    from scenario_engine.scoring import ScoringEngine, validation_method
+
+    index = f"range-{range_ctx['range_id']}"
+    objectives = []
+    for obj in scenario.get("objectives", []):
+        params = obj.get("params") or {}
+        objectives.append(
+            {
+                "id": obj.get("id", "unknown"),
+                "name": obj.get("description", obj.get("id", "unknown")),
+                "max_points": obj.get("points", 0),
+                "validation_method": validation_method(obj.get("validator", "")),
+                "validation_config": {**params, "index": index},
+                "partial_credit": False,
+            }
+        )
+    if not objectives:
         return []
 
-    objectives = scenario.get("objectives", [])
-    results = []
-
-    for obj in objectives:
-        obj_id = obj.get("id", "unknown")
-        validator_name = obj.get("validator", "")
-        params = obj.get("params", {})
-        points = obj.get("points", 0)
-
-        validator = get_validator(validator_name)
-        if validator:
-            vr = validator.check(params, range_ctx["range_id"], range_ctx["tenant_id"])
-            results.append(
-                {
-                    "id": obj_id,
-                    "validator": validator_name,
-                    "passed": vr.passed,
-                    "evidence": vr.evidence,
-                    "points_earned": points if vr.passed else 0,
-                }
-            )
-        else:
-            logger.warning(f"No validator found for: {validator_name}")
-            results.append(
-                {"id": obj_id, "validator": validator_name, "passed": False, "evidence": "Validator not found"}
-            )
-
-    return results
+    store = event_store if event_store is not None else event_store_from_env()
+    engine = ScoringEngine(range_ctx["range_id"], objectives, event_store=store)
+    scored = asyncio.run(engine.evaluate())
+    validators = {o.get("id", "unknown"): o.get("validator", "") for o in scenario.get("objectives", [])}
+    return [
+        {
+            "id": r.objective_id,
+            "validator": validators.get(r.objective_id, ""),
+            "passed": r.achieved,
+            "evidence": r.evidence,
+            "points_earned": r.points_awarded,
+        }
+        for r in scored.objectives
+    ]
 
 
 def main():
@@ -177,6 +186,7 @@ def main():
     parser.add_argument("--range-id", default="standalone-001", help="Range ID")
     parser.add_argument("--dry-run", action="store_true", help="Log actions without executing")
     parser.add_argument("--output", help="Write results to JSON file")
+    parser.add_argument("--event-store", help="opensearch | null (default: EVENT_STORE, else opensearch)")
     args = parser.parse_args()
 
     logger.info(f"Loading scenario: {args.scenario}")
@@ -189,6 +199,8 @@ def main():
     timeline_results = execute_timeline(scenario, range_ctx, dry_run=args.dry_run)
 
     logger.info("=== Evaluating Objectives ===")
+    if args.event_store:
+        os.environ["EVENT_STORE"] = args.event_store
     objective_results = evaluate_objectives(scenario, range_ctx)
 
     # Summary
