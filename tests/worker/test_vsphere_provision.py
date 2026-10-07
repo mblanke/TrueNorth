@@ -1854,3 +1854,14 @@ class TestResourcePool:
         monkeypatch.setattr(mod, "VSPHERE_RESOURCE_POOL", "Nope")
         with pytest.raises(RuntimeError, match="Resource pool not found"):
             mod.VsphereAPIProvisioner()._pool(self.CLUSTER)
+
+
+def test_nothing_to_touch_means_no_login(vc):
+    """A range with no recorded VM ids: health, power and destroy never reach vCenter."""
+    prov = _prov(vc)
+    prov._transport = httpx.MockTransport(lambda request: pytest.fail(f"unexpected {request.url}"))
+    out = {"vms": [{"name": "never-built"}]}
+    assert _run(prov.health_check(RANGE_ID, {"vms": []})).vm_statuses == []
+    assert _run(prov.stop(RANGE_ID, out)).errors == ["VM never-built: no vm_id recorded"]
+    assert _run(prov.destroy(RANGE_ID, {"vms": []})).status == "ok"
+    assert vc.logins == 0

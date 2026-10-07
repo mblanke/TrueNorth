@@ -1611,7 +1611,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
 
         removed = 0
         try:
-            await self._get_session()
+            if any(vm.get("vm_id") for vm in vms):  # only port groups left: no REST login needed
+                await self._get_session()
             async with self._soap_scope(), self._client() as client:
                 ids = [vm["vm_id"] for vm in vms if vm.get("vm_id")]
                 results = await asyncio.gather(*(self._delete_vm(client, i) for i in ids), return_exceptions=True)
@@ -1658,7 +1659,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
                     raise
 
         try:
-            await self._get_session()
+            if any(vm.get("vm_id") for vm in vms):  # nothing to power: no login
+                await self._get_session()
             async with self._soap_scope(), self._client() as client:
                 results = await asyncio.gather(*(one(client, vm) for vm in vms), return_exceptions=True)
         except Exception as exc:  # could not log in or connect: nothing was powered
@@ -1756,7 +1758,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         vms = provision_output.get("vms", [])
 
         try:
-            await self._get_session()
+            if any(vm.get("vm_id") for vm in vms):  # nothing to read: no login
+                await self._get_session()
             async with self._soap_scope(), self._client() as client:
                 for vm in vms:
                     vm_id = vm.get("vm_id")
