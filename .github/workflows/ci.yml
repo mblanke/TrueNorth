@@ -335,3 +335,61 @@ jobs:
       - name: Tear down
         if: always()
         run: TN_PUBLIC_KEY=unused $MOODLE_COMPOSE down -v
+
+  # govmomi's vCenter simulator (compose.vcsim.yml) for provisioner tests marked `vcsim`.
+  # The one lane where zero tests is tolerated, and only while none exist: pytest exit 5
+  # ("no tests collected") is a warning. Once a vcsim test exists, it must pass.
+  # TODO(provisioners slot): add `@pytest.mark.vcsim` tests for
+  # worker/provisioners/vsphere_api.py, then delete the exit-5 allowance below. Note
+  # vcsim v0.56.0 answers POST /rest/com/vmware/cis/session but 404s POST /api/session,
+  # the login vsphere_api.py uses today.
+  vsphere-sim:
+    runs-on: ubuntu-latest
+    needs: lint-python
+    timeout-minutes: 20
+    env:
+      VCSIM_COMPOSE: docker compose -p tn-vcsim -f infra/platform/docker/compose.vcsim.yml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-test.txt
+      - name: Start vcsim
+        run: |
+          $VCSIM_COMPOSE up -d --wait
+          for _ in $(seq 1 60); do
+            if curl -kfsS -o /dev/null https://127.0.0.1:8989/about; then exit 0; fi
+            sleep 2
+          done
+          echo "vcsim did not answer on :8989" >&2
+          exit 1
+      - name: vcsim tests
+        run: |
+          mkdir -p build/vcsim
+          rc=0
+          pytest tests/ -m vcsim -rs --tb=short --junitxml=build/vcsim/junit.xml || rc=$?
+          if [ "$rc" -eq 5 ]; then
+            echo "::warning::no tests are marked vcsim yet (TODO provisioners slot); nothing ran"
+            exit 0
+          fi
+          python scripts/junit_require_pass.py build/vcsim/junit.xml || rc=1
+          exit $rc
+        env:
+          AUTH_DISABLED: "true"
+          DATABASE_URL: "sqlite://"
+          RATE_LIMIT_ENABLED: "false"
+          VSPHERE_URL: https://127.0.0.1:8989
+          VSPHERE_USERNAME: user
+          VSPHERE_PASSWORD: pass
+          VSPHERE_VERIFY_SSL: "false"
+          VSPHERE_DATACENTER: DC0
+          VSPHERE_CLUSTER: DC0_C0
+          VSPHERE_DATASTORE: LocalDS_0
+          VSPHERE_NETWORK: VM Network
+      - name: vcsim logs
+        if: failure()
+        run: $VCSIM_COMPOSE logs --no-color --tail=200
+      - name: Tear down
+        if: always()
+        run: $VCSIM_COMPOSE down -v
