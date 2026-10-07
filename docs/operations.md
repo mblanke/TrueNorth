@@ -17,6 +17,7 @@
 - [Certificate Management](#certificate-management)
 - [Disaster Recovery](#disaster-recovery)
 - [Runbook: Common Issues](#runbook-common-issues)
+  - [Range leases, abandon and recovery](#range-leases-abandon-and-recovery)
 - [Capacity Planning](#capacity-planning)
 - [Change Management](#change-management)
 
@@ -712,13 +713,95 @@ psql -c "SELECT id, state, updated_at FROM ranges WHERE state = 'provisioning';"
 ```
 
 **Resolution:**
-1. If Terraform is still running: Wait or check for resource limits
-2. If Terraform failed: Check Proxmox API availability
-3. If task lost: Reset range state and re-provision:
-```sql
-UPDATE ranges SET state = 'created' WHERE id = '<range-id>';
-```
-Then re-trigger provisioning via API.
+1. If the task is still running: wait, or check vCenter for resource limits.
+2. If the worker died or the task was lost: follow
+   [Range leases, abandon and recovery](#range-leases-abandon-and-recovery). Do not
+   reset `ranges.state` in SQL: it leaves the operation in flight and the lease in place.
+
+---
+
+### Range Leases, Abandon and Recovery
+
+Every provision, destroy, stop, start and restore task holds the range's **lease**
+(table `range_leases`, `control-plane/worker/worker/fencing.py`) while it acts on the
+range: one execution at a time. The holder is `<action>:<token>`, for example
+`provision:3f2c...`.
+
+**Lifetime.** A lease lasts `RANGE_LEASE_SECONDS` (default 180 s; set the same value on
+the API and the workers). While the task runs a heartbeat thread renews it every
+`RANGE_LEASE_HEARTBEAT_SECONDS` (default a sixth of the lease, 30 s), however long the
+task takes. A renewal never shortens a lease. If the database was unreachable for longer
+than a lease, the task re-takes its own lease when the database is back, unless another
+execution took it meanwhile. Expiry is written and compared in PostgreSQL's `now()`, not
+host clocks. A task's database connections time out after `DB_CONNECT_TIMEOUT_SECONDS`
+(default 10). The lease is released when the task ends, with two exceptions:
+
+- **Worker died** (killed, OOM, host lost): nothing renews the lease; it expires within
+  `RANGE_LEASE_SECONDS`. A redelivered copy of the task, or a destroy, then takes over.
+- **Soft time limit** (55 min): the hypervisor call may still be running in a thread, so
+  the lease is kept for `KEPT_LEASE_SECONDS` (1 h) with no heartbeat, and the range is
+  `failed`. A destroy is accepted and waits for that lease.
+
+**What the API refuses.** While an unexpired lease exists, provision, stop and start are
+refused with 409 "a worker is still acting on this range". Destroy is accepted and its
+task waits (re-queued every 60 s) until the lease is free.
+
+**Abandon.** `POST /api/ranges/{id}/operations/{op_id}/abandon` (permission
+`range:destroy`, audited as `abandon_operation`, tenant-scoped) marks an in-flight
+operation `failed` and moves the range to `failed`. In the same transaction it **turns
+the lease held by a task of that operation's action into a tombstone**,
+`abandoned:<holder>`, expiring `RANGE_LEASE_SECONDS` from now. The lease is not deleted:
+if the worker is in fact alive, its vCenter work (clones, port groups, a teardown) is
+still in flight, and a new build started beside it would collide with it, or a running
+teardown would delete the new build's port groups. While the tombstone lives,
+provision/stop/start are refused (409, "the abandoned operation's worker may still be
+finishing"). Leases of another action (a restore, a superseded build under a destroy)
+are left alone. The operation's error message and the audit record (`worker lease
+fenced (tombstone)`) say whether a lease was fenced.
+
+- **Worker dead:** nothing renews the tombstone. The range is free within
+  `RANGE_LEASE_SECONDS` (default 3 min, down from up to an hour).
+- **Worker alive:** it is fenced out. It starts no further hypervisor call and makes no
+  further reservation. Its range state writes lock the range and lease rows and find the
+  holder renamed, so it writes nothing (no `ready`, no `failed`) and is not retried. Its
+  hypervisor call is **not cancelled**: cancelling stops neither its threads nor
+  vCenter's own tasks. Its heartbeat renews the tombstone instead, so the range stays
+  blocked until that work ends. A finished build then tears down what it built
+  (`discard_built`), still under the tombstone. A failed call's threads are waited for.
+  Then it deletes the tombstone and ends with `discarded` or `abandoned`. The worker logs
+  "the operation was abandoned ..." when it notices.
+- **Lease taken over** (the worker was cut off from the database for longer than a
+  lease and another execution claimed it): the old execution writes nothing, tears
+  nothing down (port groups are named by range, so a teardown could hit the new holder's
+  build), and ends `lease_lost`. A build's unrecorded VMs are logged (`built but not
+  recorded, check the hypervisor`) for removal by hand. A restore puts its snapshot back
+  to `ready`.
+
+**Recovery procedure after a worker loss.**
+1. `GET /api/ranges/{id}/operations`: find the in-flight operation (`no_outcome` after
+   `RANGE_OP_STALE_AFTER_SECONDS` means the worker reported nothing).
+2. Check the worker (`celery -A worker.celery_app inspect active`) and vCenter's recent
+   tasks for the range's VMs. If the worker died, vCenter tasks it submitted (a clone)
+   continue server-side: let them finish.
+3. Abandon the operation. The range is `failed`. Wait out the tombstone: a 409 on a new
+   provision says how long.
+4. If the range has VMs recorded, or VMs the dead build left exist in vCenter, destroy it
+   (and remove any unrecorded VMs by hand); otherwise provision again. VLAN and address
+   reservations stay with the range: a new build of it reuses them, a destroy frees them.
+
+If you do not abandon, the dead worker's lease still expires by itself within
+`RANGE_LEASE_SECONDS`, but the operation stays in flight until it is abandoned.
+
+**Rollout.** Leases written by workers before this change have holders without an action
+prefix (a bare token) and last up to an hour. An abandon also tombstones such a lease,
+but only when the abandoned operation is the range's only one in flight; otherwise it may
+belong to another operation and is left to expire on its own. Workers from before the
+change do not honour tombstones, so drain or restart them during the deploy.
+
+The S7 interruption exercise (`scripts/exercise_range_interruptions.py`, step 3) checks
+this: a worker is killed mid-provision and the operation abandoned. A provision straight
+after is refused, and one is accepted within `RANGE_LEASE_SECONDS`. In a local run with a
+10 s lease it was accepted after 10.3 s and built to `ready`.
 
 ---
 

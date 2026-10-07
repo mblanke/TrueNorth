@@ -14,7 +14,8 @@ scratch PostgreSQL database, then interrupts them on purpose:
 2. broker downtime: Redis stopped; a provision is still accepted (202), shows
    ``broker_unavailable``; Redis back; the API's own loop sends it; the range reaches ready
 3. worker killed mid-provision: the task never reports; the operation shows
-   ``no_outcome``; an operator abandons it; a new provision succeeds
+   ``no_outcome``; an operator abandons it; a new provision is refused while the dead
+   task's tombstone lives, then accepted within ``RANGE_LEASE_SECONDS``, and succeeds
 4. partial provisioning: the provisioner fails every attempt; retries keep the range
    in ``provisioning``; the last attempt marks it failed with the provisioner's message;
    with a healthy provisioner a new provision succeeds
@@ -49,6 +50,7 @@ API = ROOT / "control-plane" / "api"
 WORKER = ROOT / "control-plane" / "worker"
 REDIS_PORT = 6390
 REDIS_NAME = "tn-s7-exercise-redis"
+LEASE_SECONDS = 10  # RANGE_LEASE_SECONDS for the worker and the API: a range lease, and an abandon's tombstone
 LOG: list[dict] = []
 
 
@@ -138,6 +140,7 @@ def main() -> int:
         "MOCK_PROVISION_DELAY": "1",
         "MOCK_FAILURE_RATE": "0",
         "AUTH_DISABLED": "true",
+        "RANGE_LEASE_SECONDS": str(LEASE_SECONDS),
     }
     worker = None
     try:
@@ -158,6 +161,7 @@ def main() -> int:
                 "RATE_LIMIT_ENABLED": "false",
                 "RANGE_OP_REDISPATCH_SECONDS": "2",
                 "RANGE_OP_STALE_AFTER_SECONDS": "15",
+                "RANGE_LEASE_SECONDS": str(LEASE_SECONDS),
             }
         )
         sys.path.insert(0, str(API))
@@ -256,13 +260,30 @@ def main() -> int:
                 conflicting_destroy=client.post(f"/ranges/{rid}/destroy").status_code,
             )
             gone = client.post(f"/ranges/{rid}/operations/{op['id']}/abandon").json()
-            note("worker.killed.abandoned", op=gone["status"], state=client.get(f"/ranges/{rid}").json()["state"])
-            # On main the killed task's range lease (worker/fencing.py, LEASE_SECONDS=3600)
-            # outlives the worker, so a new provision is refused with 409 "a worker is still
-            # acting on this range" until it expires; only a destroy is accepted meanwhile.
-            # (The 2026-10-04 run predates the lease and re-provisioned at once.)
+            note(
+                "worker.killed.abandoned",
+                op=gone["status"],
+                state=client.get(f"/ranges/{rid}").json()["state"],
+                message=(gone.get("error") or {}).get("message"),
+            )
+            # The abandon turns the killed task's lease into a tombstone of RANGE_LEASE_SECONDS
+            # (worker/fencing.py): nothing renews it (the worker is dead), so the range is
+            # free within that, not the lease's former hour. Expected: an immediate provision
+            # is refused (409, "abandoned operation's worker"); one is accepted within
+            # RANGE_LEASE_SECONDS. (The 2026-10-04 run predates the lease and re-provisioned
+            # at once; runs before the tombstone were refused for up to an hour.)
             r = client.post(f"/ranges/{rid}/provision")
-            note("worker.killed.reprovision.accepted", status=r.status_code, detail=r.json().get("detail"))
+            note("worker.killed.reprovision.immediately", status=r.status_code, detail=r.json().get("detail"))
+            t0 = time.monotonic()
+            while r.status_code == 409 and time.monotonic() - t0 < LEASE_SECONDS + 15:
+                time.sleep(1)
+                r = client.post(f"/ranges/{rid}/provision")
+            note(
+                "worker.killed.reprovision.accepted",
+                status=r.status_code,
+                secs_after_abandon=round(time.monotonic() - t0, 1),
+                within_lease=r.status_code == 202 and time.monotonic() - t0 <= LEASE_SECONDS + 2,
+            )
             if r.status_code == 202:
                 note(
                     "worker.killed.reprovisioned",

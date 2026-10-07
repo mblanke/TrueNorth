@@ -655,13 +655,17 @@ def abandon_range_operation(
     """Give up on an in-flight operation that will not finish (a lost task, a dead worker).
 
     Check the hypervisor first: the API cannot see whether work is still running there.
-    The range goes to ``failed``, from where it can be destroyed or provisioned again.
+    The range goes to ``failed``, from where it can be destroyed or provisioned again. The
+    lease held by the operation's task becomes a short tombstone: a worker still running
+    that task stops acting on the range and keeps it blocked only until its in-flight
+    hypervisor work ends; a dead worker's range is free within ``RANGE_LEASE_SECONDS``.
     **Permission: range:destroy**"""
     _changeable_range(db, range_id, user)
     rng = ops._locked_range(db, range_id, user)  # the range first, as a destroy locks it: no deadlock
     op = _operation(db, rng, operation_id, lock=True)
-    ops.abandon(db, rng, op, user)
-    _audit(db, user, "abandon_operation", "range", str(rng.id), f"operation {op.id}")
+    fenced = ops.abandon(db, rng, op, user)
+    detail = f"operation {op.id}" + ("; worker lease fenced (tombstone)" if fenced else "")
+    _audit(db, user, "abandon_operation", "range", str(rng.id), detail)
     db.commit()
     return op
 

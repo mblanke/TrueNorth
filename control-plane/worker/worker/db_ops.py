@@ -57,7 +57,8 @@ def update_range_state(
     only_from: Sequence[str] | None = None,
     clear_error: bool = False,
 ) -> int:
-    """Set a range's state; conditional on its current state when ``only_from`` is given."""
+    """Set a range's state; conditional on its current state when ``only_from`` is given.
+    A fenced task's writes come through worker/fencing.py's guarded_range_update."""
     values: dict[str, Any] = {"state": new_state, "updated_at": _now()}
     if error:
         values["error_message"] = error
@@ -70,6 +71,11 @@ def update_range_state(
         # CAST: `state` is a native enum on Postgres and plain text on SQLite.
         stmt = stmt.where(sa.cast(ranges.c.state, sa.Text).in_(list(only_from)))
     return db.execute(stmt).rowcount
+
+
+def lock_range(db, range_id: str) -> None:
+    """Row-lock the range until commit (PostgreSQL; SQLite serialises writes)."""
+    db.execute(sa.select(ranges.c.id).where(ranges.c.id == range_id).with_for_update())
 
 
 def range_template_and_backend(db, range_id: str):
