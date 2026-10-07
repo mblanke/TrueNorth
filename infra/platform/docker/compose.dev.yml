@@ -237,6 +237,7 @@ services:
       SCENARIO_ENGINE_DIR: /opt/scenario-engine
     volumes:
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      - ../../../content/catalogue:/app/content/catalogue:ro  # GET /software-catalogue
     depends_on:
       postgres:
         condition: service_healthy

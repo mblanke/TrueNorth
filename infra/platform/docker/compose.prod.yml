@@ -400,6 +400,9 @@ services:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      # GET /software-catalogue (Range Designer autocomplete) reads the same file the
+      # provisioning worker installs from.
+      - ../../../content/catalogue:/app/content/catalogue:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -484,9 +487,23 @@ services:
       VSPHERE_RANGE_UPLINK_NETWORK: ${VSPHERE_RANGE_UPLINK_NETWORK:-}
       VSPHERE_RANGE_UPLINK_POOL: ${VSPHERE_RANGE_UPLINK_POOL:-}
       VSPHERE_RANGE_UPLINK_GATEWAY: ${VSPHERE_RANGE_UPLINK_GATEWAY:-}
+      VSPHERE_RANGE_UPLINK_PREFIX: ${VSPHERE_RANGE_UPLINK_PREFIX:-24}
+      VSPHERE_RANGE_VSWITCH: ${VSPHERE_RANGE_VSWITCH:-vSwitch1}
+      VSPHERE_RANGE_FOLDER: ${VSPHERE_RANGE_FOLDER:-truenorth/ranges}
+      VSPHERE_MAX_VCPU_PER_THREAD: ${VSPHERE_MAX_VCPU_PER_THREAD:-4}
+      VSPHERE_CONCURRENCY: ${VSPHERE_CONCURRENCY:-4}
+      VSPHERE_TOOLS_TIMEOUT: ${VSPHERE_TOOLS_TIMEOUT:-120}
+      VSPHERE_SNAPSHOT_TIMEOUT: ${VSPHERE_SNAPSHOT_TIMEOUT:-1800}
+      VSPHERE_PROVISION_BUDGET: ${VSPHERE_PROVISION_BUDGET:-3300}
       VSPHERE_NOISE_NETWORK: ${VSPHERE_NOISE_NETWORK:-TN-Noise-Mgmt}
       LAB_PORT_GROUPS: ${LAB_PORT_GROUPS:-}
+      # Deploy-time software from TN-DEPOT01 (install/lab/README.md). Empty feed/proxy
+      # fall back to Nexus on TN_DEPOT_URL; the apt/dnf proxy should be set explicitly.
       TN_DEPOT_URL: ${TN_DEPOT_URL:-}
+      TN_DEPOT_CHOCO_FEED: ${TN_DEPOT_CHOCO_FEED:-}
+      TN_DEPOT_APT_PROXY: ${TN_DEPOT_APT_PROXY:-}
+      TN_DEPOT_PORTS: ${TN_DEPOT_PORTS:-8081,3142}
+      TN_SOFTWARE_INSTALL_TIMEOUT: ${TN_SOFTWARE_INSTALL_TIMEOUT:-1800}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       # Deploy-time software installs resolve node services against this (software_catalogue.py).

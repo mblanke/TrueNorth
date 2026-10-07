@@ -95,9 +95,12 @@
             will fail at first use.' if not (tn_prov_state.can_provision | default(true))
             else ' * vCenter provisioning privileges: OK' }}
           - >-
-            {{ ' * Range port group ' ~ tn_vsphere_network ~ ' does not exist yet.'
-            if not (tn_prov_state.network_present | default(true))
-            else ' * Range port group: present' }}
+            {{ ' * Range networks: per-range port groups on ' ~ (tn_vsphere_range_dvs | default(''))
+            ~ ', VLAN pool ' ~ (tn_vsphere_vlan_pool | default(''))
+            if (tn_vsphere_network | default('') | length) == 0
+            else (' * Fallback network ' ~ tn_vsphere_network ~ ' does not exist yet.'
+                  if not (tn_prov_state.network_present | default(true))
+                  else ' * Fallback network: present') }}
           - >-
             {{ ' * TLS is self-signed — issue a certificate from corp-TN-DC01-CA before
             a cohort uses this.' if tn_tls_mode == 'selfsigned'

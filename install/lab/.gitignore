@@ -1,0 +1,2 @@
+# Secrets for the lab build/depot plane. Encrypt with ansible-vault; never commit decrypted.
+inventory/group_vars/all/vault.yml

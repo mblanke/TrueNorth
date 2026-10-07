@@ -1,0 +1,27 @@
+---
+tn_prefetch_catalogue: "{{ tn_build_repo_dir }}/content/catalogue/software_catalogue.yaml"
+tn_prefetch_workdir: /var/tmp/tn-prefetch
+
+tn_prefetch_choco: true
+tn_prefetch_apt: true
+tn_prefetch_dnf: true
+# Rocky's p7zip, putty, vlc live in EPEL. Off by default: the Rocky template would need
+# EPEL configured (HTTP baseurl) for guests to use those packages anyway.
+tn_prefetch_rocky_epel: false
+
+# Containers come straight from Docker Hub (TN-BUILD01 has egress).
+tn_prefetch_ubuntu_image: "ubuntu:24.04"
+tn_prefetch_rocky_image: "rockylinux/rockylinux:9"
+
+tn_prefetch_choco_upstream: "https://community.chocolatey.org/api/v2/"
+
+# Offline Chocolatey packages (content/choco/*.yaml): scripts/lab/choco-internalize.py
+# downloads each vendor installer, puts it in the raw "installers" repo and pushes a
+# same-id package to chocolatey-hosted. Those ids are skipped by the community prefetch.
+tn_prefetch_choco_internalize: true
+tn_prefetch_choco_defs: "{{ tn_build_repo_dir }}/content/choco"
+tn_prefetch_choco_internalize_script: "{{ tn_build_repo_dir }}/scripts/lab/choco-internalize.py"
+
+# true: fail the run if any catalogue entry could not be cached (after the depot has been
+# put back offline). false: report only.
+tn_prefetch_strict: false

@@ -1,0 +1,136 @@
+---
+# TN-DEPOT01. Idempotent. The first run needs the uplink NIC connected
+# (scripts/lab/depot-uplink.sh on --apply): packages and the Nexus image come from upstream.
+
+- name: Depot — Ubuntu 24.04 only
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_release == 'noble'
+    fail_msg: "TN-DEPOT01 is expected to be a clone of tmpl-ubuntu-2404"
+
+- name: Depot — the data disk is mounted at {{ tn_depot_data_dir }}
+  ansible.builtin.assert:
+    that: tn_depot_data_dir in (ansible_mounts | map(attribute='mount') | list)
+    fail_msg: >-
+      {{ tn_depot_data_dir }} is not a mount point. deploy-mgmt-vm.sh adds a data disk that
+      cloud-init formats (LABEL=depot-data) and mounts there. Without it the caches would
+      fill the OS disk. Check `lsblk -f` and `cloud-init status --long`, or set
+      tn_depot_require_data_mount=false deliberately.
+  when: tn_depot_require_data_mount | bool
+
+- name: Depot — which packages are missing
+  ansible.builtin.package_facts:
+
+- name: Depot — upstream reachable when there is anything to install
+  ansible.builtin.uri:
+    url: http://archive.ubuntu.com/ubuntu/dists/noble/Release
+    method: HEAD
+    timeout: 10
+  register: tn_depot_net
+  failed_when: false
+  when: >-
+    ['docker.io', 'apt-cacher-ng', 'python3-docker'] | difference(ansible_facts.packages.keys()) | length > 0
+
+- name: Depot — fail early without an uplink
+  ansible.builtin.fail:
+    msg: >-
+      Packages are missing and archive.ubuntu.com is unreachable. Connect the depot's
+      uplink NIC first:  scripts/lab/depot-uplink.sh on --apply   (and off again after
+      prefetch.yml).
+  when: tn_depot_net is not skipped and (tn_depot_net.status | default(-1)) != 200
+
+- name: Depot — apt-cacher-ng never enables CONNECT tunnels (debconf)
+  ansible.builtin.debconf:
+    name: apt-cacher-ng
+    question: apt-cacher-ng/tunnelenable
+    vtype: boolean
+    value: "false"
+  become: true
+
+- name: Depot — packages
+  ansible.builtin.apt:
+    name: [docker.io, python3-docker, python3-requests, apt-cacher-ng, curl, jq]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Depot — data directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "0750"
+  loop:
+    - { path: "{{ tn_depot_acng_dir }}", owner: apt-cacher-ng }
+    # The nexus3 image runs as uid 200.
+    - { path: "{{ tn_depot_nexus_data }}", owner: "200" }
+  become: true
+
+- name: Depot — apt-cacher-ng config and upstream state
+  ansible.builtin.include_tasks: upstream.yml
+
+- name: Depot — apt-cacher-ng enabled
+  ansible.builtin.systemd_service:
+    name: apt-cacher-ng
+    enabled: true
+    state: started
+  become: true
+
+# ── Nexus ─────────────────────────────────────────────────────────────
+- name: Depot — Nexus image (pulled only if absent)
+  community.docker.docker_image:
+    name: "{{ tn_depot_nexus_image }}"
+    source: pull
+  become: true
+
+- name: Depot — Nexus container
+  community.docker.docker_container:
+    name: nexus
+    image: "{{ tn_depot_nexus_image }}"
+    restart_policy: unless-stopped
+    published_ports:
+      - "{{ tn_depot_nexus_port }}:8081"
+      - "{{ tn_depot_nexus_docker_proxy_port }}:{{ tn_depot_nexus_docker_proxy_port }}"
+      - "{{ tn_depot_nexus_docker_hosted_port }}:{{ tn_depot_nexus_docker_hosted_port }}"
+    volumes:
+      - "{{ tn_depot_nexus_data }}:/nexus-data"
+    env:
+      INSTALL4J_ADD_VM_PARAMS: "{{ tn_depot_nexus_jvm }}"
+    state: started
+  become: true
+
+- name: Depot — wait for Nexus (first start takes a few minutes)
+  ansible.builtin.uri:
+    url: "{{ tn_depot_nexus_api }}/v1/status/writable"
+    status_code: 200
+  register: tn_depot_nexus_up
+  until: tn_depot_nexus_up.status == 200
+  retries: 60
+  delay: 10
+
+- name: Depot — Nexus configuration
+  ansible.builtin.include_tasks: nexus.yml
+
+# ── Check what ranges will use ────────────────────────────────────────
+- name: Depot — the Chocolatey group feed answers anonymously
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ tn_depot_nexus_port }}/repository/chocolatey/"
+    status_code: 200
+
+- name: Depot — apt-cacher-ng answers
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ tn_depot_acng_port }}/acng-report.html"
+    status_code: 200
+
+- name: Depot — report
+  ansible.builtin.debug:
+    msg:
+      - "Upstream: {{ 'ONLINE (prefetch window)' if tn_depot_upstream_online | bool else 'offline (cached only)' }}"
+      - "TrueNorth .env.production / install/inventory/group_vars/all/main.yml:"
+      - "  tn_depot_url:        http://{{ tn_depot_ip }}"
+      - "  tn_depot_choco_feed: {{ tn_depot_nexus_url }}/repository/chocolatey/   (also the empty-value default)"
+      - "  tn_depot_apt_proxy:  {{ tn_depot_apt_proxy_url }}   (must be set: the empty default is port 80)"
+      - "pfSense WAN rule: allow zone nets -> {{ tn_depot_ip }} tcp/{{ tn_depot_nexus_port }},{{ tn_depot_acng_port }}"

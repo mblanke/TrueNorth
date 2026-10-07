@@ -2097,7 +2097,17 @@ export interface paths {
         /** List Images */
         get: operations["list_images_golden_images_get"];
         put?: never;
-        post?: never;
+        /**
+         * Upsert Custom Image
+         * @description Register a custom image (a Packer variant) so ranges and the designer can use it.
+         *
+         *     Creates (201) or updates (200) the image keyed on (catalogue_id, hypervisor). It is
+         *     marked as a variant, so catalogue re-imports leave it alone. A catalogue image's
+         *     slot is refused with 409; change those through PATCH.
+         *
+         *     **Permission: infra:write**: the registry is platform-wide, like PATCH below.
+         */
+        post: operations["upsert_custom_image_golden_images_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5790,6 +5800,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/software-catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Software Catalogue
+         * @description Software names a node's ``services`` can use, with aliases and OS families.
+         */
+        get: operations["get_software_catalogue_software_catalogue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/storage/appliances": {
         parameters: {
             query?: never;
@@ -9173,6 +9203,62 @@ export interface components {
             /** Scenario Yaml */
             scenario_yaml: string;
         };
+        /**
+         * GoldenImageCreate
+         * @description A custom (non-catalogue) image, e.g. a Packer variant from infra/vsphere/packer/variants/.
+         */
+        GoldenImageCreate: {
+            /**
+             * Build Status
+             * @default planned
+             * @enum {string}
+             */
+            build_status?: "planned" | "building" | "built" | "failed";
+            /** Catalogue Id */
+            catalogue_id: string;
+            /** Datastore */
+            datastore?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+            /** Golden Gb */
+            golden_gb?: number | null;
+            /**
+             * Hypervisor
+             * @default vsphere
+             * @enum {string}
+             */
+            hypervisor?: "vsphere" | "proxmox" | "hyperv";
+            /**
+             * Notes
+             * @default
+             */
+            notes?: string;
+            /** Os Aliases */
+            os_aliases?: string[];
+            /**
+             * Os Family
+             * @enum {string}
+             */
+            os_family: "windows" | "linux" | "appliance";
+            /**
+             * Role
+             * @default
+             */
+            role?: string;
+            /**
+             * Template Name
+             * @default
+             */
+            template_name?: string;
+            /**
+             * Version
+             * @default
+             */
+            version?: string;
+        };
         /** GoldenImageOut */
         GoldenImageOut: {
             /** Build Status */
@@ -11810,6 +11896,24 @@ export interface components {
              * @default false
              */
             vmstate?: boolean;
+        };
+        /** SoftwareCatalogueOut */
+        SoftwareCatalogueOut: {
+            /** Roles */
+            roles: string[];
+            /** Software */
+            software: components["schemas"]["SoftwareEntryOut"][];
+        };
+        /** SoftwareEntryOut */
+        SoftwareEntryOut: {
+            /** Aliases */
+            aliases: string[];
+            /** Name */
+            name: string;
+            /** Offline */
+            offline: boolean;
+            /** Os Families */
+            os_families: string[];
         };
         /** StorageApplianceIn */
         StorageApplianceIn: {
@@ -17411,6 +17515,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GoldenImageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_custom_image_golden_images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoldenImageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoldenImageOut"];
                 };
             };
             /** @description Validation Error */
@@ -24179,6 +24316,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_software_catalogue_software_catalogue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SoftwareCatalogueOut"];
                 };
             };
         };
