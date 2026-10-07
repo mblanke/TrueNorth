@@ -38,9 +38,9 @@ from .qsp import router as qsp_router
 from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
 from .registration import router as registration_router
-from .software_catalogue import router as software_catalogue_router
 from .scenario_executions import router as scenario_executions_router
 from .scenarios import router as scenarios_router
+from .software_catalogue import router as software_catalogue_router
 from .storage import router as storage_router
 from .templates import router as templates_router
 from .threat_intel import router as threat_intel_router
