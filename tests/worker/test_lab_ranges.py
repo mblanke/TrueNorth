@@ -31,48 +31,13 @@ def test_a_range_without_a_lease_keeps_the_default_network():
     assert out["vm_definitions"][0]["port_group"] == ""
 
 
-def test_vsphere_maps_every_ovf_network_onto_the_leased_port_group(monkeypatch):
-    from worker.provisioners.vsphere_api import VsphereAPIProvisioner
+def test_the_leased_port_group_reaches_every_nic():
+    out = render_topology(TEMPLATE, "11111111-2222-3333-4444-555555555555", lambda alias: "ubuntu-2404")
+    assert [n["port_group"] for n in out["vm_definitions"][0]["nics"]] == ["pg-lab-07"]
 
-    monkeypatch.setenv("LAB_PORT_GROUPS", "pg-lab-06,pg-lab-07")
-    prov = VsphereAPIProvisioner()
-    seen = {}
 
-    async def item(client, name):
-        return "lib-item-1"
-
-    async def network(client, dc, name=None):
-        seen["network"] = name
-        return "dvportgroup-77"
-
-    async def ovf(client, item_id, rp):
-        return ["VM Network", "Lab Net"]
-
-    async def deploy(client, item_id, name, folder, rp, ds, mappings=None):
-        seen["mappings"] = mappings
-        return "vm-501"
-
-    async def noop(*a, **k):
-        return None
-
-    async def tools(*a, **k):
-        return True
-
-    async def ip(*a, **k):
-        return "10.20.0.10"
-
-    monkeypatch.setattr(prov, "_find_library_item", item)
-    monkeypatch.setattr(prov, "_find_network", network)
-    monkeypatch.setattr(prov, "_ovf_networks", ovf)
-    monkeypatch.setattr(prov, "_deploy_ovf", deploy)
-    monkeypatch.setattr(prov, "_api_patch", noop)
-    monkeypatch.setattr(prov, "_power_action", noop)
-    monkeypatch.setattr(prov, "_wait_tools", tools)
-    monkeypatch.setattr(prov, "_get_vm_ip", ip)
-    vm = {"name": "r-gateway", "template_name": "ubuntu-2404", "port_group": "pg-lab-07", "cores": 2, "memory": 2048}
-    out = asyncio.run(prov._provision_one_vm(None, vm, "rid-r-gateway", "ubuntu-2404", "f", "rp", "ds", "dc"))
-    assert seen == {"network": "pg-lab-07", "mappings": {"VM Network": "dvportgroup-77", "Lab Net": "dvportgroup-77"}}
-    assert out["vm_id"] == "vm-501" and out["tools_ready"] is True
+# The OVF-network mapping onto a leased port group, and its VM wiring, are tested against
+# the fake vCenter in test_vsphere_provision.py (TestLabLeasedPortGroups).
 
 
 def test_reconcile_removes_only_vms_named_for_the_given_ranges(monkeypatch):
@@ -99,19 +64,44 @@ def test_reconcile_removes_only_vms_named_for_the_given_ranges(monkeypatch):
     assert result == {"status": "ok", "removed": {"aaaa": 2}}
 
 
-def test_a_port_group_outside_the_lab_pool_is_refused(monkeypatch):
-    from worker.provisioners.vsphere_api import VsphereAPIProvisioner
+def test_reconcile_finds_vms_by_the_range_id_they_are_tagged_with(monkeypatch):
+    """vSphere names VMs <range8>-<node>; the full range id is in their annotation."""
+    from worker import lab_tasks
+
+    removed = {}
+    rid = "aaaaaaaa-1111-2222-3333-444444444444"
+    other = "aaaaaaaa-9999-2222-3333-444444444444"  # same first 8 hex digits: must not be touched
+
+    class Prov:
+        async def find_vms(self, prefix):
+            return [
+                {"vm_id": "vm-1", "name": "aaaaaaaa-gateway", "range_id": rid},
+                {"vm_id": "vm-2", "name": "aaaaaaaa-gateway", "range_id": other},
+                {"vm_id": "vm-3", "name": "aaaaaaaa-client", "range_id": ""},
+            ]
+
+        async def destroy(self, range_id, output):
+            removed[range_id] = [v["vm_id"] for v in output["vms"]]
+            return DestroyResult(status="ok", resources_removed=len(output["vms"]))
+
+    monkeypatch.setattr(lab_tasks, "_get_backend", lambda backend: Prov())
+    assert lab_tasks.reconcile_lab_vms.run([rid], "vsphere_api") == {"status": "ok", "removed": {rid: 1}}
+    assert removed == {rid: ["vm-1"]}
+
+
+def test_a_port_group_outside_the_lab_pool_is_refused_before_anything_is_touched(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from worker.provisioners import vsphere_api as mod
 
     monkeypatch.setenv("LAB_PORT_GROUPS", "pg-lab-01")
-    prov = VsphereAPIProvisioner()
-
-    async def item(client, name):
-        return "lib-item-1"
-
-    monkeypatch.setattr(prov, "_find_library_item", item)
+    monkeypatch.setattr(mod, "SmartConnect", MagicMock(side_effect=AssertionError("must not connect")))
+    prov = mod.VsphereAPIProvisioner()
+    prov._get_session = MagicMock(side_effect=AssertionError("must not log in"))
     vm = {"name": "r-x", "template_name": "t", "port_group": "Management Network"}
-    with pytest.raises(RuntimeError, match="not a lab network"):
-        asyncio.run(prov._provision_one_vm(None, vm, "rid-r-x", "t", "f", "rp", "ds", "dc"))
+    result = asyncio.run(prov.provision("rid", {"vms": [vm]}, {}))
+    assert result.status == "failed" and result.vms == []
+    assert any("not a lab network" in e for e in result.errors), result.errors
 
 
 def test_vms_built_for_a_range_torn_down_mid_build_are_destroyed(monkeypatch, lease_always_free):

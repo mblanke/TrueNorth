@@ -65,6 +65,9 @@ export type ObjectiveType = 'detection' | 'response' | 'deliverable';
 
 export type Objective = S['ObjectiveOut'];
 
+/** One recorded inject outcome: GET /exercises/{id}/injects. */
+export type InjectRecord = S['InjectRecordOut'];
+
 /** Note: the timestamp is `generated_at`, and `report_html` may be null. */
 export type AAR = S['AAROut'];
 
@@ -91,6 +94,8 @@ export interface TelemetryEvent {
   range_id?: string;
   tenant_id?: string;
   inject?: boolean;
+  /** ATT&CK technique IDs the API tagged the event with on ingest. */
+  mitre_technique?: string[] | string;
   [key: string]: unknown;
 }
 

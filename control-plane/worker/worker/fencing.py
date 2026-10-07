@@ -38,6 +38,8 @@ from datetime import UTC, datetime, timedelta
 import sqlalchemy as sa
 from celery.exceptions import SoftTimeLimitExceeded
 
+from .range_alloc import AllocationError
+
 # The API owns the table (app/range_leases, migration d2e3f4a5b6c7); tables.py mirrors it.
 from .tables import range_leases
 
@@ -51,7 +53,7 @@ CLEANUP_GRACE = 30  # seconds a cancelled hypervisor call gets to close its sess
 LEASE_HELD = "lease-held"  # claim(): the state matches but another execution holds the lease
 
 # Failures that end a task for good on the first attempt: no retry, record failed.
-FINAL_ERRORS = (SoftTimeLimitExceeded,)
+FINAL_ERRORS = (SoftTimeLimitExceeded, AllocationError)  # a full VLAN/address pool: retrying won't help
 
 
 def last_attempt(task) -> bool:

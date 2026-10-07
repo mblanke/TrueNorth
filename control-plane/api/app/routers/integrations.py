@@ -16,11 +16,15 @@ from sqlalchemy.orm import Session
 
 from .. import moodle_sso
 from ..auth import CurrentUser, get_current_user
+from ..course_publishing.models import CoursePublication
 from ..db import get_db
+from ..delete_guard import commit_delete, refuse_if
 from ..models import (
     ExternalActivity,
     ExternalPlatform,
     IntegrationAuthType,
+    LTILaunch,
+    LTINonce,
     User,
 )
 from ..platforms import get_platform_adapter
@@ -130,12 +134,28 @@ def deregister_platform(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
 ):
-    """Remove a registered platform."""
+    """Remove a registered platform.
+
+    409 while Student activity records synced from it, or course publications to it,
+    exist: those are history (deactivate the platform instead). Its LTI nonces and
+    launches only serve talking to the platform, so they go with it."""
     p = get_owned(db, ExternalPlatform, platform_id, user)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
+    # tenant-safe (all four): p came from get_owned(); counts disclose no row.
+    refuse_if(
+        db.query(ExternalActivity.id).filter(ExternalActivity.platform_id == p.id),
+        "Platform has {n} synced Student activity record(s) and is kept as part of their history",
+    )
+    refuse_if(
+        db.query(CoursePublication.id).filter(CoursePublication.platform_id == p.id),
+        "Platform has {n} course publication(s) on record and is kept as part of their history",
+    )
+    db.query(LTINonce).filter(LTINonce.platform_id == p.id).delete(synchronize_session=False)
+    db.query(LTILaunch).filter(LTILaunch.platform_id == p.id).delete(synchronize_session=False)
+    db.flush()
     db.delete(p)
-    db.commit()
+    commit_delete(db, "Platform")
 
 
 @router.post("/platforms/{platform_id}/test", status_code=status.HTTP_200_OK)
@@ -527,6 +547,8 @@ async def lti_deep_link_finish(
     except Exception as exc:
         raise HTTPException(401, "Invalid deep-linking session") from exc
 
+    # tenant-safe: unauthenticated LTI return leg; platform_id comes from the deep-link
+    # session JWT this tool signed at launch (verified above), not from the caller.
     platform = db.get(ExternalPlatform, platform_id)
     if not platform:
         raise HTTPException(404, "Platform not found")

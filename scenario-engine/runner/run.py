@@ -146,11 +146,14 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
     """
     from scenario_engine.event_stores import event_store_from_env
     from scenario_engine.scoring import ScoringEngine, validation_method
+    from scenario_engine.variables import render
 
     index = f"range-{range_ctx['range_id']}"
     objectives = []
     for obj in scenario.get("objectives", []):
-        params = obj.get("params") or {}
+        params = dict(obj.get("params") or {})
+        if isinstance(params.get("query"), str):
+            params["query"] = render(params["query"], scenario.get("variables"))
         objectives.append(
             {
                 "id": obj.get("id", "unknown"),
@@ -168,6 +171,8 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
     engine = ScoringEngine(range_ctx["range_id"], objectives, event_store=store)
     scored = asyncio.run(engine.evaluate())
     validators = {o.get("id", "unknown"): o.get("validator", "") for o in scenario.get("objectives", [])}
+    # An objective the engine could not judge (no query, store down) is reported as
+    # unscored with its reason, never as failed.
     return [
         {
             "id": r.objective_id,
@@ -177,6 +182,9 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
             "points_earned": r.points_awarded,
         }
         for r in scored.objectives
+    ] + [
+        {"id": oid, "validator": validators.get(oid, ""), "passed": None, "unscored": why, "points_earned": 0}
+        for oid, why in scored.unscored.items()
     ]
 
 

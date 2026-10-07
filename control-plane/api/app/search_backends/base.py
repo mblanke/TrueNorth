@@ -10,6 +10,21 @@ Swapping backends is an env-var change (SEARCH_BACKEND=<name>).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+
+
+class SearchBackendError(RuntimeError):
+    """The store could not answer (down, refused, timed out). Not the same as "no matches"."""
+
+
+class SearchQueryError(ValueError):
+    """The store refused the query itself (it does not parse). The caller's mistake, not an outage."""
+
+
+@dataclass
+class SearchMatch:
+    total: int
+    ids: list[str] = field(default_factory=list)
 
 
 class BaseSearchBackend(ABC):
@@ -26,11 +41,23 @@ class BaseSearchBackend(ABC):
 
     @abstractmethod
     async def search(self, index: str, query: str, size: int = 50) -> dict:
-        """Execute a query-string search against *index*.
+        """Search *index* with a query in the telemetry grammar (``query.parse_query``).
 
+        Never pass *query* to a backend's own free-form parser (OpenSearch
+        ``query_string``): build the request from ``parse_query(query)``.
         Returns the raw search response dict (hits, total, etc.).
-        Raises fastapi.HTTPException(502) on backend errors so the caller
-        can propagate a meaningful status to the API consumer.
+        Raises fastapi.HTTPException(422) for a query outside the grammar and
+        HTTPException(502) on backend errors.
+        """
+        ...
+
+    @abstractmethod
+    async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
+        """How many events in *index* match the query DSL *query*, and the ids of up to *size*.
+
+        A missing index is zero matches. Raises ``SearchQueryError`` for a query the store
+        cannot parse, and ``SearchBackendError`` when the store cannot answer, so a caller
+        never mistakes either for "nothing matched".
         """
         ...
 

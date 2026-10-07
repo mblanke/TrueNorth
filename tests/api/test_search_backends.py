@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from app.search_backends import (
@@ -101,12 +103,80 @@ class TestOpenSearchBackend:
         assert route.calls.last.request.headers["Content-Type"] == "application/x-ndjson"
 
     @pytest.mark.asyncio
+    async def test_ingest_stamps_server_time_over_anything_sent(self, respx_mock):
+        # Detection credit trusts truenorth.ingested_at (ADR 0005); a sender cannot set it.
+        route = respx_mock.post("http://mock-os:9200/_bulk").mock(
+            return_value=httpx.Response(200, json=_MOCK_BULK_RESPONSE)
+        )
+        forged = {"a": 1, "truenorth": {"ingested_at": "1999-01-01T00:00:00+00:00"},
+                  "truenorth.ingested_at": "1999-01-01T00:00:00+00:00", "@timestamp": "1999-01-01T00:00:00Z"}
+        await self._make_backend().ingest("idx", [forged])
+        lines = route.calls.last.request.content.decode().splitlines()
+        doc = json.loads(lines[1])
+        assert "truenorth.ingested_at" not in doc
+        assert doc["truenorth"]["ingested_at"] > "2026"
+        assert doc["@timestamp"] == "1999-01-01T00:00:00Z"  # the sender's claim, kept for display
+        assert forged["truenorth"]["ingested_at"].startswith("1999")  # the caller's dict is not mutated
+
+    @pytest.mark.asyncio
+    async def test_match_returns_total_and_ids(self, respx_mock):
+        route = respx_mock.post("http://mock-os:9200/range-1/_search").mock(
+            return_value=httpx.Response(200, json={"hits": {"total": {"value": 7}, "hits": [{"_id": "a"}, {"_id": "b"}]}})
+        )
+        found = await self._make_backend().match("range-1", {"match_all": {}}, size=2)
+        assert (found.total, found.ids) == (7, ["a", "b"])
+        sent = json.loads(route.calls.last.request.content)
+        assert sent["track_total_hits"] is True and sent["_source"] is False
+        assert route.calls.last.request.url.params["ignore_unavailable"] == "true"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "response",
+        [httpx.Response(503), httpx.Response(200, json={"timed_out": True, "hits": {"total": 0, "hits": []}})],
+    )
+    async def test_match_outage_or_timeout_raises_not_zero(self, respx_mock, response):
+        from app.search_backends import SearchBackendError
+
+        respx_mock.post("http://mock-os:9200/range-1/_search").mock(return_value=response)
+        with pytest.raises(SearchBackendError):
+            await self._make_backend().match("range-1", {"match_all": {}})
+
+    @pytest.mark.asyncio
     async def test_search_success(self, respx_mock):
         respx_mock.post("http://mock-os:9200/range-1/_search").mock(
             return_value=httpx.Response(200, json=_MOCK_SEARCH_RESPONSE)
         )
         result = await self._make_backend().search("range-1", "event_type:login")
         assert result["hits"]["total"]["value"] == 2
+
+    @pytest.mark.asyncio
+    async def test_search_sends_the_constrained_dsl_not_query_string(self, respx_mock):
+        route = respx_mock.post("http://mock-os:9200/range-1/_search").mock(
+            return_value=httpx.Response(200, json=_MOCK_SEARCH_RESPONSE)
+        )
+        await self._make_backend().search("range-1", "event_type:login", size=7)
+        body = json.loads(route.calls.last.request.content)
+        assert body["query"] == {"bool": {"must": [{"match_phrase": {"event_type": "login"}}]}}
+        assert body["size"] == 7
+        assert "query_string" not in json.dumps(body["query"]).replace("simple_query_string", "")
+
+    @pytest.mark.asyncio
+    async def test_search_rejects_a_query_outside_the_grammar_without_calling_opensearch(self, respx_mock):
+        route = respx_mock.post("http://mock-os:9200/range-1/_search")
+        with pytest.raises(HTTPException) as exc_info:
+            await self._make_backend().search("range-1", "_index:range-other")
+        assert exc_info.value.status_code == 422
+        assert not route.called
+
+    @pytest.mark.asyncio
+    async def test_search_400_from_opensearch_is_422(self, respx_mock):
+        """A well-formed query OpenSearch still refuses (prefix on a date field) is the caller's."""
+        respx_mock.post("http://mock-os:9200/range-1/_search").mock(
+            return_value=httpx.Response(400, json={"error": {"type": "query_shard_exception"}})
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await self._make_backend().search("range-1", "@timestamp:2026*")
+        assert exc_info.value.status_code == 422
 
     @pytest.mark.asyncio
     async def test_search_backend_error_raises_502(self, respx_mock):

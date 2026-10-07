@@ -5,6 +5,7 @@ import {
   instructorGuard,
   onboardingGuard,
   pendingGuard,
+  scheduleGuard,
   registrationGuard,
 } from './core/guards/auth.guard';
 
@@ -63,6 +64,7 @@ export const routes: Routes = [
         { label: 'Ranges', path: 'ranges' },
         { label: 'Scenarios', path: 'scenarios' },
         { label: 'Detections', path: 'detections' },
+        { label: 'Threat intel', path: 'threat-intel' },
         { label: 'MESL', path: 'mesl' },
         { label: 'Forge', path: 'forge' },
         { label: 'Content', path: 'content' },
@@ -91,6 +93,21 @@ export const routes: Routes = [
         title: 'Authoring · Range Designer - TrueNorth Range',
       },
       {
+        // Greyspace (simulated internet) for one range; :rangeId binds to the panel's input.
+        path: 'ranges/:rangeId/greyspace',
+        loadComponent: () =>
+          import('./features/greyspace/greyspace-panel.component').then(m => m.GreyspacePanelComponent),
+        title: 'Authoring · Greyspace - TrueNorth Range',
+      },
+      {
+        // Background noise for one range: white cell only (instructorGuard on the hub;
+        // the API checks noise:read / noise:control on every call).
+        path: 'ranges/:id/noise',
+        loadComponent: () =>
+          import('./features/noise/noise-console.component').then(m => m.NoiseConsoleComponent),
+        title: 'Authoring · Background noise - TrueNorth Range',
+      },
+      {
         path: 'scenarios',
         loadComponent: () =>
           import('./features/scenario-studio/scenario-studio.component').then(m => m.ScenarioStudioComponent),
@@ -101,6 +118,12 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
         title: 'Authoring · Detections - TrueNorth Range',
+      },
+      {
+        path: 'threat-intel',
+        loadComponent: () =>
+          import('./features/threat-intel/threat-intel-feeds.component').then(m => m.ThreatIntelFeedsComponent),
+        title: 'Authoring · Threat intel - TrueNorth Range',
       },
       {
         path: 'mesl',
@@ -222,6 +245,14 @@ export const routes: Routes = [
     title: 'Exercises - TrueNorth Range',
   },
   {
+    // Bookings, capacity and the calendar feed (docs/adr/0004-scheduler-module.md). Staff only.
+    path: 'schedule',
+    canActivate: [authGuard, onboardingGuard, scheduleGuard],
+    loadComponent: () =>
+      import('./features/schedule/schedule.component').then(m => m.ScheduleComponent),
+    title: 'Schedule - TrueNorth Range',
+  },
+  {
     path: 'scoring',
     canActivate: [authGuard, onboardingGuard, instructorGuard],
     loadComponent: () =>
@@ -278,6 +309,18 @@ export const routes: Routes = [
       import('./features/ai-orchestrator/ai-orchestrator.component').then(m => m.AiOrchestratorComponent),
     title: 'AI Orchestrator - TrueNorth Range',
   },
+  // -- Knowledge base + trouble tickets --
+  {
+    path: 'wiki',
+    canActivate: [authGuard, onboardingGuard],
+    loadChildren: () => import('./features/wiki/wiki.routes').then(m => m.WIKI_ROUTES),
+  },
+  {
+    path: 'support',
+    canActivate: [authGuard, onboardingGuard],
+    loadChildren: () => import('./features/tickets/tickets.routes').then(m => m.SUPPORT_ROUTES),
+  },
+  { path: 'tickets', redirectTo: 'support', pathMatch: 'full' },
   {
     path: 'login',
     loadComponent: () =>
@@ -293,7 +336,9 @@ export const routes: Routes = [
   },
   {
     path: 'exercises/:id',
-    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    // Students run their assessment and submit detections here (ADR 0005); the API
+    // redacts the answer key for them and gates every action by permission.
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/exercise-detail/exercise-detail.component').then(m => m.ExerciseDetailComponent),
     title: 'Exercise - TrueNorth Range',

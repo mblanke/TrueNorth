@@ -26,14 +26,15 @@ timeline:
 objectives:
   - id: detect_dns
     type: detection
-    validator: "validate.opensearch.query"
+    validator: opensearch_query
     params:
-      query: 'dns.question.name:"bad.example" AND tags.range_id:${range_id}'
+      # The range is its own index (range-<id>), so the query needs no range clause.
+      query: 'dns.question.name:"bad.example"'
     points: 25
 
   - id: contain_host
     type: response
-    validator: "validate.manual.ack"
+    validator: manual_ack
     params:
       prompt: "Isolate host USER-02 (document steps)"
     points: 25

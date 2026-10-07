@@ -15,11 +15,13 @@ from .courses import router as courses_router
 from .courses import transcript_router
 from .curriculum import router as curriculum_router
 from .detection_rules import router as detection_rules_router
+from .detections import router as detections_router
 from .directory import router as directory_router
 from .exercise_forge import router as exercise_forge_router
 from .exercises import router as exercises_router
 from .exercises_collective import router as collective_exercises_router
 from .golden_images import router as golden_images_router
+from .greyspace import router as greyspace_router
 from .hypervisors import router as hypervisors_router
 from .injectors import router as injectors_router
 from .integrations import lti_router
@@ -27,6 +29,8 @@ from .integrations import router as integrations_router
 from .kit import router as kit_router
 from .lab_sessions import router as lab_sessions_router
 from .network_devices import router as network_devices_router
+from .noise import router as noise_router
+from .notifications import router as notifications_router
 from .onboarding import router as onboarding_router
 from .ops_center import router as ops_center_router
 from .proxmox import router as proxmox_router
@@ -34,11 +38,13 @@ from .qsp import router as qsp_router
 from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
 from .registration import router as registration_router
+from .scenario_executions import router as scenario_executions_router
 from .scenarios import router as scenarios_router
-from .scheduling import router as scheduling_router
 from .storage import router as storage_router
 from .templates import router as templates_router
 from .threat_intel import router as threat_intel_router
+from .tickets import router as tickets_router
+from .wiki import router as wiki_router
 
 __all__ = [
     "registration_router",
@@ -50,10 +56,10 @@ __all__ = [
     "templates_router",
     "scenarios_router",
     "injectors_router",
+    "noise_router",
     "ai_authoring_router",
     "admin_router",
     "proxmox_router",
-    "scheduling_router",
     "courses_router",
     "learning_paths_router",
     "transcript_router",
@@ -81,4 +87,10 @@ __all__ = [
     "course_releases_router",
     "course_publications_router",
     "lab_sessions_router",
+    "detections_router",
+    "greyspace_router",
+    "scenario_executions_router",
+    "wiki_router",
+    "tickets_router",
+    "notifications_router",
 ]

@@ -13,17 +13,70 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import HTTPException
 
-from .base import BaseSearchBackend
+from .base import BaseSearchBackend, SearchBackendError, SearchMatch, SearchQueryError
+from .query import ParsedQuery, QueryError, parse_query
 
 logger = logging.getLogger("truenorth.search.opensearch")
 
+# Free text only: no FUZZY, NEAR or SLOP. simple_query_string never raises on bad syntax.
+SIMPLE_QUERY_FLAGS = "AND|OR|NOT|PHRASE|PREFIX|PRECEDENCE|WHITESPACE|ESCAPE"
+
+
+def build_query(parsed: ParsedQuery) -> dict:
+    """The OpenSearch query DSL for a parsed telemetry query (never ``query_string``)."""
+    if parsed.match_all:
+        return {"match_all": {}}
+    must: list[dict] = []
+    for term in parsed.terms:
+        if term.kind == "exists":
+            must.append({"exists": {"field": term.field}})
+        elif term.kind == "prefix":
+            must.append({"prefix": {term.field: {"value": term.value}}})
+        else:
+            must.append({"match_phrase": {term.field: term.value}})
+    if parsed.text:
+        must.append(
+            {
+                "simple_query_string": {
+                    "query": parsed.text,
+                    "flags": SIMPLE_QUERY_FLAGS,
+                    "default_operator": "and",
+                    "lenient": True,
+                }
+            }
+        )
+    return {"bool": {"must": must}}
+
+
+def _reason(resp: httpx.Response) -> str:
+    """The parse error OpenSearch gave, without index names or stack traces."""
+    try:
+        err = resp.json().get("error", {})
+        causes = err.get("root_cause") or [err]
+        return str(causes[0].get("reason", "query could not be parsed"))[:300]
+    except Exception:  # noqa: BLE001
+        return "query could not be parsed"
+
+
+def stamp_ingested(event: dict, now: str) -> dict:
+    """The event as stored, with ``truenorth.ingested_at`` set from this server's clock.
+
+    Detection credit matches the exercise window on this field, never on the sender's
+    ``@timestamp`` (ADR 0005). Any ``truenorth`` field the sender supplied is dropped first,
+    so no sender can place an event inside a window.
+    """
+    out = {k: v for k, v in event.items() if k != "truenorth" and not k.startswith("truenorth.")}
+    out["truenorth"] = {"ingested_at": now}
+    return out
+
 
 class OpenSearchBackend(BaseSearchBackend):
-    """OpenSearch / Elasticsearch bulk ingest + query-string search."""
+    """OpenSearch / Elasticsearch bulk ingest + constrained search (see query.py)."""
 
     def __init__(
         self,
@@ -49,10 +102,11 @@ class OpenSearchBackend(BaseSearchBackend):
     async def ingest(self, index: str, events: list[dict]) -> int:
         if not events:
             return 0
+        now = datetime.now(UTC).isoformat()
         bulk_body = ""
         for event in events:
             bulk_body += json.dumps({"index": {"_index": index}}) + "\n"
-            bulk_body += json.dumps(event) + "\n"
+            bulk_body += json.dumps(stamp_ingested(event, now), default=str) + "\n"
         try:
             async with httpx.AsyncClient(**self._client_kwargs()) as client:
                 resp = await client.post(
@@ -73,8 +127,12 @@ class OpenSearchBackend(BaseSearchBackend):
             return 0
 
     async def search(self, index: str, query: str, size: int = 50) -> dict:
+        try:
+            dsl = build_query(parse_query(query))
+        except QueryError as exc:
+            raise HTTPException(422, f"Invalid search query: {exc}") from exc
         body = {
-            "query": {"query_string": {"query": query}},
+            "query": dsl,
             "size": size,
             "sort": [{"@timestamp": {"order": "desc", "unmapped_type": "date"}}],
         }
@@ -84,9 +142,36 @@ class OpenSearchBackend(BaseSearchBackend):
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 400:  # e.g. a prefix on a date field
+                raise HTTPException(422, "Search query rejected by the search backend") from exc
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
         except Exception as exc:
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
+
+    async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
+        # The server gives up (timed_out) before the client does, so a slow query is reported
+        # as such rather than as a dropped connection.
+        body = {"query": query, "size": size, "track_total_hits": True, "_source": False, "timeout": "5s"}
+        try:
+            async with httpx.AsyncClient(**self._client_kwargs()) as client:
+                resp = await client.post(
+                    f"{self._url}/{index}/_search", params={"ignore_unavailable": "true"}, json=body
+                )
+        except Exception as exc:
+            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
+        if resp.status_code == 400:
+            raise SearchQueryError(_reason(resp))
+        try:
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
+        if data.get("timed_out"):
+            raise SearchBackendError("OpenSearch query timed out")
+        hits = data.get("hits", {})
+        total = hits.get("total", 0)
+        total = total.get("value", 0) if isinstance(total, dict) else int(total or 0)
+        return SearchMatch(total=total, ids=[str(h.get("_id")) for h in hits.get("hits", [])])
 
     async def health_check(self) -> bool:
         try:

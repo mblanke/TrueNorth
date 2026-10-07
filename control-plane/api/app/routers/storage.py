@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
+from ..delete_guard import commit_delete, refuse_if
 from ..models import StorageAppliance, StorageVolume
 from ..rbac import Permission, require_permission
 from ..schemas import (
@@ -53,9 +54,13 @@ def create_appliance(
 def delete_appliance(
     appliance_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ):
+    """Delete an appliance.  409 while volumes are still recorded on it."""
     obj = get_owned(db, StorageAppliance, appliance_id, user, not_found="Appliance not found")
+    # tenant-safe: obj came from get_owned(); a count discloses no row.
+    volumes = db.query(StorageVolume.id).filter(StorageVolume.appliance_id == obj.id)
+    refuse_if(volumes, "Appliance has {n} volume(s); delete them first")
     db.delete(obj)
-    db.commit()
+    commit_delete(db, "Appliance")
 
 
 @router.patch("/appliances/{appliance_id}", response_model=StorageApplianceOut, dependencies=WRITE)

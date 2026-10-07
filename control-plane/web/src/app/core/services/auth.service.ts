@@ -71,6 +71,22 @@ export class AuthService {
     const role = this.userSignal()?.role;
     return role === 'admin' || role === 'instructor';
   });
+  /**
+   * Mirrors `objective:ack` in control-plane/api/app/rbac.py (ADR 0005 §4): only
+   * instructors and admins award objectives. Students never do. The API enforces it;
+   * this only hides the control.
+   */
+  readonly canAcknowledgeObjectives = computed(() => this.isInstructor());
+  /** Mirrors `detection:submit` in rbac.py: Students, instructors and admins; not observers. */
+  readonly canSubmitDetections = computed(() => {
+    const role = this.userSignal()?.role;
+    return role === 'student' || role === 'admin' || role === 'instructor';
+  });
+  /** The schedule (calendar, capacity, timeline) is for staff; Students never see it (ADR 0004). */
+  readonly canViewSchedule = computed(() => {
+    const role = this.userSignal()?.role;
+    return !!role && role !== 'student';
+  });
   readonly userId = computed(() => this.userSignal()?.id ?? null);
   readonly onboardingState = computed(() => this.userSignal()?.onboarding_state ?? 'not_started');
   readonly needsOnboarding = computed(() => {

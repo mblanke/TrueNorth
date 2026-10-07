@@ -3,7 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';
 import {
-  AAR, Exercise, ExerciseSummary, HealthResponse, HypervisorNode, Objective, Range,
+  AAR, Exercise, ExerciseSummary, HealthResponse, HypervisorNode, InjectRecord, Objective, Range,
   RangeDocument, RangeSummary, Scenario, ScenarioSummary, Team, Template, TemplateSummary,
   Tenant, TelemetryEvent, User,
 } from '../models';
@@ -26,6 +26,8 @@ export interface InjectorInfo {
 
 /** GET /ranges/stats. `by_state` may be absent. */
 export type RangeStats = components['schemas']['RangeStatsOut'];
+/** One detection attempt (POST/GET .../detections). */
+export type Detection = components['schemas']['DetectionOut'];
 
 /** One row of GET /exercise-forge/history. */
 export interface ForgeHistoryItem {
@@ -352,11 +354,28 @@ export class ApiService {
   listObjectives(exerciseId: string): Observable<Objective[]> {
     return this.http.get<Objective[]>(`${this.base}/exercises/${exerciseId}/objectives`);
   }
+  /** What each inject did (timeline and instructor), oldest first. */
+  listInjects(exerciseId: string): Observable<InjectRecord[]> {
+    return this.http.get<InjectRecord[]>(`${this.base}/exercises/${exerciseId}/injects`);
+  }
   ackObjective(exerciseId: string, refId: string, evidence = ''): Observable<Objective> {
     return this.http.post<Objective>(
       `${this.base}/exercises/${exerciseId}/objectives/${refId}/ack`,
       { evidence }
     );
+  }
+
+  // ── Detections (ADR 0005) ────────────────────────────────
+  /** Submit a Lucene detection for an objective; credited only if it finds the attack. */
+  submitDetection(exerciseId: string, refId: string, query: string): Observable<Detection> {
+    const body: components['schemas']['DetectionIn'] = { query };
+    return this.http.post<Detection>(
+      `${this.base}/exercises/${exerciseId}/objectives/${encodeURIComponent(refId)}/detections`, body,
+    );
+  }
+  /** A Student's own attempts; every attempt (with on_target/precision) for staff. */
+  listDetections(exerciseId: string): Observable<Detection[]> {
+    return this.http.get<Detection[]>(`${this.base}/exercises/${exerciseId}/detections`);
   }
 
   // ── AAR ──────────────────────────────────────────────────
@@ -555,80 +574,6 @@ export class ApiService {
     if (end) params = params.set('end_time', end);
     return this.http.get<any>(`${this.base}/schedule/capacity`, { params });
   }
-  checkCapacity(body: { start_time: string; end_time: string; vcpu_needed: number; ram_mb_needed: number; disk_gb_needed: number }): Observable<any> {
-    return this.http.post<any>(`${this.base}/schedule/check`, body);
-  }
-  listScheduledEvents(state?: string, limit = 50): Observable<any> {
-    let params = new HttpParams().set('limit', limit);
-    if (state) params = params.set('state', state);
-    return this.http.get<any>(`${this.base}/schedule/events`, { params });
-  }
-  createScheduledEvent(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/schedule/events`, data);
-  }
-  deleteScheduledEvent(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/schedule/events/${id}`);
-  }
-  updateScheduledEvent(id: string, data: any): Observable<any> {
-    return this.http.put<any>(`${this.base}/schedule/events/${id}`, data);
-  }
-  getResourceTimeline(days = 7): Observable<any> {
-    const params = new HttpParams().set('days', days);
-    return this.http.get<any>(`${this.base}/schedule/timeline`, { params });
-  }
-
-
-  // ── Helpdesk / Support Tickets ───────────────────────────
-  listQueues(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/tickets/queues`);
-  }
-  createQueue(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/queues`, data);
-  }
-  addQueueMember(queueId: string, userId: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/queues/${queueId}/members`, { user_id: userId });
-  }
-  removeQueueMember(queueId: string, userId: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/tickets/queues/${queueId}/members/${userId}`);
-  }
-
-  listTickets(params?: { status?: string; priority?: string; category?: string; queue_id?: string; assigned_to?: string }): Observable<any[]> {
-    let httpParams = new HttpParams();
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => { if (v) httpParams = httpParams.set(k, v); });
-    }
-    return this.http.get<any[]>(`${this.base}/tickets`, { params: httpParams });
-  }
-  createTicket(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets`, data);
-  }
-  getTicket(id: string): Observable<any> {
-    return this.http.get<any>(`${this.base}/tickets/${id}`);
-  }
-  updateTicket(id: string, data: any): Observable<any> {
-    return this.http.put<any>(`${this.base}/tickets/${id}`, data);
-  }
-  deleteTicket(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/tickets/${id}`);
-  }
-
-  listTicketComments(ticketId: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/tickets/${ticketId}/comments`);
-  }
-  addTicketComment(ticketId: string, data: { author_id: string; body: string }): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/${ticketId}/comments`, data);
-  }
-
-  // AI Agent
-  askAI(ticketId: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/${ticketId}/ask-ai`, {});
-  }
-  runDiagnostics(ticketId: string): Observable<any> {
-    return this.http.post<any>(`${this.base}/tickets/${ticketId}/run-diagnostics`, {});
-  }
-  listAIActions(ticketId: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/tickets/${ticketId}/ai-actions`);
-  }
 
   // ── Curriculum Forge ─────────────────────────────────────
   listCurricula(): Observable<any[]> {
@@ -692,45 +637,5 @@ export class ApiService {
   /** GET /competency/heatmap (untyped in the contract). */
   getCompetencyHeatmap(view: string): Observable<CompetencyHeatmap> {
     return this.http.get<CompetencyHeatmap>(`${this.base}/competency/heatmap`, { params: { view } });
-  }
-
-  // ── Wiki / Knowledge Base ────────────────────────────────
-  listWikiSpaces(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/wiki/spaces`);
-  }
-  createWikiSpace(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/wiki/spaces`, data);
-  }
-  getWikiSpace(slug: string): Observable<any> {
-    return this.http.get<any>(`${this.base}/wiki/spaces/${slug}`);
-  }
-  deleteWikiSpace(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/wiki/spaces/${id}`);
-  }
-
-  listWikiPages(spaceSlug: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/wiki/spaces/${spaceSlug}/pages`);
-  }
-  getWikiPageTree(spaceSlug: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/wiki/spaces/${spaceSlug}/tree`);
-  }
-  createWikiPage(data: any): Observable<any> {
-    return this.http.post<any>(`${this.base}/wiki/pages`, data);
-  }
-  getWikiPage(pageId: string): Observable<any> {
-    return this.http.get<any>(`${this.base}/wiki/pages/${pageId}`);
-  }
-  updateWikiPage(pageId: string, data: any): Observable<any> {
-    return this.http.put<any>(`${this.base}/wiki/pages/${pageId}`, data);
-  }
-  deleteWikiPage(pageId: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/wiki/pages/${pageId}`);
-  }
-  listWikiPageRevisions(pageId: string): Observable<any[]> {
-    return this.http.get<any[]>(`${this.base}/wiki/pages/${pageId}/revisions`);
-  }
-  searchWiki(q: string): Observable<any[]> {
-    const params = new HttpParams().set('q', q);
-    return this.http.get<any[]>(`${this.base}/wiki/search`, { params });
   }
 }

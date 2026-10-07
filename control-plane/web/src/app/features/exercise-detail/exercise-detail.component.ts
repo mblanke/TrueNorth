@@ -6,7 +6,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { ApiService } from '@core/services/api.service';
+import { ApiService, Detection } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
+import type { InjectRecord } from '@core/models';
+import { DetectionPanelComponent, isDetectionObjective } from './detection-panel.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 
 interface TimelineStep {
@@ -22,6 +25,7 @@ interface ObjectiveRow {
   points: number;
   achieved: boolean;
   evidence: string;
+  validator?: string | null;
   competency_code: string;
 }
 interface ScenarioDetail {
@@ -64,7 +68,8 @@ const NODE_ICON: Record<string, string> = {
     MatButtonModule,
     MatProgressBarModule,
     MatSnackBarModule,
-    RangeNotesComponent
+    RangeNotesComponent,
+    DetectionPanelComponent,
 ],
   template: `
     @if (detail; as d) {
@@ -84,11 +89,13 @@ const NODE_ICON: Record<string, string> = {
             </div>
           </div>
           <div class="run-box">
-            <button mat-flat-button color="primary" (click)="run()" [disabled]="running || d.state==='running'">
-              <mat-icon>{{ d.state === 'completed' ? 'replay' : 'play_arrow' }}</mat-icon>
-              {{ d.state === 'running' ? 'Running…' : 'Provision & Run (simulated)' }}
-            </button>
-            @if (d.state === 'completed') {
+            @if (auth.canSubmitDetections()) {
+              <button mat-flat-button color="primary" (click)="run()" [disabled]="running || d.state==='running'">
+                <mat-icon>{{ d.state === 'completed' ? 'replay' : 'play_arrow' }}</mat-icon>
+                {{ d.state === 'running' ? 'Running…' : 'Provision & Run (simulated)' }}
+              </button>
+            }
+            @if (d.state === 'completed' && auth.isInstructor()) {
               <button mat-stroked-button (click)="genAar()"><mat-icon>description</mat-icon> Generate AAR</button>
             }
           </div>
@@ -111,6 +118,11 @@ const NODE_ICON: Record<string, string> = {
                 <span class="spacer"></span>
                 <span class="pts">{{ o.points }} pts</span>
               </div>
+              @if (isDetection(o)) {
+                <tn-detection-panel [exerciseId]="id" [refId]="o.ref_id" [achieved]="o.achieved"
+                  [running]="d.state === 'running'" [canSubmit]="auth.canSubmitDetections()"
+                  [staff]="auth.isInstructor()" [attempts]="attemptsFor(o.ref_id)" (changed)="refresh()" />
+              }
             }
           </mat-card>
           <!-- Timeline -->
@@ -141,6 +153,26 @@ const NODE_ICON: Record<string, string> = {
                   <div class="muted small">• {{ n.description }}</div>
                 }
               </div>
+            }
+          </mat-card>
+          <!-- Inject log: what each inject actually did (GET /exercises/{id}/injects) -->
+          <mat-card class="panel inject-panel">
+            <h3><mat-icon>bolt</mat-icon> Inject log</h3>
+            @if (injects.length) {
+              @for (i of injects; track i.id) {
+                <div class="inj" [attr.data-status]="i.status">
+                  <span class="tl-t">{{ i.t || (i.source === 'instructor' ? 'live' : '') }}</span>
+                  <span class="inj-status chip">{{ i.status }}</span>
+                  <span class="inj-action">{{ i.action }}</span>
+                  @if (i.execution_mode === 'simulated') {
+                    <span class="muted small" title="Synthetic records: nothing ran on a host">simulated</span>
+                  }
+                  <span class="spacer"></span>
+                  <span class="muted small inj-detail">{{ i.detail }}</span>
+                </div>
+              }
+            } @else {
+              <p class="muted">No injects recorded yet.</p>
             }
           </mat-card>
           <!-- Range -->
@@ -176,9 +208,11 @@ const NODE_ICON: Record<string, string> = {
               <a mat-stroked-button [routerLink]="['/topology-3d']" [queryParams]="{ range: d.range_id }">
                 <mat-icon>3d_rotation</mat-icon> Open 3D
               </a>
-              <a mat-stroked-button [routerLink]="['/authoring/ranges/designer']" [queryParams]="{ range: d.range_id }">
-                <mat-icon>edit</mat-icon> Open in designer
-              </a>
+              @if (auth.isInstructor()) {
+                <a mat-stroked-button [routerLink]="['/authoring/ranges/designer']" [queryParams]="{ range: d.range_id }">
+                  <mat-icon>edit</mat-icon> Open in designer
+                </a>
+              }
             </div>
           </mat-card>
         </div>
@@ -247,6 +281,12 @@ const NODE_ICON: Record<string, string> = {
       .error-panel mat-icon { font-size: 42px; width: 42px; height: 42px; color: var(--text-muted); }
       .range-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
       .range-notes { margin: 12px 0; padding-top: 12px; border-top: 1px solid var(--border); }
+      .inject-panel { grid-column: 1 / -1; }
+      .inj { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, var(--text-muted) 12%, transparent); }
+      .inj-action { font-weight: 600; }
+      .inj-detail { max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .inj[data-status='fired'] .inj-status { background: color-mix(in srgb, var(--success) 22%, transparent); }
+      .inj[data-status='failed'] .inj-status { background: color-mix(in srgb, var(--error, #e53935) 22%, transparent); }
       @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } .grid .panel:first-child { grid-row: auto; } }
     `,
   ],
@@ -255,18 +295,52 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private route = inject(ActivatedRoute);
   private snack = inject(MatSnackBar);
+  protected auth = inject(AuthService);
 
   id = '';
   detail: ScenarioDetail | null = null;
   rangeName = '';
   rangeState = '';
   rangeDescription = '';
+  injects: InjectRecord[] = [];
   running = false;
   error = '';
+  /** Attempts grouped by objective ref; stable arrays so bindings do not churn. */
+  private attemptsByRef = new Map<string, Detection[]>();
+  private readonly noAttempts: Detection[] = [];
   svgZones: SvgZone[] = [];
   svgNodes: SvgNode[] = [];
   viewBox = '0 0 800 400';
   private poll: ReturnType<typeof setInterval> | null = null;
+
+  isDetection(o: ObjectiveRow): boolean {
+    return isDetectionObjective(o.validator);
+  }
+
+  attemptsFor(refId: string): Detection[] {
+    return this.attemptsByRef.get(refId) ?? this.noAttempts;
+  }
+
+  /** After a detection outcome: reload objectives, score and attempts from the server. */
+  refresh(): void {
+    this.api.get<ScenarioDetail>(`/exercises/${this.id}/scenario-detail`).subscribe({
+      next: d => (this.detail = d),
+      error: () => {},
+    });
+    this.loadDetections();
+  }
+
+  private loadDetections(): void {
+    this.api.listDetections(this.id).subscribe({
+      next: rows => {
+        const byRef = new Map<string, Detection[]>();
+        for (const r of rows) byRef.set(r.objective_ref, [...(byRef.get(r.objective_ref) ?? []), r]);
+        this.attemptsByRef = byRef;
+      },
+      // Leave the last known list rather than claiming there were no attempts.
+      error: () => {},
+    });
+  }
 
   iconFor(t: string): string {
     return NODE_ICON[t] ?? '•';
@@ -318,6 +392,7 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.id = this.route.snapshot.paramMap.get('id') ?? '';
     this.load();
+    this.loadDetections();
   }
 
   protected retry(): void {
@@ -349,8 +424,16 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
           }
         }
         if (d.state === 'running' && !this.poll) this.startPolling();
+        this.loadInjects();
       },
       error: () => (this.error = 'Exercise not found.'),
+    });
+  }
+
+  private loadInjects(): void {
+    this.api.listInjects(this.id).subscribe({
+      next: rows => (this.injects = rows),
+      error: () => {},
     });
   }
 
@@ -374,6 +457,7 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
       this.api.get<ScenarioDetail>(`/exercises/${this.id}/scenario-detail`).subscribe({
         next: d => {
           this.detail = d;
+          this.loadInjects();
           if (d.state === 'completed' || d.state === 'cancelled') {
             this.running = false;
             if (this.poll) { clearInterval(this.poll); this.poll = null; }

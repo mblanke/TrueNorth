@@ -2,6 +2,13 @@
 
 DB-backed CRUD for AI backends, fleet nodes, model routing,
 real test-generate via configured backends, and fleet summary.
+
+Tenancy: AI configuration is platform-wide, not per tenant. There is one primary
+backend for the whole platform (``test_generate`` and ``set_primary_backend`` act
+across every row), fleet nodes and model routes carry no tenant at all, the seeded
+default backend has a NULL ``tenant_id`` and nothing here ever sets one. The whole
+router needs ``ai_config:write``, which only ``admin`` (the TN-Platform-Admins group)
+holds. ``AIBackendConfig.tenant_id`` is an unused column; reviewed 2026-10-07.
 """
 
 from __future__ import annotations
@@ -20,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from ..ai_backends import get_ai_engine
 from ..db import get_db
+from ..delete_guard import commit_delete
 from ..models import AIBackendConfig, AIFleetNode, AIModelRoute
 from ..rbac import Permission, require_permission
 from ..schemas import (
@@ -39,6 +47,15 @@ logger = logging.getLogger("truenorth.api.ai_config")
 #
 # Every route here was previously reachable with no credentials at all.
 router = APIRouter(prefix="/ai-config", tags=["AI Orchestrator"], dependencies=[Depends(require_permission(Permission.AI_CONFIG_WRITE))])
+
+
+def _backend(db: Session, backend_id: uuid.UUID) -> AIBackendConfig:
+    # tenant-safe: platform-wide config behind a platform-admin-only router (module
+    # docstring); there is no tenant predicate to apply.
+    backend = db.get(AIBackendConfig, str(backend_id))
+    if not backend:
+        raise HTTPException(404, "Backend not found")
+    return backend
 
 
 # -- Backends CRUD -------------------------------------------------------
@@ -67,17 +84,13 @@ def create_backend(payload: AIBackendConfigIn, db: Session = Depends(get_db)):
 
 @router.get("/backends/{backend_id}", response_model=AIBackendConfigOut)
 def get_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
     return backend
 
 
 @router.patch("/backends/{backend_id}", response_model=AIBackendConfigOut)
 def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Session = Depends(get_db)):
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "api_key":
             backend.api_key_encrypted = value
@@ -90,19 +103,23 @@ def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Se
 
 @router.delete("/backends/{backend_id}", status_code=204, response_class=Response)
 def delete_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    """Delete a backend with its fleet nodes and the model routes that point at it.
+
+    Nodes and routes have no use without their backend, so they go with it."""
+    backend = _backend(db, backend_id)
+    # tenant-safe: platform-wide config (module docstring).
+    db.query(AIModelRoute).filter(AIModelRoute.backend_id == backend.id).delete(synchronize_session=False)
+    db.query(AIFleetNode).filter(AIFleetNode.backend_id == backend.id).delete(synchronize_session=False)
+    db.flush()
+    db.expire(backend, ["fleet_nodes"])
     db.delete(backend)
-    db.commit()
+    commit_delete(db, "AI backend")
 
 
 # -- Set Primary ---------------------------------------------------------
 @router.post("/backends/{backend_id}/set-primary")
 def set_primary_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
     for other in db.query(AIBackendConfig).filter(AIBackendConfig.id != str(backend_id)).all():
         other.is_primary = False
     backend.is_primary = True
@@ -131,9 +148,7 @@ def add_fleet_node(
     db: Session = Depends(get_db),
 ):
     """Add a GPU/inference node to a backend.  Accepts JSON body."""
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    _backend(db, backend_id)  # 404 on an unknown backend
     node = AIFleetNode(
         backend_id=str(backend_id),
         node_name=payload.node_name,
@@ -213,9 +228,7 @@ KNOWN_OLLAMA_NODES = [
 @router.post("/backends/{backend_id}/discover")
 def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
     """Scan known Ollama nodes on the LAN, upsert fleet node records, and return results."""
-    backend = db.get(AIBackendConfig, str(backend_id))
-    if not backend:
-        raise HTTPException(404, "Backend not found")
+    backend = _backend(db, backend_id)
 
     # The adapter decides what to probe: OpenAI-compatible engines (LiteLLM/vLLM)
     # serve models at the backend base_url, Ollama per LAN node. Unknown types

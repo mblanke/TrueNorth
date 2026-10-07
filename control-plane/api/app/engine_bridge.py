@@ -87,8 +87,26 @@ def validate_yaml(schema_name: str, yaml_text: str) -> dict[str, Any]:
         {"path": ".".join(str(p) for p in err.absolute_path), "message": err.message}
         for err in Draft7Validator(schema).iter_errors(parsed)
     ]
+    if schema_name == "scenario":
+        errors += _unrendered_query_errors(parsed)
     errors.sort(key=lambda e: e["path"])
     return {"valid": not errors, "errors": errors, "normalized": parsed}
+
+
+def _unrendered_query_errors(scenario: dict[str, Any]) -> list[dict[str, str]]:
+    """An objective query whose ``{{ name }}`` has no value in ``variables:`` can never match."""
+    from .detections.templating import render, unresolved
+
+    variables = scenario.get("variables") if isinstance(scenario.get("variables"), dict) else {}
+    errors = []
+    for i, obj in enumerate(scenario.get("objectives") or []):
+        query = (obj.get("params") or {}).get("query") if isinstance(obj, dict) else None
+        if isinstance(query, str) and (names := unresolved(render(query, variables))):
+            errors.append({
+                "path": f"objectives.{i}.params.query",
+                "message": f"undefined variable(s) {', '.join(names)}: add them under variables:",
+            })
+    return errors
 
 
 @lru_cache(maxsize=1)
@@ -119,5 +137,9 @@ def injector_catalogue() -> list[dict[str, Any]]:
             "description": getattr(inst, "description", "") or "",
             "required_params": list(getattr(inst, "required_params", []) or []),
             "mitre_techniques": sorted(set(technique_map.values())),
+            # Contract flags (docs/scenario-inject-execution.md): an injector that touches
+            # range hosts is recorded "skipped" on the mock backend instead of run.
+            "touches_range_hosts": bool(getattr(inst, "touches_range_hosts", True)),
+            "execution_mode": str(getattr(inst, "execution_mode", "simulated")),
         })
     return catalogue

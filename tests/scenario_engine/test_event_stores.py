@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import inspect
 from pathlib import Path
 
+import certifi
 import httpx
 import pytest
 import respx
@@ -15,10 +17,11 @@ from scenario_engine.event_stores import (
     BaseEventStore,
     NullEventStore,
     OpenSearchEventStore,
+    event_store_from_env,
     get_event_store,
 )
 from scenario_engine.scoring.engine import ScoringEngine
-from scenario_engine.scoring.validators import ScoringValidator
+from scenario_engine.scoring.validators import ScoringValidator, UnscoredError
 from scenario_engine.validators.opensearch_query import OpenSearchQueryValidator
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -105,13 +108,63 @@ def test_scoring_validator_opensearch_url_still_works():
     assert ok is True
 
 
-def test_store_outage_means_not_achieved_not_a_crash():
-    class Down(BaseEventStore):
-        async def search(self, index, query, size=20):
-            raise ConnectionError("down")
+class _Down(BaseEventStore):
+    async def search(self, index, query, size=20):
+        raise ConnectionError("down")
 
-    ok, evidence = asyncio.run(ScoringValidator.validate("opensearch_query", {"query": "a:b"}, event_store=Down()))
-    assert (ok, evidence) == (False, [])
+
+def test_store_outage_is_unscored_not_failed():
+    # An outage must never read as "the Student did not detect it".
+    with pytest.raises(UnscoredError, match="unavailable"):
+        asyncio.run(ScoringValidator.validate("opensearch_query", {"query": "a:b"}, event_store=_Down()))
+
+
+def test_engine_reports_an_outage_as_unscored():
+    eng = ScoringEngine(
+        "ex-1",
+        [{"id": "o1", "name": "o1", "max_points": 10, "validation_method": "opensearch_query",
+          "validation_config": {"query": "a:b"}}],
+        event_store=_Down(),
+    )
+    result = asyncio.run(eng.evaluate())
+    assert result.objectives == [] and result.total_score == 0
+    assert "unavailable" in result.unscored["o1"]
+
+
+@pytest.mark.parametrize(
+    ("config", "reason"),
+    [
+        ({}, "no query"),  # never match_all
+        ({"query": ""}, "no query"),
+        ({"query": "a:b", "threshold": "lots"}, "not an integer"),
+    ],
+)
+def test_unjudgeable_objectives_are_unscored(config, reason):
+    with pytest.raises(UnscoredError, match=reason):
+        asyncio.run(ScoringValidator.validate("opensearch_query", config, event_store=NullEventStore(EVENTS)))
+
+
+@pytest.mark.parametrize("threshold", [0, -3])
+def test_threshold_below_one_still_needs_an_event(threshold):
+    cfg = {"query": "process_name:mimikatz.exe", "threshold": threshold}
+    ok, _ = asyncio.run(ScoringValidator.validate("opensearch_query", cfg, event_store=NullEventStore(EVENTS)))
+    assert ok is False
+
+
+@respx.mock
+def test_opensearch_store_sends_basic_auth_from_env(monkeypatch):
+    monkeypatch.setenv("EVENT_STORE", "opensearch")
+    monkeypatch.setenv("OPENSEARCH_URL", OS)
+    monkeypatch.setenv("OPENSEARCH_USER", "scorer")
+    monkeypatch.setenv("OPENSEARCH_PASS", "s3cret")
+    monkeypatch.setenv("OPENSEARCH_VERIFY_SSL", certifi.where())  # a CA bundle path
+    route = respx.post(f"{OS}/range-1/_search").mock(
+        return_value=httpx.Response(200, json={"hits": {"total": {"value": 0}, "hits": []}})
+    )
+    store = event_store_from_env()
+    assert store.verify_ssl == certifi.where()
+    asyncio.run(store.search("range-1", "a:b"))
+    assert route.calls.last.request.headers["authorization"] == "Basic " + base64.b64encode(b"scorer:s3cret").decode()
 
 
 def test_scoring_engine_threads_the_store_through():

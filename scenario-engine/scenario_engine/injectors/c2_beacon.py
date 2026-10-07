@@ -29,6 +29,7 @@ class C2BeaconInjector(BaseInjector):
         "Simulates C2 communication patterns: HTTP beaconing, DNS tunnelling, and HTTPS C2 with configurable jitter."
     )
     required_params: list[str] = ["c2_type", "target_host"]
+    touches_range_hosts = False  # synthetic records only; safe on the mock backend
 
     _C2_TYPES = ("http_beacon", "dns_tunnel", "https_jitter")
 

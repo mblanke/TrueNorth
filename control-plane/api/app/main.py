@@ -18,20 +18,31 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from . import range_leases, range_ops, ws_auth  # noqa: F401 — range_leases, range_ops: register their tables
+from . import (  # noqa: F401 — network_inventory, noise, range_leases, range_ops, scenario_runs: register tables
+    network_inventory,
+    noise,
+    range_leases,
+    range_ops,
+    scenario_runs,
+    ws_auth,
+)
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
+from .greyspace import models as _greyspace_models  # noqa: F401 — registers range_greyspace
 from .log_format import configure_logging
 from .models import Range, Tenant, User, UserRole
 from .rbac import Permission, require_permission
+from .scheduler import clock as scheduler_clock
 from .schemas import HealthOut
 from .search_backends import get_search_backend
+from .search_backends.query import MAX_QUERY_LENGTH, QueryError, parse_query
+from .telemetry_mitre import tag_event
 from .tenancy import get_owned
 from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
 
@@ -73,6 +84,12 @@ async def lifespan(app: FastAPI):
         from .lab_sessions.runner import loop as lab_loop
 
         lab_sweep = asyncio.create_task(lab_loop())
+    # Real-backend exercises end when their scenario's duration runs out (ADR 0005 §6).
+    exercise_clock = None
+    if os.getenv("EXERCISE_CLOCK", "true").lower() == "true":
+        from .exercise_completion import loop as exercise_loop
+
+        exercise_clock = asyncio.create_task(exercise_loop())
 
     # Range operations the broker did not take (down, or a process that died between
     # the commit and the send) are re-sent (app/range_ops). One sender per operation.
@@ -81,6 +98,8 @@ async def lifespan(app: FastAPI):
 
     interval = redispatch_interval()
     range_resend = asyncio.create_task(redispatch_loop(SessionLocal, interval)) if interval > 0 else None
+    # Moves bookings along as time passes (docs/adr/0004-scheduler-module.md).
+    clock_task = asyncio.create_task(scheduler_clock.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
 
     # WebSocket heartbeat (no Redis): drops dead sockets and closes those whose token has
     # expired (app/ws_auth.py). Nothing started it before, so a socket outlived its user.
@@ -89,10 +108,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if range_resend is not None:
-        range_resend.cancel()
-    if lab_sweep is not None:
-        lab_sweep.cancel()
+    for sweep in (range_resend, lab_sweep, exercise_clock, clock_task):
+        if sweep is not None:
+            sweep.cancel()
 
     # Graceful shutdown of any started subsystems
     ws_mgr = getattr(app.state, "ws_manager", None)
@@ -177,6 +195,11 @@ app = FastAPI(
     servers=[{"url": SERVER_PREFIX}],
 )
 
+# -- 422s that survive NaN/Infinity input (app/validation_errors.py) --------
+from .validation_errors import install as install_validation_errors  # noqa: E402
+
+install_validation_errors(app)
+
 # -- CORS ------------------------------------------------------------------
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:4200,http://localhost:3000").split(",")
 app.add_middleware(
@@ -240,10 +263,12 @@ from .routers import (
     courses_router,
     curriculum_router,
     detection_rules_router,
+    detections_router,
     directory_router,
     exercise_forge_router,
     exercises_router,
     golden_images_router,
+    greyspace_router,
     hypervisors_router,
     injectors_router,
     integrations_router,
@@ -252,6 +277,8 @@ from .routers import (
     learning_paths_router,
     lti_router,
     network_devices_router,
+    noise_router,
+    notifications_router,
     onboarding_router,
     ops_center_router,
     proxmox_router,
@@ -259,13 +286,18 @@ from .routers import (
     quizzes_router,
     ranges_router,
     registration_router,
+    scenario_executions_router,
     scenarios_router,
-    scheduling_router,
     storage_router,
     templates_router,
     threat_intel_router,
+    tickets_router,
     transcript_router,
+    wiki_router,
 )
+from .scheduler.router import feed_router as scheduling_feed_router  # noqa: E402
+from .scheduler.router import me_router as scheduling_me_router  # noqa: E402
+from .scheduler.router import router as scheduling_router  # noqa: E402
 
 # Identity intake. Registration is mounted first because /auth/me is the one
 # endpoint reachable without a users row — it is how the SPA learns whether the
@@ -276,14 +308,19 @@ app.include_router(onboarding_router)
 # Core routers
 app.include_router(ranges_router)
 app.include_router(exercises_router)
+app.include_router(detections_router)
 app.include_router(collective_exercises_router)
 app.include_router(templates_router)
 app.include_router(scenarios_router)
+app.include_router(scenario_executions_router)
 app.include_router(injectors_router)
+app.include_router(noise_router)
 app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)
-app.include_router(scheduling_router)
+app.include_router(scheduling_router)  # app/scheduler (ADR 0004)
+app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
+app.include_router(scheduling_me_router)  # your own sessions and feed link
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(course_releases_router)
@@ -318,6 +355,12 @@ app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
+# Greyspace: a simulated internet attached to a range (ADR 0007)
+app.include_router(greyspace_router)
+# Knowledge base, trouble tickets ("Support") and the in-app notification bell
+app.include_router(wiki_router)
+app.include_router(tickets_router)
+app.include_router(notifications_router)
 
 # -- API versioning: /api/v1/... -> canonical route (docs/adr/0002) ---------
 # Added last so it is the outermost middleware: rate limiting, metrics and tracing all
@@ -481,7 +524,9 @@ async def ingest_telemetry(
     """Ingest telemetry events into a range's index.  **Permission: telemetry:write**
 
     The range must belong to the caller's tenant (404 otherwise). Students cannot write:
-    detection objectives are scored against this index.
+    detection objectives are scored against this index. Each event is stored with a
+    ``mitre_technique`` list when one is known: its own ``mitre_technique`` /
+    ``technique_id`` if that is an ATT&CK ID, else one mapped from ``event_type``.
     """
     get_owned(db, Range, range_id, user, not_found="Range not found")
     index = f"range-{range_id}"
@@ -490,6 +535,7 @@ async def ingest_telemetry(
         event["tenant_id"] = user.tenant_id
         if "@timestamp" not in event:
             event["@timestamp"] = datetime.now(UTC).isoformat()
+        tag_event(event)  # mitre_technique, from the event or its event_type
     accepted = await get_search_backend().ingest(index, events)
     return {"accepted": accepted}
 
@@ -497,12 +543,25 @@ async def ingest_telemetry(
 @app.get("/telemetry/{range_id}/search", tags=["telemetry"])
 async def search_telemetry(
     range_id: uuid.UUID,
-    q: str = Query("*", description="OpenSearch query string"),
-    size: int = Query(50, le=500),
+    q: str = Query(
+        "*",
+        max_length=MAX_QUERY_LENGTH,
+        description="field:value, field:\"a phrase\", field:prefix*, field:* (exists) and free text, ANDed",
+    ),
+    size: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise)."""
+    """Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+
+    ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
+    ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
+    A query outside it is a 422.
+    """
     get_owned(db, Range, range_id, user, not_found="Range not found")
+    try:
+        parse_query(q)
+    except QueryError as exc:
+        raise HTTPException(422, f"Invalid search query: {exc}") from exc
     index = f"range-{range_id}"
     return await get_search_backend().search(index, q, size)

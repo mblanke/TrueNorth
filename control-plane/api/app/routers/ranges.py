@@ -22,6 +22,7 @@ POST   /ranges/{range_id}/start      RANGE_PROVISION
 GET    /ranges/{range_id}/operations RANGE_READ
 GET    /ranges/{range_id}/operations/{operation_id}            RANGE_READ
 POST   /ranges/{range_id}/operations/{operation_id}/abandon    RANGE_DESTROY
+GET    /ranges/{range_id}/network-reservations                  RANGE_READ
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
 """
@@ -43,18 +44,18 @@ from .. import object_store, range_ops
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import (
-    EventState,
     Exercise,
     ExerciseState,
     Range,
     RangeDocument,
     RangeSnapshot,
     RangeState,
-    ScheduledEvent,
     Template,
 )
+from ..network_inventory import NetworkReservation, NetworkReservationOut
 from ..range_ops import service as ops
 from ..rbac import Permission, require_permission, user_has_permission
+from ..scheduler import service as scheduler
 from ..schemas import (
     BatchProvisionIn,
     BatchProvisionOut,
@@ -81,6 +82,7 @@ def _audit(db: Session, user: CurrentUser, action: str, resource_type: str, reso
     db.add(
         AuditLog(
             user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
@@ -169,7 +171,6 @@ _SNAPSHOT_BUSY = ("creating", "restoring")
 # Snapshot rows go with it: on a destroyed range their hypervisor copies went with
 # the VMs. So do its documents, rows and stored bytes.
 _DELETABLE_RANGE_STATES = (RangeState.created, RangeState.destroyed)
-_RESERVING_EVENT_STATES = (EventState.draft, EventState.scheduled, EventState.active)
 
 
 def _refuse_while_restoring(db: Session, range_id: uuid.UUID) -> None:
@@ -303,15 +304,10 @@ def delete_range(
     if exercises:
         raise HTTPException(409, f"Range has {exercises} exercise(s) on record and is kept as part of their history")
     # tenant-safe: as above.
-    events = db.query(ScheduledEvent.id).filter(
-        ScheduledEvent.range_id == range_id, ScheduledEvent.state.in_(_RESERVING_EVENT_STATES)
-    )
-    if reserved := events.count():
+    if reserved := scheduler.reserving_event_count(db, range_id):
         raise HTTPException(409, f"Range is reserved by {reserved} scheduled event(s); cancel them first")
     # Completed and cancelled events are history: they keep their row, without the range.
-    db.query(ScheduledEvent).filter(ScheduledEvent.range_id == range_id).update(
-        {ScheduledEvent.range_id: None}, synchronize_session=False
-    )
+    scheduler.detach_range(db, range_id)
 
     # Snapshots and documents cascade with the range (Range.snapshots/.documents).
     # The documents' stored bytes do not, so note them for removal after the commit.
@@ -668,6 +664,23 @@ def abandon_range_operation(
     _audit(db, user, "abandon_operation", "range", str(rng.id), f"operation {op.id}")
     db.commit()
     return op
+
+
+@router.get("/{range_id}/network-reservations", response_model=list[NetworkReservationOut])
+def list_network_reservations(
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
+) -> list[NetworkReservation]:
+    """Addresses and VLANs this range holds on shared networks (app/network_inventory/).
+    **Permission: range:read**"""
+    rng = _tenant_range(db, range_id, user)
+    return (
+        db.query(NetworkReservation)
+        .filter(NetworkReservation.range_id == rng.id, NetworkReservation.tenant_id == rng.tenant_id)
+        .order_by(NetworkReservation.kind, NetworkReservation.holder)
+        .all()
+    )
 
 
 @router.post("/batch-provision", response_model=BatchProvisionOut, status_code=202)

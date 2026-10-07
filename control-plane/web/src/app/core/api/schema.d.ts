@@ -208,7 +208,12 @@ export interface paths {
         get: operations["get_backend_ai_config_backends__backend_id__get"];
         put?: never;
         post?: never;
-        /** Delete Backend */
+        /**
+         * Delete Backend
+         * @description Delete a backend with its fleet nodes and the model routes that point at it.
+         *
+         *     Nodes and routes have no use without their backend, so they go with it.
+         */
         delete: operations["delete_backend_ai_config_backends__backend_id__delete"];
         options?: never;
         head?: never;
@@ -438,6 +443,10 @@ export interface paths {
         /**
          * List Audit Log
          * @description Query the audit log.  **Permission: audit:read**
+         *
+         *     Scoped to the caller's tenant. A caller who also holds the platform-level
+         *     ``tenant:read`` (the platform admin, who already lists every tenant) sees every
+         *     tenant's entries, including legacy rows written before writers recorded a tenant.
          */
         get: operations["list_audit_log_audit_log_get"];
         put?: never;
@@ -979,7 +988,7 @@ export interface paths {
         put?: never;
         /**
          * Create Course
-         * @description Create a new course with optional ordered modules.
+         * @description Create a new course with optional ordered modules.  **Permission: course:author**
          */
         post: operations["create_course_courses_post"];
         delete?: never;
@@ -1000,6 +1009,8 @@ export interface paths {
         /**
          * Generate Programme Paths
          * @description Build unpublished LearningPaths for the imported programme, term by term.
+         *
+         *     **Permission: course:author** (was: any signed-in user).
          *
          *     Delivery schedule only. These paths carry no qualification claim and are separate
          *     from the CFITES developmental paths generated from the QSP spine.
@@ -1024,6 +1035,8 @@ export interface paths {
          * Import Course Content
          * @description Upload an authored course YAML and attach its modules/quizzes (idempotent).
          *
+         *     **Permission: course:author** (was: any signed-in user).
+         *
          *     The course must already exist in the programme catalogue. Everything created
          *     here is unpublished.
          */
@@ -1046,6 +1059,8 @@ export interface paths {
         /**
          * Import Programme
          * @description Upload a programme catalogue CSV and upsert its courses (idempotent).
+         *
+         *     **Permission: course:author** (was: any signed-in user).
          *
          *     Courses are created unpublished and, unless the row names a real ``qsp_code``,
          *     unbound from the qualification spine. See ``programme_ingest`` for why.
@@ -1073,14 +1088,20 @@ export interface paths {
         post?: never;
         /**
          * Delete Course
-         * @description Delete a course and its modules.
+         * @description Delete a course and its modules.  **Permission: course:author**
+         *
+         *     409 while it has enrollments, releases or publications: Student records and
+         *     what was published are history (unpublish the course instead); also while a
+         *     scheduled event not yet completed or cancelled books it (finished ones keep their
+         *     row without the course). Module content links go with the modules; quizzes are
+         *     kept, detached from them.
          */
         delete: operations["delete_course_courses__course_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Course
-         * @description Update course metadata.
+         * @description Update course metadata.  **Permission: course:author**
          */
         patch: operations["update_course_courses__course_id__patch"];
         trace?: never;
@@ -1472,7 +1493,10 @@ export interface paths {
         get: operations["get_group_directory_groups__group_id__get"];
         put?: never;
         post?: never;
-        /** Delete Group */
+        /**
+         * Delete Group
+         * @description Delete a security group and its memberships (they mean nothing without it).
+         */
         delete: operations["delete_group_directory_groups__group_id__delete"];
         options?: never;
         head?: never;
@@ -1594,7 +1618,10 @@ export interface paths {
         get: operations["get_ou_directory_ous__ou_id__get"];
         put?: never;
         post?: never;
-        /** Delete Ou */
+        /**
+         * Delete Ou
+         * @description Delete an OU.  409 while sub-OUs, security groups or teams sit under it.
+         */
         delete: operations["delete_ou_directory_ous__ou_id__delete"];
         options?: never;
         head?: never;
@@ -1811,6 +1838,9 @@ export interface paths {
         /**
          * Get Aar Html
          * @description Retrieve AAR as rendered HTML.  **Permission: aar:read**
+         *
+         *     Rendered from the stored report JSON on every read, so reports written by the worker
+         *     or before this renderer existed get the full page and are escaped the same way.
          */
         get: operations["get_aar_html_exercises__exercise_id__aar_html_get"];
         put?: never;
@@ -1832,7 +1862,8 @@ export interface paths {
          * Get Aar Pdf
          * @description Retrieve AAR as downloadable PDF.  **Permission: aar:read**
          *
-         *     Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps).
+         *     Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps). Its core
+         *     fonts are latin-1 only; text outside it is transliterated (``aar_html.pdf_text``).
          */
         get: operations["get_aar_pdf_exercises__exercise_id__aar_pdf_get"];
         put?: never;
@@ -1855,8 +1886,52 @@ export interface paths {
         /**
          * Complete Exercise
          * @description Complete an exercise and tally scores.  **Permission: exercise:complete**
+         *
+         *     Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
+         *     and to every Student who submitted a detection in this run (app/exercise_completion).
          */
         post: operations["complete_exercise_exercises__exercise_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercises/{exercise_id}/detections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Detections
+         * @description Detection attempts on an exercise: a Student's own; every attempt for staff.  **Permission: exercise:read**
+         */
+        get: operations["list_detections_exercises__exercise_id__detections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercises/{exercise_id}/injects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Injects
+         * @description What each inject did (timeline and instructor), oldest first, every run kept.
+         *     **Permission: exercise:read**
+         */
+        get: operations["list_injects_exercises__exercise_id__injects_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1873,6 +1948,10 @@ export interface paths {
         /**
          * List Objectives
          * @description List objectives for an exercise.  **Permission: exercise:read**
+         *
+         *     Own-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this
+         *     listed any tenant's objectives, validators and evidence by exercise id). Students
+         *     get evidence with the answer key redacted (ADR 0005).
          */
         get: operations["list_objectives_exercises__exercise_id__objectives_get"];
         put?: never;
@@ -1894,9 +1973,34 @@ export interface paths {
         put?: never;
         /**
          * Acknowledge Objective
-         * @description Acknowledge (achieve) an objective.  **Permission: exercise:complete**
+         * @description Acknowledge (achieve) an objective on a running or paused exercise in the caller's
+         *     tenant, recording who acknowledged it, and re-total the exercise score.
+         *
+         *     **Permission: objective:ack** (instructors and admins; never Students).
+         *     404 if the exercise is not in the caller's tenant or the objective does not exist;
+         *     409 if the exercise is not running/paused or the objective is already achieved.
          */
         post: operations["acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercises/{exercise_id}/objectives/{ref_id}/detections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Detection
+         * @description Submit a detection for an objective; it is credited if it finds the attack.  **Permission: detection:submit**
+         */
+        post: operations["submit_detection_exercises__exercise_id__objectives__ref_id__detections_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2076,6 +2180,27 @@ export interface paths {
         patch: operations["update_image_golden_images__image_id__patch"];
         trace?: never;
     };
+    "/greyspace/corpora": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Corpora
+         * @description The corpus tiers (T0 CI fixture, T1 Mac sample, T2 lab, full) and what the control
+         *     plane can read of each one's manifest.
+         */
+        get: operations["greyspace_list_corpora"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -2165,7 +2290,13 @@ export interface paths {
         get: operations["get_connection_hypervisors_connections__conn_id__get"];
         put?: never;
         post?: never;
-        /** Delete Connection */
+        /**
+         * Delete Connection
+         * @description Delete a connection with the hosts and pools discovered through it.
+         *
+         *     Those rows are inventory read from the hypervisor, with no meaning once the
+         *     connection is gone, so they go with it.
+         */
         delete: operations["delete_connection_hypervisors_connections__conn_id__delete"];
         options?: never;
         head?: never;
@@ -2267,8 +2398,9 @@ export interface paths {
         };
         /**
          * List All Nodes
-         * @description Every discovered host across all connections, as last discovered. Read-only; the
-         *     dashboard's cluster panel. No hypervisor is contacted — run discovery to refresh.
+         * @description Every discovered host across the caller's tenant's connections, as last discovered.
+         *     Read-only; the dashboard's cluster panel. No hypervisor is contacted — run discovery to
+         *     refresh.
          */
         get: operations["list_all_nodes_hypervisors_nodes_get"];
         put?: never;
@@ -2420,6 +2552,10 @@ export interface paths {
         /**
          * Deregister Platform
          * @description Remove a registered platform.
+         *
+         *     409 while Student activity records synced from it, or course publications to it,
+         *     exist: those are history (deactivate the platform instead). Its LTI nonces and
+         *     launches only serve talking to the platform, so they go with it.
          */
         delete: operations["deregister_platform_integrations_platforms__platform_id__delete"];
         options?: never;
@@ -2736,7 +2872,7 @@ export interface paths {
         put?: never;
         /**
          * Create Learning Path
-         * @description Create a learning path (ordered sequence of courses).
+         * @description Create a learning path (ordered sequence of courses).  **Permission: course:author**
          */
         post: operations["create_learning_path_learning_paths_post"];
         delete?: never;
@@ -2761,14 +2897,17 @@ export interface paths {
         post?: never;
         /**
          * Delete Learning Path
-         * @description Delete a learning path.
+         * @description Delete a learning path.  **Permission: course:author**
+         *
+         *     409 while a registration request names it: the request records what the person
+         *     asked to join (unpublish the path instead).
          */
         delete: operations["delete_learning_path_learning_paths__lp_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Learning Path
-         * @description Update a learning path.
+         * @description Update a learning path.  **Permission: course:author**
          */
         patch: operations["update_learning_path_learning_paths__lp_id__patch"];
         trace?: never;
@@ -2985,6 +3124,338 @@ export interface paths {
         head?: never;
         /** Update Device */
         patch: operations["update_device_network_devices__device_id__patch"];
+        trace?: never;
+    };
+    "/noise/agent/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Plan
+         * @description The calling node's actions for the next ``minutes``. Doubles as the heartbeat.
+         *
+         *     Each action is signed; ``lookalike`` is withheld (the agent has no use for it, and a
+         *     stolen token should not learn which upcoming activity is cover).
+         */
+        get: operations["agent_plan_noise_agent_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/agent/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Agent Report
+         * @description Record what the agent did. Only signed, planned actions are accepted; each is
+         *     recorded once. ``lookalike`` is derived from the kind, never taken from the agent.
+         */
+        post: operations["agent_report_noise_agent_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Presets
+         * @description The named dial positions and the activity vocabulary.
+         */
+        get: operations["presets_noise_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profile
+         * @description The range's noise settings (defaults, ``configured: false``, if none yet).
+         */
+        get: operations["get_profile_noise_ranges__range_id__get"];
+        /**
+         * Put Profile
+         * @description Create or change the range's noise settings: the dial, ``enabled`` (start/stop),
+         *     ``paused``, per-node or per-zone overrides, and target pools. Only the fields sent
+         *     change.
+         */
+        put: operations["put_profile_noise_ranges__range_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Activity
+         * @description Ground truth, newest first. Which events on the wire were synthetic.
+         */
+        get: operations["list_activity_noise_ranges__range_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agents
+         * @description The range's live (not revoked) agents and whether they are polling.
+         */
+        get: operations["list_agents_noise_ranges__range_id__agents_get"];
+        put?: never;
+        /**
+         * Register Agents
+         * @description Register (or re-key) agents. Each token is returned once and never again.
+         *
+         *     Re-registering an existing node issues a fresh token and invalidates the old one,
+         *     which is also how a compromised token is rotated.
+         */
+        post: operations["register_agents_noise_ranges__range_id__agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Agent
+         * @description Revoke an agent's token. Its ground truth is kept for the AAR.
+         */
+        delete: operations["revoke_agent_noise_ranges__range_id__agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deploy
+         * @description Put noise on a provisioned range, from its template's ``noise:`` block.
+         *
+         *     Derives the target pools from the template's servers, registers an agent on every
+         *     agent node (fresh tokens), creates the built-in roster if there is none, and hands
+         *     the worker an Ansible run that installs the agent over the management network.
+         *     ``dry_run`` shows all of that without changing anything.
+         *
+         *     Windows nodes are listed under ``skipped`` until the Windows agent exists.
+         */
+        post: operations["deploy_noise_ranges__range_id__deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/personas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Personas
+         * @description The synthetic people whose routines make the range's noise.
+         */
+        get: operations["list_personas_noise_ranges__range_id__personas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/personas/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Roster
+         * @description Fill the range with the built-in roster, spread over the registered agents' nodes.
+         */
+        post: operations["generate_roster_noise_ranges__range_id__personas_roster_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Plan
+         * @description What ``node``'s agent will be told to do next — the same plan the agent gets.
+         */
+        get: operations["preview_plan_noise_ranges__range_id__plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/noise/ranges/{range_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity Stats
+         * @description Counts over the last ``minutes``: actions by kind, failures, lookalikes, agents by state.
+         */
+        get: operations["activity_stats_noise_ranges__range_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark All Read */
+        post: operations["mark_all_read_notifications_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unread Count */
+        get: operations["unread_count_notifications_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Read */
+        post: operations["mark_read_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/onboarding/complete": {
@@ -3853,6 +4324,8 @@ export interface paths {
         /**
          * Generate Exercises
          * @description Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).
+         *
+         *     **Permission: course:author and exercise:create.**
          */
         post: operations["generate_exercises_qsp_generate_exercises_post"];
         delete?: never;
@@ -3873,6 +4346,8 @@ export interface paths {
         /**
          * Generate Learning Paths
          * @description Build per-PO courses, qualification paths, role paths, and the developmental progression.
+         *
+         *     **Permission: course:author.**
          */
         post: operations["generate_learning_paths_qsp_generate_learning_paths_post"];
         delete?: never;
@@ -3893,6 +4368,9 @@ export interface paths {
         /**
          * Import Competency Crosswalk
          * @description Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).
+         *
+         *     **Permission: course:author + tenant:read** — platform admin only; it rewrites the
+         *     shared spine's PO links (see ``SPINE_WRITE``).
          *
          *     Upload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.
          */
@@ -3915,6 +4393,9 @@ export interface paths {
         /**
          * Import Crosswalk
          * @description Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).
+         *
+         *     **Permission: course:author + tenant:read** — platform admin only (was: any
+         *     signed-in user, Students included). See ``SPINE_WRITE``.
          */
         post: operations["import_crosswalk_qsp_import_crosswalk_post"];
         delete?: never;
@@ -4421,6 +4902,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/greyspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description The range's Greyspace block and its status (``not_attached`` when there is none).
+         */
+        get: operations["greyspace_get_status"];
+        /**
+         * Attach
+         * @description Attach a Greyspace block to the range, or replace the one it has. With no body, the
+         *     block the range's template declares is used, else the defaults (T0 corpus, all packs).
+         */
+        put: operations["greyspace_attach"];
+        post?: never;
+        /**
+         * Detach
+         * @description Detach the range's Greyspace block. The shared corpus is untouched.
+         */
+        delete: operations["greyspace_detach"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/greyspace/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config
+         * @description What the range's Greyspace stack is generated to be: address plan, ISPs, services,
+         *     DNS zones and the generated file list.
+         */
+        get: operations["greyspace_get_config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/network-reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Network Reservations
+         * @description Addresses and VLANs this range holds on shared networks (app/network_inventory/).
+         *     **Permission: range:read**
+         */
+        get: operations["list_network_reservations_ranges__range_id__network_reservations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/operations": {
         parameters: {
             query?: never;
@@ -4806,6 +5358,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scenarios/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Scenario
+         * @description Run a scenario's timeline against a ready range.  **Permission: exercise:start**
+         *
+         *     202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.
+         *     422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is
+         *     down (the execution is recorded ``failed``).
+         */
+        post: operations["execute_scenario_scenarios_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenarios/executions/{execution_id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Results
+         * @description State, inject counts and objectives (always ``unassessed``) of an execution.
+         */
+        get: operations["get_execution_results_scenarios_executions__execution_id__results_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scenarios/executions/{execution_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Execution Timeline
+         * @description Each timeline event with its recorded outcome (``pending`` until the worker reaches it).
+         */
+        get: operations["get_execution_timeline_scenarios_executions__execution_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/scenarios/validate": {
         parameters: {
             query?: never;
@@ -4842,6 +5458,9 @@ export interface paths {
         /**
          * Get Scenario
          * @description Retrieve a single scenario.  **Permission: scenario:read**
+         *
+         *     Without scenario:update the YAML is the briefing only: no objective params,
+         *     variables or inject playbook (ADR 0005 §5).
          */
         get: operations["get_scenario_scenarios__scenario_id__get"];
         /**
@@ -4854,7 +5473,12 @@ export interface paths {
          * Delete Scenario
          * @description Delete a scenario.  **Permission: scenario:delete**
          *
-         *     409 while any exercise (including a soft-deleted one) still references it.
+         *     409 while any exercise (including a finished or soft-deleted one, whose AAR still
+         *     reads the scenario) references it. Checked up front (SQLite does not enforce the FK)
+         *     and again at commit, for an exercise created in between. Also 409 while a scheduled
+         *     event not yet completed or cancelled will run it; finished events keep their row
+         *     without the scenario. Scenario executions do not block: they keep their record and
+         *     lose the link.
          */
         delete: operations["delete_scenario_scenarios__scenario_id__delete"];
         options?: never;
@@ -4894,6 +5518,9 @@ export interface paths {
         /**
          * Check if deployment fits
          * @description Check whether a proposed deployment fits within the cluster at the given time.
+         *
+         *     With `template_id`, the need is that template's VM specs. The window includes the
+         *     provisioning lead and teardown grace, exactly as booking it would.
          */
         post: operations["check_capacity_schedule_check_post"];
         delete?: never;
@@ -4911,14 +5538,17 @@ export interface paths {
         };
         /**
          * List scheduled events
-         * @description List all scheduled events, optionally filtered by state.
+         * @description List the caller's tenant's scheduled events, optionally filtered by state and by a
+         *     window they overlap (the calendar's week).
          */
         get: operations["list_events_schedule_events_get"];
         put?: never;
         /**
          * Create a scheduled event
-         * @description Create a new event with resource reservation.  Will reject if it
-         *     would cause an over-commitment.
+         * @description Book a session. Refused with 409 when its range or instructor is already booked
+         *     then. One that does not fit the cluster is refused with 409 (policy `block`) or
+         *     created with warnings (policy `warn`). A draft holds nothing and is checked when it
+         *     is scheduled.
          */
         post: operations["create_event_schedule_events_post"];
         delete?: never;
@@ -4936,10 +5566,17 @@ export interface paths {
         };
         /** Get a scheduled event */
         get: operations["get_event_schedule_events__event_id__get"];
-        /** Update a scheduled event */
+        /**
+         * Update a scheduled event
+         * @description Reschedule or resize a draft or scheduled booking (409 once it is being built).
+         */
         put: operations["update_event_schedule_events__event_id__put"];
         post?: never;
-        /** Cancel/delete event */
+        /**
+         * Cancel an event
+         * @description Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking
+         *     is history, like a completed one.
+         */
         delete: operations["delete_event_schedule_events__event_id__delete"];
         options?: never;
         head?: never;
@@ -4955,8 +5592,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark event as active */
+        /**
+         * Mark event as active
+         * @description scheduled or provisioning -> active.
+         */
         post: operations["activate_event_schedule_events__event_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an event
+         * @description Any state before completed -> cancelled. The row stays as history.
+         */
+        post: operations["cancel_event_schedule_events__event_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4972,8 +5632,136 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark event as completed */
+        /**
+         * Mark event as completed
+         * @description active -> completed.
+         */
         post: operations["complete_event_schedule_events__event_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule a draft
+         * @description draft -> scheduled, checked for conflicts and capacity exactly as a new booking.
+         */
+        post: operations["schedule_event_schedule_events__event_id__schedule_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/feed-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether you have a calendar feed */
+        get: operations["feed_token_status_schedule_feed_token_get"];
+        put?: never;
+        /**
+         * Create or regenerate your calendar feed URL
+         * @description Returns the subscription URL once. Regenerating stops the previous URL working.
+         */
+        post: operations["feed_token_issue_schedule_feed_token_post"];
+        /** Revoke your calendar feed URL */
+        delete: operations["feed_token_revoke_schedule_feed_token_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/feed/{token}.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calendar feed (iCalendar) */
+        get: operations["calendar_feed_schedule_feed__token__ics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your upcoming sessions
+         * @description Sessions you teach, and for Students the sessions of courses they are enrolled in.
+         */
+        get: operations["my_sessions_schedule_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Over-capacity policy
+         * @description `block`: a booking that does not fit is refused for everyone. `warn`: it is
+         *     created, with warnings in the response, and the warning is audit-logged.
+         */
+        get: operations["get_policy_schedule_policy_get"];
+        /**
+         * Set the over-capacity policy (platform admin)
+         * @description Platform-wide, because every tenant books against the same cluster. Audit-logged.
+         */
+        put: operations["put_policy_schedule_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/tick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the scheduler clock now (platform admin)
+         * @description One clock pass, as the background clock runs every minute: provision at the lead,
+         *     activate at the start, complete and tear down after the grace, send reminders.
+         */
+        post: operations["run_tick_schedule_tick_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4989,8 +5777,9 @@ export interface paths {
         };
         /**
          * Resource timeline for capacity planning
-         * @description Return hourly resource commitment buckets for the next N days.
-         *     Used to render the capacity timeline chart in the dashboard.
+         * @description Committed capacity per slot, build and teardown time included, so back-to-back
+         *     sessions are not counted as concurrent at a fine enough resolution. Feeds the
+         *     scheduler's load bars and the Range Ops heatmap.
          */
         get: operations["resource_timeline_schedule_timeline_get"];
         put?: never;
@@ -5029,7 +5818,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete Appliance */
+        /**
+         * Delete Appliance
+         * @description Delete an appliance.  409 while volumes are still recorded on it.
+         */
         delete: operations["delete_appliance_storage_appliances__appliance_id__delete"];
         options?: never;
         head?: never;
@@ -5198,7 +5990,9 @@ export interface paths {
          * @description Ingest telemetry events into a range's index.  **Permission: telemetry:write**
          *
          *     The range must belong to the caller's tenant (404 otherwise). Students cannot write:
-         *     detection objectives are scored against this index.
+         *     detection objectives are scored against this index. Each event is stored with a
+         *     ``mitre_technique`` list when one is known: its own ``mitre_technique`` /
+         *     ``technique_id`` if that is an ATT&CK ID, else one mapped from ``event_type``.
          */
         post: operations["ingest_telemetry_telemetry__range_id__events_post"];
         delete?: never;
@@ -5217,6 +6011,10 @@ export interface paths {
         /**
          * Search Telemetry
          * @description Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+         *
+         *     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
+         *     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
+         *     A query outside it is a 422.
          */
         get: operations["search_telemetry_telemetry__range_id__search_get"];
         put?: never;
@@ -5321,6 +6119,9 @@ export interface paths {
         /**
          * Delete Template
          * @description Delete a template.  **Permission: template:delete**
+         *
+         *     409 while a range built from it exists, or an event not yet completed or
+         *     cancelled reserves it. Its PO mapping goes with it; finished events keep their row without it.
          */
         delete: operations["delete_template_templates__template_id__delete"];
         options?: never;
@@ -5449,6 +6250,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/threat-intel/feeds/{feed_id}/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pull Feed
+         * @description Fetch the feed's URL now and store its indicators (502 when the feed cannot be reached).
+         */
+        post: operations["pull_feed_threat_intel_feeds__feed_id__pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/threat-intel/feeds/{feed_id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Feed
+         * @description Read an uploaded file as the feed's current content and store its indicators.
+         */
+        post: operations["upload_feed_threat_intel_feeds__feed_id__upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/threat-intel/indicators": {
         parameters: {
             query?: never;
@@ -5477,6 +6318,204 @@ export interface paths {
         get: operations["get_indicator_threat_intel_indicators__indicator_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tickets */
+        get: operations["list_tickets_tickets_get"];
+        put?: never;
+        /** Create Ticket */
+        post: operations["create_ticket_tickets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/assignees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Assignees */
+        get: operations["list_assignees_tickets_assignees_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Attachment */
+        get: operations["download_attachment_tickets_attachments__attachment_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Attachment */
+        delete: operations["delete_attachment_tickets_attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Board */
+        get: operations["board_tickets_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Queues */
+        get: operations["list_queues_tickets_queues_get"];
+        put?: never;
+        /** Create Queue */
+        post: operations["create_queue_tickets_queues_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/queues/{queue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Queue */
+        put: operations["update_queue_tickets_queues__queue_id__put"];
+        post?: never;
+        /** Delete Queue */
+        delete: operations["delete_queue_tickets_queues__queue_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ticket */
+        get: operations["get_ticket_tickets__ticket_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Ticket */
+        delete: operations["delete_ticket_tickets__ticket_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Ticket */
+        patch: operations["update_ticket_tickets__ticket_id__patch"];
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Activity */
+        get: operations["list_activity_tickets__ticket_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attachments */
+        get: operations["list_attachments_tickets__ticket_id__attachments_get"];
+        put?: never;
+        /** Upload Attachments */
+        post: operations["upload_attachments_tickets__ticket_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Comments */
+        get: operations["list_comments_tickets__ticket_id__comments_get"];
+        put?: never;
+        /** Add Comment */
+        post: operations["add_comment_tickets__ticket_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Ticket
+         * @description Drag-and-drop on the board: change column and/or position within it.
+         */
+        post: operations["move_ticket_tickets__ticket_id__move_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5602,6 +6641,177 @@ export interface paths {
          *     on every other trainee's transcript. They return when exercises are attributable.
          */
         get: operations["get_transcript_users__user_id__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Page */
+        get: operations["get_page_wiki_pages__page_id__get"];
+        /** Update Page */
+        put: operations["update_page_wiki_pages__page_id__put"];
+        post?: never;
+        /**
+         * Delete Page
+         * @description Soft-delete the page and everything under it; revisions are kept.
+         */
+        delete: operations["delete_page_wiki_pages__page_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Revisions */
+        get: operations["list_revisions_wiki_pages__page_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}/revisions/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Revision */
+        get: operations["get_revision_wiki_pages__page_id__revisions__n__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}/revisions/{n}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Revision
+         * @description Bring an old version back as a NEW revision; history is never rewritten.
+         *
+         *     Like an edit, it names the revision it was decided against (``base_revision``): a
+         *     restore chosen while looking at revision 4 must not wipe out a revision 5 saved
+         *     since. A stale base is a 409 with the current page.
+         */
+        post: operations["restore_revision_wiki_pages__page_id__revisions__n__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_wiki_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/spaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Spaces */
+        get: operations["list_spaces_wiki_spaces_get"];
+        put?: never;
+        /** Create Space */
+        post: operations["create_space_wiki_spaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/spaces/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Space */
+        get: operations["get_space_wiki_spaces__slug__get"];
+        /** Update Space */
+        put: operations["update_space_wiki_spaces__slug__put"];
+        post?: never;
+        /**
+         * Archive Space
+         * @description Archive, not destroy: pages and their history stay restorable.
+         */
+        delete: operations["archive_space_wiki_spaces__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/spaces/{slug}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Page */
+        post: operations["create_page_wiki_spaces__slug__pages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/spaces/{slug}/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Space Tree */
+        get: operations["space_tree_wiki_spaces__slug__tree_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5860,6 +7070,54 @@ export interface components {
              * @default
              */
             notes?: string;
+        };
+        /**
+         * ActivityReport
+         * @description One executed action, echoing the planned fields and their signature verbatim.
+         */
+        ActivityReport: {
+            /** At */
+            at: string;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /**
+             * Ok
+             * @default true
+             */
+            ok?: boolean;
+            /**
+             * Persona
+             * @default
+             */
+            persona?: string;
+            /** Ran At */
+            ran_at?: string | null;
+            /** Sig */
+            sig: string;
+            /**
+             * Target
+             * @default
+             */
+            target?: string;
+        };
+        /** AgentIn */
+        AgentIn: {
+            /** Node */
+            node: string;
+            /**
+             * Zone
+             * @default
+             */
+            zone?: string;
+        };
+        /** AgentsIn */
+        AgentsIn: {
+            /** Agents */
+            agents: components["schemas"]["AgentIn"][];
         };
         /** AnnotationIn */
         AnnotationIn: {
@@ -6219,6 +7477,11 @@ export interface components {
             /** State */
             state: string;
         };
+        /** Body_upload_attachments_tickets__ticket_id__attachments_post */
+        Body_upload_attachments_tickets__ticket_id__attachments_post: {
+            /** Files */
+            files: string[];
+        };
         /** Body_upload_course_release_course_releases_post */
         Body_upload_course_release_course_releases_post: {
             /** File */
@@ -6228,6 +7491,14 @@ export interface components {
         Body_upload_documents_curricula__curriculum_id__documents_post: {
             /** Files */
             files: string[];
+        };
+        /** Body_upload_feed_threat_intel_feeds__feed_id__upload_post */
+        Body_upload_feed_threat_intel_feeds__feed_id__upload_post: {
+            /**
+             * File
+             * @description The feed's content, e.g. a CSV
+             */
+            file: string;
         };
         /** Body_upload_range_documents_ranges__range_id__documents_post */
         Body_upload_range_documents_ranges__range_id__documents_post: {
@@ -6304,6 +7575,11 @@ export interface components {
              */
             start_time: string;
             /**
+             * Template Id
+             * @description Size the check from this template; overrides the *_needed values
+             */
+            template_id?: string | null;
+            /**
              * Vcpu Needed
              * @default 0
              */
@@ -6315,6 +7591,11 @@ export interface components {
             disk_gb_available: number;
             /** Disk Gb Committed */
             disk_gb_committed: number;
+            /**
+             * Disk Gb Needed
+             * @default 0
+             */
+            disk_gb_needed?: number;
             /** Disk Gb Total */
             disk_gb_total: number;
             /** Fits */
@@ -6323,18 +7604,49 @@ export interface components {
             message: string;
             /** Overlapping Events */
             overlapping_events: number;
+            /**
+             * Policy
+             * @default block
+             */
+            policy?: string;
             /** Ram Mb Available */
             ram_mb_available: number;
             /** Ram Mb Committed */
             ram_mb_committed: number;
+            /**
+             * Ram Mb Needed
+             * @default 0
+             */
+            ram_mb_needed?: number;
             /** Ram Mb Total */
             ram_mb_total: number;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons?: string[];
+            /**
+             * Supply Source
+             * @description Where cluster totals came from: env fallback, or discovery
+             * @default env
+             */
+            supply_source?: string;
             /** Vcpu Available */
             vcpu_available: number;
             /** Vcpu Committed */
             vcpu_committed: number;
+            /**
+             * Vcpu Needed
+             * @default 0
+             */
+            vcpu_needed?: number;
             /** Vcpu Total */
             vcpu_total: number;
+            /**
+             * Vm Count Needed
+             * @default 0
+             */
+            vm_count_needed?: number;
         };
         /** CertificationIn */
         CertificationIn: {
@@ -6581,6 +7893,41 @@ export interface components {
             node: string;
             /** Url */
             url: string;
+        };
+        /** CorpusSummary */
+        CorpusSummary: {
+            /**
+             * Available
+             * @description Whether the control plane can read this tier's manifest.
+             */
+            available: boolean;
+            /** Builder */
+            builder: string;
+            /** Bytes */
+            bytes?: number | null;
+            /** Cap Bytes */
+            cap_bytes: number | null;
+            /** Categories */
+            categories?: {
+                [key: string]: number;
+            } | null;
+            /** Description */
+            description: string;
+            /** Location */
+            location: string;
+            /** Sites */
+            sites?: number | null;
+            /** Threat Domains */
+            threat_domains?: number | null;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "t0" | "t1" | "t2" | "full";
+            /** Title */
+            title: string;
+            /** Version */
+            version?: string | null;
         };
         /** CourseGenerateIn */
         CourseGenerateIn: {
@@ -6988,6 +8335,19 @@ export interface components {
              */
             term_code?: string;
         };
+        /** DeployIn */
+        DeployIn: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run?: boolean;
+            /**
+             * Refresh Targets
+             * @default true
+             */
+            refresh_targets?: boolean;
+        };
         /** DetectionDraftIn */
         DetectionDraftIn: {
             /**
@@ -7002,6 +8362,48 @@ export interface components {
             format?: string;
             /** Technique */
             technique: string;
+        };
+        /** DetectionIn */
+        DetectionIn: {
+            /**
+             * Query
+             * @description Lucene query string
+             */
+            query: string;
+        };
+        /**
+         * DetectionOut
+         * @description One attempt. ``on_target`` and ``precision`` are shown only to staff who may see the key.
+         */
+        DetectionOut: {
+            /** Attempts Left */
+            attempts_left?: number | null;
+            /** Events Matched */
+            events_matched: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Objective Ref */
+            objective_ref: string;
+            /** On Target */
+            on_target?: number | null;
+            /** Precision */
+            precision?: number | null;
+            /** Query */
+            query: string;
+            /** Reason */
+            reason?: string | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Verdict */
+            verdict: string;
         };
         /** DetectionRuleIn */
         DetectionRuleIn: {
@@ -7206,6 +8608,11 @@ export interface components {
         };
         /** EventIn */
         EventIn: {
+            /**
+             * Course Id
+             * @description The class: this course's active Students attend
+             */
+            course_id?: string | null;
             /** Description */
             description?: string | null;
             /**
@@ -7214,10 +8621,26 @@ export interface components {
              */
             disk_gb_total?: number;
             /**
+             * Draft
+             * @description Create as a draft: holds nothing and is not checked until scheduled
+             * @default false
+             */
+            draft?: boolean;
+            /**
              * End Time
              * Format: date-time
              */
             end_time: string;
+            /**
+             * Exercise Id
+             * @description Use this existing exercise (and its range) instead
+             */
+            exercise_id?: string | null;
+            /**
+             * Instructor Id
+             * @description Who teaches it; defaults to the caller when they are an instructor
+             */
+            instructor_id?: string | null;
             /** Name */
             name: string;
             /**
@@ -7228,11 +8651,19 @@ export interface components {
             /** Range Id */
             range_id?: string | null;
             /**
+             * Scenario Id
+             * @description Run this scenario: a pending exercise is created when the range is built
+             */
+            scenario_id?: string | null;
+            /**
              * Start Time
              * Format: date-time
              */
             start_time: string;
-            /** Template Id */
+            /**
+             * Template Id
+             * @description Size the booking from this template's VM specs
+             */
             template_id?: string | null;
             /**
              * Vcpu Total
@@ -7244,6 +8675,73 @@ export interface components {
              * @default 0
              */
             vm_count?: number;
+        };
+        /** EventListOut */
+        EventListOut: {
+            /** Items */
+            items: components["schemas"]["EventOut"][];
+            /** Total */
+            total: number;
+        };
+        /** EventOut */
+        EventOut: {
+            /** Course Id */
+            course_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by?: string | null;
+            /** Description */
+            description: string | null;
+            /** Disk Gb Total */
+            disk_gb_total: number;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /** Id */
+            id: string;
+            /** Instructor Id */
+            instructor_id?: string | null;
+            /** Name */
+            name: string;
+            /** Ram Mb Total */
+            ram_mb_total: number;
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
+            /** Template Id */
+            template_id: string | null;
+            /** Tenant Id */
+            tenant_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Vcpu Total */
+            vcpu_total: number;
+            /** Vm Count */
+            vm_count: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings?: string[];
         };
         /** EvidenceIn */
         EvidenceIn: {
@@ -7476,6 +8974,60 @@ export interface components {
             /** Name */
             name?: string;
         };
+        /**
+         * FeedPullOut
+         * @description What a pull did. ``rejections`` lists at most the first 50 rejected rows.
+         */
+        FeedPullOut: {
+            /** Created */
+            created: number;
+            /** Deactivated */
+            deactivated: number;
+            feed: components["schemas"]["ThreatIntelFeedOut"];
+            /** Rejected */
+            rejected: number;
+            /** Rejections */
+            rejections: components["schemas"]["FeedRejectionOut"][];
+            /** Status */
+            status: string;
+            /** Updated */
+            updated: number;
+        };
+        /** FeedRejectionOut */
+        FeedRejectionOut: {
+            /** Reason */
+            reason: string;
+            /** Row */
+            row: number;
+        };
+        /**
+         * FeedTokenIssued
+         * @description Shown once: only a hash of the token is kept.
+         */
+        FeedTokenIssued: {
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Url
+             * @description HTTPS subscription URL; paste into Outlook 'Subscribe from web'
+             */
+            url: string;
+            /**
+             * Webcal Url
+             * @description The same URL as webcal://, for one-click subscribe
+             */
+            webcal_url: string;
+        };
+        /** FeedTokenStatus */
+        FeedTokenStatus: {
+            /** Active */
+            active: boolean;
+            /** Issued At */
+            issued_at?: string | null;
+        };
         /** FleetNodeCreateIn */
         FleetNodeCreateIn: {
             /** Gpu Model */
@@ -7680,6 +9232,127 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /**
+         * GreyspaceBlock
+         * @description A range's Greyspace block: the template ``greyspace:`` key, or attached through the API.
+         *     Same fields as ``scenario-engine/schemas/template.schema.json#/properties/greyspace``.
+         */
+        GreyspaceBlock: {
+            /**
+             * Corpus Tier
+             * @default t0
+             * @enum {string}
+             */
+            corpus_tier?: "t0" | "t1" | "t2" | "full";
+            /**
+             * Npc Profile
+             * @description Simulated users. Recorded only: NPC traffic is a later slice.
+             * @default off
+             * @enum {string}
+             */
+            npc_profile?: "off" | "office-day" | "quiet-night";
+            /**
+             * Public Prefix
+             * @description IPv4 CIDR covering every ISP prefix of the corpus. Omit to use the corpus's own.
+             */
+            public_prefix?: string | null;
+            /**
+             * Site Packs
+             * @description Site categories to serve (news, search, social, ...). Omit for all.
+             */
+            site_packs?: string[] | null;
+            /**
+             * Threat Infra
+             * @description Serve the corpus's threat-actor domains (C2, phishing stubs).
+             * @default true
+             */
+            threat_infra?: boolean;
+            /**
+             * Trust Ca
+             * @description Recorded only: the Greyspace root CA is a later slice.
+             * @default true
+             */
+            trust_ca?: boolean;
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version?: 1;
+        };
+        /** GreyspaceConfigOut */
+        GreyspaceConfigOut: {
+            /** Address Plan */
+            address_plan: {
+                [key: string]: unknown;
+            };
+            /**
+             * Corpus Tier
+             * @enum {string}
+             */
+            corpus_tier: "t0" | "t1" | "t2" | "full";
+            /** Corpus Version */
+            corpus_version: string;
+            /** Files */
+            files: string[];
+            /** Isps */
+            isps: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Services */
+            services: string[];
+            /** Site Packs */
+            site_packs: string[];
+            /** Sites */
+            sites: number;
+            /** Threat Domains */
+            threat_domains: {
+                [key: string]: unknown;
+            }[];
+            /** Tlds */
+            tlds: string[];
+            /** Zones */
+            zones: string[];
+        };
+        /** GreyspaceStatusOut */
+        GreyspaceStatusOut: {
+            /** Attached */
+            attached: boolean;
+            block?: components["schemas"]["GreyspaceBlock"] | null;
+            corpus?: components["schemas"]["CorpusSummary"] | null;
+            /** Deployed At */
+            deployed_at?: string | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Problems
+             * @description Why the block cannot render on its corpus now.
+             */
+            problems?: string[];
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Range State */
+            range_state: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_attached" | "configured" | "deployed" | "pending_infrastructure" | "failed";
+            /** @description The block the range's template declares, if any; attaching with no body uses it. */
+            template_block?: components["schemas"]["GreyspaceBlock"] | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -7925,6 +9598,78 @@ export interface components {
             success: boolean;
             /** Version */
             version?: string | null;
+        };
+        /** InjectCounts */
+        InjectCounts: {
+            /** Failed */
+            failed: number;
+            /** Fired */
+            fired: number;
+            /** Pending */
+            pending: number;
+            /** Skipped */
+            skipped: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * InjectRecordOut
+         * @description One recorded inject outcome.
+         */
+        InjectRecordOut: {
+            /** Action */
+            action: string;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /**
+             * Execution Mode
+             * @description simulated (synthetic records) | live; null if not run
+             */
+            execution_mode?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mitre Technique */
+            mitre_technique?: string | null;
+            /**
+             * Run Id
+             * @description the run that fired it; a replay is a new run
+             */
+            run_id?: string | null;
+            /**
+             * Seq
+             * @description timeline position; null for an instructor inject
+             */
+            seq?: number | null;
+            /**
+             * Source
+             * @description timeline | instructor
+             */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "fired" | "failed" | "skipped";
+            /** T */
+            t?: string | null;
+            /**
+             * Telemetry Count
+             * @default 0
+             */
+            telemetry_count?: number;
+            /**
+             * Telemetry Shipped
+             * @default false
+             */
+            telemetry_shipped?: boolean;
         };
         /** InstructorInjectIn */
         InstructorInjectIn: {
@@ -8230,6 +9975,30 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * MySessionOut
+         * @description A session as a Student sees it: no capacity, no other people.
+         */
+        MySessionOut: {
+            /** Description */
+            description: string | null;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
+        };
         /** NationOut */
         NationOut: {
             /** Flag Emoji */
@@ -8329,6 +10098,20 @@ export interface components {
             /** Vendor */
             vendor?: string;
         };
+        /**
+         * NetworkReservationOut
+         * @description One address or VLAN a range holds on a shared network.
+         */
+        NetworkReservationOut: {
+            /** Domain */
+            domain: string;
+            /** Holder */
+            holder: string;
+            /** Kind */
+            kind: string;
+            /** Value */
+            value: string;
+        };
         /** NetworkSummaryOut */
         NetworkSummaryOut: {
             /**
@@ -8345,6 +10128,334 @@ export interface components {
              * @default 0
              */
             total_devices?: number;
+        };
+        /**
+         * NoiseActivityOut
+         * @description Ground truth: one action an agent reported having run.
+         */
+        NoiseActivityOut: {
+            /** At */
+            at: string;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /** Lookalike */
+            lookalike: boolean;
+            /** Node */
+            node: string;
+            /** Ok */
+            ok: boolean;
+            /** Persona */
+            persona?: string | null;
+            /** Target */
+            target?: string | null;
+        };
+        /**
+         * NoiseAgentAction
+         * @description A planned action as an agent receives it: signed, and without ``lookalike``.
+         */
+        NoiseAgentAction: {
+            /** At */
+            at: string;
+            /** Kind */
+            kind: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Persona */
+            persona: string;
+            /** Sig */
+            sig: string;
+            /** Target */
+            target: string;
+        };
+        /**
+         * NoiseAgentIssuedOut
+         * @description A newly (re-)keyed agent. The token is shown this once and never again.
+         */
+        NoiseAgentIssuedOut: {
+            /** Id */
+            id: string;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Node */
+            node: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "ok" | "lost";
+            /** Token */
+            token: string;
+            /** Version */
+            version?: string | null;
+            /** Zone */
+            zone?: string | null;
+        };
+        /**
+         * NoiseAgentOut
+         * @description A registered agent. ``state`` is ``pending`` until its first poll, ``lost``
+         *     after five missed polls.
+         */
+        NoiseAgentOut: {
+            /** Id */
+            id: string;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Node */
+            node: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "ok" | "lost";
+            /** Version */
+            version?: string | null;
+            /** Zone */
+            zone?: string | null;
+        };
+        /** NoiseAgentPlanOut */
+        NoiseAgentPlanOut: {
+            /** Actions */
+            actions: components["schemas"]["NoiseAgentAction"][];
+            /** Level */
+            level: number;
+            /** Node */
+            node: string;
+            /** Poll Seconds */
+            poll_seconds: number;
+        };
+        /** NoiseDeployAgent */
+        NoiseDeployAgent: {
+            /** Ip */
+            ip: string;
+            /** Mgmt Ip */
+            mgmt_ip: string;
+            /** Node */
+            node: string;
+            /** Platform */
+            platform: string;
+            /** Zone */
+            zone: string;
+        };
+        /**
+         * NoiseDeployOut
+         * @description What a deploy does (``dry_run``) or did. ``task_id`` only when it was handed to
+         *     the worker.
+         */
+        NoiseDeployOut: {
+            /** Agents */
+            agents: components["schemas"]["NoiseDeployAgent"][];
+            /** Controller Url */
+            controller_url: string;
+            /** Dropped Targets */
+            dropped_targets: string[];
+            /** Dry Run */
+            dry_run: boolean;
+            /** Mgmt Cidr */
+            mgmt_cidr: string;
+            /** Skipped */
+            skipped: components["schemas"]["NoiseDeploySkipped"][];
+            /** Targets */
+            targets: {
+                [key: string]: string[];
+            };
+            /** Task Id */
+            task_id?: string | null;
+        };
+        /** NoiseDeploySkipped */
+        NoiseDeploySkipped: {
+            /** Node */
+            node: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * NoiseDialOut
+         * @description What the effective level means: how much of the roster works, and how hard.
+         */
+        NoiseDialOut: {
+            /** Actions Per Hour */
+            actions_per_hour: number;
+            /** Active Fraction */
+            active_fraction: number;
+            /** Diurnal Amplitude */
+            diurnal_amplitude: number;
+            /** Lookalike Share */
+            lookalike_share: number;
+        };
+        /** NoisePersonaOut */
+        NoisePersonaOut: {
+            /** Attrs */
+            attrs: {
+                [key: string]: unknown;
+            };
+            /** Department */
+            department?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Habits */
+            habits: {
+                [key: string]: unknown;
+            };
+            /** Handle */
+            handle: string;
+            /** Id */
+            id: string;
+            /** Lookalikes */
+            lookalikes?: boolean | null;
+            /** Node */
+            node?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Work End */
+            work_end?: number | null;
+            /** Work Start */
+            work_start?: number | null;
+        };
+        /** NoisePlanOut */
+        NoisePlanOut: {
+            /** Actions */
+            actions: components["schemas"]["NoisePlannedAction"][];
+            /** Level */
+            level: number;
+            /** Node */
+            node: string;
+        };
+        /**
+         * NoisePlannedAction
+         * @description One action in a node's plan. ``lookalike`` is shown to the white cell only.
+         */
+        NoisePlannedAction: {
+            /** At */
+            at: string;
+            /** Kind */
+            kind: string;
+            /** Lookalike */
+            lookalike: boolean;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Persona */
+            persona: string;
+            /** Target */
+            target: string;
+        };
+        /**
+         * NoisePresetsOut
+         * @description Named dial positions and the activity vocabulary.
+         */
+        NoisePresetsOut: {
+            /** Activities */
+            activities: string[];
+            /** Lookalikes */
+            lookalikes: string[];
+            /** Presets */
+            presets: {
+                [key: string]: number;
+            };
+            /** Target Pools */
+            target_pools: string[];
+        };
+        /**
+         * NoiseProfileOut
+         * @description A range's noise settings. ``configured`` is false until anyone set them; the
+         *     other fields are then the defaults a first PUT would start from.
+         */
+        NoiseProfileOut: {
+            /** Configured */
+            configured: boolean;
+            dial: components["schemas"]["NoiseDialOut"];
+            /** Effective Level */
+            effective_level: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Level */
+            level: number;
+            /** Overrides */
+            overrides: {
+                [key: string]: number;
+            };
+            /** Pack */
+            pack: string;
+            /** Paused */
+            paused: boolean;
+            /** Range Id */
+            range_id: string;
+            /** Seed */
+            seed: number;
+            /** Targets */
+            targets: {
+                [key: string]: string[];
+            };
+            /** Utc Offset */
+            utc_offset: number;
+        };
+        /** NoiseReportOut */
+        NoiseReportOut: {
+            /** Accepted */
+            accepted: number;
+            /** Duplicate */
+            duplicate: number;
+            /** Rejected */
+            rejected: number;
+        };
+        /** NoiseStatsOut */
+        NoiseStatsOut: {
+            /** Agents */
+            agents: {
+                [key: string]: number;
+            };
+            /** By Kind */
+            by_kind: {
+                [key: string]: number;
+            };
+            /** Failed */
+            failed: number;
+            /** Lookalikes */
+            lookalikes: number;
+            /** Minutes */
+            minutes: number;
+            /** Total */
+            total: number;
+        };
+        /** NotificationOut */
+        NotificationOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @default info
+             */
+            kind?: string;
+            /** Level */
+            level: string;
+            /** Link */
+            link?: string | null;
+            /** Message */
+            message: string;
+            /** Read */
+            read: boolean;
+            /** Title */
+            title: string;
+        };
+        /** NotificationUnreadCountOut */
+        NotificationUnreadCountOut: {
+            /** Unread */
+            unread: number;
         };
         /** OUIn */
         OUIn: {
@@ -8452,6 +10563,23 @@ export interface components {
             /** Validator */
             validator: string;
         };
+        /** ObjectiveResultOut */
+        ObjectiveResultOut: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Ref Id */
+            ref_id: string;
+            /**
+             * Status
+             * @description an execution has no Students or evidence review, so nothing is scored
+             * @default unassessed
+             * @constant
+             */
+            status?: "unassessed";
+        };
         /** OnboardingPathIn */
         OnboardingPathIn: {
             /** Learning Path Id */
@@ -8535,6 +10663,12 @@ export interface components {
             /** Shared Commands Count */
             shared_commands_count: number;
         };
+        /**
+         * OvercapacityPolicy
+         * @description What happens to a booking that does not fit (ADR 0004, "Booking rules").
+         * @enum {string}
+         */
+        OvercapacityPolicy: "block" | "warn";
         /** POOut */
         POOut: {
             /**
@@ -8632,6 +10766,43 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** PolicyIn */
+        PolicyIn: {
+            overcapacity: components["schemas"]["OvercapacityPolicy"];
+        };
+        /** PolicyOut */
+        PolicyOut: {
+            /**
+             * Can Change
+             * @description Whether the caller may change it (platform administrators only)
+             * @default false
+             */
+            can_change?: boolean;
+            overcapacity: components["schemas"]["OvercapacityPolicy"];
+        };
+        /** ProfileIn */
+        ProfileIn: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Level */
+            level?: number | null;
+            /** Overrides */
+            overrides?: {
+                [key: string]: number;
+            } | null;
+            /** Paused */
+            paused?: boolean | null;
+            /** Preset */
+            preset?: string | null;
+            /** Seed */
+            seed?: number | null;
+            /** Targets */
+            targets?: {
+                [key: string]: string[];
+            } | null;
+            /** Utc Offset */
+            utc_offset?: number | null;
         };
         /** ProgressSummaryOut */
         ProgressSummaryOut: {
@@ -9242,6 +11413,34 @@ export interface components {
             /** Tenant Name */
             tenant_name?: string | null;
         };
+        /** ReportIn */
+        ReportIn: {
+            /** Results */
+            results?: components["schemas"]["ActivityReport"][];
+            /**
+             * Version
+             * @default
+             */
+            version?: string;
+        };
+        /** RosterIn */
+        RosterIn: {
+            /**
+             * Count
+             * @default 20
+             */
+            count?: number;
+            /**
+             * Domain
+             * @default corp.local
+             */
+            domain?: string;
+            /**
+             * Replace
+             * @default false
+             */
+            replace?: boolean;
+        };
         /** ScenarioDraftIn */
         ScenarioDraftIn: {
             /**
@@ -9256,6 +11455,76 @@ export interface components {
             duration_minutes?: number;
             /** Objectives */
             objectives: string[];
+        };
+        /** ScenarioExecuteIn */
+        ScenarioExecuteIn: {
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * Scenario Id
+             * Format: uuid
+             */
+            scenario_id: string;
+        };
+        /** ScenarioExecutionOut */
+        ScenarioExecutionOut: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id: string | null;
+            /** Scenario Name */
+            scenario_name: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "running" | "completed" | "failed";
+        };
+        /** ScenarioExecutionResultsOut */
+        ScenarioExecutionResultsOut: {
+            /** Completed At */
+            completed_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Error */
+            error?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            injects: components["schemas"]["InjectCounts"];
+            /** Objectives */
+            objectives: components["schemas"]["ObjectiveResultOut"][];
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id: string | null;
+            /** Scenario Name */
+            scenario_name: string;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "running" | "completed" | "failed";
         };
         /** ScenarioIn */
         ScenarioIn: {
@@ -9700,6 +11969,48 @@ export interface components {
             /** Volume Name */
             volume_name: string;
         };
+        /** SupportQueueIn */
+        SupportQueueIn: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default?: boolean;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** SupportQueueOut */
+        SupportQueueOut: {
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** SupportQueueUpdate */
+        SupportQueueUpdate: {
+            /** Description */
+            description?: string;
+            /** Is Default */
+            is_default?: boolean;
+            /** Name */
+            name?: string;
+        };
         /** TeamFullIn */
         TeamFullIn: {
             /** Color Hex */
@@ -9995,6 +12306,426 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /** TicketActivityOut */
+        TicketActivityOut: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /**
+             * Actor Name
+             * @default
+             */
+            actor_name?: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field */
+            field: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Value */
+            new_value: string;
+            /** Old Value */
+            old_value: string;
+        };
+        /** TicketAssigneeOut */
+        TicketAssigneeOut: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Role */
+            role: string;
+        };
+        /** TicketAttachmentOut */
+        TicketAttachmentOut: {
+            /** Content Type */
+            content_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Uploaded By
+             * Format: uuid
+             */
+            uploaded_by: string;
+        };
+        /** TicketBoardColumn */
+        TicketBoardColumn: {
+            /** Status */
+            status: string;
+            /** Tickets */
+            tickets: components["schemas"]["TicketListOut"][];
+        };
+        /** TicketCommentIn */
+        TicketCommentIn: {
+            /** Body */
+            body: string;
+            /**
+             * Is Internal
+             * @default false
+             */
+            is_internal?: boolean;
+        };
+        /** TicketCommentOut */
+        TicketCommentOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /**
+             * Author Name
+             * @default
+             */
+            author_name?: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Internal */
+            is_internal: boolean;
+        };
+        /** TicketIn */
+        TicketIn: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /**
+             * Category
+             * @default other
+             */
+            category?: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /**
+             * Labels
+             * @default
+             */
+            labels?: string;
+            /**
+             * Priority
+             * @default medium
+             */
+            priority?: string;
+            /** Queue Id */
+            queue_id?: string | null;
+            /** Range Id */
+            range_id?: string | null;
+            /** Subject */
+            subject: string;
+            /**
+             * Type
+             * @default incident
+             */
+            type?: string;
+        };
+        /** TicketListOut */
+        TicketListOut: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /**
+             * Assignee Name
+             * @default
+             */
+            assignee_name?: string;
+            /** Board Order */
+            board_order: number;
+            /** Category */
+            category: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Key
+             * @default
+             */
+            key?: string;
+            /** Labels */
+            labels: string;
+            /** Number */
+            number: number;
+            /** Priority */
+            priority: string;
+            /** Queue Id */
+            queue_id?: string | null;
+            /**
+             * Queue Name
+             * @default
+             */
+            queue_name?: string;
+            /** Range Id */
+            range_id?: string | null;
+            /**
+             * Reporter Id
+             * Format: uuid
+             */
+            reporter_id: string;
+            /**
+             * Reporter Name
+             * @default
+             */
+            reporter_name?: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Type */
+            type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TicketMoveIn */
+        TicketMoveIn: {
+            /**
+             * Board Order
+             * @default 0
+             */
+            board_order?: number;
+            /** Status */
+            status: string;
+        };
+        /** TicketOut */
+        TicketOut: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /**
+             * Assignee Name
+             * @default
+             */
+            assignee_name?: string;
+            /** Board Order */
+            board_order: number;
+            /**
+             * Can Work
+             * @default false
+             */
+            can_work?: boolean;
+            /** Category */
+            category: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /**
+             * Exercise Name
+             * @default
+             */
+            exercise_name?: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Key
+             * @default
+             */
+            key?: string;
+            /** Labels */
+            labels: string;
+            /** Number */
+            number: number;
+            /** Priority */
+            priority: string;
+            /** Queue Id */
+            queue_id?: string | null;
+            /**
+             * Queue Name
+             * @default
+             */
+            queue_name?: string;
+            /** Range Id */
+            range_id?: string | null;
+            /**
+             * Range Name
+             * @default
+             */
+            range_name?: string;
+            /**
+             * Reporter Id
+             * Format: uuid
+             */
+            reporter_id: string;
+            /**
+             * Reporter Name
+             * @default
+             */
+            reporter_name?: string;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Type */
+            type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TicketUpdate */
+        TicketUpdate: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /** Labels */
+            labels?: string | null;
+            /** Priority */
+            priority?: string | null;
+            /** Queue Id */
+            queue_id?: string | null;
+            /** Range Id */
+            range_id?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Type */
+            type?: string | null;
+            /**
+             * Unassign
+             * @default false
+             */
+            unassign?: boolean;
+            /**
+             * Unlink Exercise
+             * @default false
+             */
+            unlink_exercise?: boolean;
+            /**
+             * Unlink Range
+             * @default false
+             */
+            unlink_range?: boolean;
+        };
+        /** TimelineBucket */
+        TimelineBucket: {
+            /** Disk Gb Committed */
+            disk_gb_committed: number;
+            /** Event Count */
+            event_count: number;
+            /** Ram Mb Committed */
+            ram_mb_committed: number;
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+            /** Vcpu Committed */
+            vcpu_committed: number;
+        };
+        /**
+         * TimelineEntryOut
+         * @description A timeline event and what happened to it (``pending`` until the worker records it).
+         */
+        TimelineEntryOut: {
+            /** Action */
+            action: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /** Execution Mode */
+            execution_mode?: string | null;
+            /** Mitre Technique */
+            mitre_technique?: string | null;
+            /** Recorded At */
+            recorded_at?: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "fired" | "failed" | "skipped";
+            /** T */
+            t?: string | null;
+            /**
+             * Telemetry Count
+             * @default 0
+             */
+            telemetry_count?: number;
+        };
+        /** TimelineOut */
+        TimelineOut: {
+            /** Buckets */
+            buckets: components["schemas"]["TimelineBucket"][];
+            /** Cluster Disk Gb */
+            cluster_disk_gb: number;
+            /** Cluster Ram Mb */
+            cluster_ram_mb: number;
+            /** Cluster Vcpu */
+            cluster_vcpu: number;
+            /** Grace Minutes */
+            grace_minutes: number;
+            /** Lead Minutes */
+            lead_minutes: number;
+            /** Resolution Minutes */
+            resolution_minutes: number;
+            /** Supply Source */
+            supply_source: string;
+        };
         /**
          * TranscriptEntry
          * @description A single learning record in a user's unified transcript.
@@ -10254,6 +12985,309 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WikiPageIn */
+        WikiPageIn: {
+            /**
+             * Body
+             * @default
+             */
+            body?: string;
+            /**
+             * Is Published
+             * @default true
+             */
+            is_published?: boolean;
+            /** Parent Id */
+            parent_id?: string | null;
+            /**
+             * Tags
+             * @default
+             */
+            tags?: string;
+            /** Title */
+            title: string;
+        };
+        /** WikiPageOut */
+        WikiPageOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /** Breadcrumbs */
+            breadcrumbs?: components["schemas"]["WikiPageRef"][];
+            /** Children */
+            children?: components["schemas"]["WikiPageRef"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Published */
+            is_published: boolean;
+            /**
+             * Last Editor Id
+             * Format: uuid
+             */
+            last_editor_id: string;
+            /**
+             * Last Editor Name
+             * @default
+             */
+            last_editor_name?: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Revision Number */
+            revision_number: number;
+            /** Slug */
+            slug: string;
+            /**
+             * Space Archived
+             * @default false
+             */
+            space_archived?: boolean;
+            /**
+             * Space Id
+             * Format: uuid
+             */
+            space_id: string;
+            /**
+             * Space Slug
+             * @default
+             */
+            space_slug?: string;
+            /** Tags */
+            tags: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WikiPageRef
+         * @description A link to another page: enough to name it and route to it.
+         */
+        WikiPageRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /** WikiPageUpdate */
+        WikiPageUpdate: {
+            /**
+             * Base Revision
+             * @description revision_number the edit started from
+             */
+            base_revision: number;
+            /** Body */
+            body?: string | null;
+            /**
+             * Edit Summary
+             * @default
+             */
+            edit_summary?: string;
+            /** Is Published */
+            is_published?: boolean | null;
+            /**
+             * Move To Root
+             * @default false
+             */
+            move_to_root?: boolean;
+            /** Ordinal */
+            ordinal?: number | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Tags */
+            tags?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** WikiRestoreRequest */
+        WikiRestoreRequest: {
+            /**
+             * Base Revision
+             * @description revision_number the restore was decided against
+             */
+            base_revision: number;
+        };
+        /** WikiRevisionListOut */
+        WikiRevisionListOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Edit Summary */
+            edit_summary: string;
+            /**
+             * Editor Id
+             * Format: uuid
+             */
+            editor_id: string;
+            /**
+             * Editor Name
+             * @default
+             */
+            editor_name?: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision Number */
+            revision_number: number;
+            /** Title */
+            title: string;
+        };
+        /** WikiRevisionOut */
+        WikiRevisionOut: {
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Edit Summary */
+            edit_summary: string;
+            /**
+             * Editor Id
+             * Format: uuid
+             */
+            editor_id: string;
+            /**
+             * Editor Name
+             * @default
+             */
+            editor_name?: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision Number */
+            revision_number: number;
+            /** Title */
+            title: string;
+        };
+        /** WikiSearchHit */
+        WikiSearchHit: {
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Snippet */
+            snippet: string;
+            /** Space Name */
+            space_name: string;
+            /** Space Slug */
+            space_slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WikiSpaceIn */
+        WikiSpaceIn: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Icon
+             * @default folder
+             */
+            icon?: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Visibility
+             * @default all
+             */
+            visibility?: string;
+        };
+        /** WikiSpaceOut */
+        WikiSpaceOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Icon */
+            icon: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Archived */
+            is_archived: boolean;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Visibility */
+            visibility: string;
+        };
+        /** WikiSpaceUpdate */
+        WikiSpaceUpdate: {
+            /** Description */
+            description?: string;
+            /** Icon */
+            icon?: string;
+            /** Is Archived */
+            is_archived?: boolean;
+            /** Name */
+            name?: string;
+            /** Visibility */
+            visibility?: string;
+        };
+        /** WikiTreeNode */
+        WikiTreeNode: {
+            /** Children */
+            children?: components["schemas"]["WikiTreeNode"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Published */
+            is_published: boolean;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
         };
         /** YamlValidateIn */
         YamlValidateIn: {
@@ -14049,6 +17083,68 @@ export interface operations {
             };
         };
     };
+    list_detections_exercises__exercise_id__detections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_injects_exercises__exercise_id__injects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InjectRecordOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_objectives_exercises__exercise_id__objectives_get: {
         parameters: {
             query?: never;
@@ -14111,6 +17207,63 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    submit_detection_exercises__exercise_id__objectives__ref_id__detections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+                ref_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionOut"];
+                };
+            };
+            /** @description Exercise not running, objective already achieved, or not a detection objective */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description No attempts left for this objective */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The event store could not answer; the attempt was not counted */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -14407,6 +17560,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_list_corpora: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorpusSummary"][];
                 };
             };
         };
@@ -16123,6 +19296,561 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NetworkDeviceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_plan_noise_agent_plan_get: {
+        parameters: {
+            query?: {
+                minutes?: number;
+            };
+            header: {
+                "X-Noise-Agent-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseAgentPlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_report_noise_agent_report_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Noise-Agent-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    presets_noise_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoisePresetsOut"];
+                };
+            };
+        };
+    };
+    get_profile_noise_ranges__range_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_profile_noise_ranges__range_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_activity_noise_ranges__range_id__activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                lookalike?: boolean | null;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseActivityOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agents_noise_ranges__range_id__agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseAgentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_agents_noise_ranges__range_id__agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseAgentIssuedOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_agent_noise_ranges__range_id__agents__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deploy_noise_ranges__range_id__deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseDeployOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_personas_noise_ranges__range_id__personas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoisePersonaOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_roster_noise_ranges__range_id__personas_roster_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RosterIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoisePersonaOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_plan_noise_ranges__range_id__plan_get: {
+        parameters: {
+            query: {
+                node: string;
+                minutes?: number;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoisePlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_stats_noise_ranges__range_id__stats_get: {
+        parameters: {
+            query?: {
+                minutes?: number;
+            };
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoiseStatsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_notifications_get: {
+        parameters: {
+            query?: {
+                unread_only?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_all_read_notifications_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationUnreadCountOut"];
+                };
+            };
+        };
+    };
+    unread_count_notifications_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationUnreadCountOut"];
+                };
+            };
+        };
+    };
+    mark_read_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"];
                 };
             };
             /** @description Validation Error */
@@ -18747,6 +22475,210 @@ export interface operations {
             };
         };
     };
+    greyspace_get_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceStatusOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_attach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GreyspaceBlock"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceStatusOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The block cannot run on its corpus; the body lists the problems */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    greyspace_detach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_get_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceConfigOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_network_reservations_ranges__range_id__network_reservations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkReservationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_range_operations_ranges__range_id__operations_get: {
         parameters: {
             query?: never;
@@ -19439,6 +23371,101 @@ export interface operations {
             };
         };
     };
+    execute_scenario_scenarios_execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScenarioExecuteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenarioExecutionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_results_scenarios_executions__execution_id__results_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenarioExecutionResultsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_execution_timeline_scenarios_executions__execution_id__timeline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineEntryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     validate_scenario_scenarios_validate_post: {
         parameters: {
             query?: never;
@@ -19558,6 +23585,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description An exercise references the scenario */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19640,6 +23674,10 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string | null;
+                /** @description Only events ending after this */
+                start?: string | null;
+                /** @description Only events starting before this */
+                end?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -19655,7 +23693,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventListOut"];
                 };
             };
             /** @description Validation Error */
@@ -19688,7 +23726,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -19719,7 +23757,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -19754,7 +23792,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -19814,7 +23852,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_event_schedule_events__event_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -19845,7 +23914,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -19859,11 +23928,209 @@ export interface operations {
             };
         };
     };
-    resource_timeline_schedule_timeline_get: {
+    schedule_event_schedule_events__event_id__schedule_post: {
         parameters: {
-            query?: {
-                days?: number;
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feed_token_status_schedule_feed_token_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedTokenStatus"];
+                };
+            };
+        };
+    };
+    feed_token_issue_schedule_feed_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedTokenIssued"];
+                };
+            };
+        };
+    };
+    feed_token_revoke_schedule_feed_token_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    calendar_feed_schedule_feed__token__ics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": unknown;
+                };
+            };
+            /** @description Unknown or revoked feed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_sessions_schedule_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MySessionOut"][];
+                };
+            };
+        };
+    };
+    get_policy_schedule_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+        };
+    };
+    put_policy_schedule_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_tick_schedule_tick_post: {
+        parameters: {
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -19877,6 +24144,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    resource_timeline_schedule_timeline_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                /** @description First slot (default: the current hour) */
+                start?: string | null;
+                /** @description Slot length: 15, 30 or 60 */
+                resolution_minutes?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineOut"];
                 };
             };
             /** @description Validation Error */
@@ -20376,7 +24669,7 @@ export interface operations {
     search_telemetry_telemetry__range_id__search_get: {
         parameters: {
             query?: {
-                /** @description OpenSearch query string */
+                /** @description field:value, field:"a phrase", field:prefix*, field:* (exists) and free text, ANDed */
                 q?: string;
                 size?: number;
             };
@@ -20941,6 +25234,72 @@ export interface operations {
             };
         };
     };
+    pull_feed_threat_intel_feeds__feed_id__pull_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPullOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_feed_threat_intel_feeds__feed_id__upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_feed_threat_intel_feeds__feed_id__upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPullOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_indicators_threat_intel_indicators_get: {
         parameters: {
             query?: {
@@ -20996,6 +25355,601 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThreatIndicatorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tickets_tickets_get: {
+        parameters: {
+            query?: {
+                scope?: string;
+                /** @description comma-separated statuses */
+                status?: string | null;
+                priority?: string | null;
+                type?: string | null;
+                queue_id?: string | null;
+                range_id?: string | null;
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketListOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ticket_tickets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_assignees_tickets_assignees_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketAssigneeOut"][];
+                };
+            };
+        };
+    };
+    download_attachment_tickets_attachments__attachment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_attachment_tickets_attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    board_tickets_board_get: {
+        parameters: {
+            query?: {
+                queue_id?: string | null;
+                /** @description 'me' or a user id */
+                assignee?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketBoardColumn"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_queues_tickets_queues_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportQueueOut"][];
+                };
+            };
+        };
+    };
+    create_queue_tickets_queues_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportQueueIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportQueueOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_queue_tickets_queues__queue_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                queue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportQueueUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportQueueOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_queue_tickets_queues__queue_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                queue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_tickets__ticket_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ticket_tickets__ticket_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_ticket_tickets__ticket_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_activity_tickets__ticket_id__activity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketActivityOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attachments_tickets__ticket_id__attachments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketAttachmentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_attachments_tickets__ticket_id__attachments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_attachments_tickets__ticket_id__attachments_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketAttachmentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comments_tickets__ticket_id__comments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCommentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_comment_tickets__ticket_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketCommentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCommentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_ticket_tickets__ticket_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketMoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketListOut"];
                 };
             };
             /** @description Validation Error */
@@ -21212,6 +26166,464 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TranscriptOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_wiki_pages__page_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_page_wiki_pages__page_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPageUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_page_wiki_pages__page_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_revisions_wiki_pages__page_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiRevisionListOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_revision_wiki_pages__page_id__revisions__n__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiRevisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_revision_wiki_pages__page_id__revisions__n__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageOut"];
+                };
+            };
+            /** @description The page changed since base_revision; body carries the current page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_wiki_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSearchHit"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_spaces_wiki_spaces_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSpaceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_space_wiki_spaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiSpaceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSpaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_space_wiki_spaces__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSpaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_space_wiki_spaces__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiSpaceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSpaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_space_wiki_spaces__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_page_wiki_spaces__slug__pages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    space_tree_wiki_spaces__slug__tree_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiTreeNode"][];
                 };
             };
             /** @description Validation Error */

@@ -1,14 +1,24 @@
-"""TrueNorth Range — Threat Intelligence feed management router."""
+"""TrueNorth Range — Threat Intelligence feed management router.
+
+Feeds are pulled through their backend (``app/threat_intel_backends``, chosen by the
+feed's ``feed_type``) and stored as the feed's indicators in the feed's tenant
+(``app/threat_intel_sync``):
+
+  POST /threat-intel/feeds/{id}/pull     fetch the feed's URL now
+  POST /threat-intel/feeds/{id}/upload   read an uploaded file as the feed (multipart ``file``)
+"""
 
 from __future__ import annotations
 
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile, status
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from .. import threat_intel_sync
 from ..auth import CurrentUser
 from ..db import get_db, not_deleted
 from ..models import AuditLog, ThreatIndicator, ThreatIntelFeed
@@ -19,6 +29,13 @@ from ..schemas import (
     ThreatIntelFeedOut,
     ThreatIntelFeedUpdate,
 )
+from ..threat_intel_backends import (
+    FeedMalformedError,
+    FeedSourceError,
+    FeedUnreachableError,
+    get_feed_backend,
+)
+from ..threat_intel_backends.csv_feed import max_bytes
 
 router = APIRouter(prefix="/threat-intel", tags=["threat-intel"])
 logger = logging.getLogger("truenorth.api.threat_intel")
@@ -138,6 +155,120 @@ async def delete_feed(
         )
     )
     db.commit()
+
+
+# ── Pulling a feed ─────────────────────────────────────────────────────
+
+
+class FeedRejectionOut(BaseModel):
+    row: int
+    reason: str
+
+
+class FeedPullOut(BaseModel):
+    """What a pull did. ``rejections`` lists at most the first 50 rejected rows."""
+
+    feed: ThreatIntelFeedOut
+    status: str
+    created: int
+    updated: int
+    deactivated: int
+    rejected: int
+    rejections: list[FeedRejectionOut]
+
+
+def _owned_feed(db: Session, feed_id: uuid.UUID, user: CurrentUser) -> ThreatIntelFeed:
+    feed = (
+        db.query(ThreatIntelFeed)
+        .filter(
+            ThreatIntelFeed.id == feed_id,
+            ThreatIntelFeed.tenant_id == user.tenant_id,
+            ThreatIntelFeed.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    if not feed.is_enabled:
+        raise HTTPException(status_code=409, detail="Feed is disabled; enable it to pull")
+    return feed
+
+
+def _pull(db: Session, feed: ThreatIntelFeed, user: CurrentUser, content: bytes | None) -> FeedPullOut:
+    try:
+        backend = get_feed_backend(feed.feed_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if content is not None and not backend.accepts_upload:
+        raise HTTPException(status_code=422, detail=f"Feeds of type {feed.feed_type!r} cannot be uploaded")
+
+    failure: tuple[int, str, str] | None = None
+    try:
+        pull = backend.fetch(feed.url, content=content)
+    except FeedUnreachableError as exc:
+        failure = (502, "unreachable", str(exc))
+    except FeedMalformedError as exc:
+        failure = (422, "malformed", str(exc))
+    except FeedSourceError as exc:
+        failure = (422, "refused", str(exc))
+    if failure is not None:
+        code, kind, message = failure
+        threat_intel_sync.record_failure(feed, kind)
+        db.commit()  # the feed list shows the failed pull
+        logger.warning("Feed %s pull failed (%s): %s", feed.id, kind, message)
+        raise HTTPException(status_code=code, detail=message)
+
+    result = threat_intel_sync.apply_pull(db, feed, pull)
+    db.add(
+        AuditLog(
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            action="threat_intel.feed.pulled",
+            resource_type="threat_intel_feed",
+            resource_id=str(feed.id),
+            detail=(
+                f"{'upload' if content is not None else 'fetch'}: {result.created} created, {result.updated} updated, "
+                f"{result.deactivated} deactivated, {result.rejected} rejected"
+            ),
+        )
+    )
+    db.commit()
+    db.refresh(feed)
+    return FeedPullOut(
+        feed=ThreatIntelFeedOut.model_validate(feed),
+        status=result.status,
+        created=result.created,
+        updated=result.updated,
+        deactivated=result.deactivated,
+        rejected=result.rejected,
+        rejections=[FeedRejectionOut(row=r.row, reason=r.reason) for r in result.rejections],
+    )
+
+
+@router.post("/feeds/{feed_id}/pull", response_model=FeedPullOut)
+def pull_feed(
+    feed_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
+) -> FeedPullOut:
+    """Fetch the feed's URL now and store its indicators (502 when the feed cannot be reached)."""
+    return _pull(db, _owned_feed(db, feed_id, user), user, content=None)
+
+
+@router.post("/feeds/{feed_id}/upload", response_model=FeedPullOut)
+def upload_feed(
+    feed_id: uuid.UUID = Path(...),
+    file: UploadFile = File(..., description="The feed's content, e.g. a CSV"),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE)),
+) -> FeedPullOut:
+    """Read an uploaded file as the feed's current content and store its indicators."""
+    feed = _owned_feed(db, feed_id, user)
+    limit = max_bytes()
+    content = file.file.read(limit + 1)
+    if len(content) > limit:
+        raise HTTPException(status_code=413, detail=f"The upload is larger than {limit} bytes")
+    return _pull(db, feed, user, content=content)
 
 
 # ── Indicators ─────────────────────────────────────────────────────────

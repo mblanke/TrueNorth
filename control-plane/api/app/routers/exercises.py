@@ -15,7 +15,8 @@ POST   /exercises/{id}/start               EXERCISE_START
 POST   /exercises/{id}/pause               EXERCISE_PAUSE
 POST   /exercises/{id}/complete            EXERCISE_COMPLETE
 GET    /exercises/{id}/objectives           EXERCISE_READ
-POST   /exercises/{id}/objectives/{ref}/ack EXERCISE_COMPLETE
+GET    /exercises/{id}/injects              EXERCISE_READ
+POST   /exercises/{id}/objectives/{ref}/ack OBJECTIVE_ACK
 POST   /exercises/{id}/aar/generate        AAR_GENERATE
 GET    /exercises/{id}/aar                  AAR_READ
 GET    /exercises/{id}/aar/html            AAR_READ
@@ -37,8 +38,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from ..aar_html import pdf_text
+from ..aar_html import render_html as render_aar_html
+from ..aar_report import build_report as build_aar_report
 from ..auth import CurrentUser
 from ..db import get_db
+from ..detections.redaction import redact_evidence, redact_timeline, sees_answer_key
 from ..models import (
     AfterActionReport,
     AuditLog,
@@ -50,6 +55,8 @@ from ..models import (
     Scenario,
 )
 from ..rbac import Permission, require_permission
+from ..scenario_runs import InjectRecord
+from ..scenario_runs.schemas import InjectRecordOut
 from ..schemas import (
     AAROut,
     ExerciseIn,
@@ -60,7 +67,7 @@ from ..schemas import (
     ObjectiveOut,
 )
 from ..tenancy import get_owned
-from ..xapi import emit_lifecycle, exercise_result
+from ..xapi import emit_lifecycle
 
 logger = logging.getLogger("truenorth.api.exercises")
 
@@ -68,7 +75,16 @@ router = APIRouter(prefix="/exercises", tags=["exercises"])
 
 
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str, detail: str = "") -> None:
-    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid, detail=detail))
+    db.add(
+        AuditLog(
+            user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),
+            action=action,
+            resource_type=rtype,
+            resource_id=rid,
+            detail=detail,
+        )
+    )
 
 
 def _dispatch_task(task_name: str, *args: Any) -> str | None:
@@ -95,9 +111,9 @@ def _scenario_definition(db: Session, ex: Exercise, user: CurrentUser) -> dict:
             pass
     objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
     definition["objectives"] = [{"ref_id": o.ref_id, "validator": o.validator, "points": o.points} for o in objectives]
-    # Fallback: if the YAML carried no timeline, synthesize one step per objective so the run walks.
-    if not definition["timeline"]:
-        definition["timeline"] = [{"t": f"{i}:00", "action": f"inject.{o.ref_id}"} for i, o in enumerate(objectives)]
+    # No timeline, no injects. (This used to synthesize an `inject.<ref_id>` event per
+    # objective so the run "walked"; now that events are really dispatched, those fake
+    # actions would only be recorded as failed injects.)
     return definition
 
 
@@ -226,6 +242,7 @@ def scenario_detail(
         except yaml.YAMLError:
             parsed = {}
     objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).order_by(Objective.ref_id).all()
+    key = sees_answer_key(user)  # Students get the briefing, not the answer key (ADR 0005 §5)
     return {
         "exercise_id": str(ex.id),
         "exercise_name": ex.name,
@@ -238,7 +255,7 @@ def scenario_detail(
         "po_id": parsed.get("po_id", ""),
         "environment": parsed.get("environment", ""),
         "duration_min": parsed.get("duration_min", 0),
-        "timeline": parsed.get("timeline", []),
+        "timeline": parsed.get("timeline", []) if key else redact_timeline(parsed.get("timeline")),
         "noise_floor": parsed.get("noise_floor", []),
         "objectives": [
             {
@@ -246,7 +263,7 @@ def scenario_detail(
                 "type": o.objective_type.value,
                 "points": o.points,
                 "achieved": o.achieved,
-                "evidence": o.evidence or "",
+                "evidence": (o.evidence if key else redact_evidence(o.evidence)) or "",
                 "validator": o.validator,
                 "competency_code": o.competency_code or "",
             }
@@ -268,6 +285,7 @@ def run_exercise(
         for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():
             obj.achieved = False
             obj.achieved_at = None
+            obj.evidence = None  # the last run's credit; its submissions stay on record
         ex.state = ExerciseState.pending
         ex.total_score = 0
         ex.completed_at = None
@@ -332,39 +350,22 @@ async def complete_exercise(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
 ) -> Exercise:
-    """Complete an exercise and tally scores.  **Permission: exercise:complete**"""
+    """Complete an exercise and tally scores.  **Permission: exercise:complete**
+
+    Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
+    and to every Student who submitted a detection in this run (app/exercise_completion).
+    """
+    from ..exercise_completion import Participant, close
+
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    if ex.state not in (ExerciseState.running, ExerciseState.paused):
+    closer = Participant(uuid.UUID(user.id), user.email or "", user.display_name)
+    closed = close(db, ex.id, background_tasks, closer)
+    if closed is None:
+        db.refresh(ex)
         raise HTTPException(409, f"Exercise is {ex.state.value}, cannot complete")
-    ex.state = ExerciseState.completed
-    ex.completed_at = datetime.now(UTC)
-    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
-    ex.total_score = sum(o.points for o in objectives if o.achieved)
+    _audit(db, user, "complete", "exercise", str(closed.id))
     db.commit()
-    db.refresh(ex)
-    _audit(db, user, "complete", "exercise", str(ex.id))
-    db.commit()
-    # Trigger competency auto-assessment (EPIC 3). This used to import worker.celery_app,
-    # which is not in the API image, so the ImportError was swallowed below and no
-    # auto-assessment was ever queued outside the test suite.
-    if _dispatch_task("auto_assess_competency", str(ex.id), str(user.id)) is None:
-        logger.warning("Failed to dispatch auto-assess task for exercise %s", ex.id)
-    if background_tasks is not None:
-        # Moodle/LTI grade pass-back (no-op unless launched via LTI)
-        background_tasks.add_task(
-            _push_exercise_lti_grade, uuid.UUID(user.id), ex.id, ex.total_score or 0, ex.max_score or 100
-        )
-        emit_lifecycle(
-            background_tasks,
-            verb_key="completed",
-            user_email=user.email or f"{user.id}@truenorth.local",
-            user_name=user.display_name,
-            activity_type="exercise",
-            activity_id=str(ex.id),
-            activity_name=ex.name,
-            result=exercise_result(ex.total_score, ex.max_score),
-        )
-    return ex
+    return closed
 
 
 async def _push_exercise_lti_grade(user_id: uuid.UUID, exercise_id: uuid.UUID, score: int, max_score: int) -> None:
@@ -387,8 +388,34 @@ def list_objectives(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
 ) -> list[Objective]:
-    """List objectives for an exercise.  **Permission: exercise:read**"""
-    return db.query(Objective).filter(Objective.exercise_id == exercise_id).all()
+    """List objectives for an exercise.  **Permission: exercise:read**
+
+    Own-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this
+    listed any tenant's objectives, validators and evidence by exercise id). Students
+    get evidence with the answer key redacted (ADR 0005)."""
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    rows = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
+    if sees_answer_key(user):
+        return rows
+    return [ObjectiveOut.model_validate(o).model_copy(update={"evidence": redact_evidence(o.evidence)}) for o in rows]
+
+
+# ── Injects ────────────────────────────────────────────────────────────
+@router.get("/{exercise_id}/injects", response_model=list[InjectRecordOut])
+def list_injects(
+    exercise_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
+) -> list[InjectRecord]:
+    """What each inject did (timeline and instructor), oldest first, every run kept.
+    **Permission: exercise:read**"""
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    return (
+        db.query(InjectRecord)
+        .filter(InjectRecord.exercise_id == ex.id)
+        .order_by(InjectRecord.created_at, InjectRecord.seq)
+        .all()
+    )
 
 
 @router.post("/{exercise_id}/objectives/{ref_id}/ack", response_model=ObjectiveOut)
@@ -398,24 +425,32 @@ async def acknowledge_objective(
     body: ObjectiveAck = Depends(),
     background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
+    user: CurrentUser = Depends(require_permission(Permission.OBJECTIVE_ACK)),
 ) -> Objective:
-    """Acknowledge (achieve) an objective.  **Permission: exercise:complete**"""
-    obj = (
-        db.query(Objective)
-        .filter(
-            Objective.exercise_id == exercise_id,
-            Objective.ref_id == ref_id,
-        )
-        .first()
-    )
+    """Acknowledge (achieve) an objective on a running or paused exercise in the caller's
+    tenant, recording who acknowledged it, and re-total the exercise score.
+
+    **Permission: objective:ack** (instructors and admins; never Students).
+    404 if the exercise is not in the caller's tenant or the objective does not exist;
+    409 if the exercise is not running/paused or the objective is already achieved.
+    """
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    if ex.state not in (ExerciseState.running, ExerciseState.paused):
+        raise HTTPException(409, f"Exercise is {ex.state.value}, expected running or paused")
+    obj = db.query(Objective).filter(Objective.exercise_id == ex.id, Objective.ref_id == ref_id).first()
     if not obj:
         raise HTTPException(404, "Objective not found")
     if obj.achieved:
         raise HTTPException(409, "Objective already achieved")
+    who = user.display_name or user.email or user.id
     obj.achieved = True
-    obj.evidence = body.evidence or f"Acknowledged by {user.display_name}"
+    obj.evidence = f"Acknowledged by {who}: {body.evidence}" if body.evidence else f"Acknowledged by {who}"
     obj.achieved_at = datetime.now(UTC)
+    db.flush()
+    # Same tally as complete_exercise, so the live score is right before completion.
+    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
+    ex.total_score = sum(o.points for o in objectives if o.achieved)
+    _audit(db, user, "ack_objective", "exercise", str(ex.id), detail=obj.ref_id)
     db.commit()
     db.refresh(obj)
     if background_tasks is not None:
@@ -434,6 +469,26 @@ async def acknowledge_objective(
 
 
 # ── AAR ────────────────────────────────────────────────────────────────
+# Every AAR route resolves the exercise through get_owned first: the report row has no
+# tenant of its own, so a lookup by exercise id alone served any tenant's report.
+def _owned_aar(db: Session, exercise_id: uuid.UUID, user: CurrentUser) -> AfterActionReport:
+    """The stored AAR of the caller's exercise, or 404 (unknown, foreign or not generated)."""
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == ex.id).first()
+    if not aar:
+        raise HTTPException(404, "AAR not found — generate it first")
+    return aar
+
+
+def _report_data(aar: AfterActionReport) -> dict:
+    try:
+        data = json.loads(aar.report_json) if aar.report_json else {}
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+
 @router.post("/{exercise_id}/aar/generate", response_model=AAROut, status_code=201)
 def generate_aar(
     exercise_id: uuid.UUID = Path(...),
@@ -442,40 +497,10 @@ def generate_aar(
 ) -> AfterActionReport:
     """Generate After-Action Report.  **Permission: aar:generate**"""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    sc = get_owned(db, Scenario, ex.scenario_id, user)
-    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
-
-    report = {
-        "exercise": {
-            "id": str(ex.id),
-            "name": ex.name,
-            "state": ex.state.value,
-            "started_at": str(ex.started_at) if ex.started_at else None,
-            "completed_at": str(ex.completed_at) if ex.completed_at else None,
-        },
-        "scenario": {"id": str(sc.id), "name": sc.name} if sc else None,
-        "scores": {
-            "total": ex.total_score,
-            "max": ex.max_score,
-            "pct": round(ex.total_score / max(ex.max_score, 1) * 100, 1),
-        },
-        "objectives": [
-            {
-                "ref_id": o.ref_id,
-                "type": o.objective_type.value,
-                "description": o.description,
-                "points": o.points,
-                "achieved": o.achieved,
-                "evidence": o.evidence,
-            }
-            for o in objectives
-        ],
-        "generated_at": datetime.now(UTC).isoformat(),
-        "generated_by": user.display_name,
-    }
+    sc = db.query(Scenario).filter(Scenario.id == ex.scenario_id, Scenario.tenant_id == ex.tenant_id).first()
+    report = build_aar_report(db, ex, sc, user.display_name)
     report_json = json.dumps(report, indent=2)
-    pct = report["scores"]["pct"]
-    html = f"<html><body><h1>AAR: {ex.name}</h1><p>Score: {pct}%</p></body></html>"
+    html = render_aar_html(report)
 
     existing = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == ex.id).first()
     if existing:
@@ -497,10 +522,7 @@ def get_aar(
     user: CurrentUser = Depends(require_permission(Permission.AAR_READ)),
 ) -> AfterActionReport:
     """Retrieve AAR JSON.  **Permission: aar:read**"""
-    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
-    if not aar:
-        raise HTTPException(404, "AAR not found — generate it first")
-    return aar
+    return _owned_aar(db, exercise_id, user)
 
 
 @router.get("/{exercise_id}/aar/html", response_class=HTMLResponse)
@@ -509,11 +531,13 @@ def get_aar_html(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.AAR_READ)),
 ) -> HTMLResponse:
-    """Retrieve AAR as rendered HTML.  **Permission: aar:read**"""
-    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
-    if not aar:
-        raise HTTPException(404, "AAR not found")
-    return HTMLResponse(content=aar.report_html)
+    """Retrieve AAR as rendered HTML.  **Permission: aar:read**
+
+    Rendered from the stored report JSON on every read, so reports written by the worker
+    or before this renderer existed get the full page and are escaped the same way.
+    """
+    aar = _owned_aar(db, exercise_id, user)
+    return HTMLResponse(content=render_aar_html(_report_data(aar)))
 
 
 @router.get("/{exercise_id}/aar/pdf")
@@ -524,27 +548,20 @@ def get_aar_pdf(
 ) -> StreamingResponse:
     """Retrieve AAR as downloadable PDF.  **Permission: aar:read**
 
-    Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps).
+    Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps). Its core
+    fonts are latin-1 only; text outside it is transliterated (``aar_html.pdf_text``).
     """
     from io import BytesIO
 
-    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
-    if not aar:
-        raise HTTPException(404, "AAR not found — generate it first")
+    aar = _owned_aar(db, exercise_id, user)
 
     try:
         from fpdf import FPDF
     except ImportError as exc:  # pragma: no cover
         raise HTTPException(500, "PDF rendering dependency unavailable") from exc
 
-    try:
-        data = json.loads(aar.report_json) if aar.report_json else {}
-    except json.JSONDecodeError:
-        data = {}
-
-    def _s(val: object) -> str:
-        """Coerce to str and strip characters outside fpdf2's core-font range (latin-1)."""
-        return str(val if val is not None else "").encode("latin-1", "replace").decode("latin-1")
+    data = _report_data(aar)
+    _s = pdf_text
 
     pdf = FPDF()
     pdf.add_page()
@@ -555,7 +572,7 @@ def get_aar_pdf(
     pdf.cell(0, 10, "After-Action Report", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 11)
 
-    ex = data.get("exercise", {})
+    ex = data.get("exercise") if isinstance(data.get("exercise"), dict) else {}
     pdf.cell(0, 7, _s(f"Exercise: {ex.get('name', 'Unknown')}"), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 7, _s(f"State: {ex.get('state', '-')}"), new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 7, _s(f"Started: {ex.get('started_at') or '-'}"), new_x="LMARGIN", new_y="NEXT")
@@ -564,7 +581,7 @@ def get_aar_pdf(
     pdf.ln(4)
 
     # Scores
-    scores = data.get("scores", {})
+    scores = data.get("scores") if isinstance(data.get("scores"), dict) else {}
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 8, "Score", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 11)
@@ -578,19 +595,42 @@ def get_aar_pdf(
     pdf.ln(4)
 
     # Objectives
-    objectives = data.get("objectives", [])
+    def _rows(key: str) -> list[dict]:
+        value = data.get(key)
+        return [r for r in value if isinstance(r, dict)] if isinstance(value, list) else []
+
+    def _section(title: str, lines: list[str]) -> None:
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 8, _s(title), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        for line in lines or ["(none recorded)"]:
+            pdf.multi_cell(0, 6, _s(line), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(4)
+
+    objectives = _rows("objectives")
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 8, _s(f"Objectives ({len(objectives)})"), new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 10)
     for obj in objectives:
         status = "[x]" if obj.get("achieved") else "[ ]"
         line = f"{status} [{obj.get('ref_id', '?')}] ({obj.get('points', 0)} pts) {obj.get('description', '')}"
-        pdf.multi_cell(0, 6, _s(line))
+        pdf.multi_cell(0, 6, _s(line), new_x="LMARGIN", new_y="NEXT")
         if obj.get("evidence"):
             pdf.set_font("Helvetica", "I", 9)
-            pdf.multi_cell(0, 5, _s(f"     Evidence: {obj['evidence']}"))
+            pdf.multi_cell(0, 5, _s(f"     Evidence: {obj['evidence']}"), new_x="LMARGIN", new_y="NEXT")
             pdf.set_font("Helvetica", "", 10)
     pdf.ln(4)
+
+    _section(
+        "Injects", [f"{i.get('at') or ''}  {i.get('title') or ''}  {i.get('status') or ''}" for i in _rows("injects")]
+    )
+    _section(
+        "Timeline", [f"{t.get('at') or ''}  {t.get('title') or ''}  {t.get('detail') or ''}" for t in _rows("timeline")]
+    )
+    _section(
+        "Participants",
+        [" - ".join(str(p.get(k)) for k in ("name", "team", "role") if p.get(k)) for p in _rows("participants")],
+    )
 
     # AI analysis if present
     ai = data.get("ai_analysis")
@@ -598,7 +638,7 @@ def get_aar_pdf(
         pdf.set_font("Helvetica", "B", 13)
         pdf.cell(0, 8, "AI Analysis", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 5, _s(str(ai["summary"])[:4000]))
+        pdf.multi_cell(0, 5, _s(str(ai["summary"])[:4000]), new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_y(-20)
     pdf.set_font("Helvetica", "I", 8)
@@ -630,11 +670,8 @@ async def ai_enhance_aar(
     - MITRE ATT&CK mapping insights
     - Competency gap identification
     """
-    aar = db.query(AfterActionReport).filter(AfterActionReport.exercise_id == exercise_id).first()
-    if not aar:
-        raise HTTPException(404, "AAR not found — generate the base report first")
-
-    report_data = json.loads(aar.report_json)
+    aar = _owned_aar(db, exercise_id, user)
+    report_data = _report_data(aar)
     # Was pointed at :8000 /generate with a task_type/temperature body and read
     # ai_result["text"] — four mismatches against the orchestrator, so this could
     # never succeed. The real route is :6000 /ai/aar-analysis, takes
@@ -666,16 +703,8 @@ async def ai_enhance_aar(
         }
         aar.report_json = json.dumps(report_data, indent=2)
 
-        # Enhance HTML with AI section
-        ai_html = (
-            f'<div class="ai-analysis">'
-            f"<h2>AI-Powered Analysis</h2>"
-            f'<div class="analysis-content">{_md_to_html(ai_analysis)}</div>'
-            f'<p class="ai-meta">Generated by {ai_model}</p>'
-            f"</div>"
-        )
-        if aar.report_html:
-            aar.report_html = aar.report_html.replace("</body>", f"{ai_html}</body>")
+        # The renderer escapes the model's output like everything else in the report.
+        aar.report_html = render_aar_html(report_data)
 
         db.commit()
         db.refresh(aar)
@@ -688,43 +717,3 @@ async def ai_enhance_aar(
     except Exception as exc:
         logger.error("AI AAR enhancement failed: %s", exc, exc_info=True)
         raise HTTPException(500, "AI analysis failed") from exc
-
-
-def _build_aar_prompt(report: dict) -> str:
-    """Build a structured prompt for AAR analysis."""
-    ex = report.get("exercise", {})
-    scores = report.get("scores", {})
-    objectives = report.get("objectives", [])
-
-    achieved = [o for o in objectives if o.get("achieved")]
-    missed = [o for o in objectives if not o.get("achieved")]
-
-    return (
-        f"You are a cybersecurity training analyst reviewing an After-Action Report.\n\n"
-        f"Exercise: {ex.get('name', 'Unknown')}\n"
-        f"Score: {scores.get('pct', 0)}% ({scores.get('total', 0)}/{scores.get('max', 0)} points)\n\n"
-        f"Achieved Objectives ({len(achieved)}):\n"
-        + "\n".join(f"- [{o.get('type', '')}] {o.get('description', '')}" for o in achieved)
-        + f"\n\nMissed Objectives ({len(missed)}):\n"
-        + "\n".join(f"- [{o.get('type', '')}] {o.get('description', '')} ({o.get('points', 0)} pts)" for o in missed)
-        + "\n\nProvide:\n"
-        "1. Executive summary (2-3 sentences)\n"
-        "2. Key strengths demonstrated\n"
-        "3. Areas for improvement with specific recommendations\n"
-        "4. MITRE ATT&CK technique coverage analysis\n"
-        "5. Suggested follow-up training exercises\n"
-    )
-
-
-def _md_to_html(text: str) -> str:
-    """Minimal Markdown-to-HTML for AI output."""
-    import re
-
-    text = re.sub(r"^### (.+)$", r"<h3>\1</h3>", text, flags=re.MULTILINE)
-    text = re.sub(r"^## (.+)$", r"<h3>\1</h3>", text, flags=re.MULTILINE)
-    text = re.sub(r"^# (.+)$", r"<h2>\1</h2>", text, flags=re.MULTILINE)
-    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    text = re.sub(r"^- (.+)$", r"<li>\1</li>", text, flags=re.MULTILINE)
-    text = re.sub(r"(<li>.*</li>)", r"<ul>\1</ul>", text, flags=re.DOTALL)
-    text = text.replace("\n\n", "</p><p>")
-    return f"<p>{text}</p>"

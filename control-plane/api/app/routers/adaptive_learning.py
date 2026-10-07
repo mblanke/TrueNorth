@@ -2,6 +2,12 @@
 
 Provides endpoints for auto-assessed competency results, AI-powered
 learning recommendations, and aggregated progress summaries.
+
+Every route is about one person's learning record, so every route goes through
+``tenancy.authorize_record_access``: your own record always; someone else's only
+with ``learning_record:read`` (``:write`` to trigger a recommendation) and only in
+your tenant (foreign user = 404). Until 2026-10-07 any holder of ``exercise:read`` —
+every Student — could read any user's scores and competency trend by id.
 """
 
 from __future__ import annotations
@@ -26,10 +32,32 @@ from ..schemas import (
     LearningRecommendationOut,
     ProgressSummaryOut,
 )
+from ..tenancy import authorize_record_access
 
 logger = logging.getLogger("truenorth.api.adaptive")
 
 router = APIRouter(prefix="/adaptive", tags=["adaptive-learning"])
+
+
+def _readable_record(
+    user_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> uuid.UUID:
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_READ)
+    return user_id
+
+
+def _writable_record(
+    user_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> uuid.UUID:
+    authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_WRITE)
+    return user_id
+
+
+READ_RECORD = [Depends(require_permission(Permission.EXERCISE_READ)), Depends(_readable_record)]
 
 
 # ── Auto-Assessments ───────────────────────────────────────────────────
@@ -38,7 +66,7 @@ router = APIRouter(prefix="/adaptive", tags=["adaptive-learning"])
 @router.get(
     "/users/{user_id}/auto-assessments",
     response_model=list[AutoAssessmentOut],
-    dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
+    dependencies=READ_RECORD,
 )
 def list_auto_assessments(
     user_id: uuid.UUID = Path(...),
@@ -60,7 +88,7 @@ def list_auto_assessments(
 @router.get(
     "/users/{user_id}/auto-assessments/{assessment_id}",
     response_model=AutoAssessmentOut,
-    dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
+    dependencies=READ_RECORD,
 )
 def get_auto_assessment(
     user_id: uuid.UUID = Path(...),
@@ -87,7 +115,7 @@ def get_auto_assessment(
 @router.get(
     "/users/{user_id}/recommendations",
     response_model=list[LearningRecommendationOut],
-    dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
+    dependencies=READ_RECORD,
 )
 def list_recommendations(
     user_id: uuid.UUID = Path(...),
@@ -107,7 +135,7 @@ def list_recommendations(
 @router.get(
     "/users/{user_id}/recommendations/{rec_id}",
     response_model=LearningRecommendationOut,
-    dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
+    dependencies=READ_RECORD,
 )
 def get_recommendation(
     user_id: uuid.UUID = Path(...),
@@ -131,7 +159,7 @@ def get_recommendation(
 @router.post(
     "/users/{user_id}/recommendations",
     response_model=dict,
-    dependencies=[Depends(require_permission(Permission.EXERCISE_CREATE))],
+    dependencies=[Depends(require_permission(Permission.EXERCISE_CREATE)), Depends(_writable_record)],
 )
 def trigger_recommendation(
     user_id: uuid.UUID = Path(...),
@@ -156,7 +184,7 @@ def trigger_recommendation(
 @router.get(
     "/users/{user_id}/progress",
     response_model=ProgressSummaryOut,
-    dependencies=[Depends(require_permission(Permission.EXERCISE_READ))],
+    dependencies=READ_RECORD,
 )
 def get_progress_summary(
     user_id: uuid.UUID = Path(...),

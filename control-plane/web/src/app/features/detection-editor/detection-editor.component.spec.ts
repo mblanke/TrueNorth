@@ -302,6 +302,68 @@ describe('DetectionEditorComponent', () => {
     expect(component.aiDrafting()).toBeFalse();
   });
 
+  // ── Server refusals (stage 4: the API now checks MITRE ids and sigma_id clashes) ──
+  it('shows the API reason when it refuses an unknown MITRE id, and stays in the editor', () => {
+    fixture.detectChanges();
+    component.editRule(rule as any);
+    mockApi.patch.and.returnValue(throwError(() => ({
+      status: 422,
+      error: { detail: {
+        message: 'Unknown MITRE ATT&CK id',
+        errors: ["'T59' is not of the form T1234, T1234.001 or TA0001"],
+      } },
+    })));
+
+    component.saveRule();
+    fixture.detectChanges();
+
+    expect(component.saveErrors()).toEqual([
+      'Unknown MITRE ATT&CK id',
+      "'T59' is not of the form T1234, T1234.001 or TA0001",
+    ]);
+    expect(component.editing()).toBeTrue();
+    expect(component.saving()).toBeFalse();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Unknown MITRE ATT&CK id');
+  });
+
+  it('shows a duplicate sigma_id conflict as the API words it', () => {
+    fixture.detectChanges();
+    component.newRule();
+    component.editTitle = 'Copy of LSASS';
+    component.editSigmaId = 'tn-detect-lsass';
+    mockApi.post.and.returnValue(throwError(() => ({
+      status: 409, error: { detail: 'A rule with this sigma_id already exists' },
+    })));
+
+    component.saveRule();
+
+    expect(mockApi.post).toHaveBeenCalledWith('/detection-rules', jasmine.objectContaining({
+      sigma_id: 'tn-detect-lsass',
+    }));
+    expect(component.saveErrors()).toEqual(['A rule with this sigma_id already exists']);
+    expect(component.editing()).toBeTrue();
+  });
+
+  it('falls back to a generic message when the refusal has no detail', () => {
+    fixture.detectChanges();
+    component.newRule();
+    mockApi.post.and.returnValue(throwError(() => ({ status: 500, error: null })));
+
+    component.saveRule();
+
+    expect(component.saveErrors()).toEqual(['Failed to save rule']);
+  });
+
+  it('reports a failed validation request without inventing a result', () => {
+    fixture.detectChanges();
+    component.newRule();
+    mockApi.post.and.returnValue(throwError(() => ({ status: 503 })));
+
+    component.validateYaml();
+
+    expect(component.validation()).toBeNull();
+  });
+
   it('clears the drafting state when the AI call fails', () => {
     fixture.detectChanges();
     component.newRule();

@@ -48,6 +48,9 @@ PUBLIC_PATHS: set[str] = {
     "/registration/mine",
     # LTI 1.3 launches are authenticated by signed JWT from the platform, and
     # xAPI/LRS endpoints by their own credential.
+    # Calendar clients cannot sign in; the feed is authenticated by the per-user
+    # bearer token in its path, and serves only what that user may see (ADR 0004).
+    "/schedule/feed/{token}.ics",
 }
 
 PUBLIC_PREFIXES: tuple[str, ...] = (
@@ -69,6 +72,10 @@ AUTH_MARKERS = (
     "require_permission",
     "require_role",
     "_check",  # the inner closure require_permission/require_role return
+    # In-VM noise agents hold no user account; each authenticates with its own
+    # per-node token (X-Noise-Agent-Token). Named here rather than exempted by prefix,
+    # so a future /noise/agent route without it still fails this guard.
+    "noise_agent_identity",
 )
 
 

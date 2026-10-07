@@ -256,9 +256,11 @@ services:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
       additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
+        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q provision,destroy -c 4 --loglevel=info -n provision@%h
+    volumes:
+      - ../../../content/catalogue:/app/content/catalogue:ro  # software_catalogue.py (vSphere installs)
     environment: &worker-env
       DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
       REDIS_URL: redis://redis:6379/0
@@ -287,7 +289,7 @@ services:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
       additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
+        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q scenario,default -c 8 --loglevel=info -n scenario@%h
     environment: *worker-env
@@ -307,7 +309,7 @@ services:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
       additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
+        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q telemetry -c 4 --loglevel=info -n telemetry@%h
     environment: *worker-env
@@ -321,7 +323,7 @@ services:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
       additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
+        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
     restart: unless-stopped
     command: celery -A worker.celery_app flower --port=5555 --broker_api=redis://redis:6379/0
     ports:
@@ -389,29 +391,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-
-  # -- Telemetry Pipeline ------------------------------------------------
-  telemetry-pipeline:
-    build:
-      context: ../../../telemetry-pipeline
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    environment:
-      REDIS_URL: redis://redis:6379/0
-      OPENSEARCH_URL: http://opensearch:9200
-      OPENSEARCH_INDEX_PREFIX: truenorth-telemetry
-      BATCH_SIZE: "500"
-      FLUSH_INTERVAL_MS: "2000"
-    depends_on:
-      redis:
-        condition: service_healthy
-      opensearch:
-        condition: service_started
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 512M
 
   # -- Nginx Reverse Proxy ------------------------------------------------
   nginx:

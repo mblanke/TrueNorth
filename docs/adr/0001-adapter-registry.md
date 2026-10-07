@@ -15,6 +15,7 @@ channels, LLM backends. Where those sit behind an interface they are swappable t
 | Auth | `control-plane/api/app/auth_backends/base.py` | `get_auth_backend()` (`AUTH_BACKEND`) |
 | LMS / xAPI | `control-plane/api/app/lms/base.py` | `get_lms_backend()` (`LMS_BACKEND`) |
 | Search | `control-plane/api/app/search_backends/base.py` | `get_search_backend()` (`SEARCH_BACKEND`) |
+| Threat intel feeds | `control-plane/api/app/threat_intel_backends/base.py` `BaseFeedBackend` | `get_feed_backend(feed.feed_type)` |
 | Notifications | `control-plane/api/app/notifications/base.py` | `notifications/registry.py` |
 | AI | `ai-orchestrator/app/backends/base.py` | backend factory |
 | AI engine admin (`/ai-config` test/discover) | `control-plane/api/app/ai_backends/base.py` `BaseAIEngine` | `get_ai_engine()` (row `backend_type`) |

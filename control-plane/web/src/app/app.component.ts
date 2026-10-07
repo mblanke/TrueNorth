@@ -10,6 +10,7 @@ import {
 } from '@angular/router';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { NotificationBellComponent } from './shared/notification-bell.component';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -18,6 +19,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { Subscription } from 'rxjs';
 import gsap from 'gsap';
 
+import { AuthService } from './core/services/auth.service';
 import { ThemeService, ThemeOption } from './core/services/theme.service';
 import { MotionService } from './shared/motion';
 import { TourOverlayComponent } from './shared/tour/tour-overlay.component';
@@ -26,6 +28,8 @@ interface NavItem {
   label: string;
   icon: string;
   route: string;
+  /** Hidden from Students (the route guard and the API refuse them too). */
+  staffOnly?: boolean;
 }
 
 interface NavSection {
@@ -45,7 +49,8 @@ interface NavSection {
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
-    MatExpansionModule
+    MatExpansionModule,
+    NotificationBellComponent,
 ],
   template: `
     @if (isBareRoute()) {
@@ -71,6 +76,7 @@ interface NavSection {
                   <h2 class="nav-group-title">{{ section.name }}</h2>
                   <mat-nav-list dense>
                     @for (item of section.items; track item.route) {
+                      @if (!item.staffOnly || auth.canViewSchedule()) {
                       <a mat-list-item
                          [routerLink]="item.route"
                          (click)="mobile() && sidenav.close()"
@@ -84,6 +90,7 @@ interface NavSection {
                         <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
                         <span matListItemTitle class="nav-label">{{ item.label }}</span>
                       </a>
+                      }
                     }
                   </mat-nav-list>
                 </section>
@@ -104,6 +111,8 @@ interface NavSection {
             <span class="toolbar-kicker">Workspace <span class="kicker-sep">/</span> <strong>{{ workspaceTitle() }}</strong></span>
 
             <span class="spacer"></span>
+
+            <tn-notification-bell />
 
             <details class="appearance-menu">
               <summary>Appearance</summary>
@@ -302,6 +311,7 @@ interface NavSection {
   `],
 })
 export class AppComponent implements OnDestroy {
+  readonly auth = inject(AuthService);
   private theme = inject(ThemeService);
   private motion = inject(MotionService);
   private router = inject(Router);
@@ -354,11 +364,19 @@ export class AppComponent implements OnDestroy {
       items: [
         { label: 'Exercises', icon: 'fitness_center', route: '/exercises' },
         { label: 'Ops Center', icon: 'radar', route: '/ops-center/select' },
+        { label: 'Schedule', icon: 'event', route: '/schedule', staffOnly: true },
       ],
     },
     {
       name: 'Review',
       items: [{ label: 'Scoring & AAR', icon: 'assessment', route: '/scoring' }],
+    },
+    {
+      name: 'Help',
+      items: [
+        { label: 'Wiki',    icon: 'menu_book',      route: '/wiki' },
+        { label: 'Support', icon: 'support_agent',  route: '/support' },
+      ],
     },
     {
       name: 'Admin',

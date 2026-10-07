@@ -1,13 +1,13 @@
 """TrueNorth Range - Celery tasks for range provisioning, snapshots and maintenance.
 
-Scenario runs live in exercise_run.py and AAR generation in aar_tasks.py (ADR 0003);
-their Celery names are still ``worker.tasks.<name>`` and they import from here too.
+Scenario runs live in exercise_run.py, AAR generation in aar_tasks.py and telemetry
+ingest in telemetry_tasks.py (ADR 0003); their Celery names are still
+``worker.tasks.<name>`` and they import from here too.
 
 Designed for 70,000-VM scale:
   - Batch provisioning with chunked VM creation
   - Exponential backoff retries with jitter
   - Proper DB session lifecycle (no leaks)
-  - Telemetry batch ingest to OpenSearch
   - Distributed locking via Redis for state transitions
 """
 
@@ -24,10 +24,9 @@ from datetime import UTC, datetime
 
 from celery import group
 
-from . import db_ops
+from . import db_ops, greyspace, range_alloc
 from .base_tasks import ReliableTask, _get_backend
 from .celery_app import app
-from .detection import range_index
 from .fencing import FINAL_ERRORS, fenced, run_async
 from .fencing import last_attempt as _last_attempt
 from .provisioners import discard_built
@@ -40,7 +39,12 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 # Tasks moved to their own modules (ADR 0003), still importable from here. Resolved on
 # first use: celery_app imports every task module at its end, so a load-time import
 # here would find a module that was imported first only half-initialised.
-_MOVED = {"run_scenario": "exercise_run", "run_scenario_v2": "exercise_run", "generate_aar": "aar_tasks"}
+_MOVED = {
+    "run_scenario": "exercise_run",
+    "run_scenario_v2": "exercise_run",
+    "generate_aar": "aar_tasks",
+    "ingest_telemetry_batch": "telemetry_tasks",
+}
 
 
 def __getattr__(name: str):
@@ -124,7 +128,7 @@ def _hypervisor_creds(db, hypervisor_type: str) -> dict:
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
 @fenced("provision", "provisioning")  # only a range its sender moved to provisioning; one copy at a time
-def provision_range(self, range_id: str):
+def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
     """Provision a range: render its template, build it with its backend, store the result.
     A range torn down while it was being built gets what was built destroyed, not recorded."""
     logger.info(f"[provision] Starting range {range_id}")
@@ -160,7 +164,7 @@ def provision_range(self, range_id: str):
             with _db_session() as db2:
                 resolver = golden_image_resolver(db2, hv)
                 creds = _hypervisor_creds(db2, hv)
-            rendered = render_topology(template, range_id, resolver)
+            rendered = render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt)
             template = {
                 **template,
                 "name": rendered["range_name"],
@@ -178,24 +182,18 @@ def provision_range(self, range_id: str):
                 logger.warning("[provision] unresolved OS templates: %s", rendered["unresolved"])
 
         provisioner = _get_backend(backend)
-
+        allocations.update(range_alloc.reserve_for_build(_db_session, range_id, provisioner, template))
         result = run_async(provisioner.provision(range_id, template, allocations))
 
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Provisioning failed")
 
-        output = json.dumps(
-            {
-                "provider": backend,
-                "range_id": range_id,
-                "vms": result.vms,
-                "networks": result.networks,
-            }
-        )
+        output = json.dumps(range_alloc.stored_output(backend, range_id, result))
 
         if not _update_range_state(range_id, "ready", output=output, only_from=("provisioning",)):
             return discard_built(provisioner, range_id, result)
         _notify_api("range", {"id": range_id, "state": "ready"})
+        greyspace.after_provision(range_id, backend, template)  # Greyspace block, if any (ADR 0007); never raises
         logger.info(f"[provision] Range {range_id} ready ({len(result.vms)} VMs)")
         return {"status": "ready", "range_id": range_id, "vm_count": len(result.vms)}
 
@@ -230,11 +228,8 @@ def batch_provision(self, range_ids: list[str]):
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.destroy_range")
 @fenced("destroy", "destroying")  # only a range its sender moved to destroying; one copy at a time
 def destroy_range(self, range_id: str):
-    """Destroy a provisioned range using the configured backend.
-
-    Fetches the provisioner output from the database, delegates to
-    the provisioner class hierarchy, and updates range state.
-    """
+    """Destroy a provisioned range with its backend: read the provisioner output from the
+    database, delegate to the provisioner, and update the range state."""
     logger.info(f"[destroy] Starting range {range_id}")
     _notify_api("range", {"id": range_id, "state": "destroying"})
 
@@ -253,7 +248,9 @@ def destroy_range(self, range_id: str):
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
         _update_range_state(range_id, "destroyed", only_from=("destroying",))
+        range_alloc.release_after_destroy(_db_session, range_id)  # its VLANs and addresses
         _notify_api("range", {"id": range_id, "state": "destroyed"})
+        greyspace.after_destroy(range_id)  # Greyspace back to configured (ADR 0007); never raises
         logger.info(f"[destroy] Range {range_id} destroyed ({result.resources_removed} resources)")
         return {"status": "destroyed", "range_id": range_id}
 
@@ -263,47 +260,6 @@ def destroy_range(self, range_id: str):
             _notify_api("range", {"id": range_id, "state": "failed", "error": str(e)})
         logger.error(f"[destroy] Range {range_id} FAILED: {e}")
         raise
-
-
-# -- Telemetry Batch Ingest ----------------------------------------------
-@app.task(bind=True, name="worker.tasks.ingest_telemetry_batch")
-def ingest_telemetry_batch(self, range_id: str, events: list[dict]):
-    """Batch-ingest telemetry events into OpenSearch.
-
-    At scale, the API buffers events and dispatches to this task
-    to avoid blocking request threads on OpenSearch I/O.
-    """
-    import httpx
-
-    os_url = os.getenv("OPENSEARCH_URL", "http://opensearch:9200")
-    index = range_index(range_id)
-
-    bulk_body = ""
-    for event in events:
-        event.setdefault("range_id", range_id)
-        event.setdefault("@timestamp", datetime.now(UTC).isoformat())
-        bulk_body += json.dumps({"index": {"_index": index}}) + "\n"
-        bulk_body += json.dumps(event) + "\n"
-
-    try:
-        with httpx.Client(timeout=30) as client:
-            resp = client.post(
-                f"{os_url}/_bulk",
-                content=bulk_body,
-                headers={"Content-Type": "application/x-ndjson"},
-            )
-            resp.raise_for_status()
-            result = resp.json()
-            errors = result.get("errors", False)
-            if errors:
-                failed = [item for item in result.get("items", []) if item.get("index", {}).get("error")]
-                logger.warning(f"[telemetry] {len(failed)} events failed indexing")
-    except Exception as e:
-        logger.error(f"[telemetry] OpenSearch ingest error: {e}")
-        raise
-
-    logger.info(f"[telemetry] Ingested {len(events)} events for range {range_id}")
-    return {"indexed": len(events), "range_id": range_id}
 
 
 # ========================================================================
@@ -449,6 +405,8 @@ def collect_range_metrics(self):
                 **metrics,
             }
             try:
+                from .telemetry_tasks import ingest_telemetry_batch
+
                 ingest_telemetry_batch.delay(range_id, [event])
             except Exception as ingest_err:
                 logger.warning(f"[metrics] Failed to queue telemetry for {range_id}: {ingest_err}")

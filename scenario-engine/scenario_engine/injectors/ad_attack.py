@@ -28,6 +28,7 @@ class ADAttackInjector(BaseInjector):
         "Simulates Active Directory attacks including Kerberoasting, password spray, DCSync, and GPO modification."
     )
     required_params: list[str] = ["attack_type", "target_dc"]
+    touches_range_hosts = False  # synthetic records only; safe on the mock backend
 
     # Recognised attack types and their MITRE ATT&CK technique IDs
     _TECHNIQUE_MAP: dict[str, str] = {

@@ -1,0 +1,63 @@
+id: greyspace-internet
+name: Small Office with Greyspace Internet
+version: "1.0"
+description: |
+  A small office network whose edge reaches a Greyspace simulated internet: backbone
+  routing between two "ISPs", root/TLD/authoritative DNS, a recursive resolver, rehosted
+  sites served from the read-only corpus and a threat-actor stub (ADR 0007). The
+  `greyspace` block below is attached to every range built from this template.
+  On the mock backend the block is recorded; on vSphere the gs-core VM is a later slice.
+author: TrueNorth Range
+difficulty: beginner
+
+network:
+  vlans:
+    - id: 110
+      name: corporate
+      cidr: "10.40.110.0/24"
+    - id: 120
+      name: servers
+      cidr: "10.40.120.0/24"
+
+nodes:
+  - id: edge01
+    name: Edge Router
+    role: router
+    os: vyos
+    vlan: servers
+    ip: "10.40.120.1"
+    specs: { cores: 2, memory_mb: 2048, disk_gb: 10 }
+    services: [nat, dns_forwarder]
+
+  - id: dc01
+    name: Domain Controller
+    role: domain_controller
+    os: windows-server-2022
+    vlan: servers
+    ip: "10.40.120.10"
+    specs: { cores: 4, memory_mb: 8192, disk_gb: 100 }
+    services: [active_directory, dns]
+
+  - id: ws01
+    name: Workstation 1
+    role: workstation
+    os: windows-11
+    vlan: corporate
+    ip: "10.40.110.10"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+  - id: ws02
+    name: Workstation 2
+    role: workstation
+    os: windows-11
+    vlan: corporate
+    ip: "10.40.110.11"
+    specs: { cores: 2, memory_mb: 4096, disk_gb: 60 }
+
+greyspace:
+  version: 1
+  corpus_tier: t0
+  site_packs: [news, search, social, webmail, dev]
+  npc_profile: "off"
+  threat_infra: true
+  trust_ca: true
