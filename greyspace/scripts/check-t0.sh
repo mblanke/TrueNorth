@@ -91,6 +91,11 @@ body="$(probe curl -fsS --max-time 5 "http://$FAR_SITE/about.html")" || fail "GE
 grep -q "fictional" <<<"$body" || fail "http://$FAR_SITE/about.html did not serve the fixture page"
 code="$(probe curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$SITE/no-such-page")"
 [[ "$code" == "404" ]] || fail "a missing page returned $code, not 404"
+VIDEO_URL="$("$PY" -c 'import json,sys; v=json.load(open(sys.argv[1]))["videos"]; print("http://%s/%s" % (v[0]["site"], v[0]["path"].split("/", 2)[2]) if v else "")' "$CORPUS/manifest.json")"
+if [[ -n "$VIDEO_URL" ]]; then
+  ctype="$(probe curl -fsS -o /dev/null -w '%{content_type}' --max-time 5 "$VIDEO_URL")" || fail "GET $VIDEO_URL failed"
+  [[ "$ctype" == video/* ]] || fail "$VIDEO_URL served as '$ctype', not video"
+fi
 
 say "4. Threat stub: $THREAT"
 got="$(probe dig +short @198.18.0.53 "$THREAT" A | tail -1)"
