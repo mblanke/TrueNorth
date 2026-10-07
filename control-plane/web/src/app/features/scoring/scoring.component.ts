@@ -14,6 +14,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute } from '@angular/router';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
 import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
 
 @Component({
@@ -81,7 +82,7 @@ import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
                 }
               </mat-card-content>
               <mat-card-actions>
-                @if (!obj.achieved) {
+                @if (!obj.achieved && canAck()) {
                   <button mat-button color="primary" (click)="ackObjective(obj.ref_id)">
                     <mat-icon>check</mat-icon> Acknowledge
                   </button>
@@ -129,6 +130,10 @@ export class ScoringComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
   private sanitizer = inject(DomSanitizer);
+  private auth = inject(AuthService);
+
+  /** Students see objectives but cannot award them (objective:ack). */
+  readonly canAck = this.auth.canAcknowledgeObjectives;
 
   private route = inject(ActivatedRoute);
 

@@ -64,6 +64,7 @@ export const routes: Routes = [
         { label: 'Ranges', path: 'ranges' },
         { label: 'Scenarios', path: 'scenarios' },
         { label: 'Detections', path: 'detections' },
+        { label: 'Threat intel', path: 'threat-intel' },
         { label: 'MESL', path: 'mesl' },
         { label: 'Forge', path: 'forge' },
         { label: 'Content', path: 'content' },
@@ -117,6 +118,12 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/detection-editor/detection-editor.component').then(m => m.DetectionEditorComponent),
         title: 'Authoring · Detections - TrueNorth Range',
+      },
+      {
+        path: 'threat-intel',
+        loadComponent: () =>
+          import('./features/threat-intel/threat-intel-feeds.component').then(m => m.ThreatIntelFeedsComponent),
+        title: 'Authoring · Threat intel - TrueNorth Range',
       },
       {
         path: 'mesl',
@@ -329,7 +336,9 @@ export const routes: Routes = [
   },
   {
     path: 'exercises/:id',
-    canActivate: [authGuard, onboardingGuard, instructorGuard],
+    // Students run their assessment and submit detections here (ADR 0005); the API
+    // redacts the answer key for them and gates every action by permission.
+    canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
       import('./features/exercise-detail/exercise-detail.component').then(m => m.ExerciseDetailComponent),
     title: 'Exercise - TrueNorth Range',

@@ -128,9 +128,10 @@ TIMELINE = [
 
 @pytest.fixture
 def running_exercise(monkeypatch):
-    """db_ops answers as for a running exercise; no database, detection scoring off.
-    Outcomes on a real database: tests/worker/test_inject_dispatch.py."""
-    monkeypatch.delenv("DETECTION_SCORING", raising=False)
+    """db_ops answers as for a running exercise on a range with no recorded backend, so
+    PROVISIONER_BACKEND decides; no database. Outcomes on a real database:
+    tests/worker/test_inject_dispatch.py."""
+    monkeypatch.setattr(db_ops, "exercise_range_backend", lambda db, eid: None)
     monkeypatch.setattr(db_ops, "start_exercise", lambda db, eid: 1)
     monkeypatch.setattr(db_ops, "exercise_state", lambda db, eid: "running")
     monkeypatch.setattr(db_ops, "recorded_seqs", lambda db, run_id: set())
@@ -151,7 +152,9 @@ def test_run_scenario_v2_calls_the_seam_once_per_inject_on_every_backend(monkeyp
         patch("worker.inject_dispatch.dispatch_inject", return_value={"status": "fired"}) as seam,
     ):
         result = exercise_run.run_scenario_v2(exercise_id="ex-seam", scenario_definition=definition)
-    assert result["status"] == "completed" and result["events_executed"] == 3
+    # ADR 0005 §6: the mock run completes; a real-backend exercise stays live for detections.
+    assert result["status"] == ("completed" if backend == "mock" else "running")
+    assert result["events_executed"] == 3
     assert [c.args for c in seam.call_args_list] == [
         ("ex-seam", "deploy_malware", {"target": "ws-001"}),
         ("ex-seam", "exfil_data", {"target": "dc-01"}),
@@ -171,14 +174,43 @@ def test_run_scenario_v2_counts_only_fired_injects(monkeypatch, running_exercise
         patch("worker.inject_dispatch.dispatch_inject", side_effect=lambda *a, **k: next(answers)),
     ):
         result = exercise_run.run_scenario_v2(exercise_id="ex-nw", scenario_definition=definition)
-    assert result == {
-        "status": "completed",
-        "exercise_id": "ex-nw",
-        "events_executed": 3,
-        "injects_fired": 1,
-        "objectives_completed": 0,
-    }
-    assert notify.call_args_list[-1].args[1]["state"] == "completed"
+    assert result == {"status": "running", "exercise_id": "ex-nw", "events_executed": 3, "injects_fired": 1}
+    last = notify.call_args_list[-1].args[1]
+    assert (last["state"], last["phase"]) == ("running", "timeline_complete")
+
+
+def test_a_real_backend_run_never_completes_or_achieves(monkeypatch, running_exercise):
+    """ADR 0005 §6: the worker neither scores nor closes a real-backend exercise; the range's
+    own backend decides even when the worker's environment says mock."""
+    monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
+    monkeypatch.setattr(db_ops, "exercise_range_backend", lambda db, eid: "vsphere_api")
+    achieved = []
+    monkeypatch.setattr(db_ops, "achieve_objective", lambda db, eid, ref: achieved.append(ref))
+    definition = {"timeline": TIMELINE, "objectives": [{"ref_id": "o1"}], "inject_packs": []}
+    with (
+        patch("worker.tasks._db_session", return_value=_session()),
+        patch("worker.tasks._notify_api"),
+        patch.object(db_ops, "complete_exercise") as complete,
+        patch("worker.inject_dispatch.dispatch_inject", return_value={"status": "fired"}),
+    ):
+        result = exercise_run.run_scenario_v2(exercise_id="ex-live", scenario_definition=definition)
+    assert result["status"] == "running" and achieved == [] and not complete.called
+
+
+def test_a_mock_run_still_achieves_every_objective_and_completes(monkeypatch, running_exercise):
+    """ADR 0005: a mock range has no telemetry; its run is a simulation and auto-achieves."""
+    monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
+    achieved = []
+    monkeypatch.setattr(db_ops, "achieve_objective", lambda db, eid, ref: achieved.append(ref))
+    definition = {"timeline": TIMELINE, "objectives": [{"ref_id": "o1"}, {"ref_id": "o2"}], "inject_packs": []}
+    with (
+        patch("worker.tasks._db_session", return_value=_session()),
+        patch("worker.tasks._notify_api"),
+        patch.object(db_ops, "complete_exercise", return_value=1),
+        patch("worker.inject_dispatch.dispatch_inject", return_value={"status": "fired"}),
+    ):
+        result = exercise_run.run_scenario_v2(exercise_id="ex-mock", scenario_definition=definition)
+    assert result["status"] == "completed" and result["objectives_completed"] == 2 and achieved == ["o1", "o2"]
 
 
 def test_run_scenario_v2_seam_failure_cancels_the_exercise(monkeypatch, running_exercise):

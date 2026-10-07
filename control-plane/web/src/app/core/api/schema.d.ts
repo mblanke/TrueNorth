@@ -1886,8 +1886,31 @@ export interface paths {
         /**
          * Complete Exercise
          * @description Complete an exercise and tally scores.  **Permission: exercise:complete**
+         *
+         *     Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
+         *     and to every Student who submitted a detection in this run (app/exercise_completion).
          */
         post: operations["complete_exercise_exercises__exercise_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercises/{exercise_id}/detections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Detections
+         * @description Detection attempts on an exercise: a Student's own; every attempt for staff.  **Permission: exercise:read**
+         */
+        get: operations["list_detections_exercises__exercise_id__detections_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1927,7 +1950,8 @@ export interface paths {
          * @description List objectives for an exercise.  **Permission: exercise:read**
          *
          *     Own-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this
-         *     listed any tenant's objectives, validators and evidence by exercise id).
+         *     listed any tenant's objectives, validators and evidence by exercise id). Students
+         *     get evidence with the answer key redacted (ADR 0005).
          */
         get: operations["list_objectives_exercises__exercise_id__objectives_get"];
         put?: never;
@@ -1949,11 +1973,34 @@ export interface paths {
         put?: never;
         /**
          * Acknowledge Objective
-         * @description Acknowledge (achieve) an objective.  **Permission: exercise:complete**
+         * @description Acknowledge (achieve) an objective on a running or paused exercise in the caller's
+         *     tenant, recording who acknowledged it, and re-total the exercise score.
          *
-         *     Own-tenant exercises only (foreign id = 404).
+         *     **Permission: objective:ack** (instructors and admins; never Students).
+         *     404 if the exercise is not in the caller's tenant or the objective does not exist;
+         *     409 if the exercise is not running/paused or the objective is already achieved.
          */
         post: operations["acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercises/{exercise_id}/objectives/{ref_id}/detections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Detection
+         * @description Submit a detection for an objective; it is credited if it finds the attack.  **Permission: detection:submit**
+         */
+        post: operations["submit_detection_exercises__exercise_id__objectives__ref_id__detections_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5411,6 +5458,9 @@ export interface paths {
         /**
          * Get Scenario
          * @description Retrieve a single scenario.  **Permission: scenario:read**
+         *
+         *     Without scenario:update the YAML is the briefing only: no objective params,
+         *     variables or inject playbook (ADR 0005 §5).
          */
         get: operations["get_scenario_scenarios__scenario_id__get"];
         /**
@@ -6194,6 +6244,46 @@ export interface paths {
         get: operations["list_feed_indicators_threat_intel_feeds__feed_id__indicators_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/threat-intel/feeds/{feed_id}/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pull Feed
+         * @description Fetch the feed's URL now and store its indicators (502 when the feed cannot be reached).
+         */
+        post: operations["pull_feed_threat_intel_feeds__feed_id__pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/threat-intel/feeds/{feed_id}/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Feed
+         * @description Read an uploaded file as the feed's current content and store its indicators.
+         */
+        post: operations["upload_feed_threat_intel_feeds__feed_id__upload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7402,6 +7492,14 @@ export interface components {
             /** Files */
             files: string[];
         };
+        /** Body_upload_feed_threat_intel_feeds__feed_id__upload_post */
+        Body_upload_feed_threat_intel_feeds__feed_id__upload_post: {
+            /**
+             * File
+             * @description The feed's content, e.g. a CSV
+             */
+            file: string;
+        };
         /** Body_upload_range_documents_ranges__range_id__documents_post */
         Body_upload_range_documents_ranges__range_id__documents_post: {
             /** Files */
@@ -8265,6 +8363,48 @@ export interface components {
             /** Technique */
             technique: string;
         };
+        /** DetectionIn */
+        DetectionIn: {
+            /**
+             * Query
+             * @description Lucene query string
+             */
+            query: string;
+        };
+        /**
+         * DetectionOut
+         * @description One attempt. ``on_target`` and ``precision`` are shown only to staff who may see the key.
+         */
+        DetectionOut: {
+            /** Attempts Left */
+            attempts_left?: number | null;
+            /** Events Matched */
+            events_matched: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Objective Ref */
+            objective_ref: string;
+            /** On Target */
+            on_target?: number | null;
+            /** Precision */
+            precision?: number | null;
+            /** Query */
+            query: string;
+            /** Reason */
+            reason?: string | null;
+            /** Submitted At */
+            submitted_at: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Verdict */
+            verdict: string;
+        };
         /** DetectionRuleIn */
         DetectionRuleIn: {
             /** Author */
@@ -8833,6 +8973,32 @@ export interface components {
             lti_token_url?: string | null;
             /** Name */
             name?: string;
+        };
+        /**
+         * FeedPullOut
+         * @description What a pull did. ``rejections`` lists at most the first 50 rejected rows.
+         */
+        FeedPullOut: {
+            /** Created */
+            created: number;
+            /** Deactivated */
+            deactivated: number;
+            feed: components["schemas"]["ThreatIntelFeedOut"];
+            /** Rejected */
+            rejected: number;
+            /** Rejections */
+            rejections: components["schemas"]["FeedRejectionOut"][];
+            /** Status */
+            status: string;
+            /** Updated */
+            updated: number;
+        };
+        /** FeedRejectionOut */
+        FeedRejectionOut: {
+            /** Reason */
+            reason: string;
+            /** Row */
+            row: number;
         };
         /**
          * FeedTokenIssued
@@ -16917,6 +17083,37 @@ export interface operations {
             };
         };
     };
+    list_detections_exercises__exercise_id__detections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_injects_exercises__exercise_id__injects_get: {
         parameters: {
             query?: never;
@@ -17010,6 +17207,63 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    submit_detection_exercises__exercise_id__objectives__ref_id__detections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+                ref_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionOut"];
+                };
+            };
+            /** @description Exercise not running, objective already achieved, or not a detection objective */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description No attempts left for this objective */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The event store could not answer; the attempt was not counted */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -24967,6 +25221,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ThreatIndicatorOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pull_feed_threat_intel_feeds__feed_id__pull_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPullOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_feed_threat_intel_feeds__feed_id__upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feed_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_feed_threat_intel_feeds__feed_id__upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPullOut"];
                 };
             };
             /** @description Validation Error */

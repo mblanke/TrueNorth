@@ -27,6 +27,7 @@ from app.models import (
     AuditLog,
     CompetencyAutoAssessment,
     Exercise,
+    ExerciseState,
     Objective,
     ObjectiveType,
     User,
@@ -116,6 +117,7 @@ class TestExerciseObjectives:
 
     def test_own_exercise_objectives_are_200(self, client, db_session):
         mine = _exercise(db_session, DEV_TENANT)
+        mine.state = ExerciseState.running  # objectives are acknowledged on a live exercise (ADR 0005 §4)
         db_session.commit()
         r = client.get(f"/exercises/{mine.id}/objectives")
         assert r.status_code == 200, r.text

@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app import (  # noqa: F401
     course_publishing,
     course_releases,
+    detections,
     lab_sessions,
     models,
     models_tickets,

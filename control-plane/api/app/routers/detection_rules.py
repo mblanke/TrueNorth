@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
 from ..db import get_db, not_deleted
+from ..mitre import unknown_attack_ids
 from ..models import AuditLog, DetectionRule
 from ..rbac import Permission, require_permission
 from ..schemas import (
@@ -67,6 +68,18 @@ def _validate_sigma_yaml(raw_yaml: str) -> SigmaValidationResult:
     return SigmaValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
+def _check_attack_ids(ids: list[str] | None) -> None:
+    """422 for any MITRE id that is not an ATT&CK technique, sub-technique or tactic id."""
+    if bad := unknown_attack_ids(ids or []):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "Unknown MITRE ATT&CK id",
+                "errors": [f"{i!r} is not of the form T1234, T1234.001 or TA0001" for i in bad],
+            },
+        )
+
+
 # ── Validation ─────────────────────────────────────────────────────────
 
 
@@ -118,6 +131,7 @@ async def create_rule(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"message": "Invalid Sigma rule", "errors": validation.errors},
         )
+    _check_attack_ids(payload.mitre_attack_ids)
 
     data = payload.model_dump()
     # Serialize list fields to JSON
@@ -129,6 +143,10 @@ async def create_rule(
     # raised "got multiple values for keyword argument 'author'", so every create
     # 500'd — including every save from the detection editor.
     data.pop("author", None)
+    # sigma_id is unique across the whole table (any tenant, deleted rows too); a clash was
+    # an IntegrityError and a 500. Say 409 without saying whose rule holds the id.
+    if data.get("sigma_id") and db.query(DetectionRule.id).filter(DetectionRule.sigma_id == data["sigma_id"]).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A rule with this sigma_id already exists")
     rule = DetectionRule(**data, tenant_id=user.tenant_id, author=user.display_name)
     db.add(rule)
     db.flush()
@@ -196,6 +214,8 @@ async def update_rule(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail={"message": "Invalid Sigma rule", "errors": validation.errors},
             )
+    if "mitre_attack_ids" in data:
+        _check_attack_ids(data["mitre_attack_ids"])
 
     # Serialize list fields
     for field in ("mitre_attack_ids", "false_positives", "tags"):

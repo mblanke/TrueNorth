@@ -54,6 +54,11 @@ class Permission(str, Enum):
     EXERCISE_START = "exercise:start"
     EXERCISE_COMPLETE = "exercise:complete"
     EXERCISE_PAUSE = "exercise:pause"
+    # A Student's detection, judged by the server against the objective's answer key (ADR 0005)
+    DETECTION_SUBMIT = "detection:submit"
+    # Awarding an objective by hand. Deliberately separate from EXERCISE_COMPLETE, which
+    # Students hold: a Student must never be able to award themselves points (ADR 0005 §4).
+    OBJECTIVE_ACK = "objective:ack"
 
     # User management
     USER_CREATE = "user:create"
@@ -161,6 +166,8 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_START,
         Permission.EXERCISE_COMPLETE,
         Permission.EXERCISE_PAUSE,
+        Permission.DETECTION_SUBMIT,
+        Permission.OBJECTIVE_ACK,
         # The calendar: instructors book sessions for their classes.
         Permission.SCHEDULE_READ,
         Permission.SCHEDULE_WRITE,
@@ -232,6 +239,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_READ,
         Permission.EXERCISE_START,
         Permission.EXERCISE_COMPLETE,
+        Permission.DETECTION_SUBMIT,
         Permission.AAR_READ,
         Permission.WIKI_READ,
         Permission.TICKET_CREATE,

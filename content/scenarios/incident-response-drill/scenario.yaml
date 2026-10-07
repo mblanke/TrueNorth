@@ -82,7 +82,7 @@ timeline:
     duration_minutes: 10
     description: "Collect volatile and non-volatile evidence from compromised hosts"
     tasks:
-      - "Acquire memory image from v-ws01 using Velociraptor"
+      - "Acquire a memory image from the first compromised host using Velociraptor"
       - "Collect process listing and network connections"
       - "Pull Sysmon logs for lateral movement indicators"
       - "Preserve full PCAP from pcap01 for the incident timeframe"
@@ -97,7 +97,7 @@ timeline:
     description: "Build a chronological timeline of the attack"
     tasks:
       - "Correlate email delivery with process execution"
-      - "Map lateral movement path (ws01 -> ws02 -> fs01)"
+      - "Map the lateral movement path between hosts"
       - "Identify credential theft timeline"
       - "Document encryption start time and scope"
     expected_deliverables:
@@ -109,9 +109,9 @@ timeline:
     duration_minutes: 10
     description: "Stop the attack from spreading further"
     tasks:
-      - "Isolate compromised workstations (v-ws01, v-ws02)"
-      - "Block C2 IP (10.60.200.10) at firewall"
-      - "Disable unauthorized account 'svc_backup'"
+      - "Isolate the compromised workstations"
+      - "Block the C2 address you identified at the firewall"
+      - "Disable the unauthorized account you identified"
       - "Block lateral movement via SMB admin shares"
       - "Disable the malicious scheduled task"
     validators:

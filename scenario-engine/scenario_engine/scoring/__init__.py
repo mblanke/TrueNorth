@@ -9,7 +9,7 @@ from scenario_engine.scoring.engine import (
 )
 from scenario_engine.scoring.grading import GradingCalculator
 from scenario_engine.scoring.leaderboard import Leaderboard
-from scenario_engine.scoring.validators import ScoringValidator
+from scenario_engine.scoring.validators import ScoringValidator, UnscoredError
 
 __all__ = [
     "Objective",
@@ -19,5 +19,6 @@ __all__ = [
     "ScoringEngine",
     "ScoringResult",
     "ScoringValidator",
+    "UnscoredError",
     "validation_method",
 ]

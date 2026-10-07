@@ -16,7 +16,7 @@ POST   /exercises/{id}/pause               EXERCISE_PAUSE
 POST   /exercises/{id}/complete            EXERCISE_COMPLETE
 GET    /exercises/{id}/objectives           EXERCISE_READ
 GET    /exercises/{id}/injects              EXERCISE_READ
-POST   /exercises/{id}/objectives/{ref}/ack EXERCISE_COMPLETE
+POST   /exercises/{id}/objectives/{ref}/ack OBJECTIVE_ACK
 POST   /exercises/{id}/aar/generate        AAR_GENERATE
 GET    /exercises/{id}/aar                  AAR_READ
 GET    /exercises/{id}/aar/html            AAR_READ
@@ -43,6 +43,7 @@ from ..aar_html import render_html as render_aar_html
 from ..aar_report import build_report as build_aar_report
 from ..auth import CurrentUser
 from ..db import get_db
+from ..detections.redaction import redact_evidence, redact_timeline, sees_answer_key
 from ..models import (
     AfterActionReport,
     AuditLog,
@@ -66,7 +67,7 @@ from ..schemas import (
     ObjectiveOut,
 )
 from ..tenancy import get_owned
-from ..xapi import emit_lifecycle, exercise_result
+from ..xapi import emit_lifecycle
 
 logger = logging.getLogger("truenorth.api.exercises")
 
@@ -241,6 +242,7 @@ def scenario_detail(
         except yaml.YAMLError:
             parsed = {}
     objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).order_by(Objective.ref_id).all()
+    key = sees_answer_key(user)  # Students get the briefing, not the answer key (ADR 0005 §5)
     return {
         "exercise_id": str(ex.id),
         "exercise_name": ex.name,
@@ -253,7 +255,7 @@ def scenario_detail(
         "po_id": parsed.get("po_id", ""),
         "environment": parsed.get("environment", ""),
         "duration_min": parsed.get("duration_min", 0),
-        "timeline": parsed.get("timeline", []),
+        "timeline": parsed.get("timeline", []) if key else redact_timeline(parsed.get("timeline")),
         "noise_floor": parsed.get("noise_floor", []),
         "objectives": [
             {
@@ -261,7 +263,7 @@ def scenario_detail(
                 "type": o.objective_type.value,
                 "points": o.points,
                 "achieved": o.achieved,
-                "evidence": o.evidence or "",
+                "evidence": (o.evidence if key else redact_evidence(o.evidence)) or "",
                 "validator": o.validator,
                 "competency_code": o.competency_code or "",
             }
@@ -283,6 +285,7 @@ def run_exercise(
         for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():
             obj.achieved = False
             obj.achieved_at = None
+            obj.evidence = None  # the last run's credit; its submissions stay on record
         ex.state = ExerciseState.pending
         ex.total_score = 0
         ex.completed_at = None
@@ -347,39 +350,22 @@ async def complete_exercise(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
 ) -> Exercise:
-    """Complete an exercise and tally scores.  **Permission: exercise:complete**"""
+    """Complete an exercise and tally scores.  **Permission: exercise:complete**
+
+    Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
+    and to every Student who submitted a detection in this run (app/exercise_completion).
+    """
+    from ..exercise_completion import Participant, close
+
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    if ex.state not in (ExerciseState.running, ExerciseState.paused):
+    closer = Participant(uuid.UUID(user.id), user.email or "", user.display_name)
+    closed = close(db, ex.id, background_tasks, closer)
+    if closed is None:
+        db.refresh(ex)
         raise HTTPException(409, f"Exercise is {ex.state.value}, cannot complete")
-    ex.state = ExerciseState.completed
-    ex.completed_at = datetime.now(UTC)
-    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
-    ex.total_score = sum(o.points for o in objectives if o.achieved)
+    _audit(db, user, "complete", "exercise", str(closed.id))
     db.commit()
-    db.refresh(ex)
-    _audit(db, user, "complete", "exercise", str(ex.id))
-    db.commit()
-    # Trigger competency auto-assessment (EPIC 3). This used to import worker.celery_app,
-    # which is not in the API image, so the ImportError was swallowed below and no
-    # auto-assessment was ever queued outside the test suite.
-    if _dispatch_task("auto_assess_competency", str(ex.id), str(user.id)) is None:
-        logger.warning("Failed to dispatch auto-assess task for exercise %s", ex.id)
-    if background_tasks is not None:
-        # Moodle/LTI grade pass-back (no-op unless launched via LTI)
-        background_tasks.add_task(
-            _push_exercise_lti_grade, uuid.UUID(user.id), ex.id, ex.total_score or 0, ex.max_score or 100
-        )
-        emit_lifecycle(
-            background_tasks,
-            verb_key="completed",
-            user_email=user.email or f"{user.id}@truenorth.local",
-            user_name=user.display_name,
-            activity_type="exercise",
-            activity_id=str(ex.id),
-            activity_name=ex.name,
-            result=exercise_result(ex.total_score, ex.max_score),
-        )
-    return ex
+    return closed
 
 
 async def _push_exercise_lti_grade(user_id: uuid.UUID, exercise_id: uuid.UUID, score: int, max_score: int) -> None:
@@ -405,9 +391,13 @@ def list_objectives(
     """List objectives for an exercise.  **Permission: exercise:read**
 
     Own-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this
-    listed any tenant's objectives, validators and evidence by exercise id)."""
+    listed any tenant's objectives, validators and evidence by exercise id). Students
+    get evidence with the answer key redacted (ADR 0005)."""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    return db.query(Objective).filter(Objective.exercise_id == ex.id).all()
+    rows = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
+    if sees_answer_key(user):
+        return rows
+    return [ObjectiveOut.model_validate(o).model_copy(update={"evidence": redact_evidence(o.evidence)}) for o in rows]
 
 
 # ── Injects ────────────────────────────────────────────────────────────
@@ -435,27 +425,32 @@ async def acknowledge_objective(
     body: ObjectiveAck = Depends(),
     background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_COMPLETE)),
+    user: CurrentUser = Depends(require_permission(Permission.OBJECTIVE_ACK)),
 ) -> Objective:
-    """Acknowledge (achieve) an objective.  **Permission: exercise:complete**
+    """Acknowledge (achieve) an objective on a running or paused exercise in the caller's
+    tenant, recording who acknowledged it, and re-total the exercise score.
 
-    Own-tenant exercises only (foreign id = 404)."""
+    **Permission: objective:ack** (instructors and admins; never Students).
+    404 if the exercise is not in the caller's tenant or the objective does not exist;
+    409 if the exercise is not running/paused or the objective is already achieved.
+    """
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    obj = (
-        db.query(Objective)
-        .filter(
-            Objective.exercise_id == ex.id,
-            Objective.ref_id == ref_id,
-        )
-        .first()
-    )
+    if ex.state not in (ExerciseState.running, ExerciseState.paused):
+        raise HTTPException(409, f"Exercise is {ex.state.value}, expected running or paused")
+    obj = db.query(Objective).filter(Objective.exercise_id == ex.id, Objective.ref_id == ref_id).first()
     if not obj:
         raise HTTPException(404, "Objective not found")
     if obj.achieved:
         raise HTTPException(409, "Objective already achieved")
+    who = user.display_name or user.email or user.id
     obj.achieved = True
-    obj.evidence = body.evidence or f"Acknowledged by {user.display_name}"
+    obj.evidence = f"Acknowledged by {who}: {body.evidence}" if body.evidence else f"Acknowledged by {who}"
     obj.achieved_at = datetime.now(UTC)
+    db.flush()
+    # Same tally as complete_exercise, so the live score is right before completion.
+    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
+    ex.total_score = sum(o.points for o in objectives if o.achieved)
+    _audit(db, user, "ack_objective", "exercise", str(ex.id), detail=obj.ref_id)
     db.commit()
     db.refresh(obj)
     if background_tasks is not None:

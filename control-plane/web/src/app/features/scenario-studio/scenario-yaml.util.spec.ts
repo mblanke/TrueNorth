@@ -21,8 +21,8 @@ function sample(): ScenarioModel {
       { t: '05:30', action: 'email_phish', params: {} },
     ],
     objectives: [
-      { id: 'obj-1', type: 'detection', validator: 'validate.opensearch_query', points: 60, params: {} },
-      { id: 'obj-2', type: 'response', validator: 'validate.manual_ack', points: 40, params: { note: 'contain' } },
+      { id: 'obj-1', type: 'detection', validator: 'opensearch_query', points: 60, params: {} },
+      { id: 'obj-2', type: 'response', validator: 'manual_ack', points: 40, params: { note: 'contain' } },
     ],
   };
 }
@@ -100,8 +100,8 @@ describe('scenario-yaml.util', () => {
           { t: '05:30', action: 'email_phish' },
         ],
         objectives: [
-          { id: 'obj-1', type: 'detection', validator: 'validate.opensearch_query', points: 60 },
-          { id: 'obj-2', type: 'response', validator: 'validate.manual_ack', points: 40, params: { note: 'contain' } },
+          { id: 'obj-1', type: 'detection', validator: 'opensearch_query', points: 60 },
+          { id: 'obj-2', type: 'response', validator: 'manual_ack', points: 40, params: { note: 'contain' } },
         ],
       };
       const loaded = fromNormalized(normalized);
@@ -145,7 +145,7 @@ describe('scenario-yaml.util', () => {
         name: 'Quick Detection Drill', version: '1.0', description: 'Spot the beacon',
         range_template: 'small-enterprise',
         timeline: [{ t: '00:00:00', action: 'dns_spike', params: { domains: 'bad.example', count: '50' } }],
-        objectives: [{ id: 'obj-1', type: 'detection', validator: 'validate.opensearch_query', points: 60 }],
+        objectives: [{ id: 'obj-1', type: 'detection', validator: 'opensearch_query', points: 60 }],
       };
       expect(lostOnSave(doc)).toEqual([]);
       expect(lostOnSave(null)).toEqual([]);

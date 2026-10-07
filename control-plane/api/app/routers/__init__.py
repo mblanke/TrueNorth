@@ -15,6 +15,7 @@ from .courses import router as courses_router
 from .courses import transcript_router
 from .curriculum import router as curriculum_router
 from .detection_rules import router as detection_rules_router
+from .detections import router as detections_router
 from .directory import router as directory_router
 from .exercise_forge import router as exercise_forge_router
 from .exercises import router as exercises_router
@@ -86,6 +87,7 @@ __all__ = [
     "course_releases_router",
     "course_publications_router",
     "lab_sessions_router",
+    "detections_router",
     "greyspace_router",
     "scenario_executions_router",
     "wiki_router",

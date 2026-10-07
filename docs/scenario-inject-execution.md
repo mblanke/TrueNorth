@@ -54,14 +54,14 @@ hosts. Separately, `execution_mode` says what the code actually does: every inje
 `"simulated"` today (no network, process or file I/O), and the records and telemetry say
 so. A real injector must declare `"live"`.
 
-Scoring is not changed by injection. On a real backend with `DETECTION_SCORING=on`,
-detection objectives are scored against the range's telemetry after each event and at the
-end (`worker/detection.py`); off (the default), a real backend achieves nothing. On the
-mock backend `run_scenario_v2` still marks the exercise's objectives achieved without
-evidence: a demo convenience, flagged here, not an assessment. Note that an inject's own
-telemetry now lands in the range's index; detection scoring is off by default for exactly
-that reason (see `detection_scorer`). Scenario executions never score: their objectives
-are `unassessed`.
+The worker never scores (ADR 0005). On a real backend `run_scenario_v2` fires the timeline
+and leaves the exercise `running` (notification phase `timeline_complete`): a Student
+earns detection credit only by submitting a detection to the API, judged against the
+range's telemetry inside the exercise window, until an instructor completes the exercise
+or its duration runs out (`app/exercise_completion.py`). An inject's own telemetry
+therefore credits nobody. On the mock backend `run_scenario_v2` still marks the exercise's
+objectives achieved without evidence and completes it: a demo convenience, flagged here,
+not an assessment. Scenario executions never score: their objectives are `unassessed`.
 
 ## Run-state rules
 

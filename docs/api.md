@@ -830,15 +830,17 @@ List objectives for an exercise. **Permission: `exercise:read`**
 
 ### `POST /exercises/{exercise_id}/objectives/{ref_id}/ack`
 
-Acknowledge (achieve) an objective. Sets `achieved=true` with evidence and timestamp.
+Acknowledge (achieve) an objective. Sets `achieved=true`, records who acknowledged it with
+the evidence, timestamps it, and re-totals the exercise's `total_score`. An instructor
+action: a Student cannot award themselves an objective (ADR 0005 §4). The exercise must be
+in the caller's tenant.
 
-**Permission: `exercise:complete`**
+**Permission: `objective:ack`** (instructor, admin)
 
-**Request:**
-```json
-{
-  "evidence": "Screenshot of detection alert in SIEM dashboard"
-}
+**Request:** `evidence` is an optional **query parameter** (not a JSON body).
+
+```
+POST /exercises/{exercise_id}/objectives/obj-1/ack?evidence=Alert%20in%20SIEM%20dashboard
 ```
 
 **Response `200 OK`:**
@@ -847,17 +849,20 @@ Acknowledge (achieve) an objective. Sets `achieved=true` with evidence and times
   "id": "b8c9d0e1-f2a3-4567-1234-678901234567",
   "ref_id": "obj-1",
   "achieved": true,
-  "evidence": "Screenshot of detection alert in SIEM dashboard",
+  "evidence": "Acknowledged by Sgt Rivera: Alert in SIEM dashboard",
   "achieved_at": "2026-01-15T10:45:00Z",
   "points": 25
 }
 ```
 
+Without `evidence`, the stored evidence is `"Acknowledged by <name>"`.
+
 | Status | Condition |
 |--------|-----------|
 | `200` | Objective acknowledged |
-| `404` | Objective not found |
-| `409` | Objective already achieved |
+| `403` | Caller lacks `objective:ack` (Student, observer, range_ops) |
+| `404` | Exercise not in caller's tenant, or objective not found |
+| `409` | Exercise not running/paused, or objective already achieved |
 
 ---
 
@@ -1242,7 +1247,7 @@ The auto-generated OpenAPI specification is available at:
 | 36 | `POST` | `/exercises/{id}/pause` | `exercise:pause` | Pause exercise |
 | 37 | `POST` | `/exercises/{id}/complete` | `exercise:complete` | Complete exercise |
 | 38 | `GET` | `/exercises/{id}/objectives` | `exercise:read` | List objectives |
-| 39 | `POST` | `/exercises/{id}/objectives/{ref}/ack` | `exercise:complete` | Ack objective |
+| 39 | `POST` | `/exercises/{id}/objectives/{ref}/ack` | `objective:ack` | Ack objective (instructor) |
 | 40 | `POST` | `/exercises/{id}/aar/generate` | `aar:generate` | Generate AAR |
 | 41 | `GET` | `/exercises/{id}/aar` | `aar:read` | Get AAR JSON |
 | 42 | `GET` | `/exercises/{id}/aar/html` | `aar:read` | Get AAR HTML |

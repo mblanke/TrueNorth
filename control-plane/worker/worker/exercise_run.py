@@ -7,10 +7,12 @@ contracts.py), and ``from worker.tasks import run_scenario_v2`` still works.
 
 Injection goes through one seam, ``inject_dispatch.dispatch_inject``, called once per
 timeline event on every backend; every outcome is recorded in ``inject_records``
-(docs/scenario-inject-execution.md). Scoring is unchanged: detection objectives are scored
-against the range's telemetry when DETECTION_SCORING is on (worker/detection.py); the mock
-backend auto-achieves. Database access is db_ops.py; the DB session and notifications come
-from task_plumbing.py.
+(docs/scenario-inject-execution.md). The worker never scores detections (ADR 0005): a
+Student earns detection credit by submitting a detection to the API. On a real backend the
+exercise stays running after its timeline, until an instructor completes it or its duration
+runs out (app/exercise_completion.py); the mock backend, a simulation with no telemetry,
+still auto-achieves every objective and completes. Database access is db_ops.py; the DB
+session and notifications come from task_plumbing.py.
 """
 
 from __future__ import annotations
@@ -23,7 +25,6 @@ import uuid
 from . import db_ops, inject_dispatch
 from .base_tasks import ReliableTask
 from .celery_app import app
-from .detection import detection_scorer
 from .fencing import FINAL_ERRORS, last_attempt
 from .task_plumbing import db_session as _db_session
 from .task_plumbing import notify_api as _notify_api
@@ -135,9 +136,13 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     as the exercise is no longer running (paused, completed or cancelled by an
     instructor), and completes or cancels it only if it is still running, so a late retry
     cannot overwrite a newer state. A retry skips the events this run already recorded.
+
+    After the timeline (ADR 0005 §6): on a real backend the exercise stays running, for
+    Students to submit detections, and nothing is achieved here; on the mock backend every
+    objective is achieved and the exercise completed. The backend is the range's own, as for
+    inject dispatch, not the worker's environment.
     """
     logger.info(f"[scenario_v2] Starting exercise {exercise_id}")
-    backend = os.getenv("PROVISIONER_BACKEND", "mock")
     run_id = _run_id(self)
     definition = scenario_definition if isinstance(scenario_definition, dict) else {}
     timeline = definition.get("timeline") if isinstance(definition.get("timeline"), list) else []
@@ -147,13 +152,13 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
         started = db_ops.start_exercise(db, exercise_id)
         state = db_ops.exercise_state(db, exercise_id)
         done = db_ops.recorded_seqs(db, run_id) if started else set()
+        backend = db_ops.exercise_range_backend(db, exercise_id) or os.getenv("PROVISIONER_BACKEND", "mock")
     if not started:
         logger.warning(f"[scenario_v2] Exercise {exercise_id} is {state or 'missing'}; not run")
         return {"status": "skipped", "exercise_id": exercise_id, "state": state}
     _notify_api("exercise", {"id": exercise_id, "state": "running", "phase": "starting"})
 
     try:
-        detections = detection_scorer(exercise_id, _db_session, backend)  # None unless DETECTION_SCORING=on
         executed = fired = 0
         halted_state = None
         total_events = len(timeline)
@@ -167,8 +172,6 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
                 halted_state = current
                 break
             result = _fire_event(exercise_id, idx, event, run_id=run_id)
-            if detections:  # score the telemetry so far, so the scoreboard moves mid-run
-                detections.score()
             executed += 1
             fired += 1 if result.get("status") == "fired" else 0
             _notify_api(
@@ -185,16 +188,26 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
             logger.info(f"[scenario_v2] Exercise {exercise_id} is {halted_state}; stopped after {executed} events")
             return _halted(exercise_id, halted_state, executed, fired)
 
-        # ── Objectives (unchanged by injection) ──────────────────────
-        if detections:  # final pass against the range's telemetry (worker/detection.py)
-            completed_objectives = detections.score()
-        else:  # mock auto-completes every objective; a real backend with scoring off achieves none
-            with _db_session() as db:
-                for obj in objectives if backend == "mock" else []:
-                    ref_id = obj.get("ref_id") if isinstance(obj, dict) else None
-                    if ref_id:
-                        db_ops.achieve_objective(db, exercise_id, str(ref_id))
-            completed_objectives = len(objectives) if backend == "mock" else 0
+        if backend != "mock":
+            # A real exercise stays live after its timeline: Students earn detection credit by
+            # submitting detections (API, ADR 0005) until an instructor completes it or its
+            # duration runs out (app/exercise_completion.py).
+            _notify_api("exercise", {"id": exercise_id, "state": "running", "phase": "timeline_complete"})
+            logger.info(f"[scenario_v2] Exercise {exercise_id} timeline done ({executed} events); still running")
+            return {
+                "status": "running",
+                "exercise_id": exercise_id,
+                "events_executed": executed,
+                "injects_fired": fired,
+            }
+
+        # Mock: a simulation with no telemetry, so every objective is achieved (ADR 0005).
+        with _db_session() as db:
+            for obj in objectives:
+                ref_id = obj.get("ref_id") if isinstance(obj, dict) else None
+                if ref_id:
+                    db_ops.achieve_objective(db, exercise_id, str(ref_id))
+        completed_objectives = len(objectives)
 
         with _db_session() as db:
             completed = db_ops.complete_exercise(db, exercise_id)

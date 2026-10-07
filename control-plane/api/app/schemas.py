@@ -1342,7 +1342,7 @@ class KitDefinitionOut(BaseModel):
 # ── Threat Intelligence ────────────────────────────────────────────────
 class ThreatIntelFeedIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    feed_type: str = Field(..., pattern=r"^(taxii|stix_file|custom_api)$")
+    feed_type: str = Field(..., pattern=r"^(csv|taxii|stix_file|custom_api)$")  # pullable: threat_intel_backends
     url: str | None = Field(None, max_length=2048)
     collection_id: str | None = Field(None, max_length=255)
     api_key_ref: str | None = Field(None, max_length=255)

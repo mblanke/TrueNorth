@@ -417,7 +417,7 @@ services:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
       additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
+        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
     restart: always
     command: >
       celery -A worker.celery_app worker
@@ -500,7 +500,7 @@ services:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
       additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
+        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
     restart: always
     command: >
       celery -A worker.celery_app worker
@@ -543,7 +543,7 @@ services:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
       additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
+        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
     restart: always
     command: >
       celery -A worker.celery_app worker
@@ -584,7 +584,7 @@ services:
       context: ../../../control-plane/worker
       dockerfile: Dockerfile
       additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/detection.py scoring
+        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
     restart: always
     command: >
       celery -A worker.celery_app flower

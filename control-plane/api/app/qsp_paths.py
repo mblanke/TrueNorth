@@ -631,7 +631,7 @@ def _scenario_yaml(po: PerformanceObjective, crit: list[str]) -> str:
             "    type: detection",
             f'    critical_event: "{ev}"',
             f"    attack_technique: {tech}   # {tname}",
-            "    validator: validate.opensearch_query",
+            "    validator: opensearch_query",
             "    must_pass: true",
             f"    points: {pts}",
         ]
@@ -639,7 +639,7 @@ def _scenario_yaml(po: PerformanceObjective, crit: list[str]) -> str:
         "  - ref_id: deliverable-report",
         "    type: deliverable",
         f'    deliverable: "{po.deliverable or "technical report"}"',
-        "    validator: validate.deliverable_check",
+        "    validator: deliverable_check",
         f"    points: {deliverable_pts}",
     ]
     # Timeline: one inject per critical event, timed; drives the mock run + the detail view.
@@ -781,7 +781,7 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
                 db.add(Objective(
                     exercise_id=exercise.id, ref_id=f"crit-{i + 1}",
                     objective_type=ObjectiveType.detection,
-                    validator="validate.opensearch_query",
+                    validator="opensearch_query",
                     points=per + (remainder if i == 0 else 0), achieved=False,
                     evidence=ev, competency_code=po.nice_dcwf_task or "",
                 ))
@@ -789,7 +789,7 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
             db.add(Objective(
                 exercise_id=exercise.id, ref_id="deliverable-report",
                 objective_type=ObjectiveType.deliverable,
-                validator="validate.deliverable_check",
+                validator="deliverable_check",
                 points=deliverable_pts, achieved=False,
                 evidence=po.deliverable or "technical report",
                 competency_code=po.nice_dcwf_task or "",
