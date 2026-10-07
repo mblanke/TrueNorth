@@ -16,10 +16,9 @@ statements for Postgres.
 from __future__ import annotations
 
 import json
-import sys
 import uuid
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,9 +29,7 @@ from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 tasks = pytest.importorskip("worker.tasks")
-from scenario_engine.event_stores import NullEventStore  # noqa: E402
-from worker import db_ops  # noqa: E402
-from worker.detection import DetectionScorer  # noqa: E402
+from worker import db_ops, exercise_clock  # noqa: E402
 from worker.provisioners.results import (  # noqa: E402
     DestroyResult,
     HealthResult,
@@ -275,116 +272,27 @@ class TestExercisesAndObjectives:
         assert notify.call_args.args[1]["state"] == "failed"
 
 
-# -- detection objectives on a real backend (worker/detection.py) -------------------
-class _RecordingStore(NullEventStore):
-    """NullEventStore that remembers which index each query ran against."""
-
-    def __init__(self, events):
-        super().__init__(events)
-        self.searches: list[tuple[str, str]] = []
-
-    async def search(self, index, query, size=20):
-        self.searches.append((index, query))
-        return await super().search(index, query, size)
-
-
-TELEMETRY = [
-    {"event_type": "email", "attachment.name": "briefing.docm", "host": "ws01"},
-    {"event_type": "process", "process_name": "powershell.exe", "parent": "winword.exe"},
-]
-
-
-def _detection(ex, ref, points, query=None, validator="opensearch_query", **kw):
-    params = json.dumps({"query": query, "min_hits": 1}) if query else None
+# -- a real exercise stays live; the clock closes it (ADR 0005 §6) ---------------------
+def _detection(ex, ref, points, query="event_type:email"):
     return m.Objective(exercise_id=ex.id, ref_id=ref, objective_type=m.ObjectiveType.detection,
-                       description=f"detect {ref}", validator=validator, validator_params=params, points=points, **kw)
+                       description=f"detect {ref}", validator="opensearch_query",
+                       validator_params=json.dumps({"query": query}), points=points)
 
 
-@pytest.fixture
-def store(monkeypatch):
-    from scenario_engine import event_stores
-
-    s = _RecordingStore(TELEMETRY)
-    monkeypatch.setattr(event_stores, "event_store_from_env", lambda: s)
-    return s
-
-
-class TestDetectionScoring:
-    """Non-mock runs score query objectives against the range's telemetry (was: never evaluated)."""
-
-    def test_detection_scoring_is_off_by_default(self, world, store, monkeypatch):
-        # It matches the scenario's own attack telemetry, so on by default it would credit a
-        # Student who did nothing. Off, a real backend achieves nothing, as before slice 8.
+class TestRealBackendExercise:
+    def test_timeline_end_leaves_it_running_and_achieves_nothing(self, world, monkeypatch, notify):
+        # The blocker: the run used to score the attack's own telemetry and then close the
+        # exercise seconds later. Credit now comes only from Student detections (API).
         monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
-        monkeypatch.delenv("DETECTION_SCORING", raising=False)
-        ex = world.exercise
-        _add(world.db, _detection(ex, "phish", 10, 'event_type:email AND attachment.name:"briefing.docm"'))
+        _add(world.db, _detection(world.exercise, "phish", 10))
 
-        out = tasks.run_scenario_v2(str(ex.id), {"timeline": [{"t": "0:01", "action": "phish"}], "objectives": []})
+        out = tasks.run_scenario_v2(str(world.exercise.id), {"timeline": [{"t": "0:00"}], "objectives": []})
 
-        assert out["objectives_completed"] == 0
-        assert store.searches == []
+        assert out == {"status": "running", "exercise_id": str(world.exercise.id), "events_executed": 1}
+        e = _fresh(world.db, world.exercise)
+        assert (e.state, e.total_score, e.completed_at) == (m.ExerciseState.running, 0, None)
         assert world.db.scalars(select(m.Objective.achieved)).one() is False
-        e = _fresh(world.db, ex)
-        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.completed, 0, 10)
-
-    def test_real_backend_run_achieves_matching_objectives_with_evidence(self, world, store, monkeypatch):
-        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
-        monkeypatch.setenv("DETECTION_SCORING", "on")
-        ex = world.exercise
-        world.scenario.yaml = (
-            "timeline:\n  - t: '0:01'\n    action: phish\n"
-            "objectives:\n  - id: yaml_only\n    validator: opensearch_query\n"
-            "    params:\n      query: 'process_name:powershell.exe AND parent:winword.exe'\n"
-        )
-        world.db.commit()
-        _add(
-            world.db,
-            _detection(ex, "phish", 10, 'event_type:email AND attachment.name:"briefing.docm"'),
-            _detection(ex, "miss", 20, "process_name:mimikatz.exe", validator="validate.opensearch_query"),
-            _detection(ex, "yaml_only", 30),  # QSP-style row with no params: query from the scenario YAML
-            _detection(ex, "no_query", 15),  # nothing to run: skipped, never scored as match-all
-            _objective(ex, "manual", 25),  # instructor-marked: untouched
-        )
-
-        out = tasks.run_scenario_v2(str(ex.id), {"timeline": [{"t": "0:01", "action": "phish"}], "objectives": []})
-
-        assert out["objectives_completed"] == 2
-        rows = {o.ref_id: o for o in world.db.scalars(select(m.Objective).where(m.Objective.exercise_id == ex.id))}
-        assert {r for r, o in rows.items() if o.achieved} == {"phish", "yaml_only"}
-        evidence = json.loads(rows["phish"].evidence)
-        assert evidence["index"] == f"range-{world.range.id}"
-        assert evidence["events"][0]["_source"]["attachment.name"] == "briefing.docm"
-        assert rows["phish"].achieved_at is not None
-        e = _fresh(world.db, ex)
-        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.completed, 40, 100)
-        # only the range's own index is ever searched, and "no_query" never reaches the store
-        assert {idx for idx, _ in store.searches} == {f"range-{world.range.id}"}
-        assert all(q for _, q in store.searches)
-
-    def test_content_index_is_ignored_for_tenant_isolation(self, world, store):
-        ex = world.exercise
-        obj = _detection(ex, "phish", 10)
-        obj.validator_params = json.dumps({"query": "event_type:email", "index": "truenorth-*"})
-        _add(world.db, obj)
-
-        assert DetectionScorer(str(ex.id), tasks._db_session).score() == 1
-        assert store.searches == [(f"range-{world.range.id}", "event_type:email")]
-
-    def test_mid_run_score_moves_and_achieved_objectives_are_not_requeried(self, world, store):
-        ex = world.exercise
-        ex.state = m.ExerciseState.running
-        _add(world.db, _detection(ex, "phish", 10, "event_type:email"), _detection(ex, "later", 90, "host:dc01"))
-        scorer = DetectionScorer(str(ex.id), tasks._db_session)
-
-        assert scorer.score() == 1
-        e = _fresh(world.db, ex)
-        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.running, 10, 100)
-
-        store.events.append({"host": "dc01"})  # telemetry arrives later in the exercise
-        assert scorer.score() == 2
-        assert _fresh(world.db, ex).total_score == 100
-        assert [q for _, q in store.searches] == ["event_type:email", "host:dc01", "host:dc01"]
+        assert notify.call_args.args[1]["phase"] == "timeline_complete"
 
     @pytest.mark.parametrize("closed", [m.ExerciseState.completed, m.ExerciseState.cancelled])
     def test_a_closed_exercise_keeps_its_objectives_score_and_state(self, world, closed):
@@ -392,35 +300,47 @@ class TestDetectionScoring:
         # closed it; a worker still running must not move them.
         ex = world.exercise
         ex.state, ex.total_score = closed, 0
-        _add(world.db, _detection(ex, "phish", 10, "event_type:email"))
+        _add(world.db, _detection(ex, "phish", 10))
         with tasks._db_session() as db:
             db_ops.achieve_objective(db, str(ex.id), "phish", evidence="late")
-            db_ops.refresh_exercise_score(db, str(ex.id))
             db_ops.complete_exercise(db, str(ex.id))
         assert world.db.scalars(select(m.Objective.achieved)).one() is False
         e = _fresh(world.db, ex)
         assert (e.state, e.total_score) == (closed, 0)
 
-    def test_already_achieved_objective_keeps_its_evidence(self, world, store):
+
+class TestExerciseClock:
+    def _running(self, world, minutes_ago, yaml_text):
         ex = world.exercise
-        _add(world.db, _detection(ex, "phish", 10, "event_type:email", achieved=True, evidence="instructor"))
-        assert DetectionScorer(str(ex.id), tasks._db_session).score() == 1
-        assert store.searches == []
-        with tasks._db_session() as db:
-            db_ops.achieve_objective(db, str(ex.id), "phish", evidence="overwrite?")
-        assert world.db.scalars(select(m.Objective.evidence)).one() == "instructor"
+        world.scenario.yaml = yaml_text
+        ex.state, ex.started_at = m.ExerciseState.running, datetime.now(UTC) - timedelta(minutes=minutes_ago)
+        world.db.commit()
+        return ex
 
-    def test_without_scenario_engine_the_run_completes_unscored(self, world, monkeypatch):
-        monkeypatch.setenv("PROVISIONER_BACKEND", "vsphere_api")
-        monkeypatch.setenv("DETECTION_SCORING", "on")
-        monkeypatch.setitem(sys.modules, "scenario_engine.scoring", None)  # import raises ImportError
-        _add(world.db, _detection(world.exercise, "phish", 10, "event_type:email"))
+    def test_an_exercise_past_its_duration_is_completed_and_scored(self, world, notify):
+        ex = self._running(world, 91, "duration_minutes: 90\n")
+        _add(world.db, _detection(ex, "phish", 10), _detection(ex, "c2", 30))
+        world.db.execute(m.Objective.__table__.update().where(m.Objective.ref_id == "c2").values(achieved=True))
+        world.db.commit()
 
-        out = tasks.run_scenario_v2(str(world.exercise.id), {"timeline": [], "objectives": []})
+        assert exercise_clock.close_overdue_exercises() == {"completed": [str(ex.id)]}
 
-        assert out["objectives_completed"] == 0
-        e = _fresh(world.db, world.exercise)
-        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.completed, 0, 10)
+        e = _fresh(world.db, ex)
+        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.completed, 30, 40)
+        assert notify.call_args.args[1] == {"id": str(ex.id), "state": "completed", "reason": "duration elapsed"}
+
+    @pytest.mark.parametrize(
+        ("minutes_ago", "yaml_text"),
+        [(89, "duration_minutes: 90\n"), (500, "name: no duration\n"), (500, "duration_min: 0\n"), (500, "[")],
+    )
+    def test_still_running_when_time_is_left_or_no_duration_is_set(self, world, minutes_ago, yaml_text):
+        ex = self._running(world, minutes_ago, yaml_text)
+        assert exercise_clock.close_overdue_exercises() == {"completed": []}
+        assert _fresh(world.db, ex).state == m.ExerciseState.running
+
+    def test_duration_min_spelling_counts(self, world):
+        ex = self._running(world, 31, "duration_min: 30\n")
+        assert exercise_clock.close_overdue_exercises() == {"completed": [str(ex.id)]}
 
 
 # -- after-action reports --------------------------------------------------------------
@@ -738,9 +658,7 @@ PG_CALLS = {
     "exercise_scores_and_yaml": lambda db: db_ops.exercise_scores_and_yaml(db, ID),
     "start_exercise": lambda db: db_ops.start_exercise(db, ID),
     "achieve_objective": lambda db: db_ops.achieve_objective(db, ID, "o1"),
-    "exercise_range_and_yaml": lambda db: db_ops.exercise_range_and_yaml(db, ID),
-    "objectives_to_score": lambda db: db_ops.objectives_to_score(db, ID),
-    "refresh_exercise_score": lambda db: db_ops.refresh_exercise_score(db, ID),
+    "running_exercises": lambda db: db_ops.running_exercises(db),
     "complete_exercise": lambda db: db_ops.complete_exercise(db, ID),
     "cancel_exercise": lambda db: db_ops.cancel_exercise(db, ID),
     "exercise_for_aar": lambda db: db_ops.exercise_for_aar(db, ID),

@@ -76,6 +76,10 @@ app.conf.beat_schedule = {
         "task": "worker.tasks.collect_range_metrics",
         "schedule": 30.0,  # every 30 seconds
     },
+    "close-overdue-exercises": {
+        "task": "worker.tasks.close_overdue_exercises",
+        "schedule": 60.0,  # every minute (worker/exercise_clock.py)
+    },
 }
 
 # -- Register task modules -------------------------------------------------
@@ -86,6 +90,7 @@ app.conf.beat_schedule = {
 # controlled by CHAOS_ENABLED env var.
 from . import (
     chaos,  # noqa: F401, E402
+    exercise_clock,  # noqa: F401, E402
     lab_tasks,  # noqa: F401, E402
     tasks,  # noqa: F401, E402
 )

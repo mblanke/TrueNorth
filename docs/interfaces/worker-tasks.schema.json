@@ -46,6 +46,16 @@
       "description": "",
       "queue": "provision"
     },
+    "worker.tasks.close_overdue_exercises": {
+      "args": {
+        "maxItems": 0,
+        "minItems": 0,
+        "prefixItems": [],
+        "type": "array"
+      },
+      "description": "Complete running exercises past their duration.",
+      "queue": "default"
+    },
     "worker.tasks.collect_range_metrics": {
       "args": {
         "maxItems": 0,

@@ -24,7 +24,6 @@ from celery import Task, group
 from . import db_ops, telemetry
 from .aar import build_report as build_aar_report
 from .celery_app import app
-from .detection import detection_scorer
 from .provisioners import discard_built, get_provisioner
 
 logger = logging.getLogger("truenorth.worker")
@@ -351,7 +350,6 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
     try:
         timeline = scenario_definition.get("timeline", [])
         objectives = scenario_definition.get("objectives", [])
-        detections = detection_scorer(exercise_id, _db_session, backend)  # None unless DETECTION_SCORING=on
 
         # â”€â”€ Update exercise state to running â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         with _db_session() as db:
@@ -373,8 +371,6 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
 
             # Production: dispatch to injector registry (_dispatch_inject(action, params, range_context))
             time.sleep(min(offset_seconds * 0.01, 1 if backend == "mock" else 2))
-            if detections:  # score the telemetry so far, so the scoreboard moves mid-run
-                detections.score()
             executed += 1
 
             # Publish progress
@@ -389,37 +385,28 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict):
                 },
             )
 
-        # â”€â”€ Track objective completion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if detections:  # final pass against the range's telemetry (worker/detection.py)
-            completed_objectives = detections.score()
-        else:  # mock auto-completes every objective; a real backend with scoring off achieves none
-            with _db_session() as db:
-                for obj in objectives if backend == "mock" else []:
-                    db_ops.achieve_objective(db, exercise_id, obj.get("ref_id", ""))
-            completed_objectives = len(objectives) if backend == "mock" else 0
+        if backend != "mock":
+            # A real exercise stays live after its timeline: Students earn detection credit by
+            # submitting detections (API, ADR 0005) until an instructor completes it or its
+            # duration runs out (worker/exercise_clock.py).
+            _notify_api("exercise", {"id": exercise_id, "state": "running", "phase": "timeline_complete"})
+            logger.info(f"[scenario_v2] Exercise {exercise_id} timeline done ({executed} events); still running")
+            return {"status": "running", "exercise_id": exercise_id, "events_executed": executed}
 
-        # â”€â”€ Mark exercise complete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        with _db_session() as db:
+        with _db_session() as db:  # mock auto-achieves every objective
+            for obj in objectives:
+                db_ops.achieve_objective(db, exercise_id, obj.get("ref_id", ""))
             db_ops.complete_exercise(db, exercise_id)
-
         _notify_api(
             "exercise",
-            {
-                "id": exercise_id,
-                "state": "completed",
-                "events_executed": executed,
-                "objectives_completed": completed_objectives,
-            },
+            {"id": exercise_id, "state": "completed", "events_executed": executed, "objectives_completed": len(objectives)},
         )
-
-        logger.info(
-            f"[scenario_v2] Exercise {exercise_id} completed ({executed} events, {completed_objectives} objectives)"
-        )
+        logger.info(f"[scenario_v2] Exercise {exercise_id} completed ({executed} events, {len(objectives)} objectives)")
         return {
             "status": "completed",
             "exercise_id": exercise_id,
             "events_executed": executed,
-            "objectives_completed": completed_objectives,
+            "objectives_completed": len(objectives),
         }
 
     except Exception as e:

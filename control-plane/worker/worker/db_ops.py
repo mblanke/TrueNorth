@@ -159,23 +159,6 @@ def start_exercise(db, exercise_id: str) -> None:
     )
 
 
-def exercise_range_and_yaml(db, exercise_id: str):
-    """(range_id, scenario yaml or None), or None when the exercise is missing."""
-    stmt = (
-        sa.select(exercises.c.range_id, scenarios.c.yaml)
-        .select_from(exercises.outerjoin(scenarios, exercises.c.scenario_id == scenarios.c.id))
-        .where(exercises.c.id == exercise_id)
-    )
-    return db.execute(stmt).first()
-
-
-def objectives_to_score(db, exercise_id: str) -> list:
-    """(ref_id, validator, validator_params, points, achieved) for each of the exercise's objectives."""
-    o = objectives
-    stmt = sa.select(o.c.ref_id, o.c.validator, o.c.validator_params, o.c.points, o.c.achieved)
-    return db.execute(stmt.where(o.c.exercise_id == exercise_id)).fetchall()
-
-
 LIVE_EXERCISE = ("running", "paused")
 
 
@@ -219,16 +202,14 @@ def _score_values(exercise_id: str) -> dict[str, Any]:
     return {"total_score": _points(o.c.achieved == sa.true()), "max_score": _points()}
 
 
-def refresh_exercise_score(db, exercise_id: str) -> None:
-    """Re-total a live exercise's score, so the scoreboard moves as objectives are achieved.
-
-    A completed or cancelled exercise keeps the score it was closed with.
-    """
-    db.execute(
-        sa.update(exercises)
-        .where(exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(LIVE_EXERCISE))
-        .values(updated_at=_now(), **_score_values(exercise_id))
+def running_exercises(db) -> list:
+    """(id, started_at, scenario yaml or None) of every running exercise."""
+    stmt = (
+        sa.select(exercises.c.id, exercises.c.started_at, scenarios.c.yaml)
+        .select_from(exercises.outerjoin(scenarios, exercises.c.scenario_id == scenarios.c.id))
+        .where(sa.cast(exercises.c.state, sa.Text) == "running", exercises.c.started_at.is_not(None))
     )
+    return db.execute(stmt).fetchall()
 
 
 def complete_exercise(db, exercise_id: str) -> None:

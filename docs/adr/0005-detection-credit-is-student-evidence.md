@@ -105,15 +105,17 @@ read after the exercise.
 
 On a non-mock backend, `run_scenario_v2` no longer completes the exercise when the timeline
 ends. The exercise stays `running` until the instructor completes it or `duration_minutes`
-passes, whichever comes first; a beat task completes overdue exercises. Submissions are
-accepted only while it is `running`. The worker's in-loop `DetectionScorer.score()` goes
-away; scoring happens when a submission arrives.
+(or `duration_min`) passes, whichever comes first. The beat task `close_overdue_exercises`
+(`worker/exercise_clock.py`, every minute) completes overdue exercises. It measures wall
+time since start, so paused time counts. An exercise whose scenario sets no duration stays
+running until an instructor completes it. Submissions are accepted only while it is
+`running`. The worker's in-loop `DetectionScorer` is gone (`worker/detection.py` deleted),
+and so is `scenario_engine` in the worker image; scoring happens when a submission arrives.
 
 ### 7. Turning it on
 
-`DETECTION_SCORING` keeps gating the new endpoint until 1–6 are built and tested on
-Postgres. After that the flag is removed, because there is nothing left to switch off:
-without a Student submission, nothing is credited.
+The `DETECTION_SCORING` flag is removed. There is nothing left to switch off: without a
+Student submission, nothing is credited.
 
 ## Not in this decision (later ADRs)
 
