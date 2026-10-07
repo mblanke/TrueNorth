@@ -17,9 +17,9 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from .. import scenario_objectives
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..detections.names import canonical_validator
 from ..models import (
     Exercise,
     ExerciseState,
@@ -376,36 +376,9 @@ async def _resolve_curriculum_context(
 
 def _create_objectives(db: Session, exercise_id: uuid.UUID, parsed: dict) -> int:
     """Persist Objective rows (with competency mapping) from generated YAML."""
-    from ..models import Objective, ObjectiveType
-
-    type_map = {
-        "detection": ObjectiveType.detection,
-        "containment": ObjectiveType.response,
-        "eradication": ObjectiveType.response,
-        "recovery": ObjectiveType.response,
-        "response": ObjectiveType.response,
-        "analysis": ObjectiveType.deliverable,
-        "deliverable": ObjectiveType.deliverable,
-    }
-    created = 0
-    for obj in parsed.get("objectives") or []:
-        if not isinstance(obj, dict):
-            continue
-        ref_id = str(obj.get("id") or f"obj-{created + 1}")
-        db.add(
-            Objective(
-                exercise_id=exercise_id,
-                ref_id=ref_id[:100],
-                objective_type=type_map.get(str(obj.get("type", "")).lower(), ObjectiveType.deliverable),
-                description=str(obj.get("name") or ref_id),
-                validator=canonical_validator(str(obj.get("validator") or ""))[:255],
-                validator_params=json.dumps(obj.get("params") or {}),
-                points=int(obj.get("points") or 0),
-                competency_code=(str(obj.get("competency_code") or "")[:50] or None),
-            )
-        )
-        created += 1
-    return created
+    rows = scenario_objectives.parse_objectives(parsed.get("objectives"))
+    scenario_objectives.add_rows(db, exercise_id, rows)
+    return len(rows)
 
 
 async def _call_forge_ai(

@@ -27,7 +27,7 @@ import httpx
 import pytest
 from _shared import acting_as
 from app import search_backends
-from app.models import Objective, ObjectiveType, UserRole
+from app.models import UserRole
 
 pytestmark = pytest.mark.integration
 
@@ -131,7 +131,7 @@ def _ok(resp: httpx.Response, *codes: int) -> dict:
 
 class TestDetectionFlow:
     def test_instructor_rule_and_feed_then_student_detection_is_credited(
-        self, client, db_session, event_store, range_index
+        self, client, event_store, range_index
     ):
         # -- the instructor's side: a rule, a feed, a range, an exercise --------------------
         rule = _ok(client.post("/detection-rules", json={
@@ -158,13 +158,11 @@ class TestDetectionFlow:
                                                         "is_public": False}), 201)
         ex = _ok(client.post("/exercises", json={"name": "integ-detect", "range_id": rng["id"],
                                                   "scenario_id": scenario["id"], "max_score": 50}), 201)
-        # POST /exercises makes no objective rows (the forge and QSP paths do). Seed them as
-        # QSP-made rows look: no params, so the answer key comes from the scenario.
-        for ref, kind, validator, points in (("detect_c2", ObjectiveType.detection, "opensearch_query", 40),
-                                             ("write_report", ObjectiveType.deliverable, "deliverable_check", 10)):
-            db_session.add(Objective(exercise_id=uuid.UUID(ex["id"]), ref_id=ref, objective_type=kind,
-                                     description=ref, validator=validator, points=points))
-        db_session.commit()
+        # POST /exercises makes the scenario's objective rows (PR #28); nothing is seeded here.
+        made = {o["ref_id"]: (o["objective_type"], o["points"])
+                for o in _ok(client.get(f"/exercises/{ex['id']}/objectives"))}
+        assert made == {"detect_c2": ("detection", 40), "write_report": ("deliverable", 10)}
+        assert ex["max_score"] == 50
         _ok(client.post(f"/exercises/{ex['id']}/start"), 200, 202)
         assert _ok(client.get(f"/exercises/{ex['id']}"))["state"] == "running"
 
