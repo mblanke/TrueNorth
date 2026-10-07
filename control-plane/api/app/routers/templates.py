@@ -28,7 +28,8 @@ from sqlalchemy.orm import Session
 from .. import engine_bridge, range_topology
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models import AuditLog, Template, UserRole
+from ..delete_guard import commit_delete, refuse_if
+from ..models import AuditLog, EventState, Range, RangeObjectiveMap, ScheduledEvent, Template, UserRole
 from ..rbac import Permission, require_permission
 from ..schemas import TemplateIn, TemplateListOut, TemplateOut, TemplateUpdate
 from ..tenancy import get_owned
@@ -220,9 +221,28 @@ def delete_template(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TEMPLATE_DELETE)),
 ):
-    """Delete a template.  **Permission: template:delete**"""
+    """Delete a template.  **Permission: template:delete**
+
+    409 while a range built from it exists, or a draft, scheduled or active event
+    reserves it. Its PO mapping goes with it; finished events keep their row without it.
+    """
     tmpl = get_owned(db, Template, template_id, user, not_found="Template not found")
+    # tenant-safe (all four): tmpl came from get_owned(); counts disclose no row.
+    refuse_if(
+        db.query(Range.id).filter(Range.template_id == tmpl.id),
+        "Template has {n} range(s) built from it; delete those ranges first",
+    )
+    events = db.query(ScheduledEvent.id).filter(ScheduledEvent.template_id == tmpl.id)
+    refuse_if(
+        events.filter(ScheduledEvent.state.in_((EventState.draft, EventState.scheduled, EventState.active))),
+        "Template is reserved by {n} scheduled event(s); cancel them first",
+    )
+    db.query(ScheduledEvent).filter(ScheduledEvent.template_id == tmpl.id).update(
+        {ScheduledEvent.template_id: None}, synchronize_session=False
+    )
+    db.query(RangeObjectiveMap).filter(RangeObjectiveMap.template_id == tmpl.id).delete(synchronize_session=False)
+    db.flush()
     db.delete(tmpl)
-    db.commit()
+    commit_delete(db, "Template")
     _audit(db, user, "delete", "template", str(template_id))
     db.commit()

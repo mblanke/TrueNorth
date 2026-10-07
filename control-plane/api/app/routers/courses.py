@@ -17,7 +17,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import course_content_ingest, programme_ingest, qsp_paths
 from ..auth import CurrentUser, get_current_user
+from ..course_publishing.models import CoursePublication
+from ..course_releases.models import CourseRelease
 from ..db import get_db
+from ..delete_guard import commit_delete, refuse_if
 from ..enrollment import ensure_enrollment, ensure_path_enrollment
 from ..models import (
     ContentKind,
@@ -35,6 +38,7 @@ from ..models import (
     PerformanceObjective,
     Qualification,
     Quiz,
+    RegistrationRequest,
     SecurityGroup,
     SecurityGroupMembership,
     User,
@@ -347,13 +351,39 @@ def delete_course(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(AUTHOR),
 ):
-    """Delete a course and its modules.  **Permission: course:author**"""
+    """Delete a course and its modules.  **Permission: course:author**
+
+    409 while it has enrollments, releases or publications: Student records and
+    what was published are history (unpublish the course instead). Module content
+    links go with the modules; quizzes are kept, detached from them.
+    """
     course = get_owned(db, Course, course_id, user)
     if not course:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
-    db.query(CourseModule).filter(CourseModule.course_id == course_id).delete()
+    # tenant-safe (whole block): course came from get_owned(); counts disclose no row.
+    refuse_if(
+        db.query(Enrollment.id).filter(Enrollment.course_id == course.id),
+        "Course has {n} enrollment(s) and is kept as part of the Students' records",
+    )
+    refuse_if(
+        db.query(CourseRelease.id).filter(CourseRelease.course_id == course.id),
+        "Course has {n} release(s) on record and is kept as part of their history",
+    )
+    refuse_if(
+        db.query(CoursePublication.id).filter(CoursePublication.course_id == course.id),
+        "Course has {n} publication(s) on record and is kept as part of their history",
+    )
+    module_ids = db.query(CourseModule.id).filter(CourseModule.course_id == course.id)
+    refuse_if(
+        db.query(ModuleProgress.id).filter(ModuleProgress.module_id.in_(module_ids)),
+        "Course has {n} module progress record(s) and is kept as part of the Students' records",
+    )
+    db.query(ModuleContent).filter(ModuleContent.module_id.in_(module_ids)).delete(synchronize_session=False)
+    db.query(Quiz).filter(Quiz.module_id.in_(module_ids)).update({Quiz.module_id: None}, synchronize_session=False)
+    db.query(CourseModule).filter(CourseModule.course_id == course.id).delete(synchronize_session=False)
+    db.flush()
     db.delete(course)
-    db.commit()
+    commit_delete(db, "Course")
 
 
 @router.post("/import-programme")
@@ -681,7 +711,11 @@ def delete_learning_path(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(AUTHOR),
 ):
-    """Delete a learning path.  **Permission: course:author**"""
+    """Delete a learning path.  **Permission: course:author**
+
+    409 while a registration request names it: the request records what the person
+    asked to join (unpublish the path instead).
+    """
     lp = (
         db.query(LearningPath)
         .filter(LearningPath.id == lp_id, LearningPath.tenant_id == user.tenant_id)
@@ -689,8 +723,13 @@ def delete_learning_path(
     )
     if not lp:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning path not found")
+    # tenant-safe: lp is the caller's (filtered above); a count discloses no row.
+    refuse_if(
+        db.query(RegistrationRequest.id).filter(RegistrationRequest.requested_learning_path_id == lp.id),
+        "Learning path is named by {n} registration request(s) and is kept as part of their record",
+    )
     db.delete(lp)
-    db.commit()
+    commit_delete(db, "Learning path")
 
 
 # ══════════════════════════════════════════════════════════════════════════

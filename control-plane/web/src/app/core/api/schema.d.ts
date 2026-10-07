@@ -208,7 +208,12 @@ export interface paths {
         get: operations["get_backend_ai_config_backends__backend_id__get"];
         put?: never;
         post?: never;
-        /** Delete Backend */
+        /**
+         * Delete Backend
+         * @description Delete a backend with its fleet nodes and the model routes that point at it.
+         *
+         *     Nodes and routes have no use without their backend, so they go with it.
+         */
         delete: operations["delete_backend_ai_config_backends__backend_id__delete"];
         options?: never;
         head?: never;
@@ -1084,6 +1089,10 @@ export interface paths {
         /**
          * Delete Course
          * @description Delete a course and its modules.  **Permission: course:author**
+         *
+         *     409 while it has enrollments, releases or publications: Student records and
+         *     what was published are history (unpublish the course instead). Module content
+         *     links go with the modules; quizzes are kept, detached from them.
          */
         delete: operations["delete_course_courses__course_id__delete"];
         options?: never;
@@ -1482,7 +1491,10 @@ export interface paths {
         get: operations["get_group_directory_groups__group_id__get"];
         put?: never;
         post?: never;
-        /** Delete Group */
+        /**
+         * Delete Group
+         * @description Delete a security group and its memberships (they mean nothing without it).
+         */
         delete: operations["delete_group_directory_groups__group_id__delete"];
         options?: never;
         head?: never;
@@ -1604,7 +1616,10 @@ export interface paths {
         get: operations["get_ou_directory_ous__ou_id__get"];
         put?: never;
         post?: never;
-        /** Delete Ou */
+        /**
+         * Delete Ou
+         * @description Delete an OU.  409 while sub-OUs, security groups or teams sit under it.
+         */
         delete: operations["delete_ou_directory_ous__ou_id__delete"];
         options?: never;
         head?: never;
@@ -2184,7 +2199,13 @@ export interface paths {
         get: operations["get_connection_hypervisors_connections__conn_id__get"];
         put?: never;
         post?: never;
-        /** Delete Connection */
+        /**
+         * Delete Connection
+         * @description Delete a connection with the hosts and pools discovered through it.
+         *
+         *     Those rows are inventory read from the hypervisor, with no meaning once the
+         *     connection is gone, so they go with it.
+         */
         delete: operations["delete_connection_hypervisors_connections__conn_id__delete"];
         options?: never;
         head?: never;
@@ -2440,6 +2461,10 @@ export interface paths {
         /**
          * Deregister Platform
          * @description Remove a registered platform.
+         *
+         *     409 while Student activity records synced from it, or course publications to it,
+         *     exist: those are history (deactivate the platform instead). Its LTI nonces and
+         *     launches only serve talking to the platform, so they go with it.
          */
         delete: operations["deregister_platform_integrations_platforms__platform_id__delete"];
         options?: never;
@@ -2782,6 +2807,9 @@ export interface paths {
         /**
          * Delete Learning Path
          * @description Delete a learning path.  **Permission: course:author**
+         *
+         *     409 while a registration request names it: the request records what the person
+         *     asked to join (unpublish the path instead).
          */
         delete: operations["delete_learning_path_learning_paths__lp_id__delete"];
         options?: never;
@@ -5344,7 +5372,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete Appliance */
+        /**
+         * Delete Appliance
+         * @description Delete an appliance.  409 while volumes are still recorded on it.
+         */
         delete: operations["delete_appliance_storage_appliances__appliance_id__delete"];
         options?: never;
         head?: never;
@@ -5642,6 +5673,9 @@ export interface paths {
         /**
          * Delete Template
          * @description Delete a template.  **Permission: template:delete**
+         *
+         *     409 while a range built from it exists, or a draft, scheduled or active event
+         *     reserves it. Its PO mapping goes with it; finished events keep their row without it.
          */
         delete: operations["delete_template_templates__template_id__delete"];
         options?: never;
