@@ -4132,7 +4132,7 @@ export interface paths {
         };
         /**
          * Get Quiz Questions
-         * @description Instructor view with answer key (any authenticated user with tenant access in v1).
+         * @description Instructor view with the answer key (``course:author`` only).
          */
         get: operations["get_quiz_questions_quizzes__quiz_id__questions_get"];
         /**
