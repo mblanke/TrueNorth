@@ -34,7 +34,7 @@ ADAPTER_DIRS = (
     "control-plane/api/app/hypervisor_backends/",
     "control-plane/api/app/vector_backends/",
     "telemetry-pipeline/",
-    "scenario-engine/scenario_engine/validators/",
+    "scenario-engine/scenario_engine/event_stores/",
 )
 SDK_SCAN_DIRS = ("control-plane", "scenario-engine", "ai-orchestrator", "telemetry-pipeline", "tools")
 
