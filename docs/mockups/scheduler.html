@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>TrueNorth scheduler mockup</title>
+<!--
+  Mockup for ADR 0004 slice 8 (scheduler UI): week calendar, capacity per time slot,
+  booking with a live fit check, calendar subscribe, admin policy, range-ops view.
+  Styles follow docs/mockups/app-shell.html (Astra's LMS preview tokens).
+  Real: template sizes (computed from content/ranges/*/template.yaml the way the worker
+  builds them), the env-fallback cluster supply, the 30-minute lead and 15-minute grace,
+  the conflict and capacity rules. Fictional: people, bookings, range names.
+  Deep link: scheduler.html#who=instructor&day=1&book=1   who: instructor | admin | range_ops | observer | student
+-->
+<style>
+  :root {
+    --tn-bg:#fff7f7; --tn-surface:#ffffff; --tn-ink:#292326; --tn-muted:#655b60;
+    --tn-line:#eadbdd; --tn-accent:#b5122b; --tn-soft:#fcecef; --tn-warm:#fff0f2;
+    --tn-warm-ink:#961b30; --tn-button:#bd1631; --tn-button-ink:#ffffff;
+    --tn-ok:#1f6b45; --tn-ok-soft:#e6f3ec; --tn-amber:#9a5b00; --tn-amber-soft:#fff4e0; --tn-space:22px;
+    color-scheme: light;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--tn-bg); }
+  body { font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; color:var(--tn-ink); }
+  button,select,input { font:inherit; color:inherit; }
+  :focus-visible { outline:3px solid var(--tn-accent); outline-offset:3px; }
+
+  .mk-bar { padding:8px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#292326; color:#fff; font-size:12px; }
+  .mk-bar select { background:#fff; color:var(--tn-ink); border:0; border-radius:6px; padding:5px 7px; }
+  .mk-bar label { display:flex; gap:8px; align-items:center; }
+
+  .tn-app { display:grid; grid-template-columns:200px minmax(0,1fr); min-height:calc(100vh - 38px); }
+  .tn-side { background:var(--tn-surface); border-right:1px solid var(--tn-line); padding:18px 12px; display:flex; flex-direction:column; }
+  .tn-brand { font-size:18px; font-weight:650; letter-spacing:-.5px; padding:0 10px 18px; }
+  .tn-brand span { color:var(--tn-accent); }
+  .tn-side-title { font-size:11px; text-transform:uppercase; letter-spacing:1.3px; color:var(--tn-muted); padding:0 10px 10px; }
+  .tn-nav { display:flex; flex-direction:column; gap:3px; }
+  .tn-nav button { border:0; background:transparent; padding:10px; text-align:left; border-radius:7px; width:100%; cursor:pointer; }
+  .tn-nav button[aria-current="page"] { background:var(--tn-soft); color:var(--tn-accent); font-weight:600; }
+  .tn-nav button:hover { background:var(--tn-soft); }
+  .tn-side-foot { margin-top:auto; border-top:1px solid var(--tn-line); padding:14px 10px 0; font-size:12px; color:var(--tn-muted); }
+  .tn-side-foot strong { display:block; color:var(--tn-ink); font-weight:500; }
+  .tn-top { display:flex; align-items:center; gap:10px; padding:12px var(--tn-space); border-bottom:1px solid var(--tn-line); background:var(--tn-surface); font-size:12px; color:var(--tn-muted); min-height:45px; }
+  .tn-top strong { color:var(--tn-ink); font-weight:500; }
+  .tn-menu-btn { display:none; border:1px solid var(--tn-line); background:var(--tn-surface); border-radius:7px; padding:5px 10px; }
+  main { min-width:0; padding:var(--tn-space); max-width:1320px; }
+
+  h1 { font-size:27px; line-height:1.18; font-weight:600; letter-spacing:-.8px; margin:5px 0 9px; }
+  h2 { font-size:17px; font-weight:600; margin:0 0 13px; }
+  h3 { font-size:14px; font-weight:600; margin:0 0 5px; }
+  p { margin:0 0 12px; }
+  .tn-muted { color:var(--tn-muted); }
+  .tn-small { font-size:12px; }
+  .tn-eyebrow { font-size:11px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--tn-accent); }
+  .tn-pagehead { display:flex; justify-content:space-between; align-items:flex-end; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+  .tn-pagehead p { max-width:66ch; margin:0; }
+  .tn-panel { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:10px; padding:18px; min-width:0; }
+  .tn-stack { display:grid; gap:16px; align-content:start; }
+  .tn-hero { background:var(--tn-soft); border:0; margin-bottom:18px; }
+  .tn-hero h2 { font-size:22px; line-height:1.25; margin:7px 0 9px; letter-spacing:-.4px; }
+  .tn-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; }
+  .tn-action { border:1px solid var(--tn-line); border-radius:7px; padding:8px 13px; background:var(--tn-surface); cursor:pointer; }
+  .tn-primary { background:var(--tn-button); color:var(--tn-button-ink); border-color:transparent; }
+  .tn-primary[disabled] { opacity:.45; cursor:not-allowed; }
+  .tn-link { background:transparent; border:0; color:var(--tn-accent); padding:4px 0; cursor:pointer; }
+  .tn-link::after { content:" →"; }
+  .tn-row { padding:11px 0; border-top:1px solid var(--tn-line); display:flex; justify-content:space-between; gap:14px; align-items:center; }
+  .tn-row:first-of-type { border-top:0; padding-top:0; }
+  .tn-row p { margin:2px 0 0; }
+  .tn-chip { display:inline-block; padding:3px 7px; border-radius:5px; background:var(--tn-soft); color:var(--tn-accent); font-size:11px; font-weight:500; white-space:nowrap; }
+  .tn-chip.ok { background:var(--tn-ok-soft); color:var(--tn-ok); }
+  .tn-chip.neutral { background:var(--tn-bg); color:var(--tn-muted); }
+  .tn-chip.warm { color:var(--tn-warm-ink); background:var(--tn-warm); border:1px solid var(--tn-line); }
+  .tn-kv { display:grid; grid-template-columns:110px minmax(0,1fr); gap:6px 12px; font-size:13px; margin:0; }
+  .tn-kv dt { color:var(--tn-muted); }
+  .tn-kv dd { margin:0; }
+  .tn-note { padding:12px 14px; border-left:3px solid var(--tn-accent); background:var(--tn-soft); margin:12px 0 0; font-size:13px; }
+  .tn-note.ok { border-color:var(--tn-ok); background:var(--tn-ok-soft); }
+  .tn-field { display:block; margin-bottom:12px; }
+  .tn-field > span { display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+  .tn-field small { display:block; color:var(--tn-muted); margin-top:3px; font-size:12px; }
+  .tn-input { width:100%; background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:7px; padding:7px 9px; }
+  .tn-two { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .tn-three { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:10px; }
+  .tn-live { position:fixed; bottom:14px; right:14px; background:#292326; color:#fff; padding:10px 14px; border-radius:8px; font-size:12px; max-width:340px; }
+  .tn-live:empty { display:none; }
+
+  /* ── Scheduler ─────────────────────────────────────────── */
+  .sc-split { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:16px; align-items:start; }
+  .sc-weekbar { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+  .sc-weekbar .nav { display:flex; gap:6px; align-items:center; }
+  .sc-legend { display:flex; gap:12px; font-size:12px; color:var(--tn-muted); align-items:center; flex-wrap:wrap; }
+  .sc-legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  .sc-week { display:grid; grid-template-columns:46px repeat(5,minmax(0,1fr)); border:1px solid var(--tn-line); border-radius:10px; overflow:hidden; background:var(--tn-surface); }
+  .sc-head { padding:8px 8px 6px; border-bottom:1px solid var(--tn-line); border-left:1px solid var(--tn-line); font-size:12px; cursor:pointer; background:var(--tn-surface); text-align:left; border-top:0; border-right:0; }
+  .sc-head strong { display:block; font-size:13px; }
+  .sc-head[aria-pressed="true"] { background:var(--tn-soft); }
+  .sc-head .peak { display:block; margin-top:5px; height:5px; border-radius:3px; background:var(--tn-bg); border:1px solid var(--tn-line); overflow:hidden; }
+  .sc-head .peak i { display:block; height:100%; }
+  .sc-gutter { border-bottom:1px solid var(--tn-line); }
+  .sc-times { position:relative; margin-bottom:8px; }
+  .sc-times span { position:absolute; right:6px; font-size:10px; color:var(--tn-muted); transform:translateY(-6px); }
+  .sc-day { position:relative; border-left:1px solid var(--tn-line); }
+  .sc-hour { position:absolute; left:0; right:0; border-top:1px dashed var(--tn-line); }
+  .sc-load { position:absolute; left:0; width:5px; }
+  .sc-ev { position:absolute; left:9px; right:4px; border-radius:7px; padding:5px 7px; font-size:11px; line-height:1.3; overflow:hidden; cursor:pointer; border:1px solid var(--tn-line); background:var(--tn-surface); text-align:left; }
+  .sc-ev strong { display:block; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sc-ev.mine { background:var(--tn-soft); border-color:var(--tn-accent); }
+  .sc-ev.draft { border-style:dashed; background:var(--tn-bg); color:var(--tn-muted); }
+  .sc-ev.sel { box-shadow:0 0 0 3px var(--tn-accent); }
+  .sc-ev .lead { position:absolute; left:0; right:0; background:repeating-linear-gradient(135deg,transparent 0 4px,rgba(181,18,43,.10) 4px 8px); }
+  .sc-ev .ghost { color:var(--tn-muted); }
+  .sc-ev.proposed { border:2px dashed var(--tn-accent); background:rgba(252,236,239,.85); }
+  .lv-ok { background:#2f8f5b; } .lv-mid { background:#d99a1e; } .lv-high { background:var(--tn-accent); } .lv-none { background:transparent; }
+  .sc-meter { display:grid; grid-template-columns:52px minmax(0,1fr) 92px; gap:8px; align-items:center; font-size:12px; margin:6px 0; }
+  .sc-meter .bar { height:8px; border-radius:4px; background:var(--tn-bg); border:1px solid var(--tn-line); overflow:hidden; position:relative; }
+  .sc-meter .bar i { position:absolute; top:0; bottom:0; left:0; }
+  .sc-meter .bar b { position:absolute; top:0; bottom:0; background:repeating-linear-gradient(135deg,var(--tn-accent) 0 3px,transparent 3px 6px); }
+  .sc-meter span:last-child { text-align:right; color:var(--tn-muted); }
+  .sc-heat { width:100%; border-collapse:collapse; font-size:12px; }
+  .sc-heat th { font-weight:500; color:var(--tn-muted); text-align:left; padding:5px 6px; }
+  .sc-heat td { padding:3px; }
+  .sc-heat td div { height:24px; border-radius:4px; display:grid; place-items:center; font-size:10px; color:#fff; font-weight:600; }
+  .sc-radio { display:flex; gap:8px; flex-wrap:wrap; }
+  .sc-radio label { flex:1 1 140px; border:1px solid var(--tn-line); border-radius:8px; padding:10px; cursor:pointer; font-size:13px; }
+  .sc-radio label:has(input:checked) { border-color:var(--tn-accent); background:var(--tn-soft); }
+  .sc-radio input { margin-right:6px; }
+  .sc-url { font:12px ui-monospace,Menlo,monospace; padding:8px; border-radius:7px; background:var(--tn-bg); border:1px solid var(--tn-line); overflow-wrap:anywhere; }
+
+  @media (max-width:1100px) { .sc-split { grid-template-columns:1fr; } }
+  @media (max-width:800px) {
+    .tn-app { grid-template-columns:minmax(0,1fr); }
+    .tn-side { position:fixed; z-index:20; top:38px; bottom:0; left:0; width:240px; transform:translateX(-100%); transition:transform .2s; }
+    .tn-app.open .tn-side { transform:none; box-shadow:0 0 0 100vmax rgba(41,35,38,.35); }
+    .tn-menu-btn { display:inline-block; }
+    .sc-week { grid-template-columns:40px repeat(5,minmax(0,1fr)); }
+    .sc-ev { left:7px; padding:3px 4px; } .sc-ev span { display:none; }
+  }
+  @media (max-width:550px) { :root { --tn-space:14px; } h1 { font-size:23px; } .tn-three, .tn-two { grid-template-columns:1fr; } }
+  @media (pointer:coarse) { button,select,input { min-height:44px; } }
+</style></head><body>
+
+<div class="mk-bar"><span>DESIGN MOCKUP · Scheduler (ADR 0004 slice 8) · real template sizes and rules; people and bookings are fictional · nothing is saved</span>
+  <label>Viewing as <select id="mk-who" aria-label="Mockup viewer">
+    <option value="instructor">WO Morgan Roy · Instructor</option>
+    <option value="admin">Capt Dana Kim · Administrator</option>
+    <option value="range_ops">Sgt Priya Das · Range Ops</option>
+    <option value="observer">Maj Chris Lee · Observer</option>
+    <option value="student">OCdt Jamie Fox · Student</option>
+  </select></label></div>
+<div id="mk-root"></div>
+<div id="tn-live" class="tn-live" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  // ── Real numbers ───────────────────────────────────────────────────────────
+  // Template demand as range_topology.template_demand computes it (== worker/render.py).
+  const TEMPLATES = {
+    'small-enterprise':  { name:'Small Enterprise',  vms:5,  vcpu:10,  ram:20480,  disk:300 },
+    'medium-enterprise': { name:'Medium Enterprise', vms:8,  vcpu:20,  ram:45056,  disk:1040 },
+    'soc-training':      { name:'SOC Training',      vms:23, vcpu:69,  ram:160768, disk:3920 },
+    'red-team':          { name:'Red Team',          vms:28, vcpu:67,  ram:152576, disk:2120 },
+    'cloud-security':    { name:'Cloud Security',    vms:16, vcpu:52,  ram:129024, disk:1740 },
+    'red-vs-blue':       { name:'Red vs Blue',       vms:40, vcpu:80,  ram:163840, disk:1092 },
+    'large-enterprise':  { name:'Large Enterprise',  vms:50, vcpu:142, ram:384000, disk:7350 },
+  };
+  // EnvCapacity defaults (CLUSTER_TOTAL_* minus 15% overhead) until CapacityService (ADR 0006).
+  const SUPPLY = { vcpu:108, ram:445644, disk:8704 };
+  const LEAD = 30, GRACE = 15; // minutes
+  const POLICY_DEFAULT = 'block';
+
+  // ── Fictional people and bookings, week of Mon 12 Oct 2026 ─────────────────
+  const PEOPLE = { roy:'WO Morgan Roy', chen:'Lt Sam Chen', das:'Sgt Priya Das' };
+  const DAYS = ['Mon 12 Oct','Tue 13 Oct','Wed 14 Oct','Thu 15 Oct','Fri 16 Oct'];
+  const H0 = 7, H1 = 18, ROW = 46; // grid 07:00–18:00, px per hour
+  const B = (id, day, s, e, name, tpl, who, range, state='scheduled') => ({ id, day, s, e, name, tpl, who, range, state });
+  const BOOKINGS = [
+    B('b1', 0, 9, 12,   'SOC analyst lab · cohort 2026-2', 'soc-training', 'roy', 'SOC Training A'),
+    B('b2', 0, 10, 12,  'Medium enterprise walkthrough', 'medium-enterprise', 'chen', 'Medium Ent. 1'),
+    B('b3', 0, 13, 16,  'Red team fundamentals', 'red-team', 'chen', 'Red Team 1'),
+    B('b4', 1, 9, 15,   'Red vs Blue exercise', 'red-vs-blue', 'das', 'RvB Arena'),
+    B('b5', 2, 10, 12,  'Network defence lab', 'small-enterprise', 'roy', 'Small Ent. 2'),
+    B('b6', 2, 13, 16,  'Cloud security lab', 'cloud-security', 'chen', 'Cloud Sec 1'),
+    B('b7', 3, 9, 16,   'Capstone: adversary emulation', 'large-enterprise', 'roy', '', 'draft'),
+    B('b8', 4, 9, 11,   'SOC analyst lab · week 2', 'soc-training', 'roy', 'SOC Training A'),
+  ];
+  const ME = { instructor:'roy', admin:null, range_ops:null, observer:null, student:null };
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const live = document.getElementById('tn-live'), root = document.getElementById('mk-root');
+  const params = new URLSearchParams(location.hash.slice(1));
+  let who = params.get('who') || 'instructor';
+  let day = +(params.get('day') || 0);
+  let sel = params.get('sel') || '';
+  let booking = params.get('book') === '1';
+  let policy = POLICY_DEFAULT;
+  let feed = null; // null | 'active' | 'shown'
+  const draft = { name:'SOC analyst lab · cohort 2026-3', tpl:'soc-training', day:0, s:13, e:16, range:'', who:'roy' };
+
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const chip = (t, c='') => `<span class="tn-chip ${c}">${t}</span>`;
+  const btn = (label, action, primary=false, disabled=false) => `<button type="button" class="tn-action ${primary?'tn-primary':''}" data-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
+  const hhmm = h => `${String(Math.floor(h)).padStart(2,'0')}:${String(Math.round((h % 1) * 60)).padStart(2,'0')}`;
+  const gb = mb => mb % 1024 === 0 || mb >= 10240 ? Math.round(mb / 1024) : (mb / 1024).toFixed(1);
+  const tb = g => g >= 1000 ? (g / 1024).toFixed(1) + ' TB' : g + ' GB';
+  const holding = b => ['scheduled','provisioning','active'].includes(b.state);
+
+  // The backend's rules, in miniature: held window = [start − lead, end + grace].
+  const held = b => [b.s - LEAD / 60, b.e + GRACE / 60];
+  function committedAt(d, h0, h1, except) {
+    const c = { vcpu:0, ram:0, disk:0 };
+    BOOKINGS.filter(b => b.day === d && holding(b) && b.id !== except).forEach(b => {
+      const [a, z] = held(b); if (a < h1 && z > h0) { const t = TEMPLATES[b.tpl]; c.vcpu += t.vcpu; c.ram += t.ram; c.disk += t.disk; }
+    });
+    return c;
+  }
+  function assess(p) {
+    const t = TEMPLATES[p.tpl], [a, z] = held(p), c = committedAt(p.day, a, z, p.id);
+    const free = { vcpu:SUPPLY.vcpu - c.vcpu, ram:SUPPLY.ram - c.ram, disk:SUPPLY.disk - c.disk };
+    const win = `${DAYS[p.day]} ${hhmm(a)}–${hhmm(z)}`;
+    const reasons = [];
+    if (t.vcpu > free.vcpu) reasons.push(`vCPU: need ${t.vcpu}, ${Math.max(0, free.vcpu)} free ${win}`);
+    if (t.ram > free.ram) reasons.push(`RAM: need ${gb(t.ram)} GB, ${gb(Math.max(0, free.ram))} GB free ${win}`);
+    if (t.disk > free.disk) reasons.push(`Disk: need ${t.disk} GB, ${Math.max(0, free.disk)} GB free ${win}`);
+    const clashes = BOOKINGS.filter(b => b.id !== p.id && b.day === p.day && holding(b)).flatMap(b => {
+      const out = [];
+      const reach = (LEAD + GRACE) / 60;
+      if (p.range && b.range === p.range && b.s < p.e + reach && b.e > p.s - reach) out.push(`Range ${p.range} is already booked for '${b.name}' ${hhmm(b.s)}–${hhmm(b.e)}`);
+      if (p.who && b.who === p.who && b.s < p.e && b.e > p.s) out.push(`${PEOPLE[p.who]} is already teaching '${b.name}' ${hhmm(b.s)}–${hhmm(b.e)}`);
+      return out;
+    });
+    return { t, c, free, reasons, clashes, win };
+  }
+  // Peak load per day and per hour (RAM is the usual limit; the bar shows the worst of the three).
+  const pct = c => Math.max(c.vcpu / SUPPLY.vcpu, c.ram / SUPPLY.ram, c.disk / SUPPLY.disk);
+  const level = p => p === 0 ? 'lv-none' : p < .6 ? 'lv-ok' : p <= 1 ? 'lv-mid' : 'lv-high';
+  // Worst 15-minute slot in the hour: hourly buckets would count back-to-back sessions as concurrent.
+  const hourLoad = (d, h) => Math.max(...[0, .25, .5, .75].map(q => pct(committedAt(d, h + q, h + q + .25))));
+  const dayPeak = d => Math.max(...Array.from({ length: H1 - H0 }, (_, i) => hourLoad(d, H0 + i)));
+
+  // ── Pieces ─────────────────────────────────────────────────────────────────
+  function weekGrid(readOnly) {
+    const height = (H1 - H0) * ROW;
+    const times = Array.from({ length: H1 - H0 + 1 }, (_, i) => `<span style="top:${i * ROW}px">${hhmm(H0 + i)}</span>`).join('');
+    const heads = DAYS.map((d, i) => { const p = dayPeak(i); return `<button type="button" class="sc-head" aria-pressed="${day === i}" data-action="day:${i}"><strong>${d}</strong>
+      <span class="tn-small tn-muted">peak ${Math.round(p * 100)}%</span><span class="peak"><i class="${level(p)}" style="width:${Math.min(100, Math.round(p * 100))}%"></i></span></button>`; }).join('');
+    const cols = DAYS.map((_, d) => {
+      const hours = Array.from({ length: H1 - H0 }, (_, i) => `<div class="sc-hour" style="top:${i * ROW}px"></div><div class="sc-load ${level(hourLoad(d, H0 + i))}" style="top:${i * ROW}px;height:${ROW}px" title="${Math.round(hourLoad(d, H0 + i) * 100)}% committed ${hhmm(H0 + i)}"></div>`).join('');
+      const prop = booking && !readOnly && draft.day === d ? [{ ...draft, id:'new', proposed:true }] : [];
+      const items = [...BOOKINGS.filter(b => b.day === d), ...prop].sort((x, y) => x.s - y.s || y.e - x.e);
+      // Side-by-side lanes for sessions that overlap.
+      const laneEnds = []; items.forEach(b => { let l = laneEnds.findIndex(end => end <= b.s); if (l < 0) l = laneEnds.length; laneEnds[l] = b.e; b._lane = l; });
+      const lanes = Math.max(1, laneEnds.length);
+      const place = b => `top:${(b.s - H0) * ROW}px;height:${(b.e - b.s) * ROW}px;left:calc(9px + (100% - 13px) * ${b._lane / lanes});right:auto;width:calc((100% - 13px) / ${lanes} - 3px)`;
+      const evs = items.filter(b => !b.proposed).map(b => {
+        const mine = ME[who] && b.who === ME[who];
+        return `<button type="button" class="sc-ev ${mine ? 'mine' : ''} ${b.state === 'draft' ? 'draft' : ''} ${sel === b.id ? 'sel' : ''}" style="${place(b)}" data-action="sel:${b.id}">
+          <strong>${esc(b.name)}</strong><span>${hhmm(b.s)}–${hhmm(b.e)} · ${TEMPLATES[b.tpl].name}${b.state === 'draft' ? ' · draft' : ''}</span>
+          <span class="ghost"><br>${PEOPLE[b.who]}</span></button>`;
+      }).join('');
+      const newEv = prop.map(b => `<div class="sc-ev proposed" style="${place(items.find(x => x.proposed))}"><strong>New: ${esc(draft.name)}</strong><span>${hhmm(draft.s)}–${hhmm(draft.e)}</span></div>`).join('');
+      return `<div class="sc-day" style="height:${height}px">${hours}${evs}${newEv}</div>`;
+    }).join('');
+    return `<div class="sc-week" role="grid" aria-label="Bookings this week"><div class="sc-gutter"></div>${heads}<div class="sc-times" style="height:${height}px">${times}</div>${cols}</div>`;
+  }
+
+  function meters(c, need) {
+    const row = (label, used, add, total, fmt) => {
+      const u = Math.min(100, used / total * 100), a = Math.min(100 - u, add / total * 100), over = used + add > total;
+      return `<div class="sc-meter"><span>${label}</span><div class="bar"><i class="${level((used) / total)}" style="width:${u}%"></i>${add ? `<b style="left:${u}%;width:${Math.max(a, over ? 100 - u : a)}%"></b>` : ''}</div><span ${over ? 'style="color:var(--tn-accent);font-weight:600"' : ''}>${fmt(used + add)} / ${fmt(total)}</span></div>`;
+    };
+    return row('vCPU', c.vcpu, need ? need.vcpu : 0, SUPPLY.vcpu, x => x)
+      + row('RAM', c.ram, need ? need.ram : 0, SUPPLY.ram, x => gb(x) + ' GB')
+      + row('Disk', c.disk, need ? need.disk : 0, SUPPLY.disk, tb);
+  }
+
+  function bookPanel(asAdmin) {
+    const a = assess(draft), t = a.t;
+    const ok = !a.reasons.length && !a.clashes.length;
+    const overButWarn = !a.clashes.length && a.reasons.length && policy === 'warn';
+    const result = a.clashes.length
+      ? `<div class="tn-note"><strong>Can't book: double-booked</strong><br>${a.clashes.map(esc).join('<br>')}</div>`
+      : a.reasons.length
+        ? `<div class="tn-note"><strong>${policy === 'block' ? "Doesn't fit the cluster" : 'Over capacity: will book with a warning'}</strong><br>${a.reasons.map(esc).join('<br>')}<br><span class="tn-small tn-muted">${policy === 'block' ? 'The over-capacity policy is Block. Move it, pick a smaller range, or ask an administrator.' : 'The policy is Warn: it books, and the warning is logged.'}</span></div>`
+        : `<div class="tn-note ok"><strong>Fits.</strong> The range builds at ${hhmm(draft.s - LEAD / 60)} and is torn down at ${hhmm(draft.e + GRACE / 60)}.</div>`;
+    const tplOpts = Object.entries(TEMPLATES).map(([k, v]) => `<option value="${k}" ${draft.tpl === k ? 'selected' : ''}>${v.name}</option>`).join('');
+    const hours = from => Array.from({ length: H1 - H0 + 1 }, (_, i) => H0 + i).filter(h => h >= from).map(h => `<option value="${h}">${hhmm(h)}</option>`).join('');
+    const ranges = ['', ...new Set(BOOKINGS.map(b => b.range).filter(Boolean)), 'New range from template'].map(r => `<option ${draft.range === r ? 'selected' : ''} value="${r}">${r || 'None yet'}</option>`).join('');
+    return `<section class="tn-panel"><h2>Book a session</h2>
+      <label class="tn-field"><span>Name</span><input class="tn-input" data-bind="name" value="${esc(draft.name)}"></label>
+      <label class="tn-field"><span>Range template</span><select class="tn-input" data-bind="tpl">${tplOpts}</select>
+        <small>${t.vms} VMs · ${t.vcpu} vCPU · ${gb(t.ram)} GB RAM · ${tb(t.disk)} disk, from the template</small></label>
+      <div class="tn-three"><label class="tn-field"><span>Day</span><select class="tn-input" data-bind="day">${DAYS.map((d, i) => `<option value="${i}" ${draft.day === i ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+        <label class="tn-field"><span>From</span><select class="tn-input" data-bind="s">${hours(H0).replace(`value="${draft.s}"`, `value="${draft.s}" selected`)}</select></label>
+        <label class="tn-field"><span>To</span><select class="tn-input" data-bind="e">${hours(draft.s + 1).replace(`value="${draft.e}"`, `value="${draft.e}" selected`)}</select></label></div>
+      <div class="tn-two"><label class="tn-field"><span>Range</span><select class="tn-input" data-bind="range">${ranges}</select></label>
+        ${asAdmin ? `<label class="tn-field"><span>Instructor</span><select class="tn-input" data-bind="who">${Object.entries(PEOPLE).map(([k, v]) => `<option value="${k}" ${draft.who === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : `<label class="tn-field"><span>Instructor</span><input class="tn-input" value="${PEOPLE.roy}" disabled></label>`}</div>
+      <h3 style="margin-top:4px">Cluster at that time</h3>${meters(a.c, t)}
+      <p class="tn-small tn-muted" style="margin:4px 0 0">Hatched: this booking. Totals are the env fallback until host discovery reports capacity.</p>
+      ${result}
+      <div class="tn-actions">${btn(overButWarn ? 'Book anyway' : 'Book it', `toast:Would book ${draft.name}; invite emailed to ${PEOPLE[draft.who]}`, true, !(ok || overButWarn))}${btn('Save as draft', 'toast:Would save a draft: holds nothing until scheduled')}${btn('Cancel', 'book:0')}</div>
+    </section>`;
+  }
+
+  function detailPanel(b, canEdit) {
+    const t = TEMPLATES[b.tpl], a = assess(b), [s0, e0] = held(b);
+    const state = b.state === 'draft' ? chip('Draft', 'neutral') : chip('Scheduled', 'ok');
+    const draftNote = b.state === 'draft' && a.reasons.length ? `<div class="tn-note"><strong>Can't be scheduled as it is</strong><br>${a.reasons.map(esc).join('<br>')}<br><span class="tn-small tn-muted">The cluster total is the env fallback (108 vCPU). Real vSphere capacity under a 4:1 vCPU policy comes with ADR 0006.</span></div>` : '';
+    return `<section class="tn-panel"><span class="tn-eyebrow">${DAYS[b.day]}</span><h2 style="margin:4px 0 8px">${esc(b.name)}</h2>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${state}${chip(TEMPLATES[b.tpl].name, 'neutral')}</div>
+      <dl class="tn-kv"><dt>When</dt><dd>${hhmm(b.s)}–${hhmm(b.e)}</dd><dt>Instructor</dt><dd>${PEOPLE[b.who]}</dd><dt>Range</dt><dd>${b.range || '<span class="tn-muted">none yet</span>'}</dd>
+        <dt>Size</dt><dd>${t.vms} VMs · ${t.vcpu} vCPU · ${gb(t.ram)} GB · ${tb(t.disk)}</dd>
+        ${b.range && b.state !== 'draft' ? `<dt>Range builds</dt><dd>${hhmm(s0)} · torn down ${hhmm(e0)}</dd>` : ''}
+        ${b.state !== 'draft' ? `<dt>Reminder</dt><dd>Emailed to the instructor 24 h before</dd>` : ''}</dl>
+      ${draftNote}
+      ${canEdit ? `<div class="tn-actions">${b.state === 'draft' ? btn('Schedule it', 'toast:Would schedule: checked for conflicts and capacity first', true, a.reasons.length > 0) : btn('Move or resize', 'toast:Would open the booking form with these values; the instructor gets an updated invite')}${btn('Cancel booking', 'toast:Would cancel: the range is torn down if the scheduler built it, and the invite is withdrawn')}</div>` : ''}
+    </section>`;
+  }
+
+  function feedPanel() {
+    const url = 'https://range.example.mil/api/v1/schedule/feed/Qe7…private-token….ics';
+    const body = feed === 'shown'
+      ? `<p class="tn-small">Copy it now: it is shown only once. Anyone with it can read this schedule.</p><div class="sc-url">${url}</div>
+         <div class="tn-actions">${btn('Copy link', 'toast:Copied')}${btn('Open in calendar app', 'toast:Would open webcal:// in Outlook or Calendar')}${btn('Done', 'feed:active')}</div>`
+      : `<p class="tn-small tn-muted">${feed ? 'Your calendar is subscribed. Regenerate the link if it was shared by mistake: the old one stops working.' : 'See this schedule in Outlook, Apple Calendar or Google. Updates appear within a few hours; you also get an emailed invite for your own sessions.'}</p>
+         <div class="tn-actions">${btn(feed ? 'Regenerate link' : 'Get calendar link', 'feed:shown', !feed)}${feed ? btn('Turn off', 'feed:off') : ''}</div>`;
+    return `<section class="tn-panel"><h2>Subscribe in your calendar</h2>${body}</section>`;
+  }
+
+  function policyPanel() {
+    return `<section class="tn-panel"><h2>Over-capacity policy</h2><p class="tn-small tn-muted">For the whole platform: every tenant books against the same cluster. Changes are logged.</p>
+      <div class="sc-radio"><label><input type="radio" name="pol" value="block" ${policy === 'block' ? 'checked' : ''} data-action="policy:block"><strong>Block</strong><br><span class="tn-small tn-muted">A booking that doesn't fit is refused, for everyone.</span></label>
+      <label><input type="radio" name="pol" value="warn" ${policy === 'warn' ? 'checked' : ''} data-action="policy:warn"><strong>Warn</strong><br><span class="tn-small tn-muted">It books, with the reasons shown and logged.</span></label></div></section>`;
+  }
+
+  function schedulePage() {
+    const canBook = who === 'instructor' || who === 'admin';
+    const mine = BOOKINGS.filter(b => b.who === ME[who] && holding(b)).sort((x, y) => x.day - y.day || x.s - y.s);
+    const next = mine[0];
+    const hero = who === 'instructor' && next
+      ? `<section class="tn-panel tn-hero"><span class="tn-eyebrow">Your next session</span><h2>${esc(next.name)}</h2>
+         <p>${DAYS[next.day]}, ${hhmm(next.s)}–${hhmm(next.e)} · ${TEMPLATES[next.tpl].name} on ${next.range}. The range builds at ${hhmm(next.s - LEAD / 60)}; you'll get a reminder the day before.</p>
+         <div class="tn-actions">${btn('Book a session', 'book:1', true)}</div></section>` : '';
+    const head = `<div class="tn-pagehead"><div><span class="tn-eyebrow">Schedule</span><h1>${who === 'observer' ? 'Range schedule' : 'This week'}</h1>
+      <p class="tn-muted">${BOOKINGS.filter(holding).length} sessions booked · busiest ${DAYS[[0, 1, 2, 3, 4].sort((x, y) => dayPeak(y) - dayPeak(x))[0]]}. Times are in your time zone.</p></div>
+      ${canBook && !hero ? `<div class="tn-actions" style="margin:0">${btn('Book a session', 'book:1', true)}</div>` : ''}</div>`;
+    const weekbar = `<div class="sc-weekbar"><div class="nav">${btn('←', 'toast:Previous week')}<strong>12–16 Oct 2026</strong>${btn('→', 'toast:Next week')}</div>
+      <div class="sc-legend"><span><i class="lv-ok"></i>under 60%</span><span><i class="lv-mid"></i>60–100%</span><span><i class="lv-high"></i>over</span><span>Edge bar: cluster load, build and teardown time included</span></div></div>`;
+    const sideSel = sel ? detailPanel(BOOKINGS.find(b => b.id === sel), canBook && (who === 'admin' || BOOKINGS.find(b => b.id === sel).who === ME[who])) : '';
+    const dayPanel = `<section class="tn-panel"><h2>${DAYS[day]} · cluster</h2>${meters(committedAt(day, 9, 16))}<p class="tn-small tn-muted" style="margin:4px 0 0">Peak 09:00–16:00, build and teardown time included.</p></section>`;
+    const side = [booking && canBook ? bookPanel(who === 'admin') : sideSel || dayPanel, who === 'admin' ? policyPanel() : '', feedPanel()].join('');
+    return head + hero + `<div class="sc-split"><div>${weekbar}${weekGrid(!canBook)}</div><div class="tn-stack">${side}</div></div>`;
+  }
+
+  function capacityPage() {
+    const hours = Array.from({ length: 10 }, (_, i) => 8 + i);
+    const heat = `<table class="sc-heat"><thead><tr><th></th>${hours.map(h => `<th>${hhmm(h)}</th>`).join('')}</tr></thead><tbody>
+      ${DAYS.map((d, i) => `<tr><th>${d}</th>${hours.map(h => { const p = hourLoad(i, h); return `<td><div class="${level(p)}" title="${Math.round(p * 100)}%">${p ? Math.round(p * 100) : ''}</div></td>`; }).join('')}</tr>`).join('')}</tbody></table>`;
+    const queue = BOOKINGS.filter(holding).sort((x, y) => x.day - y.day || x.s - y.s).slice(0, 6).flatMap(b => [
+      `<div class="tn-row"><div><strong>Build ${b.range}</strong><p class="tn-small tn-muted">${DAYS[b.day]} ${hhmm(b.s - LEAD / 60)} · for '${esc(b.name)}' · ${TEMPLATES[b.tpl].vms} VMs</p></div>${chip('provision_range', 'neutral')}</div>`,
+      `<div class="tn-row"><div><strong>Tear down ${b.range}</strong><p class="tn-small tn-muted">${DAYS[b.day]} ${hhmm(b.e + GRACE / 60)}${b.id === 'b1' ? ' · kept up: inherited by "SOC analyst lab · week 2" (Fri)' : ''}</p></div>${b.id === 'b1' ? chip('kept', 'ok') : chip('destroy_range', 'neutral')}</div>`]).join('');
+    return `<div class="tn-pagehead"><div><span class="tn-eyebrow">Capacity</span><h1>Cluster this week</h1>
+      <p class="tn-muted">Committed by bookings, build and teardown time included. Supply: env fallback (108 vCPU · 435 GB · 8.5 TB) until host discovery reports capacity. Running ranges with no booking aren't counted yet (ADR 0006).</p></div></div>
+      <div class="sc-split"><div class="tn-stack"><section class="tn-panel"><h2>Load by hour · % of the tightest resource</h2>${heat}</section>
+        <section class="tn-panel"><h2>Bookings</h2>${weekGrid(true)}</section></div>
+        <div class="tn-stack"><section class="tn-panel"><h2>Scheduler clock · next builds and teardowns</h2>${queue}</section>${sel ? detailPanel(BOOKINGS.find(b => b.id === sel), false) : ''}${feedPanel()}</div></div>`;
+  }
+
+  function studentHome() {
+    return `<div class="tn-pagehead"><div><span class="tn-eyebrow">Home</span><h1>Welcome back, Jamie</h1><p class="tn-muted">Your learning, as today's app shell shows it.</p></div></div>
+      <section class="tn-panel tn-hero"><span class="tn-eyebrow">Decided 4 Oct 2026</span><h2>Students don't see the schedule</h2>
+      <p>No Schedule menu, no capacity, no other bookings (ADR 0004). Still open: should a Student get their own sessions in Outlook? That needs bookings to know their attendees first.</p></section>`;
+  }
+
+  function render() {
+    document.getElementById('mk-who').value = who;
+    history.replaceState(null, '', '#' + new URLSearchParams({ who, day, ...(sel ? { sel } : {}), ...(booking ? { book: 1 } : {}) }));
+    const me = { instructor:['WO Morgan Roy','Instructor'], admin:['Capt Dana Kim','Administrator'], range_ops:['Sgt Priya Das','Range Ops'], observer:['Maj Chris Lee','Observer'], student:['OCdt Jamie Fox','Student'] }[who];
+    const menus = {
+      instructor: [['home','Home'],['courses','Courses'],['exercises','Exercises'],['schedule','Schedule']],
+      admin: [['home','Home'],['users','People'],['schedule','Schedule'],['infrastructure','Infrastructure'],['settings','Settings']],
+      range_ops: [['home','Home'],['ops','Ops Center'],['ranges','Ranges'],['schedule','Capacity'],['infrastructure','Infrastructure']],
+      observer: [['home','Home'],['exercises','Exercises'],['schedule','Schedule']],
+      student: [['home','Home'],['learning','My learning'],['career','Career path']],
+    }[who];
+    const current = who === 'student' ? 'home' : 'schedule';
+    const page = who === 'student' ? studentHome() : who === 'range_ops' ? capacityPage() : schedulePage();
+    root.innerHTML = `<div class="tn-app" id="tn-app"><aside class="tn-side" aria-label="Main navigation"><div class="tn-brand">True<span>North</span></div>
+      <div class="tn-side-title">${me[1]}</div><nav class="tn-nav">${menus.map(([id, l]) => `<button type="button" ${id === current ? 'aria-current="page"' : ''} data-action="${id === current ? 'noop' : 'toast:' + l + ' (other page)'}">${l}</button>`).join('')}</nav>
+      <div class="tn-side-foot"><strong>${me[0]}</strong>${me[1]}</div></aside>
+      <div><div class="tn-top"><button class="tn-menu-btn" data-action="menu" aria-label="Open navigation">Menu</button><span>${me[1]}</span><span aria-hidden="true">/</span><strong>${menus.find(m => m[0] === current)[1]}</strong></div>
+      <main>${page}</main></div></div>`;
+  }
+
+  root.addEventListener('click', e => {
+    const b = e.target.closest('[data-action]'); if (!b || b.disabled) return;
+    const [a, ...r] = b.dataset.action.split(':'); const arg = r.join(':');
+    if (a === 'day') { day = +arg; sel = ''; }
+    else if (a === 'sel') { sel = sel === arg ? '' : arg; booking = false; const x = BOOKINGS.find(y => y.id === arg); if (x) day = x.day; }
+    else if (a === 'book') { booking = arg === '1'; sel = ''; }
+    else if (a === 'feed') { feed = arg === 'off' ? null : arg; }
+    else if (a === 'policy') { policy = arg; live.textContent = `Would set the policy to ${arg} (logged) (mockup)`; }
+    else if (a === 'menu') { document.getElementById('tn-app').classList.toggle('open'); return; }
+    else if (a === 'toast') { live.textContent = arg + ' (mockup)'; setTimeout(() => { if (live.textContent.startsWith(arg)) live.textContent = ''; }, 3500); return; }
+    else return;
+    render();
+  });
+  root.addEventListener('change', e => {
+    const k = e.target.dataset.bind; if (!k) return;
+    draft[k] = ['day', 's', 'e'].includes(k) ? +e.target.value : e.target.value;
+    if (draft.e <= draft.s) draft.e = Math.min(H1, draft.s + 1);
+    day = draft.day; render();
+  });
+  root.addEventListener('input', e => { if (e.target.dataset.bind === 'name') draft.name = e.target.value; });
+  document.getElementById('mk-who').addEventListener('change', e => { who = e.target.value; sel = ''; booking = false; render(); window.scrollTo(0, 0); });
+  render();
+})();
+</script>
+</body></html>
