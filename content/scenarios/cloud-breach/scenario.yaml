@@ -24,6 +24,14 @@ mitre_attack:
   - T1537      # Transfer Data to Cloud Account
   - T1190      # Exploit Public-Facing Application
 
+# Scenario variables: rendered into {{ name }} in objective queries (the answer key) and,
+# once injects are dispatched, into timeline params. Defanged: TEST-NET-3 and an AWS
+# documentation account id.
+variables:
+  attacker_ip: 203.0.113.66
+  account_id: "111122223333"
+  random_id: 7f3a9c
+
 timeline:
   - phase: 1
     t: "00:00"

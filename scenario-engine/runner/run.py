@@ -146,11 +146,14 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None) -> li
     """
     from scenario_engine.event_stores import event_store_from_env
     from scenario_engine.scoring import ScoringEngine, validation_method
+    from scenario_engine.variables import render
 
     index = f"range-{range_ctx['range_id']}"
     objectives = []
     for obj in scenario.get("objectives", []):
-        params = obj.get("params") or {}
+        params = dict(obj.get("params") or {})
+        if isinstance(params.get("query"), str):
+            params["query"] = render(params["query"], scenario.get("variables"))
         objectives.append(
             {
                 "id": obj.get("id", "unknown"),

@@ -67,3 +67,18 @@ def test_min_hits_zero_does_not_pass_on_zero_hits():
                                 "params": {"query": "a:nothing", "min_hits": 0}, "points": 5}]}
     [result] = evaluate_objectives(scenario, RANGE, event_store=NullEventStore([{"a": "b"}]))
     assert result["passed"] is False and result["points_earned"] == 0
+
+
+def test_templated_query_is_rendered_from_scenario_variables():
+    scenario = yaml.safe_load((ROOT / "content/scenarios/apt-nation-state/scenario.yaml").read_text())
+    beacon = {"event_type": "http", "url.domain": "cdn-assets.northwind-update.example"}
+    store = _Recording([beacon] * 5)  # min_hits: 5
+    results = {r["id"]: r for r in evaluate_objectives(scenario, RANGE, event_store=store)}
+    assert results["detect_c2"]["passed"] is True
+
+
+def test_an_unrendered_placeholder_is_unscored():
+    scenario = {"objectives": [{"id": "o1", "validator": "opensearch_query",
+                                "params": {"query": "sourceIPAddress:{{ attacker_ip }}"}, "points": 5}]}
+    [result] = evaluate_objectives(scenario, RANGE, event_store=NullEventStore([{"sourceIPAddress": "{{"}]))
+    assert result["passed"] is None and "attacker_ip" in result["unscored"]

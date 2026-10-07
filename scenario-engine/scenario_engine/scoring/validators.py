@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from ..event_stores import BaseEventStore, OpenSearchEventStore
+from ..variables import unresolved
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,8 @@ class ScoringValidator:
         query = config.get("query")
         if not query:
             raise UnscoredError("objective has no query")
+        if isinstance(query, str) and (names := unresolved(query)):
+            raise UnscoredError(f"query has unrendered placeholders: {', '.join(names)}")
         threshold = _threshold(config)
         if event_store is None:
             raise UnscoredError("no event store configured")

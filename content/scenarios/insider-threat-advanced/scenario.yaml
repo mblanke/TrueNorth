@@ -24,6 +24,11 @@ mitre_attack:
   - T1070.004  # Indicator Removal: File Deletion
   - T1098      # Account Manipulation
 
+# Scenario variables: rendered into {{ name }} in objective queries (the answer key) and,
+# once injects are dispatched, into timeline params.
+variables:
+  insider_user: m.delacroix
+
 timeline:
   - phase: 1
     t: "00:00"
