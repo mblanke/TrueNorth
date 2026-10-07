@@ -44,7 +44,7 @@ from typing import Any
 
 import jsonschema
 import yaml
-from arc2 import __version__, cmi5, lab_profile
+from arc2 import __version__, cmi5, lab_profile, pcapgen
 from arc2 import qa as content_qa
 
 SCHEMA_VERSION = "arc2/manifest/0.2"
@@ -1079,6 +1079,43 @@ def route(findings: list[Finding]) -> str | None:
     return None
 
 
+def _check_captures(run: Path, manifest: dict[str, Any]) -> list[Finding]:
+    """A synthetic capture must be exactly what its spec renders to.
+
+    The range-engineer writes a spec and runs ``pcapgen``; nothing else may produce the
+    pcap. Re-rendering here and comparing digests means a hand-edited or model-written
+    capture, or a spec changed after rendering, fails instead of shipping.
+    """
+    out: list[Finding] = []
+    for inj in manifest.get("injects", {}).get("items", []):
+        cap = inj.get("capture")
+        if not cap:
+            continue
+        who = f"inject {inj.get('id')}"
+        if inj.get("author_required"):
+            out.append(Finding("inject.capture_author_required", "fail", "range-engineer",
+                               f"{who} has a generated capture but is still marked author_required"))
+        paths = {k: run / cap[k] for k in ("spec", "pcap", "summary")}
+        missing = [k for k, p in paths.items() if not p.is_file()]
+        if missing:
+            out.append(Finding("inject.capture_missing", "fail", "range-engineer",
+                               f"{who}: capture {', '.join(missing)} missing ({', '.join(cap[k] for k in missing)})"))
+            continue
+        try:
+            spec = pcapgen.load(paths["spec"])
+            errs = pcapgen.validate(spec)
+        except pcapgen.SpecError as exc:
+            errs = [str(exc)]
+        if errs:
+            out.append(Finding("inject.capture_spec", "fail", "range-engineer", f"{who}: {'; '.join(errs)[:400]}"))
+            continue
+        data, _summary = pcapgen.render(spec)
+        if hashlib.sha256(data).hexdigest() != sha256_file(paths["pcap"]):
+            out.append(Finding("inject.capture_matches_spec", "fail", "range-engineer",
+                               f"{who}: {cap['pcap']} is not what {cap['spec']} renders to; re-run pcapgen render"))
+    return out
+
+
 def check_run(run: Path, repo_root: Path = REPO_ROOT, write: bool = True) -> tuple[dict[str, Any], list[Finding]]:
     """Run every check and record the verdict. ``write=False`` computes the same verdict
     (the qa block as it would be written) but leaves ``manifest.json`` untouched: no qa,
@@ -1090,6 +1127,7 @@ def check_run(run: Path, repo_root: Path = REPO_ROOT, write: bool = True) -> tup
     findings += _safe(_check_activities, run, manifest)
     findings += _safe(_check_range_evidence, run, manifest, repo_root)
     findings += _safe(_check_trace, manifest)
+    findings += _safe(_check_captures, run, manifest)
     findings += _safe(_check_files, run, manifest, repo_root)
     findings += _safe(_check_po, manifest, repo_root)
     findings += _safe(_check_gates, run, manifest)

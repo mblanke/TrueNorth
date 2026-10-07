@@ -401,6 +401,23 @@ def write_package(
             shutil.copyfile(src, root / sub / src.name)
             add(f"{sub}/{src.name}", "package", all_objectives)
 
+    # Synthetic teaching captures (range-engineer, tools/arc2/pcapgen.py) ship as downloads of
+    # the module whose objective the inject serves. Only the pcap: its summary is answer-key
+    # material and stays with the run.
+    downloads: dict[str, list[str]] = {}
+    for inj in manifest.get("injects", {}).get("items", []):
+        cap = inj.get("capture")
+        src = run / cap["pcap"] if cap else None
+        if not src or not src.is_file():
+            continue
+        (root / "resources").mkdir(exist_ok=True)
+        name = f"{inj['id']}.pcap"
+        shutil.copyfile(src, root / "resources" / name)
+        add(f"resources/{name}", "package", [inj["objective_id"]])
+        for au in block["aus"]:
+            if inj["objective_id"] in au["objective_ids"]:
+                downloads.setdefault(au["module_id"], []).append(name)
+
     modules = {m["id"]: m for m in manifest["content"]["modules"]}
     index_tmpl = (AU_DIR / "index.html.tmpl").read_text()
     for au in block["aus"]:
@@ -411,6 +428,7 @@ def write_package(
             index_tmpl.replace("{{TITLE}}", html.escape(f"Module {m['ordinal']}: {m['title']}"))
             .replace("{{MODULE_ID}}", m["id"])
             .replace("{{LANG}}", LANG)
+            .replace("{{DOWNLOADS}}", _downloads_html(downloads.get(m["id"], [])))
         )
         (mdir / "index.html").write_text(page_html)
         add(f"{m['id']}/index.html", "package", list(au["objective_ids"]))
@@ -428,6 +446,16 @@ def write_package(
     status, errors = validate_xsd(xml_text)
     block["xsd"] = {"status": status, "errors": errors}
     return block, files
+
+
+def _downloads_html(names: list[str]) -> str:
+    if not names:
+        return ""
+    items = "".join(
+        f'<li><a href="../resources/{html.escape(n)}" download>{html.escape(n)}</a> (packet capture: open it in Wireshark)</li>'
+        for n in names
+    )
+    return f'<section id="downloads"><h2>Downloads</h2><ul>{items}</ul></section>'
 
 
 def update_fragment(run: Path, block: dict[str, Any], files: list[dict[str, Any]]) -> Path:

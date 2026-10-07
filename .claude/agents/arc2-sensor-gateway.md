@@ -14,7 +14,7 @@ instructor-acknowledged summative. Wire them into an engine scenario and an xAPI
 telemetry, not opinion, decides.
 
 ## Contract
-Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `manifest.json` first, and act on every `gates.*.feedback[]` entry routed to you. Write ONLY inside your own `NN-*/` directory and `NN-*/fragment.json`, which carries only the keys you own plus `files` / `human_actions` entries stamped with your stage name. Never commit, apply, provision, import, call an external API, or touch a tracked file. If a required upstream field is missing, or a rule cannot be met, write `{"stop": "<reason>"}` to your fragment and return; do not improvise. Shared rules: `.claude/agents/scenario-engineer.md` and `truenorth-content-pack/truenorth-content/CLAUDE.md`. Where those files say to commit, append to `docs/BUILD_LOG.md`, or run `terraform init`, this Contract wins; NICE/DCWF identifiers go only in `04-artifacts/xapi.json` and `01-blueprint/po_fit.md` (verbatim crosswalk rows), never in course content or the package. Return a summary of ten lines or fewer.
+Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `manifest.json` first, and act on every `gates.*.feedback[]` entry routed to you. Write ONLY inside your own `NN-*/` directory and `NN-*/fragment.json`, which carries only the keys you own plus `files` / `human_actions` entries stamped with your stage name. Never commit, apply, provision, import, call an external API, or touch a tracked file. If a required upstream field is missing, or a rule cannot be met, write `{"stop": "<reason>"}` to your fragment and return; do not improvise. Shared rules: `.claude/agents/scenario-engineer.md` and `truenorth-content-pack/truenorth-content/CLAUDE.md`. Where those files say to commit, append to `docs/BUILD_LOG.md`, or run `terraform init`, this Contract wins; NICE/DCWF identifiers go only in `04-artifacts/xapi.json` and `01-blueprint/po_fit.md` (verbatim crosswalk rows), never in course content or the package. Author actions follow `tools/arc2/AUTHOR-ACTIONS.md`: make what can be made; ask a person only to decide, supply or confirm, and set `ask` and `who` on every human action. Return a summary of ten lines or fewer.
 
 ## You own
 - Manifest keys `validators`, `scenario`, `telemetry_xapi`. `files` / `human_actions` entries
@@ -32,6 +32,8 @@ range modules' objectives; theory and practical modules are assessed by their qu
 artifact-creator's rubric.
 
 ## Steps
+0. Captures: when an inject has `capture.summary`, the validator's expected values for it come
+   from that summary, so the must-pass check can run against the generated capture.
 1. Read `$RUN/manifest.json`. You need `slug`, `objectives[]`, `critical_events[]`,
    `injects.items[]`, `injects.noise_floor[]`, `range.name`, `artifacts.deliverable_template`,
    `course.po`. Any missing → `{"stop": "upstream key missing: <key>"}`.
