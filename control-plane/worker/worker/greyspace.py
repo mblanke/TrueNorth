@@ -1,11 +1,10 @@
 """Greyspace provisioning seam (ADR 0007): what the worker does with a range's Greyspace block.
 
-``after_provision(range_id, backend, template)`` is meant to be called by
-``tasks.provision_range`` once the range is ready, and ``after_destroy(range_id)`` by
-``tasks.destroy_range`` once it is gone. Neither is wired yet (tasks.py is owned
-elsewhere this slice); the one-line calls are in docs/adr/0007-greyspace.md. Both are
-safe to call for every range: no block means nothing happens, and they never raise into
-the range task, because a simulated internet must not fail a range build.
+``after_provision(range_id, backend, template)`` is called by ``tasks.provision_range``
+once the range is ready, and ``after_destroy(range_id)`` by ``tasks.destroy_range`` once
+it is gone. Both are safe to call for every range: no block means nothing happens, and
+they never raise into the range task, because a simulated internet must not fail a
+range build.
 
 What "deploy" means per backend:
 

@@ -418,6 +418,19 @@ class TestRangeApi:
         assert client.put(f"/ranges/{rng.id}/greyspace").status_code == 409
         assert client.delete(f"/ranges/{rng.id}/greyspace").status_code == 409
 
+    def test_a_designer_save_keeps_the_templates_greyspace_block(self, client, db_session):
+        diagram = {"cells": [
+            {"type": "standard.Rectangle", "id": "z", "nodeType": "subnet", "position": {"x": 0, "y": 0},
+             "size": {"width": 600, "height": 200}, "nodeData": {"label": "LAN", "cidr": "10.9.0.0/24"}},
+            {"type": "standard.Rectangle", "id": "a", "nodeType": "server", "position": {"x": 50, "y": 50},
+             "size": {"width": 120, "height": 80}, "nodeData": {"label": "web", "os_template": "rocky-9"}},
+        ]}
+        rng = _range(db_session, template_yaml="name: t\nnodes: []\ngreyspace:\n  site_packs: [news]\n")
+        saved = client.post(f"/ranges/{rng.id}/topology", json={"diagram_json": diagram})
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["template"]["greyspace"] == {"site_packs": ["news"]}
+        assert client.get(f"/ranges/{rng.id}/greyspace").json()["template_block"]["site_packs"] == ["news"]
+
     def test_corpora_lists_every_tier(self, client):
         tiers = {c["tier"]: c for c in client.get("/greyspace/corpora").json()}
         assert set(tiers) == {"t0", "t1", "t2", "full"}

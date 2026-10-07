@@ -60,17 +60,22 @@ an exercise, while exercises need to hide breadcrumbs in some sites per range.
    NFS-mounted corpus, the rendered stack started with Compose) is after stage 4; it needs
    the post-deploy configure stage and multi-NIC routers (plan, slice 0).
 
-## Wiring not yet done (owned elsewhere this slice)
-`worker/tasks.py` is not edited here. Two one-line calls connect the seam:
+## Wiring
+`worker/tasks.py` calls the seam on one line each, kept apart from other hooks:
 
 ```python
-# tasks.provision_range, after _notify_api("range", {... "state": "ready"}):
-from .greyspace import after_provision; after_provision(range_id, backend, template)
+# tasks.provision_range, after the range is marked ready:
+greyspace.after_provision(range_id, backend, template)
 # tasks.destroy_range, after the range is marked destroyed:
-from .greyspace import after_destroy; after_destroy(range_id)
+greyspace.after_destroy(range_id)
 ```
 
-Both are no-ops for ranges without a block and never raise into the range task.
+Both are no-ops for ranges without a block and never raise into the range task. On the
+mock backend a range's Greyspace goes `configured` → `deployed` when it is provisioned
+and back to `configured` when it is destroyed.
+
+Designer saves (`POST /ranges/{id}/topology`) keep the template's `greyspace:` key, as
+they keep every key the designer does not own.
 
 ## Consequences
 - The control plane can describe and validate a range's Greyspace without Docker; CI

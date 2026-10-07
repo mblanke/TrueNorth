@@ -137,6 +137,59 @@ def test_unknown_range_with_a_template_block_is_ignored(factory):
     assert greyspace.after_provision(str(uuid.uuid4()), "mock", {"greyspace": {}}) is None
 
 
+# -- Through the real range tasks (tasks.provision_range / destroy_range call the seam) --
+def _fake_backend(**methods):
+    from unittest.mock import AsyncMock, MagicMock
+
+    backend = MagicMock()
+    for name, value in methods.items():
+        setattr(backend, name, AsyncMock(return_value=value))
+    return backend
+
+
+def _set_state(factory, rng, state):
+    db = factory()
+    db.get(m.Range, rng.id).state = state
+    db.commit()
+    db.close()
+
+
+def test_provision_range_deploys_the_block_and_destroy_range_undeploys_it(factory, rng, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from worker.provisioners.results import DestroyResult, ProvisionResult
+
+    monkeypatch.setattr(tasks, "_notify_api", MagicMock())
+    backend = _fake_backend(
+        provision=ProvisionResult(status="ok", vms=[], networks=[]),
+        destroy=DestroyResult(status="ok", resources_removed=0),
+    )
+    monkeypatch.setattr(tasks, "_get_backend", lambda name=None: backend)
+    _attach(factory, rng)
+    _set_state(factory, rng, m.RangeState.provisioning)
+
+    assert tasks.provision_range(str(rng.id))["status"] == "ready"
+    row = _row(factory, rng)
+    assert row.status == "deployed" and row.detail["backend"] == "mock"
+
+    _set_state(factory, rng, m.RangeState.destroying)
+    assert tasks.destroy_range(str(rng.id))["status"] == "destroyed"
+    assert _row(factory, rng).status == "configured"
+
+
+def test_provision_range_without_a_block_leaves_no_row(factory, rng, monkeypatch):
+    from unittest.mock import MagicMock
+
+    from worker.provisioners.results import ProvisionResult
+
+    monkeypatch.setattr(tasks, "_notify_api", MagicMock())
+    monkeypatch.setattr(tasks, "_get_backend", lambda name=None: _fake_backend(
+        provision=ProvisionResult(status="ok", vms=[], networks=[])))
+    _set_state(factory, rng, m.RangeState.provisioning)
+    assert tasks.provision_range(str(rng.id))["status"] == "ready"
+    assert _row(factory, rng) is None
+
+
 def test_template_block_defaults():
     assert greyspace.template_block(None) is None
     assert greyspace.template_block({"greyspace": "yes"}) is None
