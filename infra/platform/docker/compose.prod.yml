@@ -447,7 +447,27 @@ services:
       VSPHERE_DATASTORE: ${VSPHERE_DATASTORE:-}
       VSPHERE_NETWORK: ${VSPHERE_NETWORK:-}
       VSPHERE_VERIFY_SSL: ${VSPHERE_VERIFY_SSL:-false}
+      # Range isolation (vsphere_api.py): per-range port groups on reserved VLANs. The
+      # fallbacks are the provisioner's own defaults; an empty value would override them.
+      VSPHERE_CONTENT_LIBRARY: ${VSPHERE_CONTENT_LIBRARY:-}
+      VSPHERE_MGMT_NETWORK: ${VSPHERE_MGMT_NETWORK:-dPG-TN-MGMT}
+      VSPHERE_RANGE_SWITCH_MODE: ${VSPHERE_RANGE_SWITCH_MODE:-vds}
+      VSPHERE_RANGE_DVS: ${VSPHERE_RANGE_DVS:-vDS-10G}
+      VSPHERE_VLAN_POOL: ${VSPHERE_VLAN_POOL:-100-199}
+      VSPHERE_ALLOCATION_DOMAIN: ${VSPHERE_ALLOCATION_DOMAIN:-vsphere}
+      VSPHERE_PLACEMENT: ${VSPHERE_PLACEMENT:-spread}
+      VSPHERE_RESOURCE_POOL: ${VSPHERE_RESOURCE_POOL:-}
+      VSPHERE_EXCLUDE_HOSTS: ${VSPHERE_EXCLUDE_HOSTS:-}
+      VSPHERE_RANGE_UPLINK_NETWORK: ${VSPHERE_RANGE_UPLINK_NETWORK:-}
+      VSPHERE_RANGE_UPLINK_POOL: ${VSPHERE_RANGE_UPLINK_POOL:-}
+      VSPHERE_RANGE_UPLINK_GATEWAY: ${VSPHERE_RANGE_UPLINK_GATEWAY:-}
+      VSPHERE_NOISE_NETWORK: ${VSPHERE_NOISE_NETWORK:-TN-Noise-Mgmt}
+      LAB_PORT_GROUPS: ${LAB_PORT_GROUPS:-}
+      TN_DEPOT_URL: ${TN_DEPOT_URL:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # Deploy-time software installs resolve node services against this (software_catalogue.py).
+      - ../../../content/catalogue:/app/content/catalogue:ro
     depends_on:
       postgres:
         condition: service_healthy
