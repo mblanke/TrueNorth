@@ -24,10 +24,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from . import range_leases, range_ops, ws_auth  # noqa: F401 — range_leases, range_ops: register their tables
-from .greyspace import models as _greyspace_models  # noqa: F401 — registers range_greyspace
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
+from .greyspace import models as _greyspace_models  # noqa: F401 — registers range_greyspace
 from .models import Range, Tenant, User, UserRole
 from .rbac import Permission, require_permission
 from .schemas import HealthOut
