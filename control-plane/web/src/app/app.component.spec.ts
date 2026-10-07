@@ -2,8 +2,10 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
+import { of } from 'rxjs';
 import { AppComponent } from './app.component';
 import { AuthService } from './core/services/auth.service';
+import { NotificationsApiService } from '@core/services/notifications-api.service';
 
 describe('AppComponent', () => {
   let component: AppComponent;
@@ -14,7 +16,10 @@ describe('AppComponent', () => {
     canViewSchedule.set(true);
     await TestBed.configureTestingModule({
       imports: [AppComponent, NoopAnimationsModule, RouterTestingModule],
-      providers: [{ provide: AuthService, useValue: { canViewSchedule } }],
+      providers: [
+        { provide: AuthService, useValue: { canViewSchedule } },
+        { provide: NotificationsApiService, useValue: { unreadCount: () => of({ unread: 0 }), list: () => of([]) } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AppComponent);

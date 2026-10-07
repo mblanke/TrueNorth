@@ -1,7 +1,7 @@
 """add scenario runs (inject records, scenario executions)
 
 Revision ID: d8e9f0a1b2c3
-Revises: f9a0b1c2d3e4
+Revises: a8b9c0d1e2f3
 Create Date: 2026-10-07 18:00:00.000000
 
 Exercises never fired an inject: the worker's dispatch seam was a no-op. Now each inject's
@@ -16,7 +16,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "d8e9f0a1b2c3"
-down_revision: str | None = "f9a0b1c2d3e4"
+down_revision: str | None = "a8b9c0d1e2f3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
