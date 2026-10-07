@@ -18,6 +18,7 @@ PATCH  /users/{user_id}                    USER_UPDATE
 DELETE /users/{user_id}                    USER_DELETE
 POST   /teams                              USER_UPDATE
 GET    /teams                              USER_READ
+PATCH  /teams/{team_id}                    USER_UPDATE
 DELETE /teams/{team_id}                    USER_UPDATE
 POST   /teams/{team_id}/members            USER_UPDATE
 GET    /teams/{team_id}/members            USER_READ
@@ -240,8 +241,13 @@ def update_team(
     body: TeamUpdate,
     team_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
 ) -> Team:
+    """Update a team.  **Permission: user:update**
+
+    Until 2026-10-07 this needed only a login: a student could rename or resize
+    any team in their tenant.
+    """
     team = get_owned(db, Team, team_id, user, not_found="Team not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(team, field, value)
@@ -332,6 +338,9 @@ def remove_team_member(
     user: CurrentUser = Depends(require_permission(Permission.USER_UPDATE)),
 ):
     """Remove a user from a team.  **Permission: user:update**"""
+    # The membership row has no tenant of its own; without this check a caller could
+    # strip members from another tenant's team by id.
+    get_owned(db, Team, team_id, user, not_found="Team not found")
     m = (
         db.query(TeamMembership)
         .filter(TeamMembership.team_id == team_id, TeamMembership.user_id == member_user_id)
@@ -442,6 +451,13 @@ async def import_roster_csv(
                     "error": f"already linked to identity source '{existing.source}' — not modified",
                 }
             )
+            continue
+
+        # Email is unique platform-wide. Matching another tenant's row would move that
+        # person into this tenant (target.tenant_id below) and overwrite their role.
+        if existing is not None and str(existing.tenant_id) != str(tenant_id):
+            skipped += 1
+            errors.append({"line": line_no, "email": email, "error": "email is in use by another account — not modified"})
             continue
 
         fields = {

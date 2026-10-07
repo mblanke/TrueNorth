@@ -11446,7 +11446,7 @@
     },
     "/ad-sync/status": {
       "get": {
-        "description": "Return current AD sync status and statistics.  **Permission: user:read**",
+        "description": "Return current AD sync status and statistics.  **Permission: user:read**\n\nCounts are the caller's tenant only \u2014 a count of another tenant's directory\nusers is still disclosure. The Keycloak federation fields describe the shared\nidentity provider and are the same for everyone.",
         "operationId": "ad_sync_status_ad_sync_status_get",
         "responses": {
           "200": {
@@ -27430,6 +27430,7 @@
         ]
       },
       "patch": {
+        "description": "Update a team.  **Permission: user:update**\n\nUntil 2026-10-07 this needed only a login: a student could rename or resize\nany team in their tenant.",
         "operationId": "update_team_teams__team_id__patch",
         "parameters": [
           {
