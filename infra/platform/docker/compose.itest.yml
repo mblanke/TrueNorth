@@ -1,0 +1,65 @@
+# Integration-test overlay on compose.dev.yml: the dev stack, built from this checkout,
+# run as its own project beside (not instead of) a developer's running dev stack.
+#
+#   docker compose -p truenorth-itest \
+#     -f infra/platform/docker/compose.dev.yml -f infra/platform/docker/compose.itest.yml ...
+#
+# Normally driven by scripts/itest.sh (`make itest`, and the CI `integration` and `e2e`
+# jobs). What it changes, and why:
+#
+# - Host ports move to a 1xxxx range (API 18081, OpenSearch 19200, web 14200, Keycloak
+#   18180) and the backing stores are not published at all. compose.dev.yml publishes the
+#   API on 8081, and a dev stack is usually already there: the integration suite would
+#   otherwise either fail to bind or, worse, run against the developer's own database.
+# - The schema comes from `alembic upgrade head` (scripts/itest.sh runs it before the API
+#   starts), not from create_all at boot. That is how production gets its schema, so a
+#   migration that drifts from the models fails here first.
+# - Health checks on api and opensearch, so `up --wait` means "answering", not "started".
+# - Smaller footprint (2 uvicorn workers, 512 MB OpenSearch heap) for a CI runner or a
+#   laptop that is already running a dev stack.
+
+services:
+  postgres:
+    ports: !reset []
+  pgbouncer:
+    ports: !reset []
+  redis:
+    ports: !reset []
+
+  opensearch:
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ports: !override
+      - "127.0.0.1:19200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 20s
+
+  api:
+    ports: !override
+      - "127.0.0.1:18081:8080"
+    environment:
+      DB_AUTO_CREATE: "false"
+      UVICORN_WORKERS: "2"
+      LTI_TOOL_BASE_URL: http://localhost:18081
+      LTI_WEB_BASE_URL: http://localhost:14200
+      CORS_ORIGINS: http://localhost:14200
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+
+  # Only the e2e lane starts these two (scripts/itest.sh with ITEST_WEB=1).
+  keycloak:
+    ports: !override
+      - "127.0.0.1:18180:8080"
+  web:
+    ports: !override
+      - "127.0.0.1:14200:80"
