@@ -95,14 +95,19 @@ def _uuid(value: str) -> uuid.UUID:
     return uuid.UUID(str(value))
 
 
-def _session_for(db: Session, user: CurrentUser, session_id: uuid.UUID, *, staff_permission: Permission) -> LabSession:
+def _session_for(
+    db: Session, user: CurrentUser, session_id: uuid.UUID, *, staff_permission: Permission, act: bool = False
+) -> LabSession:
     """The caller's own session, or one in their tenant when they hold the staff right.
-    404 otherwise (never "exists but not yours")."""
+    404 otherwise (never "exists but not yours"). A student whose enrollment has closed
+    (withdrawn, failed) cannot act on their lab any more, signed in or by token (CR1-17)."""
     s = db.get(LabSession, session_id)
     if s is None or s.tenant_id != tenant_uuid(user):
         raise HTTPException(404, "lab session not found")
     if str(s.user_id) != str(user.id) and not user_has_permission(user, staff_permission):
         raise HTTPException(404, "lab session not found")
+    if act and str(s.user_id) == str(user.id) and _enrollment_closed(db, s):
+        raise HTTPException(403, "your enrollment in this course has closed")
     return s
 
 
@@ -120,14 +125,16 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None, *, act
     s = db.get(LabSession, session_id)
     if s is None or claims.get("uid") != str(s.user_id):
         raise HTTPException(404, "lab session not found")
-    if _withdrawn(db, s):
-        raise HTTPException(403, "your enrollment in this course has been withdrawn")
+    if _enrollment_closed(db, s):
+        raise HTTPException(403, "your enrollment in this course has closed")
     if act and s.state in (*service.ENDING, *service.TERMINAL):
         raise HTTPException(410, "this lab has ended")
     return s
 
 
-def _withdrawn(db: Session, s: LabSession) -> bool:
+def _enrollment_closed(db: Session, s: LabSession) -> bool:
+    """Every enrollment of the student in the lab's course is withdrawn or failed, as
+    release_for_student counts a closed enrollment. No enrollment (staff) is not closed."""
     from ..course_releases.models import CourseRelease
     from ..models import Enrollment, EnrollmentStatus
 
@@ -136,7 +143,7 @@ def _withdrawn(db: Session, s: LabSession) -> bool:
         return False
     mine = db.query(Enrollment).filter(Enrollment.user_id == s.user_id, Enrollment.course_id == release.course_id)
     statuses = {e.status for e in mine}
-    return bool(statuses) and statuses <= {EnrollmentStatus.withdrawn}
+    return bool(statuses) and statuses <= {EnrollmentStatus.withdrawn, EnrollmentStatus.failed}
 
 
 def _do(db: Session, fn, session: LabSession, *args, busy_ok: bool = False, **kwargs) -> Any:
@@ -202,7 +209,7 @@ def get_lab_session(
 def heartbeat_lab_session(
     session_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ) -> LabSessionOut:
-    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE)
+    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
     return _out(_do(db, service.touch, s))
 
 
@@ -210,7 +217,7 @@ def heartbeat_lab_session(
 def reset_lab_session(
     session_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ) -> LabSessionOut:
-    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE)
+    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
     return _out(_do(db, service.reset, s))
 
 
@@ -229,7 +236,7 @@ def open_lab_console(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ConsoleOut:
-    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE)
+    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
     return ConsoleOut(**_do(db, service.console, s, node))
 
 
@@ -241,7 +248,7 @@ def add_lab_evidence(
     user: CurrentUser = Depends(get_current_user),
 ) -> LabSessionOut:
     """Keep a submission or validator result with the session; it outlives the VMs."""
-    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE)
+    s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
     staff = user_has_permission(user, Permission.LEARNING_RECORD_WRITE)
     if body.kind != "submission" and not staff:
         raise HTTPException(403, "students submit work (kind 'submission'); results come from staff and validators")
@@ -271,7 +278,9 @@ def get_lab_by_token(
 def heartbeat_lab_by_token(
     session_id: uuid.UUID, x_lab_token: str | None = Header(None), db: Session = Depends(get_db)
 ) -> LabSessionOut:
-    return _out(_do(db, service.touch, _token_session(db, session_id, x_lab_token)))
+    # Not an action on an ended lab (touch does nothing then): the answer tells the page the
+    # lab ended. A 410 here left the page saying "running" (it polls only while waiting).
+    return _out(_do(db, service.touch, _token_session(db, session_id, x_lab_token, act=False)))
 
 
 @router.post("/lab-access/{session_id}/reset", response_model=LabSessionOut)

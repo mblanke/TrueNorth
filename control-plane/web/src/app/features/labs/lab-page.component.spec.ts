@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import { LabPageComponent } from './lab-page.component';
 import { CourseStudioApiService, LabSession } from '@core/services/course-studio-api.service';
@@ -65,6 +65,18 @@ describe('LabPageComponent', () => {
     expect(api.labConsole).toHaveBeenCalledWith('s1', 'abc');
     expect(fixture.nativeElement.textContent).toContain('mock://console/vm');
   });
+
+  it('reloads the lab when a heartbeat is refused, so an ended lab does not show as running', fakeAsync(() => {
+    setUp('token=abc', false, 'active');
+    api.labAction.and.returnValue(throwError(() => ({ status: 403 })));
+    api.lab.and.returnValue(of(lab('expired')));
+    api.lab.calls.reset();
+    tick(60000);
+    fixture.detectChanges();
+    expect(api.lab).toHaveBeenCalledWith('s1', 'abc');
+    expect(fixture.componentInstance.session()?.state).toBe('expired');
+    fixture.destroy();
+  }));
 
   it('asks before ending the lab', () => {
     setUp('token=abc', false, 'active');

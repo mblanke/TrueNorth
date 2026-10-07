@@ -143,3 +143,29 @@ def test_on_postgres_a_sweep_during_a_send_whose_lease_lapsed_does_not_send_agai
     with Session(postgres_engine) as s:
         row = s.get(LabSession, lab_id)
         assert row.pending == "[]" and row.lease_holder is None
+
+
+def test_on_postgres_a_stale_run_that_already_read_its_tasks_does_not_send_them_again(
+    postgres_engine, pg_lab, monkeypatch
+):
+    """The interleaving only the holder check stops (review of 6558791): the first run has
+    read its pending tasks when another process claims the lapsed lease, sends them and
+    lets the lease go, all before the first run's send. Without ``lease_holder == mine``
+    the first run renewed a lease that was no longer its own and sent them again."""
+    (user_id,) = _students(postgres_engine, 1)
+    sent: list[str] = []
+    monkeypatch.setattr(service, "_dispatch", lambda task, *args: sent.append(task) or "task-1")
+    with Session(postgres_engine) as first:
+        lab, _ = service.launch(first, tenant_id=DEV, user_id=user_id, release_id=pg_lab, activity_id="mod_006")
+        lab_id = lab.id
+        first.commit()
+        assert lab.pending != "[]"  # the first run has read its tasks (they stay in its session)
+        with postgres_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE lab_sessions SET lease_until = now() - interval '1 second' WHERE id = :i"), {"i": lab_id}
+            )
+        with Session(postgres_engine) as second:
+            service.sweep(second)  # claims, sends, releases: done before the first run's send
+        assert sent == ["provision_range"]
+        service.flush_outbox(first)
+    assert sent == ["provision_range"], f"the same task was sent {len(sent)} times"

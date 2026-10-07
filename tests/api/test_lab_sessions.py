@@ -355,7 +355,7 @@ class TestApi:
 
     # F14 / CR1-17: a token is checked against the session as it is now.
 
-    @pytest.mark.parametrize("action", ["heartbeat", "reset", "end", "console"])
+    @pytest.mark.parametrize("action", ["reset", "end", "console"])
     def test_a_token_no_longer_acts_on_a_lab_that_has_ended(self, lab, db_session, action):
         client, rid, _ = lab
         s = student(db_session)
@@ -368,6 +368,49 @@ class TestApi:
         assert resp.status_code == 410, resp.text
         # Reading it stays allowed: the page can say the lab ended.
         assert client.get(f"/lab-access/{a.id}", headers={"X-Lab-Token": token}).status_code == 200
+
+    def test_a_heartbeat_on_an_ended_lab_answers_with_its_state(self, lab, db_session):
+        """The page polls only while a lab is starting; after that the heartbeat is how it
+        learns the lab ended. A 410 there left it saying "running" (review of 6558791)."""
+        client, rid, _ = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        token = tokens.mint(db_session, a.id, s.id, a.max_expires_at)
+        act(db_session, service.end, a)
+        db_session.commit()
+        resp = client.post(f"/lab-access/{a.id}/heartbeat", headers={"X-Lab-Token": token})
+        assert resp.status_code == 200 and resp.json()["state"] not in ("ready", "active")
+
+    @pytest.mark.parametrize("status", ["withdrawn", "failed"])
+    def test_a_signed_in_student_whose_enrollment_closed_cannot_act_on_the_lab(self, lab, db_session, status):
+        from app.auth import CurrentUser, get_current_user
+        from app.main import app as fastapi_app
+        from app.models import EnrollmentStatus
+
+        client, rid, course_id = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        ensure_enrollment(
+            db_session, user_id=s.id, course_id=course_id, tenant_id=s.tenant_id
+        ).status = EnrollmentStatus(status)
+        db_session.commit()
+        me = CurrentUser(
+            id=str(s.id),
+            email=s.email,
+            display_name="s",
+            role=UserRole.student,
+            tenant_id=str(s.tenant_id),
+            keycloak_id=s.keycloak_id,
+        )
+        fastapi_app.dependency_overrides[get_current_user] = lambda: me
+        try:
+            for path in ("console", "reset", "heartbeat"):
+                assert client.post(f"/lab-sessions/{a.id}/{path}").status_code == 403, path
+        finally:
+            fastapi_app.dependency_overrides.pop(get_current_user, None)
+        assert client.post(f"/lab-sessions/{a.id}/console").status_code == 200, "staff still can"
 
     def test_a_token_is_refused_once_the_enrollment_is_withdrawn(self, lab, db_session):
         from app.models import Enrollment, EnrollmentStatus
