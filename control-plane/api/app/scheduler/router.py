@@ -70,7 +70,7 @@ def get_capacity(
     start = start_time or now
     end = end_time or (now + timedelta(hours=8))
 
-    provider = get_capacity_provider()
+    provider = get_capacity_provider(db)
     supply = provider.supply()
     committed = provider.committed(db, start, end)
     free = available(supply, committed.resources)
@@ -105,7 +105,7 @@ def check_capacity(body: CapacityCheck, db: Session = Depends(get_db), user: Cur
     typed = Resources(body.vcpu_needed, body.ram_mb_needed, body.disk_gb_needed)
     demand = service.demand_for(db, user, body.template_id, typed)
     need = demand.resources
-    provider = get_capacity_provider()
+    provider = get_capacity_provider(db)
     a = service.assess(db, provider, body.start_time, body.end_time, need)
     c = a.committed.resources
 
@@ -281,7 +281,7 @@ def _admit(
     )
     if clash:
         raise HTTPException(409, "; ".join(clash))
-    a = service.assess(db, get_capacity_provider(), window.start_time, window.end_time, need, exclude_id)
+    a = service.assess(db, get_capacity_provider(db), window.start_time, window.end_time, need, exclude_id)
     return service.enforce(db, a)
 
 
@@ -475,7 +475,7 @@ def resource_timeline(
         raise HTTPException(422, "resolution_minutes must be 15, 30 or 60")
     if days * 24 * 60 // resolution_minutes > 2880:
         raise HTTPException(422, "Too many slots: shorten `days` or use a coarser resolution")
-    provider = get_capacity_provider()
+    provider = get_capacity_provider(db)
     first = start or datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
     step = timedelta(minutes=resolution_minutes)
     series = provider.committed_series(db, first, first + timedelta(days=days), step)

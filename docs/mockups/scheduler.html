@@ -164,7 +164,7 @@
     'red-vs-blue':       { name:'Red vs Blue',       vms:40, vcpu:80,  ram:163840, disk:1092 },
     'large-enterprise':  { name:'Large Enterprise',  vms:50, vcpu:142, ram:384000, disk:7350 },
   };
-  // EnvCapacity defaults (CLUSTER_TOTAL_* minus 15% overhead) until CapacityService (ADR 0005).
+  // EnvCapacity defaults (CLUSTER_TOTAL_* minus 15% overhead) until CapacityService (ADR 0006).
   const SUPPLY = { vcpu:108, ram:445644, disk:8704 };
   const LEAD = 30, GRACE = 15; // minutes
   const POLICY_DEFAULT = 'block';
@@ -305,7 +305,7 @@
   function detailPanel(b, canEdit) {
     const t = TEMPLATES[b.tpl], a = assess(b), [s0, e0] = held(b);
     const state = b.state === 'draft' ? chip('Draft', 'neutral') : chip('Scheduled', 'ok');
-    const draftNote = b.state === 'draft' && a.reasons.length ? `<div class="tn-note"><strong>Can't be scheduled as it is</strong><br>${a.reasons.map(esc).join('<br>')}<br><span class="tn-small tn-muted">The cluster total is the env fallback (108 vCPU). Real vSphere capacity under a 4:1 vCPU policy comes with ADR 0005.</span></div>` : '';
+    const draftNote = b.state === 'draft' && a.reasons.length ? `<div class="tn-note"><strong>Can't be scheduled as it is</strong><br>${a.reasons.map(esc).join('<br>')}<br><span class="tn-small tn-muted">The cluster total is the env fallback (108 vCPU). Real vSphere capacity under a 4:1 vCPU policy comes with ADR 0006.</span></div>` : '';
     return `<section class="tn-panel"><span class="tn-eyebrow">${DAYS[b.day]}</span><h2 style="margin:4px 0 8px">${esc(b.name)}</h2>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${state}${chip(TEMPLATES[b.tpl].name, 'neutral')}</div>
       <dl class="tn-kv"><dt>When</dt><dd>${hhmm(b.s)}–${hhmm(b.e)}</dd><dt>Instructor</dt><dd>${PEOPLE[b.who]}</dd><dt>Range</dt><dd>${b.range || '<span class="tn-muted">none yet</span>'}</dd>
@@ -360,7 +360,7 @@
       `<div class="tn-row"><div><strong>Build ${b.range}</strong><p class="tn-small tn-muted">${DAYS[b.day]} ${hhmm(b.s - LEAD / 60)} · for '${esc(b.name)}' · ${TEMPLATES[b.tpl].vms} VMs</p></div>${chip('provision_range', 'neutral')}</div>`,
       `<div class="tn-row"><div><strong>Tear down ${b.range}</strong><p class="tn-small tn-muted">${DAYS[b.day]} ${hhmm(b.e + GRACE / 60)}${b.id === 'b1' ? ' · kept up: inherited by "SOC analyst lab · week 2" (Fri)' : ''}</p></div>${b.id === 'b1' ? chip('kept', 'ok') : chip('destroy_range', 'neutral')}</div>`]).join('');
     return `<div class="tn-pagehead"><div><span class="tn-eyebrow">Capacity</span><h1>Cluster this week</h1>
-      <p class="tn-muted">Committed by bookings, build and teardown time included. Supply: env fallback (108 vCPU · 435 GB · 8.5 TB) until host discovery reports capacity. Running ranges with no booking aren't counted yet (ADR 0005).</p></div></div>
+      <p class="tn-muted">Committed by bookings, build and teardown time included. Supply: env fallback (108 vCPU · 435 GB · 8.5 TB) until host discovery reports capacity. Running ranges with no booking aren't counted yet (ADR 0006).</p></div></div>
       <div class="sc-split"><div class="tn-stack"><section class="tn-panel"><h2>Load by hour · % of the tightest resource</h2>${heat}</section>
         <section class="tn-panel"><h2>Bookings</h2>${weekGrid(true)}</section></div>
         <div class="tn-stack"><section class="tn-panel"><h2>Scheduler clock · next builds and teardowns</h2>${queue}</section>${sel ? detailPanel(BOOKINGS.find(b => b.id === sel), false) : ''}${feedPanel()}</div></div>`;

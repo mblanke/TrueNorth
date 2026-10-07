@@ -241,11 +241,11 @@ def test_timeline_at_15_minutes_does_not_count_back_to_back_sessions_as_concurre
 
 
 def test_timeline_series_matches_committed_slot_by_slot(db_session, small_cluster):
-    from app.scheduler.capacity import EnvCapacity
+    from app.scheduler.capacity import ClusterCapacity
 
     _hold(db_session, DAY + timedelta(hours=9), DAY + timedelta(hours=11), ram_mb=1024)
     _hold(db_session, DAY + timedelta(hours=10), DAY + timedelta(hours=14), ram_mb=2048)
-    p, step = EnvCapacity(), timedelta(minutes=30)
+    p, step = ClusterCapacity(db_session), timedelta(minutes=30)
     series = p.committed_series(db_session, DAY, DAY + timedelta(hours=18), step)
     for i, c in enumerate(series):
         assert c == p.committed(db_session, DAY + i * step, DAY + (i + 1) * step), i

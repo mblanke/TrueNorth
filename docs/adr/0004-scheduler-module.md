@@ -4,7 +4,8 @@
 - Date: 2026-10-04
 - MOSA pillar: modular design, designated key interfaces, open standards
 - Related: ADR 0001 (adapter registry), ADR 0002 (interface versioning),
-  ADR 0003 (MOSA ratchet), ADR 0005 (CapacityService, being built separately)
+  ADR 0003 (MOSA ratchet), ADR 0006 (CapacityService; first planned as 0005, a number since taken by
+  `0005-detection-credit-is-student-evidence`)
 
 ## Context
 Scheduling today is split across two places:
@@ -66,7 +67,7 @@ What users need:
 3. **What it does not own:**
    - ranges, exercises, templates, enrollment and courses. It refers to these by id
      and reads them only through their services and APIs;
-   - capacity. It asks `CapacityService` (ADR 0005) and never reads hypervisor
+   - capacity. It asks `CapacityService` (ADR 0006) and never reads hypervisor
      tables or computes host totals itself.
 4. **Capacity rules come from CapacityService:**
    - Demand is derived from the template's VM specs, not typed in.
@@ -126,7 +127,7 @@ What users need:
 | Interface | Contract | Check |
 |---|---|---|
 | HTTP API | `docs/interfaces/openapi.json`, paths `/api/v1/schedule/...` | `scripts/export_openapi.py --check`; `npm run check:api` |
-| Capacity | `CapacityService` (ADR 0005): `supply`, `demand_for_template`, `committed`, `fits` | unit tests in the capacity module |
+| Capacity | `CapacityService` (ADR 0006): `supply`, `demand_for_template`, `committed`, `fits` | unit tests in the capacity module |
 | Worker jobs | `worker/worker/contracts.py`: `provision_for_booking`, `teardown_for_booking`, `send_booking_reminder` (names to confirm) | `scripts/export_task_contracts.py --check`; `tests/contracts/test_task_contracts.py` |
 | Calendar sync | `BaseCalendarBackend` | `tests/contracts/test_adapter_contracts.py`, seam `calendar` |
 | Calendar format | iCalendar RFC 5545 (`VEVENT`; `METHOD:PUBLISH` for the feed, `REQUEST`/`CANCEL` for invites) | `tests/scheduler/test_ics.py`: parses, stable `UID`, `SEQUENCE` rises on update, UTC times |
@@ -250,9 +251,9 @@ What users need:
    tenant-scope list and create (problems 4 and 5). Paths and response shapes are
    unchanged, and the dashboard hides the schedule panel from Students.
 2. Capacity. The booking check, `/check`, `/capacity` and `/timeline` ask a
-   `CapacityProvider` (`scheduler/capacity.py`), the seam that ADR 0005's
+   `CapacityProvider` (`scheduler/capacity.py`), the seam that ADR 0006's
    CapacityService implements.
-   - Until 0005 lands, `EnvCapacity` serves today's numbers: env totals, bookings
+   - Until ADR 0006 landed, `EnvCapacity` serves today's numbers: env totals, bookings
      only, and `supply_source: "env"`.
    - Demand comes from the template's VM specs (`range_topology.template_demand`). A
      contract test checks it against `worker/render.py` for every shipped template.
@@ -343,9 +344,9 @@ What users need:
 - 2026-10-04 — Over-capacity: an admin-set policy, `block` (default) or `warn`. This
   replaces the per-booking admin force flag.
 - 2026-10-05 — The policy is platform-wide, not per tenant (shared cluster).
-- 2026-10-05 — Slice 2 shipped ahead of ADR 0005 behind `CapacityProvider`, so
-  0005 replaces one function (`get_capacity_provider`) and nothing else.
-  - Still 0005's: vSphere supply, the overcommit policy, and counting running ranges
+- 2026-10-05 — Slice 2 shipped ahead of ADR 0006 behind `CapacityProvider`, so
+  ADR 0006 replaces one function (`get_capacity_provider`) and nothing else.
+  - Still ADR 0006's: vSphere supply, the overcommit policy, and counting running ranges
     with no booking.
   - Found while building it: four shipped templates declare a `vm_count` that
     differs from what they build (soc-training 25 vs 23, cloud-security 20 vs 16,
@@ -391,6 +392,13 @@ What users need:
   - Admins are per tenant, so platform-wide settings need a platform administrator:
     an admin of the operator tenant named by `PLATFORM_TENANT_ID`. Unset means a
     single-tenant install, where every admin is the operator. Slice 9.
+
+- 2026-10-07 — ADR 0006 (CapacityService) built: `app/capacity/` gives host supply
+  under the overcommit policy and the ranges running now, and
+  `scheduler.capacity.ClusterCapacity` adds bookings, counting every running range that
+  no booking covers. The overtax gap is closed. vSphere host figures still depend on
+  discovery reading host hardware (PR #3, S5a); until then vSphere supply is the env
+  fallback, and responses say so.
 
 ## Open questions
 

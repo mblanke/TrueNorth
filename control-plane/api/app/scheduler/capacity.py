@@ -1,11 +1,14 @@
-"""The scheduler's view of cluster capacity (ADR 0004 §4).
+"""The scheduler's view of cluster capacity (ADR 0004 §4; ADR 0006).
 
 The scheduler only asks a :class:`CapacityProvider`; it never reads hypervisor tables or
-computes host totals itself. ADR 0005's CapacityService is the intended provider: vSphere
-host totals under an overcommit policy, and running ranges with no booking counted as
-committed. Until it lands, :class:`EnvCapacity` serves the numbers the old
-``routers/scheduling.py`` used (env totals, bookings only), and says so in
-``supply_source``. Swapping providers is :func:`get_capacity_provider`.
+computes host totals itself. :class:`ClusterCapacity` combines the capacity section's
+answers (``app/capacity``: host supply under the overcommit policy, ranges running now)
+with the scheduler's own bookings:
+
+- committed = bookings holding the window, plus every running range that no booking of
+  it covers in that window (a range started without a booking, or kept up between two
+  sessions), from now on;
+- ``supply_source`` says whether totals were discovered or fell back to env values.
 """
 
 from __future__ import annotations
@@ -40,11 +43,12 @@ class Resources:
 @dataclass(frozen=True)
 class Committed:
     resources: Resources
-    events: int
+    events: int  # bookings
+    ranges: int = 0  # running ranges no booking covers
 
 
 class CapacityProvider(Protocol):
-    """The seam ADR 0005's CapacityService implements."""
+    """The seam the scheduler asks; :class:`ClusterCapacity` implements it (ADR 0006)."""
 
     supply_source: str
 
@@ -66,23 +70,38 @@ class CapacityProvider(Protocol):
         ...
 
 
-class EnvCapacity:
-    """Interim provider: supply from ``CLUSTER_TOTAL_*`` env vars, commitments from bookings only."""
+class ClusterCapacity:
+    """Supply and running ranges from ``app/capacity``, bookings from the scheduler."""
 
-    supply_source = "env"
+    def __init__(self, db: Session) -> None:
+        from .. import capacity
 
-    def __init__(self) -> None:
-        self.vcpu = int(os.getenv("CLUSTER_TOTAL_VCPU", "128"))
-        self.ram_mb = int(os.getenv("CLUSTER_TOTAL_RAM_MB", "524288"))  # 512 GB
-        self.disk_gb = int(os.getenv("CLUSTER_TOTAL_DISK_GB", "10240"))  # 10 TB
-        self.overhead_pct = float(os.getenv("CLUSTER_OVERHEAD_PCT", "15"))  # reserved for the hypervisor
+        self._capacity = capacity
+        cluster = capacity.supply(db)
+        self._supply = Resources(cluster.vcpu, cluster.ram_mb, cluster.disk_gb)
+        self.supply_source = cluster.source
+        self._running = capacity.running_ranges(db)
 
     def supply(self) -> Resources:
-        keep = 1 - self.overhead_pct / 100
-        return Resources(int(self.vcpu * keep), int(self.ram_mb * keep), int(self.disk_gb * keep))
+        return self._supply
 
     def committed(self, db: Session, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None) -> Committed:
-        # An event holds [start - lead, end + grace], so widen the window by the same.
+        held = self._bookings(db, start, end, exclude_id)
+        return self._sum(held, _utc(start), _utc(end), self._excluded_range(db, exclude_id))
+
+    def committed_series(self, db: Session, start: datetime, end: datetime, step: timedelta) -> list[Committed]:
+        held = self._bookings(db, start, end)
+        out: list[Committed] = []
+        t = _utc(start)
+        while t < _utc(end):
+            out.append(self._sum(held, t, t + step))
+            t += step
+        return out
+
+    # -- internals ------------------------------------------------------------
+    @staticmethod
+    def _bookings(db: Session, start: datetime, end: datetime, exclude_id: uuid.UUID | None = None):
+        """Holding bookings whose held window [start - lead, end + grace] meets [start, end)."""
         q = db.query(ScheduledEvent).filter(
             ScheduledEvent.state.in_(COMMITTING_STATES),
             ScheduledEvent.start_time < end + PROVISION_LEAD,
@@ -90,44 +109,29 @@ class EnvCapacity:
         )
         if exclude_id:
             q = q.filter(ScheduledEvent.id != exclude_id)
-        events = q.all()
-        return Committed(
-            Resources(
-                sum(e.vcpu_total for e in events),
-                sum(e.ram_mb_total for e in events),
-                sum(e.disk_gb_total for e in events),
-            ),
-            len(events),
-        )
+        return [(_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, e) for e in q.all()]
 
-    def committed_series(self, db: Session, start: datetime, end: datetime, step: timedelta) -> list[Committed]:
-        events = (
-            db.query(ScheduledEvent)
-            .filter(
-                ScheduledEvent.state.in_(COMMITTING_STATES),
-                ScheduledEvent.start_time < end + PROVISION_LEAD,
-                ScheduledEvent.end_time > start - TEARDOWN_GRACE,
-            )
-            .all()
-        )
-        held = [(_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, e) for e in events]
-        out: list[Committed] = []
-        t = _utc(start)
-        while t < _utc(end):
-            nxt = t + step
-            now = [e for a, z, e in held if a < nxt and z > t]
-            out.append(
-                Committed(
-                    Resources(
-                        sum(e.vcpu_total for e in now),
-                        sum(e.ram_mb_total for e in now),
-                        sum(e.disk_gb_total for e in now),
-                    ),
-                    len(now),
-                )
-            )
-            t = nxt
-        return out
+    @staticmethod
+    def _excluded_range(db: Session, exclude_id: uuid.UUID | None) -> uuid.UUID | None:
+        """The range of the booking being re-checked: its own demand is what is asked."""
+        if not exclude_id:
+            return None
+        evt = db.get(ScheduledEvent, exclude_id)
+        return evt.range_id if evt else None
+
+    def _sum(self, held, t0: datetime, t1: datetime, skip_range: uuid.UUID | None = None) -> Committed:
+        now = [e for a, z, e in held if a < t1 and z > t0]
+        covered = {e.range_id for e in now if e.range_id}
+        vcpu = sum(e.vcpu_total for e in now)
+        ram = sum(e.ram_mb_total for e in now)
+        disk = sum(e.disk_gb_total for e in now)
+        ranges = 0
+        if t1 > datetime.now(UTC):  # running ranges hold capacity from now on, not in the past
+            for r in self._running:
+                if r.range_id in covered or r.range_id == skip_range:
+                    continue
+                vcpu, ram, disk, ranges = vcpu + r.vcpu, ram + r.ram_mb, disk + r.disk_gb, ranges + 1
+        return Committed(Resources(vcpu, ram, disk), len(now), ranges)
 
 
 def _utc(dt: datetime) -> datetime:
@@ -135,8 +139,8 @@ def _utc(dt: datetime) -> datetime:
     return dt.astimezone(UTC) if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
-def get_capacity_provider() -> CapacityProvider:
-    return EnvCapacity()
+def get_capacity_provider(db: Session) -> CapacityProvider:
+    return ClusterCapacity(db)
 
 
 def held_window(start: datetime, end: datetime) -> tuple[datetime, datetime]:

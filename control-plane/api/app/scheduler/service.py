@@ -1,6 +1,6 @@
 """Scheduler logic, and the only way other sections reach scheduler data.
 
-Capacity comes from a :class:`~.capacity.CapacityProvider` (ADR 0005's CapacityService
+Capacity comes from a :class:`~.capacity.CapacityProvider` (CapacityService (ADR 0006)
 once it lands); this module decides what a booking needs and what to do when it does
 not fit.
 """

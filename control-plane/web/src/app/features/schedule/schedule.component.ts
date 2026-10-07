@@ -36,7 +36,7 @@ const ROW = 46; // px per hour
     <!-- ── Range Ops: capacity ─────────────────────────────── -->
     <div class="pagehead"><div><span class="eyebrow">Capacity</span><h1>Cluster this week</h1>
       <p class="muted">Committed by bookings, build and teardown time included. Supply: {{ supplyLabel() }}.
-        Running ranges with no booking aren't counted yet (ADR 0005).</p></div>
+        Running ranges count too, booked or not.</p></div>
       <div class="weeknav"><button class="action" (click)="shiftWeek(-1)" aria-label="Previous week">←</button><strong>{{ weekLabel() }}</strong><button class="action" (click)="shiftWeek(1)" aria-label="Next week">→</button></div></div>
     <div class="split"><div class="stack">
       <section class="panel"><h2>Load by hour · % of the tightest resource</h2>
