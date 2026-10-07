@@ -14,6 +14,9 @@ RETENTION_DAYS="${RETENTION_DAYS:-30}"
 COMPOSE_FILE="${COMPOSE_FILE:-infra/platform/docker/compose.prod.yml}"
 ENV_FILE="${ENV_FILE:-infra/platform/docker/.env.production}"
 
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
 TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
 BACKUP_NAME="truenorth-backup-${TIMESTAMP}"
 BACKUP_PATH="${BACKUP_DIR}/${BACKUP_NAME}"
@@ -37,73 +40,61 @@ trap cleanup_on_error ERR
 log "INFO" "Starting TrueNorth Range backup → ${BACKUP_PATH}"
 mkdir -p "${BACKUP_PATH}"
 
-# ── 1. PostgreSQL ────────────────────────────────────────────────────────────
+# ── 1. PostgreSQL: the application, Keycloak and LRS databases ─────────────────
 CURRENT_STEP="PostgreSQL"
 log "INFO" "Backing up PostgreSQL..."
-docker exec truenorth-postgres \
-    pg_dump -U truenorth -d truenorth_range --clean --if-exists \
-    | gzip > "${BACKUP_PATH}/postgresql.sql.gz"
+PG_USER="$(envval POSTGRES_USER)"
+for db in "$(envval POSTGRES_DB)" "$(envval KEYCLOAK_DB)" "$(envval LRS_DB)"; do
+    [[ -n "${db}" ]] || continue
+    out="postgresql.sql.gz"
+    [[ "${db}" == "$(envval POSTGRES_DB)" ]] || out="postgresql-${db}.sql.gz"
+    dc exec -T postgres pg_dump -U "${PG_USER}" -d "${db}" --clean --if-exists | gzip > "${BACKUP_PATH}/${out}"
+done
 COMPLETED+=("PostgreSQL")
 log "INFO" "PostgreSQL backup complete"
 
 # ── 2. Redis ─────────────────────────────────────────────────────────────────
 CURRENT_STEP="Redis"
 log "INFO" "Backing up Redis..."
-docker exec truenorth-redis redis-cli BGSAVE > /dev/null
-sleep 3
-docker cp truenorth-redis:/data/dump.rdb "${BACKUP_PATH}/redis-dump.rdb"
+rcli() { dc exec -T -e REDISCLI_AUTH="$(envval REDIS_PASSWORD)" redis redis-cli "$@"; }
+before="$(rcli LASTSAVE)"
+rcli BGSAVE > /dev/null
+for _ in $(seq 1 60); do [[ "$(rcli LASTSAVE)" != "${before}" ]] && break; sleep 1; done
+docker cp "$(cid redis):/data/dump.rdb" "${BACKUP_PATH}/redis-dump.rdb"
 COMPLETED+=("Redis")
 log "INFO" "Redis backup complete"
 
 # ── 3. MinIO ─────────────────────────────────────────────────────────────────
+# Its data directory, archived with a tool from an image already on the host (MinIO's
+# own image has no tar, and minio/mc is no longer published on Docker Hub).
 CURRENT_STEP="MinIO"
 log "INFO" "Backing up MinIO..."
-MINIO_DIR="${BACKUP_PATH}/minio"
-mkdir -p "${MINIO_DIR}"
-docker run --rm --network host \
-    -v "${MINIO_DIR}:/backup" \
-    minio/mc:latest sh -c \
-    'mc alias set src http://minio:9000 minioadmin minioadmin && mc mirror src/ /backup/'
+DATA_ROOT="$(envval TN_DATA_ROOT)"
+PG_IMAGE="$(dc config --images | grep -m1 '^postgres')"
+docker run --rm -v "${DATA_ROOT:-/srv/truenorth}/minio:/data:ro" --entrypoint tar "${PG_IMAGE}" \
+    -C /data -czf - . > "${BACKUP_PATH}/minio.tar.gz"
 COMPLETED+=("MinIO")
 log "INFO" "MinIO backup complete"
 
 # ── 4. OpenSearch ────────────────────────────────────────────────────────────
-CURRENT_STEP="OpenSearch"
-log "INFO" "Backing up OpenSearch via snapshot API..."
-# Register repo (idempotent)
-docker exec truenorth-opensearch curl -s -X PUT \
-    "http://localhost:9200/_snapshot/truenorth_backup" \
-    -H "Content-Type: application/json" \
-    -d '{"type":"fs","settings":{"location":"/mnt/snapshots"}}' > /dev/null
-
-SNAP_NAME="snap-${TIMESTAMP}"
-docker exec truenorth-opensearch curl -s -X PUT \
-    "http://localhost:9200/_snapshot/truenorth_backup/${SNAP_NAME}?wait_for_completion=true" > /dev/null
-
-OS_DIR="${BACKUP_PATH}/opensearch-snapshots"
-mkdir -p "${OS_DIR}"
-docker cp truenorth-opensearch:/mnt/snapshots/. "${OS_DIR}"
-COMPLETED+=("OpenSearch")
-log "INFO" "OpenSearch backup complete"
+# Not backed up: compose.prod.yml configures no snapshot repository (path.repo), so the
+# snapshot API has nowhere to write. The indexes hold range telemetry; scores and
+# outcomes are in PostgreSQL.
+log "WARN" "OpenSearch telemetry is NOT backed up (no snapshot repository is configured)"
 
 # ── 5. Configs ───────────────────────────────────────────────────────────────
+# The compose file and nginx config, not the env file: it holds every secret, and a
+# backup set is copied to places secrets must not go. Back up the installer's
+# config/secrets directory (or the ansible vault) separately, offline.
 CURRENT_STEP="Configs"
 log "INFO" "Backing up configuration files..."
 CFG_DIR="${BACKUP_PATH}/configs"
 mkdir -p "${CFG_DIR}"
-
-for f in "${COMPOSE_FILE}" "infra/platform/docker/compose.dev.yml" "${ENV_FILE}" ".env.example"; do
-    [[ -f "$f" ]] && cp "$f" "${CFG_DIR}/"
-done
-
-# Nginx configs
-[[ -d "infra/platform/nginx" ]] && cp -r "infra/platform/nginx" "${CFG_DIR}/nginx"
-
-# Terraform state
-[[ -f "infra/terraform/terraform.tfstate" ]] && cp "infra/terraform/terraform.tfstate" "${CFG_DIR}/"
-
+cp "${COMPOSE_FILE}" "${CFG_DIR}/"
+NGINX_DIR="$(dirname "${COMPOSE_FILE}")/../nginx"
+[[ -d "${NGINX_DIR}" ]] && cp -r "${NGINX_DIR}" "${CFG_DIR}/nginx"
 COMPLETED+=("Configs")
-log "INFO" "Config backup complete"
+log "INFO" "Config backup complete (secrets excluded: back up the config/secrets directory offline)"
 
 # ── 6. SHA-256 Manifest ─────────────────────────────────────────────────────
 CURRENT_STEP="Checksums"

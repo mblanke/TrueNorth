@@ -45,7 +45,7 @@ def configure_logging() -> None:
     Text mode is exactly the previous ``logging.basicConfig`` call, so the default is
     unchanged (including basicConfig's no-op when handlers already exist).
     """
-    level = os.getenv("LOG_LEVEL", "INFO")
+    level = os.getenv("LOG_LEVEL", "INFO").upper()  # compose and the installer write "info"
     if os.getenv("LOG_FORMAT", "").strip().lower() != "json":
         logging.basicConfig(level=level, format=TEXT_FORMAT)
         return

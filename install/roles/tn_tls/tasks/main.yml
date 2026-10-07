@@ -7,10 +7,20 @@
 # The second is the one people forget, and its absence surfaces much later as
 # "PKIX path building failed" during user federation.
 
-- name: TLS — install the AD CS root CA in the host trust store
+# The deployment repo exports the CA as a .cer, which AD CS writes as DER as often as
+# PEM. update-ca-certificates and Keycloak's truststore both read PEM only and skip
+# anything else without a word, so it is normalised to PEM first.
+- name: TLS — stage the AD CS root CA as supplied
   ansible.builtin.copy:
     src: "{{ tn_root_ca_file }}"
-    dest: /usr/local/share/ca-certificates/corp-root-ca.crt
+    dest: "{{ tn_tls_dir }}/corp-root-ca.supplied"
+    mode: "0644"
+
+- name: TLS — install the AD CS root CA (PEM) in the host trust store
+  community.crypto.x509_certificate_convert:
+    src_path: "{{ tn_tls_dir }}/corp-root-ca.supplied"
+    dest_path: /usr/local/share/ca-certificates/corp-root-ca.crt
+    format: pem
     mode: "0644"
   become: true
   notify: Refresh host CA bundle
@@ -22,12 +32,53 @@
 
 # Keycloak 24 (Quarkus) reads a directory of PEM certificates. No keytool, no
 # JKS, no password to manage.
-- name: TLS — place the root CA in Keycloak's truststore directory
-  ansible.builtin.copy:
-    src: "{{ tn_root_ca_file }}"
-    dest: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
+- name: TLS — place the root CA (PEM) in Keycloak's truststore directory
+  community.crypto.x509_certificate_convert:
+    src_path: "{{ tn_tls_dir }}/corp-root-ca.supplied"
+    dest_path: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
+    format: pem
     mode: "0644"
-  register: tn_truststore
+  notify: Restart Keycloak if running
+
+# Preflight could only probe the port: ldapsearch (tn_base) and this CA did not exist
+# yet. This proves the TLS handshake against the CA Keycloak will use AND that the bind
+# account works, the two things that otherwise surface as a federation failure in 60.
+- name: TLS — real LDAPS bind as the Keycloak service account
+  ansible.builtin.command:
+    argv:
+      - ldapsearch
+      - -x
+      - -LLL
+      - -H
+      - "ldaps://{{ tn_dc_host }}:{{ tn_ldap_port }}"
+      - -D
+      - "{{ tn_ldap_bind_dn }}"
+      - -w
+      - "{{ vault_ldap_bind_password }}"
+      - -b
+      - "{{ tn_ldap_base_dn }}"
+      - -s
+      - base
+      - "(objectClass=*)"
+      - dn
+  environment:
+    LDAPTLS_CACERT: "{{ tn_tls_dir }}/truststores/corp-root-ca.pem"
+    LDAPTLS_REQCERT: demand
+  register: tn_ldap_bind
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  no_log: true
+
+- name: TLS — assert the LDAPS bind succeeded
+  ansible.builtin.assert:
+    that: tn_ldap_bind.rc == 0
+    fail_msg: >-
+      LDAPS bind to {{ tn_dc_host }} failed (rc={{ tn_ldap_bind.rc }}). rc 255 is
+      usually TLS: is {{ tn_root_ca_file }} the CA that issued the DC's certificate,
+      and does the certificate name {{ tn_dc_host }}? rc 49 is the credentials: check
+      vault_ldap_bind_password and that the account is not locked out.
+    success_msg: "LDAPS bind OK as {{ tn_ldap_bind_dn | regex_search('^CN=[^,]+') }}"
 
 - name: TLS — check for an operator-supplied certificate pair
   ansible.builtin.stat:
@@ -62,6 +113,7 @@
     src: "{{ tn_files_dir }}/tls/{{ item.name }}"
     dest: "{{ tn_tls_dir }}/{{ item.name }}"
     mode: "{{ item.mode }}"
+  notify: Reload nginx if running
   loop:
     - { name: truenorth.crt, mode: "0644" }
     - { name: truenorth.key, mode: "0600" }
@@ -98,6 +150,7 @@
     selfsigned_not_after: "+825d"
     mode: "0644"
   when: tn_tls_mode == 'selfsigned'
+  notify: Reload nginx if running
 
 - name: TLS — warn that a self-signed certificate is in use
   ansible.builtin.debug:

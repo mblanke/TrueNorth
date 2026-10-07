@@ -209,6 +209,26 @@ jobs:
       - uses: azure/setup-helm@v4
       - run: helm lint infra/k8s/helm/truenorth-range
 
+  # The TN-MGMT01 installer (install/): it parses, and ansible-lint's production profile
+  # passes. Runs without a target host; the playbooks themselves are run by an operator.
+  lint-install:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "ansible-core==2.21.4" "ansible-lint==26.9.0"
+      - run: ansible-galaxy collection install -r requirements.yml
+      - run: ansible-playbook site.yml --syntax-check
+      - run: ansible-lint --offline
+      # Module arguments against each module's own spec: lint accepted `dest:` where the
+      # module takes `dest_path:`, and the install stopped there on TN-MGMT01.
+      - run: python ../scripts/check_ansible_module_args.py
+
   # The realm file is imported by the dev stack and POSTed by the installer; neither
   # reports a parse failure loudly. Import it into the Keycloak image we pin.
   keycloak-realm:

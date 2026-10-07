@@ -6,8 +6,14 @@
 # mappers and the registration flow are wired to each other. It is the only test
 # here that would catch "everything is green and no trainee can ever register".
 
+- name: Smoke — load the secret map
+  ansible.builtin.include_role:
+    name: tn_config
+    tasks_from: secrets
+
 - name: Smoke — container health
   ansible.builtin.shell:
+    executable: /bin/bash
     cmd: |
       set -euo pipefail
       docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps --format json \
@@ -92,11 +98,14 @@
     body:
       grant_type: password
       client_id: "{{ tn_keycloak_api_client }}"
+      # truenorth-api is confidential: without its secret Keycloak answers 401 and the
+      # whole claim check used to skip itself.
+      client_secret: "{{ tn_secrets['keycloak_api_client_secret'] }}"
       username: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn) }}"
       password: "{{ tn_smoke_password | default('') }}"
       scope: "openid profile email"
     validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
-    status_code: [200, 400, 401]
+    status_code: [200] # a 400/401 is a failed check, not a skipped one
   register: tn_smoke_token
   no_log: true
   when: tn_smoke_password | default('') | length > 0

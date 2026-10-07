@@ -62,7 +62,10 @@
           tn_expect_discovered is true but the platform reports no hypervisor
           nodes or storage appliances. Register the vCenter connection and run
           discovery.
-      when: tn_expect_discovered | bool
+      when:
+        - tn_expect_discovered | bool
+        # The summaries need a token this play does not have: only assert on an answer.
+        - tn_summaries.results[0].status | default(0) == 200
 
     - name: Validate — REPORT
       ansible.builtin.debug:

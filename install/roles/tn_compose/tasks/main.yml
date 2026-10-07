@@ -20,6 +20,27 @@
   register: tn_compose_config
   failed_when: tn_compose_config.rc != 0
 
+# Build first: the migration below runs in the api image, and must be the NEW code's
+# image, or an upgrade applies the old migrations and the new ones land only after the
+# new code is already running. Reports a change only when an image id changed.
+- name: Compose — build the application images
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      dc() { docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} "$@"; }
+      ids() {
+        for img in $(dc config --images | sort -u); do
+          docker image inspect --format '{{ "{{" }}.Id{{ "}}" }}' "$img" 2>/dev/null || echo "missing:$img"
+        done
+      }
+      before=$(ids)
+      dc build --quiet
+      [ "$before" = "$(ids)" ] || echo IMAGES_CHANGED
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_build
+  changed_when: "'IMAGES_CHANGED' in tn_build.stdout"
+
 - name: Compose — phase 1, datastores only
   community.docker.docker_compose_v2:
     project_src: "{{ tn_app_dir }}/infra/platform/docker"

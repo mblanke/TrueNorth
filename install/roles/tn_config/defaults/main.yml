@@ -17,3 +17,6 @@ tn_generated_secrets:
   - { name: lrs_api_secret, value: "{{ vault_lrs_api_secret | default('') }}" }
   - { name: grafana_admin_password, value: "{{ vault_grafana_admin_password | default('') }}" }
   - { name: flower_password, value: "{{ vault_flower_password | default('') }}" }
+  # The confidential `truenorth-api` Keycloak client. The realm file ships the
+  # placeholder CHANGE_ME_IN_PRODUCTION; roles/tn_keycloak replaces it with this.
+  - { name: keycloak_api_client_secret, value: "{{ vault_keycloak_api_client_secret | default('') }}" }

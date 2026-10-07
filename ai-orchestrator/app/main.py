@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 
 # ── Logging ────────────────────────────────────────────────────────────
 logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),  # compose and the installer write "info"
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
 )
 logger = logging.getLogger("ai-orchestrator")
