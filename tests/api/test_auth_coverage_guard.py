@@ -48,6 +48,9 @@ PUBLIC_PATHS: set[str] = {
     "/registration/mine",
     # LTI 1.3 launches are authenticated by signed JWT from the platform, and
     # xAPI/LRS endpoints by their own credential.
+    # Calendar clients cannot sign in; the feed is authenticated by the per-user
+    # bearer token in its path, and serves only what that user may see (ADR 0004).
+    "/schedule/feed/{token}.ics",
 }
 
 PUBLIC_PREFIXES: tuple[str, ...] = (

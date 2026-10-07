@@ -9,6 +9,7 @@ injected into route signatures to enforce access control declaratively.
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import Callable
 from enum import Enum
@@ -95,6 +96,12 @@ class Permission(str, Enum):
     # to the learning platform.
     COURSE_AUTHOR = "course:author"
     COURSE_RELEASE = "course:release"
+    # The scheduling calendar (ADR 0004). Students hold neither: they never see other
+    # bookings, capacity or the timeline.
+    SCHEDULE_READ = "schedule:read"
+    SCHEDULE_WRITE = "schedule:write"
+    # Platform-wide scheduler policy (over-capacity block/warn). Admin only: no role lists it.
+    SCHEDULE_ADMIN = "schedule:admin"
 
     # Tenant management
     TENANT_CREATE = "tenant:create"
@@ -143,6 +150,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.EXERCISE_START,
         Permission.EXERCISE_COMPLETE,
         Permission.EXERCISE_PAUSE,
+        # The calendar: instructors book sessions for their classes.
+        Permission.SCHEDULE_READ,
+        Permission.SCHEDULE_WRITE,
         # Users
         Permission.USER_READ,
         # Trainee intake: instructors drain the approval queue for their cohort.
@@ -188,6 +198,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.TEMPLATE_UPDATE,
         Permission.SCENARIO_READ,
         Permission.EXERCISE_READ,
+        Permission.SCHEDULE_READ,
         Permission.STATS_READ,
         Permission.TELEMETRY_READ,
         Permission.TELEMETRY_WRITE,
@@ -209,6 +220,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.SCENARIO_READ,
         Permission.EXERCISE_READ,
         Permission.AAR_READ,
+        Permission.SCHEDULE_READ,
         Permission.TELEMETRY_READ,
     },
 }
@@ -330,6 +342,32 @@ def require_range_access() -> Callable[..., Any]:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this range",
             )
+        return user
+
+    return _check
+
+
+# ── Platform administration ────────────────────────────────────────────
+def is_platform_admin(user: CurrentUser) -> bool:
+    """An admin of the operator's own tenant, set by PLATFORM_TENANT_ID.
+
+    Admins are per tenant. Settings that hold for every tenant at once (the shared
+    cluster's over-capacity policy, running the scheduler clock by hand) belong to the
+    platform operator, not to any one tenant's admin. Unset: a single-tenant install,
+    where every admin is the operator.
+    """
+    if user.role != UserRole.admin:
+        return False
+    platform = os.getenv("PLATFORM_TENANT_ID", "").strip()
+    return not platform or str(user.tenant_id) == platform
+
+
+def require_platform_admin() -> Callable[..., Any]:
+    """FastAPI dependency: the caller must be a platform administrator."""
+
+    def _check(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+        if not is_platform_admin(user):
+            raise HTTPException(403, "Only a platform administrator can change this: it applies to every tenant")
         return user
 
     return _check

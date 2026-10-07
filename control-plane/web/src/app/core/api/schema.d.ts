@@ -5209,6 +5209,9 @@ export interface paths {
         /**
          * Check if deployment fits
          * @description Check whether a proposed deployment fits within the cluster at the given time.
+         *
+         *     With `template_id`, the need is that template's VM specs. The window includes the
+         *     provisioning lead and teardown grace, exactly as booking it would.
          */
         post: operations["check_capacity_schedule_check_post"];
         delete?: never;
@@ -5226,14 +5229,17 @@ export interface paths {
         };
         /**
          * List scheduled events
-         * @description List all scheduled events, optionally filtered by state.
+         * @description List the caller's tenant's scheduled events, optionally filtered by state and by a
+         *     window they overlap (the calendar's week).
          */
         get: operations["list_events_schedule_events_get"];
         put?: never;
         /**
          * Create a scheduled event
-         * @description Create a new event with resource reservation.  Will reject if it
-         *     would cause an over-commitment.
+         * @description Book a session. Refused with 409 when its range or instructor is already booked
+         *     then. One that does not fit the cluster is refused with 409 (policy `block`) or
+         *     created with warnings (policy `warn`). A draft holds nothing and is checked when it
+         *     is scheduled.
          */
         post: operations["create_event_schedule_events_post"];
         delete?: never;
@@ -5251,10 +5257,17 @@ export interface paths {
         };
         /** Get a scheduled event */
         get: operations["get_event_schedule_events__event_id__get"];
-        /** Update a scheduled event */
+        /**
+         * Update a scheduled event
+         * @description Reschedule or resize a draft or scheduled booking (409 once it is being built).
+         */
         put: operations["update_event_schedule_events__event_id__put"];
         post?: never;
-        /** Cancel/delete event */
+        /**
+         * Cancel an event
+         * @description Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking
+         *     is history, like a completed one.
+         */
         delete: operations["delete_event_schedule_events__event_id__delete"];
         options?: never;
         head?: never;
@@ -5270,8 +5283,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark event as active */
+        /**
+         * Mark event as active
+         * @description scheduled or provisioning -> active.
+         */
         post: operations["activate_event_schedule_events__event_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an event
+         * @description Any state before completed -> cancelled. The row stays as history.
+         */
+        post: operations["cancel_event_schedule_events__event_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5287,8 +5323,136 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark event as completed */
+        /**
+         * Mark event as completed
+         * @description active -> completed.
+         */
         post: operations["complete_event_schedule_events__event_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule a draft
+         * @description draft -> scheduled, checked for conflicts and capacity exactly as a new booking.
+         */
+        post: operations["schedule_event_schedule_events__event_id__schedule_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/feed-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether you have a calendar feed */
+        get: operations["feed_token_status_schedule_feed_token_get"];
+        put?: never;
+        /**
+         * Create or regenerate your calendar feed URL
+         * @description Returns the subscription URL once. Regenerating stops the previous URL working.
+         */
+        post: operations["feed_token_issue_schedule_feed_token_post"];
+        /** Revoke your calendar feed URL */
+        delete: operations["feed_token_revoke_schedule_feed_token_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/feed/{token}.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calendar feed (iCalendar) */
+        get: operations["calendar_feed_schedule_feed__token__ics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your upcoming sessions
+         * @description Sessions you teach, and for Students the sessions of courses they are enrolled in.
+         */
+        get: operations["my_sessions_schedule_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Over-capacity policy
+         * @description `block`: a booking that does not fit is refused for everyone. `warn`: it is
+         *     created, with warnings in the response, and the warning is audit-logged.
+         */
+        get: operations["get_policy_schedule_policy_get"];
+        /**
+         * Set the over-capacity policy (platform admin)
+         * @description Platform-wide, because every tenant books against the same cluster. Audit-logged.
+         */
+        put: operations["put_policy_schedule_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/tick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the scheduler clock now (platform admin)
+         * @description One clock pass, as the background clock runs every minute: provision at the lead,
+         *     activate at the start, complete and tear down after the grace, send reminders.
+         */
+        post: operations["run_tick_schedule_tick_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5304,8 +5468,9 @@ export interface paths {
         };
         /**
          * Resource timeline for capacity planning
-         * @description Return hourly resource commitment buckets for the next N days.
-         *     Used to render the capacity timeline chart in the dashboard.
+         * @description Committed capacity per slot, build and teardown time included, so back-to-back
+         *     sessions are not counted as concurrent at a fine enough resolution. Feeds the
+         *     scheduler's load bars and the Range Ops heatmap.
          */
         get: operations["resource_timeline_schedule_timeline_get"];
         put?: never;
@@ -6673,6 +6838,11 @@ export interface components {
              */
             start_time: string;
             /**
+             * Template Id
+             * @description Size the check from this template; overrides the *_needed values
+             */
+            template_id?: string | null;
+            /**
              * Vcpu Needed
              * @default 0
              */
@@ -6684,6 +6854,11 @@ export interface components {
             disk_gb_available: number;
             /** Disk Gb Committed */
             disk_gb_committed: number;
+            /**
+             * Disk Gb Needed
+             * @default 0
+             */
+            disk_gb_needed?: number;
             /** Disk Gb Total */
             disk_gb_total: number;
             /** Fits */
@@ -6692,18 +6867,49 @@ export interface components {
             message: string;
             /** Overlapping Events */
             overlapping_events: number;
+            /**
+             * Policy
+             * @default block
+             */
+            policy?: string;
             /** Ram Mb Available */
             ram_mb_available: number;
             /** Ram Mb Committed */
             ram_mb_committed: number;
+            /**
+             * Ram Mb Needed
+             * @default 0
+             */
+            ram_mb_needed?: number;
             /** Ram Mb Total */
             ram_mb_total: number;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons?: string[];
+            /**
+             * Supply Source
+             * @description Where cluster totals came from: env fallback, or discovery
+             * @default env
+             */
+            supply_source?: string;
             /** Vcpu Available */
             vcpu_available: number;
             /** Vcpu Committed */
             vcpu_committed: number;
+            /**
+             * Vcpu Needed
+             * @default 0
+             */
+            vcpu_needed?: number;
             /** Vcpu Total */
             vcpu_total: number;
+            /**
+             * Vm Count Needed
+             * @default 0
+             */
+            vm_count_needed?: number;
         };
         /** CertificationIn */
         CertificationIn: {
@@ -7588,6 +7794,11 @@ export interface components {
         };
         /** EventIn */
         EventIn: {
+            /**
+             * Course Id
+             * @description The class: this course's active Students attend
+             */
+            course_id?: string | null;
             /** Description */
             description?: string | null;
             /**
@@ -7596,10 +7807,26 @@ export interface components {
              */
             disk_gb_total?: number;
             /**
+             * Draft
+             * @description Create as a draft: holds nothing and is not checked until scheduled
+             * @default false
+             */
+            draft?: boolean;
+            /**
              * End Time
              * Format: date-time
              */
             end_time: string;
+            /**
+             * Exercise Id
+             * @description Use this existing exercise (and its range) instead
+             */
+            exercise_id?: string | null;
+            /**
+             * Instructor Id
+             * @description Who teaches it; defaults to the caller when they are an instructor
+             */
+            instructor_id?: string | null;
             /** Name */
             name: string;
             /**
@@ -7610,11 +7837,19 @@ export interface components {
             /** Range Id */
             range_id?: string | null;
             /**
+             * Scenario Id
+             * @description Run this scenario: a pending exercise is created when the range is built
+             */
+            scenario_id?: string | null;
+            /**
              * Start Time
              * Format: date-time
              */
             start_time: string;
-            /** Template Id */
+            /**
+             * Template Id
+             * @description Size the booking from this template's VM specs
+             */
             template_id?: string | null;
             /**
              * Vcpu Total
@@ -7626,6 +7861,73 @@ export interface components {
              * @default 0
              */
             vm_count?: number;
+        };
+        /** EventListOut */
+        EventListOut: {
+            /** Items */
+            items: components["schemas"]["EventOut"][];
+            /** Total */
+            total: number;
+        };
+        /** EventOut */
+        EventOut: {
+            /** Course Id */
+            course_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by?: string | null;
+            /** Description */
+            description: string | null;
+            /** Disk Gb Total */
+            disk_gb_total: number;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /** Id */
+            id: string;
+            /** Instructor Id */
+            instructor_id?: string | null;
+            /** Name */
+            name: string;
+            /** Ram Mb Total */
+            ram_mb_total: number;
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
+            /** Template Id */
+            template_id: string | null;
+            /** Tenant Id */
+            tenant_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Vcpu Total */
+            vcpu_total: number;
+            /** Vm Count */
+            vm_count: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings?: string[];
         };
         /** EvidenceIn */
         EvidenceIn: {
@@ -7857,6 +8159,34 @@ export interface components {
             lti_token_url?: string | null;
             /** Name */
             name?: string;
+        };
+        /**
+         * FeedTokenIssued
+         * @description Shown once: only a hash of the token is kept.
+         */
+        FeedTokenIssued: {
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Url
+             * @description HTTPS subscription URL; paste into Outlook 'Subscribe from web'
+             */
+            url: string;
+            /**
+             * Webcal Url
+             * @description The same URL as webcal://, for one-click subscribe
+             */
+            webcal_url: string;
+        };
+        /** FeedTokenStatus */
+        FeedTokenStatus: {
+            /** Active */
+            active: boolean;
+            /** Issued At */
+            issued_at?: string | null;
         };
         /** FleetNodeCreateIn */
         FleetNodeCreateIn: {
@@ -8612,6 +8942,30 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * MySessionOut
+         * @description A session as a Student sees it: no capacity, no other people.
+         */
+        MySessionOut: {
+            /** Description */
+            description: string | null;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
+        };
         /** NationOut */
         NationOut: {
             /** Flag Emoji */
@@ -9226,6 +9580,12 @@ export interface components {
             /** Shared Commands Count */
             shared_commands_count: number;
         };
+        /**
+         * OvercapacityPolicy
+         * @description What happens to a booking that does not fit (ADR 0004, "Booking rules").
+         * @enum {string}
+         */
+        OvercapacityPolicy: "block" | "warn";
         /** POOut */
         POOut: {
             /**
@@ -9323,6 +9683,20 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** PolicyIn */
+        PolicyIn: {
+            overcapacity: components["schemas"]["OvercapacityPolicy"];
+        };
+        /** PolicyOut */
+        PolicyOut: {
+            /**
+             * Can Change
+             * @description Whether the caller may change it (platform administrators only)
+             * @default false
+             */
+            can_change?: boolean;
+            overcapacity: components["schemas"]["OvercapacityPolicy"];
         };
         /** ProfileIn */
         ProfileIn: {
@@ -10736,6 +11110,41 @@ export interface components {
             poll_interval_minutes?: number;
             /** Url */
             url?: string | null;
+        };
+        /** TimelineBucket */
+        TimelineBucket: {
+            /** Disk Gb Committed */
+            disk_gb_committed: number;
+            /** Event Count */
+            event_count: number;
+            /** Ram Mb Committed */
+            ram_mb_committed: number;
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+            /** Vcpu Committed */
+            vcpu_committed: number;
+        };
+        /** TimelineOut */
+        TimelineOut: {
+            /** Buckets */
+            buckets: components["schemas"]["TimelineBucket"][];
+            /** Cluster Disk Gb */
+            cluster_disk_gb: number;
+            /** Cluster Ram Mb */
+            cluster_ram_mb: number;
+            /** Cluster Vcpu */
+            cluster_vcpu: number;
+            /** Grace Minutes */
+            grace_minutes: number;
+            /** Lead Minutes */
+            lead_minutes: number;
+            /** Resolution Minutes */
+            resolution_minutes: number;
+            /** Supply Source */
+            supply_source: string;
         };
         /**
          * TranscriptEntry
@@ -20865,6 +21274,10 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string | null;
+                /** @description Only events ending after this */
+                start?: string | null;
+                /** @description Only events starting before this */
+                end?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -20880,7 +21293,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventListOut"];
                 };
             };
             /** @description Validation Error */
@@ -20913,7 +21326,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -20944,7 +21357,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -20979,7 +21392,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -21039,7 +21452,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_event_schedule_events__event_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -21070,7 +21514,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -21084,11 +21528,209 @@ export interface operations {
             };
         };
     };
-    resource_timeline_schedule_timeline_get: {
+    schedule_event_schedule_events__event_id__schedule_post: {
         parameters: {
-            query?: {
-                days?: number;
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feed_token_status_schedule_feed_token_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedTokenStatus"];
+                };
+            };
+        };
+    };
+    feed_token_issue_schedule_feed_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedTokenIssued"];
+                };
+            };
+        };
+    };
+    feed_token_revoke_schedule_feed_token_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    calendar_feed_schedule_feed__token__ics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": unknown;
+                };
+            };
+            /** @description Unknown or revoked feed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_sessions_schedule_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MySessionOut"][];
+                };
+            };
+        };
+    };
+    get_policy_schedule_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+        };
+    };
+    put_policy_schedule_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_tick_schedule_tick_post: {
+        parameters: {
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -21102,6 +21744,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    resource_timeline_schedule_timeline_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                /** @description First slot (default: the current hour) */
+                start?: string | null;
+                /** @description Slot length: 15, 30 or 60 */
+                resolution_minutes?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineOut"];
                 };
             };
             /** @description Validation Error */
