@@ -15893,7 +15893,7 @@
     },
     "/audit-log": {
       "get": {
-        "description": "Query the audit log.  **Permission: audit:read**",
+        "description": "Query the audit log.  **Permission: audit:read**\n\nScoped to the caller's tenant. A caller who also holds the platform-level\n``tenant:read`` (the platform admin, who already lists every tenant) sees every\ntenant's entries, including legacy rows written before writers recorded a tenant.",
         "operationId": "list_audit_log_audit_log_get",
         "parameters": [
           {
@@ -17864,7 +17864,7 @@
         ]
       },
       "post": {
-        "description": "Create a new course with optional ordered modules.",
+        "description": "Create a new course with optional ordered modules.  **Permission: course:author**",
         "operationId": "create_course_courses_post",
         "requestBody": {
           "content": {
@@ -17911,7 +17911,7 @@
     },
     "/courses/generate-programme-paths": {
       "post": {
-        "description": "Build unpublished LearningPaths for the imported programme, term by term.\n\nDelivery schedule only. These paths carry no qualification claim and are separate\nfrom the CFITES developmental paths generated from the QSP spine.",
+        "description": "Build unpublished LearningPaths for the imported programme, term by term.\n\n**Permission: course:author** (was: any signed-in user).\n\nDelivery schedule only. These paths carry no qualification claim and are separate\nfrom the CFITES developmental paths generated from the QSP spine.",
         "operationId": "generate_programme_paths_courses_generate_programme_paths_post",
         "responses": {
           "200": {
@@ -17940,7 +17940,7 @@
     },
     "/courses/import-course-content": {
       "post": {
-        "description": "Upload an authored course YAML and attach its modules/quizzes (idempotent).\n\nThe course must already exist in the programme catalogue. Everything created\nhere is unpublished.",
+        "description": "Upload an authored course YAML and attach its modules/quizzes (idempotent).\n\n**Permission: course:author** (was: any signed-in user).\n\nThe course must already exist in the programme catalogue. Everything created\nhere is unpublished.",
         "operationId": "import_course_content_courses_import_course_content_post",
         "requestBody": {
           "content": {
@@ -17989,7 +17989,7 @@
     },
     "/courses/import-programme": {
       "post": {
-        "description": "Upload a programme catalogue CSV and upsert its courses (idempotent).\n\nCourses are created unpublished and, unless the row names a real ``qsp_code``,\nunbound from the qualification spine. See ``programme_ingest`` for why.",
+        "description": "Upload a programme catalogue CSV and upsert its courses (idempotent).\n\n**Permission: course:author** (was: any signed-in user).\n\nCourses are created unpublished and, unless the row names a real ``qsp_code``,\nunbound from the qualification spine. See ``programme_ingest`` for why.",
         "operationId": "import_programme_courses_import_programme_post",
         "requestBody": {
           "content": {
@@ -18038,7 +18038,7 @@
     },
     "/courses/{course_id}": {
       "delete": {
-        "description": "Delete a course and its modules.",
+        "description": "Delete a course and its modules.  **Permission: course:author**",
         "operationId": "delete_course_courses__course_id__delete",
         "parameters": [
           {
@@ -18125,7 +18125,7 @@
         ]
       },
       "patch": {
-        "description": "Update course metadata.",
+        "description": "Update course metadata.  **Permission: course:author**",
         "operationId": "update_course_courses__course_id__patch",
         "parameters": [
           {
@@ -20627,7 +20627,7 @@
     },
     "/exercises/{exercise_id}/aar/html": {
       "get": {
-        "description": "Retrieve AAR as rendered HTML.  **Permission: aar:read**",
+        "description": "Retrieve AAR as rendered HTML.  **Permission: aar:read**\n\nRendered from the stored report JSON on every read, so reports written by the worker\nor before this renderer existed get the full page and are escaped the same way.",
         "operationId": "get_aar_html_exercises__exercise_id__aar_html_get",
         "parameters": [
           {
@@ -20676,7 +20676,7 @@
     },
     "/exercises/{exercise_id}/aar/pdf": {
       "get": {
-        "description": "Retrieve AAR as downloadable PDF.  **Permission: aar:read**\n\nRenders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps).",
+        "description": "Retrieve AAR as downloadable PDF.  **Permission: aar:read**\n\nRenders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps). Its core\nfonts are latin-1 only; text outside it is transliterated (``aar_html.pdf_text``).",
         "operationId": "get_aar_pdf_exercises__exercise_id__aar_pdf_get",
         "parameters": [
           {
@@ -20772,7 +20772,7 @@
     },
     "/exercises/{exercise_id}/objectives": {
       "get": {
-        "description": "List objectives for an exercise.  **Permission: exercise:read**",
+        "description": "List objectives for an exercise.  **Permission: exercise:read**\n\nOwn-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this\nlisted any tenant's objectives, validators and evidence by exercise id).",
         "operationId": "list_objectives_exercises__exercise_id__objectives_get",
         "parameters": [
           {
@@ -20825,7 +20825,7 @@
     },
     "/exercises/{exercise_id}/objectives/{ref_id}/ack": {
       "post": {
-        "description": "Acknowledge (achieve) an objective.  **Permission: exercise:complete**",
+        "description": "Acknowledge (achieve) an objective.  **Permission: exercise:complete**\n\nOwn-tenant exercises only (foreign id = 404).",
         "operationId": "acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post",
         "parameters": [
           {
@@ -21908,7 +21908,7 @@
     },
     "/hypervisors/nodes": {
       "get": {
-        "description": "Every discovered host across all connections, as last discovered. Read-only; the\ndashboard's cluster panel. No hypervisor is contacted \u2014 run discovery to refresh.",
+        "description": "Every discovered host across the caller's tenant's connections, as last discovered.\nRead-only; the dashboard's cluster panel. No hypervisor is contacted \u2014 run discovery to\nrefresh.",
         "operationId": "list_all_nodes_hypervisors_nodes_get",
         "responses": {
           "200": {
@@ -23482,7 +23482,7 @@
         ]
       },
       "post": {
-        "description": "Create a learning path (ordered sequence of courses).",
+        "description": "Create a learning path (ordered sequence of courses).  **Permission: course:author**",
         "operationId": "create_learning_path_learning_paths_post",
         "requestBody": {
           "content": {
@@ -23529,7 +23529,7 @@
     },
     "/learning-paths/{lp_id}": {
       "delete": {
-        "description": "Delete a learning path.",
+        "description": "Delete a learning path.  **Permission: course:author**",
         "operationId": "delete_learning_path_learning_paths__lp_id__delete",
         "parameters": [
           {
@@ -23616,7 +23616,7 @@
         ]
       },
       "patch": {
-        "description": "Update a learning path.",
+        "description": "Update a learning path.  **Permission: course:author**",
         "operationId": "update_learning_path_learning_paths__lp_id__patch",
         "parameters": [
           {
@@ -27444,7 +27444,7 @@
     },
     "/qsp/generate-exercises": {
       "post": {
-        "description": "Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).",
+        "description": "Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).\n\n**Permission: course:author and exercise:create.**",
         "operationId": "generate_exercises_qsp_generate_exercises_post",
         "responses": {
           "200": {
@@ -27473,7 +27473,7 @@
     },
     "/qsp/generate-learning-paths": {
       "post": {
-        "description": "Build per-PO courses, qualification paths, role paths, and the developmental progression.",
+        "description": "Build per-PO courses, qualification paths, role paths, and the developmental progression.\n\n**Permission: course:author.**",
         "operationId": "generate_learning_paths_qsp_generate_learning_paths_post",
         "responses": {
           "200": {
@@ -27502,7 +27502,7 @@
     },
     "/qsp/import-competency-crosswalk": {
       "post": {
-        "description": "Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).\n\nUpload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.",
+        "description": "Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).\n\n**Permission: course:author + tenant:read** \u2014 platform admin only; it rewrites the\nshared spine's PO links (see ``SPINE_WRITE``).\n\nUpload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.",
         "operationId": "import_competency_crosswalk_qsp_import_competency_crosswalk_post",
         "requestBody": {
           "content": {
@@ -27551,7 +27551,7 @@
     },
     "/qsp/import-crosswalk": {
       "post": {
-        "description": "Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).",
+        "description": "Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).\n\n**Permission: course:author + tenant:read** \u2014 platform admin only (was: any\nsigned-in user, Students included). See ``SPINE_WRITE``.",
         "operationId": "import_crosswalk_qsp_import_crosswalk_post",
         "requestBody": {
           "content": {
@@ -32317,7 +32317,7 @@
     },
     "/telemetry/{range_id}/events": {
       "post": {
-        "description": "Ingest telemetry events into a range's index.  **Permission: telemetry:write**\n\nThe range must belong to the caller's tenant (404 otherwise). Students cannot write:\ndetection objectives are scored against this index.",
+        "description": "Ingest telemetry events into a range's index.  **Permission: telemetry:write**\n\nThe range must belong to the caller's tenant (404 otherwise). Students cannot write:\ndetection objectives are scored against this index. Each event is stored with a\n``mitre_technique`` list when one is known: its own ``mitre_technique`` /\n``technique_id`` if that is an ATT&CK ID, else one mapped from ``event_type``.",
         "operationId": "ingest_telemetry_telemetry__range_id__events_post",
         "parameters": [
           {
@@ -32379,7 +32379,7 @@
     },
     "/telemetry/{range_id}/search": {
       "get": {
-        "description": "Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).",
+        "description": "Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).\n\n``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch\n``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.\nA query outside it is a 422.",
         "operationId": "search_telemetry_telemetry__range_id__search_get",
         "parameters": [
           {
@@ -32393,13 +32393,14 @@
             }
           },
           {
-            "description": "OpenSearch query string",
+            "description": "field:value, field:\"a phrase\", field:prefix*, field:* (exists) and free text, ANDed",
             "in": "query",
             "name": "q",
             "required": false,
             "schema": {
               "default": "*",
-              "description": "OpenSearch query string",
+              "description": "field:value, field:\"a phrase\", field:prefix*, field:* (exists) and free text, ANDed",
+              "maxLength": 512,
               "title": "Q",
               "type": "string"
             }
@@ -32411,6 +32412,7 @@
             "schema": {
               "default": 50,
               "maximum": 500,
+              "minimum": 1,
               "title": "Size",
               "type": "integer"
             }

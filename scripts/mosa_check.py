@@ -35,10 +35,9 @@ ADAPTER_DIRS = (
     "control-plane/api/app/vector_backends/",
     "control-plane/api/app/console_backends/",  # browser consoles (vSphere WebMKS)
     "control-plane/api/app/moodle_backends/",
-    "telemetry-pipeline/",
     "scenario-engine/scenario_engine/event_stores/",
 )
-SDK_SCAN_DIRS = ("control-plane", "scenario-engine", "ai-orchestrator", "telemetry-pipeline", "tools")
+SDK_SCAN_DIRS = ("control-plane", "scenario-engine", "ai-orchestrator", "tools")
 
 
 def _py_files(base: Path):

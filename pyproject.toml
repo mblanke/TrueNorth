@@ -111,7 +111,7 @@ ignore = [
     "UP042",  # replace-str-enum — keeping str+Enum for SQLAlchemy compat
     "F811",   # redefined-while-unused — router re-exports in __init__.py
     "E402",   # module-import-not-at-top — FastAPI lifespan/router pattern
-    "N999",   # invalid-module-name — hyphenated pkg dirs (telemetry-pipeline)
+    "N999",   # invalid-module-name — hyphenated pkg dirs (scenario-engine)
 ]
 
 [tool.ruff.lint.isort]

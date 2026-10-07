@@ -527,6 +527,8 @@ async def lti_deep_link_finish(
     except Exception as exc:
         raise HTTPException(401, "Invalid deep-linking session") from exc
 
+    # tenant-safe: unauthenticated LTI return leg; platform_id comes from the deep-link
+    # session JWT this tool signed at launch (verified above), not from the caller.
     platform = db.get(ExternalPlatform, platform_id)
     if not platform:
         raise HTTPException(404, "Platform not found")

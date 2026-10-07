@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import AuditLog, Team, TeamMembership, Tenant, User, UserRole
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, require_permission, user_has_permission
 from ..schemas import (
     AuditLogOut,
     TeamFullIn,
@@ -62,7 +62,15 @@ router = APIRouter(tags=["admin"])
 
 
 def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) -> None:
-    db.add(AuditLog(user_id=uuid.UUID(user.id), action=action, resource_type=rtype, resource_id=rid))
+    db.add(
+        AuditLog(
+            user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),
+            action=action,
+            resource_type=rtype,
+            resource_id=rid,
+        )
+    )
 
 
 # -- Tenants ----------------------------------------------------------------
@@ -362,8 +370,16 @@ def list_audit_log(
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[AuditLog]:
-    """Query the audit log.  **Permission: audit:read**"""
-    return db.query(AuditLog).order_by(AuditLog.timestamp.desc()).offset(offset).limit(limit).all()
+    """Query the audit log.  **Permission: audit:read**
+
+    Scoped to the caller's tenant. A caller who also holds the platform-level
+    ``tenant:read`` (the platform admin, who already lists every tenant) sees every
+    tenant's entries, including legacy rows written before writers recorded a tenant.
+    """
+    q = db.query(AuditLog)
+    if not user_has_permission(user, Permission.TENANT_READ):
+        q = q.filter(AuditLog.tenant_id == uuid.UUID(user.tenant_id))
+    return q.order_by(AuditLog.timestamp.desc()).offset(offset).limit(limit).all()
 
 
 # ── Roster import ───────────────────────────────────────────────────────

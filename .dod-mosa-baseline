@@ -3,7 +3,7 @@
   "hardcoded_backend_branches": 0,
   "lines_api_models_py": 1816,
   "lines_api_schemas_py": 1653,
-  "lines_worker_tasks_py": 1005,
+  "lines_worker_tasks_py": 964,
   "vendor_endpoint_outside_adapters": 2,
   "vendor_sdk_outside_adapters": 0,
   "web_features_direct_httpclient": 0,

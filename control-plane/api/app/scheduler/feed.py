@@ -76,6 +76,7 @@ def owner_for(db: Session, token: str) -> User | None:
     row = db.query(FeedToken).filter(FeedToken.token_hash == _digest(token)).first()
     if row is None:
         return None
+    # tenant-safe: the token's own owner; render() then scopes the feed to owner.tenant_id.
     owner = db.get(User, row.user_id)
     if owner is None or not owner.is_active or owner.deleted_at is not None:
         return None

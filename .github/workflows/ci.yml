@@ -105,7 +105,7 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit -r control-plane/api/requirements.txt -r control-plane/worker/requirements.txt \
-            -r ai-orchestrator/requirements.txt -r telemetry-pipeline/requirements.txt \
+            -r ai-orchestrator/requirements.txt \
             -r scenario-engine/requirements.txt \
             -f json -o pip-audit.json
       - name: npm audit
@@ -173,8 +173,6 @@ jobs:
             context: control-plane/web
           - name: scenario-engine
             context: scenario-engine
-          - name: telemetry-pipeline
-            context: telemetry-pipeline
           - name: ai-orchestrator
             context: ai-orchestrator
     steps:
@@ -345,13 +343,9 @@ jobs:
         if: always()
         run: TN_PUBLIC_KEY=unused $MOODLE_COMPOSE down -v
 
-  # govmomi's vCenter simulator (compose.vcsim.yml) for provisioner tests marked `vcsim`.
-  # The one lane where zero tests is tolerated, and only while none exist: pytest exit 5
-  # ("no tests collected") is a warning. Once a vcsim test exists, it must pass.
-  # TODO(provisioners slot): add `@pytest.mark.vcsim` tests for
-  # worker/provisioners/vsphere_api.py, then delete the exit-5 allowance below. Note
-  # vcsim v0.56.0 answers POST /rest/com/vmware/cis/session but 404s POST /api/session,
-  # the login vsphere_api.py uses today.
+  # govmomi's vCenter simulator (compose.vcsim.yml) for provisioner tests marked `vcsim`
+  # (tests/integration/test_vsphere_sim.py: the vsphere_api provisioner end to end). As in
+  # every other lane, nothing collected (exit 5) or nothing passed is a failure.
   vsphere-sim:
     runs-on: ubuntu-latest
     needs: lint-python
@@ -378,10 +372,6 @@ jobs:
           mkdir -p build/vcsim
           rc=0
           pytest tests/ -m vcsim -rs --tb=short --junitxml=build/vcsim/junit.xml || rc=$?
-          if [ "$rc" -eq 5 ]; then
-            echo "::warning::no tests are marked vcsim yet (TODO provisioners slot); nothing ran"
-            exit 0
-          fi
           python scripts/junit_require_pass.py build/vcsim/junit.xml || rc=1
           exit $rc
         env:

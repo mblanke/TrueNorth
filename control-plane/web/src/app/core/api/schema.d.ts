@@ -438,6 +438,10 @@ export interface paths {
         /**
          * List Audit Log
          * @description Query the audit log.  **Permission: audit:read**
+         *
+         *     Scoped to the caller's tenant. A caller who also holds the platform-level
+         *     ``tenant:read`` (the platform admin, who already lists every tenant) sees every
+         *     tenant's entries, including legacy rows written before writers recorded a tenant.
          */
         get: operations["list_audit_log_audit_log_get"];
         put?: never;
@@ -979,7 +983,7 @@ export interface paths {
         put?: never;
         /**
          * Create Course
-         * @description Create a new course with optional ordered modules.
+         * @description Create a new course with optional ordered modules.  **Permission: course:author**
          */
         post: operations["create_course_courses_post"];
         delete?: never;
@@ -1000,6 +1004,8 @@ export interface paths {
         /**
          * Generate Programme Paths
          * @description Build unpublished LearningPaths for the imported programme, term by term.
+         *
+         *     **Permission: course:author** (was: any signed-in user).
          *
          *     Delivery schedule only. These paths carry no qualification claim and are separate
          *     from the CFITES developmental paths generated from the QSP spine.
@@ -1024,6 +1030,8 @@ export interface paths {
          * Import Course Content
          * @description Upload an authored course YAML and attach its modules/quizzes (idempotent).
          *
+         *     **Permission: course:author** (was: any signed-in user).
+         *
          *     The course must already exist in the programme catalogue. Everything created
          *     here is unpublished.
          */
@@ -1046,6 +1054,8 @@ export interface paths {
         /**
          * Import Programme
          * @description Upload a programme catalogue CSV and upsert its courses (idempotent).
+         *
+         *     **Permission: course:author** (was: any signed-in user).
          *
          *     Courses are created unpublished and, unless the row names a real ``qsp_code``,
          *     unbound from the qualification spine. See ``programme_ingest`` for why.
@@ -1073,14 +1083,14 @@ export interface paths {
         post?: never;
         /**
          * Delete Course
-         * @description Delete a course and its modules.
+         * @description Delete a course and its modules.  **Permission: course:author**
          */
         delete: operations["delete_course_courses__course_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Course
-         * @description Update course metadata.
+         * @description Update course metadata.  **Permission: course:author**
          */
         patch: operations["update_course_courses__course_id__patch"];
         trace?: never;
@@ -1811,6 +1821,9 @@ export interface paths {
         /**
          * Get Aar Html
          * @description Retrieve AAR as rendered HTML.  **Permission: aar:read**
+         *
+         *     Rendered from the stored report JSON on every read, so reports written by the worker
+         *     or before this renderer existed get the full page and are escaped the same way.
          */
         get: operations["get_aar_html_exercises__exercise_id__aar_html_get"];
         put?: never;
@@ -1832,7 +1845,8 @@ export interface paths {
          * Get Aar Pdf
          * @description Retrieve AAR as downloadable PDF.  **Permission: aar:read**
          *
-         *     Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps).
+         *     Renders the stored AAR JSON to a PDF using fpdf2 (pure Python, no C deps). Its core
+         *     fonts are latin-1 only; text outside it is transliterated (``aar_html.pdf_text``).
          */
         get: operations["get_aar_pdf_exercises__exercise_id__aar_pdf_get"];
         put?: never;
@@ -1873,6 +1887,9 @@ export interface paths {
         /**
          * List Objectives
          * @description List objectives for an exercise.  **Permission: exercise:read**
+         *
+         *     Own-tenant exercises only; a foreign exercise id is 404 (until 2026-10-07 this
+         *     listed any tenant's objectives, validators and evidence by exercise id).
          */
         get: operations["list_objectives_exercises__exercise_id__objectives_get"];
         put?: never;
@@ -1895,6 +1912,8 @@ export interface paths {
         /**
          * Acknowledge Objective
          * @description Acknowledge (achieve) an objective.  **Permission: exercise:complete**
+         *
+         *     Own-tenant exercises only (foreign id = 404).
          */
         post: operations["acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post"];
         delete?: never;
@@ -2267,8 +2286,9 @@ export interface paths {
         };
         /**
          * List All Nodes
-         * @description Every discovered host across all connections, as last discovered. Read-only; the
-         *     dashboard's cluster panel. No hypervisor is contacted — run discovery to refresh.
+         * @description Every discovered host across the caller's tenant's connections, as last discovered.
+         *     Read-only; the dashboard's cluster panel. No hypervisor is contacted — run discovery to
+         *     refresh.
          */
         get: operations["list_all_nodes_hypervisors_nodes_get"];
         put?: never;
@@ -2736,7 +2756,7 @@ export interface paths {
         put?: never;
         /**
          * Create Learning Path
-         * @description Create a learning path (ordered sequence of courses).
+         * @description Create a learning path (ordered sequence of courses).  **Permission: course:author**
          */
         post: operations["create_learning_path_learning_paths_post"];
         delete?: never;
@@ -2761,14 +2781,14 @@ export interface paths {
         post?: never;
         /**
          * Delete Learning Path
-         * @description Delete a learning path.
+         * @description Delete a learning path.  **Permission: course:author**
          */
         delete: operations["delete_learning_path_learning_paths__lp_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Learning Path
-         * @description Update a learning path.
+         * @description Update a learning path.  **Permission: course:author**
          */
         patch: operations["update_learning_path_learning_paths__lp_id__patch"];
         trace?: never;
@@ -4185,6 +4205,8 @@ export interface paths {
         /**
          * Generate Exercises
          * @description Scaffold one pending Exercise per PO-course (Scenario from PO + placeholder Range).
+         *
+         *     **Permission: course:author and exercise:create.**
          */
         post: operations["generate_exercises_qsp_generate_exercises_post"];
         delete?: never;
@@ -4205,6 +4227,8 @@ export interface paths {
         /**
          * Generate Learning Paths
          * @description Build per-PO courses, qualification paths, role paths, and the developmental progression.
+         *
+         *     **Permission: course:author.**
          */
         post: operations["generate_learning_paths_qsp_generate_learning_paths_post"];
         delete?: never;
@@ -4225,6 +4249,9 @@ export interface paths {
         /**
          * Import Competency Crosswalk
          * @description Seed NIST CSF 2.0 + NICE competencies and link each PO to them (curated, idempotent).
+         *
+         *     **Permission: course:author + tenant:read** — platform admin only; it rewrites the
+         *     shared spine's PO links (see ``SPINE_WRITE``).
          *
          *     Upload `taxonomy` = nist_csf_2_0_taxonomy.csv and `crosswalk` = qsp_competency_crosswalk.csv.
          */
@@ -4247,6 +4274,9 @@ export interface paths {
         /**
          * Import Crosswalk
          * @description Upload crosswalk.csv and upsert the Qualification/PO/EO spine (idempotent).
+         *
+         *     **Permission: course:author + tenant:read** — platform admin only (was: any
+         *     signed-in user, Students included). See ``SPINE_WRITE``.
          */
         post: operations["import_crosswalk_qsp_import_crosswalk_post"];
         delete?: never;
@@ -5716,7 +5746,9 @@ export interface paths {
          * @description Ingest telemetry events into a range's index.  **Permission: telemetry:write**
          *
          *     The range must belong to the caller's tenant (404 otherwise). Students cannot write:
-         *     detection objectives are scored against this index.
+         *     detection objectives are scored against this index. Each event is stored with a
+         *     ``mitre_technique`` list when one is known: its own ``mitre_technique`` /
+         *     ``technique_id`` if that is an ATT&CK ID, else one mapped from ``event_type``.
          */
         post: operations["ingest_telemetry_telemetry__range_id__events_post"];
         delete?: never;
@@ -5735,6 +5767,10 @@ export interface paths {
         /**
          * Search Telemetry
          * @description Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+         *
+         *     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
+         *     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
+         *     A query outside it is a 422.
          */
         get: operations["search_telemetry_telemetry__range_id__search_get"];
         put?: never;
@@ -23508,7 +23544,7 @@ export interface operations {
     search_telemetry_telemetry__range_id__search_get: {
         parameters: {
             query?: {
-                /** @description OpenSearch query string */
+                /** @description field:value, field:"a phrase", field:prefix*, field:* (exists) and free text, ANDed */
                 q?: string;
                 size?: number;
             };

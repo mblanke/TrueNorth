@@ -82,6 +82,7 @@ def _audit(db: Session, user: CurrentUser, action: str, resource_type: str, reso
     db.add(
         AuditLog(
             user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,

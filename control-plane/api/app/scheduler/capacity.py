@@ -116,6 +116,7 @@ class ClusterCapacity:
         """The range of the booking being re-checked: its own demand is what is asked."""
         if not exclude_id:
             return None
+        # tenant-safe: exclude_id is the id of a booking the router already loaded with get_owned.
         evt = db.get(ScheduledEvent, exclude_id)
         return evt.range_id if evt else None
 

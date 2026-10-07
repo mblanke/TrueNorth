@@ -18,7 +18,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -39,6 +39,8 @@ from .rbac import Permission, require_permission
 from .scheduler import clock as scheduler_clock
 from .schemas import HealthOut
 from .search_backends import get_search_backend
+from .search_backends.query import MAX_QUERY_LENGTH, QueryError, parse_query
+from .telemetry_mitre import tag_event
 from .tenancy import get_owned
 from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
 
@@ -510,7 +512,9 @@ async def ingest_telemetry(
     """Ingest telemetry events into a range's index.  **Permission: telemetry:write**
 
     The range must belong to the caller's tenant (404 otherwise). Students cannot write:
-    detection objectives are scored against this index.
+    detection objectives are scored against this index. Each event is stored with a
+    ``mitre_technique`` list when one is known: its own ``mitre_technique`` /
+    ``technique_id`` if that is an ATT&CK ID, else one mapped from ``event_type``.
     """
     get_owned(db, Range, range_id, user, not_found="Range not found")
     index = f"range-{range_id}"
@@ -519,6 +523,7 @@ async def ingest_telemetry(
         event["tenant_id"] = user.tenant_id
         if "@timestamp" not in event:
             event["@timestamp"] = datetime.now(UTC).isoformat()
+        tag_event(event)  # mitre_technique, from the event or its event_type
     accepted = await get_search_backend().ingest(index, events)
     return {"accepted": accepted}
 
@@ -526,12 +531,25 @@ async def ingest_telemetry(
 @app.get("/telemetry/{range_id}/search", tags=["telemetry"])
 async def search_telemetry(
     range_id: uuid.UUID,
-    q: str = Query("*", description="OpenSearch query string"),
-    size: int = Query(50, le=500),
+    q: str = Query(
+        "*",
+        max_length=MAX_QUERY_LENGTH,
+        description="field:value, field:\"a phrase\", field:prefix*, field:* (exists) and free text, ANDed",
+    ),
+    size: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise)."""
+    """Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+
+    ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
+    ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
+    A query outside it is a 422.
+    """
     get_owned(db, Range, range_id, user, not_found="Range not found")
+    try:
+        parse_query(q)
+    except QueryError as exc:
+        raise HTTPException(422, f"Invalid search query: {exc}") from exc
     index = f"range-{range_id}"
     return await get_search_backend().search(index, q, size)

@@ -86,6 +86,7 @@ def neutral_event(db: Session, evt: ScheduledEvent) -> ics.IcsEvent:
 def instructor_email(db: Session, instructor_id: uuid.UUID | None) -> str | None:
     if not instructor_id:
         return None
+    # tenant-safe: a booking's instructor was checked to be in its tenant (resolve_instructor).
     u = db.get(User, instructor_id)
     if u is None or not u.email or not u.is_active or u.deleted_at is not None:
         return None

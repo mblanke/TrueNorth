@@ -26,11 +26,13 @@ class BaseSearchBackend(ABC):
 
     @abstractmethod
     async def search(self, index: str, query: str, size: int = 50) -> dict:
-        """Execute a query-string search against *index*.
+        """Search *index* with a query in the telemetry grammar (``query.parse_query``).
 
+        Never pass *query* to a backend's own free-form parser (OpenSearch
+        ``query_string``): build the request from ``parse_query(query)``.
         Returns the raw search response dict (hits, total, etc.).
-        Raises fastapi.HTTPException(502) on backend errors so the caller
-        can propagate a meaningful status to the API consumer.
+        Raises fastapi.HTTPException(422) for a query outside the grammar and
+        HTTPException(502) on backend errors.
         """
         ...
 
