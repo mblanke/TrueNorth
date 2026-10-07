@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from . import range_leases, range_ops, ws_auth  # noqa: F401 — range_leases, range_ops: register their tables
+from .greyspace import models as _greyspace_models  # noqa: F401 — registers range_greyspace
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
@@ -246,6 +247,7 @@ from .routers import (
     exercise_forge_router,
     exercises_router,
     golden_images_router,
+    greyspace_router,
     hypervisors_router,
     injectors_router,
     integrations_router,
@@ -320,6 +322,8 @@ app.include_router(quizzes_router)
 # Adaptive Learning (EPIC 3)
 app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
+# Greyspace: a simulated internet attached to a range (ADR 0007)
+app.include_router(greyspace_router)
 
 # -- API versioning: /api/v1/... -> canonical route (docs/adr/0002) ---------
 # Added last so it is the outermost middleware: rate limiting, metrics and tracing all

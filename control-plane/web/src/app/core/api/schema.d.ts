@@ -2072,6 +2072,27 @@ export interface paths {
         patch: operations["update_image_golden_images__image_id__patch"];
         trace?: never;
     };
+    "/greyspace/corpora": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Corpora
+         * @description The corpus tiers (T0 CI fixture, T1 Mac sample, T2 lab, full) and what the control
+         *     plane can read of each one's manifest.
+         */
+        get: operations["greyspace_list_corpora"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -4368,6 +4389,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/greyspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Status
+         * @description The range's Greyspace block and its status (``not_attached`` when there is none).
+         */
+        get: operations["greyspace_get_status"];
+        /**
+         * Attach
+         * @description Attach a Greyspace block to the range, or replace the one it has. With no body, the
+         *     block the range's template declares is used, else the defaults (T0 corpus, all packs).
+         */
+        put: operations["greyspace_attach"];
+        post?: never;
+        /**
+         * Detach
+         * @description Detach the range's Greyspace block. The shared corpus is untouched.
+         */
+        delete: operations["greyspace_detach"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ranges/{range_id}/greyspace/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config
+         * @description What the range's Greyspace stack is generated to be: address plan, ISPs, services,
+         *     DNS zones and the generated file list.
+         */
+        get: operations["greyspace_get_config"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/operations": {
         parameters: {
             query?: never;
@@ -6521,6 +6592,41 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** CorpusSummary */
+        CorpusSummary: {
+            /**
+             * Available
+             * @description Whether the control plane can read this tier's manifest.
+             */
+            available: boolean;
+            /** Builder */
+            builder: string;
+            /** Bytes */
+            bytes?: number | null;
+            /** Cap Bytes */
+            cap_bytes: number | null;
+            /** Categories */
+            categories?: {
+                [key: string]: number;
+            } | null;
+            /** Description */
+            description: string;
+            /** Location */
+            location: string;
+            /** Sites */
+            sites?: number | null;
+            /** Threat Domains */
+            threat_domains?: number | null;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "t0" | "t1" | "t2" | "full";
+            /** Title */
+            title: string;
+            /** Version */
+            version?: string | null;
+        };
         /** CourseGenerateIn */
         CourseGenerateIn: {
             /**
@@ -7619,6 +7725,127 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /**
+         * GreyspaceBlock
+         * @description A range's Greyspace block: the template ``greyspace:`` key, or attached through the API.
+         *     Same fields as ``scenario-engine/schemas/template.schema.json#/properties/greyspace``.
+         */
+        GreyspaceBlock: {
+            /**
+             * Corpus Tier
+             * @default t0
+             * @enum {string}
+             */
+            corpus_tier?: "t0" | "t1" | "t2" | "full";
+            /**
+             * Npc Profile
+             * @description Simulated users. Recorded only: NPC traffic is a later slice.
+             * @default off
+             * @enum {string}
+             */
+            npc_profile?: "off" | "office-day" | "quiet-night";
+            /**
+             * Public Prefix
+             * @description IPv4 CIDR covering every ISP prefix of the corpus. Omit to use the corpus's own.
+             */
+            public_prefix?: string | null;
+            /**
+             * Site Packs
+             * @description Site categories to serve (news, search, social, ...). Omit for all.
+             */
+            site_packs?: string[] | null;
+            /**
+             * Threat Infra
+             * @description Serve the corpus's threat-actor domains (C2, phishing stubs).
+             * @default true
+             */
+            threat_infra?: boolean;
+            /**
+             * Trust Ca
+             * @description Recorded only: the Greyspace root CA is a later slice.
+             * @default true
+             */
+            trust_ca?: boolean;
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version?: 1;
+        };
+        /** GreyspaceConfigOut */
+        GreyspaceConfigOut: {
+            /** Address Plan */
+            address_plan: {
+                [key: string]: unknown;
+            };
+            /**
+             * Corpus Tier
+             * @enum {string}
+             */
+            corpus_tier: "t0" | "t1" | "t2" | "full";
+            /** Corpus Version */
+            corpus_version: string;
+            /** Files */
+            files: string[];
+            /** Isps */
+            isps: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Services */
+            services: string[];
+            /** Site Packs */
+            site_packs: string[];
+            /** Sites */
+            sites: number;
+            /** Threat Domains */
+            threat_domains: {
+                [key: string]: unknown;
+            }[];
+            /** Tlds */
+            tlds: string[];
+            /** Zones */
+            zones: string[];
+        };
+        /** GreyspaceStatusOut */
+        GreyspaceStatusOut: {
+            /** Attached */
+            attached: boolean;
+            block?: components["schemas"]["GreyspaceBlock"] | null;
+            corpus?: components["schemas"]["CorpusSummary"] | null;
+            /** Deployed At */
+            deployed_at?: string | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Problems
+             * @description Why the block cannot render on its corpus now.
+             */
+            problems?: string[];
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Range State */
+            range_state: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "not_attached" | "configured" | "deployed" | "pending_infrastructure" | "failed";
+            /** @description The block the range's template declares, if any; attaching with no body uses it. */
+            template_block?: components["schemas"]["GreyspaceBlock"] | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -14335,6 +14562,26 @@ export interface operations {
             };
         };
     };
+    greyspace_list_corpora: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorpusSummary"][];
+                };
+            };
+        };
+    };
     health_check_health_get: {
         parameters: {
             query?: never;
@@ -18604,6 +18851,179 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_get_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceStatusOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_attach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GreyspaceBlock"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceStatusOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The block cannot run on its corpus; the body lists the problems */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    greyspace_detach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greyspace_get_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GreyspaceConfigOut"];
+                };
+            };
+            /** @description Range not found in your tenant, or no Greyspace block attached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The range is changing, belongs to a lab session, or its corpus is not readable here */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

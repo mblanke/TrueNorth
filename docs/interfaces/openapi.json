@@ -2176,6 +2176,121 @@
         "title": "ConsoleOut",
         "type": "object"
       },
+      "CorpusSummary": {
+        "properties": {
+          "available": {
+            "description": "Whether the control plane can read this tier's manifest.",
+            "title": "Available",
+            "type": "boolean"
+          },
+          "builder": {
+            "title": "Builder",
+            "type": "string"
+          },
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes"
+          },
+          "cap_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Bytes"
+          },
+          "categories": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categories"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "sites": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sites"
+          },
+          "threat_domains": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threat Domains"
+          },
+          "tier": {
+            "enum": [
+              "t0",
+              "t1",
+              "t2",
+              "full"
+            ],
+            "title": "Tier",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "tier",
+          "title",
+          "cap_bytes",
+          "location",
+          "builder",
+          "description",
+          "available"
+        ],
+        "title": "CorpusSummary",
+        "type": "object"
+      },
       "CourseGenerateIn": {
         "properties": {
           "difficulty": {
@@ -4909,6 +5024,292 @@
           "max_score"
         ],
         "title": "GradePushIn",
+        "type": "object"
+      },
+      "GreyspaceBlock": {
+        "additionalProperties": false,
+        "description": "A range's Greyspace block: the template ``greyspace:`` key, or attached through the API.\nSame fields as ``scenario-engine/schemas/template.schema.json#/properties/greyspace``.",
+        "properties": {
+          "corpus_tier": {
+            "default": "t0",
+            "enum": [
+              "t0",
+              "t1",
+              "t2",
+              "full"
+            ],
+            "title": "Corpus Tier",
+            "type": "string"
+          },
+          "npc_profile": {
+            "default": "off",
+            "description": "Simulated users. Recorded only: NPC traffic is a later slice.",
+            "enum": [
+              "off",
+              "office-day",
+              "quiet-night"
+            ],
+            "title": "Npc Profile",
+            "type": "string"
+          },
+          "public_prefix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IPv4 CIDR covering every ISP prefix of the corpus. Omit to use the corpus's own.",
+            "title": "Public Prefix"
+          },
+          "site_packs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 64,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Site categories to serve (news, search, social, ...). Omit for all.",
+            "title": "Site Packs"
+          },
+          "threat_infra": {
+            "default": true,
+            "description": "Serve the corpus's threat-actor domains (C2, phishing stubs).",
+            "title": "Threat Infra",
+            "type": "boolean"
+          },
+          "trust_ca": {
+            "default": true,
+            "description": "Recorded only: the Greyspace root CA is a later slice.",
+            "title": "Trust Ca",
+            "type": "boolean"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "GreyspaceBlock",
+        "type": "object"
+      },
+      "GreyspaceConfigOut": {
+        "properties": {
+          "address_plan": {
+            "additionalProperties": true,
+            "title": "Address Plan",
+            "type": "object"
+          },
+          "corpus_tier": {
+            "enum": [
+              "t0",
+              "t1",
+              "t2",
+              "full"
+            ],
+            "title": "Corpus Tier",
+            "type": "string"
+          },
+          "corpus_version": {
+            "title": "Corpus Version",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "isps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Isps",
+            "type": "array"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "site_packs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Site Packs",
+            "type": "array"
+          },
+          "sites": {
+            "title": "Sites",
+            "type": "integer"
+          },
+          "threat_domains": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Threat Domains",
+            "type": "array"
+          },
+          "tlds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tlds",
+            "type": "array"
+          },
+          "zones": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "required": [
+          "range_id",
+          "corpus_tier",
+          "corpus_version",
+          "address_plan",
+          "isps",
+          "services",
+          "sites",
+          "site_packs",
+          "tlds",
+          "zones",
+          "threat_domains",
+          "files"
+        ],
+        "title": "GreyspaceConfigOut",
+        "type": "object"
+      },
+      "GreyspaceStatusOut": {
+        "properties": {
+          "attached": {
+            "title": "Attached",
+            "type": "boolean"
+          },
+          "block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreyspaceBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "corpus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CorpusSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deployed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployed At"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "problems": {
+            "description": "Why the block cannot render on its corpus now.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "range_state": {
+            "title": "Range State",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "not_attached",
+              "configured",
+              "deployed",
+              "pending_infrastructure",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "template_block": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GreyspaceBlock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The block the range's template declares, if any; attaching with no body uses it."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "range_id",
+          "attached",
+          "status",
+          "range_state"
+        ],
+        "title": "GreyspaceStatusOut",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -18212,6 +18613,37 @@
         ]
       }
     },
+    "/greyspace/corpora": {
+      "get": {
+        "description": "The corpus tiers (T0 CI fixture, T1 Mac sample, T2 lab, full) and what the control\nplane can read of each one's manifest.",
+        "operationId": "greyspace_list_corpora",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CorpusSummary"
+                  },
+                  "title": "Response Greyspace List Corpora",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Corpora",
+        "tags": [
+          "greyspace"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "description": "Quick health check - liveness + dependency flags.",
@@ -25074,6 +25506,222 @@
         "summary": "Download Range Document",
         "tags": [
           "ranges"
+        ]
+      }
+    },
+    "/ranges/{range_id}/greyspace": {
+      "delete": {
+        "description": "Detach the range's Greyspace block. The shared corpus is untouched.",
+        "operationId": "greyspace_detach",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Range not found in your tenant, or no Greyspace block attached"
+          },
+          "409": {
+            "description": "The range is changing, belongs to a lab session, or its corpus is not readable here"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detach",
+        "tags": [
+          "greyspace"
+        ]
+      },
+      "get": {
+        "description": "The range's Greyspace block and its status (``not_attached`` when there is none).",
+        "operationId": "greyspace_get_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreyspaceStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Range not found in your tenant, or no Greyspace block attached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Status",
+        "tags": [
+          "greyspace"
+        ]
+      },
+      "put": {
+        "description": "Attach a Greyspace block to the range, or replace the one it has. With no body, the\nblock the range's template declares is used, else the defaults (T0 corpus, all packs).",
+        "operationId": "greyspace_attach",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GreyspaceBlock"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Block"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreyspaceStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Range not found in your tenant, or no Greyspace block attached"
+          },
+          "409": {
+            "description": "The range is changing, belongs to a lab session, or its corpus is not readable here"
+          },
+          "422": {
+            "description": "The block cannot run on its corpus; the body lists the problems"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Attach",
+        "tags": [
+          "greyspace"
+        ]
+      }
+    },
+    "/ranges/{range_id}/greyspace/config": {
+      "get": {
+        "description": "What the range's Greyspace stack is generated to be: address plan, ISPs, services,\nDNS zones and the generated file list.",
+        "operationId": "greyspace_get_config",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GreyspaceConfigOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Range not found in your tenant, or no Greyspace block attached"
+          },
+          "409": {
+            "description": "The range is changing, belongs to a lab session, or its corpus is not readable here"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Config",
+        "tags": [
+          "greyspace"
         ]
       }
     },

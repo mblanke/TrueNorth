@@ -243,6 +243,21 @@ objectives = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+range_greyspace = sa.Table(
+    "range_greyspace",
+    metadata,
+    sa.Column("range_id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID(), nullable=False),
+    sa.Column("block", sa.JSON(), nullable=False),
+    sa.Column("corpus_tier", sa.String(16), nullable=False),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("detail", sa.JSON()),
+    sa.Column("attached_by", GUID()),
+    sa.Column("deployed_at", sa.DateTime(timezone=True)),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 range_leases = sa.Table(
     "range_leases",
     metadata,
@@ -378,6 +393,7 @@ __all__ = [
     "learning_recommendations",
     "metadata",
     "objectives",
+    "range_greyspace",
     "range_leases",
     "range_snapshots",
     "ranges",

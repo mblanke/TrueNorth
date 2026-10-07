@@ -36,6 +36,7 @@ WORKER_TABLES = (
     "hypervisor_connections",
     "learning_recommendations",
     "objectives",
+    "range_greyspace",
     "range_leases",
     "range_snapshots",
     "ranges",
@@ -68,6 +69,7 @@ def _type_src(t) -> str:
 
 
 def render() -> str:
+    import app.greyspace.models  # noqa: F401
     import app.range_leases  # noqa: F401 — section models register their tables on import
     from app import models
     from app.db import Base

@@ -20,6 +20,7 @@ from .exercise_forge import router as exercise_forge_router
 from .exercises import router as exercises_router
 from .exercises_collective import router as collective_exercises_router
 from .golden_images import router as golden_images_router
+from .greyspace import router as greyspace_router
 from .hypervisors import router as hypervisors_router
 from .injectors import router as injectors_router
 from .integrations import lti_router
@@ -81,4 +82,5 @@ __all__ = [
     "course_releases_router",
     "course_publications_router",
     "lab_sessions_router",
+    "greyspace_router",
 ]
