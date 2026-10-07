@@ -13,10 +13,13 @@ Configuration:
         openai    — OpenAI / OpenAI-compatible API
         anthropic — Anthropic Claude
         vllm      — vLLM OpenAI-compatible server (H200 nodes)
+        ollama    — A single Ollama server (OLLAMA_URL)
         mock      — Deterministic mock (testing / offline)
 
-    The Ollama fleet is managed separately by main.py (multi-node routing,
-    health checks, load balancing) and is not included in this registry.
+    The Ollama *fleet* (multi-node routing, health checks, load balancing)
+    lives in main.py; it builds one OllamaBackend per node and calls Ollama
+    only through them. The ``ollama`` registry entry is a single-server
+    convenience for direct use.
 
 Adding a new backend:
     1. Create ai-orchestrator/app/backends/<name>.py implementing BaseAIBackend
@@ -31,6 +34,7 @@ import os
 from .anthropic import AnthropicBackend
 from .base import BaseAIBackend
 from .mock import MockAIBackend
+from .ollama import OllamaBackend
 from .openai import OpenAIBackend
 from .vllm import VLLMBackend
 
@@ -38,6 +42,7 @@ __all__ = [
     "AnthropicBackend",
     "BaseAIBackend",
     "MockAIBackend",
+    "OllamaBackend",
     "OpenAIBackend",
     "VLLMBackend",
     "get_cloud_backend",
@@ -48,6 +53,7 @@ _REGISTRY: dict[str, type[BaseAIBackend]] = {
     "openai": OpenAIBackend,
     "anthropic": AnthropicBackend,
     "vllm": VLLMBackend,
+    "ollama": OllamaBackend,
     "mock": MockAIBackend,
 }
 
