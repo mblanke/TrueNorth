@@ -2906,6 +2906,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lti/public-key.pem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lti Public Key Pem
+         * @description The tool's public key as PEM, for Moodle farm nodes.
+         *
+         *     A node fetches this when it starts (``infra/platform/moodle/hooks/04-truenorth-bootstrap.sh``)
+         *     and trusts it for LTI messages, sign-in tickets and course sync, so a key rotation
+         *     reaches every node on its next restart. It is the public half only.
+         */
+        get: operations["lti_public_key_pem_lti_public_key_pem_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/network-devices/": {
         parameters: {
             query?: never;
@@ -15942,6 +15966,24 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+        };
+    };
+    lti_public_key_pem_lti_public_key_pem_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

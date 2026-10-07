@@ -290,6 +290,17 @@ def lti_jwks(db: Session = Depends(get_db)):
     return lti13.jwks(db)
 
 
+@lti_router.get("/public-key.pem", response_class=Response)
+def lti_public_key_pem(db: Session = Depends(get_db)):
+    """The tool's public key as PEM, for Moodle farm nodes.
+
+    A node fetches this when it starts (``infra/platform/moodle/hooks/04-truenorth-bootstrap.sh``)
+    and trusts it for LTI messages, sign-in tickets and course sync, so a key rotation
+    reaches every node on its next restart. It is the public half only.
+    """
+    return Response(lti13.get_tool_key(db).public_key_pem, media_type="application/x-pem-file")
+
+
 # Two registrations, not api_route(methods=[...]): one route with two methods gets one
 # operationId, and FastAPI picks its method suffix from a set, so the published
 # contract (docs/interfaces/openapi.json) changed from run to run.

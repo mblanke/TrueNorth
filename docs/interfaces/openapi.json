@@ -20763,6 +20763,21 @@
         ]
       }
     },
+    "/lti/public-key.pem": {
+      "get": {
+        "description": "The tool's public key as PEM, for Moodle farm nodes.\n\nA node fetches this when it starts (``infra/platform/moodle/hooks/04-truenorth-bootstrap.sh``)\nand trusts it for LTI messages, sign-in tickets and course sync, so a key rotation\nreaches every node on its next restart. It is the public half only.",
+        "operationId": "lti_public_key_pem_lti_public_key_pem_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Lti Public Key Pem",
+        "tags": [
+          "lti"
+        ]
+      }
+    },
     "/network-devices/": {
       "get": {
         "operationId": "list_devices_network_devices__get",
