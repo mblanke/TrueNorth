@@ -165,6 +165,16 @@ test.describe('Signed in', () => {
       await expect(page.getByRole('tab', { name: 'Connected Platforms' })).toBeVisible();
     });
 
+    test('schedule: the week of bookings', async ({ page }) => {
+      // ADR 0004. Range Ops sees the capacity view, other staff the calendar; both
+      // render the week navigation and the bookings grid, with or without bookings.
+      await page.goto('/schedule');
+      await expect(page).toHaveURL(/\/schedule$/);
+      await expect(pageTitle(page, /^(Cluster this week|This week|Range schedule)$/)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Previous week' }).first()).toBeVisible();
+      await expect(page.getByRole('grid', { name: 'Bookings this week' }).first()).toBeVisible();
+    });
+
     test('my progress', async ({ page }) => {
       await page.goto('/my-progress');
       await expect(page).toHaveURL(/\/learning\/progress$/);

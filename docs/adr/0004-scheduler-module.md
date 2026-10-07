@@ -1,6 +1,6 @@
 # ADR 0004 — Scheduler is a self-contained module
 
-- Status: proposed
+- Status: Accepted (2026-10-07)
 - Date: 2026-10-04
 - MOSA pillar: modular design, designated key interfaces, open standards
 - Related: ADR 0001 (adapter registry), ADR 0002 (interface versioning),

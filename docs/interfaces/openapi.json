@@ -1627,6 +1627,18 @@
             "title": "Start Time",
             "type": "string"
           },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Size the check from this template; overrides the *_needed values",
+            "title": "Template Id"
+          },
           "vcpu_needed": {
             "default": 0,
             "title": "Vcpu Needed",
@@ -1650,6 +1662,11 @@
             "title": "Disk Gb Committed",
             "type": "integer"
           },
+          "disk_gb_needed": {
+            "default": 0,
+            "title": "Disk Gb Needed",
+            "type": "integer"
+          },
           "disk_gb_total": {
             "title": "Disk Gb Total",
             "type": "integer"
@@ -1666,6 +1683,11 @@
             "title": "Overlapping Events",
             "type": "integer"
           },
+          "policy": {
+            "default": "block",
+            "title": "Policy",
+            "type": "string"
+          },
           "ram_mb_available": {
             "title": "Ram Mb Available",
             "type": "integer"
@@ -1674,9 +1696,28 @@
             "title": "Ram Mb Committed",
             "type": "integer"
           },
+          "ram_mb_needed": {
+            "default": 0,
+            "title": "Ram Mb Needed",
+            "type": "integer"
+          },
           "ram_mb_total": {
             "title": "Ram Mb Total",
             "type": "integer"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "supply_source": {
+            "default": "env",
+            "description": "Where cluster totals came from: env fallback, or discovery",
+            "title": "Supply Source",
+            "type": "string"
           },
           "vcpu_available": {
             "title": "Vcpu Available",
@@ -1686,8 +1727,18 @@
             "title": "Vcpu Committed",
             "type": "integer"
           },
+          "vcpu_needed": {
+            "default": 0,
+            "title": "Vcpu Needed",
+            "type": "integer"
+          },
           "vcpu_total": {
             "title": "Vcpu Total",
+            "type": "integer"
+          },
+          "vm_count_needed": {
+            "default": 0,
+            "title": "Vm Count Needed",
             "type": "integer"
           }
         },
@@ -3777,6 +3828,18 @@
       },
       "EventIn": {
         "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The class: this course's active Students attend",
+            "title": "Course Id"
+          },
           "description": {
             "anyOf": [
               {
@@ -3794,10 +3857,40 @@
             "title": "Disk Gb Total",
             "type": "integer"
           },
+          "draft": {
+            "default": false,
+            "description": "Create as a draft: holds nothing and is not checked until scheduled",
+            "title": "Draft",
+            "type": "boolean"
+          },
           "end_time": {
             "format": "date-time",
             "title": "End Time",
             "type": "string"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Use this existing exercise (and its range) instead",
+            "title": "Exercise Id"
+          },
+          "instructor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who teaches it; defaults to the caller when they are an instructor",
+            "title": "Instructor Id"
           },
           "name": {
             "maxLength": 255,
@@ -3822,6 +3915,18 @@
             ],
             "title": "Range Id"
           },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Run this scenario: a pending exercise is created when the range is built",
+            "title": "Scenario Id"
+          },
           "start_time": {
             "format": "date-time",
             "title": "Start Time",
@@ -3836,6 +3941,7 @@
                 "type": "null"
               }
             ],
+            "description": "Size the booking from this template's VM specs",
             "title": "Template Id"
           },
           "vcpu_total": {
@@ -3857,6 +3963,198 @@
           "end_time"
         ],
         "title": "EventIn",
+        "type": "object"
+      },
+      "EventListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "EventListOut",
+        "type": "object"
+      },
+      "EventOut": {
+        "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "disk_gb_total": {
+            "title": "Disk Gb Total",
+            "type": "integer"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercise Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructor Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ram_mb_total": {
+            "title": "Ram Mb Total",
+            "type": "integer"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "vcpu_total": {
+            "title": "Vcpu Total",
+            "type": "integer"
+          },
+          "vm_count": {
+            "title": "Vm Count",
+            "type": "integer"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "state",
+          "tenant_id",
+          "range_id",
+          "template_id",
+          "start_time",
+          "end_time",
+          "vm_count",
+          "vcpu_total",
+          "ram_mb_total",
+          "disk_gb_total",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EventOut",
         "type": "object"
       },
       "EvidenceIn": {
@@ -4513,6 +4811,58 @@
           }
         },
         "title": "ExternalPlatformUpdate",
+        "type": "object"
+      },
+      "FeedTokenIssued": {
+        "description": "Shown once: only a hash of the token is kept.",
+        "properties": {
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "url": {
+            "description": "HTTPS subscription URL; paste into Outlook 'Subscribe from web'",
+            "title": "Url",
+            "type": "string"
+          },
+          "webcal_url": {
+            "description": "The same URL as webcal://, for one-click subscribe",
+            "title": "Webcal Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "webcal_url",
+          "issued_at"
+        ],
+        "title": "FeedTokenIssued",
+        "type": "object"
+      },
+      "FeedTokenStatus": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "issued_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issued At"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "FeedTokenStatus",
         "type": "object"
       },
       "FleetNodeCreateIn": {
@@ -6306,6 +6656,54 @@
         "title": "ModuleProgressOut",
         "type": "object"
       },
+      "MySessionOut": {
+        "description": "A session as a Student sees it: no capacity, no other people.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "state",
+          "start_time",
+          "end_time"
+        ],
+        "title": "MySessionOut",
+        "type": "object"
+      },
       "NationOut": {
         "properties": {
           "flag_emoji": {
@@ -7903,6 +8301,15 @@
         "title": "OpsStatsOut",
         "type": "object"
       },
+      "OvercapacityPolicy": {
+        "description": "What happens to a booking that does not fit (ADR 0004, \"Booking rules\").",
+        "enum": [
+          "block",
+          "warn"
+        ],
+        "title": "OvercapacityPolicy",
+        "type": "string"
+      },
       "POOut": {
         "properties": {
           "assessment_type": {
@@ -8134,6 +8541,36 @@
           "offset"
         ],
         "title": "PaginatedResponse[ExternalActivityOut]",
+        "type": "object"
+      },
+      "PolicyIn": {
+        "properties": {
+          "overcapacity": {
+            "$ref": "#/components/schemas/OvercapacityPolicy"
+          }
+        },
+        "required": [
+          "overcapacity"
+        ],
+        "title": "PolicyIn",
+        "type": "object"
+      },
+      "PolicyOut": {
+        "properties": {
+          "can_change": {
+            "default": false,
+            "description": "Whether the caller may change it (platform administrators only)",
+            "title": "Can Change",
+            "type": "boolean"
+          },
+          "overcapacity": {
+            "$ref": "#/components/schemas/OvercapacityPolicy"
+          }
+        },
+        "required": [
+          "overcapacity"
+        ],
+        "title": "PolicyOut",
         "type": "object"
       },
       "ProfileIn": {
@@ -11748,6 +12185,91 @@
           }
         },
         "title": "ThreatIntelFeedUpdate",
+        "type": "object"
+      },
+      "TimelineBucket": {
+        "properties": {
+          "disk_gb_committed": {
+            "title": "Disk Gb Committed",
+            "type": "integer"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "ram_mb_committed": {
+            "title": "Ram Mb Committed",
+            "type": "integer"
+          },
+          "time": {
+            "format": "date-time",
+            "title": "Time",
+            "type": "string"
+          },
+          "vcpu_committed": {
+            "title": "Vcpu Committed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "vcpu_committed",
+          "ram_mb_committed",
+          "disk_gb_committed",
+          "event_count"
+        ],
+        "title": "TimelineBucket",
+        "type": "object"
+      },
+      "TimelineOut": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "cluster_disk_gb": {
+            "title": "Cluster Disk Gb",
+            "type": "integer"
+          },
+          "cluster_ram_mb": {
+            "title": "Cluster Ram Mb",
+            "type": "integer"
+          },
+          "cluster_vcpu": {
+            "title": "Cluster Vcpu",
+            "type": "integer"
+          },
+          "grace_minutes": {
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "lead_minutes": {
+            "title": "Lead Minutes",
+            "type": "integer"
+          },
+          "resolution_minutes": {
+            "title": "Resolution Minutes",
+            "type": "integer"
+          },
+          "supply_source": {
+            "title": "Supply Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "buckets",
+          "cluster_vcpu",
+          "cluster_ram_mb",
+          "cluster_disk_gb",
+          "supply_source",
+          "resolution_minutes",
+          "lead_minutes",
+          "grace_minutes"
+        ],
+        "title": "TimelineOut",
         "type": "object"
       },
       "TranscriptEntry": {
@@ -28432,7 +28954,7 @@
     },
     "/schedule/check": {
       "post": {
-        "description": "Check whether a proposed deployment fits within the cluster at the given time.",
+        "description": "Check whether a proposed deployment fits within the cluster at the given time.\n\nWith `template_id`, the need is that template's VM specs. The window includes the\nprovisioning lead and teardown grace, exactly as booking it would.",
         "operationId": "check_capacity_schedule_check_post",
         "requestBody": {
           "content": {
@@ -28479,7 +29001,7 @@
     },
     "/schedule/events": {
       "get": {
-        "description": "List all scheduled events, optionally filtered by state.",
+        "description": "List the caller's tenant's scheduled events, optionally filtered by state and by a\nwindow they overlap (the calendar's week).",
         "operationId": "list_events_schedule_events_get",
         "parameters": [
           {
@@ -28496,6 +29018,44 @@
                 }
               ],
               "title": "State"
+            }
+          },
+          {
+            "description": "Only events ending after this",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events ending after this",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Only events starting before this",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only events starting before this",
+              "title": "End"
             }
           },
           {
@@ -28525,7 +29085,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventListOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28552,7 +29114,7 @@
         ]
       },
       "post": {
-        "description": "Create a new event with resource reservation.  Will reject if it\nwould cause an over-commitment.",
+        "description": "Book a session. Refused with 409 when its range or instructor is already booked\nthen. One that does not fit the cluster is refused with 409 (policy `block`) or\ncreated with warnings (policy `warn`). A draft holds nothing and is checked when it\nis scheduled.",
         "operationId": "create_event_schedule_events_post",
         "requestBody": {
           "content": {
@@ -28568,7 +29130,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28597,6 +29161,7 @@
     },
     "/schedule/events/{event_id}": {
       "delete": {
+        "description": "Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking\nis history, like a completed one.",
         "operationId": "delete_event_schedule_events__event_id__delete",
         "parameters": [
           {
@@ -28629,7 +29194,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Cancel/delete event",
+        "summary": "Cancel an event",
         "tags": [
           "scheduling"
         ]
@@ -28651,7 +29216,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28678,6 +29245,7 @@
         ]
       },
       "put": {
+        "description": "Reschedule or resize a draft or scheduled booking (409 once it is being built).",
         "operationId": "update_event_schedule_events__event_id__put",
         "parameters": [
           {
@@ -28704,7 +29272,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28733,6 +29303,7 @@
     },
     "/schedule/events/{event_id}/activate": {
       "post": {
+        "description": "scheduled or provisioning -> active.",
         "operationId": "activate_event_schedule_events__event_id__activate_post",
         "parameters": [
           {
@@ -28749,7 +29320,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28776,8 +29349,57 @@
         ]
       }
     },
+    "/schedule/events/{event_id}/cancel": {
+      "post": {
+        "description": "Any state before completed -> cancelled. The row stays as history.",
+        "operationId": "cancel_event_schedule_events__event_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel an event",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/events/{event_id}/complete": {
       "post": {
+        "description": "active -> completed.",
         "operationId": "complete_event_schedule_events__event_id__complete_post",
         "parameters": [
           {
@@ -28794,7 +29416,9 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -28821,9 +29445,294 @@
         ]
       }
     },
+    "/schedule/events/{event_id}/schedule": {
+      "post": {
+        "description": "draft -> scheduled, checked for conflicts and capacity exactly as a new booking.",
+        "operationId": "schedule_event_schedule_events__event_id__schedule_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Schedule a draft",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/feed-token": {
+      "delete": {
+        "operationId": "feed_token_revoke_schedule_feed_token_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revoke your calendar feed URL",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "get": {
+        "operationId": "feed_token_status_schedule_feed_token_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedTokenStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Whether you have a calendar feed",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "post": {
+        "description": "Returns the subscription URL once. Regenerating stops the previous URL working.",
+        "operationId": "feed_token_issue_schedule_feed_token_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedTokenIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create or regenerate your calendar feed URL",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/feed/{token}.ics": {
+      "get": {
+        "operationId": "calendar_feed_schedule_feed__token__ics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Unknown or revoked feed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calendar feed (iCalendar)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/mine": {
+      "get": {
+        "description": "Sessions you teach, and for Students the sessions of courses they are enrolled in.",
+        "operationId": "my_sessions_schedule_mine_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MySessionOut"
+                  },
+                  "title": "Response My Sessions Schedule Mine Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Your upcoming sessions",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/policy": {
+      "get": {
+        "description": "`block`: a booking that does not fit is refused for everyone. `warn`: it is\ncreated, with warnings in the response, and the warning is audit-logged.",
+        "operationId": "get_policy_schedule_policy_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Over-capacity policy",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "put": {
+        "description": "Platform-wide, because every tenant books against the same cluster. Audit-logged.",
+        "operationId": "put_policy_schedule_policy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set the over-capacity policy (platform admin)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/tick": {
+      "post": {
+        "description": "One clock pass, as the background clock runs every minute: provision at the lead,\nactivate at the start, complete and tear down after the grace, send reminders.",
+        "operationId": "run_tick_schedule_tick_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run the scheduler clock now (platform admin)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/schedule/timeline": {
       "get": {
-        "description": "Return hourly resource commitment buckets for the next N days.\nUsed to render the capacity timeline chart in the dashboard.",
+        "description": "Committed capacity per slot, build and teardown time included, so back-to-back\nsessions are not counted as concurrent at a fine enough resolution. Feeds the\nscheduler's load bars and the Range Ops heatmap.",
         "operationId": "resource_timeline_schedule_timeline_get",
         "parameters": [
           {
@@ -28837,13 +29746,46 @@
               "title": "Days",
               "type": "integer"
             }
+          },
+          {
+            "description": "First slot (default: the current hour)",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First slot (default: the current hour)",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "Slot length: 15, 30 or 60",
+            "in": "query",
+            "name": "resolution_minutes",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "description": "Slot length: 15, 30 or 60",
+              "title": "Resolution Minutes",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineOut"
+                }
               }
             },
             "description": "Successful Response"
