@@ -106,7 +106,11 @@ def _session_for(db: Session, user: CurrentUser, session_id: uuid.UUID, *, staff
     return s
 
 
-def _token_session(db: Session, session_id: uuid.UUID, token: str | None) -> LabSession:
+def _token_session(db: Session, session_id: uuid.UUID, token: str | None, *, act: bool = True) -> LabSession:
+    """The session a lab token is for, checked against the session as it is now, not only
+    as it was when the token was minted (CR1-17): a token outlives a lab that ended and an
+    enrollment that was withdrawn. Reading an ended lab (``act=False``) stays allowed, so the
+    page can say it ended; acting on it does not."""
     if not token:
         raise HTTPException(401, "X-Lab-Token is required")
     try:
@@ -116,7 +120,23 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None) -> Lab
     s = db.get(LabSession, session_id)
     if s is None or claims.get("uid") != str(s.user_id):
         raise HTTPException(404, "lab session not found")
+    if _withdrawn(db, s):
+        raise HTTPException(403, "your enrollment in this course has been withdrawn")
+    if act and s.state in (*service.ENDING, *service.TERMINAL):
+        raise HTTPException(410, "this lab has ended")
     return s
+
+
+def _withdrawn(db: Session, s: LabSession) -> bool:
+    from ..course_releases.models import CourseRelease
+    from ..models import Enrollment, EnrollmentStatus
+
+    release = db.get(CourseRelease, s.release_id)
+    if release is None:
+        return False
+    mine = db.query(Enrollment).filter(Enrollment.user_id == s.user_id, Enrollment.course_id == release.course_id)
+    statuses = {e.status for e in mine}
+    return bool(statuses) and statuses <= {EnrollmentStatus.withdrawn}
 
 
 def _do(db: Session, fn, session: LabSession, *args, busy_ok: bool = False, **kwargs) -> Any:
@@ -244,7 +264,7 @@ def reconcile_lab_sessions(
 def get_lab_by_token(
     session_id: uuid.UUID, x_lab_token: str | None = Header(None), db: Session = Depends(get_db)
 ) -> LabSessionOut:
-    return _out(_do(db, service.advance, _token_session(db, session_id, x_lab_token), busy_ok=True))
+    return _out(_do(db, service.advance, _token_session(db, session_id, x_lab_token, act=False), busy_ok=True))
 
 
 @router.post("/lab-access/{session_id}/heartbeat", response_model=LabSessionOut)

@@ -353,6 +353,38 @@ class TestApi:
         refused = client.post(f"/lab-access/{a.id}/console?node=ghost", headers={"X-Lab-Token": token})
         assert refused.status_code == 403
 
+    # F14 / CR1-17: a token is checked against the session as it is now.
+
+    @pytest.mark.parametrize("action", ["heartbeat", "reset", "end", "console"])
+    def test_a_token_no_longer_acts_on_a_lab_that_has_ended(self, lab, db_session, action):
+        client, rid, _ = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        token = tokens.mint(db_session, a.id, s.id, a.max_expires_at)
+        act(db_session, service.end, a)
+        db_session.commit()
+        resp = client.post(f"/lab-access/{a.id}/{action}", headers={"X-Lab-Token": token})
+        assert resp.status_code == 410, resp.text
+        # Reading it stays allowed: the page can say the lab ended.
+        assert client.get(f"/lab-access/{a.id}", headers={"X-Lab-Token": token}).status_code == 200
+
+    def test_a_token_is_refused_once_the_enrollment_is_withdrawn(self, lab, db_session):
+        from app.models import Enrollment, EnrollmentStatus
+
+        client, rid, course_id = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        token = tokens.mint(db_session, a.id, s.id, a.max_expires_at)
+        enrollment = ensure_enrollment(db_session, user_id=s.id, course_id=course_id, tenant_id=s.tenant_id)
+        enrollment.status = EnrollmentStatus.withdrawn
+        db_session.commit()
+        for method, path in (("get", ""), ("post", "/console"), ("post", "/heartbeat")):
+            resp = getattr(client, method)(f"/lab-access/{a.id}{path}", headers={"X-Lab-Token": token})
+            assert resp.status_code == 403, (path, resp.text)
+        assert db_session.query(Enrollment).filter_by(user_id=s.id).count() == 1
+
     def test_an_lti_lab_launch_starts_the_lab_and_hands_over_a_token(self, lab, db_session):
         from app.routers.integrations import _launch_lab
 

@@ -66,6 +66,7 @@ logger = logging.getLogger(__name__)
 BASELINE = "lab-baseline"
 OUTBOX = "lab_outbox"  # sessions (under our lease) whose pending tasks go out after commit
 RESENT = "lab_resent"  # of those, sessions sending tasks a refusal or a crash left behind
+HOLDERS = "lab_lease_holders"  # db.info: session id -> this run's lease token
 MAX_EVIDENCE_BYTES = 64 * 1024
 MAX_EVIDENCE_ITEMS = 200
 LEASE_SECONDS = 120
@@ -190,8 +191,8 @@ def range_template(profile: dict[str, Any], port_groups: dict[str, str], name: s
 # A session with tasks left behind does nothing else until they are sent, and its step
 # clock restarts at the send: a grace period (e.g. for leftover VMs to be found before
 # the networks go back) counts from when the task really went out, not from the crash.
-# Known limit (CR1-11): the lease has no owner, so a process stalled past its lease can
-# still release one another process took since.
+# The lease has an owner (``lease_holder``): a run that outlived its lease commits, sends
+# and releases nothing once another process has taken it (CR1-16).
 
 
 def _hold(db: Session, session: LabSession) -> None:
@@ -216,6 +217,9 @@ def flush_outbox(db: Session) -> int:
             session = db.get(LabSession, session_id)
             if session is None:
                 continue
+            if not _keep(db, session):  # another process holds it now and sends what is left
+                logger.warning("lab session %s: lease lost before its tasks were sent", session.id)
+                continue
             kept: list[list[Any]] = []
             sent = False
             for task, args in json.loads(session.pending or "[]"):
@@ -236,7 +240,7 @@ def flush_outbox(db: Session) -> int:
             if sent and session.id in resent:
                 session.state_since = _now()
             unsent += len(kept)
-            release(session)
+            _keep(db, session, release=True)
     finally:
         db.commit()
     return unsent
@@ -257,21 +261,50 @@ def claim(db: Session, session: LabSession, seconds: int = LEASE_SECONDS) -> boo
     """Take the session's lease, so one process advances it at a time (sweeps in every API
     process, page polls and launches all meet here). False if another holds it."""
     now = _now()
+    holder = uuid.uuid4().hex
     taken = db.execute(
         update(LabSession)
         .where(
             LabSession.id == session.id,
             or_(LabSession.lease_until.is_(None), LabSession.lease_until < now),
         )
-        .values(lease_until=now + timedelta(seconds=seconds))
+        .values(lease_until=now + timedelta(seconds=seconds), lease_holder=holder)
         .execution_options(synchronize_session=False)
     ).rowcount
     db.refresh(session)
+    if taken == 1:
+        db.info.setdefault(HOLDERS, {})[session.id] = holder
     return taken == 1
 
 
-def release(session: LabSession) -> None:
-    session.lease_until = None
+def _keep(db: Session, session: LabSession, *, release: bool = False) -> bool:
+    """Renew this run's lease (or give it up) in the current transaction. False, writing
+    nothing, if another process holds it now: this run's lease lapsed and was taken."""
+    from sqlalchemy.orm.attributes import set_committed_value
+
+    holder = db.info.get(HOLDERS, {}).get(session.id)
+    if holder is None:
+        return False
+    values: dict[str, Any] = (
+        {"lease_until": None, "lease_holder": None}
+        if release
+        else {"lease_until": _now() + timedelta(seconds=LEASE_SECONDS)}
+    )
+    kept = (
+        db.execute(
+            update(LabSession)
+            .where(LabSession.id == session.id, LabSession.lease_holder == holder)
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        == 1
+    )
+    if kept:
+        for key, value in values.items():
+            set_committed_value(session, key, value)
+        if release:
+            db.info[HOLDERS].pop(session.id, None)
+    return kept
 
 
 # ── capacity ──────────────────────────────────────────────────────────
@@ -449,6 +482,7 @@ def launch(
         # Held by this launch until flush_outbox() has sent its tasks: a sweep must not
         # send them a second time in between.
         lease_until=now + timedelta(seconds=LEASE_SECONDS),
+        lease_holder=uuid.uuid4().hex,
     )
     try:
         with db.begin_nested():
@@ -459,6 +493,7 @@ def launch(
         if existing is None:
             raise
         return existing, False
+    db.info.setdefault(HOLDERS, {})[session.id] = session.lease_holder
     _hold(db, session)
     _start(db, session, profile)
     db.flush()
@@ -472,6 +507,15 @@ def _start(
     keeps its lifetime); stays queued, with why, otherwise."""
     rebuild = networks is not None
     if not rebuild:
+        # One quota decision per tenant at a time (CR1-12): without this lock two launches
+        # by different students each counted the labs running before either was written,
+        # and together went past the tenant's limits. The student's own row, which launch
+        # locks, did not serialise different students.
+        from ..models import Tenant
+
+        # NO KEY UPDATE: it serialises launches, but does not conflict with the KEY SHARE lock
+        # every insert referencing the tenant takes (FOR UPDATE deadlocked two launches).
+        db.query(Tenant.id).filter(Tenant.id == session.tenant_id).with_for_update(key_share=True).first()
         problem = _quota_problem(db, session)
         if problem:
             session.error = problem
@@ -770,10 +814,15 @@ def run_locked(db: Session, session: LabSession, fn, *args: Any, busy_ok: bool =
     except Exception:
         db.info.pop(OUTBOX, None)
         db.info.pop(RESENT, None)
-        release(session)
+        _keep(db, session, release=True)
         db.commit()
         raise
     _hold(db, session)
+    if not _keep(db, session):  # the operation outlived the lease and another process took it
+        db.info.pop(OUTBOX, None)
+        db.info.pop(RESENT, None)
+        db.rollback()
+        raise LabRefusedError("the lab was taken over by another request; try again in a moment")
     try:
         db.commit()  # the lease is still ours: no sweep sends these tasks in between
     except Exception:

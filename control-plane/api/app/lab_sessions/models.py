@@ -79,6 +79,7 @@ class LabSession(Base):
     end_reason: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # who advances it
+    lease_holder: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the run that holds the lease
     state_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     step_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     pending: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # tasks the broker refused (JSON)
