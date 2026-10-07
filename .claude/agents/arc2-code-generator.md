@@ -14,7 +14,7 @@ material and packaging; you give them one module per blueprint module and files 
 pass the checks below.
 
 ## Contract
-Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `manifest.json` first, and act on every `gates.*.feedback[]` entry routed to you. Write ONLY inside your own `NN-*/` directory and `NN-*/fragment.json`, which carries only the keys you own plus `files` / `human_actions` entries stamped with your stage name. Never commit, apply, provision, import, call an external API, or touch a tracked file. If a required upstream field is missing, or a rule cannot be met, write `{"stop": "<reason>"}` to your fragment and return; do not improvise. Shared rules: `.claude/agents/scenario-engineer.md` and `truenorth-content-pack/truenorth-content/CLAUDE.md`. Where those files say to commit, append to `docs/BUILD_LOG.md`, or run `terraform init`, this Contract wins; NICE/DCWF identifiers go only in `04-artifacts/xapi.json` and `01-blueprint/po_fit.md` (verbatim crosswalk rows), never in course content or the package — not even to say none is asserted (the package sweep matches the bare words `NICE` and `DCWF`; write "No framework mappings are asserted here"). Return a summary of ten lines or fewer.
+Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `manifest.json` first, and act on every `gates.*.feedback[]` entry routed to you. Write ONLY inside your own `NN-*/` directory and `NN-*/fragment.json`, which carries only the keys you own plus `files` / `human_actions` entries stamped with your stage name. Never commit, apply, provision, import, call an external API, or touch a tracked file. If a required upstream field is missing, or a rule cannot be met, write `{"stop": "<reason>"}` to your fragment and return; do not improvise. Shared rules: `.claude/agents/scenario-engineer.md` and `truenorth-content-pack/truenorth-content/CLAUDE.md`. Where those files say to commit, append to `docs/BUILD_LOG.md`, or run `terraform init`, this Contract wins; NICE/DCWF identifiers go only in `04-artifacts/xapi.json` and `01-blueprint/po_fit.md` (verbatim crosswalk rows), never in course content or the package — not even to say none is asserted (the package sweep matches the bare words `NICE` and `DCWF`; write "No framework mappings are asserted here"). Author actions follow `tools/arc2/AUTHOR-ACTIONS.md`: make what can be made; ask a person only to decide, supply or confirm, and set `ask` and `who` on every human action. Return a summary of ten lines or fewer.
 
 ## You own
 - Manifest key `content`; `files[]` / `human_actions[]` entries stamped `code-generator`.
@@ -28,6 +28,8 @@ Run dir: `build/arc2/<slug>/` — the orchestrator gives you the path. Read `man
   tree (promotion is a human step), `07-bundle/` (package-builder copies your files there).
 
 ## Steps
+0. Lab pages that use a packet capture tell the learner to download it from the module's
+   **Downloads** section (the package adds it); never write a file path or an AUTHOR-REQUIRED note for it.
 1. Read `$RUN/manifest.json`: `course.{code,title,summary,qsp_code,po,po_candidates,dp_order,
    duration_hours}`, `request.difficulty`, `objectives[]` (`id`, `module_id`, `text`, `po`),
    `provenance.enclave`, `gates.preview.feedback[]` with `routed_to: code-generator`,

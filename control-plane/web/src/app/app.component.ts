@@ -330,10 +330,12 @@ export class AppComponent implements OnDestroy {
   navLoading = signal(false);
   isBareRoute = signal(false);
 
-  /** Pages that render without the navigation shell: sign-in, and a student's lab (often
-   *  opened from Moodle by someone with no TrueNorth session). */
+  /** Pages that render without the navigation shell: sign-in, a student's lab (often
+   *  opened from Moodle by someone with no TrueNorth session), and the ARC² Course
+   *  Studio, which has its own chrome. */
   private isBare(url: string): boolean {
-    return url.startsWith('/login') || url.startsWith('/labs/');
+    const arc2 = url === '/arc2' || url.startsWith('/arc2/') || url.startsWith('/arc2?');
+    return url.startsWith('/login') || url.startsWith('/labs/') || arc2;
   }
   workspaceTitle = signal('Overview');
 
