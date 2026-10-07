@@ -29,6 +29,7 @@ from .kit import router as kit_router
 from .lab_sessions import router as lab_sessions_router
 from .network_devices import router as network_devices_router
 from .noise import router as noise_router
+from .notifications import router as notifications_router
 from .onboarding import router as onboarding_router
 from .ops_center import router as ops_center_router
 from .proxmox import router as proxmox_router
@@ -37,10 +38,11 @@ from .quizzes import router as quizzes_router
 from .ranges import router as ranges_router
 from .registration import router as registration_router
 from .scenarios import router as scenarios_router
-from .scheduling import router as scheduling_router
 from .storage import router as storage_router
 from .templates import router as templates_router
 from .threat_intel import router as threat_intel_router
+from .tickets import router as tickets_router
+from .wiki import router as wiki_router
 
 __all__ = [
     "registration_router",
@@ -56,7 +58,6 @@ __all__ = [
     "ai_authoring_router",
     "admin_router",
     "proxmox_router",
-    "scheduling_router",
     "courses_router",
     "learning_paths_router",
     "transcript_router",
@@ -85,4 +86,7 @@ __all__ = [
     "course_publications_router",
     "lab_sessions_router",
     "greyspace_router",
+    "wiki_router",
+    "tickets_router",
+    "notifications_router",
 ]

@@ -37,6 +37,7 @@ from .greyspace import models as _greyspace_models  # noqa: F401 — registers r
 from .log_format import configure_logging
 from .models import Range, Tenant, User, UserRole
 from .rbac import Permission, require_permission
+from .scheduler import clock as scheduler_clock
 from .schemas import HealthOut
 from .search_backends import get_search_backend
 from .search_backends.query import MAX_QUERY_LENGTH, QueryError, parse_query
@@ -90,6 +91,8 @@ async def lifespan(app: FastAPI):
 
     interval = redispatch_interval()
     range_resend = asyncio.create_task(redispatch_loop(SessionLocal, interval)) if interval > 0 else None
+    # Moves bookings along as time passes (docs/adr/0004-scheduler-module.md).
+    clock_task = asyncio.create_task(scheduler_clock.run_forever()) if _env_flag("SCHEDULER_CLOCK_ENABLED") else None
 
     # WebSocket heartbeat (no Redis): drops dead sockets and closes those whose token has
     # expired (app/ws_auth.py). Nothing started it before, so a socket outlived its user.
@@ -102,6 +105,8 @@ async def lifespan(app: FastAPI):
         range_resend.cancel()
     if lab_sweep is not None:
         lab_sweep.cancel()
+    if clock_task:
+        clock_task.cancel()
 
     # Graceful shutdown of any started subsystems
     ws_mgr = getattr(app.state, "ws_manager", None)
@@ -186,6 +191,11 @@ app = FastAPI(
     servers=[{"url": SERVER_PREFIX}],
 )
 
+# -- 422s that survive NaN/Infinity input (app/validation_errors.py) --------
+from .validation_errors import install as install_validation_errors  # noqa: E402
+
+install_validation_errors(app)
+
 # -- CORS ------------------------------------------------------------------
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:4200,http://localhost:3000").split(",")
 app.add_middleware(
@@ -263,6 +273,7 @@ from .routers import (
     lti_router,
     network_devices_router,
     noise_router,
+    notifications_router,
     onboarding_router,
     ops_center_router,
     proxmox_router,
@@ -271,12 +282,16 @@ from .routers import (
     ranges_router,
     registration_router,
     scenarios_router,
-    scheduling_router,
     storage_router,
     templates_router,
     threat_intel_router,
+    tickets_router,
     transcript_router,
+    wiki_router,
 )
+from .scheduler.router import feed_router as scheduling_feed_router  # noqa: E402
+from .scheduler.router import me_router as scheduling_me_router  # noqa: E402
+from .scheduler.router import router as scheduling_router  # noqa: E402
 
 # Identity intake. Registration is mounted first because /auth/me is the one
 # endpoint reachable without a users row — it is how the SPA learns whether the
@@ -295,7 +310,9 @@ app.include_router(noise_router)
 app.include_router(ai_authoring_router)
 app.include_router(admin_router)
 app.include_router(proxmox_router)
-app.include_router(scheduling_router)
+app.include_router(scheduling_router)  # app/scheduler (ADR 0004)
+app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
+app.include_router(scheduling_me_router)  # your own sessions and feed link
 # LMS & Integration routers
 app.include_router(courses_router)
 app.include_router(course_releases_router)
@@ -332,6 +349,10 @@ app.include_router(adaptive_learning_router)
 app.include_router(ops_center_router)
 # Greyspace: a simulated internet attached to a range (ADR 0007)
 app.include_router(greyspace_router)
+# Knowledge base, trouble tickets ("Support") and the in-app notification bell
+app.include_router(wiki_router)
+app.include_router(tickets_router)
+app.include_router(notifications_router)
 
 # -- API versioning: /api/v1/... -> canonical route (docs/adr/0002) ---------
 # Added last so it is the outermost middleware: rate limiting, metrics and tracing all

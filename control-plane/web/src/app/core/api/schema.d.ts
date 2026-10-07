@@ -208,7 +208,12 @@ export interface paths {
         get: operations["get_backend_ai_config_backends__backend_id__get"];
         put?: never;
         post?: never;
-        /** Delete Backend */
+        /**
+         * Delete Backend
+         * @description Delete a backend with its fleet nodes and the model routes that point at it.
+         *
+         *     Nodes and routes have no use without their backend, so they go with it.
+         */
         delete: operations["delete_backend_ai_config_backends__backend_id__delete"];
         options?: never;
         head?: never;
@@ -1084,6 +1089,12 @@ export interface paths {
         /**
          * Delete Course
          * @description Delete a course and its modules.  **Permission: course:author**
+         *
+         *     409 while it has enrollments, releases or publications: Student records and
+         *     what was published are history (unpublish the course instead); also while a
+         *     scheduled event not yet completed or cancelled books it (finished ones keep their
+         *     row without the course). Module content links go with the modules; quizzes are
+         *     kept, detached from them.
          */
         delete: operations["delete_course_courses__course_id__delete"];
         options?: never;
@@ -1482,7 +1493,10 @@ export interface paths {
         get: operations["get_group_directory_groups__group_id__get"];
         put?: never;
         post?: never;
-        /** Delete Group */
+        /**
+         * Delete Group
+         * @description Delete a security group and its memberships (they mean nothing without it).
+         */
         delete: operations["delete_group_directory_groups__group_id__delete"];
         options?: never;
         head?: never;
@@ -1604,7 +1618,10 @@ export interface paths {
         get: operations["get_ou_directory_ous__ou_id__get"];
         put?: never;
         post?: never;
-        /** Delete Ou */
+        /**
+         * Delete Ou
+         * @description Delete an OU.  409 while sub-OUs, security groups or teams sit under it.
+         */
         delete: operations["delete_ou_directory_ous__ou_id__delete"];
         options?: never;
         head?: never;
@@ -2205,7 +2222,13 @@ export interface paths {
         get: operations["get_connection_hypervisors_connections__conn_id__get"];
         put?: never;
         post?: never;
-        /** Delete Connection */
+        /**
+         * Delete Connection
+         * @description Delete a connection with the hosts and pools discovered through it.
+         *
+         *     Those rows are inventory read from the hypervisor, with no meaning once the
+         *     connection is gone, so they go with it.
+         */
         delete: operations["delete_connection_hypervisors_connections__conn_id__delete"];
         options?: never;
         head?: never;
@@ -2461,6 +2484,10 @@ export interface paths {
         /**
          * Deregister Platform
          * @description Remove a registered platform.
+         *
+         *     409 while Student activity records synced from it, or course publications to it,
+         *     exist: those are history (deactivate the platform instead). Its LTI nonces and
+         *     launches only serve talking to the platform, so they go with it.
          */
         delete: operations["deregister_platform_integrations_platforms__platform_id__delete"];
         options?: never;
@@ -2803,6 +2830,9 @@ export interface paths {
         /**
          * Delete Learning Path
          * @description Delete a learning path.  **Permission: course:author**
+         *
+         *     409 while a registration request names it: the request records what the person
+         *     asked to join (unpublish the path instead).
          */
         delete: operations["delete_learning_path_learning_paths__lp_id__delete"];
         options?: never;
@@ -3286,6 +3316,74 @@ export interface paths {
         get: operations["activity_stats_noise_ranges__range_id__stats_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark All Read */
+        post: operations["mark_all_read_notifications_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unread Count */
+        get: operations["unread_count_notifications_unread_count_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Read */
+        post: operations["mark_read_notifications__notification_id__read_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5240,7 +5338,9 @@ export interface paths {
          * Delete Scenario
          * @description Delete a scenario.  **Permission: scenario:delete**
          *
-         *     409 while any exercise (including a soft-deleted one) still references it.
+         *     409 while any exercise (including a soft-deleted one) still references it, or a
+         *     scheduled event not yet completed or cancelled will run it. Finished events keep
+         *     their row without the scenario.
          */
         delete: operations["delete_scenario_scenarios__scenario_id__delete"];
         options?: never;
@@ -5280,6 +5380,9 @@ export interface paths {
         /**
          * Check if deployment fits
          * @description Check whether a proposed deployment fits within the cluster at the given time.
+         *
+         *     With `template_id`, the need is that template's VM specs. The window includes the
+         *     provisioning lead and teardown grace, exactly as booking it would.
          */
         post: operations["check_capacity_schedule_check_post"];
         delete?: never;
@@ -5297,14 +5400,17 @@ export interface paths {
         };
         /**
          * List scheduled events
-         * @description List all scheduled events, optionally filtered by state.
+         * @description List the caller's tenant's scheduled events, optionally filtered by state and by a
+         *     window they overlap (the calendar's week).
          */
         get: operations["list_events_schedule_events_get"];
         put?: never;
         /**
          * Create a scheduled event
-         * @description Create a new event with resource reservation.  Will reject if it
-         *     would cause an over-commitment.
+         * @description Book a session. Refused with 409 when its range or instructor is already booked
+         *     then. One that does not fit the cluster is refused with 409 (policy `block`) or
+         *     created with warnings (policy `warn`). A draft holds nothing and is checked when it
+         *     is scheduled.
          */
         post: operations["create_event_schedule_events_post"];
         delete?: never;
@@ -5322,10 +5428,17 @@ export interface paths {
         };
         /** Get a scheduled event */
         get: operations["get_event_schedule_events__event_id__get"];
-        /** Update a scheduled event */
+        /**
+         * Update a scheduled event
+         * @description Reschedule or resize a draft or scheduled booking (409 once it is being built).
+         */
         put: operations["update_event_schedule_events__event_id__put"];
         post?: never;
-        /** Cancel/delete event */
+        /**
+         * Cancel an event
+         * @description Same as POST .../cancel. Events are no longer hard-deleted: a cancelled booking
+         *     is history, like a completed one.
+         */
         delete: operations["delete_event_schedule_events__event_id__delete"];
         options?: never;
         head?: never;
@@ -5341,8 +5454,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark event as active */
+        /**
+         * Mark event as active
+         * @description scheduled or provisioning -> active.
+         */
         post: operations["activate_event_schedule_events__event_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an event
+         * @description Any state before completed -> cancelled. The row stays as history.
+         */
+        post: operations["cancel_event_schedule_events__event_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5358,8 +5494,136 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark event as completed */
+        /**
+         * Mark event as completed
+         * @description active -> completed.
+         */
         post: operations["complete_event_schedule_events__event_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/events/{event_id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule a draft
+         * @description draft -> scheduled, checked for conflicts and capacity exactly as a new booking.
+         */
+        post: operations["schedule_event_schedule_events__event_id__schedule_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/feed-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether you have a calendar feed */
+        get: operations["feed_token_status_schedule_feed_token_get"];
+        put?: never;
+        /**
+         * Create or regenerate your calendar feed URL
+         * @description Returns the subscription URL once. Regenerating stops the previous URL working.
+         */
+        post: operations["feed_token_issue_schedule_feed_token_post"];
+        /** Revoke your calendar feed URL */
+        delete: operations["feed_token_revoke_schedule_feed_token_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/feed/{token}.ics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calendar feed (iCalendar) */
+        get: operations["calendar_feed_schedule_feed__token__ics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your upcoming sessions
+         * @description Sessions you teach, and for Students the sessions of courses they are enrolled in.
+         */
+        get: operations["my_sessions_schedule_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Over-capacity policy
+         * @description `block`: a booking that does not fit is refused for everyone. `warn`: it is
+         *     created, with warnings in the response, and the warning is audit-logged.
+         */
+        get: operations["get_policy_schedule_policy_get"];
+        /**
+         * Set the over-capacity policy (platform admin)
+         * @description Platform-wide, because every tenant books against the same cluster. Audit-logged.
+         */
+        put: operations["put_policy_schedule_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/tick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the scheduler clock now (platform admin)
+         * @description One clock pass, as the background clock runs every minute: provision at the lead,
+         *     activate at the start, complete and tear down after the grace, send reminders.
+         */
+        post: operations["run_tick_schedule_tick_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5375,8 +5639,9 @@ export interface paths {
         };
         /**
          * Resource timeline for capacity planning
-         * @description Return hourly resource commitment buckets for the next N days.
-         *     Used to render the capacity timeline chart in the dashboard.
+         * @description Committed capacity per slot, build and teardown time included, so back-to-back
+         *     sessions are not counted as concurrent at a fine enough resolution. Feeds the
+         *     scheduler's load bars and the Range Ops heatmap.
          */
         get: operations["resource_timeline_schedule_timeline_get"];
         put?: never;
@@ -5415,7 +5680,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete Appliance */
+        /**
+         * Delete Appliance
+         * @description Delete an appliance.  409 while volumes are still recorded on it.
+         */
         delete: operations["delete_appliance_storage_appliances__appliance_id__delete"];
         options?: never;
         head?: never;
@@ -5713,6 +5981,9 @@ export interface paths {
         /**
          * Delete Template
          * @description Delete a template.  **Permission: template:delete**
+         *
+         *     409 while a range built from it exists, or an event not yet completed or
+         *     cancelled reserves it. Its PO mapping goes with it; finished events keep their row without it.
          */
         delete: operations["delete_template_templates__template_id__delete"];
         options?: never;
@@ -5875,6 +6146,204 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tickets */
+        get: operations["list_tickets_tickets_get"];
+        put?: never;
+        /** Create Ticket */
+        post: operations["create_ticket_tickets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/assignees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Assignees */
+        get: operations["list_assignees_tickets_assignees_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/attachments/{attachment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Attachment */
+        get: operations["download_attachment_tickets_attachments__attachment_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Attachment */
+        delete: operations["delete_attachment_tickets_attachments__attachment_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Board */
+        get: operations["board_tickets_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/queues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Queues */
+        get: operations["list_queues_tickets_queues_get"];
+        put?: never;
+        /** Create Queue */
+        post: operations["create_queue_tickets_queues_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/queues/{queue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Queue */
+        put: operations["update_queue_tickets_queues__queue_id__put"];
+        post?: never;
+        /** Delete Queue */
+        delete: operations["delete_queue_tickets_queues__queue_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ticket */
+        get: operations["get_ticket_tickets__ticket_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Ticket */
+        delete: operations["delete_ticket_tickets__ticket_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Ticket */
+        patch: operations["update_ticket_tickets__ticket_id__patch"];
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Activity */
+        get: operations["list_activity_tickets__ticket_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Attachments */
+        get: operations["list_attachments_tickets__ticket_id__attachments_get"];
+        put?: never;
+        /** Upload Attachments */
+        post: operations["upload_attachments_tickets__ticket_id__attachments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Comments */
+        get: operations["list_comments_tickets__ticket_id__comments_get"];
+        put?: never;
+        /** Add Comment */
+        post: operations["add_comment_tickets__ticket_id__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Ticket
+         * @description Drag-and-drop on the board: change column and/or position within it.
+         */
+        post: operations["move_ticket_tickets__ticket_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -5994,6 +6463,177 @@ export interface paths {
          *     on every other trainee's transcript. They return when exercises are attributable.
          */
         get: operations["get_transcript_users__user_id__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Page */
+        get: operations["get_page_wiki_pages__page_id__get"];
+        /** Update Page */
+        put: operations["update_page_wiki_pages__page_id__put"];
+        post?: never;
+        /**
+         * Delete Page
+         * @description Soft-delete the page and everything under it; revisions are kept.
+         */
+        delete: operations["delete_page_wiki_pages__page_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Revisions */
+        get: operations["list_revisions_wiki_pages__page_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}/revisions/{n}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Revision */
+        get: operations["get_revision_wiki_pages__page_id__revisions__n__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}/revisions/{n}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Revision
+         * @description Bring an old version back as a NEW revision; history is never rewritten.
+         *
+         *     Like an edit, it names the revision it was decided against (``base_revision``): a
+         *     restore chosen while looking at revision 4 must not wipe out a revision 5 saved
+         *     since. A stale base is a 409 with the current page.
+         */
+        post: operations["restore_revision_wiki_pages__page_id__revisions__n__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_wiki_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/spaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Spaces */
+        get: operations["list_spaces_wiki_spaces_get"];
+        put?: never;
+        /** Create Space */
+        post: operations["create_space_wiki_spaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/spaces/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Space */
+        get: operations["get_space_wiki_spaces__slug__get"];
+        /** Update Space */
+        put: operations["update_space_wiki_spaces__slug__put"];
+        post?: never;
+        /**
+         * Archive Space
+         * @description Archive, not destroy: pages and their history stay restorable.
+         */
+        delete: operations["archive_space_wiki_spaces__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/spaces/{slug}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Page */
+        post: operations["create_page_wiki_spaces__slug__pages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/spaces/{slug}/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Space Tree */
+        get: operations["space_tree_wiki_spaces__slug__tree_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6659,6 +7299,11 @@ export interface components {
             /** State */
             state: string;
         };
+        /** Body_upload_attachments_tickets__ticket_id__attachments_post */
+        Body_upload_attachments_tickets__ticket_id__attachments_post: {
+            /** Files */
+            files: string[];
+        };
         /** Body_upload_course_release_course_releases_post */
         Body_upload_course_release_course_releases_post: {
             /** File */
@@ -6744,6 +7389,11 @@ export interface components {
              */
             start_time: string;
             /**
+             * Template Id
+             * @description Size the check from this template; overrides the *_needed values
+             */
+            template_id?: string | null;
+            /**
              * Vcpu Needed
              * @default 0
              */
@@ -6755,6 +7405,11 @@ export interface components {
             disk_gb_available: number;
             /** Disk Gb Committed */
             disk_gb_committed: number;
+            /**
+             * Disk Gb Needed
+             * @default 0
+             */
+            disk_gb_needed?: number;
             /** Disk Gb Total */
             disk_gb_total: number;
             /** Fits */
@@ -6763,18 +7418,49 @@ export interface components {
             message: string;
             /** Overlapping Events */
             overlapping_events: number;
+            /**
+             * Policy
+             * @default block
+             */
+            policy?: string;
             /** Ram Mb Available */
             ram_mb_available: number;
             /** Ram Mb Committed */
             ram_mb_committed: number;
+            /**
+             * Ram Mb Needed
+             * @default 0
+             */
+            ram_mb_needed?: number;
             /** Ram Mb Total */
             ram_mb_total: number;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons?: string[];
+            /**
+             * Supply Source
+             * @description Where cluster totals came from: env fallback, or discovery
+             * @default env
+             */
+            supply_source?: string;
             /** Vcpu Available */
             vcpu_available: number;
             /** Vcpu Committed */
             vcpu_committed: number;
+            /**
+             * Vcpu Needed
+             * @default 0
+             */
+            vcpu_needed?: number;
             /** Vcpu Total */
             vcpu_total: number;
+            /**
+             * Vm Count Needed
+             * @default 0
+             */
+            vm_count_needed?: number;
         };
         /** CertificationIn */
         CertificationIn: {
@@ -7694,6 +8380,11 @@ export interface components {
         };
         /** EventIn */
         EventIn: {
+            /**
+             * Course Id
+             * @description The class: this course's active Students attend
+             */
+            course_id?: string | null;
             /** Description */
             description?: string | null;
             /**
@@ -7702,10 +8393,26 @@ export interface components {
              */
             disk_gb_total?: number;
             /**
+             * Draft
+             * @description Create as a draft: holds nothing and is not checked until scheduled
+             * @default false
+             */
+            draft?: boolean;
+            /**
              * End Time
              * Format: date-time
              */
             end_time: string;
+            /**
+             * Exercise Id
+             * @description Use this existing exercise (and its range) instead
+             */
+            exercise_id?: string | null;
+            /**
+             * Instructor Id
+             * @description Who teaches it; defaults to the caller when they are an instructor
+             */
+            instructor_id?: string | null;
             /** Name */
             name: string;
             /**
@@ -7716,11 +8423,19 @@ export interface components {
             /** Range Id */
             range_id?: string | null;
             /**
+             * Scenario Id
+             * @description Run this scenario: a pending exercise is created when the range is built
+             */
+            scenario_id?: string | null;
+            /**
              * Start Time
              * Format: date-time
              */
             start_time: string;
-            /** Template Id */
+            /**
+             * Template Id
+             * @description Size the booking from this template's VM specs
+             */
             template_id?: string | null;
             /**
              * Vcpu Total
@@ -7732,6 +8447,73 @@ export interface components {
              * @default 0
              */
             vm_count?: number;
+        };
+        /** EventListOut */
+        EventListOut: {
+            /** Items */
+            items: components["schemas"]["EventOut"][];
+            /** Total */
+            total: number;
+        };
+        /** EventOut */
+        EventOut: {
+            /** Course Id */
+            course_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by?: string | null;
+            /** Description */
+            description: string | null;
+            /** Disk Gb Total */
+            disk_gb_total: number;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /** Id */
+            id: string;
+            /** Instructor Id */
+            instructor_id?: string | null;
+            /** Name */
+            name: string;
+            /** Ram Mb Total */
+            ram_mb_total: number;
+            /** Range Id */
+            range_id: string | null;
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
+            /** Template Id */
+            template_id: string | null;
+            /** Tenant Id */
+            tenant_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Vcpu Total */
+            vcpu_total: number;
+            /** Vm Count */
+            vm_count: number;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings?: string[];
         };
         /** EvidenceIn */
         EvidenceIn: {
@@ -7963,6 +8745,34 @@ export interface components {
             lti_token_url?: string | null;
             /** Name */
             name?: string;
+        };
+        /**
+         * FeedTokenIssued
+         * @description Shown once: only a hash of the token is kept.
+         */
+        FeedTokenIssued: {
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Url
+             * @description HTTPS subscription URL; paste into Outlook 'Subscribe from web'
+             */
+            url: string;
+            /**
+             * Webcal Url
+             * @description The same URL as webcal://, for one-click subscribe
+             */
+            webcal_url: string;
+        };
+        /** FeedTokenStatus */
+        FeedTokenStatus: {
+            /** Active */
+            active: boolean;
+            /** Issued At */
+            issued_at?: string | null;
         };
         /** FleetNodeCreateIn */
         FleetNodeCreateIn: {
@@ -8839,6 +9649,30 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * MySessionOut
+         * @description A session as a Student sees it: no capacity, no other people.
+         */
+        MySessionOut: {
+            /** Description */
+            description: string | null;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** State */
+            state: string;
+        };
         /** NationOut */
         NationOut: {
             /** Flag Emoji */
@@ -9264,6 +10098,39 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** NotificationOut */
+        NotificationOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @default info
+             */
+            kind?: string;
+            /** Level */
+            level: string;
+            /** Link */
+            link?: string | null;
+            /** Message */
+            message: string;
+            /** Read */
+            read: boolean;
+            /** Title */
+            title: string;
+        };
+        /** NotificationUnreadCountOut */
+        NotificationUnreadCountOut: {
+            /** Unread */
+            unread: number;
+        };
         /** OUIn */
         OUIn: {
             /** Name */
@@ -9453,6 +10320,12 @@ export interface components {
             /** Shared Commands Count */
             shared_commands_count: number;
         };
+        /**
+         * OvercapacityPolicy
+         * @description What happens to a booking that does not fit (ADR 0004, "Booking rules").
+         * @enum {string}
+         */
+        OvercapacityPolicy: "block" | "warn";
         /** POOut */
         POOut: {
             /**
@@ -9550,6 +10423,20 @@ export interface components {
             offset: number;
             /** Total */
             total: number;
+        };
+        /** PolicyIn */
+        PolicyIn: {
+            overcapacity: components["schemas"]["OvercapacityPolicy"];
+        };
+        /** PolicyOut */
+        PolicyOut: {
+            /**
+             * Can Change
+             * @description Whether the caller may change it (platform administrators only)
+             * @default false
+             */
+            can_change?: boolean;
+            overcapacity: components["schemas"]["OvercapacityPolicy"];
         };
         /** ProfileIn */
         ProfileIn: {
@@ -10669,6 +11556,48 @@ export interface components {
             /** Volume Name */
             volume_name: string;
         };
+        /** SupportQueueIn */
+        SupportQueueIn: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default?: boolean;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** SupportQueueOut */
+        SupportQueueOut: {
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** SupportQueueUpdate */
+        SupportQueueUpdate: {
+            /** Description */
+            description?: string;
+            /** Is Default */
+            is_default?: boolean;
+            /** Name */
+            name?: string;
+        };
         /** TeamFullIn */
         TeamFullIn: {
             /** Color Hex */
@@ -10964,6 +11893,393 @@ export interface components {
             /** Url */
             url?: string | null;
         };
+        /** TicketActivityOut */
+        TicketActivityOut: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /**
+             * Actor Name
+             * @default
+             */
+            actor_name?: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Field */
+            field: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** New Value */
+            new_value: string;
+            /** Old Value */
+            old_value: string;
+        };
+        /** TicketAssigneeOut */
+        TicketAssigneeOut: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Role */
+            role: string;
+        };
+        /** TicketAttachmentOut */
+        TicketAttachmentOut: {
+            /** Content Type */
+            content_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Uploaded By
+             * Format: uuid
+             */
+            uploaded_by: string;
+        };
+        /** TicketBoardColumn */
+        TicketBoardColumn: {
+            /** Status */
+            status: string;
+            /** Tickets */
+            tickets: components["schemas"]["TicketListOut"][];
+        };
+        /** TicketCommentIn */
+        TicketCommentIn: {
+            /** Body */
+            body: string;
+            /**
+             * Is Internal
+             * @default false
+             */
+            is_internal?: boolean;
+        };
+        /** TicketCommentOut */
+        TicketCommentOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /**
+             * Author Name
+             * @default
+             */
+            author_name?: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Internal */
+            is_internal: boolean;
+        };
+        /** TicketIn */
+        TicketIn: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /**
+             * Category
+             * @default other
+             */
+            category?: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /**
+             * Labels
+             * @default
+             */
+            labels?: string;
+            /**
+             * Priority
+             * @default medium
+             */
+            priority?: string;
+            /** Queue Id */
+            queue_id?: string | null;
+            /** Range Id */
+            range_id?: string | null;
+            /** Subject */
+            subject: string;
+            /**
+             * Type
+             * @default incident
+             */
+            type?: string;
+        };
+        /** TicketListOut */
+        TicketListOut: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /**
+             * Assignee Name
+             * @default
+             */
+            assignee_name?: string;
+            /** Board Order */
+            board_order: number;
+            /** Category */
+            category: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Key
+             * @default
+             */
+            key?: string;
+            /** Labels */
+            labels: string;
+            /** Number */
+            number: number;
+            /** Priority */
+            priority: string;
+            /** Queue Id */
+            queue_id?: string | null;
+            /**
+             * Queue Name
+             * @default
+             */
+            queue_name?: string;
+            /** Range Id */
+            range_id?: string | null;
+            /**
+             * Reporter Id
+             * Format: uuid
+             */
+            reporter_id: string;
+            /**
+             * Reporter Name
+             * @default
+             */
+            reporter_name?: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Type */
+            type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TicketMoveIn */
+        TicketMoveIn: {
+            /**
+             * Board Order
+             * @default 0
+             */
+            board_order?: number;
+            /** Status */
+            status: string;
+        };
+        /** TicketOut */
+        TicketOut: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /**
+             * Assignee Name
+             * @default
+             */
+            assignee_name?: string;
+            /** Board Order */
+            board_order: number;
+            /**
+             * Can Work
+             * @default false
+             */
+            can_work?: boolean;
+            /** Category */
+            category: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /**
+             * Exercise Name
+             * @default
+             */
+            exercise_name?: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Key
+             * @default
+             */
+            key?: string;
+            /** Labels */
+            labels: string;
+            /** Number */
+            number: number;
+            /** Priority */
+            priority: string;
+            /** Queue Id */
+            queue_id?: string | null;
+            /**
+             * Queue Name
+             * @default
+             */
+            queue_name?: string;
+            /** Range Id */
+            range_id?: string | null;
+            /**
+             * Range Name
+             * @default
+             */
+            range_name?: string;
+            /**
+             * Reporter Id
+             * Format: uuid
+             */
+            reporter_id: string;
+            /**
+             * Reporter Name
+             * @default
+             */
+            reporter_name?: string;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+            /** Type */
+            type: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** TicketUpdate */
+        TicketUpdate: {
+            /** Assignee Id */
+            assignee_id?: string | null;
+            /** Category */
+            category?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Exercise Id */
+            exercise_id?: string | null;
+            /** Labels */
+            labels?: string | null;
+            /** Priority */
+            priority?: string | null;
+            /** Queue Id */
+            queue_id?: string | null;
+            /** Range Id */
+            range_id?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Type */
+            type?: string | null;
+            /**
+             * Unassign
+             * @default false
+             */
+            unassign?: boolean;
+            /**
+             * Unlink Exercise
+             * @default false
+             */
+            unlink_exercise?: boolean;
+            /**
+             * Unlink Range
+             * @default false
+             */
+            unlink_range?: boolean;
+        };
+        /** TimelineBucket */
+        TimelineBucket: {
+            /** Disk Gb Committed */
+            disk_gb_committed: number;
+            /** Event Count */
+            event_count: number;
+            /** Ram Mb Committed */
+            ram_mb_committed: number;
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+            /** Vcpu Committed */
+            vcpu_committed: number;
+        };
+        /** TimelineOut */
+        TimelineOut: {
+            /** Buckets */
+            buckets: components["schemas"]["TimelineBucket"][];
+            /** Cluster Disk Gb */
+            cluster_disk_gb: number;
+            /** Cluster Ram Mb */
+            cluster_ram_mb: number;
+            /** Cluster Vcpu */
+            cluster_vcpu: number;
+            /** Grace Minutes */
+            grace_minutes: number;
+            /** Lead Minutes */
+            lead_minutes: number;
+            /** Resolution Minutes */
+            resolution_minutes: number;
+            /** Supply Source */
+            supply_source: string;
+        };
         /**
          * TranscriptEntry
          * @description A single learning record in a user's unified transcript.
@@ -11223,6 +12539,309 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WikiPageIn */
+        WikiPageIn: {
+            /**
+             * Body
+             * @default
+             */
+            body?: string;
+            /**
+             * Is Published
+             * @default true
+             */
+            is_published?: boolean;
+            /** Parent Id */
+            parent_id?: string | null;
+            /**
+             * Tags
+             * @default
+             */
+            tags?: string;
+            /** Title */
+            title: string;
+        };
+        /** WikiPageOut */
+        WikiPageOut: {
+            /**
+             * Author Id
+             * Format: uuid
+             */
+            author_id: string;
+            /** Body */
+            body: string;
+            /** Breadcrumbs */
+            breadcrumbs?: components["schemas"]["WikiPageRef"][];
+            /** Children */
+            children?: components["schemas"]["WikiPageRef"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Published */
+            is_published: boolean;
+            /**
+             * Last Editor Id
+             * Format: uuid
+             */
+            last_editor_id: string;
+            /**
+             * Last Editor Name
+             * @default
+             */
+            last_editor_name?: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Revision Number */
+            revision_number: number;
+            /** Slug */
+            slug: string;
+            /**
+             * Space Archived
+             * @default false
+             */
+            space_archived?: boolean;
+            /**
+             * Space Id
+             * Format: uuid
+             */
+            space_id: string;
+            /**
+             * Space Slug
+             * @default
+             */
+            space_slug?: string;
+            /** Tags */
+            tags: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WikiPageRef
+         * @description A link to another page: enough to name it and route to it.
+         */
+        WikiPageRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+        };
+        /** WikiPageUpdate */
+        WikiPageUpdate: {
+            /**
+             * Base Revision
+             * @description revision_number the edit started from
+             */
+            base_revision: number;
+            /** Body */
+            body?: string | null;
+            /**
+             * Edit Summary
+             * @default
+             */
+            edit_summary?: string;
+            /** Is Published */
+            is_published?: boolean | null;
+            /**
+             * Move To Root
+             * @default false
+             */
+            move_to_root?: boolean;
+            /** Ordinal */
+            ordinal?: number | null;
+            /** Parent Id */
+            parent_id?: string | null;
+            /** Tags */
+            tags?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** WikiRestoreRequest */
+        WikiRestoreRequest: {
+            /**
+             * Base Revision
+             * @description revision_number the restore was decided against
+             */
+            base_revision: number;
+        };
+        /** WikiRevisionListOut */
+        WikiRevisionListOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Edit Summary */
+            edit_summary: string;
+            /**
+             * Editor Id
+             * Format: uuid
+             */
+            editor_id: string;
+            /**
+             * Editor Name
+             * @default
+             */
+            editor_name?: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision Number */
+            revision_number: number;
+            /** Title */
+            title: string;
+        };
+        /** WikiRevisionOut */
+        WikiRevisionOut: {
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Edit Summary */
+            edit_summary: string;
+            /**
+             * Editor Id
+             * Format: uuid
+             */
+            editor_id: string;
+            /**
+             * Editor Name
+             * @default
+             */
+            editor_name?: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision Number */
+            revision_number: number;
+            /** Title */
+            title: string;
+        };
+        /** WikiSearchHit */
+        WikiSearchHit: {
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Snippet */
+            snippet: string;
+            /** Space Name */
+            space_name: string;
+            /** Space Slug */
+            space_slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WikiSpaceIn */
+        WikiSpaceIn: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Icon
+             * @default folder
+             */
+            icon?: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Visibility
+             * @default all
+             */
+            visibility?: string;
+        };
+        /** WikiSpaceOut */
+        WikiSpaceOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Icon */
+            icon: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Archived */
+            is_archived: boolean;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Visibility */
+            visibility: string;
+        };
+        /** WikiSpaceUpdate */
+        WikiSpaceUpdate: {
+            /** Description */
+            description?: string;
+            /** Icon */
+            icon?: string;
+            /** Is Archived */
+            is_archived?: boolean;
+            /** Name */
+            name?: string;
+            /** Visibility */
+            visibility?: string;
+        };
+        /** WikiTreeNode */
+        WikiTreeNode: {
+            /** Children */
+            children?: components["schemas"]["WikiTreeNode"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Published */
+            is_published: boolean;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
         };
         /** YamlValidateIn */
         YamlValidateIn: {
@@ -17577,6 +19196,109 @@ export interface operations {
             };
         };
     };
+    list_notifications_notifications_get: {
+        parameters: {
+            query?: {
+                unread_only?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_all_read_notifications_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationUnreadCountOut"];
+                };
+            };
+        };
+    };
+    unread_count_notifications_unread_count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationUnreadCountOut"];
+                };
+            };
+        };
+    };
+    mark_read_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     complete_onboarding_complete_post: {
         parameters: {
             query?: never;
@@ -21285,6 +23007,10 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string | null;
+                /** @description Only events ending after this */
+                start?: string | null;
+                /** @description Only events starting before this */
+                end?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -21300,7 +23026,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventListOut"];
                 };
             };
             /** @description Validation Error */
@@ -21333,7 +23059,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -21364,7 +23090,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -21399,7 +23125,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -21459,7 +23185,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_event_schedule_events__event_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -21490,7 +23247,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EventOut"];
                 };
             };
             /** @description Validation Error */
@@ -21504,11 +23261,209 @@ export interface operations {
             };
         };
     };
-    resource_timeline_schedule_timeline_get: {
+    schedule_event_schedule_events__event_id__schedule_post: {
         parameters: {
-            query?: {
-                days?: number;
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    feed_token_status_schedule_feed_token_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedTokenStatus"];
+                };
+            };
+        };
+    };
+    feed_token_issue_schedule_feed_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedTokenIssued"];
+                };
+            };
+        };
+    };
+    feed_token_revoke_schedule_feed_token_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    calendar_feed_schedule_feed__token__ics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/calendar": unknown;
+                };
+            };
+            /** @description Unknown or revoked feed */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_sessions_schedule_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MySessionOut"][];
+                };
+            };
+        };
+    };
+    get_policy_schedule_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+        };
+    };
+    put_policy_schedule_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_tick_schedule_tick_post: {
+        parameters: {
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -21522,6 +23477,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    resource_timeline_schedule_timeline_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                /** @description First slot (default: the current hour) */
+                start?: string | null;
+                /** @description Slot length: 15, 30 or 60 */
+                resolution_minutes?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineOut"];
                 };
             };
             /** @description Validation Error */
@@ -22654,6 +24635,601 @@ export interface operations {
             };
         };
     };
+    list_tickets_tickets_get: {
+        parameters: {
+            query?: {
+                scope?: string;
+                /** @description comma-separated statuses */
+                status?: string | null;
+                priority?: string | null;
+                type?: string | null;
+                queue_id?: string | null;
+                range_id?: string | null;
+                q?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketListOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ticket_tickets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_assignees_tickets_assignees_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketAssigneeOut"][];
+                };
+            };
+        };
+    };
+    download_attachment_tickets_attachments__attachment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_attachment_tickets_attachments__attachment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    board_tickets_board_get: {
+        parameters: {
+            query?: {
+                queue_id?: string | null;
+                /** @description 'me' or a user id */
+                assignee?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketBoardColumn"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_queues_tickets_queues_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportQueueOut"][];
+                };
+            };
+        };
+    };
+    create_queue_tickets_queues_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportQueueIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportQueueOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_queue_tickets_queues__queue_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                queue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportQueueUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportQueueOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_queue_tickets_queues__queue_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                queue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_tickets__ticket_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_ticket_tickets__ticket_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_ticket_tickets__ticket_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_activity_tickets__ticket_id__activity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketActivityOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attachments_tickets__ticket_id__attachments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketAttachmentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_attachments_tickets__ticket_id__attachments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_attachments_tickets__ticket_id__attachments_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketAttachmentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_comments_tickets__ticket_id__comments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCommentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_comment_tickets__ticket_id__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketCommentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCommentOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_ticket_tickets__ticket_id__move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketMoveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_users_get: {
         parameters: {
             query?: never;
@@ -22857,6 +25433,464 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TranscriptOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_wiki_pages__page_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_page_wiki_pages__page_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPageUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_page_wiki_pages__page_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_revisions_wiki_pages__page_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiRevisionListOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_revision_wiki_pages__page_id__revisions__n__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiRevisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_revision_wiki_pages__page_id__revisions__n__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageOut"];
+                };
+            };
+            /** @description The page changed since base_revision; body carries the current page */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_wiki_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSearchHit"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_spaces_wiki_spaces_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSpaceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_space_wiki_spaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiSpaceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSpaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_space_wiki_spaces__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSpaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_space_wiki_spaces__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiSpaceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiSpaceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_space_wiki_spaces__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_page_wiki_spaces__slug__pages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    space_tree_wiki_spaces__slug__tree_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiTreeNode"][];
                 };
             };
             /** @description Validation Error */

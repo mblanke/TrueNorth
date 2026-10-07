@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
+from ..delete_guard import commit_delete
 from ..hypervisor_backends import get_hypervisor_backend
 from ..models import (
     HypervisorConnection,
@@ -113,9 +114,18 @@ def update_connection(
 
 @router.delete("/connections/{conn_id}", status_code=204, response_class=Response, dependencies=WRITE)
 def delete_connection(conn_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+    """Delete a connection with the hosts and pools discovered through it.
+
+    Those rows are inventory read from the hypervisor, with no meaning once the
+    connection is gone, so they go with it."""
     conn = _conn(db, conn_id, user)
+    # tenant-safe: conn came from _conn(), so what hangs off it is the caller's.
+    db.query(HypervisorPool).filter(HypervisorPool.connection_id == conn.id).delete(synchronize_session=False)
+    db.query(HypervisorNode).filter(HypervisorNode.connection_id == conn.id).delete(synchronize_session=False)
+    db.flush()
+    db.expire(conn, ["nodes"])
     db.delete(conn)
-    db.commit()
+    commit_delete(db, "Hypervisor connection")
 
 
 # -- Connection Testing --------------------------------------------------

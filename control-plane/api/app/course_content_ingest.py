@@ -56,6 +56,7 @@ from .models import (
     QuizQuestionType,
 )
 from .programme_ingest import catalogue_tags, delivered_qsp_codes
+from .scheduler import service as scheduler
 
 _OPTION_PREFIX_LEN = 3  # "A) "
 # What a module asks of its students: teaching, practice on supplied material, or a live range.
@@ -203,7 +204,8 @@ def _remove_placeholder(db: Session, course: Course, superseded_by: str, meta: d
     ours to discard to tidy a catalogue.
     """
     enrolled = db.query(Enrollment).filter_by(course_id=course.id).count()
-    if enrolled:
+    # A booking (any state) names the course too; deleting it would hit that FK.
+    if enrolled or scheduler.events_for(db, "course", course.id):
         meta["retired"] = True
         meta["superseded_by"] = superseded_by
         course.course_meta = json.dumps(meta)

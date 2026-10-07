@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+from dataclasses import dataclass
 
 # JointJS stencil nodeType -> colour (mirrors range-designer nodeColors) so the
 # generated cells match what the 2D designer's own createNodeShape() produces.
@@ -385,11 +386,33 @@ def build_template_diagram(template_yaml: str) -> dict:
 def count_template_hosts(template_yaml: str | None) -> int | None:
     """VMs a template provisions, counted the way the worker builds them.
 
-    Mirrors worker/render.py (`_extract_nodes` + `render_topology`; the API may not
-    import the worker): `nodes` when non-empty, else `assets`; each entry times its
-    `count`; switch/cloud/zone entries without an OS are drawn, not built. None when
-    the YAML does not parse or declares neither list, so a list view can tell "no
-    hosts declared" from "zero hosts". Never raises.
+    None when the YAML does not parse or declares neither list, so a list view can
+    tell "no hosts declared" from "zero hosts". Never raises.
+    """
+    demand = template_demand(template_yaml)
+    return demand.vm_count if demand else None
+
+
+# Per-VM sizes the worker uses when a node declares none (worker/render.py).
+DEFAULT_CORES, DEFAULT_MEMORY_MB, DEFAULT_DISK_GB = 2, 4096, 60
+
+
+@dataclass(frozen=True)
+class TemplateDemand:
+    vm_count: int
+    vcpu: int
+    ram_mb: int
+    disk_gb: int
+
+
+def template_demand(template_yaml: str | None) -> TemplateDemand | None:
+    """What a template provisions: VM count and summed vCPU, RAM and disk.
+
+    Mirrors worker/render.py (`_extract_nodes`, `_node_specs`, `render_topology`; the
+    API may not import the worker): `nodes` when non-empty, else `assets` (whose specs
+    the worker ignores); each entry times its `count`; switch/cloud/zone entries
+    without an OS are drawn, not built; missing sizes take the worker's defaults.
+    None when the YAML does not parse or declares neither list. Never raises.
     """
     import yaml as pyyaml
 
@@ -399,19 +422,40 @@ def count_template_hosts(template_yaml: str | None) -> int | None:
         return None
     if not isinstance(doc, dict) or ("assets" not in doc and "nodes" not in doc):
         return None
+    from_nodes = bool(doc.get("nodes"))
     entries = doc.get("nodes") or doc.get("assets") or []
-    total = 0
+    vms = vcpu = ram = disk = 0
     for entry in entries if isinstance(entries, list) else []:
         if isinstance(entry, str):
-            total += 1
-        elif isinstance(entry, dict):
-            if not entry.get("os") and not entry.get("os_template") and str(entry.get("type", "")) in _NON_VM_TYPES:
-                continue
-            try:
-                total += max(0, int(entry.get("count", 1) or 1))
-            except (TypeError, ValueError):
-                total += 1
-    return total
+            entry = {}
+        elif not isinstance(entry, dict) or not entry.get("os") and not entry.get("os_template") and str(entry.get("type", "")) in _NON_VM_TYPES:
+            continue
+        try:
+            count = max(0, int(entry.get("count", 1) or 1))
+        except (TypeError, ValueError):
+            count = 1
+        specs = _node_specs(entry) if from_nodes else {}
+        vms += count
+        vcpu += count * _spec(specs, "cores", DEFAULT_CORES)
+        ram += count * _spec(specs, "memory_mb", DEFAULT_MEMORY_MB)
+        disk += count * _spec(specs, "disk_gb", DEFAULT_DISK_GB)
+    return TemplateDemand(vm_count=vms, vcpu=vcpu, ram_mb=ram, disk_gb=disk)
+
+
+def _node_specs(node: dict) -> dict:
+    """`specs`, falling back to the designer's legacy `vcpu`/`ram_mb`/`disk_gb` keys."""
+    specs = dict(node["specs"]) if isinstance(node.get("specs"), dict) else {}
+    for legacy, key in (("vcpu", "cores"), ("ram_mb", "memory_mb"), ("disk_gb", "disk_gb")):
+        if key not in specs and node.get(legacy) not in (None, ""):
+            specs[key] = node[legacy]
+    return specs
+
+
+def _spec(specs: dict, key: str, default: int) -> int:
+    try:
+        return max(0, int(specs[key]))
+    except (KeyError, TypeError, ValueError):
+        return default
 
 
 # ── Designer diagram <-> provisionable template ─────────────────────────

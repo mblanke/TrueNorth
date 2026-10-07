@@ -16,6 +16,8 @@ from app import (  # noqa: F401
     course_releases,
     lab_sessions,
     models,
+    models_tickets,
+    models_wiki,
     network_inventory,
     noise,
     range_leases,
@@ -23,6 +25,7 @@ from app import (  # noqa: F401
 )
 from app.db import Base
 from app.greyspace import models as greyspace_models  # noqa: F401
+from app.notifications import models as notification_models  # noqa: F401
 
 config = context.config
 

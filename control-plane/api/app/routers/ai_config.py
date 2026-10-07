@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from ..ai_backends import get_ai_engine
 from ..db import get_db
+from ..delete_guard import commit_delete
 from ..models import AIBackendConfig, AIFleetNode, AIModelRoute
 from ..rbac import Permission, require_permission
 from ..schemas import (
@@ -102,9 +103,17 @@ def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Se
 
 @router.delete("/backends/{backend_id}", status_code=204, response_class=Response)
 def delete_backend(backend_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Delete a backend with its fleet nodes and the model routes that point at it.
+
+    Nodes and routes have no use without their backend, so they go with it."""
     backend = _backend(db, backend_id)
+    # tenant-safe: platform-wide config (module docstring).
+    db.query(AIModelRoute).filter(AIModelRoute.backend_id == backend.id).delete(synchronize_session=False)
+    db.query(AIFleetNode).filter(AIFleetNode.backend_id == backend.id).delete(synchronize_session=False)
+    db.flush()
+    db.expire(backend, ["fleet_nodes"])
     db.delete(backend)
-    db.commit()
+    commit_delete(db, "AI backend")
 
 
 # -- Set Primary ---------------------------------------------------------
