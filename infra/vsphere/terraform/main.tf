@@ -1,7 +1,12 @@
 # TrueNorth Range - vSphere Terraform Configuration
 # Clones VMs from a template in a vCenter-managed cluster.
-# Designed to match the provisioner_output schema used by VsphereAPIProvisioner
-# and TerraformProvisioner(hypervisor_type="vsphere").
+#
+# This module is NOT the range provisioning path. PROVISIONER_BACKEND=terraform_vsphere
+# expects its root module at TERRAFORM_VSPHERE_DIR, which nothing in this repo points at
+# this directory, and it has no per-range port groups or VLAN reservations. vsphere_api
+# (control-plane/worker/worker/provisioners/vsphere_api.py) is the canonical runtime
+# provisioner for vSphere; this module is kept for one-off reference environments.
+# See docs/adr/0009-vsphere-provisioning-path.md.
 
 terraform {
   required_version = ">= 1.5.0"
@@ -59,6 +64,14 @@ data "vsphere_network" "net" {
 
 # One data source per DISTINCT golden template referenced by the range,
 # so a single range can be mixed-OS (clone each node from its own template).
+# A named resource pool, looked up only when one is asked for; the default is the
+# cluster's own (root) pool.
+data "vsphere_resource_pool" "named" {
+  count         = var.resource_pool != "" ? 1 : 0
+  name          = var.resource_pool
+  datacenter_id = data.vsphere_datacenter.dc.id
+}
+
 data "vsphere_virtual_machine" "templates" {
   for_each      = toset([for vm in var.vm_definitions : vm.template_name])
   name          = each.value
@@ -70,10 +83,10 @@ data "vsphere_virtual_machine" "templates" {
 resource "vsphere_virtual_machine" "range_vm" {
   for_each = { for vm in var.vm_definitions : vm.name => vm }
 
-  name             = "${var.range_name}-${each.value.name}"
+  name = "${var.range_name}-${each.value.name}"
   resource_pool_id = (
     var.resource_pool != ""
-    ? data.vsphere_compute_cluster.cluster.resource_pool_id
+    ? data.vsphere_resource_pool.named[0].id
     : data.vsphere_compute_cluster.cluster.resource_pool_id
   )
   datastore_id = data.vsphere_datastore.ds.id
