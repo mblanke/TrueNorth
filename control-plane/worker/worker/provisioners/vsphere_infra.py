@@ -371,8 +371,13 @@ def hostname(vm_def: dict, limit: int = 63) -> str:
     return (clean or "vm")[:limit].rstrip("-")
 
 
-def netplan(nics: list[dict], macs: list[str]) -> dict:
-    """Netplan v2 for cloud-init: static addresses per NIC, matched by MAC address."""
+def netplan(nics: list[dict], macs: list[str], dns: list[str] | None = None,
+            search: list[str] | None = None) -> dict:
+    """Netplan v2 for cloud-init: static addresses per NIC, matched by MAC address.
+
+    A NIC with a gateway resolves through ``dns`` (the range's DNS servers, when the
+    renderer knows them: background-noise agents) or else its gateway. A NIC without a
+    gateway (the noise management NIC) gets its address and nothing else."""
     ethernets: dict = {}
     default_set = False
     for i, (nic, mac) in enumerate(zip(nics, macs, strict=False)):
@@ -380,7 +385,9 @@ def netplan(nics: list[dict], macs: list[str]) -> dict:
         if nic.get("ip"):
             eth["addresses"] = [f"{nic['ip']}/{nic.get('prefix', 24)}"]
             if nic.get("gateway"):
-                eth["nameservers"] = {"addresses": [nic["gateway"]]}
+                eth["nameservers"] = {"addresses": list(dns or [nic["gateway"]])}
+                if search:
+                    eth["nameservers"]["search"] = list(search)
                 if not default_set:  # one default route, through the first NIC that has one
                     eth["routes"] = [{"to": "default", "via": nic["gateway"]}]
                     default_set = True
@@ -398,7 +405,8 @@ def linux_guestinfo(vm_def: dict, macs: list[str], install_user: dict | None = N
     provisioner rewrites the userdata without it once the install is over.
     """
     name = hostname(vm_def)
-    metadata = {"instance-id": vm_def["name"], "local-hostname": name, "network": netplan(vm_def["nics"], macs)}
+    metadata = {"instance-id": vm_def["name"], "local-hostname": name, "network": netplan(vm_def["nics"], macs, vm_def.get("dns"),
+                                                                     vm_def.get("dns_search"))}
     userdata = f"#cloud-config\nhostname: {name}\npreserve_hostname: false\n"
     if install_user:
         userdata += yaml.safe_dump({"users": ["default", install_user]}, sort_keys=False)

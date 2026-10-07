@@ -1865,3 +1865,115 @@ def test_nothing_to_touch_means_no_login(vc):
     assert _run(prov.stop(RANGE_ID, out)).errors == ["VM never-built: no vm_id recorded"]
     assert _run(prov.destroy(RANGE_ID, {"vms": []})).status == "ok"
     assert vc.logins == 0
+
+
+# --------------------------------------------------------------------------- #
+# Background noise: the management NIC on agent VMs (from the noise slot,
+# tests/worker/test_vsphere_noise.py, re-done against this build path)
+# --------------------------------------------------------------------------- #
+
+NOISE_MGMT = {"vlan_id": 4001, "ip": "10.255.0.14", "prefix": 24}
+NOISE_PG = "TN-Noise-Mgmt"
+
+
+def _guestinfo_meta(vm) -> dict:
+    """The cloud-init metadata the customize reconfigure gave a Linux VM."""
+    spec = next(s for s in vm.reconfig_specs if s.extraConfig)
+    extra = {o.key: o.value for o in spec.extraConfig}
+    return yaml.safe_load(base64.b64decode(extra["guestinfo.metadata"]))
+
+
+def _noise_vm(**over) -> dict:
+    vm = {"name": f"{R8}-lnx01", "node_id": "lnx01", "role": "workstation", "os": "ubuntu-2404",
+          "template_name": "tmpl-ubuntu-2404", "vlan_id": 200, "ip": "10.60.200.50", "gateway": "10.60.200.1",
+          "prefix": 24, "netmask": "255.255.255.0", "mgmt": NOISE_MGMT, "dns": ["10.60.200.10"],
+          "dns_search": ["corp.local"]}
+    return {**vm, **over}
+
+
+class TestNoiseMgmtNic:
+    @pytest.fixture
+    def noise_vc(self, vc):
+        vc.networks.append(SimpleNamespace(name=NOISE_PG, _moId="network-4001", config=None))
+        return vc
+
+    def test_linux_agent_gets_the_mgmt_nic_last_with_a_static_unrouted_address(self, noise_vc):
+        result = _run(_prov(noise_vc).provision(RANGE_ID, {"vms": [_noise_vm()], "networks": []}, {}))
+        assert result.status == "ok", result.errors
+        (_f, _n, spec), = noise_vc.templates["tmpl-ubuntu-2404"].clone_specs
+        nics = [c.device for c in spec.config.deviceChange if c.operation != "remove"]
+        assert len(nics) == 2 and nics[1].backing.deviceName == NOISE_PG
+        assert isinstance(nics[1], vim.vm.device.VirtualVmxnet3)  # added, not a template card re-pointed
+        vm = noise_vc.vms[result.vms[0]["vm_id"]]
+        eth = _guestinfo_meta(vm)["network"]["ethernets"]
+        assert eth["nic1"] == {"match": {"macaddress": vm.config.hardware.device[1].macAddress.lower()},
+                               "addresses": ["10.255.0.14/24"]}  # no route, no resolver: controller only
+        assert eth["nic0"]["addresses"] == ["10.60.200.50/24"]
+        assert eth["nic0"]["routes"] == [{"to": "default", "via": "10.60.200.1"}]
+        assert eth["nic0"]["nameservers"] == {"addresses": ["10.60.200.10"], "search": ["corp.local"]}
+        (out,) = result.vms
+        assert out["ip"] == "10.60.200.50" and out["mgmt_ip"] == "10.255.0.14"
+        assert out["nics"][1] == {"network": NOISE_PG, "ip": "10.255.0.14"}
+
+    def test_the_mgmt_network_needs_no_vlan_reservation(self, noise_vc):
+        prov = _prov(noise_vc)
+        (need,) = prov.allocation_needs(RANGE_ID, {"vms": [_noise_vm()]})
+        assert need.holders == ["200"]
+
+    def test_windows_appliances_and_non_agents_are_left_alone(self, noise_vc):
+        win = _noise_vm(name=f"{R8}-ws01", node_id="ws01", os="windows-11", template_name="tmpl-win2022")
+        plain = _noise_vm(name=f"{R8}-web01", node_id="web01")
+        plain.pop("mgmt")
+        result = _run(_prov(noise_vc).provision(RANGE_ID, {"vms": [win, plain], "networks": []}, {}))
+        assert result.status == "ok", result.errors
+        specs = [s for t in noise_vc.templates.values() for (_, _, s) in t.clone_specs]
+        assert all(len([c for c in s.config.deviceChange if c.operation != "remove"]) == 1 for s in specs)
+        assert all("mgmt_ip" not in v for v in result.vms)
+
+    def test_missing_noise_port_group_still_builds_the_range_but_says_so(self, vc):
+        plain = _noise_vm(name=f"{R8}-web01", node_id="web01")
+        plain.pop("mgmt")
+        result = _run(_prov(vc).provision(RANGE_ID, {"vms": [_noise_vm(), plain], "networks": []}, {}))
+        assert len(result.vms) == 2 and result.status == "partial"
+        assert any(NOISE_PG in e and "unreachable" in e for e in result.errors), result.errors
+        assert all("mgmt_ip" not in v for v in result.vms)
+        specs = [s for (_, _, s) in vc.templates["tmpl-ubuntu-2404"].clone_specs]
+        assert all(len([c for c in s.config.deviceChange if c.operation != "remove"]) == 1 for s in specs)
+
+    def test_the_noise_network_may_not_be_the_management_network(self, noise_vc, monkeypatch):
+        monkeypatch.setattr(mod, "VSPHERE_NOISE_NETWORK", MGMT)
+        result = _run(_prov(noise_vc).provision(RANGE_ID, {"vms": [_noise_vm()], "networks": []}, {}))
+        assert result.status == "failed" and not noise_vc.vms
+        assert any("management network" in e for e in result.errors), result.errors
+
+    def test_the_vm_ip_is_never_the_mgmt_address(self, vc, monkeypatch):
+        prov = _prov(vc)
+
+        async def interfaces(client, path):
+            return [{"ip": {"ip_addresses": [{"ip_address": "10.255.0.14", "state": "PREFERRED"}]}},
+                    {"ip": {"ip_addresses": [{"ip_address": "10.60.200.50", "state": "PREFERRED"}]}}]
+
+        monkeypatch.setattr(prov, "_api_get", interfaces)
+        assert _run(prov._get_vm_ip(None, "vm-1", exclude="10.255.0.14")) == "10.60.200.50"
+        assert _run(prov._get_vm_ip(None, "vm-1")) == "10.255.0.14"
+
+    def test_render_output_feeds_the_provisioner(self, noise_vc):
+        """End to end on the worker side: shipped template -> render (reserved addresses) -> NICs."""
+        import copy
+
+        tpl = copy.deepcopy(yaml.safe_load((CONTENT / "red-vs-blue" / "template.yaml").read_text()))
+        tpl["noise"] = {"enabled": True}
+        reserved = {h: f"10.255.0.{40 + i}"
+                    for i, h in enumerate(("lnx01", "lnx02", "tgen01", "ws01", "ws02", "ws03", "ws04"))}
+        images = lambda alias: "tmpl-win2022" if alias.startswith("win") else "tmpl-ubuntu-2404"  # noqa: E731
+        rendered = render.render_topology(tpl, RANGE_ID, images, noise_mgmt=reserved)
+        agents = [v for v in rendered["vm_definitions"] if "mgmt" in v]
+        nets = [n for n in rendered["network_definitions"] if n["name"] != "noise_mgmt"]
+        result = _run(_prov(noise_vc).provision(RANGE_ID, {"vms": agents, "networks": nets}, {}))
+        assert result.status == "ok", result.errors
+        linux = [v for v in agents if not v["os"].startswith("win")]
+        assert linux and sorted(v["mgmt_ip"] for v in result.vms if "mgmt_ip" in v) == sorted(
+            v["mgmt"]["ip"] for v in linux)
+        meta = _guestinfo_meta(noise_vc.vms[next(v["vm_id"] for v in result.vms if "mgmt_ip" in v)])
+        assert meta["network"]["ethernets"]["nic0"]["nameservers"] == {
+            "addresses": ["10.30.0.10", "10.30.0.11"], "search": ["corp.local"]}

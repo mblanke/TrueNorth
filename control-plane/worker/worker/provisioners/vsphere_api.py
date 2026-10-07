@@ -97,6 +97,11 @@ VSPHERE_DATASTORE: str = os.environ.get("VSPHERE_DATASTORE", "")
 # Only for a VM that has no VLAN at all (a hand-written single-NIC smoke test). Empty
 # means such a VM fails. Never the management network: see VSPHERE_MGMT_NETWORK.
 VSPHERE_NETWORK: str = os.environ.get("VSPHERE_NETWORK", "")
+# Port group carrying the background-noise management VLAN. One per vCenter, tagged with
+# the noise VLAN (template default 4001), reachable from the noise controller and nothing
+# else. A Linux agent VM (a rendered VM with ``mgmt``) gets one more VMXNET3 NIC on it,
+# with its reserved address and no route.
+VSPHERE_NOISE_NETWORK: str = os.environ.get("VSPHERE_NOISE_NETWORK", "TN-Noise-Mgmt")
 # Networks no range VM may ever attach to (comma-separated names).
 VSPHERE_MGMT_NETWORK: str = os.environ.get("VSPHERE_MGMT_NETWORK", "dPG-TN-MGMT")
 # Empty, or no item named like the template: clone the inventory VM template instead.
@@ -353,6 +358,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._cluster = VSPHERE_CLUSTER
         self._datastore = VSPHERE_DATASTORE
         self._network = VSPHERE_NETWORK
+        self._noise_network = VSPHERE_NOISE_NETWORK.strip()
         self._mgmt_networks = _names(VSPHERE_MGMT_NETWORK)
         self._content_library = VSPHERE_CONTENT_LIBRARY
         self._verify_ssl = VSPHERE_VERIFY_SSL
@@ -618,14 +624,15 @@ class VsphereAPIProvisioner(BaseProvisioner):
     def _soap_tools_sync(self, vm_id: str) -> bool:
         return str(self._vm(self._soap(), vm_id).guest.toolsRunningStatus) == "guestToolsRunning"
 
-    def _soap_ip_sync(self, vm_id: str) -> str | None:
+    def _soap_ip_sync(self, vm_id: str, exclude: str = "") -> str | None:
         guest_info = self._vm(self._soap(), vm_id).guest
         for nic in getattr(guest_info, "net", None) or []:
             for addr in getattr(getattr(nic, "ipConfig", None), "ipAddress", None) or []:
-                if ":" not in str(addr.ipAddress) and str(getattr(addr, "state", "preferred")) == "preferred":
-                    return str(addr.ipAddress)
+                ip = str(addr.ipAddress)
+                if ":" not in ip and ip != exclude and str(getattr(addr, "state", "preferred")) == "preferred":
+                    return ip
         ip = getattr(guest_info, "ipAddress", None)
-        return str(ip) if ip and ":" not in str(ip) else None
+        return str(ip) if ip and ":" not in str(ip) and str(ip) != exclude else None
 
     async def _power_state(self, client: httpx.AsyncClient, vm_id: str) -> str:
         """POWERED_ON, POWERED_OFF or SUSPENDED (REST names, whichever API answered)."""
@@ -672,16 +679,18 @@ class VsphereAPIProvisioner(BaseProvisioner):
             await asyncio.sleep(5)
         return False
 
-    async def _get_vm_ip(self, client: httpx.AsyncClient, vm_id: str) -> str | None:
-        """Return the primary IPv4 address reported by VMware Tools."""
+    async def _get_vm_ip(self, client: httpx.AsyncClient, vm_id: str, exclude: str = "") -> str | None:
+        """Return the primary IPv4 address reported by VMware Tools (never ``exclude``, the
+        noise management address)."""
         try:
             if self._dialect == "rest":
-                return await asyncio.to_thread(self._soap_ip_sync, vm_id)
+                return await asyncio.to_thread(self._soap_ip_sync, vm_id, exclude)
             guest = await self._api_get(client, f"/vcenter/vm/{vm_id}/guest/networking/interfaces")
             for iface in guest:
                 for addr in iface.get("ip", {}).get("ip_addresses", []):
-                    if addr.get("state") == "PREFERRED" and ":" not in addr.get("ip_address", ""):
-                        return addr["ip_address"]
+                    ip = addr.get("ip_address", "")
+                    if addr.get("state") == "PREFERRED" and ":" not in ip and ip != exclude:
+                        return ip
         except Exception:
             pass
         return None
@@ -864,8 +873,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         """Placement, the range's VM folder and port groups, and the inventory templates.
 
         Sets ``_placement`` ((HostCapacity | None, datastore)) and ``_refs`` (one network
-        ref per NIC) on every vm_def; returns the shared ``site``.
+        ref per NIC) on every vm_def; returns the shared ``site`` (``notes``: what the build
+        will lack, reported as errors).
         """
+        site_notes: list[str] = []
         dc, cluster = self._datacenter_and_cluster(si)
         hosts = self._eligible_hosts(cluster)
         if self._placement == "cluster":
@@ -910,12 +921,24 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 raise RuntimeError(f"uplink network VSPHERE_RANGE_UPLINK_NETWORK={self._uplink_network!r} was not found")
             uplink = self._guard(infra.network_ref(net))
         fallback = None
-        if any(nic.get("vlan") is None and not nic.get("uplink") for v in vm_defs for nic in v["nics"]):
+        if any(nic.get("vlan") is None and not (nic.get("uplink") or nic.get("noise") or nic.get("port_group"))
+               for v in vm_defs for nic in v["nics"]):
             net = self._find(si, vim.Network, self._network) if self._network else None
             if net is None:
                 raise RuntimeError(f"a VM has no VLAN and the fallback network VSPHERE_NETWORK={self._network!r} "
                                    "was not found")
             fallback = self._guard(infra.network_ref(net))
+        noise = None
+        if any(nic.get("noise") for v in vm_defs for nic in v["nics"]):
+            net = self._find(si, vim.Network, self._noise_network) if self._noise_network else None
+            if net is None:  # the range still comes up; its noise agents cannot be reached
+                for vm_def in vm_defs:
+                    vm_def["nics"] = [n for n in vm_def["nics"] if not n.get("noise")]
+                    vm_def.pop("_mgmt_ip", None)
+                site_notes.append(f"noise management port group VSPHERE_NOISE_NETWORK={self._noise_network!r} "
+                                  "was not found; background-noise agents will be unreachable")
+            else:
+                noise = self._guard(infra.network_ref(net))
         leased: dict = {}
         for name in sorted({n["port_group"] for v in vm_defs for n in v["nics"] if n.get("port_group")}):
             self._check_leased(name)
@@ -926,6 +949,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         for vm_def in vm_defs:
             vm_def["_refs"] = [
                 uplink if n.get("uplink")
+                else noise if n.get("noise")
                 else leased[n["port_group"]] if n.get("port_group")
                 else refs[n["vlan"]] if n.get("vlan") is not None
                 else fallback
@@ -940,7 +964,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             view.Destroy()
         folder = infra.ensure_folder(dc, f"{self._range_folder}/{range_id[:8]}")
         return {"dc": dc, "cluster": cluster, "pool": self._pool(cluster), "folder": folder, "templates": templates,
-                "dvs": dvs}
+                "dvs": dvs, "notes": site_notes}
 
     def _pool(self, cluster):
         """VSPHERE_RESOURCE_POOL (by name, anywhere under the cluster), else the cluster's root pool."""
@@ -1099,6 +1123,17 @@ class VsphereAPIProvisioner(BaseProvisioner):
             }]
             if vm_def.get("port_group"):
                 plan["nics"][0]["port_group"] = vm_def["port_group"]
+        mgmt = vm_def.get("mgmt") if isinstance(vm_def.get("mgmt"), dict) else None
+        # Linux only until the Windows agent exists (an unconfigured NIC is just something
+        # odd for a Student to find); appliances never run an agent.
+        if mgmt and mgmt.get("ip") and infra.os_family(plan) == "linux":
+            prefix = int(mgmt.get("prefix", 24))
+            plan["nics"].append({
+                "noise": True, "vlan": None, "network": "noise_mgmt", "ip": mgmt["ip"], "prefix": prefix,
+                "netmask": str(ipaddress.IPv4Network(f"0.0.0.0/{prefix}").netmask),
+                "gateway": "",  # on-link to the noise controller, routed nowhere
+            })
+            plan["_mgmt_ip"] = mgmt["ip"]
         return plan
 
     @staticmethod
@@ -1177,6 +1212,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 self._soap_si = si  # the "rest" dialect's VM operations share the build session
                 try:
                     site = await asyncio.to_thread(self._prepare_sync, si, range_id, vm_defs, networks, physical)
+                    errors += site.get("notes", [])
                     async with self._client() as client:
                         results = await asyncio.gather(
                             *(self._provision_one_vm(client, si, site, v) for v in vm_defs), return_exceptions=True
@@ -1527,10 +1563,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         await self._delete_vm(client, vm_id)
                 raise
         tools_ready = await self._wait_tools(client, vm_id)
-        ip = await self._get_vm_ip(client, vm_id) if tools_ready else None
+        mgmt_ip = vm_def.get("_mgmt_ip") if any(n.get("noise") for n in vm_def["nics"]) else None
+        ip = await self._get_vm_ip(client, vm_id, exclude=mgmt_ip or "") if tools_ready else None
         host, datastore = vm_def["_placement"]
         primary = next((n for n in vm_def["nics"] if not n.get("uplink")), vm_def["nics"][0])
         extra = {"pfsense": vm_def["_pfsense"].summary()} if vm_def.get("_pfsense") is not None else {}
+        if mgmt_ip:
+            extra["mgmt_ip"] = mgmt_ip  # the noise controller reaches the agent here
         return {
             **extra,
             "vm_id": vm_id,
