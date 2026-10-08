@@ -12,6 +12,8 @@ are all written by people or models, and the page is served from the API's origi
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import html
 import re
 import unicodedata
@@ -157,6 +159,20 @@ border-radius:6px;padding:8px 12px;min-width:120px}.kpi b{display:block;font-siz
 .empty{color:#57606a;font-style:italic}
 @media print{body{padding:0}h2{break-after:avoid}}
 """
+
+
+# The headers the API serves ``/exercises/{id}/aar/html`` with when it is opened directly.
+# The global ``default-src 'self'`` would block the one inline style block, so the page gets
+# its own policy: that block allowed by hash, nothing else loadable, no script at all, and
+# framing only by the app's own origin. Every other route keeps the global policy.
+_CSS_HASH = base64.b64encode(hashlib.sha256(_CSS.encode("utf-8")).digest()).decode("ascii")
+RESPONSE_HEADERS = {
+    "Content-Security-Policy": (
+        f"default-src 'none'; style-src 'sha256-{_CSS_HASH}'; img-src data:; script-src 'none'; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+    ),
+    "X-Frame-Options": "SAMEORIGIN",
+}
 
 
 def _table(headers: list[str], rows: list[list[str]], empty: str) -> str:

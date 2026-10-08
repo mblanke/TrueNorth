@@ -30,6 +30,7 @@ WORKER_TABLES = (
     "competency_assertions",
     "competency_auto_assessments",
     "courses",
+    "exercise_runs",
     "exercises",
     "forged_exercises",
     "golden_images",

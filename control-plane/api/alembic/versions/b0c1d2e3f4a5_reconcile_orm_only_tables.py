@@ -96,15 +96,31 @@ ORM_ONLY_TABLES: tuple[str, ...] = (
     "shared_commands",
 )
 
+# Columns the models gained after this revision that a later revision adds. Built
+# from the live ORM, these tables would already have them, the later revision would
+# skip adding them, and its downgrade would then drop columns this revision made: a
+# fresh chain could not go up to head and back. Leaving them out here makes each
+# revision add, and remove, exactly its own columns.
+LATER_COLUMNS: dict[str, tuple[str, ...]] = {
+    "scheduled_events": (
+        "instructor_id",  # b5c6d7e8f9a0
+        "created_by",  # b5c6d7e8f9a0
+        "auto_provisioned",  # c6d7e8f9a0b1
+        "reminded_at",  # c6d7e8f9a0b1
+        "sequence",  # d7e8f9a0b1c2
+        "course_id",  # e8f9a0b1c2d3
+        "scenario_id",  # f9a0b1c2d3e4
+        "exercise_id",  # f9a0b1c2d3e4
+        "auto_exercise",  # f9a0b1c2d3e4
+    ),
+}
+
 
 def upgrade() -> None:
     bind = op.get_bind()
     existing = set(sa.inspect(bind).get_table_names())
-    wanted = [
-        Base.metadata.tables[name]
-        for name in ORM_ONLY_TABLES
-        if name in Base.metadata.tables and name not in existing
-    ]
+    scratch = _as_of_this_revision()
+    wanted = [scratch.tables[name] for name in ORM_ONLY_TABLES if name in scratch.tables and name not in existing]
     if not wanted:
         return
     if bind.dialect.name != "sqlite":
@@ -120,8 +136,45 @@ def upgrade() -> None:
         table.create(bind=bind, checkfirst=True)
 
 
+def _as_of_this_revision() -> sa.MetaData:
+    """A copy of the ORM metadata minus ``LATER_COLUMNS`` (and their keys and indexes)."""
+    scratch = sa.MetaData()
+    for table in Base.metadata.sorted_tables:  # a key's target must resolve in the same MetaData
+        skip = set(LATER_COLUMNS.get(table.name, ()))
+        if not skip:
+            table.to_metadata(scratch)
+            continue
+        # Column._copy() leaves out keys and unique constraints already bound to the table.
+        constraints: list[sa.Constraint] = []
+        for fkc in table.foreign_key_constraints:
+            names = [c.name for c in fkc.columns]
+            if not skip & set(names):
+                constraints.append(
+                    sa.ForeignKeyConstraint(
+                        names,
+                        [fk.target_fullname for fk in fkc.elements],
+                        name=fkc.name,
+                        ondelete=fkc.ondelete,
+                        onupdate=fkc.onupdate,
+                    )
+                )
+        for uc in table.constraints:
+            names = [c.name for c in uc.columns]
+            if isinstance(uc, sa.UniqueConstraint) and not skip & set(names):
+                constraints.append(sa.UniqueConstraint(*names, name=uc.name))
+        copy = sa.Table(
+            table.name, scratch, *[c._copy() for c in table.columns if c.name not in skip], *constraints
+        )
+        have = {ix.name for ix in copy.indexes}
+        for ix in table.indexes:
+            names = [c.name for c in ix.columns]
+            if ix.name not in have and not skip & set(names):
+                sa.Index(ix.name, *[copy.c[n] for n in names], unique=ix.unique)
+    return scratch
+
+
 def _without_forward_foreign_keys(tables: list[sa.Table], available: set[str]) -> list[sa.Table]:
-    """Copies of ``tables`` minus any foreign key to a table that does not exist yet.
+    """``tables`` (scratch copies) minus any foreign key to a table that does not exist yet.
 
     Building from the live ORM means taking whatever keys the models have *now*, and
     the models have since grown three whose targets a later revision creates:
@@ -134,10 +187,7 @@ def _without_forward_foreign_keys(tables: list[sa.Table], available: set[str]) -
     The later revisions see the column already present and skip adding it, so the
     keys dropped here are added at the head of the chain by e6f7a8b9c0d1.
     """
-    scratch = sa.MetaData()
-    for table in Base.metadata.sorted_tables:  # a key's target must resolve in the same MetaData
-        table.to_metadata(scratch)
-    copies = [scratch.tables[t.name] for t in tables]
+    copies = tables  # already copies (``_as_of_this_revision``): edited in place
     for table in copies:
         for fkc in list(table.foreign_key_constraints):
             if fkc.elements[0].target_fullname.split(".")[0] in available:
