@@ -10155,8 +10155,16 @@
       "QuestionResultOut": {
         "properties": {
           "correct": {
-            "title": "Correct",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null until the key is revealed (the final attempt)",
+            "title": "Correct"
           },
           "correct_options": {
             "items": {
@@ -10170,8 +10178,16 @@
             "type": "string"
           },
           "points_earned": {
-            "title": "Points Earned",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null until the key is revealed: it would say `correct`",
+            "title": "Points Earned"
           },
           "points_possible": {
             "title": "Points Possible",
@@ -10192,11 +10208,9 @@
         },
         "required": [
           "question_id",
-          "correct",
           "selected",
           "correct_options",
           "explanation",
-          "points_earned",
           "points_possible"
         ],
         "title": "QuestionResultOut",

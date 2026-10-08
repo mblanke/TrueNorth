@@ -493,6 +493,26 @@ def test_an_unlimited_quiz_never_reveals_the_key(client, db_session, tenants, xa
         res = client.post(f"/quizzes/attempts/{a}/submit", json={"answers": _answers_all_right(quiz)}).json()
     assert res["score"] == 25 and res["key_revealed"] is False
     assert all(r["correct_options"] == [] for r in res["results"])
+    assert all(r["correct"] is None and r["points_earned"] is None for r in res["results"])
+
+
+def test_which_questions_were_right_is_withheld_with_the_key(client, db_session, tenants, xapi):
+    """Per-question `correct` (and points_earned, which implies it) told attempt one which
+    guesses to keep for attempt two. The total score is still returned."""
+    quiz = _quiz(db_session, max_attempts=2)
+    q = _questions(quiz)
+    with acting_as(_user(db_session, UserRole.student)):
+        a = client.post(f"/quizzes/{quiz.id}/attempts").json()["attempt_id"]
+        first = client.post(f"/quizzes/attempts/{a}/submit", json={"answers": {str(q["mcq"].id): [1]}}).json()
+        assert first["score"] == 10 and first["key_revealed"] is False
+        assert [(r["correct"], r["points_earned"]) for r in first["results"]] == [(None, None)] * 3
+        assert {r["points_possible"] for r in first["results"]} == {q_.points for q_ in q.values()}
+        b = client.post(f"/quizzes/{quiz.id}/attempts").json()["attempt_id"]
+        last = client.post(f"/quizzes/attempts/{b}/submit", json={"answers": {str(q["mcq"].id): [1]}}).json()
+    assert last["key_revealed"] is True
+    by_id = {r["question_id"]: r for r in last["results"]}
+    assert (by_id[str(q["mcq"].id)]["correct"], by_id[str(q["mcq"].id)]["points_earned"]) == (True, 10)
+    assert by_id[str(q["multi"].id)]["correct"] is False
 
 
 def test_answers_after_the_time_limit_are_not_marked(client, db_session, tenants, xapi):

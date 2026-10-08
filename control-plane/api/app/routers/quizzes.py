@@ -147,11 +147,11 @@ class AttemptSubmitIn(BaseModel):
 
 class QuestionResultOut(BaseModel):
     question_id: uuid.UUID
-    correct: bool
+    correct: bool | None = Field(None, description="null until the key is revealed (the final attempt)")
     selected: list[int]
     correct_options: list[int]
     explanation: str
-    points_earned: int
+    points_earned: int | None = Field(None, description="null until the key is revealed: it would say `correct`")
     points_possible: int
 
 
@@ -445,13 +445,15 @@ def submit_attempt(
         results.append(
             QuestionResultOut(
                 question_id=question.id,
-                correct=is_correct,
-                selected=selected,
                 # The answer key only once no attempt is left: before, every result carried
-                # it, so attempt one read the key and attempt two scored full marks.
+                # it, so attempt one read the key and attempt two scored full marks. Which
+                # questions were right is part of the key too (PR #112 review): only the
+                # total score is returned before then.
+                correct=is_correct if reveal else None,
+                selected=selected,
                 correct_options=correct if reveal else [],
                 explanation=question.explanation if reveal else "",
-                points_earned=earned,
+                points_earned=earned if reveal else None,
                 points_possible=question.points,
             )
         )

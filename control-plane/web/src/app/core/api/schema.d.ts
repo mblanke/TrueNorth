@@ -11374,14 +11374,20 @@ export interface components {
         };
         /** QuestionResultOut */
         QuestionResultOut: {
-            /** Correct */
-            correct: boolean;
+            /**
+             * Correct
+             * @description null until the key is revealed (the final attempt)
+             */
+            correct?: boolean | null;
             /** Correct Options */
             correct_options: number[];
             /** Explanation */
             explanation: string;
-            /** Points Earned */
-            points_earned: number;
+            /**
+             * Points Earned
+             * @description null until the key is revealed: it would say `correct`
+             */
+            points_earned?: number | null;
             /** Points Possible */
             points_possible: number;
             /**

@@ -112,17 +112,21 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
             <span class="muted">{{ res.score }} / {{ res.max_score }} points</span>
           </div>
 
-          <div class="review">
-            @for (r of res.results; track r.question_id) {
-              <div class="review-row" [class.ok]="r.correct" [class.bad]="!r.correct">
-                <mat-icon>{{ r.correct ? 'check_circle' : 'cancel' }}</mat-icon>
-                <div class="review-body">
-                  <div class="review-points">{{ r.points_earned }}/{{ r.points_possible }} pts</div>
-                  @if (r.explanation) { <div class="review-expl">{{ r.explanation }}</div> }
+          @if (res.key_revealed) {
+            <div class="review">
+              @for (r of res.results; track r.question_id) {
+                <div class="review-row" [class.ok]="r.correct" [class.bad]="!r.correct">
+                  <mat-icon>{{ r.correct ? 'check_circle' : 'cancel' }}</mat-icon>
+                  <div class="review-body">
+                    <div class="review-points">{{ r.points_earned }}/{{ r.points_possible }} pts</div>
+                    @if (r.explanation) { <div class="review-expl">{{ r.explanation }}</div> }
+                  </div>
                 </div>
-              </div>
-            }
-          </div>
+              }
+            </div>
+          } @else {
+            <p class="muted key-withheld">Which answers were right is shown after your final attempt.</p>
+          }
 
           <div class="result-actions">
             <button mat-stroked-button (click)="retake()">
