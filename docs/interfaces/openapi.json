@@ -26479,7 +26479,7 @@
     },
     "/lti/launch": {
       "post": {
-        "description": "LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app.",
+        "description": "LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app.\n\nThe browser must carry the state cookie set at /lti/login (login CSRF), unless\nLTI_REQUIRE_STATE_COOKIE=false.",
         "operationId": "lti_launch_lti_launch_post",
         "requestBody": {
           "content": {

@@ -3243,6 +3243,9 @@ export interface paths {
         /**
          * Lti Launch
          * @description LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app.
+         *
+         *     The browser must carry the state cookie set at /lti/login (login CSRF), unless
+         *     LTI_REQUIRE_STATE_COOKIE=false.
          */
         post: operations["lti_launch_lti_launch_post"];
         delete?: never;

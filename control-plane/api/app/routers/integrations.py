@@ -6,9 +6,12 @@ and custom LTI/API platforms. Handles external activity sync and LTI 1.3 flows.
 
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 import uuid
 from datetime import datetime
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
@@ -396,22 +399,48 @@ async def lti_oidc_login(request: Request, db: Session = Depends(get_db)):
         )
     except ValueError as exc:
         raise HTTPException(403, str(exc)) from exc
-    return RedirectResponse(redirect_url, status_code=302)
+    response = RedirectResponse(redirect_url, status_code=302)
+    if _state_cookie_required():
+        # Login CSRF: the launch must come back to the browser that started it. The LMS
+        # posts /lti/launch cross-site, so SameSite=None (and therefore Secure).
+        state = parse_qs(urlsplit(redirect_url).query).get("state", [""])[0]
+        response.set_cookie(LTI_STATE_COOKIE, state, max_age=600, httponly=True, secure=True, samesite="none", path="/")
+    return response
+
+
+# Security sweep (low), 2026-10-08: an id_token + state obtained for the attacker's own LMS
+# account could be posted from the attacker's page into a victim's browser, signing the
+# victim in to TrueNorth as the attacker (login CSRF). The state is now also a cookie set
+# on the browser that began the login, and the launch must carry both. Set
+# LTI_REQUIRE_STATE_COOKIE=false only where the tool runs in an iframe whose browsers block
+# third-party cookies; then this protection is off.
+LTI_STATE_COOKIE = "tn_lti_state"
+
+
+def _state_cookie_required() -> bool:
+    return os.getenv("LTI_REQUIRE_STATE_COOKIE", "true").strip().lower() not in ("0", "false", "no", "off")
 
 
 def _jit_user(db: Session, platform, claims: dict) -> User:
-    """Find-or-create a TrueNorth user from LTI launch claims."""
+    """Find-or-create a TrueNorth user from LTI launch claims.
+
+    The platform's subject is what identifies a returning user (``lti:<platform>:<sub>``).
+    The email claim is asserted by the platform, not verified by us, so it links an
+    existing account only inside the platform's own tenant (never across tenants: email is
+    globally unique, so that would be impersonation) and only a Student's: an LMS naming an
+    instructor's or admin's address does not become them (security sweep, low).
+    """
     sub = str(claims.get("sub", ""))
     email = str(claims.get("email") or f"lti-{sub}@{platform.slug}.local").lower()
     name = str(claims.get("name") or claims.get("given_name") or email.split("@")[0])
     lti_kc_id = f"lti:{platform.id}:{sub}"
 
-    # The email claim is asserted by the platform, not verified by us. Matching it
-    # across tenants would let any registered platform sign in as any user anywhere —
-    # including an admin — by naming their address. So: match only inside the
-    # platform's own tenant, and refuse (rather than impersonate or duplicate; email
-    # is globally unique) when the address belongs to someone in a different tenant.
-    user = db.query(User).filter((User.keycloak_id == lti_kc_id) | (User.email == email)).first()
+    user = db.query(User).filter(User.keycloak_id == lti_kc_id).first()
+    if user is None:
+        user = db.query(User).filter(User.email == email).first()
+        if user is not None and str(user.tenant_id) == str(platform.tenant_id) and user.role != UserRole.student:
+            logger.warning("LTI launch from %s asserted a staff account's email; refused", platform.name)
+            raise HTTPException(403, "Staff accounts are not signed in through the learning platform.")
     if user:
         if str(user.tenant_id) != str(platform.tenant_id):
             logger.warning(
@@ -437,11 +466,17 @@ def _jit_user(db: Session, platform, claims: dict) -> User:
 
 @lti_router.post("/launch")
 async def lti_launch(
+    request: Request,
     id_token: str = Form(...),
     state: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    """LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app."""
+    """LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app.
+
+    The browser must carry the state cookie set at /lti/login (login CSRF), unless
+    LTI_REQUIRE_STATE_COOKIE=false."""
+    if _state_cookie_required() and not hmac.compare_digest(request.cookies.get(LTI_STATE_COOKIE, ""), state):
+        raise HTTPException(401, "LTI launch validation failed: this browser did not start the login")
     try:
         platform, claims = await lti13.validate_launch(db, id_token, state)
     except Exception as exc:
