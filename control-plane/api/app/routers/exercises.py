@@ -39,6 +39,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import scenario_objectives
+from ..aar_html import RESPONSE_HEADERS as AAR_PAGE_HEADERS
 from ..aar_html import pdf_text
 from ..aar_html import render_html as render_aar_html
 from ..aar_report import build_report as build_aar_report
@@ -544,7 +545,7 @@ def get_aar_html(
     or before this renderer existed get the full page and are escaped the same way.
     """
     aar = _owned_aar(db, exercise_id, user)
-    return HTMLResponse(content=render_aar_html(_report_data(aar)))
+    return HTMLResponse(content=render_aar_html(_report_data(aar)), headers=AAR_PAGE_HEADERS)
 
 
 @router.get("/{exercise_id}/aar/pdf")
