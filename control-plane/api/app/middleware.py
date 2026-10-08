@@ -53,7 +53,10 @@ _UUID_RE = re.compile(
 _CSRF_COOKIE = "truenorth_csrf"
 _CSRF_HEADER = "x-csrf-token"
 _CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-_CSRF_SECRET = os.getenv("CSRF_SECRET", secrets.token_hex(32))
+# Empty counts as unset (compose passes ${CSRF_SECRET} through as ""), which would sign with
+# an empty key. The per-process fallback is development only: TN_ENV=production refuses to
+# start without CSRF_SECRET (app/settings.py), since workers would not share a random key.
+_CSRF_SECRET = os.getenv("CSRF_SECRET", "").strip() or secrets.token_hex(32)
 _CSRF_TOKEN_TTL = 86400  # 1 day
 
 

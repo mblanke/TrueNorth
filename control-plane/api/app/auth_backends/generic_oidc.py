@@ -5,7 +5,7 @@ provider: Auth0, Azure AD, Okta, Cognito, Authentik, etc.
 
 Configuration (env vars):
     OIDC_JWKS_URL    — JWKS endpoint URL            (required)
-    OIDC_AUDIENCE    — Expected audience claim       (default: "")
+    OIDC_AUDIENCE    — Expected audience claim       (default: ""; required when TN_ENV=production)
     OIDC_ALGORITHMS  — Comma-separated alg list      (default: "RS256")
     OIDC_ISSUER      — Expected issuer (optional)
 """
@@ -20,6 +20,7 @@ import jwt
 from fastapi import HTTPException, status
 
 from .. import jwks as jwks_verify
+from ..settings import is_production
 from .base import BaseAuthBackend
 from .jwks_cache import JWKSCache
 
@@ -48,6 +49,10 @@ class GenericOIDCBackend(BaseAuthBackend):
             algorithms or [a.strip() for a in raw_algs.split(",") if a.strip()]
         )
         self._issuer = issuer or os.getenv("OIDC_ISSUER", "") or None
+        # TN_ENV=production: an audience is required and always verified (app/settings.py).
+        self._require_aud = is_production()
+        if self._require_aud and not self._audience:
+            raise ValueError("OIDC_AUDIENCE is required when TN_ENV=production")
         self._jwks_cache = JWKSCache(self._fetch_jwks)
 
     async def _fetch_jwks(self) -> dict:
@@ -75,7 +80,7 @@ class GenericOIDCBackend(BaseAuthBackend):
                 algorithms=self._algorithms,
                 audience=self._audience or None,
                 issuer=self._issuer,
-                verify_aud=bool(self._audience),
+                verify_aud=self._require_aud or bool(self._audience),
             )
         except jwt.PyJWTError as exc:
             raise HTTPException(

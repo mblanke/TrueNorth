@@ -211,7 +211,7 @@ def submit_registration(
         return current
 
     db.refresh(target)
-    logger.info("Registration submitted by %s (%s)", target.email, identity.sub)
+    logger.info("Registration %s submitted by sub %s", target.id, identity.sub)  # no email in logs
     return target
 
 
@@ -468,7 +468,7 @@ def approve_request(
     _audit(db, user, "approve", str(req.id))
     db.commit()
     db.refresh(req)
-    logger.info("Registration %s approved by %s -> user %s", req.id, user.email, created.id)
+    logger.info("Registration %s approved by user %s -> user %s", req.id, user.id, created.id)
     return req
 
 

@@ -23598,7 +23598,7 @@
     },
     "/health": {
       "get": {
-        "description": "Quick health check - liveness + dependency flags.",
+        "description": "Health with dependency flags. 503 (``status: \"unavailable\"``) when the database is down.\n\nRedis is reported but does not fail this check; ``/health/ready`` fails on either.\nProbes: ``/health/live`` for liveness, ``/health/ready`` for readiness.",
         "operationId": "health_check_health_get",
         "responses": {
           "200": {
@@ -23610,6 +23610,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "The database is unreachable"
           }
         },
         "summary": "Health Check",
@@ -23638,9 +23648,29 @@
         ]
       }
     },
+    "/health/live": {
+      "get": {
+        "description": "Liveness probe: 200 while the process serves requests. Touches no dependency.",
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/health/ready": {
       "get": {
-        "description": "Readiness probe - checks DB + Redis connectivity.",
+        "description": "Readiness probe: DB and Redis (and OpenSearch when OPENSEARCH_URL is set). 503 if any is down.",
         "operationId": "readiness_health_ready_get",
         "responses": {
           "200": {
