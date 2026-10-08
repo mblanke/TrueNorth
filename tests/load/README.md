@@ -31,18 +31,35 @@ k6 version
 
 ### API Server
 
-Ensure the TrueNorth Range API is running:
+The scripts call the published contract (`docs/interfaces/openapi.json`) under its base
+path `/api/v1`. The default target is the dev stack's API:
 
 ```bash
-# Default target
-http://localhost:8080
+http://localhost:8081
 ```
 
-Override via environment variable:
+Environment variables:
 
-```bash
-export BASE_URL=http://your-server:8080
-```
+| Variable | Default | Meaning |
+|---|---|---|
+| `BASE_URL` | `http://localhost:8081` | The API (itest stack: `http://127.0.0.1:18081`; behind the web nginx: `http://host:4200/api`) |
+| `WS_URL` | `BASE_URL` with `ws` | For `/api/v1/ws/{channel}` |
+| `API_PREFIX` | `/api/v1` | Set to empty for the unversioned aliases |
+| `AUTH_TOKEN` | none | A bearer token, when the target authenticates. A dev or itest stack runs `AUTH_DISABLED` and acts as its dev admin |
+| `PROFILE` | `full` | `smoke`: smoke thresholds and rate-limit pacing (the CI run) |
+| `RATE_SHARE` | `1/3` under `smoke`, else `0` | Share of the API's per-client rate limits one run may use; `0` turns pacing off |
+| `READY_TIMEOUT_S` | `60` | How long a range may take to reach `ready` / `destroyed` |
+| `BATCH_SIZE` | `50` (`3` under `smoke`) | Ranges per batch in `batch-provision` |
+
+### Rate limits
+
+The API limits each client address per 60 s sliding window
+(`control-plane/api/app/middleware.py`): 200 GETs, 30 `POST /ranges...` (a range's
+provision and destroy included), 5 batch provisions, 100 other requests; `/health` is
+unlimited. A capacity run from one host is therefore throttled, not measured: run it
+against a target with `RATE_LIMIT_ENABLED=false`. Under `PROFILE=smoke` each VU paces
+itself (`helpers/api.js`) to `RATE_SHARE` of every limit, so a 429 never happens and
+three scenarios run back to back stay inside one window.
 
 ---
 
@@ -50,10 +67,12 @@ export BASE_URL=http://your-server:8080
 
 ```
 tests/load/
-├── config.js                   # Shared configuration, metrics, thresholds
+├── config.js                   # Environment, metrics, thresholds (full and smoke)
 ├── helpers/
-│   ├── data.js                 # Test data generators (ranges, templates, etc.)
-│   └── checks.js               # Reusable check/assertion functions
+│   ├── api.js                  # Tagged, checked API calls; rate-limit pacing
+│   ├── data.js                 # Request bodies (templates, scenarios, ranges, exercises)
+│   ├── flows.js                # Journeys: browse, range lifecycle, exercise, batch
+│   └── ws.js                   # Event socket session (/ws/{channel})
 ├── scenarios/
 │   ├── baseline.js             # Light constant load, strict thresholds
 │   ├── ci-gate.js              # < 30 s read-only gate
@@ -76,21 +95,31 @@ tests/load/
 Every scenario in `scenarios/` runs at **1 VU for 30 s** (`--vus 1 --duration 30s`, which
 replaces each script's own `scenarios`/`stages`) against the itest stack: the API on
 `http://127.0.0.1:18081`, mock provisioner, `AUTH_DISABLED`, schema from
-`alembic upgrade head` (`scripts/itest.sh up`). k6 is `grafana/k6` v1.8.1, pinned by
-digest. Each run has a 240 s wall-clock limit because `setup()` is not bounded by
-`--duration`.
+`alembic upgrade head` (`scripts/itest.sh up`), with `PROFILE=smoke`. k6 is
+`grafana/k6` v1.8.1, pinned by digest. Each run has a 240 s wall-clock limit because
+`setup()` is not bounded by `--duration`.
 
-It shows that the scripts still run against the current API, and it records the
-scenario's thresholds at trivial load. **It is not a capacity test.** One VU for 30 s says
-nothing about 1,200 users.
+It shows that the scripts still run against the current API: every call is to a route
+in `docs/interfaces/openapi.json`, with the body its schema requires, and is checked for
+the status the contract gives. **It is not a capacity test.** One VU for 30 s says nothing
+about 1,200 users.
 
-**Non-blocking for now** (`continue-on-error: true`). These scripts predate the current
-API, and some calls no longer match it (for example `GET /telemetry`, which is not in
-`docs/interfaces/openapi.json`). A failing scenario is a `::warning::` and the job is
-yellow. `build/k6/summary.txt` (k6 exit code per scenario; 99 means thresholds crossed)
-and `<scenario>.json` (`--summary-export`) are uploaded as the `k6-smoke` artifact.
+**Blocking.** A scenario that exits non-zero is an `::error::` and fails the job.
+`build/k6/summary.txt` (k6 exit code per scenario; 99 means thresholds crossed) and
+`<scenario>.json` (`--summary-export`) are uploaded as the `k6-smoke` artifact.
 
-Thresholds each scenario applies (from the script; the CI run uses them as they are):
+Under `PROFILE=smoke` every scenario applies the smoke thresholds instead of its own:
+
+| Metric | Smoke threshold |
+|---|---|
+| `http_req_failed` | < 1% |
+| `http_req_duration{kind:read}` p95 | < 1,000 ms |
+| `http_req_duration{kind:write}` p95 | < 2,000 ms |
+| `checks` | > 99% |
+| `batch-provision` also | `batch_provision_duration` p95 < 2,000 ms; `provisions_enqueued` >= 1 |
+| `websocket` also | `ws_connect_duration` p95 < 2,000 ms; `ws_message_latency` p95 < 500 ms; `ws_errors` < 1% |
+
+A full run (no `PROFILE`) applies each scenario's own thresholds:
 
 | Scenario | Thresholds |
 |---|---|
@@ -100,21 +129,17 @@ Thresholds each scenario applies (from the script; the CI run uses them as they 
 | `soak` | default, with `http_req_duration` p95<600, p99<2000 ms |
 | `spike` | default, with `http_req_duration` p95<1500, p99<3000 ms |
 | `stress` | stress (below) |
-| `batch-provision` | stress, plus `batch_provision_duration` p95<10 s and `provisions_enqueued` count>=500. **This always fails at 1 VU/30 s**, because the count is unreachable at that load |
+| `batch-provision` | stress, plus `batch_provision_duration` p95<10 s and `provisions_enqueued` count>=500 |
 | `websocket` | `ws_connect_duration` p95<2000 ms; `ws_message_latency` p95<500 ms; `ws_errors` <5% |
 
-**Making it blocking.** Fix or retire the calls that do not match the API. Then make
-`ci-gate` and `baseline` blocking: drop `continue-on-error` and run the rest in a
-separate non-blocking step. Leave `batch-provision`'s count threshold out of the smoke
-run (`--no-thresholds`, or an env-driven threshold) instead of lowering it in the script.
-
-Locally, against your own itest stack:
+Locally, against your own itest stack (`ITEST_PROJECT` keeps it apart from any other):
 
 ```bash
-bash scripts/itest.sh up
+ITEST_PROJECT=my-itest bash scripts/itest.sh up
 docker run --rm --network host -v "$PWD/tests/load:/load:ro" grafana/k6:1.8.1 \
-  run --vus 1 --duration 30s -e BASE_URL=http://127.0.0.1:18081 /load/scenarios/ci-gate.js
-bash scripts/itest.sh down
+  run --vus 1 --duration 30s -e PROFILE=smoke -e BASE_URL=http://127.0.0.1:18081 \
+  /load/scenarios/ci-gate.js
+ITEST_PROJECT=my-itest bash scripts/itest.sh down
 ```
 
 (`--network host` needs Linux, or Docker Desktop with host networking enabled.)
@@ -163,6 +188,9 @@ k6 run -e BASE_URL=http://staging:8080 -e AUTH_TOKEN=mytoken scenarios/load.js
 
 # With custom VU count
 k6 run --vus 50 --duration 5m scenarios/smoke.js
+
+# As CI runs it: smoke thresholds, paced under the rate limits
+k6 run --vus 1 --duration 30s -e PROFILE=smoke scenarios/smoke.js
 ```
 
 ---
@@ -171,13 +199,21 @@ k6 run --vus 50 --duration 5m scenarios/smoke.js
 
 | Scenario | VUs | Duration | Purpose |
 |---|---|---|---|
-| **smoke** | 10 | 1 min | Validate all endpoints respond correctly |
-| **load** | 200 | 10 min | Standard mixed workload (read/write/exercise) |
-| **stress** | 1,200 | 15 min | Max capacity — find breaking points |
+| **baseline** | 10 | 1 min | Reads, one range created and deleted per iteration; strict latency |
+| **ci-gate** | 5→10→0 | 25 s | Read-only: health and the lists every page opens |
+| **smoke** | 10 | 1 min | Every journey once: lists, range provisioned and torn down, exercise to its AAR |
+| **load** | 200 | 10 min | Standard mixed workload (read/range/exercise/stats) |
+| **stress** | 1,200 | 15 min | Max capacity — range lifecycles, paged lists, stats, socket bursts |
 | **spike** | 100→1,200→100 | ~7 min | Sudden traffic surge + recovery |
-| **soak** | 500 | 2 hours | Endurance — detect memory leaks |
-| **websocket** | 500 connections | 7 min | WebSocket concurrency + latency |
-| **batch-provision** | 10 | 10 min | Batch operations — 500+ provisions |
+| **soak** | 500 | 2 hours | Endurance — detect memory leaks; periodic batch provision |
+| **websocket** | 500 connections | 7 min | Event sockets on the tenant channel: connect, round-trip latency, reconnect |
+| **batch-provision** | 10 | one batch each | 10 batches of 50 ranges (500 provisions), each provisioned, torn down, deleted |
+
+A range lifecycle is: `POST /ranges`, `POST /ranges/{id}/provision` (202), poll
+`GET /ranges/{id}` until `ready`, `POST /ranges/{id}/destroy` (202), poll until
+`destroyed`, `DELETE /ranges/{id}` (204). Exercises run on one range made in `setup()`
+(a range with exercises on record is kept for their history). Everything a run creates
+is named `k6-...`.
 
 ---
 
@@ -193,6 +229,7 @@ k6 run --vus 50 --duration 5m scenarios/smoke.js
 | `range_creation_duration` p95 | < 800 ms |
 | `provision_duration` p95 | < 2,000 ms |
 | `exercise_complete_duration` p95 | < 1,500 ms |
+| `checks` | > 99% |
 
 ### Stress / Spike (relaxed for peak load)
 
@@ -201,6 +238,7 @@ k6 run --vus 50 --duration 5m scenarios/smoke.js
 | `http_req_duration` p95 | < 1,000 ms |
 | `http_req_duration` p99 | < 3,000 ms |
 | `http_req_failed` | < 2% |
+| `checks` | > 98% |
 
 ### WebSocket
 
@@ -216,14 +254,18 @@ k6 run --vus 50 --duration 5m scenarios/smoke.js
 
 | Metric | Type | Description |
 |---|---|---|
-| `range_creation_duration` | Trend | Time to create a range via POST /ranges |
-| `provision_duration` | Trend | Time to provision a range |
-| `exercise_complete_duration` | Trend | Time to complete an exercise |
-| `batch_provision_duration` | Trend | Time for batch provision requests |
-| `ws_message_latency` | Trend | WebSocket round-trip message latency |
-| `ws_connect_duration` | Trend | WebSocket connection establishment time |
-| `http_errors` | Rate | Fraction of requests returning errors |
-| `provisions_enqueued` | Counter | Total provisions submitted |
+| `range_creation_duration` | Trend | `POST /ranges` response time |
+| `provision_duration` | Trend | `POST /ranges/{id}/provision` response time (accepting it) |
+| `range_ready_duration` | Trend | From the provision's acceptance until the range is `ready` |
+| `exercise_complete_duration` | Trend | `POST /exercises/{id}/complete` response time |
+| `batch_provision_duration` | Trend | `POST /ranges/batch-provision` response time |
+| `ws_message_latency` | Trend | Socket round trip of a timed frame (its ack) |
+| `ws_connect_duration` | Trend | Socket connection establishment time |
+| `ws_errors` | Rate | Sockets that did not upgrade or got no ack |
+| `provisions_enqueued` | Counter | Provisions accepted (single and batched) |
+
+Every request is tagged `kind:read` (GET) or `kind:write`, and `name` with its route
+template (`GET /ranges/{id}`), so per-route figures stay readable.
 
 ---
 
@@ -234,8 +276,8 @@ k6 run --vus 50 --duration 5m scenarios/smoke.js
 k6 prints a summary table after each run:
 
 ```
-     ✓ status is 200
-     ✓ response time < 500ms
+     ✓ GET /ranges 200
+     ✓ POST /ranges/{id}/provision 202
 
      http_req_duration..........: avg=45ms  min=12ms  p(95)=120ms  p(99)=350ms
      http_req_failed............: 0.12%  ✓ 15  ✗ 12485
