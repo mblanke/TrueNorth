@@ -6459,13 +6459,14 @@ export interface paths {
         };
         /**
          * List Tenants
-         * @description List all tenants.  **Permission: tenant:read**
+         * @description List tenants: every tenant for the platform administrator, otherwise the caller's own.
+         *     **Permission: tenant:read**
          */
         get: operations["list_tenants_tenants_get"];
         put?: never;
         /**
          * Create Tenant
-         * @description Create a new tenant.  **Permission: tenant:create**
+         * @description Create a new tenant.  **Permission: tenant:create**, platform administrator only
          */
         post: operations["create_tenant_tenants_post"];
         delete?: never;
@@ -6484,7 +6485,8 @@ export interface paths {
         get?: never;
         /**
          * Update Tenant
-         * @description Update a tenant.  **Permission: tenant:update**
+         * @description Update a tenant: the caller's own, or any for the platform administrator.
+         *     **Permission: tenant:update**
          */
         put: operations["update_tenant_tenants__tenant_id__put"];
         post?: never;

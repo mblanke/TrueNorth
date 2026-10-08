@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import AuditLog, Team, TeamMembership, Tenant, User, UserRole
-from ..rbac import Permission, require_permission, user_has_permission
+from ..rbac import Permission, is_platform_admin, require_permission, user_has_permission
 from ..schemas import (
     AuditLogOut,
     TeamFullIn,
@@ -80,7 +80,9 @@ def create_tenant(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TENANT_CREATE)),
 ) -> Tenant:
-    """Create a new tenant.  **Permission: tenant:create**"""
+    """Create a new tenant.  **Permission: tenant:create**, platform administrator only"""
+    if not is_platform_admin(user):
+        raise HTTPException(403, "Only the platform administrator can create tenants")
     if db.query(Tenant).filter(Tenant.slug == body.slug).first():
         raise HTTPException(409, f"Tenant slug '{body.slug}' already exists")
     tenant = Tenant(name=body.name, slug=body.slug)
@@ -97,8 +99,12 @@ def list_tenants(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TENANT_READ)),
 ) -> list[Tenant]:
-    """List all tenants.  **Permission: tenant:read**"""
-    return db.query(Tenant).order_by(Tenant.created_at.desc()).all()
+    """List tenants: every tenant for the platform administrator, otherwise the caller's own.
+    **Permission: tenant:read**"""
+    q = db.query(Tenant)
+    if not is_platform_admin(user):
+        q = q.filter(Tenant.id == uuid.UUID(user.tenant_id))
+    return q.order_by(Tenant.created_at.desc()).all()
 
 
 @router.put("/tenants/{tenant_id}", response_model=TenantOut)
@@ -108,9 +114,11 @@ def update_tenant(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TENANT_UPDATE)),
 ) -> Tenant:
-    """Update a tenant.  **Permission: tenant:update**"""
+    """Update a tenant: the caller's own, or any for the platform administrator.
+    **Permission: tenant:update**"""
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if not tenant:
+    if not tenant or (not is_platform_admin(user) and str(tenant.id) != user.tenant_id):
+        # 404, not 403: another tenant's existence is not the caller's business.
         raise HTTPException(404, "Tenant not found")
     tenant.name = body.name
     tenant.slug = body.slug

@@ -35972,7 +35972,7 @@
     },
     "/tenants": {
       "get": {
-        "description": "List all tenants.  **Permission: tenant:read**",
+        "description": "List tenants: every tenant for the platform administrator, otherwise the caller's own.\n**Permission: tenant:read**",
         "operationId": "list_tenants_tenants_get",
         "responses": {
           "200": {
@@ -36001,7 +36001,7 @@
         ]
       },
       "post": {
-        "description": "Create a new tenant.  **Permission: tenant:create**",
+        "description": "Create a new tenant.  **Permission: tenant:create**, platform administrator only",
         "operationId": "create_tenant_tenants_post",
         "requestBody": {
           "content": {
@@ -36048,7 +36048,7 @@
     },
     "/tenants/{tenant_id}": {
       "put": {
-        "description": "Update a tenant.  **Permission: tenant:update**",
+        "description": "Update a tenant: the caller's own, or any for the platform administrator.\n**Permission: tenant:update**",
         "operationId": "update_tenant_tenants__tenant_id__put",
         "parameters": [
           {

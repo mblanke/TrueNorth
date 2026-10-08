@@ -45,7 +45,7 @@ from ..models import (
     User,
     UserRole,
 )
-from ..rbac import Permission, grant_refusal, require_permission
+from ..rbac import Permission, grant_refusal, is_platform_admin, require_permission
 from ..schemas import (
     AuthMeOut,
     RegistrationApproveIn,
@@ -256,12 +256,13 @@ def withdraw_registration(
 def _visible(db: Session, user: CurrentUser):
     """Requests this approver may see.
 
-    Admins see everything. An instructor sees requests suggested into their own
-    tenant, plus unassigned ones — otherwise a request whose AD groups map to no
-    tenant would be invisible to everyone but an admin and would sit forever.
+    The platform administrator sees everything. Anyone else — a tenant's admin
+    included, since admins are per tenant — sees requests suggested into their own
+    tenant, plus unassigned ones; otherwise a request whose AD groups map to no
+    tenant would be invisible to everyone but the operator and would sit forever.
     """
     q = db.query(RegistrationRequest)
-    if user.role == UserRole.admin:
+    if is_platform_admin(user):
         return q
     return q.filter(
         (RegistrationRequest.suggested_tenant_id == uuid.UUID(user.tenant_id))
@@ -306,10 +307,10 @@ def get_request(
 def _resolve_tenant(db: Session, req: RegistrationRequest, approver: CurrentUser, chosen: uuid.UUID | None) -> uuid.UUID:
     """Decide which tenant the new user lands in, and whether that is permitted."""
     target = chosen or req.suggested_tenant_id or uuid.UUID(approver.tenant_id)
-    if approver.role != UserRole.admin and str(target) != approver.tenant_id:
+    if not is_platform_admin(approver) and str(target) != approver.tenant_id:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "Approving into another tenant requires an administrator",
+            "Approving into another tenant requires the platform administrator",
         )
     if db.query(Tenant).filter(Tenant.id == target).first() is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Tenant {target} does not exist")

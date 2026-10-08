@@ -88,3 +88,66 @@ def test_grant_rule_is_a_permission_subset():
     assert grant_refusal(who(UserRole.instructor), UserRole.admin)
     assert grant_refusal(who(UserRole.range_ops), UserRole.student)  # range_ops lacks detection:submit
     assert grant_refusal(who(UserRole.student), UserRole.student) is None
+
+
+# ── H5: admins are per tenant; only the platform administrator crosses tenants ──
+@pytest.fixture
+def two_tenants_operator_elsewhere(db_session, monkeypatch):
+    """Tenants A and B, with PLATFORM_TENANT_ID naming a third (operator) tenant."""
+    a, b, op = (real_tenant(db_session, s) for s in ("ten-a", "ten-b", "operator"))
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(op.id))
+    return a, b, op
+
+
+def test_tenant_admin_does_not_see_other_tenants_requests(client, db_session, two_tenants_operator_elsewhere):
+    a, b, _ = two_tenants_operator_elsewhere
+    mine, theirs = _pending(db_session, a.id), _pending(db_session, b.id)
+    act_as(real_user(db_session, UserRole.admin, a.id))
+
+    ids = {r["id"] for r in client.get("/registration/requests").json()}
+
+    assert str(mine.id) in ids and str(theirs.id) not in ids
+    assert client.get(f"/registration/requests/{theirs.id}").status_code == 404
+    assert client.post(f"/registration/requests/{theirs.id}/approve", json={"role": "student"}).status_code == 404
+
+
+def test_tenant_admin_cannot_approve_into_another_tenant(client, db_session, two_tenants_operator_elsewhere):
+    a, b, _ = two_tenants_operator_elsewhere
+    req = _pending(db_session, None)  # unassigned: visible to A's admin
+    act_as(real_user(db_session, UserRole.admin, a.id))
+
+    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "admin", "tenant_id": str(b.id)})
+
+    assert r.status_code == 403
+    assert db_session.query(User).filter(User.tenant_id == b.id).count() == 0
+
+
+def test_platform_admin_sees_and_approves_across_tenants(client, db_session, two_tenants_operator_elsewhere):
+    _, b, op = two_tenants_operator_elsewhere
+    req = _pending(db_session, b.id)
+    act_as(real_user(db_session, UserRole.admin, op.id))
+
+    assert str(req.id) in {r["id"] for r in client.get("/registration/requests").json()}
+    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "student", "tenant_id": str(b.id)})
+    assert r.status_code == 200, r.text
+
+
+def test_tenant_admin_tenant_endpoints_are_scoped(client, db_session, two_tenants_operator_elsewhere):
+    a, b, _ = two_tenants_operator_elsewhere
+    act_as(real_user(db_session, UserRole.admin, a.id))
+
+    assert {t["id"] for t in client.get("/tenants").json()} == {str(a.id)}
+    assert client.post("/tenants", json={"name": "Rogue", "slug": "rogue"}).status_code == 403
+    assert client.put(f"/tenants/{b.id}", json={"name": "Pwned", "slug": "pwned"}).status_code == 404
+    db_session.refresh(b)
+    assert b.name == "ten-b"
+    assert client.put(f"/tenants/{a.id}", json={"name": "Alpha 2", "slug": "ten-a"}).status_code == 200
+
+
+def test_platform_admin_manages_all_tenants(client, db_session, two_tenants_operator_elsewhere):
+    a, b, op = two_tenants_operator_elsewhere
+    act_as(real_user(db_session, UserRole.admin, op.id))
+
+    assert {str(a.id), str(b.id), str(op.id)} <= {t["id"] for t in client.get("/tenants").json()}
+    assert client.post("/tenants", json={"name": "New", "slug": "new-tenant"}).status_code == 201
+    assert client.put(f"/tenants/{b.id}", json={"name": "B2", "slug": "ten-b"}).status_code == 200
