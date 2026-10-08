@@ -753,6 +753,15 @@ The API exposes Prometheus-compatible metrics at `/metrics`:
 | `ranges_by_state` | Gauge | Current ranges per state |
 | `exercises_active` | Gauge | Active exercise count |
 
+**Exposure.** Scrape `/metrics` on the internal network (`api:8080/metrics`). The bundled
+nginx configs (`control-plane/web/nginx.conf`, `infra/platform/nginx/conf.d/truenorth.conf`)
+answer `404` for `/api/metrics` and `/api/v1/metrics`. Under Helm the ingress forwards the
+whole `/api` prefix, so set `METRICS_SCRAPE_TOKEN` on the API there (or wherever the API is
+reachable from outside the cluster): `/metrics` then requires `Authorization: Bearer
+<token>`, and the Prometheus job needs a matching `authorization: { credentials_file: ... }`.
+Request metrics are labelled by route template (`/schedule/feed/{token}.ics`), never the
+raw path; requests that match no route are labelled `unmatched`.
+
 ---
 
 ## Backup Configuration
