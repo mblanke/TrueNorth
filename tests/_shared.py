@@ -149,6 +149,34 @@ def noise(minutes=5, n=1):
             for i in range(n)]
 
 
+def real_tenant(db, slug: str | None = None):
+    """A tenants row, so tests satisfy the SQLite foreign-key guard."""
+    from app.models import Tenant
+
+    slug = slug or f"t-{uuid.uuid4().hex[:8]}"
+    row = Tenant(id=uuid.uuid4(), name=slug, slug=slug)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def real_user(db, role: UserRole, tenant_id) -> CurrentUser:
+    """A users row in ``tenant_id`` and the CurrentUser that acts as it."""
+    from app.models import User
+
+    uid = uuid.uuid4()
+    db.add(User(id=uid, keycloak_id=f"kc-{uid}", email=f"{uid.hex[:10]}@example.test",
+                display_name=f"Test {role.value}", role=role, tenant_id=uuid.UUID(str(tenant_id))))
+    db.flush()
+    return CurrentUser(id=str(uid), email=f"{uid.hex[:10]}@example.test", display_name=f"Test {role.value}",
+                       role=role, tenant_id=str(tenant_id), keycloak_id=f"kc-{uid}")
+
+
+def act_as(who: CurrentUser) -> None:
+    """Make ``who`` the caller for every following request (cleared by the client fixture)."""
+    fastapi_app.dependency_overrides[get_current_user] = lambda: who
+
+
 @contextmanager
 def acting_as(role: UserRole, tenant: str = DEV_TENANT):
     who = CurrentUser(id=str(uuid.uuid4()), email=f"{role.value}@example.test", display_name=f"Test {role.value}",

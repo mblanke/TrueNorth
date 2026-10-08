@@ -418,3 +418,24 @@ def user_has_permission(user: CurrentUser, permission: Permission) -> bool:
 def user_permissions(user: CurrentUser) -> set[Permission]:
     """Return the full permission set for a user's role."""
     return ROLE_PERMISSIONS.get(user.role, set())
+
+
+# Roles that carry authority over other people or the platform. Only an administrator
+# grants them, whatever the permission arithmetic says.
+STAFF_GRANTED_BY_ADMIN_ONLY = frozenset({UserRole.admin, UserRole.instructor, UserRole.range_ops})
+
+
+def grant_refusal(granter: CurrentUser, role: UserRole) -> str | None:
+    """Why ``granter`` may not give someone ``role``, or None when they may.
+
+    Two rules, both required: the granted role's permissions must be a subset of the
+    granter's own (nobody hands out authority they do not hold), and the staff roles
+    (admin, instructor, range_ops) are granted by an administrator only. Before this, an
+    instructor holding registration:approve could approve a request as ``admin``.
+    """
+    if role in STAFF_GRANTED_BY_ADMIN_ONLY and granter.role != UserRole.admin:
+        return f"Only an administrator can grant the '{role.value}' role"
+    granted = ROLE_PERMISSIONS.get(role, set())
+    if not granted <= ROLE_PERMISSIONS.get(granter.role, set()):
+        return f"The '{role.value}' role carries permissions you do not hold"
+    return None

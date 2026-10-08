@@ -45,7 +45,7 @@ from ..models import (
     User,
     UserRole,
 )
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, grant_refusal, require_permission
 from ..schemas import (
     AuthMeOut,
     RegistrationApproveIn,
@@ -375,6 +375,11 @@ def _approve_one(
             f"Request is already {req.status.value}",
         )
 
+    granted_role = UserRole(role)
+    refusal = grant_refusal(approver, granted_role)
+    if refusal:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, refusal)
+
     target_tenant = _resolve_tenant(db, req, approver, tenant_id)
 
     # Resolve the target row deterministically rather than by catching an
@@ -409,7 +414,7 @@ def _approve_one(
 
     user.source = "ad"
 
-    user.role = UserRole(role)
+    user.role = granted_role
     user.tenant_id = target_tenant
     user.first_name = req.first_name
     user.last_name = req.last_name
@@ -509,6 +514,10 @@ def bulk_approve(
     not leave a half-applied approval behind. A single commit at the end keeps
     the whole batch in one transaction rather than issuing thirty of them.
     """
+    # Refuse the whole batch up front: the role is the same for every row.
+    refusal = grant_refusal(user, UserRole(body.role))
+    if refusal:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, refusal)
     results: list[RegistrationBulkResultItem] = []
     for rid in body.request_ids:
         req = _visible(db, user).filter(RegistrationRequest.id == rid).first()
