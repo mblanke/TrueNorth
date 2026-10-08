@@ -2,6 +2,7 @@ import { inject } from '@angular/core';
 import { CanActivateFn, Router, UrlTree } from '@angular/router';
 import { Observable, from, map } from 'rxjs';
 import { AuthService } from '../services/auth.service';
+import { safeReturnUrl } from '../auth/return-url';
 
 /**
  * Guards resolve asynchronously.
@@ -16,10 +17,18 @@ function resolved<T>(fn: () => T): Observable<T> {
   return from(auth.bootstrap()).pipe(map(() => fn()));
 }
 
-/** Requires a fully registered, approved account. */
-export const authGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
+/**
+ * Requires a fully registered, approved account.
+ *
+ * An anonymous visitor goes to /login with the URL they tried as `returnUrl`, so signing
+ * in brings them back to it. Only a same-origin relative path is passed on (safeReturnUrl);
+ * the login page validates it again before using it.
+ */
+export const authGuard: CanActivateFn = (_route, state): Observable<boolean | UrlTree> => {
   const auth = inject(AuthService);
   const router = inject(Router);
+  const attempted = safeReturnUrl(state?.url);
+  const returnUrl = attempted && attempted !== '/' ? attempted : null; // root needs no return
 
   return resolved<boolean | UrlTree>(() => {
     if (auth.isAuthenticated()) {
@@ -34,7 +43,7 @@ export const authGuard: CanActivateFn = (): Observable<boolean | UrlTree> => {
       case 'rejected':
         return router.createUrlTree(['/registration-pending']);
       default:
-        return router.createUrlTree(['/login']);
+        return router.createUrlTree(['/login'], returnUrl ? { queryParams: { returnUrl } } : {});
     }
   });
 };

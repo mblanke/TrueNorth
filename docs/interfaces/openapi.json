@@ -20351,7 +20351,7 @@
     },
     "/courses/{course_id}/outline": {
       "get": {
-        "description": "A course with everything needed to actually read it.\n\n`CourseOut` returns modules but not their content, so the course page could only\never list module titles. This walks the teach -> check -> assess rows so the page\ncan show what each module teaches, the quiz that checks it, the lab that assesses\nit, and the performance objective it satisfies.",
+        "description": "A course with everything needed to actually read it.\n\n`CourseOut` returns modules but not their content, so the course page could only\never list module titles. This walks the teach -> check -> assess rows so the page\ncan show what each module teaches, the quiz that checks it, the lab that assesses\nit, and the performance objective it satisfies.\n\n``moodle_available`` says whether \"Open in Moodle\" can work for the caller: their\ntenant has an active Moodle with an LTI issuer and this course is published to it.",
         "operationId": "course_outline_courses__course_id__outline_get",
         "parameters": [
           {
@@ -20685,7 +20685,7 @@
     },
     "/curricula/{curriculum_id}/generate-course": {
       "post": {
-        "description": "Draft a course (with modules and quiz placeholders) from the ingested curriculum.",
+        "description": "Draft a course (with modules and quiz placeholders) from the ingested curriculum.\n\n**Permission: course:author** (was: any signed-in user). It writes a Course and its\nmodules, which is authoring, and spends AI-orchestrator time.",
         "operationId": "generate_course_curricula__curriculum_id__generate_course_post",
         "parameters": [
           {

@@ -6,6 +6,7 @@ import { of, throwError } from 'rxjs';
 
 import { ApiService } from '@core/services/api.service';
 import { AuthService } from '@core/services/auth.service';
+import { NotificationService } from '@core/services/notification.service';
 import { ThemeService } from '@core/services/theme.service';
 import { CompetencyComponent } from './competency.component';
 import { CompetencyHeatmapComponent } from './competency-heatmap.component';
@@ -21,6 +22,7 @@ describe('CompetencyComponent', () => {
   let api: jasmine.SpyObj<ApiService>;
   let renderCharts: jasmine.Spy;
   let alertSpy: jasmine.Spy;
+  let notify: jasmine.SpyObj<NotificationService>;
 
   const FRAMEWORK = [
     { id: 'c1', code: 'K0001', name: 'Networking concepts', framework: 'nice', category: 'Knowledge', level: 1 },
@@ -52,12 +54,14 @@ describe('CompetencyComponent', () => {
     }) as any);
     api.post.and.returnValue(of({}));
     alertSpy = spyOn(window, 'alert');
+    notify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
     await TestBed.configureTestingModule({
       imports: [CompetencyComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
         { provide: ApiService, useValue: api },
+        { provide: NotificationService, useValue: notify },
         { provide: AuthService, useValue: { userId: signal('u-1') } },
         { provide: ThemeService, useValue: { activeTheme: signal('dark') } },
       ],
@@ -133,15 +137,17 @@ describe('CompetencyComponent', () => {
     await create();
     component.importNice();
     expect(api.post).toHaveBeenCalledWith('/competency/frameworks/import-nice', {});
-    expect(alertSpy).toHaveBeenCalledWith('NICE framework imported!');
+    expect(notify.success).toHaveBeenCalledWith('NICE framework imported');
+    expect(alertSpy).not.toHaveBeenCalled();
     expect(api.get.calls.allArgs().filter(a => a[0] === '/competency/frameworks').length).toBe(2);
   });
 
-  it('alerts the server detail when the import fails', async () => {
+  it('shows the server detail in a snackbar when the import fails', async () => {
     await create();
     api.post.and.returnValue(throwError(() => ({ error: { detail: 'Already imported' } })));
     component.importNice();
-    expect(alertSpy).toHaveBeenCalledWith('Already imported');
+    expect(notify.error).toHaveBeenCalledWith('Already imported');
+    expect(alertSpy).not.toHaveBeenCalled();
   });
 
   it('does not request skill gaps until a role is chosen', async () => {

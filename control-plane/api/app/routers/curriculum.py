@@ -34,6 +34,7 @@ from ..models import (
     ModuleContentType,
     Quiz,
 )
+from ..rbac import Permission, require_permission
 
 AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 
@@ -300,9 +301,12 @@ async def generate_course(
     curriculum_id: uuid.UUID,
     body: CourseGenerateIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ):
-    """Draft a course (with modules and quiz placeholders) from the ingested curriculum."""
+    """Draft a course (with modules and quiz placeholders) from the ingested curriculum.
+
+    **Permission: course:author** (was: any signed-in user). It writes a Course and its
+    modules, which is authoring, and spends AI-orchestrator time."""
     curriculum = _get_owned(curriculum_id, db, user)
     if curriculum.status != CurriculumStatus.ready:
         raise HTTPException(409, "Curriculum is not ready — ingest documents first.")

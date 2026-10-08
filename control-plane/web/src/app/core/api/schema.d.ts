@@ -1306,6 +1306,9 @@ export interface paths {
          *     ever list module titles. This walks the teach -> check -> assess rows so the page
          *     can show what each module teaches, the quiz that checks it, the lab that assesses
          *     it, and the performance objective it satisfies.
+         *
+         *     ``moodle_available`` says whether "Open in Moodle" can work for the caller: their
+         *     tenant has an active Moodle with an LTI issuer and this course is published to it.
          */
         get: operations["course_outline_courses__course_id__outline_get"];
         put?: never;
@@ -1406,6 +1409,9 @@ export interface paths {
         /**
          * Generate Course
          * @description Draft a course (with modules and quiz placeholders) from the ingested curriculum.
+         *
+         *     **Permission: course:author** (was: any signed-in user). It writes a Course and its
+         *     modules, which is authoring, and spends AI-orchestrator time.
          */
         post: operations["generate_course_curricula__curriculum_id__generate_course_post"];
         delete?: never;

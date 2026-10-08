@@ -9,7 +9,7 @@ import { CourseDetailComponent } from './course-detail.component';
 const OUTLINE = {
   id: 'c-1', course_code: 'C101', name: 'C101 — Log triage', description: 'Find the beacon',
   difficulty: 'beginner', duration_hours: 4, is_published: true, institution: '', dp_order: 1,
-  term_label: '', provenance: '', status: '', tags: [], modules: [],
+  term_label: '', provenance: '', status: '', tags: [], modules: [], moodle_available: true,
 };
 
 describe('CourseDetailComponent', () => {
@@ -17,9 +17,9 @@ describe('CourseDetailComponent', () => {
   let api: jasmine.SpyObj<ApiService>;
   let submitted: HTMLFormElement[];
 
-  function setup(id: string | null = 'c-1'): void {
+  function setup(id: string | null = 'c-1', outline: object = OUTLINE): void {
     api = jasmine.createSpyObj<ApiService>('ApiService', ['get', 'post']);
-    api.get.and.returnValue(of(OUTLINE) as any);
+    api.get.and.returnValue(of(outline) as any);
     TestBed.configureTestingModule({
       imports: [CourseDetailComponent, NoopAnimationsModule],
       providers: [
@@ -48,6 +48,25 @@ describe('CourseDetailComponent', () => {
     setup();
     expect(api.get).toHaveBeenCalledWith('/courses/c-1/outline');
     expect(fixture.nativeElement.textContent).toContain('Log triage');
+  });
+
+  it('shows Open in Moodle when the outline says the course is live on the tenant Moodle', () => {
+    setup();
+    expect(moodleButton()).toBeDefined();
+    // Every role reads the flag from the outline; nothing needs integration:read.
+    expect(api.get).not.toHaveBeenCalledWith('/integrations/platforms');
+  });
+
+  it('hides Open in Moodle when the outline says Moodle is not available', () => {
+    setup('c-1', { ...OUTLINE, moodle_available: false });
+    expect(moodleButton()).toBeUndefined();
+  });
+
+  it('hides Open in Moodle when the outline has no flag (older API)', () => {
+    const legacy: Partial<typeof OUTLINE> = { ...OUTLINE };
+    delete legacy.moodle_available;
+    setup('c-1', legacy);
+    expect(moodleButton()).toBeUndefined();
   });
 
   it('reports a missing id without calling the API', () => {

@@ -73,6 +73,20 @@ describe('ExerciseDetailComponent detections', () => {
     expect(submitButtons(el).length).toBe(0);
   });
 
+  it('links a completed exercise to its AAR on the scoring page, next to Generate AAR', async () => {
+    const el = await render('instructor', 'completed');
+    const view = Array.from(el.querySelectorAll<HTMLAnchorElement>('a'))
+      .find(a => a.textContent?.includes('View AAR'));
+    expect(view).toBeDefined();
+    expect(view!.getAttribute('href')).toBe('/scoring?exercise=ex1');
+    expect(Array.from(el.querySelectorAll('button')).some(b => b.textContent?.includes('Generate AAR'))).toBeTrue();
+  });
+
+  it('does not offer View AAR to a Student, who cannot open /scoring', async () => {
+    const el = await render('student', 'completed');
+    expect(Array.from(el.querySelectorAll('a')).some(a => a.textContent?.includes('View AAR'))).toBeFalse();
+  });
+
   it('gives staff the full attempts table', async () => {
     const el = await render('instructor');
     Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Attempts (1)'))!.click();

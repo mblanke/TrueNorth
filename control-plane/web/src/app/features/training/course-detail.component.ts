@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -50,6 +50,8 @@ interface CourseOutline {
   status: string;
   tags: string[];
   modules: OutlineModule[];
+  /** The tenant has a usable Moodle and this course is published to it (any role may read). */
+  moodle_available?: boolean;
 }
 
 /** One section of a module's teaching content, split out of its markdown. */
@@ -98,10 +100,13 @@ interface Section {
             </p>
           </div>
           <div class="head-actions">
-            <!-- Moodle has no login of its own: the app hands the Student in (local_truenorth). -->
-            <button mat-flat-button type="button" (click)="openInMoodle(c)" [disabled]="opening()">
-              <mat-icon>open_in_new</mat-icon> Open in Moodle
-            </button>
+            <!-- Moodle has no login of its own: the app hands the Student in (local_truenorth).
+                 Shown only when the outline says the course is live on the tenant's Moodle. -->
+            @if (moodleAvailable()) {
+              <button mat-flat-button type="button" (click)="openInMoodle(c)" [disabled]="opening()">
+                <mat-icon>open_in_new</mat-icon> Open in Moodle
+              </button>
+            }
             <!-- Draft state is not decoration: none of this is validated courseware. -->
             <span class="pill" [class.draft]="!c.is_published">
               {{ c.is_published ? 'Published' : 'Draft — not for learners' }}
@@ -274,6 +279,13 @@ export class CourseDetailComponent implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly opening = signal(false);
   protected readonly moodleError = signal<string | null>(null);
+  /**
+   * Whether "Open in Moodle" can work, as the outline reports it for every role: the
+   * tenant has an active Moodle with an LTI issuer and this course is published to it
+   * (`moodle_sso.course_available`). Missing or false hides the button rather than
+   * offering a launch that 404s.
+   */
+  protected readonly moodleAvailable = computed(() => this.course()?.moodle_available === true);
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');

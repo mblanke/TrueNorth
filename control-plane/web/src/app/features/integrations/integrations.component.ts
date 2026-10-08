@@ -10,7 +10,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatDialog } from '@angular/material/dialog';
 import { ApiService } from '@core/services/api.service';
+import { NotificationService } from '@core/services/notification.service';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { EnterStaggerDirective } from '../../shared/motion';
 
@@ -200,6 +203,8 @@ interface ExternalPlatform {
 })
 export class IntegrationsComponent implements OnInit {
   private api = inject(ApiService);
+  private notify = inject(NotificationService);
+  private dialog = inject(MatDialog);
 
   platforms = signal<ExternalPlatform[]>([]);
   loading = signal(true);
@@ -229,8 +234,8 @@ export class IntegrationsComponent implements OnInit {
 
   addPlatform() {
     this.api.post('/integrations/platforms', this.newPlatform).subscribe({
-      next: () => { this.showAdd = false; this.loadPlatforms(); },
-      error: (err: any) => alert(err.error?.detail || 'Failed to add platform'),
+      next: () => { this.showAdd = false; this.notify.success('Platform added'); this.loadPlatforms(); },
+      error: (err: any) => this.notify.error(err.error?.detail || 'Failed to add platform'),
     });
   }
 
@@ -256,7 +261,7 @@ export class IntegrationsComponent implements OnInit {
       },
       error: (err: any) => {
         this.platformSaving = false;
-        alert(err.error?.detail || 'Failed to update platform');
+        this.notify.error(err.error?.detail || 'Failed to update platform');
       },
     });
   }
@@ -269,16 +274,31 @@ export class IntegrationsComponent implements OnInit {
 
   testConnection(p: ExternalPlatform) {
     this.api.post(`/integrations/platforms/${p.id}/test`, {}).subscribe({
-      next: (res: any) => alert(`Connection ${res.reachable ? 'OK' : 'Failed'}: ${res.error || 'Status ' + res.status_code}`),
-      error: (err: any) => alert(`Test failed: ${err.error?.detail || err.message}`),
+      next: (res: any) => {
+        const msg = `Connection ${res.reachable ? 'OK' : 'Failed'}: ${res.error || 'Status ' + res.status_code}`;
+        if (res.reachable) this.notify.success(msg); else this.notify.error(msg);
+      },
+      error: (err: any) => this.notify.error(`Test failed: ${err.error?.detail || err.message}`),
     });
   }
 
   deletePlatform(p: ExternalPlatform) {
-    if (!confirm(`Remove ${p.name}?`)) return;
-    this.api.delete(`/integrations/platforms/${p.id}`).subscribe({
-      next: () => this.loadPlatforms(),
-      error: (err: any) => alert(err.error?.detail || 'Delete failed'),
-    });
+    this.dialog
+      .open(ConfirmDialogComponent, {
+        width: '420px',
+        data: {
+          title: 'Remove platform',
+          message: `Remove ${p.name}? LTI launches and syncs from it stop working.`,
+          confirmText: 'Remove',
+        },
+      })
+      .afterClosed()
+      .subscribe(ok => {
+        if (!ok) return;
+        this.api.delete(`/integrations/platforms/${p.id}`).subscribe({
+          next: () => { this.notify.success(`${p.name} removed`); this.loadPlatforms(); },
+          error: (err: any) => this.notify.error(err.error?.detail || 'Delete failed'),
+        });
+      });
   }
 }

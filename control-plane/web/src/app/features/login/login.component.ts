@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import gsap from 'gsap';
 
 import { AuthService } from '@core/services/auth.service';
+import { safeReturnUrl } from '@core/auth/return-url';
 import { MotionService } from '../../shared/motion';
 import { AuroraScene } from './aurora-scene';
 
@@ -140,11 +141,21 @@ export class LoginComponent implements AfterViewInit, OnDestroy {
   private scene?: AuroraScene;
   private timeline?: gsap.core.Timeline;
 
+  /**
+   * Where to go after signing in, e.g. the lab a Student was sent here from.
+   * Validated by safeReturnUrl: same-origin relative paths only (no open redirect).
+   */
+  private readonly returnUrl = safeReturnUrl(this.route.snapshot.queryParamMap.get('returnUrl'));
+
   constructor() {
     // ?preview=1 keeps the page reachable in dev, where auth is mocked.
     const preview = this.route.snapshot.queryParamMap.has('preview');
     if (this.auth.isAuthenticated() && !preview) {
-      this.router.navigate(['/dashboard']);
+      if (this.returnUrl) {
+        void this.router.navigateByUrl(this.returnUrl);
+      } else {
+        this.router.navigate(['/dashboard']);
+      }
     }
   }
 
@@ -200,6 +211,8 @@ export class LoginComponent implements AfterViewInit, OnDestroy {
   }
 
   login(): void {
-    this.auth.login();
+    // Keycloak sends the browser back to this URI after SSO; without it the Student
+    // lands on the root instead of the lab they came from.
+    this.auth.login(this.returnUrl ? `${window.location.origin}${this.returnUrl}` : undefined);
   }
 }
