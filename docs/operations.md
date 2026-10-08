@@ -252,99 +252,49 @@ Condition: pg_up == 0
 
 ## Backup and Restore
 
-### Backup Strategy
+The full procedure, including what the operator must configure, is
+[runbooks/backup-restore.md](runbooks/backup-restore.md). The scripts are in
+`scripts/backup/`; `scripts/backup/drill.sh` proves them end to end (CI:
+`.github/workflows/backup-drill.yml`, nightly and on every change to them).
+
+### What is backed up
 
 | Component | Method | Frequency | Retention |
 |-----------|--------|-----------|-----------|
-| PostgreSQL | pg_dump + WAL archiving | Continuous WAL, daily full | 30 days full, 7 days WAL |
-| Redis | RDB snapshots | Every 15 minutes | 24 hours |
-| MinIO | mc mirror to backup bucket | Daily incremental | 90 days |
-| OpenSearch | Snapshot to S3 | Daily | 30 days |
-| Keycloak | PostgreSQL backup (shared) | With database backup | 30 days |
-| Terraform State | S3 backend with versioning | Every apply | indefinite |
-| Configuration | Git repository | Every commit | indefinite |
+| PostgreSQL — every database on the server (app `${POSTGRES_DB}`, `keycloak`, `lrs`, ...) | `pg_dump -Fc` per database + `pg_dumpall --globals-only` (roles) | Nightly (`cron-backup.sh`) | 7 daily / 4 weekly / 12 monthly |
+| MinIO — every bucket | `mc mirror` from a container of the stack's pinned MinIO image | Nightly | same |
+| Env file (holds `TN_SECRETS_KEY` and every credential) | AES-256, data key wrapped to the escrow RSA public key | Nightly | same |
+| OpenSearch (telemetry) | Snapshot, only if `OPENSEARCH_SNAPSHOT_REPO` is registered | Nightly | per repository |
+| Redis | Not backed up: broker, cache, rate limits. Restoring it would replay stale tasks | — | — |
+| Configuration | Git repository (the manifest records the commit) | Every commit | indefinite |
 
-### PostgreSQL Backup
+A backup is a directory `truenorth-backup-<UTC>/` with `postgres/<db>.dump`,
+`postgres/globals.sql`, `minio/<bucket>/`, `secrets/env.enc` + `secrets/env.key.enc`,
+`manifest.json` and `SHA256SUMS`. It is written under `.partial-…` and renamed only
+when complete, so a directory with that name is always a whole backup.
 
-```bash
-# Automated daily backup (via cron)
-#!/bin/bash
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/backups/postgresql"
-
-# Full dump with compression
-pg_dump -Fc -h localhost -U truenorth truenorth_db \
-  > "${BACKUP_DIR}/truenorth_${TIMESTAMP}.dump"
-
-# Verify backup
-pg_restore --list "${BACKUP_DIR}/truenorth_${TIMESTAMP}.dump" > /dev/null 2>&1
-if [ $? -eq 0 ]; then
-  echo "Backup verified: truenorth_${TIMESTAMP}.dump"
-else
-  echo "ERROR: Backup verification failed!" | tee -a /var/log/backup-errors.log
-  # Send alert
-fi
-
-# Clean old backups (> 30 days)
-find "${BACKUP_DIR}" -name "*.dump" -mtime +30 -delete
-
-# Upload to offsite storage
-mc cp "${BACKUP_DIR}/truenorth_${TIMESTAMP}.dump" offsite/backups/postgresql/
-```
-
-### PostgreSQL Restore
+### Restore
 
 ```bash
-# Stop application services
-kubectl scale deployment truenorth-api --replicas=0
-kubectl scale deployment celery-worker --replicas=0
-
-# Restore from backup
-pg_restore -h localhost -U truenorth -d truenorth_db \
-  --clean --if-exists \
-  /backups/postgresql/truenorth_20260115_020000.dump
-
-# Verify data integrity
-psql -h localhost -U truenorth -d truenorth_db \
-  -c "SELECT count(*) FROM ranges; SELECT count(*) FROM exercises;"
-
-# Restart services
-kubectl scale deployment truenorth-api --replicas=3
-kubectl scale deployment celery-worker --replicas=4
+cd /opt/truenorth            # the app checkout
+set -a; . /etc/truenorth/backup.env; set +a      # COMPOSE_FILE, ENV_FILE, BACKUP_DIR
+scripts/backup/restore.sh "$BACKUP_DIR/daily/truenorth-backup-20261008T021700Z"
 ```
 
-### OpenSearch Backup
+`restore.sh` verifies the checksums, asks for the compose project name, stops every
+service except `postgres` and `minio`, re-creates roles, drops and re-creates each
+database from its dump (`pg_restore --create`), re-creates each bucket and mirrors its
+objects back, then starts the stopped services again. Verify with the row counts in the
+runbook. If the code is newer than the backup, run migrations
+([runbooks/upgrade.md](runbooks/upgrade.md)).
 
-```bash
-# Register snapshot repository
-curl -X PUT "localhost:9200/_snapshot/truenorth_backups" -d '{
-  "type": "s3",
-  "settings": {
-    "bucket": "truenorth-opensearch-backups",
-    "region": "us-east-1"
-  }
-}'
+### OpenSearch
 
-# Create snapshot
-curl -X PUT "localhost:9200/_snapshot/truenorth_backups/snapshot_$(date +%Y%m%d)"
-
-# Restore snapshot
-curl -X POST "localhost:9200/_snapshot/truenorth_backups/snapshot_20260115/_restore" -d '{
-  "indices": "tn-range-*",
-  "rename_pattern": "(.+)",
-  "rename_replacement": "restored_$1"
-}'
-```
-
-### MinIO Backup
-
-```bash
-# Mirror to backup location
-mc mirror --overwrite truenorth-minio/truenorth-artifacts backup-minio/truenorth-artifacts
-
-# Verify integrity
-mc diff truenorth-minio/truenorth-artifacts backup-minio/truenorth-artifacts
-```
+`compose.prod.yml` sets no `path.repo`, so there is nowhere to snapshot to by default and
+telemetry is **not** in the nightly backup (the manifest says so). Scores, AARs and course
+records live in PostgreSQL and MinIO and are backed up; raw telemetry lost with the
+OpenSearch volume is gone. To include it, register a repository and set
+`OPENSEARCH_SNAPSHOT_REPO` — see [runbooks/backup-restore.md](runbooks/backup-restore.md#opensearch).
 
 ---
 
