@@ -68,6 +68,7 @@ EXPECTED_NEW_TABLES = {
     "inject_records",
     "range_greyspace",
     "detection_submissions",
+    "exercise_runs",
 }
 
 # b0c1d2e3f4a5 builds its frozen list of tables from the *live* ORM, so a database taken

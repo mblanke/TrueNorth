@@ -150,6 +150,38 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Nothing to undo safely: on most databases these columns predate this
-    # revision, having come from create_all(), and hold real data.
-    pass
+    """Drop the columns this revision adds, returning the schema to what the chain builds
+    at e6f7a8b9c0d1.
+
+    That is the schema of the previous revision whichever way the database was built, so
+    on a database ``create_all()`` made, where these columns predate this revision, the
+    downgrade drops them and their data too, as any downgrade of an added column does.
+    A column already gone (a later revision's downgrade took it) is skipped. Postgres
+    drops a column's index, foreign key and unique constraint with it; SQLite rebuilds
+    the table (batch mode), which also covers columns create_all() made with inline keys.
+    """
+    bind = op.get_bind()
+    sqlite = bind.dialect.name == "sqlite"
+    inspector = sa.inspect(bind)
+    tables = set(inspector.get_table_names())
+
+    by_table: dict[str, list[str]] = {}
+    for table_name, column_name in reversed(MISSING_COLUMNS):
+        if table_name not in tables:
+            continue
+        if column_name in {c["name"] for c in inspector.get_columns(table_name)}:
+            by_table.setdefault(table_name, []).append(column_name)
+
+    for table_name, columns in by_table.items():
+        if sqlite:
+            # Postgres drops a dropped column's indexes itself; SQLite's batch copy would
+            # try to recreate them on the new table and fail.
+            for index in inspector.get_indexes(table_name):
+                if set(index["column_names"]) & set(columns):
+                    op.drop_index(index["name"], table_name=table_name)
+            with op.batch_alter_table(table_name, recreate="always") as batch:
+                for column_name in columns:
+                    batch.drop_column(column_name)
+        else:
+            for column_name in columns:
+                op.drop_column(table_name, column_name)
