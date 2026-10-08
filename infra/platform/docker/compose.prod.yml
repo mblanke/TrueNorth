@@ -14,6 +14,13 @@
 # no privilege escalation) unless its block says why not; writable paths are tmpfs or
 # volumes. tests/contracts/test_runtime_hardening.py holds these rules.
 
+# The installer interface this file speaks: the env variables it requires, the paths it
+# mounts, the services the installer orders. Equal to install/COMPAT; the installer
+# refuses to deploy a checkout whose value differs (roles/tn_app_source), so an installer
+# cannot drive an app it does not understand. Bump BOTH in the change that breaks it
+# (tests/contracts/test_installer_v1.py).
+x-truenorth-installer-compat: 1
+
 x-hardened: &hardened
   read_only: true
   cap_drop: [ALL]
@@ -154,8 +161,23 @@ services:
     # not a cache. noeviction: at maxmemory a write is refused (the sender sees the error
     # and RedisHighMemory fires) instead of a queued provision or teardown being evicted
     # silently, which allkeys-lru did. tests/contracts/test_runtime_hardening.py
-    command: >
-      redis-server
+    #
+    # The password is never a process argument (`--requirepass <pw>` showed it to anyone
+    # who could list processes): the shell writes it to a config file on the tmpfs, owned
+    # by redis and 0600, and the image's entrypoint (which drops to redis) starts
+    # redis-server with that file. "$$REDIS_PASSWORD" reaches sh unexpanded.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+      # redis-cli reads the password from here (the healthcheck), not from -a.
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      - >-
+        umask 077 &&
+        printf 'requirepass "%s"\n' "$$REDIS_PASSWORD" > /tmp/redis-auth.conf &&
+        chown redis:redis /tmp/redis-auth.conf &&
+        exec docker-entrypoint.sh redis-server /tmp/redis-auth.conf
         --maxmemory ${REDIS_MAXMEMORY:-2gb}
         --maxmemory-policy noeviction
         --appendonly yes
@@ -166,11 +188,10 @@ services:
         --tcp-backlog 511
         --timeout 300
         --tcp-keepalive 60
-        --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -455,16 +476,23 @@ services:
       # 404s and every authenticated request fails.
       KEYCLOAK_URL: http://keycloak:8080/auth
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-truenorth}
-      # /ad-sync and the bootstrap admin call Keycloak's admin API with these.
-      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER:-}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-}
+      # /ad-sync calls Keycloak's Admin API as this confidential service-account client
+      # (client credentials) in the truenorth realm, which holds only the realm-management
+      # roles it needs (install/roles/tn_keycloak). Never the master-realm admin: the API
+      # is not given KEYCLOAK_ADMIN_USER/PASSWORD (the installer's one-shot
+      # app.bootstrap_admin run gets them itself).
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-}
       LDAP_BIND_DN: ${LDAP_BIND_DN:-}
       # Public URLs LTI 1.3 platforms are given (tool launch) and sent back to.
       LTI_TOOL_BASE_URL: ${LTI_TOOL_BASE_URL:-https://${DOMAIN}/api}
       LTI_WEB_BASE_URL: ${LTI_WEB_BASE_URL:-https://${DOMAIN}}
       # Empty = off. See docs/identity.md before setting either.
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-}
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
+      # The realm's PUBLIC issuer (https://<DOMAIN>/auth/realms/<realm>: Keycloak stamps
+      # iss from KC_HOSTNAME + /auth, not from KEYCLOAK_URL). Required in production: a
+      # token from another realm or host must not be accepted (the installer renders it).
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:?set KEYCLOAK_ISSUER to https://<DOMAIN>/auth/realms/<realm>}
       AUTH_DISABLED: "false"
       # Valid values come from worker/provisioners/__init__.py: mock, proxmox_api,
       # vsphere_api, hyperv, terraform, terraform_{proxmox,vsphere,hyperv}.
@@ -802,17 +830,19 @@ services:
     <<: *hardened
     tmpfs:
       - /tmp
+    # The broker URL and the login are environment settings (Flower reads FLOWER_<OPTION>),
+    # not --broker_api/--basic_auth arguments: process arguments are world-readable.
     command: >
       celery -A worker.celery_app flower
         --port=5555
-        --broker_api=redis://:${REDIS_PASSWORD}@redis:6379/0
-        --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
         --persistent=True
         --db=/data/flower.db
     volumes:
       - flower-data:/data
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      FLOWER_BROKER_API: redis://:${REDIS_PASSWORD}@redis:6379/0
+      FLOWER_BASIC_AUTH: ${FLOWER_USER:?set FLOWER_USER}:${FLOWER_PASSWORD:?set FLOWER_PASSWORD}
     depends_on:
       redis:
         condition: service_healthy
@@ -846,11 +876,13 @@ services:
     tmpfs:
       - /tmp
     environment:
-      # OpenAI-compatible backend pointed at the LOCAL LiteLLM router (air-gapped
-      # from external providers). LiteLLM listens on the host :4000.
+      # OpenAI-compatible backend pointed at the site's LiteLLM router (air-gapped from
+      # external providers). Both required, no defaults: the installer renders them from
+      # tn_ai_base_url and vault_openai_api_key. The key may be EMPTY (set but blank) only
+      # for an unauthenticated endpoint on a closed network.
       AI_MODEL_BACKEND: ${AI_MODEL_BACKEND:-openai}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-http://133.1.14.240:4000/v1}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-r7725-local}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:?set OPENAI_BASE_URL to the LiteLLM endpoint, e.g. http://<host>:4000/v1}
+      OPENAI_API_KEY: ${OPENAI_API_KEY?set OPENAI_API_KEY (empty only for an unauthenticated endpoint)}
       OPENAI_DEFAULT_MODEL: ${OPENAI_DEFAULT_MODEL:-agent}
       OPENAI_TIMEOUT_S: ${OPENAI_TIMEOUT_S:-600}
       # Per-capability LiteLLM aliases. Set to "forge" once Qwen 112B is deployed.

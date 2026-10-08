@@ -1,9 +1,9 @@
 # Runbook — upgrade (and roll back)
 
-The installer (`install/`) owns deployment: `20-fetch-app.yml` checks out
-`tn_app_git_version` into `/srv/truenorth/app`; `50-stack-up.yml` runs `tn_config`,
-`tn_compose` (datastores) and `tn_migrate` (schema, then the full stack). Variables:
-`install/inventory/group_vars/all/main.yml`.
+The installer (`install/`) owns deployment. An upgrade is the same `site.yml` (or
+`20-fetch-app` + `30-config` + `50-stack-up`) run with the new release; the installer
+detects that the running database is behind the new migrations and handles the order.
+Variables: `install/inventory/group_vars/all/main.yml`.
 
 Below, `dc` means:
 
@@ -11,6 +11,17 @@ Below, `dc` means:
 dc() { docker compose -f /srv/truenorth/app/infra/platform/docker/compose.prod.yml \
                       --env-file /srv/truenorth/config/.env.production "$@"; }
 ```
+
+## Which code is deployed
+
+- **Release mode** (`tn_image_source: release`): the release's signed
+  `release-manifest.json` names the images by digest and the commit (`git_sha`) whose
+  compose file and migrations match them. Use the installer from that same commit.
+- **Build mode** (labs): `tn_app_git_version` empty (the default) deploys the commit the
+  installer itself is checked out at, so the installer and the app never drift apart. (It
+  used to be a pinned SHA in the inventory, which was 336 commits stale by v1.0.0.)
+- Either way the app's `compose.prod.yml` must declare the installer's compatibility level
+  (`x-truenorth-installer-compat` = `install/COMPAT`); `20-fetch-app` stops on a mismatch.
 
 ## Before (T-1 day)
 
@@ -26,72 +37,75 @@ dc() { docker compose -f /srv/truenorth/app/infra/platform/docker/compose.prod.y
 
    It migrates a scratch DB to the new head, populates it with the new code, runs the old code
    on it (the rollback), then the new code again, and exits 1 if anything was lost. A failure
-   means **rollback = restore from backup**, not "redeploy old code": plan the window for it.
-   Record the output beside `docs/hardening/rollback-rehearsal-*.md`.
-3. Add any new env vars to `/srv/truenorth/config/.env.production` (or the installer vault).
-   `TN_SECRETS_KEY` must be present once the sealed-credentials migration (`23df1b265fd2`)
-   is in the release: it refuses to run without the key if any plaintext credential exists.
+   means **rollback = restore from backup** (B below), not "redeploy old code".
+3. Check the backup escrow works (`docs/runbooks/backup-restore.md`): the pre-upgrade
+   backup escrows `TN_SECRETS_KEY` and every persisted secret.
 4. Announce the window ([on-call.md](on-call.md#communication)).
 
 ## Upgrade (T-0)
 
-1. **Backup, and check it.**
+On the control node, in `install/` checked out at the new release's commit:
 
-   ```bash
-   cd /srv/truenorth/app && set -a; . /srv/truenorth/config/backup.env; set +a
-   scripts/backup/backup.sh && echo OK
-   ```
+```bash
+ansible-playbook site.yml -K --ask-vault-pass -e tn_release_version=<vX.Y.Z> \
+  -e tn_smoke_username=<upn> -e tn_smoke_password=<password>
+```
 
-   Exit 0 required (3 = no escrow: fix that first — an upgrade that seals credentials is
-   exactly when you need the key). Note the directory name; it is the rollback point.
-2. Record the current state: `git -C /srv/truenorth/app rev-parse HEAD` and
-   `dc exec -T postgres psql -U <user> -d <db> -Atc 'select version_num from alembic_version'`.
-3. Drain: stop accepting new exercises (announce), let running provisioning finish
-   (Flower shows no active or reserved tasks).
-4. Fetch and migrate (on the control node, in `install/`):
+What `50-stack-up` does when the running database is behind the release
+(`roles/tn_compose`, then `roles/tn_migrate`):
 
-   ```bash
-   ansible-playbook playbooks/20-fetch-app.yml --ask-vault-pass -e tn_app_git_version=<new ref>
-   ansible-playbook playbooks/50-stack-up.yml  --ask-vault-pass
-   ```
+1. **Refuses** a database whose revision the release's migrations do not contain (it was
+   migrated by a newer release), before stopping anything.
+2. **Backs up** (`scripts/backup/backup.sh` into `/srv/truenorth/backups/pre-upgrade/`,
+   kept out of the daily/weekly/monthly rotation). This is the rollback point; note its
+   name from the output. Skip only deliberately: `-e tn_pre_upgrade_backup=false`.
+3. **Stops the old code**: api, web, nginx, the three workers, beat and flower, so no old
+   code ever runs against the new schema. In-flight Celery work follows
+   `tn_upgrade_inflight`:
+   - `drain` (default): `docker compose stop` honours each worker's `stop_grace_period`;
+     `worker-provision` may take **up to an hour** to finish a range build. The play reports
+     how many tasks were running.
+   - `abandon` (`-e tn_upgrade_inflight=abandon`): 60 s, then running tasks are killed.
+     Interrupted ranges must be torn down and rebuilt; Redis redelivers their tasks after the
+     broker visibility timeout (3600 s), and the worker's fencing skips stale ones. Purge the
+     queues first if you do not want that.
+4. `alembic upgrade head` in a one-shot container of the **new** api image, straight against
+   `postgres:5432` (not pgbouncer), with `DATABASE_URL` passed through the environment, not
+   the command line.
+5. Starts everything as the new release and waits for every healthcheck; `95-smoke-test`
+   then proves health, readiness (database, Redis, OpenSearch) and the sign-in claim contract.
 
-   `tn_migrate` runs `alembic upgrade head` in a one-shot `api` container straight against
-   `postgres:5432` (not pgbouncer — transaction pooling and DDL do not mix), then brings up
-   the whole stack and waits for every healthcheck. To run only the migration by hand:
-
-   ```bash
-   dc run --rm --no-deps --entrypoint "" \
-     -e DATABASE_URL=postgresql+psycopg://<user>:<pass>@postgres:5432/<db> \
-     api alembic -c alembic.ini upgrade head
-   ```
-
-5. Verify: `ansible-playbook playbooks/95-smoke-test.yml`, then `curl -fsS https://$DOMAIN/api/health/deep`,
-   log in as an instructor, open a course, start and stop a small range.
+Verify by hand too: log in as an instructor, open a course, start and stop a small range.
 
 ## Roll back
 
-Decide within the window. Two kinds:
+The installer refuses a release older than the one recorded in
+`/srv/truenorth/state/app.json` (or a commit that is an ancestor of the deployed one), and a
+database newer than the code. Rolling back is therefore always explicit, with
+`-e tn_allow_downgrade=true`. Two kinds:
 
-**A. Code rollback, schema kept** (the normal case; valid when the rehearsal in step 2 of
-"Before" passed — migrations are additive):
+**A. Code rollback, schema kept** (valid only when the rehearsal in "Before" passed —
+migrations are additive):
 
 ```bash
-# control node, in install/
-ansible-playbook playbooks/20-fetch-app.yml --ask-vault-pass -e tn_app_git_version=<previous ref>
-# platform host: rebuild and restart on the old code WITHOUT tn_migrate — the old code's
-# alembic does not know the new head and `upgrade head` would fail.
-dc up -d --build
+# control node, install/ checked out at the PREVIOUS release's commit
+ansible-playbook site.yml -K --ask-vault-pass -e tn_release_version=<previous> \
+  -e tn_allow_downgrade=true
 ```
 
-Do **not** run `alembic downgrade` for a code rollback. Known effects (from the rehearsal):
-range actions taken while rolled back leave no operation record; operations accepted but not
-yet sent are sent after the roll forward, and the worker's fencing skips stale ones.
+With the database ahead of the code, `tn_migrate` skips `alembic upgrade` (the old code's
+alembic cannot place the newer head) and starts the old release. Do **not** run
+`alembic downgrade` for a code rollback.
 
-**B. Data rollback** (a migration damaged data, or the rehearsal failed): restore the backup
-taken in step 1, then deploy the previous ref as in A.
+**B. Data rollback** (a migration damaged data, or the rehearsal failed): restore the
+pre-upgrade backup, then install the previous release.
 
 ```bash
-scripts/backup/restore.sh /srv/truenorth/backups/<the step-1 backup>
+# platform host
+cd /srv/truenorth/app && set -a; . /srv/truenorth/config/backup.env; set +a
+scripts/backup/restore.sh /srv/truenorth/backups/pre-upgrade/<the backup>
+# control node, install/ at the previous release's commit
+ansible-playbook site.yml -K --ask-vault-pass -e tn_release_version=<previous> -e tn_allow_downgrade=true
 ```
 
 Everything written since the backup is lost — say so in the incident record.
@@ -103,6 +117,7 @@ plain text.
 
 ## After
 
-- Keep the pre-upgrade backup out of rotation until the next release is stable
-  (copy it to `/srv/truenorth/backups/pre-upgrade/`; `cron-backup.sh` does not rotate that).
+- Keep the pre-upgrade backup until the next release is stable. It lives in
+  `backups/pre-upgrade/`, which `cron-backup.sh` does not rotate; only the overall size cap
+  (`tn_backup_max_total_gb`) can remove it, oldest first, never the newest backup.
 - Update the release notes with the migration head and anything an operator had to do.

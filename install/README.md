@@ -1,7 +1,9 @@
 # TrueNorth Range — installer
 
 Takes the platform host from *"Docker installed, `/srv/truenorth` empty"* to a
-running, AD-federated TrueNorth with a working trainee registration path.
+running, AD-federated TrueNorth with a working trainee registration path. AD is optional
+(`tn_ldap_enabled`): a site without a domain controller gets local Keycloak groups and a
+local bootstrap administrator ("Without Active Directory").
 
 ## What this does and does not cover
 
@@ -36,37 +38,45 @@ and your SSH key in `~tnadmin/.ssh/authorized_keys` (the inventory expects
 `~/.ssh/id_ed25519_lab` on the control node). In `git` mode it also needs HTTPS out to
 github.com; without it, use `local` mode (below). Preflight checks both.
 
-From the deployment repo you need `certs/corp-root-ca.cer` — copy it to
-`install/files/`. Keycloak cannot bind to AD over LDAPS without trusting that
-CA, and the failure it produces (`PKIX path building failed`) does not obviously
-point at a missing certificate.
+With AD (`tn_ldap_enabled: true`, the TN lab) you need `certs/corp-root-ca.cer` from the
+deployment repo — copy it to `install/files/`. Keycloak cannot bind to AD over LDAPS
+without trusting that CA, and the failure it produces (`PKIX path building failed`) does
+not obviously point at a missing certificate.
+
+The install user needs sudo: the tasks that hand files to other uids (OpenSearch's 1000,
+Prometheus/Alertmanager's 65534), packages, sysctl, logrotate and the trust store run with
+`become`. Pass `-K` (`--ask-become-pass`) unless sudo is passwordless.
 
 ## Quick start
 
 ```bash
 # 1. Secrets
 cp inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
-$EDITOR inventory/group_vars/all/vault.yml       # fill in the CHANGE_ME values
+$EDITOR inventory/group_vars/all/vault.yml       # replace every CHANGE_ME (preflight refuses them)
 ansible-vault encrypt inventory/group_vars/all/vault.yml
 
-# 2. Nominate the first administrator — a NAMED AD account.
-#    Without this the install finishes with an approval queue nobody can drain.
-#    And pin the release to install (docs/release.md): tn_release_version: v1.2.3
-#    Set vault_alertmanager_webhook_url too, or alerts go nowhere ("Alerting").
-$EDITOR inventory/group_vars/all/main.yml        # tn_bootstrap_admin_upn, tn_release_version
+# 2. Nominate the first administrator — a NAMED AD account (without AD: the local account
+#    60-keycloak creates). Without this the install finishes with an approval queue nobody
+#    can drain. Pin the release to install (docs/release.md): tn_release_version: v1.2.3.
+#    The AI endpoint (tn_ai_base_url) has no default. The backup escrow is REQUIRED
+#    ("Backups"). Set vault_alertmanager_webhook_url too, or alerts go nowhere ("Alerting").
+$EDITOR inventory/group_vars/all/main.yml        # or inventory/hosts.yml host vars
 
 # 3. TLS: drop truenorth.crt / truenorth.key into files/tls/
 #    (or use -e tn_tls_mode=selfsigned for a lab bring-up)
 
 # 4. Check before you change anything
-ansible-playbook site.yml --ask-vault-pass --check
+ansible-playbook site.yml -K --ask-vault-pass --check
 
-# 5. Install
-ansible-playbook site.yml --ask-vault-pass
+# 5. Install. The claim-contract smoke test is mandatory: with AD, name an AD account.
+ansible-playbook site.yml -K --ask-vault-pass -e tn_smoke_username=<upn> -e tn_smoke_password=<pw>
 
 # 6. Prove it — a clean second run is the idempotency proof
-ansible-playbook site.yml --ask-vault-pass
+ansible-playbook site.yml -K --ask-vault-pass -e tn_smoke_username=<upn> -e tn_smoke_password=<pw>
 ```
+
+Put the smoke-test password in a vaulted vars file and pass `-e @smoke.yml` rather than
+typing it on a command line.
 
 ## Stages
 
@@ -75,18 +85,19 @@ is always safe on its own.
 
 | Playbook | What it does |
 |---|---|
-| `00-preflight` | OS, Docker/Compose versions, disk, NTP, forward+reverse DNS, vCenter and LDAPS reachability, the app repository. Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
-| `10-base` | Packages, `vm.max_map_count` (OpenSearch will not start without it), the `/srv/truenorth` tree with the uids each image runs as. |
-| `20-fetch-app` | Reads the release's `release-manifest.json` (checked against its `SHA256SUMS`), then clones the app at the release's commit (`git_sha`) and refuses any other. Supports `local` and `tarball` modes for air-gapped installs. Records the deployed commit, release and image refs. |
-| `30-config` | Renders `.env.production`, generating any secret the vault left blank **once** and persisting it on the target. |
-| `40-tls` | Installs the AD CS root CA (DER or PEM, normalised to PEM) into the host trust store *and* Keycloak's truststore, then does a **real LDAPS bind** as the Keycloak service account against that CA; places the certificate nginx serves. |
-| `50-stack-up` | Pulls the release's images **by digest** (or loads the air-gapped archives), stops unless every image resolves to the digest compose names, then datastores → **alembic** (with the new api image) → everything else. Builds nothing unless `tn_image_source=build`. See "Images" and "The migration hazard" below. |
-| `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and generated client secrets), token/session/password rules and client grants (all enforced on every run; "Identity hardening"), AD user federation over LDAPS, and the token claim mappers. **This is the join between the installer and the application** — see below. |
+| `00-preflight` | No `CHANGE_ME` left in the vault, the AI endpoint and the backup escrow set; OS, Docker/Compose versions, disk, NTP, vCenter reachability, the app repository; with AD, forward+reverse DNS through AD and the LDAPS port; without AD, that the service name resolves (or `tn_manage_etc_hosts`). Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
+| `10-base` | Packages, `vm.max_map_count` (OpenSearch will not start without it), the `/srv/truenorth` tree with the uids each image runs as, logrotate for `/srv/truenorth/logs`; with AD, the resolver drop-in for AD DNS. |
+| `20-fetch-app` | Release mode: verifies `release-manifest.json`'s **cosign signature** against the release workflow's identity, checks it against `SHA256SUMS`, then fetches the app at the release's commit (`git_sha`) and refuses any other. Build mode: the installer's own commit. Refuses an older release/commit than the one deployed (rollback is explicit, `tn_allow_downgrade`) and an app whose compose file declares another compatibility level than `install/COMPAT`. `local` and `tarball` (checksum-verified, unpacked beside the app and swapped in) for air-gapped installs. Records what was deployed. |
+| `30-config` | Persists every secret under `/srv/truenorth/config/secrets/` (the vault's value, or one generated **once**; an empty file is regenerated), refuses a vault value that differs for a first-start secret ("Secrets"), asserts all are ≥ 32 characters, renders `.env.production` and the backup environment, and stops without a backup escrow. |
+| `40-tls` | Installs the AD CS root CA (DER or PEM, normalised to PEM; required with AD, optional without) into the host trust store *and* Keycloak's truststore; with AD, a **real LDAPS bind** as the Keycloak service account (password in a 0600 temp file, `ldapsearch -y`); the certificate nginx serves; the OpenSearch CA, certificates and `internal_users.yml` (as root). |
+| `50-stack-up` | Pulls the release's images **by digest** (or loads the air-gapped archives), stops unless every image resolves to the digest compose names. On an **upgrade**: a pre-upgrade backup, then the old application services stopped ("Upgrades"). Then datastores → **alembic** (with the new api image; refuses a database newer than the code) → everything else. Builds nothing unless `tn_image_source=build`. See "Images" and "The migration hazard" below. |
+| `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and generated client secrets), token/session/password rules and client grants (enforced on every run, written only when they differ; "Identity hardening"), the API's least-privilege service account (`truenorth-api-admin`), AD user federation over LDAPS (or, without AD, local groups and the local bootstrap administrator), and the token claim mappers. **This is the join between the installer and the application** — see below. |
 | `70-telemetry` | OpenSearch index templates, ISM policies, ingest pipelines. |
-| `80-seed` | Verifies reference data actually seeded, creates the tenant and the bootstrap administrator. |
+| `80-seed` | Counts the reference data in the database (fails on none), creates the tenant and the bootstrap administrator. |
 | `90-vsphere` | Provider wiring, and detects the unassigned vCenter role. |
-| `95-smoke-test` | Container health, API health, and the AD claim-contract check (pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without them it is skipped and says so). The token comes from the `truenorth-smoke` client, enabled only for that one request. |
+| `95-smoke-test` | Every container running and healthy (`ps -a`: an exited one fails it), API health and readiness (database, Redis **and OpenSearch**), and the claim-contract check, which is **mandatory**: with AD pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without AD it signs in as the local bootstrap administrator. The token comes from the `truenorth-smoke` client, enabled only for that one request. |
 | `99-validate` | Final report, including accepted warnings. |
+| `rotate-secret` | Not in `site.yml`: changes a first-start password in its service and everywhere else (docs/runbooks/key-rotation.md). |
 
 ## Three things worth understanding before you run it
 
@@ -192,10 +203,11 @@ Dashboards logs in as `kibanaserver` (`OPENSEARCH_DASHBOARDS_PASS`) with full ce
 verification. No demo certificates or demo users are installed
 (`DISABLE_INSTALL_DEMO_CONFIG=true`).
 
-The security index is created from these files the **first** time OpenSearch starts.
-Changing a password afterwards: set the new one in the vault (or the secrets file),
-re-run `40-tls` and `30-config`, then load it into the running cluster and restart the
-clients:
+The security index is created from these files the **first** time OpenSearch starts, so
+both passwords are first-start secrets: change them with
+`ansible-playbook playbooks/rotate-secret.yml -K -e tn_rotate=opensearch_admin_password`
+(it rebuilds `internal_users.yml`, loads it with `securityadmin.sh` and recreates the
+clients; a differing vault value alone is refused). By hand, the load step is:
 
 ```bash
 cd /srv/truenorth/app/infra/platform/docker
@@ -213,15 +225,51 @@ run OpenSearch this way.
 
 ## Backups
 
-`30-config` schedules `scripts/backup/cron-backup.sh` nightly (02:17). It dumps the
-application, Keycloak and LRS databases, Redis and MinIO, plus the compose and nginx
-configuration, under `/srv/truenorth/backups`. Restore with
-`scripts/backup/restore.sh <backup-dir>` (same `COMPOSE_FILE`/`ENV_FILE` as
-`config/backup.env`).
+`30-config` schedules `scripts/backup/cron-backup.sh` nightly (02:17). It dumps every
+database (application, Keycloak, LRS) and MinIO under `/srv/truenorth/backups`, and
+**escrows the secrets**: the env file and `/srv/truenorth/config/secrets/`, encrypted to the
+escrow public key. The install stops without an escrow; set one of:
 
-Not in the backup set: **secrets** (`/srv/truenorth/config/secrets/`, or your vault), which
-must be kept offline separately, and OpenSearch telemetry (no snapshot repository is
-configured; scores and outcomes are in PostgreSQL).
+```yaml
+# inventory (group_vars or the host): a public key ON THE CONTROL NODE
+tn_backup_escrow_pubkey: /path/to/backup-escrow.pub   # private half kept offline
+# or attest that the secrets are escrowed elsewhere (backups then hold none)
+tn_backup_escrow: out-of-band
+```
+
+A backup does not start with less than `tn_backup_min_free_gb` free, and the oldest are
+pruned while all backups exceed `tn_backup_max_total_gb` (never the newest). On a rebuilt
+host: `scripts/backup/restore-secrets.sh` first, then the installer, then
+`scripts/backup/restore.sh` (docs/runbooks/backup-restore.md "Rebuilt host").
+
+Not in the backup set: OpenSearch telemetry (no snapshot repository is configured; scores
+and outcomes are in PostgreSQL), and Redis (a transient broker).
+
+## Upgrades
+
+Re-run `site.yml` with the new release (docs/runbooks/upgrade.md). When the running database
+is behind the release's migrations, `50-stack-up` first takes a backup into
+`backups/pre-upgrade/` (`-e tn_pre_upgrade_backup=false` to skip), then stops the api, web,
+nginx, workers, beat and flower so no old code runs on the new schema, then migrates and
+starts the new release. In-flight Celery work: `tn_upgrade_inflight: drain` (default; waits,
+up to an hour for a range build) or `abandon` (60 s, interrupted ranges must be rebuilt).
+Rolling back is never silent: an older release or commit, or a database newer than the code,
+stops the install unless `-e tn_allow_downgrade=true` (the runbook says when that is safe).
+
+## Without Active Directory
+
+`tn_ldap_enabled: false` (the default in `group_vars`; `inventory/hosts.yml` turns it on for
+TN-MGMT01): no resolver drop-in, no TN-DC01 checks, no LDAPS bind, no Keycloak federation
+and no AD import check. Instead `60-keycloak` creates the `tn_ad_groups` as local Keycloak
+groups and `tn_bootstrap_admin_upn` as a local account in `TN-Platform-Admins`, with the
+generated password `bootstrap_admin_password` (`/srv/truenorth/config/secrets/`). The smoke
+test signs in as that account, so the claim contract (a `groups` claim) is still proven.
+`inventory/staging.yml` is such a site (tn-staging, 192.168.1.240):
+
+```bash
+ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass \
+  -e tn_ai_base_url=http://<litellm-host>:4000/v1
+```
 
 ## Images: deploy by digest
 
@@ -232,11 +280,14 @@ pinned by digest in the file itself. Compose refuses to start without the four v
 
 With `tn_image_source: release` (the default), `roles/tn_release`:
 
-1. takes `release-manifest.json` and `SHA256SUMS` of `tn_release_version` from
-   `tn_release_dir` on the control node, or downloads them from the GitHub release
-   (`tn_release_repo`) into `install/.cache/releases/<tag>/`;
-2. checks the manifest's SHA-256 against `SHA256SUMS`, `schema_version` 1, the version,
-   and that every service has an `image@sha256` ref (docs/release.md);
+1. takes `release-manifest.json`, its `release-manifest.json.sigstore.json` and
+   `SHA256SUMS` of `tn_release_version` from `tn_release_dir` on the control node, or
+   downloads them from the GitHub release (`tn_release_repo`) into
+   `install/.cache/releases/<tag>/`;
+2. **verifies the manifest's cosign signature** against the release workflow's identity at
+   that tag (a cosign it pins and checks by SHA-256; docs/release.md "Signatures"), then its
+   SHA-256 against `SHA256SUMS`, `schema_version` 1, the version, and that every service has
+   an `image@sha256` ref (docs/release.md);
 3. renders the refs into the env file (`TN_IMAGE_*`), and `TN_VERSION=<tag>`;
 4. in git mode, fetches the app source at the manifest's `git_sha`: the compose file and
    migrations the images were built with. Any other commit stops `20-fetch-app`.
@@ -261,8 +312,13 @@ ansible-playbook site.yml \
   -e tn_app_local_path=/path/to/TrueNorth     # checked out at the release's git_sha
 ```
 
-or with a release tarball via `tn_app_source_mode=tarball`. The release files: put
-`release-manifest.json` and `SHA256SUMS` in a directory and pass `-e tn_release_dir=<dir>`.
+or with a source tarball of the release's commit via `tn_app_source_mode=tarball`, which
+must come with `tn_app_tarball_sha256` or `tn_app_tarball_sums` (a SHA256SUMS file listing
+it). The release files: put `release-manifest.json`, `release-manifest.json.sigstore.json`
+and `SHA256SUMS` in a directory and pass `-e tn_release_dir=<dir>`, plus a Sigstore
+`trusted_root.json` as `-e tn_release_trusted_root=<file>` for an offline signature check
+(docs/release.md "Signatures"), and `-e tn_cosign_path=<cosign>` if the control node cannot
+download the pinned cosign.
 
 The images: on a connected machine, save every image the stack runs, **by tag, from
 Docker's containerd image store**. The classic store does not keep a digest through
@@ -328,8 +384,9 @@ docker run --rm --entrypoint promtool -v "$PWD/prometheus/prometheus.yml:/etc/pr
   timeout. The workers' `stop_grace_period` outlasts them, so `docker compose down` or a
   redeploy lets running tasks finish: stopping `worker-provision` can take up to an hour
   while a range builds.
-- `PROVISIONER_BACKEND` has no default (it used to fall back to `mock`);
-  `VSPHERE_VERIFY_SSL` defaults to true (`tn_vsphere_verify_ssl` sets it); the api and
+- `PROVISIONER_BACKEND`, `OPENAI_BASE_URL`, `OPENAI_API_KEY` (may be set empty) and
+  `KEYCLOAK_ISSUER` have no defaults (the AI ones used to be one lab's LiteLLM address and
+  key); `VSPHERE_VERIFY_SSL` defaults to true (`tn_vsphere_verify_ssl` sets it); the api and
   workers log JSON lines (`LOG_FORMAT=json`).
 
 ## Identity hardening
@@ -359,7 +416,14 @@ actually change:
 | Variable | Default | Note |
 |---|---|---|
 | `tn_app_git_repo` | `github.com/mblanke/TrueNorth` (public) | |
-| `tn_app_git_version` | a pinned SHA of `main` | **Pin a tag or SHA.** A branch makes re-runs non-deterministic. In release mode the manifest's `git_sha` replaces it. |
+| `tn_app_git_version` | *(empty: the installer's own commit)* | The installer and the app stay the same revision. In release mode the manifest's `git_sha` replaces it. |
+| `tn_allow_downgrade` | `false` | Deliberate rollback only (docs/runbooks/upgrade.md). |
+| `tn_ldap_enabled` | `false` (`true` for TN-MGMT01 in `hosts.yml`) | "Without Active Directory". |
+| `tn_ai_base_url` | *(empty — required)* | The LiteLLM endpoint; no committed default. Key: `vault_openai_api_key`. |
+| `tn_backup_escrow_pubkey` / `tn_backup_escrow` | *(empty — one required)* | "Backups". |
+| `tn_backup_min_free_gb` / `tn_backup_max_total_gb` | `20` / `200` | Backup disk floor and cap. |
+| `tn_upgrade_inflight` / `tn_pre_upgrade_backup` | `drain` / `true` | "Upgrades". |
+| `tn_vsphere_verify_ssl` | `true` | TN-MGMT01 overrides it to `false` in `hosts.yml` (VMCA chain not yet trusted). |
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |
 | `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
 | `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |
@@ -387,6 +451,21 @@ actually change:
 the git checkout, so a secret can never be swept into a commit (the in-repo
 `infra/platform/docker/.env.production` was once tracked; it is now git-ignored).
 
-Values left blank in the vault are generated on the target and persisted under
-`/srv/truenorth/config/secrets/`. They are never regenerated: a re-run that
-changed `POSTGRES_PASSWORD` would lock you out of your own database.
+Every secret is persisted under `/srv/truenorth/config/secrets/` (0700, one file each): the
+vault's value when it sets one, otherwise one generated on the target once (an empty file
+counts as missing and is regenerated). All must be at least 32 characters. They are never
+regenerated: a re-run that changed `POSTGRES_PASSWORD` would lock you out of your own
+database. For the passwords a service reads only on its first start (the PostgreSQL roles,
+the Keycloak master admin, OpenSearch's users, Grafana's admin), a vault value that differs
+from the persisted one **stops the install**; change them with `playbooks/rotate-secret.yml`
+(docs/runbooks/key-rotation.md).
+
+No secret is a process argument: Redis reads its password from a 0600 config file on its
+tmpfs and `redis-cli` from `REDISCLI_AUTH`; Flower's broker URL and login are environment
+settings; the LDAPS check reads the bind password from a temporary 0600 file; the migration's
+`DATABASE_URL` is passed through the environment of `docker compose run`.
+
+The API calls Keycloak's Admin API (`/ad-sync`) as its own service account,
+`truenorth-api-admin` (client credentials; realm-management `view-realm` and `manage-users`
+only). The master-realm admin password reaches the keycloak service (first start) and the
+installer's one-shot `app.bootstrap_admin` run, never the api service.

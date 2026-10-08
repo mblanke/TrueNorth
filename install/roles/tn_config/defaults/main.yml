@@ -1,13 +1,19 @@
 ---
-# Secrets the installer will generate on the target when the vault leaves them
-# empty. `value` is what the vault supplied; empty means "generate and persist".
+# Every credential this platform holds. `value` is what the vault supplied; empty means
+# "generate on the target". Either way the effective value is persisted under
+# {{ tn_config_dir }}/secrets/<name> (tasks/secrets.yml), which is what backups escrow.
+#
+# first_start: the service reads it only when it first initialises (a database role, the
+# Keycloak master admin, OpenSearch's security index, Grafana's admin). Changing the vault
+# value afterwards would change the env file but not the service: the installer refuses
+# that drift, and playbooks/rotate-secret.yml changes both (docs/runbooks/key-rotation.md).
 #
 # Kept as data rather than inline in tasks so the list is reviewable in one
 # place — it is the complete set of credentials this platform holds.
 tn_generated_secrets:
-  - { name: postgres_password, value: "{{ vault_postgres_password | default('') }}" }
-  - { name: keycloak_db_password, value: "{{ vault_keycloak_db_password | default('') }}" }
-  - { name: lrs_db_password, value: "{{ vault_lrs_db_password | default('') }}" }
+  - { name: postgres_password, value: "{{ vault_postgres_password | default('') }}", first_start: true }
+  - { name: keycloak_db_password, value: "{{ vault_keycloak_db_password | default('') }}", first_start: true }
+  - { name: lrs_db_password, value: "{{ vault_lrs_db_password | default('') }}", first_start: true }
   - { name: redis_password, value: "{{ vault_redis_password | default('') }}" }
   - { name: minio_secret_key, value: "{{ vault_minio_secret_key | default('') }}" }
   - { name: jwt_secret, value: "{{ vault_jwt_secret | default('') }}" }
@@ -18,19 +24,32 @@ tn_generated_secrets:
   - { name: lrs_admin_password, value: "{{ vault_lrs_admin_password | default('') }}" }
   - { name: lrs_api_key, value: "{{ vault_lrs_api_key | default('') }}" }
   - { name: lrs_api_secret, value: "{{ vault_lrs_api_secret | default('') }}" }
-  - { name: grafana_admin_password, value: "{{ vault_grafana_admin_password | default('') }}" }
+  - { name: grafana_admin_password, value: "{{ vault_grafana_admin_password | default('') }}", first_start: true }
   - { name: flower_password, value: "{{ vault_flower_password | default('') }}" }
+  # Keycloak's master-realm admin: the installer's credential only (never the API's).
+  - { name: keycloak_admin_password, value: "{{ vault_keycloak_admin_password | default('') }}", first_start: true }
   # The confidential `truenorth-api` Keycloak client. The realm file ships the
   # placeholder CHANGE_ME_IN_PRODUCTION; roles/tn_keycloak replaces it with this.
   - { name: keycloak_api_client_secret, value: "{{ vault_keycloak_api_client_secret | default('') }}" }
+  # truenorth-api-admin: the API's least-privilege Admin API service account.
+  - { name: keycloak_api_admin_client_secret, value: "{{ vault_keycloak_api_admin_client_secret | default('') }}" }
   # truenorth-smoke, the only client with the password grant (disabled outside 95-smoke-test).
   - { name: keycloak_smoke_client_secret, value: "{{ vault_keycloak_smoke_client_secret | default('') }}" }
-  # OpenSearch security plugin: `admin` (the API, workers and telemetry bootstrap) and
-  # `kibanaserver` (OpenSearch Dashboards). roles/tn_tls hashes them into internal_users.yml.
+  # Without AD (tn_ldap_enabled false): the local bootstrap administrator's password.
+  - { name: bootstrap_admin_password, value: "{{ vault_bootstrap_admin_password | default('') }}" }
   # Bearer token the api and workers present to the AI orchestrator (and Prometheus,
   # for its /metrics). TN_ENV=production refuses anything shorter than 32 characters.
   - { name: ai_service_token, value: "{{ vault_ai_service_token | default('') }}" }
   # Prometheus presents this to the api's /metrics (METRICS_SCRAPE_TOKEN).
   - { name: metrics_scrape_token, value: "{{ vault_metrics_scrape_token | default('') }}" }
-  - { name: opensearch_admin_password, value: "{{ vault_opensearch_admin_password | default('') }}" }
-  - { name: opensearch_dashboards_password, value: "{{ vault_opensearch_dashboards_password | default('') }}" }
+  # OpenSearch security plugin: `admin` (the API, workers and telemetry bootstrap) and
+  # `kibanaserver` (OpenSearch Dashboards). roles/tn_tls hashes them into internal_users.yml.
+  - { name: opensearch_admin_password, value: "{{ vault_opensearch_admin_password | default('') }}", first_start: true }
+  - { name: opensearch_dashboards_password, value: "{{ vault_opensearch_dashboards_password | default('') }}", first_start: true }
+
+# Every secret, wherever it came from, is at least this long. Generated ones are 32.
+tn_secret_min_length: 32
+
+# Set only by playbooks/rotate-secret.yml: the one first_start secret whose vault value
+# may differ from the persisted one while it is being rotated.
+tn_secret_rotating: ""

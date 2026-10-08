@@ -52,6 +52,13 @@ def _get_ldap_config() -> dict:
 
 
 def _keycloak_config() -> dict:
+    """Keycloak Admin API access for the federation endpoints.
+
+    The API authenticates as its own confidential client (client-credentials grant) in
+    the application realm, whose service account holds only realm-management
+    ``view-realm`` (read the federation component) and ``manage-users`` (trigger a user
+    sync). It never holds the master-realm admin credentials (install/roles/tn_keycloak).
+    """
     base = os.getenv("KEYCLOAK_URL", "").rstrip("/")
     if base and not base.endswith("/auth"):
         base = f"{base}/auth"
@@ -59,19 +66,18 @@ def _keycloak_config() -> dict:
         "base": base,
         "realm": os.getenv("KEYCLOAK_REALM", "truenorth"),
         "component_id": os.getenv("KEYCLOAK_LDAP_COMPONENT_ID", ""),
-        "admin_user": os.getenv("KEYCLOAK_ADMIN_USER", ""),
-        "admin_password": os.getenv("KEYCLOAK_ADMIN_PASSWORD", ""),
+        "client_id": os.getenv("KEYCLOAK_ADMIN_CLIENT_ID", ""),
+        "client_secret": os.getenv("KEYCLOAK_ADMIN_CLIENT_SECRET", ""),
     }
 
 
 def _admin_token(cfg: dict) -> str:
     resp = httpx.post(
-        f"{cfg['base']}/realms/master/protocol/openid-connect/token",
+        f"{cfg['base']}/realms/{cfg['realm']}/protocol/openid-connect/token",
         data={
-            "grant_type": "password",
-            "client_id": "admin-cli",
-            "username": cfg["admin_user"],
-            "password": cfg["admin_password"],
+            "grant_type": "client_credentials",
+            "client_id": cfg["client_id"],
+            "client_secret": cfg["client_secret"],
         },
         timeout=30,
     )
@@ -109,7 +115,7 @@ def ad_sync_status(
     # it from our own rows — those only update when someone is approved.
     federation_last_sync = None
     federation_error = None
-    if kc["base"] and kc["component_id"] and kc["admin_password"]:
+    if kc["base"] and kc["component_id"] and kc["client_id"] and kc["client_secret"]:
         try:
             token = _admin_token(kc)
             resp = httpx.get(

@@ -10,17 +10,29 @@
 # under {{ tn_config_dir }}/secrets/. They are deliberately not generated on the
 # control node, so they never touch your laptop. Re-running the installer reuses
 # them — regenerating POSTGRES_PASSWORD on run #2 would lock you out of your own
-# database.
+# database. Values you DO set are persisted there too (so backups escrow them), and
+# preflight refuses any value still reading CHANGE_ME.
+#
+# Changing a value after the first install: the datastore and identity passwords
+# (postgres, keycloak/lrs DB, Keycloak admin, OpenSearch, Grafana admin) are read only
+# when their service first starts, so the installer REFUSES a vault value that differs
+# from the persisted one. Rotate them with playbooks/rotate-secret.yml
+# (docs/runbooks/key-rotation.md).
 
 # ── Active Directory bind account (created on TN-DC01) ────────────────
+# Only with tn_ldap_enabled (the TN lab).
 vault_ldap_bind_password: "CHANGE_ME"
 
 # ── vCenter service account ───────────────────────────────────────────
 vault_vsphere_password: "CHANGE_ME"
 
 # ── Keycloak admin (bootstrap only; not an end-user account) ───────────
+# The master-realm admin. Only the installer uses it; the API has its own
+# least-privilege service account (truenorth-api-admin).
 vault_keycloak_admin_user: admin
-vault_keycloak_admin_password: "CHANGE_ME"
+vault_keycloak_admin_password: "" # generated on target if empty
+# Without AD (tn_ldap_enabled false): the local bootstrap administrator's password.
+vault_bootstrap_admin_password: "" # generated on target if empty
 
 # ── Datastores ────────────────────────────────────────────────────────
 vault_postgres_user: forge
@@ -36,6 +48,7 @@ vault_minio_secret_key: "" # generated on target if empty
 vault_jwt_secret: "" # generated on target if empty
 vault_csrf_secret: "" # generated on target if empty
 vault_keycloak_api_client_secret: "" # generated on target if empty
+vault_keycloak_api_admin_client_secret: "" # generated on target if empty
 # Seals stored hypervisor/AI credentials. >= 32 random chars; never change it once set
 # (to rotate, set "new,old" and restart). Back it up with the database.
 vault_secrets_key: "" # generated on target if empty

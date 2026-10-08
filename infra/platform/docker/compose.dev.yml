@@ -355,7 +355,8 @@ services:
       # OpenAI-compatible backend -> local LiteLLM router on the host :4000.
       AI_MODEL_BACKEND: "${AI_MODEL_BACKEND:-openai}"
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:-http://host.docker.internal:4000/v1}"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-sk-r7725-local}"
+      # Your LiteLLM key, from your shell or .env. No default: a real key never lives here.
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_DEFAULT_MODEL: "${OPENAI_DEFAULT_MODEL:-agent}"
       OPENAI_TIMEOUT_S: "${OPENAI_TIMEOUT_S:-600}"
       AI_HEAVY_MODEL: "${AI_HEAVY_MODEL:-agent}"

@@ -23,6 +23,69 @@
       {{ ansible_distribution_version }}. The platform host is TN-MGMT01.
     success_msg: "OS {{ ansible_distribution }} {{ ansible_distribution_version }}"
 
+# ── Configuration: what must be set before anything else is worth checking ──
+# vault.yml.example ships CHANGE_ME placeholders. A placeholder that reaches the target
+# becomes a real (and published) password: LDAP bind, vCenter, Keycloak.
+- name: Preflight — no vault value is still a CHANGE_ME placeholder
+  vars:
+    _skip: "{{ [] if tn_ldap_enabled | bool else ['vault_ldap_bind_password'] }}"
+    _placeholders: >-
+      {%- set out = [] -%}
+      {%- for n in query('ansible.builtin.varnames', '^vault_') | reject('in', _skip) -%}
+        {%- if lookup('ansible.builtin.vars', n) | string is search('CHANGE_ME') -%}
+          {%- set _ = out.append(n) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+  ansible.builtin.assert:
+    that: _placeholders | length == 0
+    fail_msg: >-
+      Still placeholders in inventory/group_vars/all/vault.yml: {{ _placeholders | join(', ') }}.
+      Set real values (ansible-vault edit inventory/group_vars/all/vault.yml), or empty the
+      ones marked "generated on target if empty".
+    success_msg: "vault: no CHANGE_ME placeholders"
+
+- name: Preflight — the AI endpoint is configured
+  ansible.builtin.assert:
+    that: tn_ai_base_url | default('') | length > 0
+    fail_msg: >-
+      tn_ai_base_url is empty. There is no default (the old one was one lab's internal
+      LiteLLM address). Set it in the inventory or with
+      -e tn_ai_base_url=http://<litellm-host>:4000/v1, and its key in vault_openai_api_key.
+    quiet: true
+
+# Backups escrow TN_SECRETS_KEY and every credential (scripts/backup/backup.sh). A backup
+# without them restores data nobody can decrypt or log in to.
+- name: Preflight — a backup escrow is configured
+  ansible.builtin.assert:
+    that: >-
+      (tn_backup_escrow_pubkey | default('') | length > 0)
+      or (tn_backup_escrow | default('') == 'out-of-band')
+    fail_msg: |
+      No backup escrow. Set ONE of, in the inventory:
+        tn_backup_escrow_pubkey: /path/on/the/control/node/escrow.pub   (RSA public key, PEM)
+            openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out escrow.key
+            openssl pkey -in escrow.key -pubout -out escrow.pub   # keep escrow.key OFFLINE
+        tn_backup_escrow: out-of-band   (you attest the secrets are escrowed elsewhere)
+      docs/runbooks/backup-restore.md.
+    quiet: true
+
+- name: Preflight — the escrow public key is a readable RSA public key
+  ansible.builtin.command:
+    argv: [openssl, pkey, -pubin, -in, "{{ tn_backup_escrow_pubkey }}", -noout]
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: tn_backup_escrow_pubkey | default('') | length > 0
+
+- name: Preflight — AD/LDAPS integration
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'AD/LDAPS: ENABLED (' ~ tn_dc_host ~ '; resolver, LDAPS bind and Keycloak federation are checked)'
+         if tn_ldap_enabled | bool else
+         'AD/LDAPS: DISABLED (tn_ldap_enabled=false): no TN-DC01 checks, no LDAPS bind, no Keycloak federation;'
+         ~ ' local TN-* groups and a local bootstrap administrator (' ~ tn_bootstrap_admin_upn ~ ') instead.' }}
+
 # ── Container runtime ─────────────────────────────────────────────────
 - name: Preflight — docker present
   ansible.builtin.command: docker version --format '{{ "{{" }}.Server.Version{{ "}}" }}'
@@ -128,12 +191,14 @@
     - "{{ tn_dc_host }}"
   loop_control:
     label: "{{ item }}"
+  when: tn_ldap_enabled | bool
 
 - name: Preflight — does this host already resolve the DC?
   ansible.builtin.command: "getent hosts {{ tn_dc_host }}"
   register: tn_local_dns
   changed_when: false
   failed_when: false
+  when: tn_ldap_enabled | bool
 
 - name: Preflight — report the host resolver
   ansible.builtin.debug:
@@ -141,12 +206,14 @@
       {{ 'Host resolver already uses AD DNS.' if tn_local_dns.rc == 0 else
          'Host resolver cannot resolve ' ~ tn_dc_host ~ ' yet; 10-base points it at ' ~
          (tn_dns_servers | join(', ')) ~ '.' }}
+  when: tn_ldap_enabled | bool
 
 - name: Preflight — reverse DNS for the platform host
   ansible.builtin.command: "dig +short +time=3 @{{ tn_dns_servers | first }} -x {{ ansible_host }}"
   register: tn_rev
   changed_when: false
   failed_when: false
+  when: tn_ldap_enabled | bool
 
 - name: Preflight — report reverse DNS
   ansible.builtin.debug:
@@ -154,6 +221,25 @@
       Reverse lookup of {{ ansible_host }}:
       {{ tn_rev.stdout | default('(none)') | trim }}
       {{ '' if (tn_rev.stdout | trim) else '— missing. The 30.30.10.in-addr.arpa zone on TN-DC01 should cover this.' }}
+  when: tn_ldap_enabled | bool
+
+# Without AD DNS the service name must still resolve on this host: the seed and smoke
+# checks call https://<tn_domain_fqdn>/ from here.
+- name: Preflight — does this host resolve the service name?
+  ansible.builtin.command: "getent hosts {{ tn_domain_fqdn }}"
+  register: tn_fqdn_resolves
+  changed_when: false
+  failed_when: false
+  when: not tn_ldap_enabled | bool
+
+- name: Preflight — assert the service name resolves (or will be pinned)
+  ansible.builtin.assert:
+    that: tn_fqdn_resolves.rc == 0 or tn_manage_etc_hosts | bool
+    fail_msg: >-
+      {{ tn_domain_fqdn }} does not resolve on {{ inventory_hostname }}. Add it to DNS, or
+      set tn_manage_etc_hosts: true to pin it to 127.0.0.1 in /etc/hosts (10-base).
+    quiet: true
+  when: not tn_ldap_enabled | bool
 
 # ── Reachability of everything we depend on ───────────────────────────
 - name: Preflight — vCenter API reachable
@@ -167,6 +253,7 @@
     host: "{{ tn_dc_ip }}" # by address: the host may not resolve the DC until 10-base
     port: "{{ tn_ldap_port }}"
     timeout: 10
+  when: tn_ldap_enabled | bool
 
 # The real LDAPS bind (TLS handshake against the AD CS CA, plus the bind account) runs
 # in 40-tls, once ldap-utils (10-base) and that CA are on the host. Here only the port.
@@ -228,5 +315,6 @@
       - "vm.max_map_count: {{ tn_max_map_count.stdout }}"
       - "ntp             : {{ tn_ntp.stdout | trim }}"
       - "vcenter         : {{ tn_vcenter_host }}:443 reachable"
-      - "ldaps port      : open (the bind itself is checked in 40-tls)"
+      - "ldaps port      : {{ 'open (the bind itself is checked in 40-tls)' if tn_ldap_enabled | bool else 'n/a (AD/LDAPS disabled)' }}"
+      - "backup escrow   : {{ tn_backup_escrow_pubkey if tn_backup_escrow_pubkey | length > 0 else tn_backup_escrow }}"
       - "app source      : {{ tn_app_source_mode }} ({{ tn_app_git_repo if tn_app_source_mode == 'git' else (tn_app_local_path or tn_app_tarball) }})"

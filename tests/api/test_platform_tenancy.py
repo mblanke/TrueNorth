@@ -312,7 +312,7 @@ class TestStorageTenancy:
 # ── AD sync ────────────────────────────────────────────────────────────
 class TestADSyncTenancy:
     def test_status_counts_only_the_callers_tenant(self, client, db_session, monkeypatch):
-        for var in ("KEYCLOAK_URL", "KEYCLOAK_LDAP_COMPONENT_ID", "KEYCLOAK_ADMIN_PASSWORD"):
+        for var in ("KEYCLOAK_URL", "KEYCLOAK_LDAP_COMPONENT_ID", "KEYCLOAK_ADMIN_CLIENT_SECRET"):
             monkeypatch.delenv(var, raising=False)
         now = datetime.now(UTC)
         _user(db_session, DEV_TENANT, source="ad", last_synced_at=now)

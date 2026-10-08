@@ -255,7 +255,7 @@ def test_the_installer_pulls_and_checks_digests_never_builds_by_default():
     compose = (INSTALL / "roles/tn_compose/tasks/main.yml").read_text()
     assert "compose.build.yml" in compose and "tn_image_source == 'build'" in compose
     assert "every image is present at the digest compose names" in compose
-    for f in ("roles/tn_migrate/tasks/main.yml", "roles/tn_keycloak/tasks/main.yml"):
+    for f in ("roles/tn_migrate/tasks/main.yml", "roles/tn_keycloak/handlers/main.yml"):
         assert "pull: never" in (INSTALL / f).read_text(), f
 
 

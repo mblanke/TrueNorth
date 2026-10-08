@@ -26,7 +26,7 @@
       grant_type: password
       client_id: admin-cli
       username: "{{ vault_keycloak_admin_user | default('admin') }}"
-      password: "{{ vault_keycloak_admin_password }}"
+      password: "{{ tn_secrets['keycloak_admin_password'] }}"
     status_code: 200
   register: tn_kc_token
   retries: 10
@@ -88,41 +88,64 @@
   no_log: true
 
 # Only the fields we own are updated on re-run. A full PUT of the realm file
-# would wipe the federation component created below, every time.
-- name: Keycloak — update realm redirect/origin settings
+# would wipe the federation component created below, every time. And only when one of
+# them differs, so a clean re-run reports no change.
+- name: Keycloak — read the realm's current settings
+  ansible.builtin.uri:
+    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_realm_now
+
+- name: Keycloak — update realm token/session/password settings
+  vars:
+    _want: "{{ {'enabled': true, 'sslRequired': 'external'} | combine(tn_kc_realm_settings) }}"
   ansible.builtin.uri:
     url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}"
     method: PUT
     headers: "{{ tn_kc_headers }}"
-    body: "{{ {'realm': tn_keycloak_realm, 'enabled': true, 'sslRequired': 'external'} | combine(tn_kc_realm_settings) }}"
+    body: "{{ {'realm': tn_keycloak_realm} | combine(_want) }}"
     body_format: json
     status_code: [204]
+  when: tn_kc_realm_now.json | combine(_want) != tn_kc_realm_now.json
+  changed_when: true
 
 # ── Clients: this deployment's URLs and secrets, every run ────────────
-# An install whose realm predates the smoke client gets it here (disabled).
-- name: Keycloak — does the smoke-test client exist?
+# An install whose realm predates the smoke client gets it here (disabled), and every
+# install gets the API's Admin API service account (truenorth-api-admin).
+- name: Keycloak — do the installer-made clients exist?
   ansible.builtin.uri:
-    url: "{{ tn_kc_realm_url }}/clients?clientId={{ tn_kc_smoke_client }}"
+    url: "{{ tn_kc_realm_url }}/clients?clientId={{ item.client }}"
     headers: "{{ tn_kc_headers }}"
     status_code: 200
-  register: tn_kc_smoke_existing
+  register: tn_kc_made_existing
+  loop:
+    - { client: "{{ tn_kc_smoke_client }}", name: TrueNorth installer smoke test, secret: keycloak_smoke_client_secret }
+    - { client: "{{ tn_keycloak_api_admin_client }}", name: TrueNorth API (Admin API service account),
+        secret: keycloak_api_admin_client_secret }
+  loop_control:
+    label: "{{ item.client }}"
 
-- name: Keycloak — create the smoke-test client, disabled
+- name: Keycloak — create them
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/clients"
     method: POST
     headers: "{{ tn_kc_headers }}"
     body: >-
-      {{ {'clientId': tn_kc_smoke_client, 'protocol': 'openid-connect',
-          'name': 'TrueNorth installer smoke test',
-          'secret': tn_secrets['keycloak_smoke_client_secret']}
-         | combine(tn_kc_client_settings[tn_kc_smoke_client]) }}
+      {{ {'clientId': item.item.client, 'protocol': 'openid-connect', 'name': item.item.name,
+          'secret': tn_secrets[item.item.secret]}
+         | combine(tn_kc_client_settings[item.item.client]) }}
     body_format: json
     status_code: [201, 409]
-  when: tn_kc_smoke_existing.json | length == 0
+  loop: "{{ tn_kc_made_existing.results }}"
+  loop_control:
+    label: "{{ item.item.client }}"
+  when: item.json | length == 0
+  changed_when: true
   no_log: true
 
-# The api client stays at index 1: the secret tasks below read it from there.
+# The api client stays at index 1, the smoke client at 3, the API admin client at 4: the
+# secret and service-account tasks below read them from there.
 - name: Keycloak — read the clients
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/clients?clientId={{ item }}"
@@ -134,6 +157,7 @@
     - "{{ tn_keycloak_api_client }}"
     - truenorth-cli
     - "{{ tn_kc_smoke_client }}"
+    - "{{ tn_keycloak_api_admin_client }}"
   loop_control:
     label: "{{ item }}"
 
@@ -205,6 +229,98 @@
   changed_when: true
   no_log: true
 
+# ── The API's Admin API service account (least privilege) ─────────────
+# The API used to call the Admin API as the MASTER realm's admin: a compromised API was a
+# compromised identity provider. It now uses this client's service account, which holds
+# only tn_kc_api_admin_roles of realm-management in this realm.
+- name: Keycloak — read the API admin client's secret
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ tn_kc_clients.results[4].json[0].id }}/client-secret"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_api_admin_secret
+  no_log: true
+
+- name: Keycloak — set the API admin client's secret
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ tn_kc_clients.results[4].json[0].id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body:
+      clientId: "{{ tn_keycloak_api_admin_client }}"
+      secret: "{{ tn_secrets['keycloak_api_admin_client_secret'] }}"
+    body_format: json
+    status_code: [204]
+  when: tn_kc_api_admin_secret.json.value | default('') != tn_secrets['keycloak_api_admin_client_secret']
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — the API admin client's service-account user
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ tn_kc_clients.results[4].json[0].id }}/service-account-user"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_api_sa
+
+- name: Keycloak — the realm-management client
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients?clientId=realm-management"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_rm
+
+- name: Keycloak — realm-management roles the service account holds, and can hold
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_api_sa.json.id }}/role-mappings/clients/{{ tn_kc_rm.json[0].id }}{{ item }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_sa_roles
+  loop: ["", "/available"]
+
+- name: Keycloak — grant the roles the API needs
+  vars:
+    _have: "{{ tn_kc_sa_roles.results[0].json | map(attribute='name') | list }}"
+    _grant: >-
+      {{ tn_kc_sa_roles.results[1].json | selectattr('name', 'in', tn_kc_api_admin_roles)
+         | rejectattr('name', 'in', _have) | list }}
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_api_sa.json.id }}/role-mappings/clients/{{ tn_kc_rm.json[0].id }}"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ _grant }}"
+    body_format: json
+    status_code: [204]
+  when: _grant | length > 0
+  changed_when: true
+
+- name: Keycloak — revoke any other realm-management role (least privilege)
+  vars:
+    _extra: "{{ tn_kc_sa_roles.results[0].json | rejectattr('name', 'in', tn_kc_api_admin_roles) | list }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_api_sa.json.id }}/role-mappings/clients/{{ tn_kc_rm.json[0].id }}"
+    method: DELETE
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ _extra }}"
+    body_format: json
+    status_code: [204]
+  when: _extra | length > 0
+  changed_when: true
+
+- name: Keycloak — the service account holds exactly the API's roles
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_api_sa.json.id }}/role-mappings/clients/{{ tn_kc_rm.json[0].id }}/composite"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_sa_effective
+
+- name: Keycloak — report the API's Admin API privileges
+  ansible.builtin.assert:
+    that: tn_kc_api_admin_roles | difference(tn_kc_sa_effective.json | map(attribute='name') | list) | length == 0
+    fail_msg: "service account of {{ tn_keycloak_api_admin_client }} lacks {{ tn_kc_api_admin_roles }}"
+    success_msg: >-
+      {{ tn_keycloak_api_admin_client }} service account: realm-management
+      {{ tn_kc_sa_effective.json | map(attribute='name') | sort | join(', ') }} (the master admin is not in the API's env)
+
 - name: Keycloak — look for the development realm's sample users
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/users?username={{ item | urlencode }}&exact=true"
@@ -225,70 +341,221 @@
   when: item.json | length > 0 and not item.json[0].federationLink | default(false)
   changed_when: true
 
-# ── LDAP user federation ──────────────────────────────────────────────
-- name: Keycloak — look for an existing AD federation component
-  ansible.builtin.uri:
-    url: "{{ tn_kc_components_url }}?type={{ tn_kc_provider_type }}&name=corp-ad"
-    headers: "{{ tn_kc_headers }}"
-    status_code: 200
-  register: tn_kc_ldap_existing
+# ── LDAP user federation (tn_ldap_enabled) ────────────────────────────
+- name: Keycloak — AD user federation
+  when: tn_ldap_enabled | bool
+  block:
+    - name: Keycloak — look for an existing AD federation component
+      ansible.builtin.uri:
+        url: "{{ tn_kc_components_url }}?type={{ tn_kc_provider_type }}&name=corp-ad"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_ldap_existing
 
-- name: Keycloak — create the AD federation component
-  ansible.builtin.uri:
-    url: "{{ tn_kc_components_url }}"
-    method: POST
-    headers: "{{ tn_kc_headers }}"
-    body: "{{ tn_kc_ldap_body }}"
-    body_format: json
-    status_code: [201]
-  when: tn_kc_ldap_existing.json | length == 0
-  register: tn_kc_ldap_created
-  no_log: true
+    - name: Keycloak — create the AD federation component
+      ansible.builtin.uri:
+        url: "{{ tn_kc_components_url }}"
+        method: POST
+        headers: "{{ tn_kc_headers }}"
+        body: "{{ tn_kc_ldap_body }}"
+        body_format: json
+        status_code: [201]
+      when: tn_kc_ldap_existing.json | length == 0
+      register: tn_kc_ldap_created
+      changed_when: true
+      no_log: true
 
-- name: Keycloak — re-read the federation component
-  ansible.builtin.uri:
-    url: "{{ tn_kc_components_url }}?type={{ tn_kc_provider_type }}&name=corp-ad"
-    headers: "{{ tn_kc_headers }}"
-    status_code: 200
-  register: tn_kc_ldap
+    - name: Keycloak — re-read the federation component
+      ansible.builtin.uri:
+        url: "{{ tn_kc_components_url }}?type={{ tn_kc_provider_type }}&name=corp-ad"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_ldap
 
-- name: Keycloak — capture the component id
-  ansible.builtin.set_fact:
-    tn_keycloak_ldap_component_id: "{{ tn_kc_ldap.json[0].id }}"
+    - name: Keycloak — capture the component id
+      ansible.builtin.set_fact:
+        tn_keycloak_ldap_component_id: "{{ tn_kc_ldap.json[0].id }}"
 
-- name: Keycloak — update the federation component in place
-  ansible.builtin.uri:
-    url: "{{ tn_kc_components_url }}/{{ tn_keycloak_ldap_component_id }}"
-    method: PUT
-    headers: "{{ tn_kc_headers }}"
-    body: "{{ tn_kc_ldap_body | combine({'id': tn_keycloak_ldap_component_id}) }}"
-    body_format: json
-    status_code: [204]
-  no_log: true
+    # Keycloak returns bindCredential masked, so the bind password cannot be compared
+    # through the API: a keyed hash of it is kept in the state directory instead.
+    - name: Keycloak — the bind password last written
+      ansible.builtin.slurp:
+        src: "{{ tn_state_dir }}/keycloak_ldap_bind.hmac"
+      register: tn_kc_bind_prev
+      failed_when: false
 
-# ── Sub-mappers on the federation component ───────────────────────────
-# These are what populate User.ad_object_guid and .ad_distinguished_name at
-# registration. Without them those columns stay NULL and re-linking an account
-# after an AD rename degrades to matching on email.
-- name: Keycloak — existing LDAP sub-mappers
-  ansible.builtin.uri:
-    url: "{{ tn_kc_components_url }}?parent={{ tn_keycloak_ldap_component_id }}&type={{ tn_kc_mapper_type }}"
-    headers: "{{ tn_kc_headers }}"
-    status_code: 200
-  register: tn_kc_mappers
+    - name: Keycloak — update the federation component in place, when it differs
+      vars:
+        _have: "{{ tn_kc_ldap.json[0].config }}"
+        _want: "{{ tn_kc_ldap_body.config | dict2items | rejectattr('key', 'equalto', 'bindCredential') | items2dict }}"
+        _bind: "{{ (vault_ldap_bind_password ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256') }}"
+      ansible.builtin.uri:
+        url: "{{ tn_kc_components_url }}/{{ tn_keycloak_ldap_component_id }}"
+        method: PUT
+        headers: "{{ tn_kc_headers }}"
+        body: "{{ tn_kc_ldap_body | combine({'id': tn_keycloak_ldap_component_id}) }}"
+        body_format: json
+        status_code: [204]
+      when: >-
+        _have | combine(_want) != _have
+        or (tn_kc_bind_prev.content | default('') | b64decode | trim) != _bind
+      changed_when: true
+      no_log: true
 
-- name: Keycloak — create LDAP sub-mappers
-  ansible.builtin.uri:
-    url: "{{ tn_kc_components_url }}"
-    method: POST
-    headers: "{{ tn_kc_headers }}"
-    body: "{{ item }}"
-    body_format: json
-    status_code: [201, 409]
-  loop: "{{ tn_kc_ldap_mappers }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when: item.name not in (tn_kc_mappers.json | map(attribute='name') | list)
+    - name: Keycloak — record the bind password written (keyed hash)
+      ansible.builtin.copy:
+        dest: "{{ tn_state_dir }}/keycloak_ldap_bind.hmac"
+        content: "{{ (vault_ldap_bind_password ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256') }}"
+        mode: "0600"
+      no_log: true
+
+    # ── Sub-mappers on the federation component ───────────────────────
+    # These are what populate User.ad_object_guid and .ad_distinguished_name at
+    # registration. Without them those columns stay NULL and re-linking an account
+    # after an AD rename degrades to matching on email.
+    - name: Keycloak — existing LDAP sub-mappers
+      ansible.builtin.uri:
+        url: "{{ tn_kc_components_url }}?parent={{ tn_keycloak_ldap_component_id }}&type={{ tn_kc_mapper_type }}"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_mappers
+
+    - name: Keycloak — create LDAP sub-mappers
+      ansible.builtin.uri:
+        url: "{{ tn_kc_components_url }}"
+        method: POST
+        headers: "{{ tn_kc_headers }}"
+        body: "{{ item }}"
+        body_format: json
+        status_code: [201, 409]
+      loop: "{{ tn_kc_ldap_mappers }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.name not in (tn_kc_mappers.json | map(attribute='name') | list)
+      changed_when: true
+
+# ── Without AD: local groups and a local bootstrap administrator ──────
+# The same TN-* groups the AD group mapper would bring, as plain Keycloak groups, and the
+# bootstrap administrator as a local account in TN-Platform-Admins with a generated
+# password (bootstrap_admin_password, persisted like every secret). app.bootstrap_admin
+# (80-seed) then finds it like a federated user, and 95-smoke-test signs in as it.
+- name: Keycloak — local identity (no AD)
+  when: not tn_ldap_enabled | bool
+  block:
+    - name: Keycloak — a bootstrap administrator must be nominated
+      ansible.builtin.assert:
+        that: tn_bootstrap_admin_upn | default('') | length > 0
+        fail_msg: "tn_bootstrap_admin_upn is empty (without AD it names the local admin account to create)."
+        quiet: true
+
+    - name: Keycloak — existing groups
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/groups?max=1000"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_local_groups
+
+    - name: Keycloak — create the TN-* groups
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/groups"
+        method: POST
+        headers: "{{ tn_kc_headers }}"
+        body: {name: "{{ item }}"}
+        body_format: json
+        status_code: [201, 409]
+      loop: "{{ tn_ad_groups | difference(tn_kc_local_groups.json | map(attribute='name') | list) }}"
+      changed_when: true
+
+    - name: Keycloak — re-read the groups
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/groups?max=1000"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_local_groups2
+
+    - name: Keycloak — does the bootstrap administrator exist?
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/users?username={{ tn_bootstrap_admin_upn | urlencode }}&exact=true"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_local_admin
+
+    # First and last name: Keycloak 24's user profile requires them, or the first sign-in
+    # stops at "update your account" (and the smoke test's password grant fails).
+    - name: Keycloak — create the bootstrap administrator (local account)
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/users"
+        method: POST
+        headers: "{{ tn_kc_headers }}"
+        body:
+          username: "{{ tn_bootstrap_admin_upn }}"
+          email: "{{ tn_bootstrap_admin_upn }}"
+          emailVerified: true
+          enabled: true
+          firstName: TrueNorth
+          lastName: Administrator
+          requiredActions: []
+          credentials:
+            - {type: password, value: "{{ tn_secrets['bootstrap_admin_password'] }}", temporary: false}
+        body_format: json
+        status_code: [201]
+      when: tn_kc_local_admin.json | length == 0
+      changed_when: true
+      no_log: true
+
+    - name: Keycloak — re-read the bootstrap administrator
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/users?username={{ tn_bootstrap_admin_upn | urlencode }}&exact=true"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_local_admin2
+
+    - name: Keycloak — the password last set (keyed hash)
+      ansible.builtin.slurp:
+        src: "{{ tn_state_dir }}/keycloak_bootstrap_admin.hmac"
+      register: tn_kc_admin_pw_prev
+      failed_when: false
+
+    # Created with it above; set again only when the persisted secret changed.
+    - name: Keycloak — set the bootstrap administrator's password
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_local_admin2.json[0].id }}/reset-password"
+        method: PUT
+        headers: "{{ tn_kc_headers }}"
+        body: {type: password, value: "{{ tn_secrets['bootstrap_admin_password'] }}", temporary: false}
+        body_format: json
+        status_code: [204]
+      when: >-
+        tn_kc_local_admin.json | length > 0
+        and (tn_kc_admin_pw_prev.content | default('') | b64decode | trim)
+            != (tn_secrets['bootstrap_admin_password'] ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256')
+      changed_when: true
+      no_log: true
+
+    - name: Keycloak — record it (keyed hash)
+      ansible.builtin.copy:
+        dest: "{{ tn_state_dir }}/keycloak_bootstrap_admin.hmac"
+        content: "{{ (tn_secrets['bootstrap_admin_password'] ~ ':' ~ tn_secrets['secrets_key']) | hash('sha256') }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Keycloak — the bootstrap administrator's groups
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_local_admin2.json[0].id }}/groups"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_local_admin_groups
+
+    - name: Keycloak — put the bootstrap administrator in {{ tn_kc_local_admin_group }}
+      vars:
+        _gid: "{{ (tn_kc_local_groups2.json | selectattr('name', 'equalto', tn_kc_local_admin_group) | first).id }}"
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/users/{{ tn_kc_local_admin2.json[0].id }}/groups/{{ _gid }}"
+        method: PUT
+        headers: "{{ tn_kc_headers }}"
+        status_code: [204]
+      when: tn_kc_local_admin_group not in (tn_kc_local_admin_groups.json | map(attribute='name') | list)
+      changed_when: true
 
 # ── The claim contract ────────────────────────────────────────────────
 # Attached to a dedicated client scope rather than duplicated per client, so
@@ -364,95 +631,82 @@
     label: "{{ item.item }}"
   when: item.json | length > 0
 
-# ── Sync, then prove it worked ────────────────────────────────────────
-- name: Keycloak — trigger a full AD sync
-  ansible.builtin.uri:
-    url: "{{ tn_kc_realm_url }}/user-storage/{{ tn_keycloak_ldap_component_id }}/sync?action=triggerFullSync"
-    method: POST
-    headers: "{{ tn_kc_headers }}"
-    status_code: [200]
-  register: tn_kc_sync
+# ── Sync, then prove it worked (tn_ldap_enabled) ──────────────────────
+- name: Keycloak — AD sync and import check
+  when: tn_ldap_enabled | bool
+  block:
+    - name: Keycloak — trigger a full AD sync
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/user-storage/{{ tn_keycloak_ldap_component_id }}/sync?action=triggerFullSync"
+        method: POST
+        headers: "{{ tn_kc_headers }}"
+        status_code: [200]
+      register: tn_kc_sync
 
-- name: Keycloak — report sync result
-  ansible.builtin.debug:
-    msg: "AD sync: {{ tn_kc_sync.json | default({}) }}"
+    - name: Keycloak — report sync result
+      ansible.builtin.debug:
+        msg: "AD sync: {{ tn_kc_sync.json | default({}) }}"
 
-# Counted by federationLink: local accounts must not make a federation that imported
-# nobody look like one that works.
-- name: Keycloak — list users with their federation link
-  ansible.builtin.uri:
-    url: "{{ tn_kc_realm_url }}/users?briefRepresentation=false&max=5000"
-    headers: "{{ tn_kc_headers }}"
-    status_code: 200
-  register: tn_kc_users
-  no_log: true
+    # Counted by federationLink: local accounts must not make a federation that imported
+    # nobody look like one that works.
+    - name: Keycloak — list users with their federation link
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/users?briefRepresentation=false&max=5000"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_users
+      no_log: true
 
-- name: Keycloak — count users federated from AD
-  ansible.builtin.set_fact:
-    tn_kc_user_count:
-      json: >-
-        {{ tn_kc_users.json | selectattr('federationLink', 'defined')
-           | selectattr('federationLink', 'equalto', tn_keycloak_ldap_component_id) | list | length }}
+    - name: Keycloak — count users federated from AD
+      ansible.builtin.set_fact:
+        tn_kc_user_count:
+          json: >-
+            {{ tn_kc_users.json | selectattr('federationLink', 'defined')
+               | selectattr('federationLink', 'equalto', tn_keycloak_ldap_component_id) | list | length }}
 
-# A federation that imports zero users is the classic silent failure: every
-# object is configured, the bind works, and the search base is wrong.
-- name: Keycloak — assert the federation actually imported users
-  ansible.builtin.assert:
-    that: (tn_kc_user_count.json | int) > 0
-    fail_msg: >-
-      AD federation is configured but imported 0 users. Check
-      tn_ldap_users_dn ({{ tn_ldap_users_dn }}) — a search base that matches no
-      objects looks exactly like a working configuration until someone tries to
-      log in.
-    success_msg: "{{ tn_kc_user_count.json }} users federated from {{ tn_domain }}"
+    # A federation that imports zero users is the classic silent failure: every
+    # object is configured, the bind works, and the search base is wrong.
+    - name: Keycloak — assert the federation actually imported users
+      ansible.builtin.assert:
+        that: (tn_kc_user_count.json | int) > 0
+        fail_msg: >-
+          AD federation is configured but imported 0 users. Check
+          tn_ldap_users_dn ({{ tn_ldap_users_dn }}) — a search base that matches no
+          objects looks exactly like a working configuration until someone tries to
+          log in.
+        success_msg: "{{ tn_kc_user_count.json }} users federated from {{ tn_domain }}"
 
-- name: Keycloak — check the expected AD groups arrived
-  ansible.builtin.uri:
-    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/groups"
-    headers: "{{ tn_kc_headers }}"
-    status_code: 200
-  register: tn_kc_groups
+    - name: Keycloak — check the expected AD groups arrived
+      ansible.builtin.uri:
+        url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/groups"
+        headers: "{{ tn_kc_headers }}"
+        status_code: 200
+      register: tn_kc_groups
 
-- name: Keycloak — report group mapping coverage
-  vars:
-    _found: "{{ tn_kc_groups.json | map(attribute='name') | list }}"
-    _missing: "{{ tn_ad_groups | difference(_found) }}"
-  ansible.builtin.debug:
-    msg: >-
-      {{ (_found | length) }} groups visible.
-      {{ 'All expected TN-* groups present.' if (_missing | length) == 0
-         else 'MISSING: ' ~ (_missing | join(', ')) ~
-              ' — role suggestion will be blank for those cohorts.' }}
+    - name: Keycloak — report group mapping coverage
+      vars:
+        _found: "{{ tn_kc_groups.json | map(attribute='name') | list }}"
+        _missing: "{{ tn_ad_groups | difference(_found) }}"
+      ansible.builtin.debug:
+        msg: >-
+          {{ (_found | length) }} groups visible.
+          {{ 'All expected TN-* groups present.' if (_missing | length) == 0
+             else 'MISSING: ' ~ (_missing | join(', ')) ~
+                  ' — role suggestion will be blank for those cohorts.' }}
 
-# The API needs this to drive /ad-sync. Recorded in the state directory, which
-# roles/tn_config renders into the env file on every run (so re-runs agree), and
-# patched into the env file now for this run.
-- name: Keycloak — record the component id
-  ansible.builtin.copy:
-    dest: "{{ tn_state_dir }}/keycloak_ldap_component_id"
-    content: "{{ tn_keycloak_ldap_component_id }}"
-    mode: "0644"
+    # The API needs this to drive /ad-sync. Recorded in the state directory, which
+    # roles/tn_config renders into the env file on every run (so re-runs agree), and
+    # patched into the env file now for this run.
+    - name: Keycloak — record the component id
+      ansible.builtin.copy:
+        dest: "{{ tn_state_dir }}/keycloak_ldap_component_id"
+        content: "{{ tn_keycloak_ldap_component_id }}"
+        mode: "0644"
 
-- name: Keycloak — put the component id in the environment
-  ansible.builtin.lineinfile:
-    path: "{{ tn_env_file }}"
-    regexp: "^KEYCLOAK_LDAP_COMPONENT_ID="
-    line: "KEYCLOAK_LDAP_COMPONENT_ID={{ tn_keycloak_ldap_component_id }}"
-    mode: "0600"
-  register: tn_kc_env
-
-# Recreate, not restart: a restarted container keeps the environment it was created
-# with. Only when the value actually changed, so a clean re-run changes nothing.
-- name: Keycloak — recreate the API with the component id
-  community.docker.docker_compose_v2:
-    project_src: "{{ tn_app_dir }}/infra/platform/docker"
-    files: [compose.prod.yml]
-    env_files: ["{{ tn_env_file }}"]
-    services: [api]
-    state: present
-    recreate: always
-    build: never
-    pull: never
-    wait: true
-    wait_timeout: 300
-  when: tn_kc_env is changed
+    - name: Keycloak — put the component id in the environment
+      ansible.builtin.lineinfile:
+        path: "{{ tn_env_file }}"
+        regexp: "^KEYCLOAK_LDAP_COMPONENT_ID="
+        line: "KEYCLOAK_LDAP_COMPONENT_ID={{ tn_keycloak_ldap_component_id }}"
+        mode: "0600"
+      notify: Recreate the API with the new environment

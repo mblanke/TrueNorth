@@ -31,11 +31,13 @@ data:
   KEYCLOAK_URL: {{ required "config.keycloak.url is required, e.g. http://keycloak:8080/auth" .Values.config.keycloak.url | quote }}
   KEYCLOAK_REALM: {{ .Values.config.keycloak.realm | quote }}
   KEYCLOAK_AUDIENCE: {{ required "config.keycloak.audience is required (docs/identity.md); production refuses to start without it" .Values.config.keycloak.audience | quote }}
-  {{- with .Values.config.keycloak.issuer }}
-  KEYCLOAK_ISSUER: {{ . | quote }}
-  {{- end }}
-  {{- with .Values.config.keycloak.adminUser }}
-  KEYCLOAK_ADMIN_USER: {{ . | quote }}
+  # The realm's PUBLIC issuer (the iss browsers' tokens carry), not KEYCLOAK_URL.
+  KEYCLOAK_ISSUER: {{ required "config.keycloak.issuer is required: the realm's public issuer, e.g. https://truenorth.example/auth/realms/truenorth" .Values.config.keycloak.issuer | quote }}
+  {{- /* /ad-sync's Admin API identity: a confidential client with a service account
+         holding realm-management view-realm + manage-users (secret:
+         secrets.keycloakAdminClientSecret). Never the master-realm admin. */}}
+  {{- with .Values.config.keycloak.adminClientId }}
+  KEYCLOAK_ADMIN_CLIENT_ID: {{ . | quote }}
   {{- end }}
   AI_ORCHESTRATOR_URL: {{ printf "http://%s-ai-orchestrator:%v" (include "truenorth-range.fullname" .) .Values.aiOrchestrator.service.port | quote }}
   # Peers whose X-Forwarded-For the API believes (app/client_address.py): the ingress

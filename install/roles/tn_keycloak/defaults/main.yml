@@ -63,6 +63,27 @@ tn_kc_client_settings:
     directAccessGrantsEnabled: true
     redirectUris: []
     webOrigins: []
+  # The API's Admin API identity (KEYCLOAK_ADMIN_CLIENT_ID): client credentials only, no
+  # user-facing flow. Its service account gets exactly tn_kc_api_admin_roles.
+  truenorth-api-admin:
+    enabled: true
+    publicClient: false
+    serviceAccountsEnabled: true
+    standardFlowEnabled: false
+    implicitFlowEnabled: false
+    directAccessGrantsEnabled: false
+    redirectUris: []
+    webOrigins: []
+
+# What app/routers/ad_sync.py calls, and nothing more:
+#   GET  /admin/realms/<realm>/components/<id>          -> view-realm
+#   POST /admin/realms/<realm>/user-storage/<id>/sync   -> manage-users
+# Any other realm-management role found on the service account is removed.
+tn_kc_api_admin_roles: [view-realm, manage-users]
+
+# Without AD (tn_ldap_enabled false): the bootstrap administrator is a local Keycloak
+# account in this group (its `groups` claim then satisfies the smoke test's claim check).
+tn_kc_local_admin_group: TN-Platform-Admins
 
 # The development realm's sample accounts (admin@truenorth.local / admin and friends).
 # Never imported here, and removed if an earlier install imported them.

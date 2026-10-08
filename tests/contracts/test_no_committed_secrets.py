@@ -37,13 +37,9 @@ PEM_FIXTURES = frozenset(
     }
 )
 
-PENDING_RUNTIME_SLOT = frozenset(
-    {
-        "infra/platform/docker/compose.dev.yml",
-        "infra/platform/docker/compose.prod.yml",
-        "install/inventory/group_vars/all/main.yml",
-    }
-)
+# Empty: compose.dev.yml, compose.prod.yml and install's group_vars were cleaned by the
+# installer v1 change (no AI endpoint or key defaults; tn_ai_base_url is required).
+PENDING_RUNTIME_SLOT: frozenset[str] = frozenset()
 
 
 def _tracked_text_files() -> list[tuple[str, str]]:

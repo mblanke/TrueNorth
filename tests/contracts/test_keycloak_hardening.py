@@ -90,9 +90,12 @@ def test_installer_enforces_the_realm_settings_every_run():
     for key, value in want.items():
         assert REALM[key] == value, f"tn_kc_realm_settings.{key}={value!r}, realm file has {REALM.get(key)!r}"
     tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
-    put = next(t for t in tasks if t.get("name") == "Keycloak — update realm redirect/origin settings")
-    assert "tn_kc_realm_settings" in put["ansible.builtin.uri"]["body"]
-    assert "when" not in put, "applied on every run, not only at import"
+    put = next(t for t in tasks if t.get("name") == "Keycloak — update realm token/session/password settings")
+    assert "tn_kc_realm_settings" in put["vars"]["_want"]
+    # Checked on every run (not only at import) against the realm as it is now, and PUT
+    # only when a field differs, so a clean re-run reports no change.
+    assert any(t.get("name") == "Keycloak — read the realm's current settings" for t in tasks)
+    assert put["when"] == "tn_kc_realm_now.json | combine(_want) != tn_kc_realm_now.json"
 
 
 def test_installer_enforces_the_client_rules_every_run():
@@ -108,7 +111,9 @@ def test_installer_enforces_the_client_rules_every_run():
     read = next(t for t in tasks if t.get("name") == "Keycloak — read the clients")
     assert set(settings) <= {str(i).replace("{{ tn_keycloak_web_client }}", "truenorth-web")
                              .replace("{{ tn_keycloak_api_client }}", "truenorth-api")
-                             .replace("{{ tn_kc_smoke_client }}", SMOKE) for i in read["loop"]}
+                             .replace("{{ tn_kc_smoke_client }}", SMOKE)
+                             .replace("{{ tn_keycloak_api_admin_client }}", "truenorth-api-admin")
+                             for i in read["loop"]}
 
 
 def test_the_smoke_test_uses_its_own_client_and_switches_it_off_again():

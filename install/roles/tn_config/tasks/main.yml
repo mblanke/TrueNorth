@@ -44,7 +44,7 @@
   no_log: true
 
 # Prometheus reads bearer tokens from files (monitoring/prometheus/prometheus.yml).
-# It runs as nobody (65534).
+# It runs as nobody (65534); handing a file to another uid needs root.
 - name: Config — Prometheus scrape-token directory
   ansible.builtin.file:
     path: "{{ tn_config_dir }}/prometheus"
@@ -52,6 +52,7 @@
     owner: "65534"
     group: "65534"
     mode: "0750"
+  become: true
 
 - name: Config — Prometheus scrape tokens
   ansible.builtin.copy:
@@ -61,6 +62,7 @@
     group: "65534"
     mode: "0400"
   loop: [metrics_scrape_token, ai_service_token]
+  become: true
   no_log: true
 
 # Alertmanager reads the webhook URL from a file (url_file), never the environment.
@@ -93,6 +95,29 @@
       "Alerting").
   when: vault_alertmanager_webhook_url | default('') | length == 0
 
+# ── Backups ───────────────────────────────────────────────────────────
+# Every backup escrows the env file and config/secrets/ (TN_SECRETS_KEY, every database
+# and identity password), encrypted to the escrow key, or the operator attests in writing
+# that they are escrowed elsewhere. A backup without either restores data nobody can
+# decrypt or log in to, so the install stops here rather than schedule one.
+- name: Config — a backup escrow is configured
+  ansible.builtin.assert:
+    that: >-
+      (tn_backup_escrow_pubkey | default('') | length > 0)
+      or (tn_backup_escrow | default('') == 'out-of-band')
+    fail_msg: >-
+      No backup escrow: set tn_backup_escrow_pubkey (an RSA public key on the control node)
+      or tn_backup_escrow: out-of-band in the inventory (00-preflight says how to make a key;
+      docs/runbooks/backup-restore.md).
+    quiet: true
+
+- name: Config — install the escrow public key
+  ansible.builtin.copy:
+    src: "{{ tn_backup_escrow_pubkey }}"
+    dest: "{{ tn_config_dir }}/backup-escrow.pub"
+    mode: "0644"
+  when: tn_backup_escrow_pubkey | default('') | length > 0
+
 # compose.prod.yml binds its named volumes to $TN_DATA_ROOT/... . Docker reads
 # that at `up` time from the env file, so it must be present there too.
 - name: Config — render the backup environment
@@ -107,6 +132,18 @@
       ENV_FILE={{ tn_env_file }}
       BACKUP_DIR={{ tn_data_root }}/backups
       RETENTION_DAYS=30
+      # Escrowed with the env file, encrypted (restore-secrets.sh writes them back).
+      SECRETS_DIR={{ tn_config_dir }}/secrets
+      {% if tn_backup_escrow_pubkey | default('') | length > 0 %}
+      BACKUP_ESCROW_PUBKEY={{ tn_config_dir }}/backup-escrow.pub
+      {% else %}
+      BACKUP_ESCROW=out-of-band
+      {% endif %}
+      # Never fill the disk: refuse to start below this, prune oldest above the cap.
+      BACKUP_MIN_FREE_GB={{ tn_backup_min_free_gb }}
+      BACKUP_MAX_TOTAL_GB={{ tn_backup_max_total_gb }}
+      # OpenSearch snapshots (only with OPENSEARCH_SNAPSHOT_REPO) verify the internal CA.
+      OPENSEARCH_SNAPSHOT_CACERT=config/certs/ca.pem
 
 - name: Config — nightly backup timer
   ansible.builtin.cron:

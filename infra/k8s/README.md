@@ -40,11 +40,13 @@ worker pings, `helm test`).
    | `AI_SERVICE_TOKEN` | >= 32 chars; api, workers and the AI orchestrator share it |
    | `METRICS_SCRAPE_TOKEN` | Prometheus sends it as a bearer token to the api's `/metrics` |
    | `OPENSEARCH_USER`, `OPENSEARCH_PASS` | empty only with `opensearch.securityDisabled` (lab only) |
-   | optional | `KEYCLOAK_ADMIN_PASSWORD`, `KEYCLOAK_CLIENT_SECRET`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`; `FLOWER_BASIC_AUTH` (`user:pass`) with `flower.enabled` |
+   | optional | `KEYCLOAK_ADMIN_CLIENT_SECRET` (with `config.keycloak.adminClientId`: /ad-sync's service-account client, realm-management `view-realm` + `manage-users` only — never the master admin), `KEYCLOAK_CLIENT_SECRET`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`; `FLOWER_BASIC_AUTH` (`user:pass`) with `flower.enabled` (read from the environment, never a process argument) |
 
 3. **Required settings** (`my-values.yaml`): `ingress.host`, `config.database.host`,
    `config.redis.host`, `config.minio.endpoint`, `opensearch.url` (https),
-   `config.keycloak.url` and `.audience`, and `config.trustedProxyCidrs` (the ingress
+   `config.keycloak.url`, `.audience` and `.issuer` (the realm's public issuer, e.g.
+   `https://<host>/auth/realms/truenorth`), `aiOrchestrator.env.OPENAI_BASE_URL` (no
+   default), and `config.trustedProxyCidrs` (the ingress
    controller's pod CIDR: the API believes `X-Forwarded-For` only from there). Anything
    else compose.prod.yml sets (vSphere, LRS, LDAP, registration) goes in
    `config.extraEnv` / `secrets.extraEnv`.
