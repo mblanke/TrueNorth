@@ -113,6 +113,21 @@ POST /integrations/platforms
 
 Launches are refused unless `lti_client_id` and `lti_deployment_id` are both set.
 
+**The state cookie (login CSRF).** `/lti/login` sets an HttpOnly cookie
+`tn_lti_state_<hash of the state>` on the browser that began the login (`Secure`,
+`SameSite=None`, 10 minutes), and `/lti/launch` refuses (401) a launch whose browser does
+not hold the cookie for its state. One cookie per launch, so launches begun in two tabs
+both complete; each is cleared when its launch succeeds. Two caveats:
+
+- the cookie is `Secure`, so TrueNorth must be served over **https**: on plain http the
+  browser drops it and every launch is refused;
+- with the tool opened **in an iframe** inside Moodle, the cookie is third-party, and
+  browsers that block third-party cookies (Safari, Chrome with tracking protection) drop
+  it. Open the tool in a new window (Moodle's *Launch container: New window*), or, as a
+  last resort, set `LTI_REQUIRE_STATE_COOKIE=false` on the api, which turns this
+  protection off: an id_token and state from the attacker's own LMS account could then
+  sign a victim's browser in as the attacker.
+
 > Moodle's menu paths and URL names above come from general knowledge of Moodle 4.x, not from
 > the reference pack (which covers Moodle only as `logstore_xapi`). Check them against the
 > `compose.moodle.yml` instance before anyone relies on them.

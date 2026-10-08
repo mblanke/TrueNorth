@@ -7,6 +7,7 @@ and custom LTI/API platforms. Handles external activity sync and LTI 1.3 flows.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import logging
 import os
@@ -414,7 +415,9 @@ async def lti_oidc_login(request: Request, db: Session = Depends(get_db)):
         # Login CSRF: the launch must come back to the browser that started it. The LMS
         # posts /lti/launch cross-site, so SameSite=None (and therefore Secure).
         state = parse_qs(urlsplit(redirect_url).query).get("state", [""])[0]
-        response.set_cookie(LTI_STATE_COOKIE, state, max_age=600, httponly=True, secure=True, samesite="none", path="/")
+        response.set_cookie(
+            lti_state_cookie_name(state), state, max_age=600, httponly=True, secure=True, samesite="none", path="/"
+        )
     return response
 
 
@@ -424,7 +427,24 @@ async def lti_oidc_login(request: Request, db: Session = Depends(get_db)):
 # on the browser that began the login, and the launch must carry both. Set
 # LTI_REQUIRE_STATE_COOKIE=false only where the tool runs in an iframe whose browsers block
 # third-party cookies; then this protection is off.
+#
+# One cookie per launch, named for a short hash of its state, so two launches begun in two
+# tabs do not overwrite each other's cookie (PR #112 review). Each lives 10 minutes and is
+# cleared when its launch succeeds. Caveat: the cookie is Secure, so the tool must be
+# served over https; plain-http deployments must turn the check off.
 LTI_STATE_COOKIE = "tn_lti_state"
+
+
+def lti_state_cookie_name(state: str) -> str:
+    digest = hashlib.sha256(state.encode("utf-8", "surrogatepass")).hexdigest()[:16]
+    return f"{LTI_STATE_COOKIE}_{digest}"
+
+
+def _state_cookie_matches(request: Request, state: str) -> bool:
+    """The browser holds this launch's state cookie. Compared as bytes: compare_digest
+    raises TypeError on non-ASCII str, which was a 500."""
+    cookie = request.cookies.get(lti_state_cookie_name(state), "")
+    return bool(state) and hmac.compare_digest(cookie.encode("utf-8", "surrogatepass"), state.encode("utf-8", "surrogatepass"))
 
 
 def _state_cookie_required() -> bool:
@@ -485,7 +505,8 @@ async def lti_launch(
 
     The browser must carry the state cookie set at /lti/login (login CSRF), unless
     LTI_REQUIRE_STATE_COOKIE=false."""
-    if _state_cookie_required() and not hmac.compare_digest(request.cookies.get(LTI_STATE_COOKIE, ""), state):
+    cookie_required = _state_cookie_required()
+    if cookie_required and not _state_cookie_matches(request, state):
         raise HTTPException(401, "LTI launch validation failed: this browser did not start the login")
     try:
         platform, claims = await lti13.validate_launch(db, id_token, state)
@@ -496,8 +517,15 @@ async def lti_launch(
     user = _jit_user(db, platform, claims)
 
     if message_type == "LtiDeepLinkingRequest":
-        return _deep_link_picker(db, platform, claims)
+        response = _deep_link_picker(db, platform, claims)
+    else:
+        response = _resource_link_redirect(db, platform, user, claims)
+    if cookie_required:  # this launch is spent; another tab's cookie is left alone
+        response.delete_cookie(lti_state_cookie_name(state), path="/", secure=True, httponly=True, samesite="none")
+    return response
 
+
+def _resource_link_redirect(db: Session, platform, user: User, claims: dict) -> RedirectResponse:
     kind, rid = lti13.parse_resource_target(claims)
     lti13.record_launch(db, platform, user.id, claims, kind, rid)
 
