@@ -237,6 +237,7 @@ services:
       SCENARIO_ENGINE_DIR: /opt/scenario-engine
     volumes:
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       postgres:
         condition: service_healthy
@@ -313,6 +314,8 @@ services:
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q telemetry -c 4 --loglevel=info -n telemetry@%h
     environment: *worker-env
+    volumes:
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       redis:
         condition: service_healthy
