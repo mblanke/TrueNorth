@@ -1,6 +1,6 @@
 # TrueNorth — Current State
 
-**2026-10-08, measured on `github/main` (`f2cf12b`) + #90 (`claude/carve-security`).**
+**2026-10-08, measured on `github/main` (`6d7b530`: #90, #97, #99 and #101 merged).**
 This replaces the 2026-08-18 reconstruction. That document's defects are fixed: the
 duplicate Alembic tree is gone, the dead injector tree is gone, ranges are tenant-scoped,
 and CI is real. Trust order is unchanged: code > configuration > running services >
@@ -10,7 +10,7 @@ tests > docs. Labels: `IMPLEMENTED` `PARTIAL` `UNTESTED` `PLANNED`.
 
 | Area | State | Evidence |
 |---|---|---|
-| API contract | `IMPLEMENTED`: 335 paths | `docs/interfaces/openapi.json`, gate-checked against the code (ADR 0002); the built API image serves the same 335 |
+| API contract | `IMPLEMENTED`: 336 paths | `docs/interfaces/openapi.json`, gate-checked against the code (ADR 0002); the built API image serves the same 336 |
 | Section modules | `IMPLEMENTED` (stage-4 base) | `control-plane/api/app/<module>/`: scheduler, capacity, range_leases, range_ops, lab_sessions, network_inventory, noise, greyspace, detections, scenario_runs, course_releases, course_publishing, lms, notifications; wiki and tickets |
 | Adapters | `IMPLEMENTED` (ADR 0001) | `*_backends/` (ai, auth, console, hypervisor, moodle, search, threat_intel, vector); worker `provisioners/` (vsphere_api, vsphere_guest, vsphere_infra, mock, terraform, hyperv, proxmox_api) |
 | Provisioning target | vSphere (`vsphere_api`); Proxmox is kept passing only | vcsim lane in CI; live lab nightly (`lab.yml`), which needs the self-hosted runner |
@@ -35,7 +35,7 @@ deploys. The old deploy workflows were deleted because they could not work.
 
 The gate (`scripts/dod.sh`, the same selection as CI test-python) and the CI lanes are
 listed in `RESUME.md`. Measured 2026-10-08 on macOS with PostgreSQL 16 and without
-OpenSearch: **3758 passed, 34 skipped, 0 failed**. The skips are 29 OpenSearch tests
+OpenSearch: **3875 passed, 34 skipped, 0 failed**. Karma: 503 of 503. The skips are 29 OpenSearch tests
 (they need `TEST_OPENSEARCH_URL`; CI sets it), 4 pfSense `php` checks (php CLI absent)
 and 1 cmi5 XSD that is not vendored. Without PostgreSQL the PostgreSQL tests also skip
 locally; CI fails on that. Integration, e2e, Moodle, vcsim and Greyspace evidence comes
