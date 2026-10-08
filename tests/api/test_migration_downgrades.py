@@ -5,10 +5,9 @@ columns f7a8b9c0d1e2 adds and the three foreign keys e6f7a8b9c0d1 adds in place:
 database claimed to be at a3b4c5d6e7f8 with a schema that revision never had, and the
 next upgrade skipped them as already present. Now each drops what it adds.
 
-The proof is schema equality: base -> a3b4c5d6e7f8 (S0), -> f7a8b9c0d1e2 (S1), downgrade
-to a3b4c5d6e7f8 (must equal S0), upgrade again (must equal S1), then on to head. That
-head itself downgrades to f7a8b9c0d1e2 on Postgres is test_migration_populated_upgrade.py's
-job. On SQLite always;
+The proof is schema equality: base -> a3b4c5d6e7f8 (S0) -> f7a8b9c0d1e2 -> back (must
+equal S0), then -> head (S1) -> a3b4c5d6e7f8 (must equal S0) -> head (must equal S1), so
+every revision from a3b4c5d6e7f8 to head undoes exactly what it does. On SQLite always;
 on PostgreSQL when TEST_POSTGRES_ADMIN_URL names a superuser (CI's test-python job).
 """
 
@@ -78,15 +77,19 @@ def _diff(a: dict, b: dict) -> dict:
 
 
 def _round_trip(url: str, *, foreign_keys: bool) -> None:
-    """BEFORE -> AFTER -> BEFORE -> AFTER -> head.
+    """BEFORE -> AFTER -> BEFORE -> head -> BEFORE -> head, with schema equality each time.
 
-    The round trip stops at AFTER, not head: b0c1d2e3f4a5 builds scheduled_events from the
-    live ORM, so a fresh chain has columns at BEFORE that a later scheduler revision's
-    downgrade drops (test_migration_populated_upgrade.py, ORM_BUILT_AHEAD). That is those
-    revisions' business; this proves the two revisions here undo exactly what they do.
+    The full trip to head and back needs every revision after BEFORE to undo exactly what
+    it did; until 2026-10-08 the scheduler revisions could not (b0c1d2e3f4a5 built
+    scheduled_events with their columns, so they skipped adding them and then dropped
+    them on downgrade; on SQLite the drop of a keyed column failed outright).
     """
     _alembic(url, "upgrade", BEFORE)
     before = _schema(url)
+    # b0c1d2e3f4a5 leaves the scheduler revisions' columns out, and keeps the table's other keys.
+    events = before["scheduled_events"]
+    assert not {"instructor_id", "course_id", "exercise_id", "sequence"} & {c for c, _ in events["columns"]}
+    assert (("tenant_id",), "tenants", ("id",)) in events["fks"]
     _alembic(url, "upgrade", AFTER)
     after = _schema(url)
     for table, column in _missing_columns():
@@ -102,10 +105,14 @@ def _round_trip(url: str, *, foreign_keys: bool) -> None:
     if foreign_keys:
         assert ("qualification_id",) not in {fk[0] for fk in down["courses"]["fks"]}
 
-    _alembic(url, "upgrade", AFTER)
+    _alembic(url, "upgrade", "head")
+    head = _schema(url)
+    _alembic(url, "downgrade", BEFORE)
+    down = _schema(url)
+    assert not _diff(before, down), f"downgrade from head to {BEFORE} differs: {_diff(before, down)}"
+    _alembic(url, "upgrade", "head")
     again = _schema(url)
-    assert not _diff(after, again), f"re-upgrade to {AFTER} differs: {_diff(after, again)}"
-    _alembic(url, "upgrade", "head")  # and the rest of the chain still applies on top
+    assert not _diff(head, again), f"re-upgrade to head differs: {_diff(head, again)}"
 
 
 @pytest.mark.slow

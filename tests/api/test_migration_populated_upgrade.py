@@ -71,10 +71,10 @@ EXPECTED_NEW_TABLES = {
     "exercise_runs",
 }
 
-# b0c1d2e3f4a5 builds its frozen list of tables from the *live* ORM, so a database taken
-# to DEPLOYED_HEAD today already has the columns the scheduler migrations after it add
-# (they skip a column that exists, and their downgrades drop it). A database really
-# deployed at that head did not have them. The test drops them first, so the upgrade's
+# b0c1d2e3f4a5 builds its frozen list of tables from the *live* ORM, so until 2026-10-08 a
+# database taken to DEPLOYED_HEAD already had the columns the scheduler migrations after it
+# add, and this test dropped them first. b0c1d2e3f4a5 now leaves them out (LATER_COLUMNS),
+# as a database really deployed at that head did; the test checks that, so the upgrade's
 # add_column path is the one exercised and the downgrade must restore that exact schema.
 ORM_BUILT_AHEAD = {
     "scheduled_events": {
@@ -160,10 +160,9 @@ def test_a_populated_deployed_database_upgrades_to_head_without_loss():
     engine = sa.create_engine(url)
     try:
         _alembic(url, "upgrade", DEPLOYED_HEAD)
-        with engine.begin() as conn:
-            for table, cols in ORM_BUILT_AHEAD.items():
-                for col in sorted(cols):
-                    conn.execute(sa.text(f'ALTER TABLE "{table}" DROP COLUMN "{col}"'))
+        for table, cols in ORM_BUILT_AHEAD.items():
+            ahead = cols & {c["name"] for c in sa.inspect(engine).get_columns(table)}
+            assert not ahead, f"{table} already has columns a later revision adds: {sorted(ahead)}"
         tables_at_deployed_head = set(sa.inspect(engine).get_table_names())
         columns_at_deployed_head = _columns(engine)
 

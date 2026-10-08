@@ -58,11 +58,14 @@ def upgrade() -> None:
         if table is None or name not in existing:
             continue
         present = {(tuple(fk["constrained_columns"]), fk["referred_table"]) for fk in inspector.get_foreign_keys(name)}
+        have_columns = {c["name"] for c in inspector.get_columns(name)}
         for fkc in table.foreign_key_constraints:
             columns = [c.name for c in fkc.columns]
             target = fkc.elements[0].column.table.name
             if target not in existing or (tuple(columns), target) in present:
                 continue
+            if not set(columns) <= have_columns:
+                continue  # a later revision adds the column, with its key (b0c1d2e3f4a5 LATER_COLUMNS)
             op.create_foreign_key(
                 f"{name}_{'_'.join(columns)}_fkey",  # the name Postgres gives create_all()'s keys
                 name,
