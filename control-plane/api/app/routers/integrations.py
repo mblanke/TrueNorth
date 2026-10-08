@@ -165,7 +165,7 @@ def update_platform(
     if "lti_issuer" in changes and (changes["lti_issuer"] or "").rstrip("/") != (p.lti_issuer or "").rstrip("/"):
         # A Moodle-farm platform (one the moodle_backends registry can publish to) is
         # addressed by its issuer in the tickets this API signs.
-        if p.platform_type in supported_moodle_types() and p.lti_issuer and not is_platform_admin(user):
+        if p.platform_type in supported_moodle_types() and p.lti_issuer and not is_platform_admin(user, db):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, "Only a platform administrator can re-point a Moodle at another site"
             )

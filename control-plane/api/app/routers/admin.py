@@ -81,7 +81,7 @@ def create_tenant(
     user: CurrentUser = Depends(require_permission(Permission.TENANT_CREATE)),
 ) -> Tenant:
     """Create a new tenant.  **Permission: tenant:create**, platform administrator only"""
-    if not is_platform_admin(user):
+    if not is_platform_admin(user, db):
         raise HTTPException(403, "Only the platform administrator can create tenants")
     if db.query(Tenant).filter(Tenant.slug == body.slug).first():
         raise HTTPException(409, f"Tenant slug '{body.slug}' already exists")
@@ -102,7 +102,7 @@ def list_tenants(
     """List tenants: every tenant for the platform administrator, otherwise the caller's own.
     **Permission: tenant:read**"""
     q = db.query(Tenant)
-    if not is_platform_admin(user):
+    if not is_platform_admin(user, db):
         q = q.filter(Tenant.id == uuid.UUID(user.tenant_id))
     return q.order_by(Tenant.created_at.desc()).all()
 
@@ -117,7 +117,7 @@ def update_tenant(
     """Update a tenant: the caller's own, or any for the platform administrator.
     **Permission: tenant:update**"""
     tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-    if not tenant or (not is_platform_admin(user) and str(tenant.id) != user.tenant_id):
+    if not tenant or (not is_platform_admin(user, db) and str(tenant.id) != user.tenant_id):
         # 404, not 403: another tenant's existence is not the caller's business.
         raise HTTPException(404, "Tenant not found")
     tenant.name = body.name

@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI):
     if env_flag("DB_AUTO_CREATE"):
         Base.metadata.create_all(bind=engine)
     _seed_dev_data(dev_account=env_flag("SEED_DEV_DATA"))
+    _warn_platform_tenant()
     # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
     # process at boot instead of turning every authenticated request into a 500.
     logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
@@ -139,6 +140,26 @@ async def lifespan(app: FastAPI):
 def _env_flag(name: str) -> bool:
     """On unless set to a false-ish value, so development keeps its defaults."""
     return os.getenv(name, "true").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _warn_platform_tenant() -> None:
+    """Say so at boot when several tenants exist and PLATFORM_TENANT_ID is unset.
+
+    Not a refusal: app/rbac.py already fails closed (no admin is the platform
+    administrator then), and refusing to start would take a running multi-tenant install
+    down on upgrade. A single-tenant install needs no setting and gets no warning.
+    """
+    from .db import SessionLocal
+    from .rbac import platform_tenant_problem
+
+    db = SessionLocal()
+    try:
+        if problem := platform_tenant_problem(db):
+            logger.error(problem)
+    except Exception:
+        logger.debug("Platform tenant check skipped", exc_info=True)  # e.g. no schema yet
+    finally:
+        db.close()
 
 
 def _seed_dev_data(dev_account: bool = True) -> None:

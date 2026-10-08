@@ -136,7 +136,7 @@ def check_capacity(body: CapacityCheck, db: Session = Depends(get_db), user: Cur
 def get_policy(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """`block`: a booking that does not fit is refused for everyone. `warn`: it is
     created, with warnings in the response, and the warning is audit-logged."""
-    return PolicyOut(overcapacity=service.get_policy(db), can_change=is_platform_admin(user))
+    return PolicyOut(overcapacity=service.get_policy(db), can_change=is_platform_admin(user, db))
 
 
 @router.put(

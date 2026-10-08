@@ -182,6 +182,13 @@ install); `TN_VERSION` is `tn_app_git_version`; `SCHEDULER_FEED_BASE_URL` is
 tokens from `/srv/truenorth/config/prometheus/` (`PROMETHEUS_SECRETS_DIR`). The api's
 healthcheck is `/health/ready`.
 
+`PLATFORM_TENANT_ID` names the operator's own tenant; its admins are the platform
+administrators (create tenants, approve into any tenant, platform-wide settings). Admins
+are per tenant. Unset, an admin is the platform administrator only while one tenant
+exists; once a second tenant exists nobody is, and the api logs an error at startup,
+until it is set. Set, it must be a tenant UUID or production refuses to start. A
+single-tenant install needs nothing.
+
 ## OpenSearch
 
 The security plugin is **on**. `40-tls` (`roles/tn_tls/tasks/opensearch.yml`) makes:

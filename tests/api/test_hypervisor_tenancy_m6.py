@@ -68,6 +68,16 @@ def test_cluster_wide_routes_are_for_the_platform_admin(client, db_session, clus
     assert client.post("/proxmox/vms/pve1/9001/stop").status_code == 200  # any VM
 
 
+def test_cluster_wide_routes_fail_closed_when_platform_tenant_unset(client, db_session, cluster, monkeypatch):
+    """Several tenants and no PLATFORM_TENANT_ID: nobody is the operator, nobody crosses."""
+    monkeypatch.delenv("PLATFORM_TENANT_ID")
+    for role in (UserRole.range_ops, UserRole.admin):
+        act_as(real_user(db_session, role, cluster["b"].id))
+        assert client.get("/proxmox/cluster/status").status_code == 403, role
+        assert client.post("/proxmox/vms/pve1/9001/stop").status_code == 404, role
+    assert cluster["calls"] == []
+
+
 def test_a_connection_of_another_tenant_cannot_be_tested(client, db_session, cluster):
     conn = HypervisorConnection(id=uuid.uuid4(), name="vc-a", hypervisor_type="vsphere", host="vc-a", port=443,
                                 username="svc", tenant_id=cluster["a"].id)

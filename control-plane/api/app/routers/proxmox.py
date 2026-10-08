@@ -35,7 +35,7 @@ from ..auth import CurrentUser
 from ..db import get_db
 from ..hypervisor_backends.proxmox import proxmox_client
 from ..models import Range
-from ..rbac import Permission, is_platform_admin, require_permission
+from ..rbac import Permission, is_platform_admin, is_single_tenant, platform_tenant_id, require_permission
 from ..tenancy import tenant_uuid
 
 logger = logging.getLogger("truenorth.api.proxmox")
@@ -68,16 +68,17 @@ def proxmox_scope(
     - a route on one VM (``/vms/{node}/{vmid}/...``): the VM must belong to a range of the
       caller's tenant, else 404; the platform administrator may act on any;
     - a cluster-wide route (discovery, clone, create, tasks): the platform administrator,
-      or anyone with infra:control on a single-tenant install (PLATFORM_TENANT_ID unset).
+      or anyone with infra:control on a single-tenant install (PLATFORM_TENANT_ID unset
+      and at most one tenant exists).
 
     Before, a range_ops user of one tenant could power off, snapshot, destroy or open a
     console on another tenant's VMs on the shared cluster.
     """
-    if is_platform_admin(user):
+    if is_platform_admin(user, db):
         return user
     vmid = request.path_params.get("vmid")
     if vmid is None:
-        if not os.getenv("PLATFORM_TENANT_ID", "").strip():
+        if not platform_tenant_id() and is_single_tenant(db):
             return user
         raise HTTPException(403, "Cluster-wide Proxmox operations are for the platform administrator")
     try:

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .auth import CurrentUser, get_current_user
 from .db import get_db
-from .models import Range, UserRole
+from .models import Range, Tenant, UserRole
 
 
 # ── Permission Enum ────────────────────────────────────────────────────
@@ -330,7 +330,7 @@ def require_tenant_access(tenant_id_param: str = "tenant_id") -> Callable[..., A
         **kwargs: Any,
     ) -> CurrentUser:
         # Only the platform operator skips tenant isolation: admins are per tenant.
-        if is_platform_admin(user):
+        if is_platform_admin(user, db):
             return user
 
         # Resolve the target tenant_id from path params via FastAPI injection
@@ -367,7 +367,7 @@ def require_range_access() -> Callable[..., Any]:
         user: CurrentUser = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> CurrentUser:
-        if is_platform_admin(user):  # admins are per tenant; only the operator crosses
+        if is_platform_admin(user, db):  # admins are per tenant; only the operator crosses
             return user
 
         # tenant-safe: the range's tenant is compared with the caller's just below.
@@ -385,25 +385,53 @@ def require_range_access() -> Callable[..., Any]:
 
 
 # ── Platform administration ────────────────────────────────────────────
-def is_platform_admin(user: CurrentUser) -> bool:
+def platform_tenant_id() -> str:
+    """PLATFORM_TENANT_ID, the operator's own tenant; empty when unset."""
+    return os.getenv("PLATFORM_TENANT_ID", "").strip()
+
+
+def is_single_tenant(db: Session) -> bool:
+    """At most one tenant exists. Two rows at most are read, so this stays cheap."""
+    return len(db.query(Tenant.id).limit(2).all()) <= 1
+
+
+def is_platform_admin(user: CurrentUser, db: Session) -> bool:
     """An admin of the operator's own tenant, set by PLATFORM_TENANT_ID.
 
     Admins are per tenant. Settings that hold for every tenant at once (the shared
     cluster's over-capacity policy, running the scheduler clock by hand) belong to the
-    platform operator, not to any one tenant's admin. Unset: a single-tenant install,
-    where every admin is the operator.
+    platform operator, not to any one tenant's admin.
+
+    Unset, this fails closed: an admin is the operator only while the platform has at
+    most one tenant (a single-tenant install). Once a second tenant exists nobody is the
+    platform administrator until PLATFORM_TENANT_ID names the operator's tenant. Before
+    (review of PR #112), unset meant every tenant's admin was the operator, and nothing
+    that ships set it.
     """
     if user.role != UserRole.admin:
         return False
-    platform = os.getenv("PLATFORM_TENANT_ID", "").strip()
-    return not platform or str(user.tenant_id) == platform
+    platform = platform_tenant_id()
+    if platform:
+        return str(user.tenant_id) == platform
+    return is_single_tenant(db)
+
+
+def platform_tenant_problem(db: Session) -> str | None:
+    """Why the platform administrator is unassigned, or None. Logged at startup."""
+    if platform_tenant_id() or is_single_tenant(db):
+        return None
+    return (
+        "PLATFORM_TENANT_ID is not set and more than one tenant exists: no administrator is the "
+        "platform administrator (creating tenants, cross-tenant approval and platform-wide "
+        "settings are refused). Set it to the operator's tenant id."
+    )
 
 
 def require_platform_admin() -> Callable[..., Any]:
     """FastAPI dependency: the caller must be a platform administrator."""
 
-    def _check(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if not is_platform_admin(user):
+    def _check(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)) -> CurrentUser:
+        if not is_platform_admin(user, db):
             raise HTTPException(403, "Only a platform administrator can change this: it applies to every tenant")
         return user
 

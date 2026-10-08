@@ -151,3 +151,60 @@ def test_platform_admin_manages_all_tenants(client, db_session, two_tenants_oper
     assert {str(a.id), str(b.id), str(op.id)} <= {t["id"] for t in client.get("/tenants").json()}
     assert client.post("/tenants", json={"name": "New", "slug": "new-tenant"}).status_code == 201
     assert client.put(f"/tenants/{b.id}", json={"name": "B2", "slug": "ten-b"}).status_code == 200
+
+
+# ── H5 fails closed: PLATFORM_TENANT_ID unset and more than one tenant ──
+@pytest.fixture
+def two_tenants_platform_unset(db_session, monkeypatch):
+    """Tenants A and B (the seeded dev tenant makes three), PLATFORM_TENANT_ID unset."""
+    monkeypatch.delenv("PLATFORM_TENANT_ID", raising=False)
+    return real_tenant(db_session, "uns-a"), real_tenant(db_session, "uns-b")
+
+
+def test_unset_platform_tenant_admin_of_b_cannot_manage_tenants(client, db_session, two_tenants_platform_unset):
+    a, b = two_tenants_platform_unset
+    act_as(real_user(db_session, UserRole.admin, b.id))
+
+    assert {t["id"] for t in client.get("/tenants").json()} == {str(b.id)}
+    assert client.post("/tenants", json={"name": "Rogue", "slug": "rogue"}).status_code == 403
+    assert client.put(f"/tenants/{a.id}", json={"name": "Pwned", "slug": "pwned"}).status_code == 404
+
+
+def test_unset_platform_tenant_admin_of_b_cannot_approve_into_a(client, db_session, two_tenants_platform_unset):
+    a, b = two_tenants_platform_unset
+    theirs, unassigned = _pending(db_session, a.id), _pending(db_session, None)
+    act_as(real_user(db_session, UserRole.admin, b.id))
+
+    assert str(theirs.id) not in {r["id"] for r in client.get("/registration/requests").json()}
+    assert client.post(f"/registration/requests/{theirs.id}/approve", json={"role": "student"}).status_code == 404
+    r = client.post(f"/registration/requests/{unassigned.id}/approve", json={"role": "admin", "tenant_id": str(a.id)})
+    assert r.status_code == 403
+    assert db_session.query(User).filter(User.keycloak_id == unassigned.keycloak_id).count() == 0
+
+
+def test_unset_platform_tenant_single_tenant_admin_is_still_the_operator(client, db_session, monkeypatch):
+    """One tenant (the seeded dev tenant): its admin is the platform administrator."""
+    from app.models import Tenant
+    from app.rbac import is_platform_admin, platform_tenant_problem
+
+    monkeypatch.delenv("PLATFORM_TENANT_ID", raising=False)
+    (only,) = db_session.query(Tenant).all()
+    admin = real_user(db_session, UserRole.admin, only.id)
+    act_as(admin)
+
+    assert is_platform_admin(admin, db_session)
+    assert platform_tenant_problem(db_session) is None
+    assert client.post("/tenants", json={"name": "Second", "slug": "second"}).status_code == 201
+    # A second tenant now exists: nobody is the operator until PLATFORM_TENANT_ID is set.
+    assert not is_platform_admin(admin, db_session)
+    assert "PLATFORM_TENANT_ID" in platform_tenant_problem(db_session)
+    assert client.post("/tenants", json={"name": "Third", "slug": "third"}).status_code == 403
+
+
+def test_production_refuses_a_platform_tenant_id_that_is_not_a_uuid(monkeypatch):
+    from app.settings import production_problems
+
+    monkeypatch.setenv("PLATFORM_TENANT_ID", "operator")
+    assert "PLATFORM_TENANT_ID is not a tenant id (UUID)" in production_problems()
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(uuid.uuid4()))
+    assert not any("PLATFORM_TENANT_ID" in p for p in production_problems())

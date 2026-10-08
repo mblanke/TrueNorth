@@ -262,7 +262,7 @@ def _visible(db: Session, user: CurrentUser):
     tenant would be invisible to everyone but the operator and would sit forever.
     """
     q = db.query(RegistrationRequest)
-    if is_platform_admin(user):
+    if is_platform_admin(user, db):
         return q
     return q.filter(
         (RegistrationRequest.suggested_tenant_id == uuid.UUID(user.tenant_id))
@@ -307,7 +307,7 @@ def get_request(
 def _resolve_tenant(db: Session, req: RegistrationRequest, approver: CurrentUser, chosen: uuid.UUID | None) -> uuid.UUID:
     """Decide which tenant the new user lands in, and whether that is permitted."""
     target = chosen or req.suggested_tenant_id or uuid.UUID(approver.tenant_id)
-    if not is_platform_admin(approver) and str(target) != approver.tenant_id:
+    if not is_platform_admin(approver, db) and str(target) != approver.tenant_id:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             "Approving into another tenant requires the platform administrator",
