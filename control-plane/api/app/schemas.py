@@ -635,7 +635,7 @@ class HypervisorConnectionIn(BaseModel):
     username: str = Field(..., min_length=1, max_length=255)
     password: str | None = None
     api_token: str | None = None
-    verify_ssl: bool = False
+    verify_ssl: bool = True
     is_primary: bool = False
     datacenter: str | None = None
     notes: str | None = None

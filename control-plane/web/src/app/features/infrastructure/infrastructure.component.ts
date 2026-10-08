@@ -717,7 +717,7 @@ export class InfrastructureComponent implements OnInit {
   private blankConnection(): InfrastructureComponent['newConn'] {
     return {
       name: '', hypervisor_type: 'vsphere', host: '', port: DEFAULT_PORT.vsphere,
-      username: '', password: '', verify_ssl: false, is_primary: false,
+      username: '', password: '', verify_ssl: true, is_primary: false,
     };
   }
 

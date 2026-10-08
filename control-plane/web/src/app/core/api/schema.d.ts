@@ -9816,7 +9816,7 @@ export interface components {
             username: string;
             /**
              * Verify Ssl
-             * @default false
+             * @default true
              */
             verify_ssl?: boolean;
         };

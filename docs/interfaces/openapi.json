@@ -6295,7 +6295,7 @@
             "type": "string"
           },
           "verify_ssl": {
-            "default": false,
+            "default": true,
             "title": "Verify Ssl",
             "type": "boolean"
           }

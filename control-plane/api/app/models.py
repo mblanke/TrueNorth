@@ -1072,7 +1072,7 @@ class HypervisorConnection(TimestampMixin, Base):
     username: Mapped[str] = mapped_column(String(255), nullable=False)
     password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    verify_ssl: Mapped[bool] = mapped_column(Boolean, default=False)
+    verify_ssl: Mapped[bool] = mapped_column(Boolean, default=True)  # opt out per connection, never by default
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     datacenter: Mapped[str | None] = mapped_column(String(255), nullable=True)
