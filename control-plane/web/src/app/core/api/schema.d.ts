@@ -405,6 +405,10 @@ export interface paths {
         /**
          * Detection Draft
          * @description Draft a detection rule for a MITRE technique in the requested format.
+         *
+         *     **Permission: range:update** (was: any signed-in user) — the same right that saves a
+         *     detection rule. A Student must not have the model write the detection they are
+         *     assessed on submitting (ADR 0005).
          */
         post: operations["detection_draft_ai_detection_draft_post"];
         delete?: never;
@@ -425,6 +429,8 @@ export interface paths {
         /**
          * Scenario Draft
          * @description Draft an engine-dialect scenario YAML from training objectives.
+         *
+         *     **Permission: scenario:create** (was: any signed-in user) — scenario authoring.
          */
         post: operations["scenario_draft_ai_scenario_draft_post"];
         delete?: never;
@@ -1345,10 +1351,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Curricula */
+        /**
+         * List Curricula
+         * @description **Permission: course:author** (was: any signed-in user).
+         */
         get: operations["list_curricula_curricula_get"];
         put?: never;
-        /** Create Curriculum */
+        /**
+         * Create Curriculum
+         * @description **Permission: course:author** (was: any signed-in user).
+         */
         post: operations["create_curriculum_curricula_post"];
         delete?: never;
         options?: never;
@@ -1363,11 +1375,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Curriculum */
+        /**
+         * Get Curriculum
+         * @description **Permission: course:author** (was: any signed-in user).
+         */
         get: operations["get_curriculum_curricula__curriculum_id__get"];
         put?: never;
         post?: never;
-        /** Delete Curriculum */
+        /**
+         * Delete Curriculum
+         * @description **Permission: course:author** (was: any signed-in user).
+         */
         delete: operations["delete_curriculum_curricula__curriculum_id__delete"];
         options?: never;
         head?: never;
@@ -1386,6 +1404,8 @@ export interface paths {
         /**
          * Upload Documents
          * @description Upload one or more courseware files; ingestion runs in the background.
+         *
+         *     **Permission: course:author** (was: any signed-in user).
          */
         post: operations["upload_documents_curricula__curriculum_id__documents_post"];
         delete?: never;
@@ -1426,6 +1446,8 @@ export interface paths {
         /**
          * Reingest
          * @description Re-run ingestion for any documents that are pending or errored.
+         *
+         *     **Permission: course:author** (was: any signed-in user).
          */
         post: operations["reingest_curricula__curriculum_id__ingest_post"];
         delete?: never;
@@ -1443,7 +1465,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Search Curriculum */
+        /**
+         * Search Curriculum
+         * @description Retrieve the chunks of one curriculum closest to ``query``.
+         *
+         *     **Permission: course:author** (was: any signed-in user). Tenant-scoped twice: the
+         *     curriculum must be the caller's (``_get_owned``), and the RAG index is per curriculum,
+         *     so hits can only come from that curriculum's own documents.
+         */
         post: operations["search_curriculum_curricula__curriculum_id__search_post"];
         delete?: never;
         options?: never;
@@ -1463,6 +1492,8 @@ export interface paths {
         /**
          * Register Urls
          * @description Register web pages as curriculum sources; fetched during ingestion.
+         *
+         *     **Permission: course:author** (was: any signed-in user).
          */
         post: operations["register_urls_curricula__curriculum_id__urls_post"];
         delete?: never;

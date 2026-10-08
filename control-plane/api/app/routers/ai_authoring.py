@@ -16,7 +16,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from ..auth import CurrentUser, get_current_user
+from ..auth import CurrentUser
+from ..rbac import Permission, require_permission
 
 logger = logging.getLogger("truenorth.api.ai_authoring")
 
@@ -57,12 +58,22 @@ async def _proxy(path: str, payload: dict) -> dict:
 
 
 @router.post("/scenario-draft")
-async def scenario_draft(body: ScenarioDraftIn, user: CurrentUser = Depends(get_current_user)) -> dict:
-    """Draft an engine-dialect scenario YAML from training objectives."""
+async def scenario_draft(
+    body: ScenarioDraftIn, user: CurrentUser = Depends(require_permission(Permission.SCENARIO_CREATE))
+) -> dict:
+    """Draft an engine-dialect scenario YAML from training objectives.
+
+    **Permission: scenario:create** (was: any signed-in user) — scenario authoring."""
     return await _proxy("/ai/scenario-suggest", body.model_dump())
 
 
 @router.post("/detection-draft")
-async def detection_draft(body: DetectionDraftIn, user: CurrentUser = Depends(get_current_user)) -> dict:
-    """Draft a detection rule for a MITRE technique in the requested format."""
+async def detection_draft(
+    body: DetectionDraftIn, user: CurrentUser = Depends(require_permission(Permission.RANGE_UPDATE))
+) -> dict:
+    """Draft a detection rule for a MITRE technique in the requested format.
+
+    **Permission: range:update** (was: any signed-in user) — the same right that saves a
+    detection rule. A Student must not have the model write the detection they are
+    assessed on submitting (ADR 0005)."""
     return await _proxy("/ai/detection-rule", body.model_dump())

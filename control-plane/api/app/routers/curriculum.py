@@ -4,6 +4,13 @@ Upload courseware (PDF/DOCX/PPTX/Markdown/text) or register URLs, ingest it
 into a per-curriculum RAG index (extract → chunk → embed → OpenSearch), and
 query it. Generation endpoints (courses, quizzes, ranges) build on the
 `rag_search` retrieval exposed here.
+
+Access: every endpoint here needs ``course:author`` (admins and instructors), reads and
+RAG search included. A curriculum is a tenant's raw source courseware — it can hold
+instructor material and assessment keys — and the only screens that use it are the
+Curriculum Forge and the Exercise Forge, both authoring tools. No Student-facing view
+reads it; Students learn from the published courses generated from it. Every by-id
+lookup is tenant-scoped through ``_get_owned`` (another tenant's curriculum is 404).
 """
 
 from __future__ import annotations
@@ -33,12 +40,16 @@ from ..models import (
     ModuleContentType,
     Quiz,
 )
+from ..rbac import Permission, require_permission
 
 AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 
 logger = logging.getLogger("truenorth.api.curriculum")
 
 router = APIRouter(prefix="/curricula", tags=["curriculum"])
+
+# Curricula are authoring material: see the module docstring for why reads need it too.
+AUTHOR = require_permission(Permission.COURSE_AUTHOR)
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB per file
 ALLOWED_SUFFIXES = (".pdf", ".docx", ".pptx", ".md", ".markdown", ".txt", ".rst", ".html", ".htm")
@@ -103,9 +114,10 @@ class RagChunkOut(BaseModel):
 def create_curriculum(
     body: CurriculumIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    curriculum = Curriculum(name=body.name, description=body.description, tenant_id=user.tenant_id)
+    """**Permission: course:author** (was: any signed-in user)."""
+    curriculum =Curriculum(name=body.name, description=body.description, tenant_id=user.tenant_id)
     db.add(curriculum)
     db.commit()
     db.refresh(curriculum)
@@ -115,8 +127,9 @@ def create_curriculum(
 @router.get("", response_model=list[CurriculumOut])
 def list_curricula(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
+    """**Permission: course:author** (was: any signed-in user)."""
     return (
         db.query(Curriculum)
         .filter(Curriculum.tenant_id == user.tenant_id, Curriculum.deleted_at.is_(None))
@@ -129,8 +142,9 @@ def list_curricula(
 def get_curriculum(
     curriculum_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
+    """**Permission: course:author** (was: any signed-in user)."""
     return _get_owned(curriculum_id, db, user)
 
 
@@ -138,8 +152,9 @@ def get_curriculum(
 async def delete_curriculum(
     curriculum_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
+    """**Permission: course:author** (was: any signed-in user)."""
     curriculum = _get_owned(curriculum_id, db, user)
     curriculum.deleted_at = datetime.now(UTC)
     db.commit()
@@ -162,9 +177,11 @@ async def upload_documents(
     files: list[UploadFile],
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Upload one or more courseware files; ingestion runs in the background."""
+    """Upload one or more courseware files; ingestion runs in the background.
+
+    **Permission: course:author** (was: any signed-in user)."""
     curriculum = _get_owned(curriculum_id, db, user)
 
     doc_ids: list[uuid.UUID] = []
@@ -210,9 +227,11 @@ def register_urls(
     body: UrlIngestIn,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Register web pages as curriculum sources; fetched during ingestion."""
+    """Register web pages as curriculum sources; fetched during ingestion.
+
+    **Permission: course:author** (was: any signed-in user)."""
     curriculum = _get_owned(curriculum_id, db, user)
 
     doc_ids: list[uuid.UUID] = []
@@ -242,9 +261,11 @@ def reingest(
     curriculum_id: uuid.UUID,
     background: BackgroundTasks,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
-    """Re-run ingestion for any documents that are pending or errored."""
+    """Re-run ingestion for any documents that are pending or errored.
+
+    **Permission: course:author** (was: any signed-in user)."""
     curriculum = _get_owned(curriculum_id, db, user)
     pending = [
         d.id
@@ -268,8 +289,13 @@ async def search_curriculum(
     curriculum_id: uuid.UUID,
     body: RagSearchIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(AUTHOR),
 ):
+    """Retrieve the chunks of one curriculum closest to ``query``.
+
+    **Permission: course:author** (was: any signed-in user). Tenant-scoped twice: the
+    curriculum must be the caller's (``_get_owned``), and the RAG index is per curriculum,
+    so hits can only come from that curriculum's own documents."""
     _get_owned(curriculum_id, db, user)
     try:
         return await curriculum_ingest.rag_search(curriculum_id, body.query, body.k)

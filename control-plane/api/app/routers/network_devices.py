@@ -1,4 +1,8 @@
-"""Network device CRUD."""
+"""Network device CRUD.
+
+Physical network inventory (management IPs, firmware): infrastructure, so reads need
+``infra:read`` and changes ``infra:write`` (was: any signed-in user, Students included).
+"""
 
 from __future__ import annotations
 
@@ -9,21 +13,25 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from ..auth import CurrentUser, get_current_user
+from ..auth import CurrentUser
 from ..db import get_db
 from ..models import NetworkDevice
+from ..rbac import Permission, require_permission
 from ..schemas import NetworkDeviceIn, NetworkDeviceOut, NetworkDeviceUpdate, NetworkSummaryOut
 
 router = APIRouter(prefix="/network-devices", tags=["network"])
 
+INFRA_READ = require_permission(Permission.INFRA_READ)
+INFRA_WRITE = require_permission(Permission.INFRA_WRITE)
+
 
 @router.get("/", response_model=list[NetworkDeviceOut])
-def list_devices(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def list_devices(db: Session = Depends(get_db), user: CurrentUser = Depends(INFRA_READ)):
     return db.query(NetworkDevice).filter(NetworkDevice.tenant_id == user.tenant_id).all()
 
 
 @router.post("/", response_model=NetworkDeviceOut, status_code=201)
-def create_device(body: NetworkDeviceIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def create_device(body: NetworkDeviceIn, db: Session = Depends(get_db), user: CurrentUser = Depends(INFRA_WRITE)):
     obj = NetworkDevice(**body.model_dump(), tenant_id=user.tenant_id)
     db.add(obj)
     db.commit()
@@ -32,7 +40,7 @@ def create_device(body: NetworkDeviceIn, db: Session = Depends(get_db), user: Cu
 
 
 @router.delete("/{device_id}", status_code=204, response_class=Response)
-def delete_device(device_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def delete_device(device_id: uuid.UUID, db: Session = Depends(get_db), user: CurrentUser = Depends(INFRA_WRITE)):
     obj = db.query(NetworkDevice).filter_by(id=device_id, tenant_id=user.tenant_id).first()
     if not obj:
         raise HTTPException(404, "Device not found")
@@ -45,7 +53,7 @@ def update_device(
     device_id: uuid.UUID,
     body: NetworkDeviceUpdate,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(INFRA_WRITE),
 ):
     obj = db.query(NetworkDevice).filter_by(id=device_id, tenant_id=user.tenant_id).first()
     if not obj:
@@ -58,7 +66,7 @@ def update_device(
 
 
 @router.get("/summary", response_model=NetworkSummaryOut)
-def network_summary(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def network_summary(db: Session = Depends(get_db), user: CurrentUser = Depends(INFRA_READ)):
     devices = db.query(NetworkDevice).filter(NetworkDevice.tenant_id == user.tenant_id).all()
     by_role = dict(Counter(d.role.value if hasattr(d.role, "value") else d.role for d in devices))
     return NetworkSummaryOut(

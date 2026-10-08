@@ -1,9 +1,36 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
+import { AuthService } from '@core/services/auth.service';
+import { CourseStudioApiService, LearningPlatform } from '@core/services/course-studio-api.service';
 
-/** Isolated fictional previews: no application session or API access in the frames. */
+/** Only absolute http(s) URLs are offered as the Moodle link. */
+function httpUrl(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && /^https?:\/\/\S+$/i.test(trimmed) ? trimmed : undefined;
+}
+
+/** The base URL of the tenant's first active registered Moodle, if any. */
+export function registeredMoodleUrl(platforms: readonly LearningPlatform[]): string | undefined {
+  const moodle = platforms.find(p => p.is_active && p.platform_type === 'moodle' && httpUrl(p.base_url));
+  return httpUrl(moodle?.base_url);
+}
+
+/**
+ * Isolated fictional previews: no application session or API access in the frames.
+ *
+ * The Moodle link is never hard-coded (it used to be http://localhost:8083/, which is
+ * only right on a developer's Docker host). It comes from, in order:
+ *   1. the Moodle platform registered under Integrations (GET /integrations/platforms,
+ *      `integration:read`, so only instructors and admins look it up);
+ *   2. the `moodleUrl` input (route data via withComponentInputBinding, or a host).
+ * With neither, the panel says no Moodle is registered instead of linking anywhere.
+ *
+ * TODO(#99): once core/config/runtime-config.ts lands, default `moodleUrl` from the
+ * runtime config (assets/config.json, e.g. TN_MOODLE_URL) so a deployment can set it
+ * without registering a platform.
+ */
 @Component({
   selector: 'tn-learning-preview',
   imports: [RouterLink, MatButtonModule],
@@ -22,9 +49,14 @@ import { MatButtonModule } from '@angular/material/button';
           <h2>Moodle test LMS</h2>
           <p>Moodle runs as a separate service on this test machine. Open it to view
             its courses, activities, enrolment, and gradebook.</p>
-          <a mat-flat-button color="primary" href="http://localhost:8083/"
-             target="_blank" rel="noopener noreferrer">Open Moodle · new tab</a>
-          <p>This address works on the Docker host. Moodle uses its own login.
+          @if (moodleLink(); as link) {
+            <a mat-flat-button color="primary" [href]="link"
+               target="_blank" rel="noopener noreferrer">Open Moodle · new tab</a>
+          } @else {
+            <p class="unconfigured">No Moodle site is registered for this deployment. An
+              administrator registers one under TrueNorth integration settings.</p>
+          }
+          <p>Moodle uses its own login.
             Starting Moodle does not establish LTI launch, grade passback, or cmi5 integration.</p>
           <a mat-stroked-button routerLink="/integrations">TrueNorth integration settings</a>
         </article>
@@ -52,8 +84,19 @@ import { MatButtonModule } from '@angular/material/button';
 })
 export class LearningPreviewComponent {
   readonly view = signal('development');
+  /** Fallback Moodle address when no Moodle platform is registered. */
+  readonly moodleUrl = input<string | undefined>(undefined);
+  private readonly registered = signal<string | undefined>(undefined);
+  readonly moodleLink = computed(() => this.registered() ?? httpUrl(this.moodleUrl()));
 
   constructor() {
+    if (inject(AuthService).isInstructor()) {
+      inject(CourseStudioApiService).platforms().pipe(takeUntilDestroyed()).subscribe({
+        next: platforms => this.registered.set(registeredMoodleUrl(platforms)),
+        error: () => this.registered.set(undefined),
+      });
+    }
+
     inject(ActivatedRoute).queryParamMap.pipe(takeUntilDestroyed()).subscribe(params => {
       const view = params.get('view');
       this.view.set(view === 'readiness' || view === 'moodle' ? view : 'development');

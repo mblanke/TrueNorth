@@ -3,6 +3,11 @@
 A collective exercise (Exercise.kind='collective') carries objectives and a Master
 Event Sequence List. The MESL can be **ingested** from an uploaded planner CSV or
 **generated** on-box by the model from the exercise objectives.
+
+Access: every endpoint needs ``exercise:create`` (admins and instructors), reads included
+(was: any signed-in user). The MESL is the exercise-control plan — each serial's inject,
+delivery and ``expected_action`` — so a Student who could read it would hold the answer
+key. The only UI (Authoring → MESL) is instructor-only.
 """
 
 from __future__ import annotations
@@ -18,15 +23,17 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import mesl as mesl_parse
-from ..auth import CurrentUser, get_current_user
+from ..auth import CurrentUser
 from ..db import get_db
 from ..models import Exercise, ExerciseObjective, ExerciseState, MeslEvent, Range
+from ..rbac import Permission, require_permission
 from ..tenancy import get_owned, tenant_uuid
 
 AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 logger = logging.getLogger("truenorth.api.collective")
 
 router = APIRouter(prefix="/collective-exercises", tags=["collective-exercises"])
+WHITE_CELL = require_permission(Permission.EXERCISE_CREATE)
 MAX_CSV_BYTES = 8 * 1024 * 1024
 
 
@@ -122,7 +129,7 @@ def _add_objectives(db: Session, ex: Exercise, rows: list[dict]) -> int:
 def create_exercise(
     body: CollectiveExerciseIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(WHITE_CELL),
 ) -> dict:
     """Create a collective exercise on a range (optionally with objectives)."""
     try:
@@ -147,7 +154,7 @@ def create_exercise(
 @router.get("")
 def list_exercises(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(WHITE_CELL),
 ) -> list[dict]:
     out = []
     for ex in (
@@ -173,7 +180,7 @@ def list_exercises(
 def get_exercise(
     exercise_id: str,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(WHITE_CELL),
 ) -> dict:
     ex = _get_collective(db, exercise_id, user)
     objs = db.query(ExerciseObjective).filter_by(exercise_id=ex.id).order_by(ExerciseObjective.ordinal).all()
@@ -194,7 +201,7 @@ async def import_objectives(
     exercise_id: str,
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(WHITE_CELL),
 ) -> dict:
     """Ingest exercise objectives from a CSV."""
     ex = _get_collective(db, exercise_id, user)
@@ -209,7 +216,7 @@ async def import_mesl(
     exercise_id: str,
     file: UploadFile,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(WHITE_CELL),
 ) -> dict:
     """Ingest a planner MESL (CSV) into structured serials linked to objectives."""
     ex = _get_collective(db, exercise_id, user)
@@ -254,7 +261,7 @@ def patch_mesl_event(
     event_id: str,
     body: MeslEventPatch,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(WHITE_CELL),
 ) -> dict:
     """Edit a single MESL serial (title/timing/delivery/status/...).
 
@@ -292,7 +299,7 @@ def generate_mesl(
     exercise_id: str,
     body: MeslGenerateReq,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(WHITE_CELL),
 ) -> dict:
     """Draft a MESL on-box from the exercise objectives (model-generated, human-refined)."""
     ex = _get_collective(db, exercise_id, user)
