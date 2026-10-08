@@ -28,6 +28,25 @@ services:
       timeout: 5s
       retries: 3
 
+  # ── Alertmanager ─────────────────────────────────────────────
+  # prometheus.yml sends alerts here. The default config routes them to a null
+  # receiver (monitoring/alertmanager/alertmanager.yml): visible in the UI, sent nowhere.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
+    container_name: tn-alertmanager
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./monitoring/alertmanager/secrets-dev:/etc/alertmanager/secrets:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--cluster.listen-address="
+    networks:
+      - tn-net
+
   # ── Grafana ──────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:10.4.0
