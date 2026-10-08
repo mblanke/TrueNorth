@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from . import jwks as jwks_verify
 from .models import ExternalPlatform, LTILaunch, LTINonce, LTIToolKey
+from .secretbox import seal, unseal
 
 logger = logging.getLogger("truenorth.api.lti13")
 
@@ -91,7 +92,7 @@ def get_tool_key(db: Session) -> LTIToolKey:
     )
     key = LTIToolKey(
         kid=f"truenorth-{secrets.token_hex(6)}",
-        private_key_pem=private_pem,
+        private_key_pem=seal(private_pem),  # app/secretbox.py: never stored as generated
         public_key_pem=public_pem,
     )
     db.add(key)
@@ -99,6 +100,15 @@ def get_tool_key(db: Session) -> LTIToolKey:
     db.refresh(key)
     logger.info("Generated LTI tool RSA keypair kid=%s", key.kid)
     return key
+
+
+def signing_pem(key: LTIToolKey) -> str:
+    """The tool key's private PEM, unsealed. Every signer reads the key through this.
+
+    ``lti_tool_keys.private_key_pem`` is sealed (app/secretbox.py); rows from before the
+    sealing migration are returned as stored.
+    """
+    return unseal(key.private_key_pem)
 
 
 def _b64url_uint(value: int) -> str:
@@ -335,7 +345,7 @@ def build_deep_link_response(
     if deep_link_return_data:
         payload["https://purl.imsglobal.org/spec/lti-dl/claim/data"] = deep_link_return_data
     return jwt.encode(
-        payload, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid}
+        payload, signing_pem(key), algorithm="RS256", headers={"kid": key.kid}
     )
 
 
@@ -367,7 +377,7 @@ async def _ags_access_token(db: Session, platform: ExternalPlatform) -> str:
             "exp": now + 300,
             "jti": secrets.token_urlsafe(16),
         },
-        key.private_key_pem,
+        signing_pem(key),
         algorithm="RS256",
         headers={"kid": key.kid},
     )

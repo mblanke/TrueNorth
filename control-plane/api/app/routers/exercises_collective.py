@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import mesl as mesl_parse
+from ..ai_orchestrator_client import orchestrator_headers
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import Exercise, ExerciseObjective, ExerciseState, MeslEvent, Range
@@ -307,7 +308,9 @@ def generate_mesl(
         "duration_days": body.duration_days,
     }
     try:
-        resp = httpx.post(f"{AI_ORCHESTRATOR_URL}/ai/mesl-generate", json=payload, timeout=330)
+        resp = httpx.post(
+            f"{AI_ORCHESTRATOR_URL}/ai/mesl-generate", json=payload, headers=orchestrator_headers(), timeout=330
+        )
         resp.raise_for_status()
         raw = resp.json().get("output", "")
     except Exception as exc:  # noqa: BLE001

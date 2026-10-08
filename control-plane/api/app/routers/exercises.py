@@ -44,6 +44,7 @@ from ..aar_html import RESPONSE_HEADERS as AAR_PAGE_HEADERS
 from ..aar_html import pdf_text
 from ..aar_html import render_html as render_aar_html
 from ..aar_report import build_report as build_aar_report
+from ..ai_orchestrator_client import orchestrator_headers
 from ..auth import CurrentUser
 from ..db import get_db
 from ..detections.redaction import redact_evidence, redact_timeline, sees_answer_key
@@ -731,6 +732,7 @@ async def ai_enhance_aar(
                     "report_data": json.dumps(report_data)[:50000],
                     "context": {"exercise_id": str(exercise_id)},
                 },
+                headers=orchestrator_headers(),
             )
             resp.raise_for_status()
             ai_result = resp.json()

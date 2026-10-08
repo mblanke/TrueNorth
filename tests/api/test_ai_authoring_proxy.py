@@ -37,7 +37,7 @@ class _FakeClient:
     async def __aexit__(self, *a):
         return False
 
-    async def post(self, url, json=None):
+    async def post(self, url, json=None, headers=None):
         type(self).posted = {"url": url, "json": json}
         if self.mode == "connect_error":
             raise httpx.ConnectError("unreachable")

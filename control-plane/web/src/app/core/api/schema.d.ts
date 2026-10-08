@@ -2346,7 +2346,10 @@ export interface paths {
         };
         /**
          * Health Check
-         * @description Quick health check - liveness + dependency flags.
+         * @description Health with dependency flags. 503 (``status: "unavailable"``) when the database is down.
+         *
+         *     Redis is reported but does not fail this check; ``/health/ready`` fails on either.
+         *     Probes: ``/health/live`` for liveness, ``/health/ready`` for readiness.
          */
         get: operations["health_check_health_get"];
         put?: never;
@@ -2377,6 +2380,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liveness probe
+         * @description Liveness probe: 200 while the process serves requests. Touches no dependency.
+         */
+        get: operations["liveness_health_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/ready": {
         parameters: {
             query?: never;
@@ -2386,7 +2409,7 @@ export interface paths {
         };
         /**
          * Readiness probe
-         * @description Readiness probe - checks DB + Redis connectivity.
+         * @description Readiness probe: DB and Redis (and OpenSearch when OPENSEARCH_URL is set). 503 if any is down.
          */
         get: operations["readiness_health_ready_get"];
         put?: never;
@@ -18202,9 +18225,38 @@ export interface operations {
                     "application/json": components["schemas"]["HealthOut"];
                 };
             };
+            /** @description The database is unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthOut"];
+                };
+            };
         };
     };
     deep_health_health_deep_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    liveness_health_live_get: {
         parameters: {
             query?: never;
             header?: never;

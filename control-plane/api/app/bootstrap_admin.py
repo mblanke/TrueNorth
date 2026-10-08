@@ -132,7 +132,7 @@ def ensure_admin(db: Session, tenant: Tenant, kc_user: dict) -> User:
     # An administrator is not a trainee; do not trap them in first-run.
     user.onboarding_state = "complete"
     db.flush()
-    logger.info("%s bootstrap admin %s (%s)", action, display, email or sub)
+    logger.info("%s bootstrap admin user %s (sub %s)", action, user.id, sub)  # no name or email in logs
     return user
 
 

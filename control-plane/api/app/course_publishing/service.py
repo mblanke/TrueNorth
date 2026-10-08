@@ -62,7 +62,7 @@ class LeaseLostError(RuntimeError):
 def backend_for(db: Session, platform: ExternalPlatform) -> BaseMoodleBackend:
     def key() -> tuple[str, str]:
         k = lti13.get_tool_key(db)
-        return k.private_key_pem, k.kid
+        return lti13.signing_pem(k), k.kid
 
     return get_moodle_backend(platform.platform_type, key_provider=key)
 

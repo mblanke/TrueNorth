@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import curriculum_ingest, object_store
+from ..ai_orchestrator_client import orchestrator_headers
 from ..auth import CurrentUser, get_current_user
 from ..db import SessionLocal, get_db
 from ..models import (
@@ -329,7 +330,9 @@ async def generate_course(
     }
     async with httpx.AsyncClient(timeout=330) as client:
         try:
-            resp = await client.post(f"{AI_ORCHESTRATOR_URL}/ai/course-generate", json=payload)
+            resp = await client.post(
+                f"{AI_ORCHESTRATOR_URL}/ai/course-generate", json=payload, headers=orchestrator_headers()
+            )
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             raise HTTPException(502, "AI orchestrator failed to generate the course.") from e
