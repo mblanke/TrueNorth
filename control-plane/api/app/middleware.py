@@ -77,6 +77,15 @@ def _verify_csrf_token(token: str) -> bool:
     return hmac.compare_digest(sig, expected)
 
 
+# Cross-site POSTs by design, each with its own signed authentication, never a browser
+# session cookie: the LMS's OIDC login initiation and its signed id_token launch (LTI 1.3,
+# app/lti13.py), the deep-linking return (a signed session JWT), and the noise agent's
+# report (its per-agent bearer token). With auth on, the double-submit check 403'd every
+# one of them: no LTI launch and no noise reporting worked in production. Exactly these
+# paths; nothing by prefix.
+CSRF_EXEMPT_PATHS = frozenset({"/lti/login", "/lti/launch", "/lti/deeplink/finish", "/noise/agent/report"})
+
+
 class CsrfMiddleware(BaseHTTPMiddleware):
     """Double-submit cookie CSRF protection.
 
@@ -96,7 +105,7 @@ class CsrfMiddleware(BaseHTTPMiddleware):
         method = request.method
 
         # Validate on mutating methods
-        if method not in _CSRF_SAFE_METHODS:
+        if method not in _CSRF_SAFE_METHODS and request.url.path not in CSRF_EXEMPT_PATHS:
             cookie_token = request.cookies.get(_CSRF_COOKIE, "")
             header_token = request.headers.get(_CSRF_HEADER, "")
 
