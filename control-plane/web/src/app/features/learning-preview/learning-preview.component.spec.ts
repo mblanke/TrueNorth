@@ -5,6 +5,7 @@ import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Observable, of, throwError } from 'rxjs';
 
+import { environment } from '@env/environment';
 import { AuthService } from '@core/services/auth.service';
 import { CourseStudioApiService, LearningPlatform } from '@core/services/course-studio-api.service';
 import { LearningPreviewComponent, registeredMoodleUrl } from './learning-preview.component';
@@ -36,7 +37,13 @@ describe('LearningPreviewComponent', () => {
     harness = await RouterTestingHarness.create();
   }
 
+  // The runtime config writes this before bootstrap; the dev build defaults it. Each test
+  // starts with none so that "nothing configured" is what it says.
+  const configuredMoodle = environment.moodleUrl;
+  afterEach(() => (environment.moodleUrl = configuredMoodle));
+
   beforeEach(async () => {
+    environment.moodleUrl = undefined;
     instructor = signal(false);
     platforms = jasmine.createSpy('platforms').and.returnValue(of([]));
     await setUp();
@@ -109,6 +116,25 @@ describe('LearningPreviewComponent', () => {
     expect(cmp.moodleLink()).toBe('https://lms.range.example/');
     expect(el.querySelector<HTMLAnchorElement>('a[target="_blank"]')!.getAttribute('href'))
       .toBe('https://lms.range.example/');
+  });
+
+  it('uses the runtime-configured Moodle URL (TN_MOODLE_URL) for everyone, Students included', async () => {
+    environment.moodleUrl = 'https://moodle.range.example/';
+    const { cmp, el } = await open('/preview?view=moodle');
+    expect(platforms).not.toHaveBeenCalled();
+    expect(cmp.moodleLink()).toBe('https://moodle.range.example/');
+    expect(el.querySelector<HTMLAnchorElement>('a[target="_blank"]')!.getAttribute('href'))
+      .toBe('https://moodle.range.example/');
+  });
+
+  it('prefers the registered platform over the runtime config', async () => {
+    TestBed.resetTestingModule();
+    environment.moodleUrl = 'https://moodle.range.example/';
+    instructor.set(true);
+    platforms.and.returnValue(of([platform({})]));
+    await setUp();
+    const { cmp } = await open('/preview?view=moodle');
+    expect(cmp.moodleLink()).toBe('https://moodle.unit.example/');
   });
 
   it('only accepts active Moodle platforms with an http(s) base URL', () => {

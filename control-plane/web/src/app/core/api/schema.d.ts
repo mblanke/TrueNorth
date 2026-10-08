@@ -1101,6 +1101,9 @@ export interface paths {
          *
          *     Retired courses are hidden by default: they are spine-generated stubs that authored
          *     content has superseded, kept only so their scenario/range wiring survives.
+         *
+         *     Scope: the caller's tenant plus global courses. Without ``course:author`` only
+         *     published courses are listed, whatever ``published_only`` says; authors may filter.
          */
         get: operations["list_courses_courses_get"];
         put?: never;
@@ -1199,7 +1202,8 @@ export interface paths {
         };
         /**
          * Get Course
-         * @description Get a single course with its modules.
+         * @description Get a single course with its modules: own tenant or global; a draft is 404
+         *     without ``course:author``.
          */
         get: operations["get_course_courses__course_id__get"];
         put?: never;
@@ -1312,6 +1316,8 @@ export interface paths {
          *     ever list module titles. This walks the teach -> check -> assess rows so the page
          *     can show what each module teaches, the quiz that checks it, the lab that assesses
          *     it, and the performance objective it satisfies.
+         *
+         *     Own tenant or global; a draft is 404 without ``course:author``.
          */
         get: operations["course_outline_courses__course_id__outline_get"];
         put?: never;
@@ -3033,7 +3039,8 @@ export interface paths {
         };
         /**
          * List Learning Paths
-         * @description List the tenant's learning paths.
+         * @description List learning paths: the tenant's plus global ones; published only without
+         *     ``course:author``.
          */
         get: operations["list_learning_paths_learning_paths_get"];
         put?: never;
@@ -3057,7 +3064,8 @@ export interface paths {
         };
         /**
          * Get Learning Path
-         * @description Get a single learning path.
+         * @description Get a single learning path: own tenant or global; a draft is 404 without
+         *     ``course:author``.
          */
         get: operations["get_learning_path_learning_paths__lp_id__get"];
         put?: never;

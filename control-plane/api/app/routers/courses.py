@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from .. import course_content_ingest, programme_ingest, qsp_paths
 from ..auth import CurrentUser, get_current_user
@@ -43,7 +43,7 @@ from ..models import (
     SecurityGroupMembership,
     User,
 )
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, require_permission, user_has_permission
 from ..scheduler import service as scheduler
 from ..schemas import (
     CourseIn,
@@ -74,6 +74,34 @@ router = APIRouter(prefix="/courses", tags=["courses"])
 # 2026-10-07 create/update/delete needed only a sign-in, so a Student could delete a
 # course in their tenant.
 AUTHOR = require_permission(Permission.COURSE_AUTHOR)
+
+
+# ── Catalogue visibility ─────────────────────────────────────────────────
+# Courses and learning paths are a catalogue: the caller's tenant's rows plus the
+# globally shared ones (tenant_id NULL, see tenancy.get_owned_or_global). Drafts are
+# authoring state: only ``course:author`` holders see unpublished rows; for everyone
+# else a draft is absent from lists and 404 by id. Until 2026-10-08 GET /courses listed
+# every tenant's courses, drafts included, to any signed-in user.
+
+
+def _sees_drafts(user: CurrentUser) -> bool:
+    return user_has_permission(user, Permission.COURSE_AUTHOR)
+
+
+def _catalogue_scope(q, model, user: CurrentUser):
+    """Restrict a Course/LearningPath query to what ``user`` may browse."""
+    q = q.filter((model.tenant_id == tenant_uuid(user)) | (model.tenant_id.is_(None)))
+    if not _sees_drafts(user):
+        q = q.filter(model.is_published.is_(True))
+    return q
+
+
+def _visible(db: Session, model, obj_id: uuid.UUID, user: CurrentUser, not_found: str):
+    """One catalogue row by id: own tenant or global, and published unless an author."""
+    obj = get_owned_or_global(db, model, obj_id, user, not_found=not_found)
+    if not obj.is_published and not _sees_drafts(user):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, not_found)
+    return obj
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -141,8 +169,11 @@ def list_courses(
 
     Retired courses are hidden by default: they are spine-generated stubs that authored
     content has superseded, kept only so their scenario/range wiring survives.
+
+    Scope: the caller's tenant plus global courses. Without ``course:author`` only
+    published courses are listed, whatever ``published_only`` says; authors may filter.
     """
-    q = db.query(Course)
+    q = _catalogue_scope(db.query(Course), Course, user)
     if published_only:
         q = q.filter(Course.is_published)
     if difficulty:
@@ -179,16 +210,9 @@ def get_course(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Get a single course with its modules."""
-    course = (
-        db.query(Course)
-        .options(joinedload(Course.modules))
-        .filter(Course.id == course_id, Course.tenant_id == tenant_uuid(user))
-        .first()
-    )
-    if not course:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
-    return course
+    """Get a single course with its modules: own tenant or global; a draft is 404
+    without ``course:author``."""
+    return _visible(db, Course, course_id, user, "Course not found")
 
 
 @router.get("/{course_id}/outline")
@@ -203,14 +227,10 @@ def course_outline(
     ever list module titles. This walks the teach -> check -> assess rows so the page
     can show what each module teaches, the quiz that checks it, the lab that assesses
     it, and the performance objective it satisfies.
+
+    Own tenant or global; a draft is 404 without ``course:author``.
     """
-    course = (
-        db.query(Course)
-        .filter(Course.id == course_id, Course.tenant_id == tenant_uuid(user))
-        .one_or_none()
-    )
-    if course is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
+    course = _visible(db, Course, course_id, user, "Course not found")
 
     modules = (
         db.query(CourseModule)
@@ -499,7 +519,8 @@ def enroll_user(
     authorize_record_access(db, user, body.user_id, permission=Permission.USER_UPDATE)
 
     course = get_owned(db, Course, course_id, user)
-    if not course:
+    if not course or (not course.is_published and not _sees_drafts(user)):
+        # A draft is invisible to non-authors, so it cannot be enrolled on either.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Course not found")
 
     existing = (
@@ -648,10 +669,10 @@ def list_learning_paths(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """List the tenant's learning paths."""
+    """List learning paths: the tenant's plus global ones; published only without
+    ``course:author``."""
     return (
-        db.query(LearningPath)
-        .filter(LearningPath.tenant_id == user.tenant_id)
+        _catalogue_scope(db.query(LearningPath), LearningPath, user)
         .order_by(LearningPath.created_at.desc())
         .all()
     )
@@ -663,11 +684,9 @@ def get_learning_path(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Get a single learning path."""
-    lp = get_owned(db, LearningPath, lp_id, user)
-    if not lp:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Learning path not found")
-    return lp
+    """Get a single learning path: own tenant or global; a draft is 404 without
+    ``course:author``."""
+    return _visible(db, LearningPath, lp_id, user, "Learning path not found")
 
 
 @lp_router.patch("/{lp_id}", response_model=LearningPathOut)

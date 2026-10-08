@@ -256,7 +256,8 @@ class TestSpineImportIsPlatformLevel:
 # ── Course and learning-path writes ────────────────────────────────────
 class TestCatalogueWritesNeedCourseAuthor:
     def test_student_cannot_create_update_or_delete(self, client, db_session):
-        mine = client.post("/courses", json={"name": "Owned Course"})
+        # Published: a Student never sees drafts (test_course_catalogue_visibility.py).
+        mine = client.post("/courses", json={"name": "Owned Course", "is_published": True})
         assert mine.status_code == 201, mine.text
         cid = mine.json()["id"]
         lp = client.post("/learning-paths", json={"name": "Owned Path"})

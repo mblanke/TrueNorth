@@ -701,6 +701,9 @@ services:
       TN_ADMIN_MINIO_URL: "${TN_ADMIN_MINIO_URL:-}"
       TN_ADMIN_DASHBOARDS_URL: "${TN_ADMIN_DASHBOARDS_URL:-}"
       TN_ADMIN_AI_URL: "${TN_ADMIN_AI_URL:-}"
+      # Learning > LMS previews: the Moodle address when no Moodle platform is
+      # registered under Integrations. Unset: no link.
+      TN_MOODLE_URL: "${TN_MOODLE_URL:-}"
     depends_on:
       api:
         condition: service_healthy

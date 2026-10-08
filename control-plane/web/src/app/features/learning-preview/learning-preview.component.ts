@@ -2,13 +2,14 @@ import { Component, computed, inject, input, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
+import { environment } from '@env/environment';
 import { AuthService } from '@core/services/auth.service';
 import { CourseStudioApiService, LearningPlatform } from '@core/services/course-studio-api.service';
 
-/** Only absolute http(s) URLs are offered as the Moodle link. */
+/** Only absolute http(s) URLs or same-origin paths are offered as the Moodle link. */
 function httpUrl(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim();
-  return trimmed && /^https?:\/\/\S+$/i.test(trimmed) ? trimmed : undefined;
+  return trimmed && (/^https?:\/\/\S+$/i.test(trimmed) || /^\/(?!\/)\S*$/.test(trimmed)) ? trimmed : undefined;
 }
 
 /** The base URL of the tenant's first active registered Moodle, if any. */
@@ -24,12 +25,10 @@ export function registeredMoodleUrl(platforms: readonly LearningPlatform[]): str
  * only right on a developer's Docker host). It comes from, in order:
  *   1. the Moodle platform registered under Integrations (GET /integrations/platforms,
  *      `integration:read`, so only instructors and admins look it up);
- *   2. the `moodleUrl` input (route data via withComponentInputBinding, or a host).
- * With neither, the panel says no Moodle is registered instead of linking anywhere.
- *
- * TODO(#99): once core/config/runtime-config.ts lands, default `moodleUrl` from the
- * runtime config (assets/config.json, e.g. TN_MOODLE_URL) so a deployment can set it
- * without registering a platform.
+ *   2. the `moodleUrl` input (route data via withComponentInputBinding, or a host);
+ *   3. the deployment's runtime config: `environment.moodleUrl`, set from TN_MOODLE_URL
+ *      through assets/config.json (core/config/runtime-config.ts) before bootstrap.
+ * With none, the panel says no Moodle is registered instead of linking anywhere.
  */
 @Component({
   selector: 'tn-learning-preview',
@@ -87,7 +86,9 @@ export class LearningPreviewComponent {
   /** Fallback Moodle address when no Moodle platform is registered. */
   readonly moodleUrl = input<string | undefined>(undefined);
   private readonly registered = signal<string | undefined>(undefined);
-  readonly moodleLink = computed(() => this.registered() ?? httpUrl(this.moodleUrl()));
+  readonly moodleLink = computed(
+    () => this.registered() ?? httpUrl(this.moodleUrl()) ?? httpUrl(environment.moodleUrl),
+  );
 
   constructor() {
     if (inject(AuthService).isInstructor()) {

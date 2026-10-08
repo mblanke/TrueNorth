@@ -10,8 +10,8 @@ import type { AppEnvironment } from '@env/app-environment';
  * applies it here before Angular bootstraps, so provideKeycloak() sees the deployed
  * values.
  *
- * Only the Keycloak endpoint and the Admin > Services links (`adminLinks`) are
- * overridable. `authDisabled` is deliberately not:
+ * Only the Keycloak endpoint, the Admin > Services links (`adminLinks`) and the
+ * fallback Moodle address (`moodleUrl`, TN_MOODLE_URL) are overridable. `authDisabled` is deliberately not:
  * whoever can edit a served JSON file must not be able to turn authentication off,
  * and a production bundle is checked to carry `authDisabled: false`
  * (scripts/check-prod-env.mjs).
@@ -44,6 +44,10 @@ export function applyRuntimeConfig(body: unknown, env: AppEnvironment = environm
     return;
   }
   const { keycloak, adminLinks } = body as { keycloak?: unknown; adminLinks?: unknown };
+  const moodleUrl = text(body, 'moodleUrl');
+  if (moodleUrl !== undefined && isLinkUrl(moodleUrl)) {
+    env.moodleUrl = moodleUrl;
+  }
   for (const key of KEYCLOAK_KEYS) {
     const value = text(keycloak, key);
     if (value !== undefined) {

@@ -19746,7 +19746,7 @@
     },
     "/courses": {
       "get": {
-        "description": "List courses with optional filters.\n\n`tags` is repeatable and ANDs \u2014 `?tags=DP1&tags=delivers:none` is \"DP1 courses that\ndeliver no objective\". Tags are derived at import from `course_meta`\n(`programme_ingest.catalogue_tags`), never hand-authored.\n\nRetired courses are hidden by default: they are spine-generated stubs that authored\ncontent has superseded, kept only so their scenario/range wiring survives.",
+        "description": "List courses with optional filters.\n\n`tags` is repeatable and ANDs \u2014 `?tags=DP1&tags=delivers:none` is \"DP1 courses that\ndeliver no objective\". Tags are derived at import from `course_meta`\n(`programme_ingest.catalogue_tags`), never hand-authored.\n\nRetired courses are hidden by default: they are spine-generated stubs that authored\ncontent has superseded, kept only so their scenario/range wiring survives.\n\nScope: the caller's tenant plus global courses. Without ``course:author`` only\npublished courses are listed, whatever ``published_only`` says; authors may filter.",
         "operationId": "list_courses_courses_get",
         "parameters": [
           {
@@ -20074,7 +20074,7 @@
         ]
       },
       "get": {
-        "description": "Get a single course with its modules.",
+        "description": "Get a single course with its modules: own tenant or global; a draft is 404\nwithout ``course:author``.",
         "operationId": "get_course_courses__course_id__get",
         "parameters": [
           {
@@ -20351,7 +20351,7 @@
     },
     "/courses/{course_id}/outline": {
       "get": {
-        "description": "A course with everything needed to actually read it.\n\n`CourseOut` returns modules but not their content, so the course page could only\never list module titles. This walks the teach -> check -> assess rows so the page\ncan show what each module teaches, the quiz that checks it, the lab that assesses\nit, and the performance objective it satisfies.",
+        "description": "A course with everything needed to actually read it.\n\n`CourseOut` returns modules but not their content, so the course page could only\never list module titles. This walks the teach -> check -> assess rows so the page\ncan show what each module teaches, the quiz that checks it, the lab that assesses\nit, and the performance objective it satisfies.\n\nOwn tenant or global; a draft is 404 without ``course:author``.",
         "operationId": "course_outline_courses__course_id__outline_get",
         "parameters": [
           {
@@ -25721,7 +25721,7 @@
     },
     "/learning-paths": {
       "get": {
-        "description": "List the tenant's learning paths.",
+        "description": "List learning paths: the tenant's plus global ones; published only without\n``course:author``.",
         "operationId": "list_learning_paths_learning_paths_get",
         "responses": {
           "200": {
@@ -25837,7 +25837,7 @@
         ]
       },
       "get": {
-        "description": "Get a single learning path.",
+        "description": "Get a single learning path: own tenant or global; a draft is 404 without\n``course:author``.",
         "operationId": "get_learning_path_learning_paths__lp_id__get",
         "parameters": [
           {

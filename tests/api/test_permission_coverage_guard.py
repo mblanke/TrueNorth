@@ -69,7 +69,9 @@ SIGN_IN_ONLY: dict[str, str] = {
     "POST /courses/{course_id}/complete/{user_id}": (
         "in-body: authorize_record_access(learning_record:write); grade computed from recorded progress"
     ),
-    "POST /courses/{course_id}/enroll": "in-body: authorize_record_access(user:update) to enrol anyone but yourself",
+    "POST /courses/{course_id}/enroll": (
+        "in-body: authorize_record_access(user:update) to enrol anyone but yourself; drafts need course:author"
+    ),
     "GET /competency/users/{user_id}/profile": "in-body: authorize_record_access(learning_record:read)",
     "GET /competency/users/{user_id}/skill-gaps": "in-body: authorize_record_access(learning_record:read)",
     "POST /competency/users/{user_id}/assertions": "in-body: user_has_permission(learning_record:write)",
@@ -102,9 +104,11 @@ SIGN_IN_ONLY: dict[str, str] = {
         "in-body: get_owned(Range) — tenant-scoped; Students search telemetry to write detections (ADR 0005)"
     ),
     # ── Catalogues every role browses ───────────────────────────────────
+    # Courses and learning paths: own tenant + global; drafts only with course:author
+    # (courses._catalogue_scope / _visible; tests/api/test_course_catalogue_visibility.py).
     "GET /courses": "catalogue: the course catalogue Students browse",
-    "GET /courses/{course_id}": "catalogue: a course and its module list (tenant-scoped)",
-    "GET /courses/{course_id}/outline": "catalogue: what a course teaches (tenant-scoped)",
+    "GET /courses/{course_id}": "catalogue: a course and its module list",
+    "GET /courses/{course_id}/outline": "catalogue: what a course teaches",
     "GET /learning-paths": "catalogue: learning paths Students browse",
     "GET /learning-paths/{lp_id}": "catalogue: one learning path",
     "GET /competency/frameworks": "catalogue: NICE / ATT&CK competency definitions",

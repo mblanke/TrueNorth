@@ -67,6 +67,8 @@ spec:
               value: {{ $links.dashboards | default "" | quote }}
             - name: TN_ADMIN_AI_URL
               value: {{ $links.ai | default "" | quote }}
+            - name: TN_MOODLE_URL
+              value: {{ .Values.web.moodleUrl | default "" | quote }}
           volumeMounts:
             - name: nginx-config
               mountPath: /etc/nginx/conf.d/default.conf
