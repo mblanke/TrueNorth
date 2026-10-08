@@ -25194,7 +25194,7 @@
     },
     "/integrations/platforms/{platform_id}/test": {
       "post": {
-        "description": "Test connectivity to an external platform.",
+        "description": "Test connectivity to an external platform.\n\nThe probe goes through app.net_guard (http(s) only, internal addresses refused unless\nINTEGRATION_ALLOW_PRIVATE_URLS is on, pinned, no redirects) and a failure reads as one\nfixed message per outcome. Before (PR #112 review), it fetched the stored base_url\nunguarded and returned the exception text: an SSRF and a port/host oracle.",
         "operationId": "test_connectivity_integrations_platforms__platform_id__test_post",
         "parameters": [
           {
