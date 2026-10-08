@@ -1,7 +1,7 @@
 """add exercise runs
 
 Revision ID: e4f5a6b7c8d9
-Revises: e3a4b5c6d7e8
+Revises: f4b5c6d7e8a9
 Create Date: 2026-10-08 12:00:00.000000
 
 The current run of each exercise's timeline (run id, the lease of the one worker task
@@ -16,7 +16,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "e4f5a6b7c8d9"
-down_revision: str | None = "e3a4b5c6d7e8"
+down_revision: str | None = "f4b5c6d7e8a9"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
