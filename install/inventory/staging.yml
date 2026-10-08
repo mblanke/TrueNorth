@@ -2,13 +2,13 @@
 # TrueNorth Range — staging inventory (tn-staging, 192.168.1.240).
 #
 #   ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass \
-#     -e tn_ai_base_url=http://<litellm-host>:4000/v1
+#     -e tn_release_version=v1.0.0-rc1
 #
 # Same group_vars as the TN lab (inventory/group_vars/all/ sits beside this file); only
 # what differs is here. This host cannot reach TN-DC01, so AD/LDAPS is off: Keycloak gets
 # local TN-* groups and a local bootstrap administrator (install/README.md "Without
-# Active Directory"). No signed release exists yet, so the images are built from the
-# checkout (tn_image_source=build: lab only).
+# Active Directory"). Images come from a signed release, by digest, as in production;
+# pass the tag with -e tn_release_version.
 all:
   children:
     platform:
@@ -20,7 +20,10 @@ all:
           tn_ldap_enabled: false
           # Nothing resolves tn-staging.corp.tnrange.lab for the host itself (no AD DNS).
           tn_manage_etc_hosts: true
-          tn_image_source: build
+          tn_image_source: release
+          # Open WebUI's OpenAI-compatible API is under /api (key: Settings > Account >
+          # API keys, into vault_openai_api_key). Its model ids are what /api/models lists.
+          tn_ai_base_url: https://ai.guapo613.beer/api
           tn_tls_mode: selfsigned
           # A local Keycloak account, created by 60-keycloak (no AD here).
           tn_bootstrap_admin_upn: tnadmin@tn-staging.local
