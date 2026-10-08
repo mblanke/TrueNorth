@@ -21,6 +21,7 @@ from typing import Any
 
 import sqlalchemy as sa
 
+from . import secretbox
 from .tables import (
     after_action_reports,
     competencies,
@@ -112,19 +113,41 @@ def first_range_for_tenant(db, tenant_id: str):
 
 
 # -- hypervisor connections / golden images ---------------------------------
-def hypervisor_connection(db, hypervisor_type: str):
-    """The primary (else any) active connection for a hypervisor type, or None."""
+def hypervisor_connection(db, hypervisor_type: str, tenant_id):
+    """The active connection for a hypervisor type that ``tenant_id`` may build on, or None:
+    the tenant's own (primary first), else a shared one (no tenant). Never another tenant's:
+    until 2026-10-08 this took the primary connection of whichever tenant had one, so a
+    range was built on, and with the credentials of, someone else's vCenter."""
     hc = hypervisor_connections
+    own = hc.c.tenant_id == tenant_id if tenant_id is not None else sa.false()
     stmt = (
         sa.select(
             hc.c.host, hc.c.port, hc.c.username, hc.c.password_encrypted, hc.c.api_token, hc.c.verify_ssl,
             hc.c.datacenter,
         )
-        .where(hc.c.hypervisor_type == hypervisor_type, hc.c.is_active == sa.true())
-        .order_by(hc.c.is_primary.desc())
+        .where(hc.c.hypervisor_type == hypervisor_type, hc.c.is_active == sa.true(),
+               sa.or_(own, hc.c.tenant_id.is_(None)))
+        .order_by(sa.case((own, 0), else_=1), hc.c.is_primary.desc())
         .limit(1)
     )
     return db.execute(stmt).first()
+
+
+def range_tenant(db, range_id: str):
+    return db.execute(sa.select(ranges.c.tenant_id).where(ranges.c.id == range_id)).scalar()
+
+
+def hypervisor_creds(db, hypervisor_type: str, range_id: str) -> dict:
+    """Endpoint and login for building ``range_id`` (empty: the provisioner's env fallback),
+    from a connection of the range's own tenant. Sealed by the API; unsealed here."""
+    row = hypervisor_connection(db, hypervisor_type, range_tenant(db, range_id))
+    if row is None:
+        return {}
+    return {
+        "host": row[0], "port": row[1], "username": row[2],
+        "password": secretbox.unseal(row[3]) or "", "api_token": secretbox.unseal(row[4]) or "",
+        "verify_ssl": bool(row[5]), "datacenter": row[6] or "",
+    }
 
 
 def enabled_golden_images(db, hypervisor: str) -> list:

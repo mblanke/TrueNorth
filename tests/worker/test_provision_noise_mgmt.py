@@ -44,7 +44,7 @@ def rendered_with(monkeypatch):
     monkeypatch.setattr("worker.render.render_topology", fake_render)
     monkeypatch.setattr("worker.render.golden_image_resolver", lambda db, hv: lambda alias: alias)
     monkeypatch.setattr(worker_tasks.db_ops, "range_template_and_backend", lambda db, rid: (TEMPLATE, "mock"))
-    monkeypatch.setattr(worker_tasks, "_hypervisor_creds", lambda db, hv: {})
+    monkeypatch.setattr(worker_tasks.db_ops, "hypervisor_creds", lambda db, hv, range_id: {})
     monkeypatch.setattr(worker_tasks, "_notify_api", lambda *a, **k: None)
     monkeypatch.setattr(worker_tasks, "_update_range_state", lambda *a, **k: True)
     monkeypatch.setattr(worker_tasks, "_db_session", no_db)
