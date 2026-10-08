@@ -2083,6 +2083,9 @@ export interface paths {
          * List Injects
          * @description What each inject did (timeline and instructor), oldest first, every run kept.
          *     **Permission: exercise:read**
+         *
+         *     Users without scenario:update (Students) get only when and whether each inject ran:
+         *     action, detail, MITRE technique, mode and telemetry counts are the answer key (ADR 0005).
          */
         get: operations["list_injects_exercises__exercise_id__injects_get"];
         put?: never;

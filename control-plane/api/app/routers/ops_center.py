@@ -34,6 +34,7 @@ from ..schemas import (
     SharedCommandOut,
 )
 from ..tenancy import get_owned
+from ..ws_auth import participant_inject_event, staff_channel
 
 logger = logging.getLogger("truenorth.api.ops_center")
 
@@ -232,10 +233,15 @@ async def instructor_inject(
 
     ws_mgr = getattr(request.app.state, "ws_manager", None)
     if ws_mgr:
+        # exercise.<id> is open to every user of the tenant, Students included, and an
+        # inject's type and params say what to look for. The full event goes to the staff
+        # channel only (ws_auth: scenario:update); participants get that something happened
+        # and, for a narrative ("custom") inject, its text, which is meant for them.
+        await ws_mgr.broadcast(staff_channel(exercise_id), "instructor_inject", inject_event)
         await ws_mgr.broadcast(
             f"exercise.{exercise_id}",
             "instructor_inject",
-            inject_event,
+            participant_inject_event(inject_event),
         )
 
     # Fire it on the range too: the worker's run_inject runs the injector, ships its

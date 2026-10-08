@@ -23119,7 +23119,7 @@
     },
     "/exercises/{exercise_id}/injects": {
       "get": {
-        "description": "What each inject did (timeline and instructor), oldest first, every run kept.\n**Permission: exercise:read**",
+        "description": "What each inject did (timeline and instructor), oldest first, every run kept.\n**Permission: exercise:read**\n\nUsers without scenario:update (Students) get only when and whether each inject ran:\naction, detail, MITRE technique, mode and telemetry counts are the answer key (ADR 0005).",
         "operationId": "list_injects_exercises__exercise_id__injects_get",
         "parameters": [
           {

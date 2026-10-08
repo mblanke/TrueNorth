@@ -172,6 +172,24 @@ def real_user(db, role: UserRole, tenant_id) -> CurrentUser:
                        role=role, tenant_id=str(tenant_id), keycloak_id=f"kc-{uid}")
 
 
+def real_exercise(db, tenant_id, scenario_yaml: str = "id: s\n", **fields):
+    """Template, scenario, range and exercise rows in ``tenant_id`` (keys enforced)."""
+    from app.models import Exercise, Range, Scenario, Template
+
+    tid = uuid.UUID(str(tenant_id))
+    t = Template(id=uuid.uuid4(), name="t", yaml="id: t\n", tenant_id=tid)
+    s = Scenario(id=uuid.uuid4(), name="s", yaml=scenario_yaml, tenant_id=tid)
+    db.add_all([t, s])
+    db.flush()
+    r = Range(id=uuid.uuid4(), name="r", template_id=t.id, tenant_id=tid)
+    db.add(r)
+    db.flush()
+    ex = Exercise(id=uuid.uuid4(), name="e", range_id=r.id, scenario_id=s.id, tenant_id=tid, **fields)
+    db.add(ex)
+    db.flush()
+    return ex
+
+
 def act_as(who: CurrentUser) -> None:
     """Make ``who`` the caller for every following request (cleared by the client fixture)."""
     fastapi_app.dependency_overrides[get_current_user] = lambda: who
