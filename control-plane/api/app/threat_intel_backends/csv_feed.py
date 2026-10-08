@@ -22,7 +22,7 @@ endpoint cannot be used to tell open ports from closed ones. Rejection reasons n
 row content, so a refused page cannot be read back through them.
 
 The host is resolved once, every address it resolves to is vetted by those rules, and the
-connection is then pinned to the first of them (``_PinnedBackend``): the address dialled
+connection is then pinned to the first of them (``app.net_guard.PinnedBackend``): the address dialled
 is always one that passed the checks, and the request never asks DNS again, so an answer
 that changes between the check and the connect (DNS rebinding) cannot steer it elsewhere.
 The URL is left as it is, so the Host header, TLS SNI and certificate verification still
@@ -37,13 +37,10 @@ import io
 import ipaddress
 import os
 import re
-import socket
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
-import httpcore
-import httpx
-
+from .. import net_guard
 from ..mitre import split_attack_ids, unknown_attack_ids
 from .base import (
     BaseFeedBackend,
@@ -64,9 +61,6 @@ _DOMAIN = re.compile(r"^(?=.{1,253}$)(?:(?!-)[a-z0-9-]{1,63}(?<!-)\.)+[a-z]{2,63
 _EMAIL = re.compile(r"^[^@\s]{1,64}@(?:(?!-)[a-z0-9-]{1,63}(?<!-)\.)+[a-z]{2,63}$")
 _HEX = re.compile(r"^[0-9a-f]+$")
 _HASH_LENGTHS = {"md5": 32, "sha1": 40, "sha256": 64}
-
-# Resolution is a module attribute so tests can answer it without DNS.
-_resolve = socket.getaddrinfo
 
 
 def max_bytes() -> int:
@@ -225,108 +219,24 @@ REFUSED = (
     "(THREAT_INTEL_ALLOW_PRIVATE_FEEDS=true allows private ones)"
 )
 UNREACHABLE = "the feed could not be fetched"
-SHARED_ADDRESS_SPACE = ipaddress.ip_network("100.64.0.0/10")  # carrier-grade NAT, RFC 6598
-
-
-def _refused(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
-        return True  # ::ffff:127.0.0.1 is 127.0.0.1 to the socket
-    if addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified or addr.is_reserved:
-        return True  # never, even with private feeds allowed
-    if addr.is_global:
-        return False
-    # private, shared (100.64.0.0/10) and other non-global space: an air-gapped range only
-    return not _allow_private()
-
-
-def _check_destination(url: str) -> str:
-    """The vetted address to connect to for ``url``: every address the host resolves to
-    must pass ``_refused``, and the fetch is pinned to one of them. Raises
-    ``FeedSourceError`` / ``FeedUnreachableError``."""
-    parts = urlsplit(url)
-    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
-        raise FeedSourceError(REFUSED)
-    try:
-        port = parts.port or (443 if parts.scheme.lower() == "https" else 80)
-        infos = _resolve(parts.hostname, port, type=socket.SOCK_STREAM)
-    except (socket.gaierror, UnicodeError, ValueError) as exc:
-        raise FeedUnreachableError(UNREACHABLE) from exc
-    if not infos:
-        raise FeedUnreachableError(UNREACHABLE)
-    vetted = []
-    for info in infos:
-        addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
-        if _refused(addr):
-            raise FeedSourceError(REFUSED)
-        vetted.append(addr)
-    # The pin dials exactly an address that just passed _refused (never re-resolved).
-    return str(vetted[0])
-
-
-class _PinnedBackend(httpcore.NetworkBackend):
-    """Opens TCP connections for one host only, and only to the address vetted for it."""
-
-    def __init__(self, host: str, address: str, inner: httpcore.NetworkBackend | None = None) -> None:
-        self.host, self.address = host, address
-        self._inner = inner or httpcore.SyncBackend()
-
-    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
-        if host.lower() != self.host:
-            raise httpcore.ConnectError(f"connection to {host!r} refused: the feed fetch is pinned to {self.host!r}")
-        return self._inner.connect_tcp(self.address, port, timeout, local_address, socket_options)
-
-    def connect_unix_socket(self, path, timeout=None, socket_options=None):
-        raise httpcore.ConnectError("the feed fetch does not use unix sockets")
-
-    def sleep(self, seconds: float) -> None:
-        self._inner.sleep(seconds)
-
-
-# The backend under the pin; tests swap in a fake that records where it was asked to go.
-_network_backend = httpcore.SyncBackend
-
-
-class _PinnedTransport(httpx.HTTPTransport):
-    """``httpx.HTTPTransport`` whose connection pool dials ``address`` for ``host``."""
-
-    def __init__(self, host: str, address: str) -> None:
-        super().__init__()
-        self._pool = httpcore.ConnectionPool(
-            ssl_context=httpx.create_ssl_context(),
-            max_connections=1,
-            network_backend=_PinnedBackend(host, address, _network_backend()),
-        )
 
 
 def fetch_url(url: str) -> bytes:
-    """The body at ``url``, within the size cap. Raises ``FeedSourceError`` / ``FeedUnreachableError``."""
-    address = _check_destination(url)
-    try:
-        host = httpx.URL(url).raw_host.decode("ascii").lower()  # what httpcore will dial for
-    except (httpx.InvalidURL, UnicodeError) as exc:
-        raise FeedSourceError(REFUSED) from exc
+    """The body at ``url``, within the size cap. Raises ``FeedSourceError`` / ``FeedUnreachableError``.
+
+    The resolve-once / vet-every-address / pin / no-redirect / no-proxy rules live in
+    ``app.net_guard``, shared with the curriculum URL ingest."""
     limit = max_bytes()
     try:
-        with (
-            # Pinned to the vetted address; trust_env=False: no HTTP(S)_PROXY / NO_PROXY /
-            # .netrc from the API's environment.
-            httpx.Client(
-                timeout=FETCH_TIMEOUT,
-                follow_redirects=False,
-                trust_env=False,
-                transport=_PinnedTransport(host, address),
-            ) as client,
-            client.stream("GET", url, headers={"Accept": "text/csv, text/plain"}) as resp,
-        ):
-            if resp.is_redirect or resp.status_code >= 400:  # redirects are not followed
-                raise FeedUnreachableError(UNREACHABLE)
-            body = bytearray()
-            for chunk in resp.iter_bytes():
-                body.extend(chunk)
-                if len(body) > limit:
-                    raise FeedSourceError(f"the feed is larger than {limit} bytes")
-            return bytes(body)
-    except httpx.HTTPError as exc:
+        return net_guard.fetch(
+            url, max_bytes=limit, allow_private=_allow_private(), timeout=FETCH_TIMEOUT,
+            accept="text/csv, text/plain",
+        ).body
+    except net_guard.DestinationRefusedError as exc:
+        raise FeedSourceError(REFUSED) from exc
+    except net_guard.TooLargeError as exc:
+        raise FeedSourceError(f"the feed is larger than {limit} bytes") from exc
+    except net_guard.UnreachableError as exc:
         raise FeedUnreachableError(UNREACHABLE) from exc
 
 

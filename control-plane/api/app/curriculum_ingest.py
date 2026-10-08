@@ -12,6 +12,7 @@ falls back to keyword matching.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
@@ -19,6 +20,7 @@ import uuid
 
 import httpx
 
+from . import net_guard
 from .ai_orchestrator_client import orchestrator_headers
 from .vector_backends import get_vector_store
 
@@ -131,18 +133,46 @@ def _html_to_text(html: str) -> str:
     return converter.handle(html)
 
 
+# A curriculum URL is fetched by the API from inside the platform network and its text is
+# then searchable through RAG, so an unguarded fetch is SSRF with read-back. app.net_guard
+# applies the same rules as threat-intel feeds; refusals and failures read the same.
+URL_REFUSED = "the URL must be http(s) and point at a public address"
+URL_UNREACHABLE = "the URL could not be fetched"
+
+
+def _url_max_bytes() -> int:
+    try:
+        return max(int(os.getenv("CURRICULUM_URL_MAX_BYTES", str(10 * 1024 * 1024))), 1)
+    except ValueError:
+        return 10 * 1024 * 1024
+
+
+def _allow_private_urls() -> bool:
+    return os.getenv("CURRICULUM_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
 async def fetch_url_text(url: str) -> tuple[str, str]:
-    """Fetch a web page and return (title-ish name, extracted text)."""
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        content_type = resp.headers.get("content-type", "")
-        if "pdf" in content_type:
-            return url.rsplit("/", 1)[-1] or url, _extract_pdf(resp.content)
-        text = _html_to_text(resp.text)
-        match = re.search(r"<title[^>]*>(.*?)</title>", resp.text, re.IGNORECASE | re.DOTALL)
-        title = match.group(1).strip()[:200] if match else url
-        return title, text
+    """Fetch a web page and return (title-ish name, extracted text). Raises ValueError with
+    one fixed message per outcome (no port/host oracle through ``doc.error``)."""
+    limit = _url_max_bytes()
+    try:
+        fetched = await asyncio.to_thread(
+            net_guard.fetch, url, max_bytes=limit, allow_private=_allow_private_urls(), timeout=30.0,
+            accept="text/html, application/pdf, text/plain",
+        )
+    except net_guard.DestinationRefusedError:
+        raise ValueError(URL_REFUSED) from None
+    except net_guard.TooLargeError:
+        raise ValueError(f"the page is larger than {limit} bytes") from None
+    except net_guard.GuardError:
+        raise ValueError(URL_UNREACHABLE) from None
+    if "pdf" in fetched.content_type:
+        return url.rsplit("/", 1)[-1] or url, _extract_pdf(fetched.body)
+    html = fetched.body.decode("utf-8", errors="replace")
+    text = _html_to_text(html)
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    title = match.group(1).strip()[:200] if match else url
+    return title, text
 
 
 # ── Chunking ─────────────────────────────────────────────────────────────
