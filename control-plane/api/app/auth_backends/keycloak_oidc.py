@@ -30,6 +30,7 @@ from fastapi import HTTPException, status
 from .. import jwks as jwks_verify
 from ..circuit_breaker import CircuitOpenError, keycloak_breaker
 from .base import BaseAuthBackend
+from .jwks_cache import JWKSCache
 
 logger = logging.getLogger("truenorth.auth.keycloak_oidc")
 
@@ -49,10 +50,10 @@ class KeycloakOIDCBackend(BaseAuthBackend):
         self._jwks_url = f"{self._url}/realms/{self._realm}/protocol/openid-connect/certs"
         self._audience = audience or os.getenv("KEYCLOAK_AUDIENCE", "").strip() or None
         self._issuer = issuer or os.getenv("KEYCLOAK_ISSUER", "").strip() or None
-        self._jwks_cache: dict | None = None
+        self._jwks_cache = JWKSCache(self._fetch_jwks)
 
     # ------------------------------------------------------------------
-    # JWKS helpers (cached in-process)
+    # JWKS helpers (cached in-process; refreshed on TTL and key rotation)
     # ------------------------------------------------------------------
 
     async def _fetch_jwks(self) -> dict:
@@ -70,10 +71,8 @@ class KeycloakOIDCBackend(BaseAuthBackend):
                 detail="Authentication service temporarily unavailable",
             ) from None
 
-    async def _get_jwks(self) -> dict:
-        if self._jwks_cache is None:
-            self._jwks_cache = await self._fetch_jwks()
-        return self._jwks_cache
+    async def _get_jwks(self, kid: str | None = None) -> dict:
+        return await self._jwks_cache.get(kid)
 
     # ------------------------------------------------------------------
     # BaseAuthBackend implementation
@@ -81,7 +80,7 @@ class KeycloakOIDCBackend(BaseAuthBackend):
 
     async def validate_token(self, raw_token: str) -> dict:
         try:
-            jwks = await self._get_jwks()
+            jwks = await self._get_jwks(jwks_verify.unverified_kid(raw_token))
             return jwks_verify.decode(
                 raw_token,
                 jwks,

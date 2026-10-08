@@ -11,3 +11,4 @@ flower==2.0.1
 kombu==5.3.7
 pywinrm>=0.4.3
 pyvmomi==8.0.3.0.1
+cryptography==50.0.2  # secretbox.py: sealed credentials (Fernet)

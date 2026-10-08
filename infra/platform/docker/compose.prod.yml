@@ -329,6 +329,8 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      # Seals stored credentials (app/secretbox.py); the workers need the same value.
+      TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
       OPENSEARCH_URL: http://opensearch:9200
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-truenorth}
@@ -377,6 +379,7 @@ services:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       postgres:
         condition: service_healthy
@@ -430,6 +433,8 @@ services:
     environment: &worker-env
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      # Unseals the hypervisor login the API stored (worker/secretbox.py). Same value as the api.
+      TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
       OPENSEARCH_URL: http://opensearch:9200
       # See the api service: "proxmox" is not a registry key. vSphere is "vsphere_api".
       PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-mock}
@@ -554,6 +559,8 @@ services:
         --max-tasks-per-child=2000
         --without-heartbeat
     environment: *worker-env
+    volumes:
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       redis:
         condition: service_healthy
@@ -674,7 +681,7 @@ services:
   #  WEB FRONTEND (Angular SPA behind nginx)
   # ================================================================
   # Required: nginx/conf.d/upstream.conf declares `upstream web_frontend
-  # { server web:80; }`. Without this service nginx aborts at config load with
+  # { server web:8080; }`. Without this service nginx aborts at config load with
   # "host not found in upstream" and the entire stack fails to start.
   web:
     build:
@@ -685,7 +692,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -764,7 +771,7 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
-      # upstream.conf resolves `web:80` at config load; without this nginx
+      # upstream.conf resolves `web:8080` at config load; without this nginx
       # can start before the name exists and abort on "host not found".
       web:
         condition: service_healthy

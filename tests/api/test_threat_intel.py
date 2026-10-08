@@ -11,12 +11,14 @@ import json
 import socket
 import uuid
 
+import httpcore
 import httpx
 import pytest
 import respx
 from _shared import DEV_TENANT, OTHER_TENANT, acting_as
 from app.models import AuditLog, ThreatIndicator, ThreatIntelFeed, UserRole
 from app.threat_intel_backends import csv_feed
+from app.threat_intel_backends.base import FeedSourceError, FeedUnreachableError
 
 FEED_URL = "https://feeds.example.org/iocs.csv"
 PUBLIC_IP = "93.184.216.34"
@@ -380,6 +382,155 @@ class TestUnreachable:
         feed = _feed(client)
         resp = client.post(f"/threat-intel/feeds/{feed['id']}/pull")
         assert resp.status_code == 422 and "larger than 64 bytes" in resp.json()["detail"]
+
+
+# -- DNS rebinding: the connection is pinned to the vetted address --------------------------
+class _FakeStream(httpcore.NetworkStream):
+    """A socket that answers one HTTP/1.1 request with ``body`` and records what was sent."""
+
+    def __init__(self, record: dict, body: bytes) -> None:
+        self.record, self._reply = record, (
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/csv\r\nContent-Length: %d\r\n\r\n%s" % (len(body), body)
+        )
+        record["sent"] = b""
+
+    def read(self, max_bytes, timeout=None):
+        chunk, self._reply = self._reply[:max_bytes], self._reply[max_bytes:]
+        return chunk
+
+    def write(self, buffer, timeout=None):
+        self.record["sent"] += buffer
+
+    def close(self):
+        pass
+
+    def start_tls(self, ssl_context, server_hostname=None, timeout=None):
+        self.record["sni"] = server_hostname
+        return self
+
+    def get_extra_info(self, info):
+        return None
+
+
+class _FakeNetwork(httpcore.NetworkBackend):
+    """Stands in for the operating system's sockets: records every connect, never dials."""
+
+    def __init__(self, record: dict, body: bytes = CSV) -> None:
+        self.record, self.body = record, body
+        record["connects"] = []
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        self.record["connects"].append((host, port))
+        return _FakeStream(self.record, self.body)
+
+    def sleep(self, seconds):
+        pass
+
+
+def _rebinding_dns(first: str, then: str):
+    """A resolver whose answer changes after the first lookup: the rebinding attack."""
+    calls = []
+
+    def fake(host, port, type=0, **_):  # noqa: A002 - socket.getaddrinfo's own name
+        ip = first if not calls else then
+        calls.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port))]
+
+    fake.calls = calls
+    return fake
+
+
+@pytest.fixture
+def network(monkeypatch):
+    record: dict = {}
+    monkeypatch.setattr(csv_feed, "_network_backend", lambda: _FakeNetwork(record))
+    return record
+
+
+class TestPinnedConnection:
+    @pytest.mark.parametrize("private", ["127.0.0.1", "169.254.169.254", "10.0.0.5"])
+    def test_a_host_that_rebinds_to_a_private_address_is_still_fetched_from_the_vetted_one(
+        self, monkeypatch, network, private
+    ):
+        dns = _rebinding_dns(PUBLIC_IP, private)
+        monkeypatch.setattr(csv_feed, "_resolve", dns)
+        assert csv_feed.fetch_url(FEED_URL) == CSV
+        assert dns.calls == ["feeds.example.org"]  # resolved once: nothing asks DNS again
+        assert network["connects"] == [(PUBLIC_IP, 443)]  # the vetted address, not the rebound one
+        assert network["sni"] == "feeds.example.org"  # TLS still names (and verifies) the feed host
+        assert b"\r\nHost: feeds.example.org\r\n" in network["sent"]
+        assert network["sent"].startswith(b"GET /iocs.csv HTTP/1.1\r\n")
+
+    def test_a_plain_http_feed_is_pinned_too(self, monkeypatch, network):
+        monkeypatch.setattr(csv_feed, "_resolve", _rebinding_dns(PUBLIC_IP, "127.0.0.1"))
+        assert csv_feed.fetch_url("http://feeds.example.org:8080/iocs.csv?x=1") == CSV
+        assert network["connects"] == [(PUBLIC_IP, 8080)]
+        assert "sni" not in network
+        assert b"\r\nHost: feeds.example.org:8080\r\n" in network["sent"]
+
+    def test_the_first_answer_being_private_is_refused_before_any_connect(self, monkeypatch, network):
+        monkeypatch.setattr(csv_feed, "_resolve", _rebinding_dns("127.0.0.1", PUBLIC_IP))
+        with pytest.raises(FeedSourceError) as refused:
+            csv_feed.fetch_url(FEED_URL)
+        assert str(refused.value) == csv_feed.REFUSED  # one text for every refusal (sweep L1)
+        assert network == {}  # no backend was even built
+
+    @pytest.mark.parametrize("first", ["::ffff:127.0.0.1", "::ffff:93.184.216.34", "100.64.0.9", "192.0.2.10"])
+    def test_mapped_shared_and_non_global_answers_are_never_pinned(self, monkeypatch, network, first):
+        """The sweep-L1 address rules vet the very address the pin dials."""
+        monkeypatch.setattr(csv_feed, "_resolve", _rebinding_dns(first, PUBLIC_IP))
+        with pytest.raises(FeedSourceError):
+            csv_feed.fetch_url(FEED_URL)
+        assert network == {}
+
+    def test_the_pin_dials_the_vetted_address_even_with_private_feeds_allowed(self, monkeypatch, network):
+        monkeypatch.setenv("THREAT_INTEL_ALLOW_PRIVATE_FEEDS", "true")
+        monkeypatch.setattr(csv_feed, "_resolve", _rebinding_dns("100.64.0.9", "127.0.0.1"))
+        assert csv_feed.fetch_url(FEED_URL) == CSV
+        assert network["connects"] == [("100.64.0.9", 443)]
+
+    def test_every_address_is_vetted_not_just_the_one_connected_to(self, monkeypatch, network):
+        def two(host, port, type=0, **_):  # noqa: A002
+            return [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", (PUBLIC_IP, port)),
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.2.3", port)),
+            ]
+
+        monkeypatch.setattr(csv_feed, "_resolve", two)
+        with pytest.raises(FeedSourceError, match="public address"):
+            csv_feed.fetch_url(FEED_URL)
+        assert network == {}
+
+    def test_the_pinned_backend_will_not_dial_another_host(self, network):
+        backend = csv_feed._PinnedBackend("feeds.example.org", PUBLIC_IP, _FakeNetwork(network))
+        with pytest.raises(httpcore.ConnectError, match="pinned"):
+            backend.connect_tcp("evil.example", 443)
+        with pytest.raises(httpcore.ConnectError):
+            backend.connect_unix_socket("/var/run/docker.sock")
+        assert network["connects"] == []
+
+    def test_a_redirect_is_not_followed(self, monkeypatch):
+        record: dict = {}
+
+        class Redirecting(_FakeNetwork):
+            def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+                stream = super().connect_tcp(host, port)
+                stream._reply = b"HTTP/1.1 302 Found\r\nLocation: http://169.254.169.254/\r\nContent-Length: 0\r\n\r\n"
+                return stream
+
+        monkeypatch.setattr(csv_feed, "_resolve", _resolve_to(PUBLIC_IP))
+        monkeypatch.setattr(csv_feed, "_network_backend", lambda: Redirecting(record))
+        with pytest.raises(FeedUnreachableError) as unreachable:
+            csv_feed.fetch_url(FEED_URL)
+        assert str(unreachable.value) == csv_feed.UNREACHABLE  # no status oracle (sweep L1)
+        assert record["connects"] == [(PUBLIC_IP, 443)]
+
+    def test_environment_proxies_are_not_used(self, monkeypatch, network):
+        monkeypatch.setenv("HTTPS_PROXY", "http://proxy.internal:3128")
+        monkeypatch.setenv("ALL_PROXY", "http://proxy.internal:3128")
+        monkeypatch.setattr(csv_feed, "_resolve", _resolve_to(PUBLIC_IP))
+        assert csv_feed.fetch_url(FEED_URL) == CSV
+        assert network["connects"] == [(PUBLIC_IP, 443)]
 
 
 # -- tenant isolation ----------------------------------------------------------------------

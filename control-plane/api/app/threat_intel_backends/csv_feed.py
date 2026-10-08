@@ -17,11 +17,17 @@ only http(s); redirects are not followed; the response is capped (THREAT_INTEL_M
 default 5 MiB); a host that resolves to a loopback, link-local, multicast, reserved or
 IPv4-mapped IPv6 address is refused, as is any other non-global one (private, carrier-grade
 NAT 100.64.0.0/10) unless THREAT_INTEL_ALLOW_PRIVATE_FEEDS=true (an air-gapped range serving
-its own feed); proxy settings from the environment are ignored; and every refusal, and
-every fetch failure, has one fixed message, so the endpoint cannot be used to tell open
-ports from closed ones. Rejection reasons never echo row content, so a
-refused page cannot be read back through them. The address check happens before the
-request; a DNS answer that changes between the check and the connect is not caught.
+its own feed); and every refusal, and every fetch failure, has one fixed message, so the
+endpoint cannot be used to tell open ports from closed ones. Rejection reasons never echo
+row content, so a refused page cannot be read back through them.
+
+The host is resolved once, every address it resolves to is vetted by those rules, and the
+connection is then pinned to the first of them (``_PinnedBackend``): the address dialled
+is always one that passed the checks, and the request never asks DNS again, so an answer
+that changes between the check and the connect (DNS rebinding) cannot steer it elsewhere.
+The URL is left as it is, so the Host header, TLS SNI and certificate verification still
+use the feed's own hostname. Because the connection is pinned (and ``trust_env=False``),
+the fetch goes direct and ignores HTTP(S)_PROXY / NO_PROXY / .netrc from the environment.
 """
 
 from __future__ import annotations
@@ -35,6 +41,7 @@ import socket
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
+import httpcore
 import httpx
 
 from ..mitre import split_attack_ids, unknown_attack_ids
@@ -232,7 +239,10 @@ def _refused(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return not _allow_private()
 
 
-def _check_destination(url: str) -> None:
+def _check_destination(url: str) -> str:
+    """The vetted address to connect to for ``url``: every address the host resolves to
+    must pass ``_refused``, and the fetch is pinned to one of them. Raises
+    ``FeedSourceError`` / ``FeedUnreachableError``."""
     parts = urlsplit(url)
     if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
         raise FeedSourceError(REFUSED)
@@ -241,20 +251,71 @@ def _check_destination(url: str) -> None:
         infos = _resolve(parts.hostname, port, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError, ValueError) as exc:
         raise FeedUnreachableError(UNREACHABLE) from exc
+    if not infos:
+        raise FeedUnreachableError(UNREACHABLE)
+    vetted = []
     for info in infos:
-        if _refused(ipaddress.ip_address(info[4][0].split("%", 1)[0])):
+        addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+        if _refused(addr):
             raise FeedSourceError(REFUSED)
+        vetted.append(addr)
+    # The pin dials exactly an address that just passed _refused (never re-resolved).
+    return str(vetted[0])
+
+
+class _PinnedBackend(httpcore.NetworkBackend):
+    """Opens TCP connections for one host only, and only to the address vetted for it."""
+
+    def __init__(self, host: str, address: str, inner: httpcore.NetworkBackend | None = None) -> None:
+        self.host, self.address = host, address
+        self._inner = inner or httpcore.SyncBackend()
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        if host.lower() != self.host:
+            raise httpcore.ConnectError(f"connection to {host!r} refused: the feed fetch is pinned to {self.host!r}")
+        return self._inner.connect_tcp(self.address, port, timeout, local_address, socket_options)
+
+    def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise httpcore.ConnectError("the feed fetch does not use unix sockets")
+
+    def sleep(self, seconds: float) -> None:
+        self._inner.sleep(seconds)
+
+
+# The backend under the pin; tests swap in a fake that records where it was asked to go.
+_network_backend = httpcore.SyncBackend
+
+
+class _PinnedTransport(httpx.HTTPTransport):
+    """``httpx.HTTPTransport`` whose connection pool dials ``address`` for ``host``."""
+
+    def __init__(self, host: str, address: str) -> None:
+        super().__init__()
+        self._pool = httpcore.ConnectionPool(
+            ssl_context=httpx.create_ssl_context(),
+            max_connections=1,
+            network_backend=_PinnedBackend(host, address, _network_backend()),
+        )
 
 
 def fetch_url(url: str) -> bytes:
     """The body at ``url``, within the size cap. Raises ``FeedSourceError`` / ``FeedUnreachableError``."""
-    _check_destination(url)
+    address = _check_destination(url)
+    try:
+        host = httpx.URL(url).raw_host.decode("ascii").lower()  # what httpcore will dial for
+    except (httpx.InvalidURL, UnicodeError) as exc:
+        raise FeedSourceError(REFUSED) from exc
     limit = max_bytes()
     try:
         with (
-            # trust_env=False: no HTTP(S)_PROXY / NO_PROXY / .netrc from the API's environment,
-            # so the address checked above is the one connected to.
-            httpx.Client(timeout=FETCH_TIMEOUT, follow_redirects=False, trust_env=False) as client,
+            # Pinned to the vetted address; trust_env=False: no HTTP(S)_PROXY / NO_PROXY /
+            # .netrc from the API's environment.
+            httpx.Client(
+                timeout=FETCH_TIMEOUT,
+                follow_redirects=False,
+                trust_env=False,
+                transport=_PinnedTransport(host, address),
+            ) as client,
             client.stream("GET", url, headers={"Accept": "text/csv, text/plain"}) as resp,
         ):
             if resp.is_redirect or resp.status_code >= 400:  # redirects are not followed
