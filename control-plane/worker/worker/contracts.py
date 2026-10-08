@@ -97,7 +97,16 @@ TASKS: dict[str, TaskContract] = {
         TaskContract(
             "run_scenario_v2",
             "scenario",
-            (_EXERCISE, Arg("scenario_definition", "object", description="validated scenario YAML as JSON")),
+            (
+                _EXERCISE,
+                Arg("scenario_definition", "object", description="validated scenario YAML as JSON"),
+                Arg(
+                    "lease",
+                    required=False,
+                    description="exercise_runs.lease issued by start, replay or resume; only its holder fires events",
+                ),
+            ),
+            "Run (or, after a resume, continue) an exercise's timeline.",
         ),
         TaskContract(
             "run_inject",
