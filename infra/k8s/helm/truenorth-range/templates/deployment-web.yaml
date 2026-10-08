@@ -49,6 +49,16 @@ spec:
             - name: http
               containerPort: 80
               protocol: TCP
+          {{- with .Values.web.keycloak }}
+          # Read by docker/40-truenorth-runtime-config.sh into assets/config.json.
+          env:
+            - name: TN_KEYCLOAK_URL
+              value: {{ .url | default "" | quote }}
+            - name: TN_KEYCLOAK_REALM
+              value: {{ .realm | default "" | quote }}
+            - name: TN_KEYCLOAK_CLIENT_ID
+              value: {{ .clientId | default "" | quote }}
+          {{- end }}
           volumeMounts:
             - name: nginx-config
               mountPath: /etc/nginx/conf.d/default.conf

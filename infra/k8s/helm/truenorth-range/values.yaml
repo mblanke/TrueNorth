@@ -178,6 +178,16 @@ web:
     tag: ""
     pullPolicy: IfNotPresent
   replicaCount: 2
+  # Browser-facing OIDC settings, written to the SPA's assets/config.json when the
+  # container starts (TN_KEYCLOAK_* env). Empty = the image default: Keycloak under
+  # /auth on the app's own host, realm truenorth, client truenorth-web. This chart's
+  # ingress does not route /auth, so set `url` to Keycloak's public base URL, e.g.
+  # https://keycloak.example.com. Its origin is added to the web CSP. There is no
+  # setting that disables authentication.
+  keycloak:
+    url: ""
+    realm: ""
+    clientId: ""
   resources:
     requests:
       cpu: 100m

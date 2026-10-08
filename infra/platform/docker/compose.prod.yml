@@ -681,6 +681,13 @@ services:
       context: ../../../control-plane/web
       dockerfile: Dockerfile
     restart: always
+    environment:
+      # Written to the SPA's assets/config.json at start-up
+      # (control-plane/web/docker/40-truenorth-runtime-config.sh). Keycloak is served
+      # under https://${DOMAIN}/auth (KC_HTTP_RELATIVE_PATH above), so the relative
+      # default is right unless Keycloak moves to its own host.
+      TN_KEYCLOAK_URL: "${TN_KEYCLOAK_URL:-/auth}"
+      TN_KEYCLOAK_REALM: "${KEYCLOAK_REALM:-truenorth}"
     depends_on:
       api:
         condition: service_healthy

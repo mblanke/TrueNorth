@@ -368,6 +368,13 @@ services:
       context: ../../../control-plane/web
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      # The image is the production build: sign-in is real, against the dev realm
+      # (infra/keycloak/realm-truenorth.json users). The browser reaches Keycloak
+      # directly on its published port; /auth on this nginx strips the prefix and the
+      # port, which start-dev Keycloak does not expect. Written to assets/config.json
+      # at start-up (control-plane/web/docker/40-truenorth-runtime-config.sh).
+      TN_KEYCLOAK_URL: "${TN_KEYCLOAK_URL:-http://localhost:8180}"
     ports:
       - "4200:80"
     depends_on:
