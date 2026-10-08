@@ -258,5 +258,5 @@ spec:
               kubernetes.io/metadata.name: ingress-nginx
       ports:
         - protocol: TCP
-          port: 80
+          port: 8080  # the pod's port (unprivileged nginx); the Service still listens on 80
 {{- end }}

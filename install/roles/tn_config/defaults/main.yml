@@ -12,6 +12,9 @@ tn_generated_secrets:
   - { name: minio_secret_key, value: "{{ vault_minio_secret_key | default('') }}" }
   - { name: jwt_secret, value: "{{ vault_jwt_secret | default('') }}" }
   - { name: csrf_secret, value: "{{ vault_csrf_secret | default('') }}" }
+  # Seals stored hypervisor and AI-engine credentials (app/secretbox.py). Never regenerate
+  # it: credentials sealed with a lost key cannot be read. Back it up with the database.
+  - { name: secrets_key, value: "{{ vault_secrets_key | default('') }}" }
   - { name: lrs_admin_password, value: "{{ vault_lrs_admin_password | default('') }}" }
   - { name: lrs_api_key, value: "{{ vault_lrs_api_key | default('') }}" }
   - { name: lrs_api_secret, value: "{{ vault_lrs_api_secret | default('') }}" }

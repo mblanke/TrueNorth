@@ -118,6 +118,15 @@ Verified 2026-10-04 against Keycloak 24: with the mapper, `aud` is
 `KEYCLOAK_ISSUER` is refused. Roll out by adding the mapper, confirming a fresh
 token's `aud` with the smoke test, then setting the variables.
 
+### Signing-key rotation
+
+The API caches the realm's JWKS (`app/auth_backends/jwks_cache.py`, both the Keycloak
+and the generic OIDC backend). It refreshes after `JWKS_CACHE_TTL_SECONDS` (600) and
+at once when a token names a `kid` it has not seen, which is what a Keycloak key
+rotation looks like, so logins keep working without an API restart. Unknown-`kid`
+refreshes are throttled to one per `JWKS_MIN_REFRESH_SECONDS` (30); if a refresh fails
+the cached keys stay in use.
+
 ---
 
 ## AD groups → roles
