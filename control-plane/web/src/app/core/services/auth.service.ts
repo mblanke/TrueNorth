@@ -88,6 +88,8 @@ export class AuthService {
    * this only hides the controls.
    */
   readonly canAuthorCourses = computed(() => this.isInstructor());
+  /** Mirrors `integration:read` in rbac.py: instructors and admins (lists external platforms). */
+  readonly canReadIntegrations = computed(() => this.isInstructor());
   /** The schedule (calendar, capacity, timeline) is for staff; Students never see it (ADR 0004). */
   readonly canViewSchedule = computed(() => {
     const role = this.userSignal()?.role;

@@ -6,6 +6,14 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
+
+/** The fields of an `ExternalPlatformOut` that decide whether Moodle SSO can work. */
+interface MoodleProbe {
+  platform_type: string;
+  is_active: boolean;
+  lti_issuer?: string | null;
+}
 
 interface ModuleQuiz {
   id: string;
@@ -98,10 +106,13 @@ interface Section {
             </p>
           </div>
           <div class="head-actions">
-            <!-- Moodle has no login of its own: the app hands the Student in (local_truenorth). -->
-            <button mat-flat-button type="button" (click)="openInMoodle(c)" [disabled]="opening()">
-              <mat-icon>open_in_new</mat-icon> Open in Moodle
-            </button>
+            <!-- Moodle has no login of its own: the app hands the Student in (local_truenorth).
+                 Shown only when the tenant is known to have a Moodle (see moodleAvailable). -->
+            @if (moodleAvailable()) {
+              <button mat-flat-button type="button" (click)="openInMoodle(c)" [disabled]="opening()">
+                <mat-icon>open_in_new</mat-icon> Open in Moodle
+              </button>
+            }
             <!-- Draft state is not decoration: none of this is validated courseware. -->
             <span class="pill" [class.draft]="!c.is_published">
               {{ c.is_published ? 'Published' : 'Draft — not for learners' }}
@@ -268,12 +279,23 @@ interface Section {
 export class CourseDetailComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  private readonly auth = inject(AuthService);
 
   protected readonly course = signal<CourseOutline | null>(null);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly opening = signal(false);
   protected readonly moodleError = signal<string | null>(null);
+  /**
+   * Whether the tenant has a Moodle that `/integrations/moodle/sso` can sign into: an
+   * active `moodle` platform with an LTI issuer (mirrors `moodle_sso.tenant_moodle`).
+   *
+   * Only `GET /integrations/platforms` exposes that, and it needs `integration:read`
+   * (instructors, admins). No endpoint tells a Student whether their unit has a Moodle
+   * or whether a course is published to one, so for them the button stays hidden rather
+   * than offering a launch that 404s. Unknown or failed lookups also hide it.
+   */
+  protected readonly moodleAvailable = signal(false);
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -282,6 +304,7 @@ export class CourseDetailComponent implements OnInit {
       this.loading.set(false);
       return;
     }
+    this.checkMoodle();
     this.api.get<CourseOutline>(`/courses/${id}/outline`).subscribe({
       next: c => {
         this.course.set(c);
@@ -291,6 +314,16 @@ export class CourseDetailComponent implements OnInit {
         this.error.set('That course could not be loaded. It may have been removed.');
         this.loading.set(false);
       },
+    });
+  }
+
+  private checkMoodle(): void {
+    if (!this.auth.canReadIntegrations()) return;
+    this.api.get<MoodleProbe[]>('/integrations/platforms').subscribe({
+      next: list => this.moodleAvailable.set(
+        (list ?? []).some(p => p.platform_type === 'moodle' && p.is_active && !!p.lti_issuer),
+      ),
+      error: () => this.moodleAvailable.set(false),
     });
   }
 
