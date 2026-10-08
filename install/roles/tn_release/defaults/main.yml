@@ -1,0 +1,9 @@
+---
+# The release-manifest.json services compose.prod.yml runs, and the env variable each
+# image ref is rendered into. The release also publishes scenario-engine; compose does
+# not run it (the api mounts the engine from the app source at the same commit).
+tn_release_services:
+  api: TN_IMAGE_API
+  worker: TN_IMAGE_WORKER
+  web: TN_IMAGE_WEB
+  ai-orchestrator: TN_IMAGE_AI_ORCHESTRATOR

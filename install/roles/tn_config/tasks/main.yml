@@ -15,6 +15,12 @@
 - name: Config — load the secret map
   ansible.builtin.include_tasks: secrets.yml
 
+# The TN_IMAGE_* refs (release-manifest.json, or local build tags) and TN_VERSION.
+- name: Config — which images
+  ansible.builtin.include_role:
+    name: tn_release
+    public: true
+
 # Written by roles/tn_keycloak once the AD federation component exists. Rendered from
 # here so every re-run writes the same env file (a later play patching the file would
 # be undone by the next run of this one).
@@ -56,6 +62,36 @@
     mode: "0400"
   loop: [metrics_scrape_token, ai_service_token]
   no_log: true
+
+# Alertmanager reads the webhook URL from a file (url_file), never the environment.
+# nobody (65534) runs it; handing a file to another uid needs root.
+- name: Config — Alertmanager secret directory
+  ansible.builtin.file:
+    path: "{{ tn_config_dir }}/alertmanager"
+    state: directory
+    owner: "65534"
+    group: "65534"
+    mode: "0750"
+  become: true
+
+- name: Config — Alertmanager webhook URL
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ tn_config_dir }}/alertmanager/webhook_url"
+    content: "{{ vault_alertmanager_webhook_url | default('') }}"
+    owner: "65534"
+    group: "65534"
+    mode: "0400"
+  no_log: true
+
+- name: Config — ALERTS GO NOWHERE
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: vault_alertmanager_webhook_url is empty, so Alertmanager routes every alert
+      to a null receiver: the 19 Prometheus rules fire and nobody is told. Set it in the
+      vault and re-run playbooks/30-config.yml and 50-stack-up.yml (install/README.md
+      "Alerting").
+  when: vault_alertmanager_webhook_url | default('') | length == 0
 
 # compose.prod.yml binds its named volumes to $TN_DATA_ROOT/... . Docker reads
 # that at `up` time from the env file, so it must be present there too.

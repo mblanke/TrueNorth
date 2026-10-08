@@ -51,7 +51,9 @@ ansible-vault encrypt inventory/group_vars/all/vault.yml
 
 # 2. Nominate the first administrator — a NAMED AD account.
 #    Without this the install finishes with an approval queue nobody can drain.
-$EDITOR inventory/group_vars/all/main.yml        # tn_bootstrap_admin_upn
+#    And pin the release to install (docs/release.md): tn_release_version: v1.2.3
+#    Set vault_alertmanager_webhook_url too, or alerts go nowhere ("Alerting").
+$EDITOR inventory/group_vars/all/main.yml        # tn_bootstrap_admin_upn, tn_release_version
 
 # 3. TLS: drop truenorth.crt / truenorth.key into files/tls/
 #    (or use -e tn_tls_mode=selfsigned for a lab bring-up)
@@ -75,15 +77,15 @@ is always safe on its own.
 |---|---|
 | `00-preflight` | OS, Docker/Compose versions, disk, NTP, forward+reverse DNS, vCenter and LDAPS reachability, the app repository. Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
 | `10-base` | Packages, `vm.max_map_count` (OpenSearch will not start without it), the `/srv/truenorth` tree with the uids each image runs as. |
-| `20-fetch-app` | Clones the app at a pinned ref. Supports `local` and `tarball` modes for air-gapped installs. Records the deployed commit. |
+| `20-fetch-app` | Reads the release's `release-manifest.json` (checked against its `SHA256SUMS`), then clones the app at the release's commit (`git_sha`) and refuses any other. Supports `local` and `tarball` modes for air-gapped installs. Records the deployed commit, release and image refs. |
 | `30-config` | Renders `.env.production`, generating any secret the vault left blank **once** and persisting it on the target. |
 | `40-tls` | Installs the AD CS root CA (DER or PEM, normalised to PEM) into the host trust store *and* Keycloak's truststore, then does a **real LDAPS bind** as the Keycloak service account against that CA; places the certificate nginx serves. |
-| `50-stack-up` | Builds the images, then datastores → **alembic** (with the new image) → everything else. See "The migration hazard" below. |
-| `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and a generated `truenorth-api` secret, all enforced on every run), AD user federation over LDAPS, and the token claim mappers. **This is the join between the installer and the application** — see below. |
+| `50-stack-up` | Pulls the release's images **by digest** (or loads the air-gapped archives), stops unless every image resolves to the digest compose names, then datastores → **alembic** (with the new api image) → everything else. Builds nothing unless `tn_image_source=build`. See "Images" and "The migration hazard" below. |
+| `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and generated client secrets), token/session/password rules and client grants (all enforced on every run; "Identity hardening"), AD user federation over LDAPS, and the token claim mappers. **This is the join between the installer and the application** — see below. |
 | `70-telemetry` | OpenSearch index templates, ISM policies, ingest pipelines. |
 | `80-seed` | Verifies reference data actually seeded, creates the tenant and the bootstrap administrator. |
 | `90-vsphere` | Provider wiring, and detects the unassigned vCenter role. |
-| `95-smoke-test` | Container health, API health, and the AD claim-contract check (pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without them it is skipped and says so). |
+| `95-smoke-test` | Container health, API health, and the AD claim-contract check (pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without them it is skipped and says so). The token comes from the `truenorth-smoke` client, enabled only for that one request. |
 | `99-validate` | Final report, including accepted warnings. |
 
 ## Three things worth understanding before you run it
@@ -147,8 +149,8 @@ expect it to be granted.
 |---|---|---|
 | `tn-frontend` | no | nginx (80/443), api, keycloak, web |
 | `tn-backend` | **yes**: no route off the host | datastores, workers, everything that talks to them |
-| `tn-egress` | no; nothing publishes a port on it | `worker-provision` (vCenter) and `ai-orchestrator` (the LLM endpoint), the two services that must leave the host |
-| `tn-monitoring` | yes | exporters, Prometheus, Grafana, Flower |
+| `tn-egress` | no; nothing publishes a port on it | `worker-provision` (vCenter), `ai-orchestrator` (the LLM endpoint) and `alertmanager` (the webhook receiver), the services that must leave the host |
+| `tn-monitoring` | yes | exporters, Prometheus, Alertmanager, Grafana, Flower |
 
 - Keycloak's port is also published on `127.0.0.1:8180` (`tn_keycloak_admin_port`),
   for this installer's Admin REST calls only. Users reach it through nginx (`/auth/`).
@@ -221,16 +223,133 @@ Not in the backup set: **secrets** (`/srv/truenorth/config/secrets/`, or your va
 must be kept offline separately, and OpenSearch telemetry (no snapshot repository is
 configured; scores and outcomes are in PostgreSQL).
 
+## Images: deploy by digest
+
+`compose.prod.yml` builds nothing. The four TrueNorth images run as `${TN_IMAGE_API}`,
+`${TN_IMAGE_WORKER}` (the workers, `beat` and `flower`), `${TN_IMAGE_WEB}` and
+`${TN_IMAGE_AI_ORCHESTRATOR}`, each an `image@sha256:…` ref; every third-party image is
+pinned by digest in the file itself. Compose refuses to start without the four variables.
+
+With `tn_image_source: release` (the default), `roles/tn_release`:
+
+1. takes `release-manifest.json` and `SHA256SUMS` of `tn_release_version` from
+   `tn_release_dir` on the control node, or downloads them from the GitHub release
+   (`tn_release_repo`) into `install/.cache/releases/<tag>/`;
+2. checks the manifest's SHA-256 against `SHA256SUMS`, `schema_version` 1, the version,
+   and that every service has an `image@sha256` ref (docs/release.md);
+3. renders the refs into the env file (`TN_IMAGE_*`), and `TN_VERSION=<tag>`;
+4. in git mode, fetches the app source at the manifest's `git_sha`: the compose file and
+   migrations the images were built with. Any other commit stops `20-fetch-app`.
+
+`50-stack-up` then pulls (`docker compose pull`) and **checks that every image resolves to
+the digest compose names** before anything starts; the migration runs in the release's api
+image. If the GHCR packages are private, set `vault_ghcr_username`/`vault_ghcr_token` (a
+`read:packages` token).
+
+Until a release exists, or to try a change on a lab, `-e tn_image_source=build` builds
+local tags (`truenorth-<service>:local`) from the checkout with
+`compose.prod.yml -f compose.build.yml`. Never on a platform Students use: what runs is then
+not what `release.yml` scanned.
+
 ## Air-gapped installs
+
+The app source:
 
 ```bash
 ansible-playbook site.yml \
   -e tn_app_source_mode=local \
-  -e tn_app_local_path=/path/to/TrueNorth
+  -e tn_app_local_path=/path/to/TrueNorth     # checked out at the release's git_sha
 ```
 
-or with a release tarball via `tn_app_source_mode=tarball`. Container images
-still have to reach the host — pre-pull them and `docker load` before running.
+or with a release tarball via `tn_app_source_mode=tarball`. The release files: put
+`release-manifest.json` and `SHA256SUMS` in a directory and pass `-e tn_release_dir=<dir>`.
+
+The images: on a connected machine, save every image the stack runs, **by tag, from
+Docker's containerd image store**. The classic store does not keep a digest through
+`docker save`/`docker load`, and the installer then stops at its digest check (verified
+2026-10-08: with the containerd store, a tagged save loads back resolvable by
+`repo@sha256`; an untagged one does not).
+
+```bash
+# Docker with the containerd image store ("features": {"containerd-snapshotter": true}
+# in /etc/docker/daemon.json), at the release's commit, with the env file rendered:
+cd infra/platform/docker && mkdir -p /tmp/tn-images
+for ref in $(docker compose -f compose.prod.yml --env-file .env.production config --images | sort -u); do
+  docker pull --platform linux/amd64 "$ref"
+  repo="${ref%%@*}"; [[ "$repo" == *:* && "${repo##*/}" == *:* ]] || repo="$repo:${TN_RELEASE:?set TN_RELEASE=v1.2.3}"
+  docker tag "$ref" "$repo"
+  docker save -o "/tmp/tn-images/$(echo "$repo" | tr '/:' '__').tar" "$repo"
+done
+```
+
+Copy the directory to the control node and run with `-e tn_image_archive_dir=<dir>`. The
+target needs the containerd image store too. `50-stack-up` copies the tarballs, `docker
+load`s the ones that changed, and runs the same digest check instead of pulling.
+
+## Alerting
+
+Prometheus evaluates the 19 rules in `monitoring/prometheus/alerts.yml` and sends what
+fires to the `alertmanager` service. **By default Alertmanager routes everything to a
+`null` receiver: nobody is told.** `30-config` says so in a warning, and `99-validate`
+reports `alerts: NOWHERE`. For any platform Students use, set
+`vault_alertmanager_webhook_url` (anything that accepts Alertmanager's webhook JSON: a chat
+bridge, an incident tool) and re-run `30-config` and `50-stack-up`. The installer writes
+the URL to `/srv/truenorth/config/alertmanager/webhook_url` (read with `url_file`, so it is
+not in the environment) and selects `alertmanager.webhook.yml`. Criticals repeat hourly,
+warnings every 4 h; a critical inhibits the warning of the same name and instance.
+
+Check a config change before shipping it:
+
+```bash
+cd infra/platform/docker/monitoring
+docker run --rm --entrypoint amtool -v "$PWD/alertmanager:/c:ro" prom/alertmanager:v0.27.0 \
+  check-config /c/alertmanager.yml /c/alertmanager.webhook.yml
+docker run --rm --entrypoint promtool -v "$PWD/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+  -v "$PWD/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro" \
+  -v "$PWD/prometheus/secrets-dev:/etc/prometheus/secrets:ro" prom/prometheus:v2.51.0 \
+  check config /etc/prometheus/prometheus.yml
+```
+
+## Runtime hardening
+
+`compose.prod.yml` (`tests/contracts/test_runtime_hardening.py` holds these):
+
+- Every container has a read-only root filesystem, drops all capabilities and sets
+  `no-new-privileges`, with tmpfs for the paths it writes. Exceptions, each explained in
+  its block: Keycloak and OpenSearch keep a writable root (Quarkus build; keystore);
+  postgres, redis, minio and nginx add back the few capabilities their root entrypoints
+  need; cAdvisor runs privileged.
+- Redis is the Celery broker and runs `noeviction`: at `REDIS_MAXMEMORY` writes are refused
+  (and `RedisHighMemory` fires) instead of queued tasks being evicted.
+- `beat` sends the periodic tasks (`health_check_ranges`, `collect_range_metrics`). Run
+  exactly one.
+- Every Celery task has a time limit (`CELERY_TASK_SOFT_TIME_LIMIT`/`CELERY_TASK_TIME_LIMIT`,
+  default 1800/1900 s; range tasks keep 3300/3500 s), below the broker's 3600 s visibility
+  timeout. The workers' `stop_grace_period` outlasts them, so `docker compose down` or a
+  redeploy lets running tasks finish: stopping `worker-provision` can take up to an hour
+  while a range builds.
+- `PROVISIONER_BACKEND` has no default (it used to fall back to `mock`);
+  `VSPHERE_VERIFY_SSL` defaults to true (`tn_vsphere_verify_ssl` sets it); the api and
+  workers log JSON lines (`LOG_FORMAT=json`).
+
+## Identity hardening
+
+`60-keycloak` enforces on every run (and `infra/keycloak/realm-truenorth.json` carries for a
+fresh import; `tests/contracts/test_keycloak_hardening.py` keeps them equal):
+
+| Setting | Value |
+|---|---|
+| Access token | 5 min (the SPA refreshes silently) |
+| Browser session | 30 min idle, 10 h maximum |
+| Offline session | 7 days idle and maximum |
+| Local password policy | 12+ characters, not the username, not one of the last 5 (AD users' passwords are AD's) |
+| Password grant | off on `truenorth-web`, `truenorth-api` and `truenorth-cli` |
+| PKCE S256 | required on the public clients (`truenorth-web`, `truenorth-cli`); the CLI's out-of-band redirect is gone |
+
+`95-smoke-test` still needs a password grant to prove the claim contract, so it has its own
+confidential client, `truenorth-smoke`, with a generated secret. It is **disabled**; the
+smoke test enables it for its one token request and disables it again, however that
+request ends.
 
 ## Key variables
 
@@ -240,7 +359,11 @@ actually change:
 | Variable | Default | Note |
 |---|---|---|
 | `tn_app_git_repo` | `github.com/mblanke/TrueNorth` (public) | |
-| `tn_app_git_version` | a pinned SHA of `main` | **Pin a tag or SHA.** A branch makes re-runs non-deterministic. |
+| `tn_app_git_version` | a pinned SHA of `main` | **Pin a tag or SHA.** A branch makes re-runs non-deterministic. In release mode the manifest's `git_sha` replaces it. |
+| `tn_image_source` | `release` | `build` only for a lab ("Images") |
+| `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
+| `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |
+| `vault_alertmanager_webhook_url` | *(empty: alerts go nowhere)* | "Alerting" |
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
 | `tn_tls_mode` | `selfsigned` | `provided` once the AD CS certificate is in `files/tls/` |
 | `tn_opensearch_disable_security` | `false` | Lab/dev override only: OpenSearch without auth or TLS ("OpenSearch" above). |

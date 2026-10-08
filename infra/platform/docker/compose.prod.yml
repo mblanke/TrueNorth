@@ -2,14 +2,37 @@
 # Designed for 1,200+ users / 70,000 VMs with full observability
 # Usage: docker compose -f compose.prod.yml --env-file .env.production up -d
 # Prerequisites: .env.production configured, SSL certs at /etc/ssl/truenorth/
+#
+# Deployed by digest, never built on the target. The TrueNorth images are
+# ${TN_IMAGE_<SERVICE>}: image@sha256 refs the installer renders from the release's
+# release-manifest.json (docs/release.md, install/README.md "Images"). To build from a
+# checkout instead, add compose.build.yml (it adds the `build:` sections back):
+#   TN_IMAGE_API=truenorth-api:local ... docker compose -f compose.prod.yml -f compose.build.yml build
+# Third-party images are pinned by digest too; the tag beside it is for the reader.
+#
+# Every service is hardened with x-hardened (read-only root filesystem, no capabilities,
+# no privilege escalation) unless its block says why not; writable paths are tmpfs or
+# volumes. tests/contracts/test_runtime_hardening.py holds these rules.
+
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
 
 services:
   # ================================================================
   #  DATA STORES
   # ================================================================
   postgres:
-    image: postgres:16
+    image: postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
     restart: always
+    <<: *hardened
+    # The entrypoint starts as root, fixes the data directory's owner, then drops to
+    # postgres (gosu): these are what that needs, and nothing else.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    tmpfs:
+      - /var/run/postgresql
+      - /tmp
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -76,8 +99,13 @@ services:
 
   pgbouncer:
     # 1.22.0 was never published (only -pN builds are); this is the tag dev runs.
-    image: edoburu/pgbouncer:v1.25.1-p0
+    image: edoburu/pgbouncer:v1.25.1-p0@sha256:4a8371e79d6627e74f553d0aaa8e4c5ace20e30034fb296e569b71c89c99e108
     restart: always
+    <<: *hardened
+    # The entrypoint writes pgbouncer.ini and userlist.txt from the environment.
+    tmpfs:
+      - /etc/pgbouncer:uid=70,gid=70,mode=0700
+      - /tmp
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       POOL_MODE: transaction
@@ -115,12 +143,21 @@ services:
       - tn-backend
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     restart: always
+    <<: *hardened
+    # Root entrypoint: chown the data directory, then drop to redis.
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    tmpfs:
+      - /tmp
+    # Redis is the Celery BROKER (queued tasks, unacked deliveries) and result backend,
+    # not a cache. noeviction: at maxmemory a write is refused (the sender sees the error
+    # and RedisHighMemory fires) instead of a queued provision or teardown being evicted
+    # silently, which allkeys-lru did. tests/contracts/test_runtime_hardening.py
     command: >
       redis-server
         --maxmemory ${REDIS_MAXMEMORY:-2gb}
-        --maxmemory-policy allkeys-lru
+        --maxmemory-policy noeviction
         --appendonly yes
         --appendfsync everysec
         --save 900 1
@@ -157,8 +194,15 @@ services:
   minio:
     # Same image as compose.dev.yml: minio/minio is gone from Docker Hub (MinIO stopped
     # publishing community images), so `:latest` failed every fresh pull.
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     restart: always
+    <<: *hardened
+    # Runs as root, but its data directory is owned by uid 1000 (roles/tn_base) and holds
+    # files an older install wrote as root: it needs to read and write past ownership.
+    cap_add: [DAC_OVERRIDE, FOWNER]
+    tmpfs:
+      - /tmp
+      - /root/.minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
@@ -191,8 +235,13 @@ services:
   #  SEARCH / TELEMETRY
   # ================================================================
   opensearch:
-    image: opensearchproject/opensearch:2.13.0
+    image: opensearchproject/opensearch:2.13.0@sha256:2e954ff0e8c9d0f4868b4818150b3aecc92fbb0cc4a24d00dace38ada227291d
     restart: always
+    <<: *hardened
+    # Writes its keystore into config/ (beside the read-only certificate mounts) at
+    # every start, so the root filesystem stays writable. Verified 2026-10-08: read-only
+    # fails with "opensearch.keystore.tmp: Read-only file system". No capabilities needed.
+    read_only: false
     environment:
       - cluster.name=tn-production
       - node.name=os-node-1
@@ -258,8 +307,12 @@ services:
       - tn-backend
 
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.13.0
+    image: opensearchproject/opensearch-dashboards:2.13.0@sha256:d8f4442da4d0cb44865a5eab01c9eb9f00769e2d5f053d21e3ff3c64a50fc6ec
     restart: always
+    <<: *hardened
+    tmpfs:
+      - /tmp:uid=1000,gid=1000
+      - /usr/share/opensearch-dashboards/data:uid=1000,gid=1000
     environment:
       - OPENSEARCH_HOSTS=["${OPENSEARCH_URL:-https://opensearch:9200}"]
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=${OPENSEARCH_DISABLE_SECURITY:-false}
@@ -297,8 +350,12 @@ services:
   #  AUTH
   # ================================================================
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0
+    image: quay.io/keycloak/keycloak:24.0@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
     restart: always
+    <<: *hardened
+    # `start` runs the Quarkus build into /opt/keycloak on first boot (below), so the
+    # root filesystem stays writable here. Still no capabilities, no privilege escalation.
+    read_only: false
     # NOTE: `start --optimized` requires a prior `kc.sh build`, because KC_DB is a
     # build-time option. The stock image has never been built, so --optimized makes
     # Keycloak refuse to boot. Plain `start` performs the build on first run.
@@ -362,10 +419,11 @@ services:
   #  CONTROL PLANE API
   # ================================================================
   api:
-    build:
-      context: ../../../control-plane/api
-      dockerfile: Dockerfile
+    image: ${TN_IMAGE_API:?set TN_IMAGE_API to the api image@sha256 from release-manifest.json (install/README.md)}
     restart: always
+    <<: *hardened
+    tmpfs:
+      - /tmp
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
@@ -411,8 +469,9 @@ services:
       # Valid values come from worker/provisioners/__init__.py: mock, proxmox_api,
       # vsphere_api, hyperv, terraform, terraform_{proxmox,vsphere,hyperv}.
       # "proxmox" is NOT a registry key — it raised ValueError at first provision.
-      # vSphere is "vsphere_api", not "vsphere".
-      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-mock}
+      # vSphere is "vsphere_api", not "vsphere". Required: a production stack that
+      # silently fell back to `mock` reported every range built while building nothing.
+      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:?set PROVISIONER_BACKEND explicitly (vsphere_api; mock only for a lab)}
       # The API image is built from control-plane/api alone; the scenario engine
       # is read from this bind mount. Missing here, every engine call failed.
       SCENARIO_ENGINE_DIR: /opt/scenario-engine
@@ -445,6 +504,8 @@ services:
       UVICORN_WORKERS: "4"
       JWT_SECRET: ${JWT_SECRET}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # One JSON object per line (app/log_format.py), for a log shipper.
+      LOG_FORMAT: ${LOG_FORMAT:-json}
     volumes:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
@@ -492,12 +553,17 @@ services:
   #  CELERY WORKERS
   # ================================================================
   worker-provision:
-    build:
-      context: ../../../control-plane/worker
-      dockerfile: Dockerfile
-      additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
+    image: ${TN_IMAGE_WORKER:?set TN_IMAGE_WORKER to the worker image@sha256 from release-manifest.json (install/README.md)}
     restart: always
+    <<: *hardened
+    tmpfs: &worker-tmpfs
+      - /tmp
+      # HOME: ansible-playbook (noise agents) keeps ~/.ansible here.
+      - /home/app:uid=10001,gid=10001,mode=0700
+    # SIGTERM is a warm shutdown: running tasks finish first. Above the longest hard time
+    # limit this queue runs (range tasks, worker/fencing.py TASK_TIME_LIMIT = 3500 s), so a
+    # deploy does not SIGKILL a build halfway through.
+    stop_grace_period: 3600s
     command: >
       celery -A worker.celery_app worker
         -Q provision,destroy
@@ -522,8 +588,12 @@ services:
       OPENSEARCH_PASS: ${OPENSEARCH_PASS:-}
       OPENSEARCH_VERIFY_SSL: ${OPENSEARCH_VERIFY_SSL:-/etc/truenorth/opensearch-ca.pem}
       # See the api service: "proxmox" is not a registry key. vSphere is "vsphere_api".
-      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:-mock}
+      PROVISIONER_BACKEND: ${PROVISIONER_BACKEND:?set PROVISIONER_BACKEND explicitly (vsphere_api; mock only for a lab)}
       CELERY_WORKER: "true"
+      # Every task without its own limits (worker/celery_app.py). Hard must stay below the
+      # broker's visibility timeout (3600 s); the worker refuses to start otherwise.
+      CELERY_TASK_SOFT_TIME_LIMIT: ${CELERY_TASK_SOFT_TIME_LIMIT:-1800}
+      CELERY_TASK_TIME_LIMIT: ${CELERY_TASK_TIME_LIMIT:-1900}
       PROXMOX_API_URL: ${PROXMOX_API_URL:-}
       PROXMOX_TOKEN: ${PROXMOX_TOKEN:-}
       # vsphere_api.py reads these at MODULE IMPORT, so they must be present in the
@@ -536,7 +606,9 @@ services:
       VSPHERE_CLUSTER: ${VSPHERE_CLUSTER:-}
       VSPHERE_DATASTORE: ${VSPHERE_DATASTORE:-}
       VSPHERE_NETWORK: ${VSPHERE_NETWORK:-}
-      VSPHERE_VERIFY_SSL: ${VSPHERE_VERIFY_SSL:-false}
+      # Verify vCenter's certificate unless the operator says otherwise (the installer
+      # renders tn_vsphere_verify_ssl from the inventory).
+      VSPHERE_VERIFY_SSL: ${VSPHERE_VERIFY_SSL:-true}
       # Range isolation (vsphere_api.py): per-range port groups on reserved VLANs. The
       # fallbacks are the provisioner's own defaults; an empty value would override them.
       VSPHERE_CONTENT_LIBRARY: ${VSPHERE_CONTENT_LIBRARY:-}
@@ -571,6 +643,7 @@ services:
       # Per VM, its Windows Server roles (features, reboots, forest promotion).
       VSPHERE_ROLE_TIMEOUT: ${VSPHERE_ROLE_TIMEOUT:-1800}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json} # worker/celery_app.py: JSON lines
     volumes:
       # Deploy-time software installs resolve node services against this (software_catalogue.py).
       - ../../../content/catalogue:/app/content/catalogue:ro
@@ -604,12 +677,12 @@ services:
       - tn-egress # vCenter (VSPHERE_URL) is off-host; tn-backend is internal
 
   worker-scenario:
-    build:
-      context: ../../../control-plane/worker
-      dockerfile: Dockerfile
-      additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
+    image: ${TN_IMAGE_WORKER:?set TN_IMAGE_WORKER to the worker image@sha256 from release-manifest.json (install/README.md)}
     restart: always
+    <<: *hardened
+    tmpfs: *worker-tmpfs
+    # Above CELERY_TASK_TIME_LIMIT (default 1900 s): a warm shutdown lets tasks finish.
+    stop_grace_period: 2000s
     command: >
       celery -A worker.celery_app worker
         -Q scenario,default
@@ -649,12 +722,11 @@ services:
       - tn-backend
 
   worker-telemetry:
-    build:
-      context: ../../../control-plane/worker
-      dockerfile: Dockerfile
-      additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
+    image: ${TN_IMAGE_WORKER:?set TN_IMAGE_WORKER to the worker image@sha256 from release-manifest.json (install/README.md)}
     restart: always
+    <<: *hardened
+    tmpfs: *worker-tmpfs
+    stop_grace_period: 2000s # above CELERY_TASK_TIME_LIMIT, as worker-scenario
     command: >
       celery -A worker.celery_app worker
         -Q telemetry
@@ -692,13 +764,44 @@ services:
     networks:
       - tn-backend
 
-  flower:
-    build:
-      context: ../../../control-plane/worker
-      dockerfile: Dockerfile
-      additional_contexts:
-        scenario_engine: ../../../scenario-engine  # worker/inject_dispatch.py
+  # Sends the periodic tasks in worker/celery_app.py's beat_schedule (health_check_ranges,
+  # collect_range_metrics). Without it they never ran. EXACTLY ONE: a second beat sends
+  # every entry twice, so never scale it (`--scale beat=2`) or run another elsewhere.
+  # The schedule state is only "when did each interval last fire": tmpfs is enough.
+  beat:
+    image: ${TN_IMAGE_WORKER:?set TN_IMAGE_WORKER to the worker image@sha256 from release-manifest.json (install/README.md)}
     restart: always
+    <<: *hardened
+    tmpfs: *worker-tmpfs
+    command: >
+      celery -A worker.celery_app beat
+        --loglevel=${LOG_LEVEL:-info}
+        --schedule=/tmp/celerybeat-schedule
+        --pidfile=
+    environment: *worker-env
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - tn-backend
+
+  flower:
+    image: ${TN_IMAGE_WORKER:?set TN_IMAGE_WORKER to the worker image@sha256 from release-manifest.json (install/README.md)}
+    restart: always
+    <<: *hardened
+    tmpfs:
+      - /tmp
     command: >
       celery -A worker.celery_app flower
         --port=5555
@@ -737,10 +840,11 @@ services:
   #  AI ORCHESTRATOR
   # ================================================================
   ai-orchestrator:
-    build:
-      context: ../../../ai-orchestrator
-      dockerfile: Dockerfile
+    image: ${TN_IMAGE_AI_ORCHESTRATOR:?set TN_IMAGE_AI_ORCHESTRATOR to the ai-orchestrator image@sha256 from release-manifest.json (install/README.md)}
     restart: always
+    <<: *hardened
+    tmpfs:
+      - /tmp
     environment:
       # OpenAI-compatible backend pointed at the LOCAL LiteLLM router (air-gapped
       # from external providers). LiteLLM listens on the host :4000.
@@ -797,10 +901,14 @@ services:
   # { server web:8080; }`. Without this service nginx aborts at config load with
   # "host not found in upstream" and the entire stack fails to start.
   web:
-    build:
-      context: ../../../control-plane/web
-      dockerfile: Dockerfile
+    image: ${TN_IMAGE_WEB:?set TN_IMAGE_WEB to the web image@sha256 from release-manifest.json (install/README.md)}
     restart: always
+    <<: *hardened
+    # Runs as the image's nginx user (uid 101): its pid file and the runtime config.json
+    # go to /tmp, its proxy/client temp files to /var/cache/nginx.
+    tmpfs:
+      - /tmp:uid=101,gid=101
+      - /var/cache/nginx:uid=101,gid=101
     environment:
       # Written to the SPA's assets/config.json at start-up
       # (control-plane/web/docker/40-truenorth-runtime-config.sh). Keycloak is served
@@ -821,7 +929,9 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
+      # 127.0.0.1, not localhost: with a read-only root the image's entrypoint cannot add
+      # its IPv6 listener, and busybox wget tries ::1 first.
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -851,8 +961,13 @@ services:
   # this service every xAPI statement fails against an unset LRS_URL. Learner
   # progress tracking depends on it.
   lrs:
-    image: yetanalytics/lrsql:v0.9.9  # pinned: what :latest resolved to on 2026-10-03
+    # v0.9.9 is what :latest resolved to on 2026-10-03. amd64-only image.
+    image: yetanalytics/lrsql:v0.9.9@sha256:d0054b96ebbb41b10b371e815e326918b70f0d1788e8d24afc60af465b8f41cd
     restart: always
+    <<: *hardened
+    tmpfs:
+      - /tmp
+      - /lrsql/logs # its rolling file log; the same lines go to stdout
     command: /lrsql/bin/run_postgres.sh
     environment:
       LRSQL_DB_TYPE: postgresql
@@ -884,15 +999,29 @@ services:
   # ================================================================
   #  NGINX REVERSE PROXY
   # ================================================================
+  # The stock image, pinned, with the edge configuration (infra/platform/nginx, the same
+  # files its Dockerfile copies) mounted read-only from the app source at the release's
+  # commit. Nothing is built on the target, and the mounted conf.d replaces the stock
+  # default.conf as the Dockerfile's `rm` did.
   nginx:
-    build:
-      context: ../nginx
-      dockerfile: Dockerfile
+    image: nginx:1.30-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
     restart: always
+    <<: *hardened
+    # The master binds 80/443 and starts its workers as the nginx user; it creates the
+    # temp directories under /var/cache/nginx and hands them to that user, and writes its
+    # logs into $TN_DATA_ROOT/logs, which the install user owns (DAC_OVERRIDE).
+    cap_add: [NET_BIND_SERVICE, CHOWN, SETUID, SETGID, DAC_OVERRIDE]
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     ports:
       - "80:80"
       - "443:443"
     volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/conf.d:/etc/nginx/conf.d:ro
+      - ../nginx/snippets:/etc/nginx/snippets:ro
       - ${SSL_CERT_PATH:-/etc/ssl/truenorth}:/etc/nginx/ssl:ro
       - nginx-logs:/var/log/nginx
     depends_on:
@@ -903,6 +1032,11 @@ services:
       # upstream.conf resolves `web:8080` at config load; without this nginx
       # can start before the name exists and abort on "host not found".
       web:
+        condition: service_healthy
+      # The same for its other upstreams (ai_backend, flower_backend).
+      ai-orchestrator:
+        condition: service_healthy
+      flower:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
@@ -931,9 +1065,12 @@ services:
   #  MONITORING STACK
   # ================================================================
   prometheus:
-    image: prom/prometheus:v2.51.0
+    image: prom/prometheus:v2.51.0@sha256:5ccad477d0057e62a7cd1981ffcc43785ac10c5a35522dc207466ff7e7ec845f
     container_name: tn-prometheus
     restart: always
+    <<: *hardened
+    depends_on:
+      - alertmanager
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -968,10 +1105,54 @@ services:
       - tn-monitoring
       - tn-backend
 
+  # Routes the alerts in monitoring/prometheus/alerts.yml. The default config
+  # (monitoring/alertmanager/alertmanager.yml) sends them NOWHERE (a null receiver):
+  # set a webhook (install/README.md "Alerting") or nobody is told when a rule fires.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
+    container_name: tn-alertmanager
+    restart: always
+    <<: *hardened
+    volumes:
+      # alertmanager.yml (null receiver) or alertmanager.webhook.yml (ALERTMANAGER_CONFIG).
+      - ./monitoring/alertmanager/${ALERTMANAGER_CONFIG:-alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro
+      # webhook_url (read with url_file, so the URL and any token in it stay out of the
+      # environment). The installer writes it; secrets-dev/ holds a placeholder.
+      - ${ALERTMANAGER_SECRETS_DIR:-./monitoring/alertmanager/secrets-dev}:/etc/alertmanager/secrets:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.external-url=https://${DOMAIN}/alertmanager/"
+      - "--web.route-prefix=/"
+      # Single instance: no gossip mesh to listen for.
+      - "--cluster.listen-address="
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - tn-monitoring
+      - tn-egress # the webhook receiver is off-host; tn-monitoring is internal
+
   grafana:
-    image: grafana/grafana:10.4.0
+    image: grafana/grafana:10.4.0@sha256:f9811e4e687ffecf1a43adb9b64096c50bc0d7a782f8608530f478b6542de7d5
     container_name: tn-grafana
     restart: always
+    <<: *hardened
+    tmpfs:
+      - /tmp
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
@@ -1010,9 +1191,10 @@ services:
       - tn-frontend
 
   node-exporter:
-    image: prom/node-exporter:v1.7.0
+    image: prom/node-exporter:v1.7.0@sha256:4cb2b9019f1757be8482419002cb7afe028fdba35d47958829e4cfeaf6246d80
     container_name: tn-node-exporter
     restart: always
+    <<: *hardened
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -1041,9 +1223,14 @@ services:
       - tn-monitoring
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:v0.49.1@sha256:3cde6faf0791ebf7b41d6f8ae7145466fed712ea6f252c935294d2608b1af388
     container_name: tn-cadvisor
     restart: always
+    # The one exception to x-hardened's cap_drop: cAdvisor reads every container's
+    # cgroups and /dev/kmsg and runs privileged, which grants all capabilities anyway.
+    # Read-only root and no privilege escalation still apply.
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -1072,9 +1259,10 @@ services:
       - tn-monitoring
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
+    image: prometheuscommunity/postgres-exporter:v0.15.0@sha256:386b12d19eab2a37d7cd8ca8b4c7491cc7a830d9581f49af6c98a393da9605e6
     container_name: tn-postgres-exporter
     restart: always
+    <<: *hardened
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}?sslmode=disable"
     depends_on:
@@ -1100,9 +1288,10 @@ services:
       - tn-backend
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.58.0
+    image: oliver006/redis_exporter:v1.58.0@sha256:2e42c98f2c53aaf3ce205e746ff8bfa25d39e30d8b4f401ce0ad2740836bb817
     container_name: tn-redis-exporter
     restart: always
+    <<: *hardened
     environment:
       REDIS_ADDR: "redis://redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -1162,6 +1351,8 @@ volumes:
       o: bind
       device: ${TN_DATA_ROOT:-/srv/truenorth}/opensearch
   prometheus-data:
+    driver: local
+  alertmanager-data:
     driver: local
   grafana-data:
     driver: local

@@ -53,6 +53,14 @@ vault_ai_service_token: "" # generated on target if empty (>= 32 chars)
 vault_metrics_scrape_token: "" # generated on target if empty
 vault_opensearch_admin_password: "" # generated on target if empty
 vault_opensearch_dashboards_password: "" # generated on target if empty
+# Where Alertmanager sends alerts (any receiver of Alertmanager's webhook JSON). EMPTY
+# MEANS ALERTS GO NOWHERE: the null receiver (install/README.md "Alerting").
+vault_alertmanager_webhook_url: ""
+
+# ── Release images (only if the GHCR packages are private) ────────────
+# A read:packages token for ghcr.io; leave empty for public images.
+vault_ghcr_username: ""
+vault_ghcr_token: ""
 
 # ── AI backend ────────────────────────────────────────────────────────
 # The LiteLLM master key. Empty is acceptable if the endpoint is unauthenticated

@@ -129,6 +129,35 @@
   check_mode: false
   when: tn_app_source_mode == 'local'
 
+# Release mode: the checkout's compose file and migrations must be the commit the images
+# were built from (release-manifest.json git_sha; docs/release.md).
+- name: App source — the source is the release's commit
+  vars:
+    _commit: >-
+      {{ tn_commit.stdout | default('') if tn_app_source_mode == 'git'
+         else tn_commit_local.stdout | default('') }}
+  ansible.builtin.assert:
+    that: _commit == tn_release_git_sha
+    fail_msg: >-
+      The app source is at {{ _commit }}, but release {{ tn_release_version }} was built
+      from {{ tn_release_git_sha }}. Its compose file and migrations must match the
+      images: fetch that commit (drop any -e tn_app_git_version), or check out
+      {{ tn_release_git_sha }} for local mode.
+    quiet: true
+  when:
+    - tn_image_source == 'release'
+    - tn_app_source_mode in ['git', 'local']
+    - not ansible_check_mode
+
+- name: App source — a tarball's commit cannot be checked
+  ansible.builtin.debug:
+    msg: >-
+      tn_app_source_mode=tarball: the installer cannot tell which commit the tarball holds.
+      It must be the source of {{ tn_release_version }} at {{ tn_release_git_sha }}.
+  when:
+    - tn_image_source == 'release'
+    - tn_app_source_mode == 'tarball'
+
 # Written so 99-validate can report exactly what is deployed, and so a re-run is
 # diffable rather than a mystery.
 - name: App source — record what was deployed
@@ -142,5 +171,8 @@
         "ref": "{{ tn_app_git_version if tn_app_source_mode == 'git' else '' }}",
         "commit": "{{ (tn_commit.stdout if tn_app_source_mode == 'git' else tn_commit_local.stdout | default('')) | default('unknown', true) }}",
         "tarball_sha256": "{{ tn_tarball.stat.checksum | default('') if tn_app_source_mode == 'tarball' else '' }}",
-        "path": "{{ tn_app_dir }}"
+        "path": "{{ tn_app_dir }}",
+        "image_source": "{{ tn_image_source }}",
+        "release": "{{ tn_release_version if tn_image_source == 'release' else '' }}",
+        "images": {{ tn_images | to_json }}
       }

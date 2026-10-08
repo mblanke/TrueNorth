@@ -63,7 +63,7 @@ def test_installer_generates_and_renders_them():
     # 48 random bytes, cut to 32: never shorter than the production floor.
     assert "head -c 48 /dev/urandom" in (INSTALL / "roles/tn_config/tasks/secrets.yml").read_text()
     env = (INSTALL / "roles/tn_config/templates/env.production.j2").read_text()
-    for line in ("TN_ENV=production", "TN_VERSION={{ tn_app_git_version }}",
+    for line in ("TN_ENV=production", "TN_VERSION={{ tn_deployed_version }}",
                  "KEYCLOAK_AUDIENCE={{ tn_keycloak_api_client }}",
                  "AI_SERVICE_TOKEN={{ tn_secrets['ai_service_token'] }}",
                  "METRICS_SCRAPE_TOKEN={{ tn_secrets['metrics_scrape_token'] }}",

@@ -78,6 +78,8 @@
           - " app source    : {{ tn_app_state.source_mode | default('?') }}"
           - " app ref       : {{ tn_app_state.ref | default('?') }}"
           - " app commit    : {{ (tn_app_state.commit | default('unknown'))[:12] }}"
+          - " images        : {{ tn_app_state.image_source | default('?') }} {{ tn_app_state.release | default('') }}"
+          - " alerts        : {{ 'webhook' if vault_alertmanager_webhook_url | default('') | length > 0 else 'NOWHERE (null receiver)' }}"
           - " alembic head  : {{ tn_head.stdout | default('unknown') | trim }}"
           - " tls mode      : {{ tn_tls_mode }}"
           - " realm         : {{ tn_keycloak_realm }} (AD: {{ tn_domain }})"

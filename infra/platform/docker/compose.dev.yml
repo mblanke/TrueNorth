@@ -73,10 +73,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # The Celery broker: noeviction, never drop a queued task (compose.prod.yml).
     command: >
       redis-server
         --maxmemory 512mb
-        --maxmemory-policy allkeys-lru
+        --maxmemory-policy noeviction
         --save 60 1000
         --tcp-backlog 511
     ports:

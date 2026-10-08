@@ -20,15 +20,96 @@
   register: tn_compose_config
   failed_when: tn_compose_config.rc != 0
 
-# Build first: the migration below runs in the api image, and must be the NEW code's
+# Images first: the migration below runs in the api image, and must be the NEW release's
 # image, or an upgrade applies the old migrations and the new ones land only after the
-# new code is already running. Reports a change only when an image id changed.
-- name: Compose — build the application images
+# new code is already running. compose.prod.yml names every image by digest (the
+# TrueNorth ones from release-manifest.json, roles/tn_release), so what is pulled is
+# exactly what release.yml scanned. Nothing is built on the target unless
+# tn_image_source=build (lab only). The env file (tn_config, run first by 50-stack-up)
+# carries the TN_IMAGE_* refs.
+- name: Compose — log in to GHCR (private release images only)
+  community.docker.docker_login:
+    registry_url: ghcr.io
+    username: "{{ vault_ghcr_username }}"
+    password: "{{ vault_ghcr_token }}"
+  when:
+    - tn_image_source == 'release'
+    - tn_image_archive_dir | length == 0
+    - vault_ghcr_token | default('') | length > 0
+  no_log: true
+
+# Air-gapped: `docker save` tarballs from the control node (install/README.md
+# "Air-gapped installs"). Loaded only when a tarball changed; the digest check below
+# decides whether they were the right ones.
+- name: Compose — load image archives (air-gapped)
+  when: tn_image_archive_dir | length > 0
+  block:
+    - name: Compose — find the image archives
+      ansible.builtin.find:
+        paths: "{{ tn_image_archive_dir }}"
+        patterns: ["*.tar"]
+      delegate_to: localhost
+      become: false
+      register: tn_archives
+
+    - name: Compose — there are some
+      ansible.builtin.assert:
+        that: tn_archives.files | length > 0
+        fail_msg: "tn_image_archive_dir={{ tn_image_archive_dir }} holds no *.tar image archives"
+        quiet: true
+
+    - name: Compose — image archive directory
+      ansible.builtin.file:
+        path: "{{ tn_data_root }}/images"
+        state: directory
+        mode: "0750"
+
+    - name: Compose — copy the image archives
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ tn_data_root }}/images/{{ item.path | basename }}"
+        mode: "0640"
+      loop: "{{ tn_archives.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      register: tn_archive_copy
+
+    - name: Compose — docker load the ones that changed
+      ansible.builtin.command:
+        argv: [docker, load, --input, "{{ item.dest }}"]
+      loop: "{{ tn_archive_copy.results | selectattr('changed') | list }}"
+      loop_control:
+        label: "{{ item.dest | basename }}"
+      changed_when: true
+
+- name: Compose — pull every image by digest
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -euo pipefail
       dc() { docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} "$@"; }
+      missing=0
+      for img in $(dc config --images | sort -u); do
+        docker image inspect "$img" >/dev/null 2>&1 || missing=1
+      done
+      [ "$missing" = 0 ] && exit 0
+      dc pull --quiet
+      echo IMAGES_PULLED
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_pull
+  changed_when: "'IMAGES_PULLED' in tn_pull.stdout"
+  when:
+    - tn_image_source == 'release'
+    - tn_image_archive_dir | length == 0
+
+# Lab only: what runs is then not what release.yml scanned. The images take the local
+# tags tn_release rendered into TN_IMAGE_*. Reports a change only when an image id changed.
+- name: Compose — build the application images (tn_image_source=build)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      dc() { docker compose -f {{ tn_compose_file }} -f compose.build.yml --env-file {{ tn_env_file }} "$@"; }
       ids() {
         for img in $(dc config --images | sort -u); do
           docker image inspect --format '{{ "{{" }}.Id{{ "}}" }}' "$img" 2>/dev/null || echo "missing:$img"
@@ -40,6 +121,32 @@
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
   register: tn_build
   changed_when: "'IMAGES_CHANGED' in tn_build.stdout"
+  when: tn_image_source == 'build'
+
+# The gate: every image the stack runs is on this host, and every one named by digest
+# resolves to that digest. An air-gapped archive that lost its digests (docker's classic
+# image store does not keep them through save/load) stops here, not at `up`.
+- name: Compose — every image is present at the digest compose names
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      dc() { docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} "$@"; }
+      bad=""
+      for img in $(dc config --images | sort -u); do
+        if ! docker image inspect "$img" >/dev/null 2>&1; then
+          bad="$bad missing:$img"
+        elif [[ "$img" == *@sha256:* ]]; then
+          want="${img%%@*}"; want="${want%:*}@${img##*@}"
+          docker image inspect --format '{{ "{{" }}json .RepoDigests{{ "}}" }}' "$img" | grep -qF "\"$want\"" \
+            || bad="$bad digest:$img"
+        fi
+      done
+      echo "${bad:-ok}"
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_images_present
+  changed_when: false
+  failed_when: tn_images_present.rc != 0 or tn_images_present.stdout | trim != 'ok'
 
 - name: Compose — phase 1, datastores only
   community.docker.docker_compose_v2:
@@ -48,6 +155,7 @@
     env_files: ["{{ tn_env_file }}"]
     services: [postgres, pgbouncer, redis]
     state: present
+    pull: never # present and digest-checked above
     wait: true
     wait_timeout: 300
 
