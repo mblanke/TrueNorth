@@ -122,6 +122,47 @@ class TestCreateErrors:
         assert json.loads(rule["mitre_attack_ids"]) == ["T1059", "T1059.001", "TA0002"]
 
     @pytest.mark.parametrize(
+        ("bad", "reason"),
+        [
+            ("T9999", "is not an ATT&CK Enterprise technique"),  # well-formed, never issued
+            ("T1059.999", "is not an ATT&CK Enterprise technique"),
+            ("TA9999", "is not an ATT&CK Enterprise tactic"),
+            ("T1086", "was revoked by MITRE; use T1059.001"),  # PowerShell, now a sub-technique
+        ],
+    )
+    def test_an_id_the_attack_catalogue_refuses_is_422_with_the_offending_ids(self, client, db_session, bad, reason):
+        before = db_session.query(DetectionRule).count()
+        resp = client.post("/detection-rules", json=_rule(mitre_attack_ids=["T1059.001", bad, "TA0002"]))
+        assert resp.status_code == 422, resp.text
+        detail = resp.json()["detail"]
+        assert detail["message"] == "Unknown MITRE ATT&CK id"
+        assert detail["invalid_ids"] == [bad]
+        assert detail["errors"] == [f"{bad!r} {reason}"]
+        assert db_session.query(DetectionRule).count() == before
+
+    def test_a_deprecated_but_unrevoked_id_is_accepted(self, client):
+        rule = _create(client, mitre_attack_ids=["T1064"])  # Scripting: deprecated, never revoked
+        assert json.loads(rule["mitre_attack_ids"]) == ["T1064"]
+
+    def test_every_offending_id_is_reported(self, client):
+        resp = client.post("/detection-rules", json=_rule(mitre_attack_ids=["T9998", "T1059", "T1086", "nope"]))
+        assert resp.status_code == 422
+        assert resp.json()["detail"]["invalid_ids"] == ["T9998", "T1086", "nope"]
+
+    def test_no_catalogue_means_no_rule_with_mitre_ids_is_stored(self, client, db_session, monkeypatch):
+        from app import attack_catalogue, mitre
+
+        def unavailable():
+            raise attack_catalogue.CatalogueUnavailableError("gone")
+
+        monkeypatch.setattr(mitre, "load", unavailable)
+        before = db_session.query(DetectionRule).count()
+        resp = client.post("/detection-rules", json=_rule(mitre_attack_ids=["T1059"]))
+        assert resp.status_code == 503 and "catalogue" in resp.json()["detail"]
+        assert db_session.query(DetectionRule).count() == before
+        assert client.post("/detection-rules", json=_rule()).status_code == 201  # no ids: nothing to check
+
+    @pytest.mark.parametrize(
         "bad",
         [{"level": "severe"}, {"status": "live"}, {"title": ""}, {"detection_yaml": "short"}, {"title": None}],
     )

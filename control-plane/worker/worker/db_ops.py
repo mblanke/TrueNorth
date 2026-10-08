@@ -27,6 +27,7 @@ from .tables import (
     competency_assertions,
     competency_auto_assessments,
     courses,
+    exercise_runs,
     exercises,
     forged_exercises,
     golden_images,
@@ -296,6 +297,29 @@ def recorded_seqs(db, run_id: str) -> set[int]:
     r = inject_records
     rows = db.execute(sa.select(r.c.seq).where(r.c.run_id == run_id, r.c.seq.isnot(None))).fetchall()
     return {int(row[0]) for row in rows}
+
+
+def exercise_run(db, exercise_id: str):
+    """(run_id, lease, resume_from) of the exercise's current run, or None (app ExerciseRun)."""
+    r = exercise_runs
+    return db.execute(
+        sa.select(r.c.run_id, r.c.lease, r.c.resume_from).where(r.c.exercise_id == exercise_id)
+    ).first()
+
+
+def claim_event(db, exercise_id: str, lease: str, seq: int) -> int:
+    """Claim timeline event ``seq`` for the task holding ``lease``; returns the rowcount.
+
+    0 when the lease was handed to another task (a resume or replay) or the exercise is no
+    longer running: the caller must not fire the event. A resume starts after
+    ``next_seq``, so an event claimed here is never fired by the continuation."""
+    r = exercise_runs
+    running = sa.exists().where(exercises.c.id == exercise_id, _exercise_state_in(("running",)))
+    return db.execute(
+        sa.update(r)
+        .where(r.c.exercise_id == exercise_id, r.c.lease == lease, running)
+        .values(next_seq=seq + 1, updated_at=_now())
+    ).rowcount
 
 
 def record_inject(db, **fields: Any) -> str:

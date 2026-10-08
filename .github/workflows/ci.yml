@@ -219,6 +219,11 @@ jobs:
         working-directory: control-plane/web
       - run: npx ng build --configuration production
         working-directory: control-plane/web
+      # The production bundle must carry environment.prod.ts (authDisabled: false).
+      # angular.json once lacked the fileReplacements, so every image shipped auth off.
+      - name: Production bundle has authentication on
+        run: npm run check:prod-env
+        working-directory: control-plane/web
 
   build-docker:
     runs-on: ubuntu-latest

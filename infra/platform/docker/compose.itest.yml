@@ -84,3 +84,11 @@ services:
   web:
     ports: !override
       - "127.0.0.1:14200:8080"
+    environment:
+      # Production build, auth on; Playwright answers the browser's OIDC calls itself
+      # (tests/e2e/support/identity.ts). Keycloak stays same-origin under /auth, the
+      # production default: the stand-in's check-sso page redirects the iframe back to
+      # /assets/silent-check-sso.html, and Chrome's local-network-access checks block
+      # that hop when the stubbed page claims another origin (seen with :18180).
+      # Overrides compose.dev.yml's direct http://localhost:8180.
+      TN_KEYCLOAK_URL: /auth

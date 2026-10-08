@@ -63,6 +63,25 @@ def _reason(resp: httpx.Response) -> str:
         return "query could not be parsed"
 
 
+def _index_not_found(resp: httpx.Response) -> bool:
+    """True when OpenSearch answered that the index does not exist (and nothing else)."""
+    if resp.status_code != 404:
+        return False
+    try:
+        err = resp.json().get("error", {})
+    except Exception:  # noqa: BLE001
+        return False
+    if not isinstance(err, dict):
+        return False
+    causes = [err, *(err.get("root_cause") or [])]
+    return any(isinstance(c, dict) and c.get("type") == "index_not_found_exception" for c in causes)
+
+
+def empty_search_result() -> dict:
+    """A search response with no hits, in the shape OpenSearch returns."""
+    return {"timed_out": False, "hits": {"total": {"value": 0, "relation": "eq"}, "max_score": None, "hits": []}}
+
+
 def stamp_ingested(event: dict, now: str) -> dict:
     """The event as stored, with ``truenorth.ingested_at`` set from this server's clock.
 
@@ -142,6 +161,10 @@ class OpenSearchBackend(BaseSearchBackend):
                 resp.raise_for_status()
                 return resp.json()
         except httpx.HTTPStatusError as exc:
+            if _index_not_found(exc.response):
+                # A range that has never ingested anything has no index yet: no events, not
+                # an outage. Any other 404 (a misrouted proxy, say) is still a backend error.
+                return empty_search_result()
             if exc.response.status_code == 400:  # e.g. a prefix on a date field
                 raise HTTPException(422, "Search query rejected by the search backend") from exc
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
