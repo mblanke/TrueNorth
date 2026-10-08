@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 WORKDIR /app
+# Distro security updates at build time (release.yml blocks on fixable HIGH/CRITICAL).
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 # setuptools and wheel are build tooling the base image ships; nothing imports them at
 # runtime, and they carry CVEs (Trivy).
@@ -18,7 +20,13 @@ COPY --from=scenario_engine scenario_engine /app/scenario_engine
 # every later lazy `import scenario_engine` (inject dispatch) failed with
 # "No module named 'scenario_engine'" in the running worker.
 ENV PYTHONPATH=/app
-COPY . .
+# Allowlist: the worker package only (2026-10 audit P0-7).
+COPY worker ./worker
+ARG TN_VERSION=dev
+ENV TN_VERSION=${TN_VERSION}
+LABEL org.opencontainers.image.title="truenorth-worker" \
+      org.opencontainers.image.version="${TN_VERSION}" \
+      org.opencontainers.image.source="https://github.com/mblanke/TrueNorth"
 # Run as an unprivileged user (Trivy DS-0002). Dependencies and code stay root-owned,
 # so a compromised process cannot rewrite the app it is running. Pre-created and owned
 # by it: the Terraform workspace root (provisioners/terraform.py, TERRAFORM_WORKSPACE_ROOT)

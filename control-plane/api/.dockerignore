@@ -25,3 +25,10 @@ coverage.xml
 Dockerfile
 .dockerignore
 docker-compose*.yml
+# One-off scripts and captured output (the Dockerfile copies an allowlist anyway).
+_*.py
+*.txt
+!requirements.txt
+*.log
+*.db
+*.sqlite*
