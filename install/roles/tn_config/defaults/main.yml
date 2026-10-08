@@ -25,5 +25,10 @@ tn_generated_secrets:
   - { name: keycloak_api_client_secret, value: "{{ vault_keycloak_api_client_secret | default('') }}" }
   # OpenSearch security plugin: `admin` (the API, workers and telemetry bootstrap) and
   # `kibanaserver` (OpenSearch Dashboards). roles/tn_tls hashes them into internal_users.yml.
+  # Bearer token the api and workers present to the AI orchestrator (and Prometheus,
+  # for its /metrics). TN_ENV=production refuses anything shorter than 32 characters.
+  - { name: ai_service_token, value: "{{ vault_ai_service_token | default('') }}" }
+  # Prometheus presents this to the api's /metrics (METRICS_SCRAPE_TOKEN).
+  - { name: metrics_scrape_token, value: "{{ vault_metrics_scrape_token | default('') }}" }
   - { name: opensearch_admin_password, value: "{{ vault_opensearch_admin_password | default('') }}" }
   - { name: opensearch_dashboards_password, value: "{{ vault_opensearch_dashboards_password | default('') }}" }

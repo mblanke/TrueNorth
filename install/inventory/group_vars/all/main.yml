@@ -30,6 +30,11 @@ tn_state_dir: "{{ tn_data_root }}/state"
 tn_env_file: "{{ tn_config_dir }}/.env.production"
 tn_compose_file: "{{ tn_app_dir }}/infra/platform/docker/compose.prod.yml"
 
+# Peers whose X-Forwarded-For the API believes (TRUSTED_PROXY_CIDRS): loopback and the
+# Docker bridge pool the compose networks (and so nginx) are allocated from. Narrow it
+# to the tn-frontend/tn-backend subnets if this host has other Docker networks.
+tn_trusted_proxy_cidrs: "127.0.0.0/8,172.16.0.0/12"
+
 # ── OpenSearch ────────────────────────────────────────────────────────
 # Security plugin on: roles/tn_tls makes an internal CA, the node and admin
 # certificates, and internal_users.yml (bcrypt hashes of the generated passwords).

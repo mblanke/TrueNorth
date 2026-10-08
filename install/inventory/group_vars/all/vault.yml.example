@@ -49,6 +49,8 @@ vault_grafana_admin_user: admin
 vault_grafana_admin_password: "" # generated on target if empty
 vault_flower_user: admin
 vault_flower_password: "" # generated on target if empty
+vault_ai_service_token: "" # generated on target if empty (>= 32 chars)
+vault_metrics_scrape_token: "" # generated on target if empty
 vault_opensearch_admin_password: "" # generated on target if empty
 vault_opensearch_dashboards_password: "" # generated on target if empty
 

@@ -37,6 +37,26 @@
     owner: "{{ ansible_user }}"
   no_log: true
 
+# Prometheus reads bearer tokens from files (monitoring/prometheus/prometheus.yml).
+# It runs as nobody (65534).
+- name: Config — Prometheus scrape-token directory
+  ansible.builtin.file:
+    path: "{{ tn_config_dir }}/prometheus"
+    state: directory
+    owner: "65534"
+    group: "65534"
+    mode: "0750"
+
+- name: Config — Prometheus scrape tokens
+  ansible.builtin.copy:
+    dest: "{{ tn_config_dir }}/prometheus/{{ item }}"
+    content: "{{ tn_secrets[item] }}"
+    owner: "65534"
+    group: "65534"
+    mode: "0400"
+  loop: [metrics_scrape_token, ai_service_token]
+  no_log: true
+
 # compose.prod.yml binds its named volumes to $TN_DATA_ROOT/... . Docker reads
 # that at `up` time from the env file, so it must be present there too.
 - name: Config — render the backup environment

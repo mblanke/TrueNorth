@@ -155,6 +155,20 @@ expect it to be granted.
 - OpenSearch publishes no port; it is only on `tn-backend`, and it still requires TLS and
   a password (next section).
 
+## Production settings
+
+The env file sets `TN_ENV=production`: the API and the AI orchestrator refuse to start
+with a missing or unsafe setting, and name every one. The installer supplies them:
+`CSRF_SECRET`, `TN_SECRETS_KEY`, `AI_SERVICE_TOKEN` and `METRICS_SCRAPE_TOKEN` are
+generated (32 characters, the production floor) unless the vault sets them;
+`KEYCLOAK_AUDIENCE` is the API client, which `60-keycloak` puts in every access token
+through an audience mapper on the `truenorth-identity` scope (also on an existing
+install); `TN_VERSION` is `tn_app_git_version`; `SCHEDULER_FEED_BASE_URL` is
+`https://<tn_domain_fqdn>`; `TRUSTED_PROXY_CIDRS` is `tn_trusted_proxy_cidrs`
+(loopback and Docker's bridge pool, where nginx sits). Prometheus reads the two bearer
+tokens from `/srv/truenorth/config/prometheus/` (`PROMETHEUS_SECRETS_DIR`). The api's
+healthcheck is `/health/ready`.
+
 ## OpenSearch
 
 The security plugin is **on**. `40-tls` (`roles/tn_tls/tasks/opensearch.yml`) makes:

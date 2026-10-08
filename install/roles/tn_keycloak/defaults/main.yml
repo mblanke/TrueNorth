@@ -136,3 +136,14 @@ tn_kc_protocol_mappers:
       jsonType.label: "String"
       access.token.claim: "true"
       id.token.claim: "true"
+
+  # Puts the API client in the access token's `aud`. The API (TN_ENV=production) only
+  # accepts tokens whose aud includes KEYCLOAK_AUDIENCE, which the installer sets to
+  # this client: without the mapper every user would be locked out (docs/identity.md).
+  - name: truenorth-api-audience
+    protocol: openid-connect
+    protocolMapper: oidc-audience-mapper
+    config:
+      included.client.audience: "{{ tn_keycloak_api_client }}"
+      access.token.claim: "true"
+      id.token.claim: "false"

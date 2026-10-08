@@ -281,6 +281,28 @@
     tn_kc_scope_id: >-
       {{ (tn_kc_scopes2.json | selectattr('name', 'equalto', 'truenorth-identity') | first).id }}
 
+# The scope's mappers are set when it is created; a scope an earlier install made gets
+# any mapper added since (the API audience) here, every run.
+- name: Keycloak — identity scope's mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/client-scopes/{{ tn_kc_scope_id }}/protocol-mappers/models"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_scope_mappers
+
+- name: Keycloak — add missing identity scope mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/client-scopes/{{ tn_kc_scope_id }}/protocol-mappers/models"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ item }}"
+    body_format: json
+    status_code: [201, 409]
+  loop: "{{ tn_kc_protocol_mappers }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in (tn_kc_scope_mappers.json | map(attribute='name') | list)
+
 - name: Keycloak — attach the identity scope as a default scope
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/clients/{{ item.json[0].id }}/default-client-scopes/{{ tn_kc_scope_id }}"

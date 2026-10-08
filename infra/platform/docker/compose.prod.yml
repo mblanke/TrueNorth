@@ -374,6 +374,19 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       # Seals stored credentials (app/secretbox.py); the workers need the same value.
       TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
+      # Production fail-fast (app/settings.py): the API refuses to start, naming every
+      # missing or unsafe setting (CSRF_SECRET, KEYCLOAK_AUDIENCE, default passwords...).
+      TN_ENV: ${TN_ENV:-production}
+      TN_VERSION: ${TN_VERSION:-}
+      # Bearer token for the AI orchestrator (api, workers and the orchestrator share it).
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
+      # Peers whose X-Forwarded-For is believed (app/client_address.py): nginx, on the
+      # compose bridge networks (Docker's 172.16.0.0/12 pool). The api publishes no port.
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-127.0.0.0/8,172.16.0.0/12}
+      # GET /metrics needs `Authorization: Bearer <token>` (Prometheus sends it).
+      METRICS_SCRAPE_TOKEN: ${METRICS_SCRAPE_TOKEN:-}
+      # Public origin of the calendar-feed URLs (app/scheduler/feed.py).
+      SCHEDULER_FEED_BASE_URL: ${SCHEDULER_FEED_BASE_URL:-https://${DOMAIN}}
       # TLS + basic auth (the security plugin); the CA is mounted below. The lab
       # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
       OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
@@ -452,7 +465,8 @@ services:
       keycloak:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      # Readiness: 503 until the database, Redis and OpenSearch answer (app/health.py).
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -497,6 +511,10 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       # Unseals the hypervisor login the API stored (worker/secretbox.py). Same value as the api.
       TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
+      TN_ENV: ${TN_ENV:-production}
+      TN_VERSION: ${TN_VERSION:-}
+      # The workers call the AI orchestrator too (worker/ai_client.py).
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
       # TLS + basic auth (the security plugin); the CA is mounted below. The lab
       # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
       OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
@@ -740,6 +758,10 @@ services:
       MAX_LLM_CONCURRENCY: ${MAX_LLM_CONCURRENCY:-4}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      # Every route but /health needs this bearer token; TN_ENV=production refuses to
+      # start without one (>= 32 characters).
+      TN_ENV: ${TN_ENV:-production}
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     healthcheck:
       # python:3.11-slim has no curl.
@@ -912,6 +934,8 @@ services:
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      # metrics_scrape_token + ai_service_token (prometheus.yml); the installer writes them.
+      - ${PROMETHEUS_SECRETS_DIR:-./monitoring/prometheus/secrets-dev}:/etc/prometheus/secrets:ro
       - prometheus-data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
