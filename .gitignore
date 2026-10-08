@@ -72,3 +72,18 @@ install/files/*.crt
 install/files/*.pem
 install/files/tls/*
 !install/files/tls/.gitkeep
+
+# Controlled / third-party reference documents. Keep on the accredited host only; never
+# commit them (removed from the tree for v1.0.0). Repo-authored docs are Markdown.
+*DND*DSG*
+*DND-DSG*
+hardware specs/
+docs/Coloseum/
+docs/**/*.pdf
+docs/**/*.xlsx
+docs/**/*.docx
+*SimSpace*.pdf
+Credentials_*
+truenorth-content-pack/truenorth-content/qsp_source/*.docx
+truenorth-content-pack/truenorth-content/qsp_source/*.pdf
+truenorth-content-pack/truenorth-content/qsp_source/approval_letters/
