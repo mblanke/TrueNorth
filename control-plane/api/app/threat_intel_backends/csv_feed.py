@@ -17,8 +17,14 @@ only http(s); redirects are not followed; the response is capped (THREAT_INTEL_M
 default 5 MiB); and a host that resolves to a loopback, link-local, multicast or reserved
 address is refused, as is a private one unless THREAT_INTEL_ALLOW_PRIVATE_FEEDS=true (an
 air-gapped range serving its own feed). Rejection reasons never echo row content, so a
-refused page cannot be read back through them. The address check happens before the
-request; a DNS answer that changes between the check and the connect is not caught.
+refused page cannot be read back through them.
+
+The host is resolved once, every address it resolves to is vetted, and the connection is
+then pinned to the first of them (``_PinnedBackend``): the request never asks DNS again,
+so an answer that changes between the check and the connect (DNS rebinding) cannot steer
+it elsewhere. The URL is left as it is, so the Host header, TLS SNI and certificate
+verification still use the feed's own hostname. Because the connection is pinned, the
+fetch goes direct and ignores HTTP(S)_PROXY from the environment.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ import socket
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
+import httpcore
 import httpx
 
 from ..mitre import split_attack_ids, unknown_attack_ids
@@ -207,7 +214,8 @@ def parse_csv(content: bytes) -> FeedPull:
 
 
 # -- fetching ------------------------------------------------------------------------------
-def _check_destination(url: str) -> None:
+def _check_destination(url: str) -> str:
+    """The vetted address to connect to for ``url``. Raises ``FeedSourceError`` / ``FeedUnreachableError``."""
     parts = urlsplit(url)
     if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
         raise FeedSourceError("the feed URL must be http:// or https:// with a host")
@@ -216,6 +224,8 @@ def _check_destination(url: str) -> None:
         infos = _resolve(parts.hostname, port, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError) as exc:
         raise FeedUnreachableError(f"the feed host could not be resolved: {exc}") from exc
+    if not infos:
+        raise FeedUnreachableError("the feed host could not be resolved: no addresses")
     for info in infos:
         addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
         if addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified or addr.is_reserved:
@@ -224,15 +234,57 @@ def _check_destination(url: str) -> None:
             raise FeedSourceError(
                 "the feed URL points at a private address (set THREAT_INTEL_ALLOW_PRIVATE_FEEDS=true to allow)"
             )
+    return str(ipaddress.ip_address(infos[0][4][0].split("%", 1)[0]))
+
+
+class _PinnedBackend(httpcore.NetworkBackend):
+    """Opens TCP connections for one host only, and only to the address vetted for it."""
+
+    def __init__(self, host: str, address: str, inner: httpcore.NetworkBackend | None = None) -> None:
+        self.host, self.address = host, address
+        self._inner = inner or httpcore.SyncBackend()
+
+    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        if host.lower() != self.host:
+            raise httpcore.ConnectError(f"connection to {host!r} refused: the feed fetch is pinned to {self.host!r}")
+        return self._inner.connect_tcp(self.address, port, timeout, local_address, socket_options)
+
+    def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise httpcore.ConnectError("the feed fetch does not use unix sockets")
+
+    def sleep(self, seconds: float) -> None:
+        self._inner.sleep(seconds)
+
+
+# The backend under the pin; tests swap in a fake that records where it was asked to go.
+_network_backend = httpcore.SyncBackend
+
+
+class _PinnedTransport(httpx.HTTPTransport):
+    """``httpx.HTTPTransport`` whose connection pool dials ``address`` for ``host``."""
+
+    def __init__(self, host: str, address: str) -> None:
+        super().__init__()
+        self._pool = httpcore.ConnectionPool(
+            ssl_context=httpx.create_ssl_context(),
+            max_connections=1,
+            network_backend=_PinnedBackend(host, address, _network_backend()),
+        )
 
 
 def fetch_url(url: str) -> bytes:
     """The body at ``url``, within the size cap. Raises ``FeedSourceError`` / ``FeedUnreachableError``."""
-    _check_destination(url)
+    address = _check_destination(url)
+    try:
+        host = httpx.URL(url).raw_host.decode("ascii").lower()  # what httpcore will dial for
+    except (httpx.InvalidURL, UnicodeError) as exc:
+        raise FeedSourceError("the feed URL is not a valid http(s) URL") from exc
     limit = max_bytes()
     try:
         with (
-            httpx.Client(timeout=FETCH_TIMEOUT, follow_redirects=False) as client,
+            httpx.Client(
+                timeout=FETCH_TIMEOUT, follow_redirects=False, transport=_PinnedTransport(host, address)
+            ) as client,
             client.stream("GET", url, headers={"Accept": "text/csv, text/plain"}) as resp,
         ):
             if resp.is_redirect:

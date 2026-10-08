@@ -9,13 +9,18 @@ stub that sat in the removed telemetry-pipeline (``tag_mitre_attack``).
 Where the technique comes from, first match wins:
 
 1. The event says so: ``mitre_technique`` (a string or a list) or ``technique_id`` (what
-   scenario-engine injectors emit). Values are upper-cased and kept only when they look
-   like an ATT&CK ID (``T1234`` / ``T1234.001``); an event that names only junk falls
-   through to the next rule.
+   scenario-engine injectors emit). Values are upper-cased and kept only when the ATT&CK
+   catalogue (attack_catalogue.py) knows them; a technique MITRE revoked is tagged as the
+   one that replaced it. A well-formed id the catalogue does not know (``T9999``) is not
+   tagged: it moves to ``mitre_technique_unknown`` so a human can still see it. An event
+   that names nothing known falls through to the next rule.
 2. ``event_type`` in ``EVENT_TYPE_TECHNIQUES`` (case-insensitive; a dotted type such as
    ``sysmon.process_exec`` is also tried by its last segment).
 
-Nothing matched leaves the event untouched: no empty list, no guessed technique.
+Nothing matched leaves the event untouched (bar moving unknown ids, above): no empty
+list, no guessed technique. Telemetry is never refused over a technique id. Should the
+catalogue be unreadable, ids are kept on their form alone (T1234 / T1234.001), which is
+what this module did before the catalogue existed, and a warning is logged once.
 
 This file exists twice, byte for byte: control-plane/api/app/telemetry_mitre.py and
 control-plane/worker/worker/telemetry_mitre.py (the two images share no code, and the
@@ -25,8 +30,14 @@ drift; edit one, copy it over the other.
 
 from __future__ import annotations
 
+import functools
+import logging
 import re
 from typing import Any
+
+from .attack_catalogue import Catalogue, CatalogueUnavailableError, load
+
+logger = logging.getLogger(__name__)
 
 TECHNIQUE_ID = re.compile(r"^T\d{4}(?:\.\d{3})?$")
 
@@ -51,16 +62,30 @@ EVENT_TYPE_TECHNIQUES: dict[str, tuple[str, ...]] = {
 }
 
 
-def _explicit(event: dict[str, Any]) -> list[str]:
+@functools.lru_cache(maxsize=1)
+def _catalogue() -> Catalogue | None:
+    try:
+        return load()
+    except CatalogueUnavailableError as exc:
+        logger.warning("MITRE tagging falls back to id format only: %s", exc)
+        return None
+
+
+def _explicit(event: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """(known technique ids, well-formed ids the catalogue does not know) the event names."""
     raw = event.get("mitre_technique")
     if raw is None:
         raw = event.get("technique_id")
     values = raw if isinstance(raw, list) else [raw]
-    out = []
+    catalogue = _catalogue()
+    known, unknown = [], []
     for v in values:
-        if isinstance(v, str) and TECHNIQUE_ID.match(v.strip().upper()):
-            out.append(v.strip().upper())
-    return out
+        if not isinstance(v, str) or not TECHNIQUE_ID.match(v.strip().upper()):
+            continue
+        tid = v.strip().upper()
+        current = tid if catalogue is None else catalogue.current(tid)
+        (known if current else unknown).append(current or tid)
+    return known, unknown
 
 
 def _by_event_type(event: dict[str, Any]) -> list[str]:
@@ -74,16 +99,22 @@ def _by_event_type(event: dict[str, Any]) -> list[str]:
 
 def techniques_for(event: dict[str, Any]) -> list[str]:
     """The ATT&CK technique IDs this event carries, sorted and de-duplicated."""
-    return sorted(set(_explicit(event) or _by_event_type(event)))
+    return sorted(set(_explicit(event)[0] or _by_event_type(event)))
 
 
 def tag_event(event: dict[str, Any]) -> dict[str, Any]:
     """Set ``event["mitre_technique"]`` to its technique list, in place; returns *event*.
 
-    An event with no recognisable technique keeps whatever it had (a non-ID value is
-    left for a human to read rather than silently dropped).
+    Well-formed ids the catalogue does not know move to ``mitre_technique_unknown``. An
+    event with no recognisable technique otherwise keeps whatever it had (a non-ID value
+    is left for a human to read rather than silently dropped).
     """
-    found = techniques_for(event)
+    known, unknown = _explicit(event)
+    found = sorted(set(known or _by_event_type(event)))
+    if unknown:
+        event["mitre_technique_unknown"] = sorted(set(unknown))
+        if "mitre_technique" in event and not found:
+            del event["mitre_technique"]  # it named only ids no ATT&CK lookup resolves
     if found:
         event["mitre_technique"] = found
     return event

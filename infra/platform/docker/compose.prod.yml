@@ -379,6 +379,7 @@ services:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       postgres:
         condition: service_healthy
@@ -558,6 +559,8 @@ services:
         --max-tasks-per-child=2000
         --without-heartbeat
     environment: *worker-env
+    volumes:
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       redis:
         condition: service_healthy
