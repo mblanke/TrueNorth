@@ -168,6 +168,15 @@ Left as they are:
 - There is no Student-to-exercise relation, so any Student in the tenant may submit on a
   running exercise.
 
+## Open questions
+
+- **TODO (security sweep M3, 2026-10-08, owner decision):** detection submissions are
+  not restricted to an exercise's participants. Any Student in the tenant holding
+  `detection:submit` can submit on any running exercise and earn (or spend) its
+  detection credit, because there is no Student-to-exercise relation (see the last
+  bullet of the review changes above). Left unchanged on purpose until the owner decides
+  whether to add that relation and gate submissions on it; tracked here so it is not lost.
+
 ## Not in this decision (later ADRs)
 
 - **Alert triage credit.** No alert pipeline exists yet; when one does, an alert the

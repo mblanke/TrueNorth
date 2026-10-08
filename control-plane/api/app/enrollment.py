@@ -81,15 +81,29 @@ def ensure_enrollment(
     return enrollment
 
 
-def courses_for_learning_path(db: Session, learning_path_id: uuid.UUID) -> list[Course]:
-    """Resolve the ordered course list for a learning path.
+def courses_for_learning_path(
+    db: Session, learning_path_id: uuid.UUID, *, tenant_id: uuid.UUID | str
+) -> list[Course]:
+    """Resolve the ordered course list for a learning path of ``tenant_id`` (or a shared one).
 
     ``LearningPath.course_ids`` is a JSON array of course ids rather than an
     association table, so the order in that array is the intended sequence and
     is preserved here. Ids that no longer resolve are skipped rather than
     failing the whole enrollment — a stale id should not block a trainee.
+
+    Both the path and its courses must be the tenant's own or shared (tenant_id NULL).
+    Registration passes a path id the applicant chose, and a path's JSON list has no
+    foreign key, so neither could otherwise be trusted to stay in the tenant.
     """
-    path = db.query(LearningPath).filter(LearningPath.id == learning_path_id).first()
+    tid = uuid.UUID(str(tenant_id))
+    path = (
+        db.query(LearningPath)
+        .filter(
+            LearningPath.id == learning_path_id,
+            (LearningPath.tenant_id == tid) | LearningPath.tenant_id.is_(None),
+        )
+        .first()
+    )
     if path is None:
         return []
 
@@ -111,9 +125,13 @@ def courses_for_learning_path(db: Session, learning_path_id: uuid.UUID) -> list[
         except (ValueError, AttributeError, TypeError):
             logger.warning("learning_path %s references malformed course id %r", learning_path_id, cid)
             continue
-        course = db.query(Course).filter(Course.id == key).first()
+        course = (
+            db.query(Course)
+            .filter(Course.id == key, (Course.tenant_id == tid) | Course.tenant_id.is_(None))
+            .first()
+        )
         if course is None:
-            logger.warning("learning_path %s references missing course %s", learning_path_id, key)
+            logger.warning("learning_path %s references missing or foreign course %s", learning_path_id, key)
             continue
         ordered.append(course)
     return ordered
@@ -127,7 +145,7 @@ def ensure_path_enrollment(
     tenant_id: uuid.UUID | str,
 ) -> list[Enrollment]:
     """Enroll ``user_id`` on every course in a learning path. Idempotent."""
-    courses = courses_for_learning_path(db, learning_path_id)
+    courses = courses_for_learning_path(db, learning_path_id, tenant_id=tenant_id)
     return [
         ensure_enrollment(db, user_id=user_id, course_id=c.id, tenant_id=tenant_id) for c in courses
     ]

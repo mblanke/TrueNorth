@@ -109,6 +109,7 @@ def provision_for_booking(
     the same transaction: a crash after the commit cannot leave a built range nobody
     owns, and a refused build records no ownership.
     """
+    # tenant-safe: a booking's range, checked against its tenant when booked (resolve_range).
     rng = db.get(Range, range_id)
     if rng is None or rng.deleted_at is not None:
         return False, "range no longer exists"
@@ -129,6 +130,7 @@ def destroy_for_booking(db: Session, range_id: uuid.UUID) -> tuple[bool, str]:
     Settled means there is nothing left to tear down: dispatched now, already going or
     gone. A range still being built cannot be destroyed yet; the caller retries later.
     """
+    # tenant-safe: a booking's range, checked against its tenant when booked (resolve_range).
     rng = db.get(Range, range_id)
     if rng is None or rng.deleted_at is not None:
         return True, "range no longer exists"

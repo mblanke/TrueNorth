@@ -22,6 +22,9 @@ use stdClass;
  * Configuration (set by the farm bootstrap, `truenorth_setup.php --sso-publickey=…`):
  *   local_truenorth/ssopublickey  TrueNorth's public key, PEM.
  *   local_truenorth/ssoissuer     expected `iss`, default "truenorth".
+ *   local_truenorth/tenantid      the TrueNorth tenant this node serves (`--tenant-id`);
+ *                                 every ticket's `tid` must equal it, and with it unset
+ *                                 no ticket is accepted.
  *
  * @package    local_truenorth
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -63,9 +66,11 @@ class ticket {
             && !empty($claims->jti) && strlen($claims->jti) <= 64
             && !empty($claims->iat) && !empty($claims->exp)
             && ($claims->exp - $claims->iat) <= self::MAX_LIFETIME;
-        if ($ok && $typ === 'sync') {
-            // One TrueNorth key signs for every tenant: a sync ticket must name the tenant
-            // this Moodle serves, or one tenant's job could be replayed into another's site.
+        if ($ok) {
+            // One TrueNorth key signs for every tenant: every ticket, sign-in or sync, must
+            // name the tenant this Moodle serves, or one tenant's ticket could be replayed
+            // into another's site. The audience alone is not enough: it is the platform's
+            // lti_issuer, which a tenant's integration admin can set.
             $tenant = (string) get_config('local_truenorth', 'tenantid');
             $ok = $tenant !== '' && hash_equals($tenant, (string) ($claims->tid ?? ''));
         }

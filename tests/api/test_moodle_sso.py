@@ -211,7 +211,7 @@ class TestTheTicket:
         assert first["jti"] != second["jti"]
         assert first["iss"] == "truenorth"
         assert first["typ"] == "sso"  # never accepted by the plugin as a sync call
-        assert "tid" not in first
+        assert first["tid"] == DEV_TENANT  # ticket.php refuses any tenant but the node's own
 
     def test_names_fall_back_to_the_display_name(self, client, db_session):
         _moodle(db_session)

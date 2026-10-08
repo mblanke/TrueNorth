@@ -7,6 +7,8 @@ Generates Prometheus text exposition format (v0.0.4) directly.
 
 from __future__ import annotations
 
+import hmac
+import os
 import threading
 import time
 from collections import defaultdict
@@ -223,8 +225,18 @@ router = APIRouter(tags=["monitoring"])
 
 
 @router.get("/metrics", include_in_schema=False)
-async def metrics_endpoint() -> Response:
-    """Expose metrics in Prometheus text exposition format."""
+async def metrics_endpoint(request: Request) -> Response:
+    """Expose metrics in Prometheus text exposition format.
+
+    When METRICS_SCRAPE_TOKEN is set, a scraper must send ``Authorization: Bearer
+    <token>``; otherwise the endpoint is open and must be kept off the public edge
+    (the bundled nginx configs refuse ``/api/metrics``). See docs/deployment.md.
+    """
+    expected = os.getenv("METRICS_SCRAPE_TOKEN", "")
+    if expected:
+        supplied = request.headers.get("authorization", "")
+        if not hmac.compare_digest(supplied.encode(), f"Bearer {expected}".encode()):
+            return Response(status_code=401, headers={"WWW-Authenticate": "Bearer"})
     body = "\n\n".join(m.collect() for m in _ALL_METRICS) + "\n"
     return Response(content=body, media_type="text/plain; version=0.0.4; charset=utf-8")
 
@@ -232,23 +244,16 @@ async def metrics_endpoint() -> Response:
 # ── Middleware ────────────────────────────────────────────────────────────────
 
 
-def _normalize_path(path: str) -> str:
-    """Collapse dynamic path segments to reduce cardinality.
+def _route_label(request: Request) -> str:
+    """The matched route's template (``/schedule/feed/{token}.ics``), never the raw path.
 
-    Examples:
-        /api/v1/ranges/abc-123          → /api/v1/ranges/{id}
-        /api/v1/ranges/abc-123/nodes/5  → /api/v1/ranges/{id}/nodes/{id}
+    Raw paths carry secrets (calendar-feed bearer tokens, invite codes) and ids, and
+    ``/metrics`` is readable by whoever can scrape it. A request no route matched is
+    labelled ``unmatched`` so probing random paths cannot grow the label set either.
     """
-    import re
-
-    # UUID-like or numeric ids
-    path = re.sub(
-        r"/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-        "/{id}",
-        path,
-    )
-    path = re.sub(r"/\d+", "/{id}", path)
-    return path
+    route = request.scope.get("route")
+    template = getattr(route, "path", None)
+    return template if isinstance(template, str) and template else "unmatched"
 
 
 class PrometheusMiddleware(BaseHTTPMiddleware):
@@ -262,19 +267,20 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         method = request.method
-        path = _normalize_path(request.url.path)
 
         http_requests_in_flight.inc()
         start = time.perf_counter()
         try:
             response = await call_next(request)
         except Exception:
-            http_requests_total.inc(method, path, "500")
+            # The router has run by now, so the scope carries the matched route if any.
+            http_requests_total.inc(method, _route_label(request), "500")
             http_requests_in_flight.dec()
             raise
         else:
             duration = time.perf_counter() - start
             status = str(response.status_code)
+            path = _route_label(request)
             http_requests_total.inc(method, path, status)
             http_request_duration_seconds.observe(method, path, value=duration)
             return response

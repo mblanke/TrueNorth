@@ -78,6 +78,9 @@ async def lifespan(app: FastAPI):
     # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
     # process at boot instead of turning every authenticated request into a 500.
     logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
+    from .scheduler.feed import warn_if_unconfigured
+
+    warn_if_unconfigured()  # calendar-feed URLs need a fixed public origin in production
     # Course publications a previous process left mid-way resume in the background
     # (app/course_publishing); a Moodle that is down only delays them.
     if os.getenv("COURSE_PUBLISH_RESUME", "true").lower() == "true":

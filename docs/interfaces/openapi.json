@@ -24636,7 +24636,7 @@
         ]
       },
       "post": {
-        "description": "Register an external learning platform (Moodle, Immersive Labs, OffSec).\n\n**Permission: integration:write**",
+        "description": "Register an external learning platform (Moodle, Immersive Labs, OffSec).\n\n**Permission: integration:write**\n\n409: another tenant already registered this ``lti_issuer``.",
         "operationId": "register_platform_integrations_platforms_post",
         "requestBody": {
           "content": {
@@ -24770,7 +24770,7 @@
         ]
       },
       "patch": {
-        "description": "Update a registered platform.",
+        "description": "Update a registered platform.\n\n403: changing a Moodle platform's ``lti_issuer`` (the site its sign-in tickets are\naddressed to) needs a platform administrator. 409: another tenant already registered\nthat issuer.",
         "operationId": "update_platform_integrations_platforms__platform_id__patch",
         "parameters": [
           {
@@ -33076,7 +33076,7 @@
     },
     "/scenarios/execute": {
       "post": {
-        "description": "Run a scenario's timeline against a ready range.  **Permission: exercise:start**\n\n202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.\n422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is\ndown (the execution is recorded ``failed``).",
+        "description": "Run a scenario's timeline against a ready range.  **Permission: scenario:update + exercise:start**\n\n202: queued. 403: not staff. 404: scenario or range not in your tenant. 409: the range\nis not ready, or it belongs to a Student's lab session. 422: the YAML is not a mapping\nor its timeline is not a list. 503: the worker broker is down (the execution is\nrecorded ``failed``).",
         "operationId": "execute_scenario_scenarios_execute_post",
         "requestBody": {
           "content": {
@@ -33172,7 +33172,7 @@
     },
     "/scenarios/executions/{execution_id}/timeline": {
       "get": {
-        "description": "Each timeline event with its recorded outcome (``pending`` until the worker reaches it).",
+        "description": "Each timeline event with its recorded outcome (``pending`` until the worker reaches it).\n\nStaff (``scenario:update``) see the whole entry. Anyone else sees only ``seq``, ``t``\nand ``status`` of recorded events: the action, detail and technique are the answer\nkey (ADR 0005 \u00a75), and a pending event's ``action`` comes straight from the playbook.",
         "operationId": "get_execution_timeline_scenarios_executions__execution_id__timeline_get",
         "parameters": [
           {

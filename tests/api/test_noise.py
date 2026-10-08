@@ -196,6 +196,15 @@ class TestWhiteCell:
         body = client.get(f"/noise/ranges/{rng.id}").json()
         assert body["configured"] is False and body["enabled"] is False and body["effective_level"] == 0
 
+    def test_audit_rows_carry_the_tenant(self, client, rng, db_session):
+        """Without tenant_id the tenant's own audit view (scoped by tenant) never shows them."""
+        from app.models import AuditLog
+
+        _setup(client, rng)
+        rows = db_session.query(AuditLog).filter(AuditLog.action.like("noise_%")).all()
+        assert {r.action for r in rows} >= {"noise_profile_update", "noise_agents_register", "noise_roster_generate"}
+        assert {str(r.tenant_id) for r in rows} == {DEV_TENANT}
+
     def test_preset_sets_level(self, client, rng):
         body = client.put(f"/noise/ranges/{rng.id}", json={"preset": "busy", "enabled": True}).json()
         assert body["level"] == dial.PRESETS["busy"] and body["effective_level"] == dial.PRESETS["busy"]
@@ -404,8 +413,16 @@ class TestAgentChannel:
         monkeypatch.setenv("NOISE_AGENT_CIDRS", "10.255.0.0/24")
         outside = {**_hdr(tokens["ws01"]), "X-Forwarded-For": "10.10.20.5"}
         inside = {**_hdr(tokens["ws01"]), "X-Forwarded-For": "10.255.0.9"}
-        assert client.get("/noise/agent/plan", headers=outside).status_code == 403
-        assert client.get("/noise/agent/plan", headers=inside).status_code == 200
+        # Through nginx (a trusted proxy on loopback), the forwarded address decides.
+        from fastapi.testclient import TestClient
+
+        via_proxy = TestClient(client.app, client=("127.0.0.1", 40000))
+        assert via_proxy.get("/noise/agent/plan", headers=outside).status_code == 403
+        assert via_proxy.get("/noise/agent/plan", headers=inside).status_code == 200
+        # Straight from an untrusted peer, a forwarded header claiming to be inside is ignored.
+        assert client.get("/noise/agent/plan", headers=inside).status_code == 403
+        direct = TestClient(client.app, client=("10.255.0.7", 40000))
+        assert direct.get("/noise/agent/plan", headers=_hdr(tokens["ws01"])).status_code == 200
 
 
 # ── Who may see it ─────────────────────────────────────────────────────

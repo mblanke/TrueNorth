@@ -218,3 +218,33 @@ def test_uvicorn_access_log_is_redacted():
     RedactSecretPaths().filter(record)
     assert "SECRET" not in record.getMessage()
     assert json.dumps(record.args)  # still loggable
+
+
+def test_a_forwarded_host_never_chooses_the_feed_origin(client, db_session, monkeypatch):
+    """Security sweep L3: X-Forwarded-Host passes through nginx from the client."""
+    monkeypatch.delenv("SCHEDULER_FEED_BASE_URL", raising=False)
+    u = _user(db_session)
+    with signed_in(u):
+        url = client.post("/schedule/feed-token", headers={"X-Forwarded-Host": "evil.example"}).json()["url"]
+    assert "evil.example" not in url
+    assert url.startswith("http://testserver/api/v1/schedule/feed/")
+
+    monkeypatch.setenv("SCHEDULER_FEED_BASE_URL", "https://range.example/")
+    with signed_in(u):
+        url = client.post("/schedule/feed-token", headers={"X-Forwarded-Host": "evil.example"}).json()["url"]
+    assert url.startswith("https://range.example/api/v1/schedule/feed/")
+
+
+def test_startup_warns_when_production_has_no_feed_origin(monkeypatch, caplog):
+    from app.scheduler.feed import warn_if_unconfigured
+
+    monkeypatch.delenv("SCHEDULER_FEED_BASE_URL", raising=False)
+    monkeypatch.setenv("AUTH_DISABLED", "false")
+    with caplog.at_level(logging.WARNING, logger="truenorth.scheduler"):
+        assert warn_if_unconfigured() is True
+    assert "SCHEDULER_FEED_BASE_URL" in caplog.text
+    monkeypatch.setenv("SCHEDULER_FEED_BASE_URL", "https://range.example")
+    assert warn_if_unconfigured() is False
+    monkeypatch.delenv("SCHEDULER_FEED_BASE_URL")
+    monkeypatch.setenv("AUTH_DISABLED", "true")
+    assert warn_if_unconfigured() is False

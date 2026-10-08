@@ -409,7 +409,7 @@ async def push_score(
     """POST a score to the platform's AGS lineitem for this launch."""
     if not launch.ags_lineitem_url:
         return False
-    platform = db.get(ExternalPlatform, launch.platform_id)
+    platform = db.get(ExternalPlatform, launch.platform_id)  # tenant-safe: the launch's own platform
     if not platform:
         return False
     try:
