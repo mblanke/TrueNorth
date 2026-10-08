@@ -162,6 +162,8 @@ class AttemptResultOut(BaseModel):
     pct: float
     passed: bool
     results: list[QuestionResultOut]
+    key_revealed: bool = Field(False, description="correct_options/explanation are filled only on the final attempt")
+    late: bool = Field(False, description="submitted after the time limit: answers were not marked")
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────
@@ -368,13 +370,13 @@ def start_attempt(
         raise HTTPException(409, "Quiz has no questions.")
 
     if quiz.max_attempts:
+        # Every attempt counts, open or submitted. Counting only submitted ones let a
+        # Student open several, submit one, read the key from its result, then submit
+        # another. The quiz row lock serialises concurrent starts (a no-op on SQLite).
+        db.query(Quiz.id).filter(Quiz.id == quiz.id).with_for_update().first()
         prior = (
             db.query(QuizAttempt)
-            .filter(
-                QuizAttempt.quiz_id == quiz.id,
-                QuizAttempt.user_id == uuid.UUID(user.id),
-                QuizAttempt.submitted_at.isnot(None),
-            )
+            .filter(QuizAttempt.quiz_id == quiz.id, QuizAttempt.user_id == uuid.UUID(user.id))
             .count()
         )
         if prior >= quiz.max_attempts:
@@ -424,13 +426,18 @@ def submit_attempt(
     # tenant-safe: the quiz of an attempt fetched above by id AND the caller's user_id.
     quiz = db.get(Quiz, attempt.quiz_id)
     questions = {str(q.id): q for q in quiz.questions}
+    # The time limit is the server's: answers that arrive after it (plus a grace for the
+    # network) are not marked, and the attempt is closed as submitted with nothing correct.
+    late = _past_time_limit(quiz, attempt)
+    answers = {} if late else body.answers
+    reveal = _final_attempt(db, quiz, attempt)
 
     score = 0
     results: list[QuestionResultOut] = []
     competency_points: dict[str, list[int]] = {}  # code -> [earned, possible]
 
     for qid, question in questions.items():
-        selected = sorted(set(body.answers.get(qid, [])))
+        selected = sorted(set(answers.get(qid, [])))
         correct = sorted(json.loads(question.correct))
         is_correct = selected == correct
         earned = question.points if is_correct else 0
@@ -440,8 +447,10 @@ def submit_attempt(
                 question_id=question.id,
                 correct=is_correct,
                 selected=selected,
-                correct_options=correct,
-                explanation=question.explanation,
+                # The answer key only once no attempt is left: before, every result carried
+                # it, so attempt one read the key and attempt two scored full marks.
+                correct_options=correct if reveal else [],
+                explanation=question.explanation if reveal else "",
                 points_earned=earned,
                 points_possible=question.points,
             )
@@ -468,7 +477,7 @@ def submit_attempt(
     pct = (score / max_score * 100) if max_score else 0.0
     passed = pct >= quiz.pass_pct
 
-    attempt.answers = json.dumps(body.answers)
+    attempt.answers = json.dumps(answers)
     attempt.score = score
     attempt.passed = passed
     attempt.submitted_at = datetime.now(UTC)
@@ -535,7 +544,29 @@ def submit_attempt(
         pct=round(pct, 1),
         passed=passed,
         results=results,
+        key_revealed=reveal,
+        late=late,
     )
+
+
+TIME_LIMIT_GRACE_SECONDS = 30
+
+
+def _past_time_limit(quiz: Quiz, attempt: QuizAttempt) -> bool:
+    if not quiz.time_limit_minutes or attempt.started_at is None:
+        return False
+    started = attempt.started_at if attempt.started_at.tzinfo else attempt.started_at.replace(tzinfo=UTC)
+    return (datetime.now(UTC) - started).total_seconds() > quiz.time_limit_minutes * 60 + TIME_LIMIT_GRACE_SECONDS
+
+
+def _final_attempt(db: Session, quiz: Quiz, attempt: QuizAttempt) -> bool:
+    """Is this the caller's last attempt (the limit reached and no other one open)? Only then
+    may its result carry the answer key. An unlimited quiz never reveals it."""
+    if not quiz.max_attempts:
+        return False
+    mine = db.query(QuizAttempt).filter(QuizAttempt.quiz_id == quiz.id, QuizAttempt.user_id == attempt.user_id)
+    others_open = mine.filter(QuizAttempt.id != attempt.id, QuizAttempt.submitted_at.is_(None)).count()
+    return mine.count() >= quiz.max_attempts and others_open == 0
 
 
 async def _push_lti_grade(user_id: uuid.UUID, quiz_id: uuid.UUID, score: int, max_score: int) -> None:

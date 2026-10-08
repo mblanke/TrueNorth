@@ -769,6 +769,18 @@
             "title": "Attempt Id",
             "type": "string"
           },
+          "key_revealed": {
+            "default": false,
+            "description": "correct_options/explanation are filled only on the final attempt",
+            "title": "Key Revealed",
+            "type": "boolean"
+          },
+          "late": {
+            "default": false,
+            "description": "submitted after the time limit: answers were not marked",
+            "title": "Late",
+            "type": "boolean"
+          },
           "max_score": {
             "title": "Max Score",
             "type": "integer"

@@ -7493,6 +7493,18 @@ export interface components {
              * Format: uuid
              */
             attempt_id: string;
+            /**
+             * Key Revealed
+             * @description correct_options/explanation are filled only on the final attempt
+             * @default false
+             */
+            key_revealed?: boolean;
+            /**
+             * Late
+             * @description submitted after the time limit: answers were not marked
+             * @default false
+             */
+            late?: boolean;
             /** Max Score */
             max_score: number;
             /** Passed */

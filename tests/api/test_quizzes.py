@@ -384,7 +384,7 @@ def test_full_marks_pass_and_emit_xapi(client, db_session, tenants, xapi):
 
 
 def test_partial_multi_answer_earns_nothing_and_fails(client, db_session, tenants, xapi):
-    quiz = _quiz(db_session)
+    quiz = _quiz(db_session, max_attempts=1)  # the only attempt is the final one: the key is shown
     q = _questions(quiz)
     answers = {
         str(q["mcq"].id): [1],  # right: 10
@@ -452,12 +452,74 @@ def test_attempt_limit(client, db_session, tenants, xapi):
     quiz = _quiz(db_session, max_attempts=1)
     with acting_as(_user(db_session, UserRole.student)):
         first = client.post(f"/quizzes/{quiz.id}/attempts").json()["attempt_id"]
-        # An unsubmitted attempt does not count against the limit.
-        assert client.post(f"/quizzes/{quiz.id}/attempts").status_code == 201
-        client.post(f"/quizzes/attempts/{first}/submit", json={"answers": {}})
+        # An open (unsubmitted) attempt counts against the limit too (security sweep M1).
         r = client.post(f"/quizzes/{quiz.id}/attempts")
-    assert r.status_code == 409
-    assert "Attempt limit reached (1)" in r.json()["detail"]
+        assert r.status_code == 409
+        assert "Attempt limit reached (1)" in r.json()["detail"]
+        client.post(f"/quizzes/attempts/{first}/submit", json={"answers": {}})
+        assert client.post(f"/quizzes/{quiz.id}/attempts").status_code == 409
+
+
+# ── M1: the answer key cannot be read and then used ─────────────────────
+def test_opening_several_attempts_does_not_beat_the_limit(client, db_session, tenants, xapi):
+    quiz = _quiz(db_session, max_attempts=2)
+    with acting_as(_user(db_session, UserRole.student)):
+        assert client.post(f"/quizzes/{quiz.id}/attempts").status_code == 201
+        assert client.post(f"/quizzes/{quiz.id}/attempts").status_code == 201
+        assert client.post(f"/quizzes/{quiz.id}/attempts").status_code == 409  # third, though none submitted
+
+
+def test_the_key_is_withheld_until_the_final_attempt(client, db_session, tenants, xapi):
+    quiz = _quiz(db_session, max_attempts=2)
+    q = _questions(quiz)
+    with acting_as(_user(db_session, UserRole.student)):
+        a = client.post(f"/quizzes/{quiz.id}/attempts").json()["attempt_id"]
+        b = client.post(f"/quizzes/{quiz.id}/attempts").json()["attempt_id"]
+        first = client.post(f"/quizzes/attempts/{a}/submit", json={"answers": {}}).json()
+        # The exploit: read the key from attempt a, then use it in the still-open attempt b.
+        assert first["key_revealed"] is False
+        assert all(r["correct_options"] == [] and r["explanation"] == "" for r in first["results"])
+        last = client.post(f"/quizzes/attempts/{b}/submit", json={"answers": {}}).json()
+    assert last["key_revealed"] is True
+    by_id = {r["question_id"]: r for r in last["results"]}
+    assert by_id[str(q["mcq"].id)]["correct_options"] == [1]
+    assert by_id[str(q["mcq"].id)]["explanation"] == "DNS is 53."
+
+
+def test_an_unlimited_quiz_never_reveals_the_key(client, db_session, tenants, xapi):
+    quiz = _quiz(db_session, max_attempts=0)
+    with acting_as(_user(db_session, UserRole.student)):
+        a = client.post(f"/quizzes/{quiz.id}/attempts").json()["attempt_id"]
+        res = client.post(f"/quizzes/attempts/{a}/submit", json={"answers": _answers_all_right(quiz)}).json()
+    assert res["score"] == 25 and res["key_revealed"] is False
+    assert all(r["correct_options"] == [] for r in res["results"])
+
+
+def test_answers_after_the_time_limit_are_not_marked(client, db_session, tenants, xapi):
+    from datetime import UTC, datetime, timedelta
+
+    quiz = _quiz(db_session, max_attempts=1)
+    quiz.time_limit_minutes = 10
+    db_session.flush()
+    with acting_as(_user(db_session, UserRole.student)):
+        a = client.post(f"/quizzes/{quiz.id}/attempts").json()["attempt_id"]
+        row = db_session.get(QuizAttempt, uuid.UUID(a))
+        row.started_at = datetime.now(UTC) - timedelta(minutes=11)
+        db_session.flush()
+        res = client.post(f"/quizzes/attempts/{a}/submit", json={"answers": _answers_all_right(quiz)}).json()
+        assert client.post(f"/quizzes/attempts/{a}/submit", json={"answers": {}}).status_code == 409
+    assert (res["late"], res["score"], res["passed"]) == (True, 0, False)
+    assert db_session.get(QuizAttempt, uuid.UUID(a)).submitted_at is not None
+
+
+def test_answers_within_the_time_limit_are_marked(client, db_session, tenants, xapi):
+    quiz = _quiz(db_session)
+    quiz.time_limit_minutes = 10
+    db_session.flush()
+    with acting_as(_user(db_session, UserRole.student)):
+        a = client.post(f"/quizzes/{quiz.id}/attempts").json()["attempt_id"]
+        res = client.post(f"/quizzes/attempts/{a}/submit", json={"answers": _answers_all_right(quiz)}).json()
+    assert (res["late"], res["score"]) == (False, 25)
 
 
 def test_attempt_limit_is_per_student(client, db_session, tenants, xapi):
