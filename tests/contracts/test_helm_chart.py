@@ -475,3 +475,35 @@ def test_generated_values_render(tmp_path, capsys):
         if "truenorth" in c["image"]
     }
     assert images and all("@sha256:" in i for i in images), images
+
+
+# -- installer v1: least privilege, issuer, no secrets in argv, no AI default --
+@needs_helm
+def test_pods_never_get_the_keycloak_master_admin(docs):
+    cm = next(d for d in docs if d["kind"] == "ConfigMap" and "KEYCLOAK_URL" in d.get("data", {}))
+    assert "KEYCLOAK_ADMIN_USER" not in cm["data"]
+    assert cm["data"]["KEYCLOAK_ISSUER"] == "http://truenorth.kind.test/auth/realms/truenorth"
+    secret = next(d for d in docs if d["kind"] == "Secret")
+    assert "KEYCLOAK_ADMIN_PASSWORD" not in secret.get("data", {})
+    sa = render(
+        "--set",
+        "config.keycloak.adminClientId=truenorth-api-admin",
+        secrets={**SECRETS, "keycloakAdminClientSecret": "k" * 32},
+    )
+    cm = next(d for d in sa if d["kind"] == "ConfigMap" and "KEYCLOAK_URL" in d.get("data", {}))
+    assert cm["data"]["KEYCLOAK_ADMIN_CLIENT_ID"] == "truenorth-api-admin"
+    assert "KEYCLOAK_ADMIN_CLIENT_SECRET" in next(d for d in sa if d["kind"] == "Secret")["data"]
+
+
+@needs_helm
+def test_issuer_and_ai_endpoint_are_required():
+    assert "config.keycloak.issuer is required" in render_error("--set", "config.keycloak.issuer=")
+    assert "OPENAI_BASE_URL is required" in render_error("--set", "aiOrchestrator.env.OPENAI_BASE_URL=")
+
+
+@needs_helm
+def test_flower_login_is_not_a_process_argument():
+    docs = render("--set", "flower.enabled=true", secrets={**SECRETS, "flowerBasicAuth": "ops:" + "f" * 24})
+    flower = deployment(docs, "flower")
+    argv = " ".join(flower["spec"]["template"]["spec"]["containers"][0]["command"])
+    assert "basic_auth" not in argv and "FLOWER_BASIC_AUTH" not in argv

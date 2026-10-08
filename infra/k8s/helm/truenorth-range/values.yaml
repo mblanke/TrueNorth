@@ -208,7 +208,8 @@ aiOrchestrator:
   # Redis database for its cache (compose.prod.yml uses 1; the platform uses config.redis.db).
   redisDb: 1
   # Non-secret settings (ai-orchestrator/app). Keys go in secrets.openaiApiKey /
-  # secrets.anthropicApiKey. The model endpoint is site-specific: set OPENAI_BASE_URL.
+  # secrets.anthropicApiKey. The model endpoint is site-specific: OPENAI_BASE_URL is
+  # required with AI_MODEL_BACKEND=openai (the render fails without it; no default).
   env:
     AI_MODEL_BACKEND: openai
     OPENAI_BASE_URL: ""
@@ -400,9 +401,13 @@ config:
     realm: truenorth
     # Required: the audience the API's tokens must carry (docs/identity.md).
     audience: ""
+    # Required: the realm's public issuer, e.g. https://truenorth.example/auth/realms/truenorth.
     issuer: ""
-    # For /ad-sync and the bootstrap admin (password: secrets.keycloakAdminPassword).
-    adminUser: ""
+    # /ad-sync's Admin API identity: a confidential client whose service account holds
+    # realm-management view-realm + manage-users only (the installer creates
+    # truenorth-api-admin; secret: secrets.keycloakAdminClientSecret). Empty: /ad-sync
+    # reports the federation state as unknown and cannot trigger a sync.
+    adminClientId: ""
   # Required: CIDRs whose X-Forwarded-For the API believes — the ingress controller's
   # pods (app/client_address.py), e.g. "10.244.0.0/16".
   trustedProxyCidrs: ""
@@ -425,7 +430,7 @@ secrets:
   # An existing Secret with these keys instead (the chart then creates none):
   #   DATABASE_PASSWORD REDIS_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY CSRF_SECRET
   #   TN_SECRETS_KEY AI_SERVICE_TOKEN METRICS_SCRAPE_TOKEN OPENSEARCH_USER OPENSEARCH_PASS
-  # optional: KEYCLOAK_ADMIN_PASSWORD KEYCLOAK_CLIENT_SECRET OPENAI_API_KEY
+  # optional: KEYCLOAK_ADMIN_CLIENT_SECRET KEYCLOAK_CLIENT_SECRET OPENAI_API_KEY
   #   ANTHROPIC_API_KEY; FLOWER_BASIC_AUTH when flower.enabled.
   existingSecret: ""
   databasePassword: ""
@@ -442,7 +447,7 @@ secrets:
   # Prometheus presents it as a bearer token on GET /metrics.
   metricsScrapeToken: ""
   opensearchPassword: ""
-  keycloakAdminPassword: ""
+  keycloakAdminClientSecret: ""
   # The confidential API client's secret, for operators' tooling; the pods do not read it.
   keycloakClientSecret: ""
   openaiApiKey: ""

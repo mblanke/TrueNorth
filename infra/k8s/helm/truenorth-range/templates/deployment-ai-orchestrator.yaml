@@ -90,6 +90,9 @@ spec:
                   name: {{ $secret }}
                   key: ANTHROPIC_API_KEY
                   optional: true
+            {{- if and (eq (toString .Values.aiOrchestrator.env.AI_MODEL_BACKEND) "openai") (not .Values.aiOrchestrator.env.OPENAI_BASE_URL) }}
+            {{- fail "aiOrchestrator.env.OPENAI_BASE_URL is required with AI_MODEL_BACKEND=openai (the site's LiteLLM endpoint, e.g. http://<host>:4000/v1); there is no default" }}
+            {{- end }}
             {{- range $k, $v := .Values.aiOrchestrator.env }}
             {{- if ne (toString $v) "" }}
             - name: {{ $k }}

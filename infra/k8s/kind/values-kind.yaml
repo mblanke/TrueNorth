@@ -20,6 +20,7 @@ config:
   keycloak:
     url: http://keycloak.invalid:8080/auth
     audience: truenorth-api
+    issuer: http://truenorth.kind.test/auth/realms/truenorth
   trustedProxyCidrs: 10.244.0.0/16
   provisionerBackend: mock
 
@@ -48,6 +49,9 @@ beat: {resources: *small}
 aiOrchestrator:
   replicaCount: 1
   resources: *small
+  env:
+    # Required with the openai backend; nothing answers here, and health does not ask.
+    OPENAI_BASE_URL: http://llm.invalid:4000/v1
 web:
   replicaCount: 1
   autoscaling: {enabled: false}
