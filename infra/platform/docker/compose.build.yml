@@ -1,0 +1,46 @@
+# TrueNorth Range — build the application images from this checkout.
+#
+# compose.prod.yml runs the released images by digest and builds nothing. This override
+# adds the `build:` sections back, for a lab or for testing a change before it is
+# released. The images are tagged with whatever the TN_IMAGE_* variables say, so give
+# them local tags (a digest ref cannot be a build target):
+#
+#   export TN_IMAGE_API=truenorth-api:local TN_IMAGE_WORKER=truenorth-worker:local \
+#          TN_IMAGE_WEB=truenorth-web:local TN_IMAGE_AI_ORCHESTRATOR=truenorth-ai-orchestrator:local
+#   docker compose -f compose.prod.yml -f compose.build.yml --env-file .env.production build
+#   docker compose -f compose.prod.yml --env-file .env.production up -d
+#
+# The installer does this with -e tn_image_source=build (install/README.md "Images").
+# Never on a production platform: what runs there must be what release.yml scanned.
+
+x-worker-build: &worker-build
+  context: ../../../control-plane/worker
+  dockerfile: Dockerfile
+  additional_contexts:
+    scenario_engine: ../../../scenario-engine # worker/inject_dispatch.py
+
+services:
+  api:
+    build:
+      context: ../../../control-plane/api
+      dockerfile: Dockerfile
+  # One worker image for five services, all tagged TN_IMAGE_WORKER; the layer cache makes
+  # the repeats cheap.
+  worker-scenario:
+    build: *worker-build
+  worker-provision:
+    build: *worker-build
+  worker-telemetry:
+    build: *worker-build
+  beat:
+    build: *worker-build
+  flower:
+    build: *worker-build
+  ai-orchestrator:
+    build:
+      context: ../../../ai-orchestrator
+      dockerfile: Dockerfile
+  web:
+    build:
+      context: ../../../control-plane/web
+      dockerfile: Dockerfile

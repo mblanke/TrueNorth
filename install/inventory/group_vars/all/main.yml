@@ -18,6 +18,26 @@ tn_app_git_version: "083aeb750bbf8ff1c25c6efb0ac03489e708af99"
 tn_app_local_path: "" # air-gapped: rsync a checkout from the control node
 tn_app_tarball: "" # air-gapped: a release archive
 
+# ── Which images run (deploy by digest; install/README.md "Images") ────
+# release: the images a release published, by digest, from its release-manifest.json
+#          (checked against the release's SHA256SUMS). Nothing is built on the target, and
+#          in git mode the app source is fetched at the manifest's git_sha.
+# build:   compose.build.yml builds local tags from the checkout. Lab only: what runs is
+#          then not what release.yml scanned.
+tn_image_source: release # release | build
+# The release tag, e.g. v1.2.3 (docs/release.md). Required with tn_image_source=release.
+tn_release_version: ""
+tn_release_repo: mblanke/TrueNorth
+# A directory ON THE CONTROL NODE holding release-manifest.json and SHA256SUMS (from
+# `gh release download <tag> -p release-manifest.json -p SHA256SUMS`). Empty: both are
+# downloaded from the GitHub release into tn_release_cache_dir.
+tn_release_dir: ""
+tn_release_cache_dir: "{{ inventory_dir }}/../.cache/releases"
+# Air-gapped: a directory ON THE CONTROL NODE of `docker save` tarballs (*.tar), one per
+# image, made as install/README.md "Air-gapped installs" says. Loaded on the target
+# instead of pulled; every image must then resolve by its digest, or the install stops.
+tn_image_archive_dir: ""
+
 # ── Paths on the platform host ────────────────────────────────────────
 tn_data_root: /srv/truenorth
 tn_app_dir: "{{ tn_data_root }}/app"
@@ -122,6 +142,9 @@ tn_vsphere_datastore: esx04-local
 tn_vsphere_network: ""
 # Range VMs are refused on these networks (comma-separated).
 tn_vsphere_mgmt_network: dPG-TN-MGMT
+# Rendered as VSPHERE_VERIFY_SSL (compose.prod.yml defaults to true). Kept false here,
+# as before, for this lab; set true once vCenter's certificate chains to a CA the worker
+# image trusts. A production site should not run with false.
 tn_vsphere_verify_ssl: false
 # Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
 tn_vsphere_content_library: ""

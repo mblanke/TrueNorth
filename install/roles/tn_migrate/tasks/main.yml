@@ -118,7 +118,8 @@
     files: [compose.prod.yml]
     env_files: ["{{ tn_env_file }}"]
     state: present
-    build: never # built (and migrated with) in roles/tn_compose
+    build: never # pulled or built, and digest-checked, in roles/tn_compose
+    pull: never
     wait: true
     wait_timeout: 900
 

@@ -19,12 +19,14 @@
   "quickLoginCheckMilliSeconds": 1000,
   "maxDeltaTimeSeconds": 3600,
   "failureFactor": 5,
-  "accessTokenLifespan": 1800,
-  "accessTokenLifespanForImplicitFlow": 900,
-  "ssoSessionIdleTimeout": 86400,
-  "ssoSessionMaxLifespan": 86400,
-  "offlineSessionIdleTimeout": 2592000,
-  "offlineSessionMaxLifespan": 5184000,
+  "passwordPolicy": "length(12) and notUsername(undefined) and passwordHistory(5)",
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 604800,
+  "offlineSessionMaxLifespanEnabled": true,
+  "offlineSessionMaxLifespan": 604800,
   "accessCodeLifespan": 60,
   "accessCodeLifespanUserAction": 300,
   "accessCodeLifespanLogin": 1800,
@@ -154,7 +156,7 @@
       "description": "Backend API service client with service account",
       "enabled": true,
       "publicClient": false,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": true,
@@ -165,9 +167,7 @@
         "http://localhost:8000/*"
       ],
       "webOrigins": [],
-      "attributes": {
-        "access.token.lifespan": "1800"
-      },
+      "attributes": {},
       "defaultClientScopes": [
         "web-origins",
         "acr",
@@ -193,11 +193,10 @@
       "attributes": {
         "oauth2.device.authorization.grant.enabled": "true",
         "oauth2.device.code.lifespan": "600",
-        "oauth2.device.polling.interval": "5"
+        "oauth2.device.polling.interval": "5",
+        "pkce.code.challenge.method": "S256"
       },
-      "redirectUris": [
-        "urn:ietf:wg:oauth:2.0:oob"
-      ],
+      "redirectUris": [],
       "webOrigins": [],
       "defaultClientScopes": [
         "web-origins",
@@ -209,6 +208,30 @@
       "optionalClientScopes": [
         "offline_access"
       ]
+    },
+    {
+      "clientId": "truenorth-smoke",
+      "name": "TrueNorth installer smoke test",
+      "description": "Password grant for install/playbooks/95-smoke-test.yml only. Disabled: the smoke test enables it for its one token request and disables it again.",
+      "enabled": false,
+      "publicClient": false,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "secret": "CHANGE_ME_IN_PRODUCTION",
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {},
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "identityProviders": [],
@@ -224,7 +247,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "admin",
+          "value": "TrueNorth-admin-dev",
           "temporary": false
         }
       ],
@@ -250,7 +273,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "instructor",
+          "value": "TrueNorth-instructor-dev",
           "temporary": false
         }
       ],
@@ -275,7 +298,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "trainee",
+          "value": "TrueNorth-trainee-dev",
           "temporary": false
         }
       ],

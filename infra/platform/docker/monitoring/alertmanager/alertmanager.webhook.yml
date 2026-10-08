@@ -1,0 +1,32 @@
+# TrueNorth Range — Alertmanager with a webhook receiver.
+#
+# Selected by ALERTMANAGER_CONFIG=alertmanager.webhook.yml (the installer sets it when
+# vault_alertmanager_webhook_url is set). The URL is read from a file,
+# /etc/alertmanager/secrets/webhook_url (ALERTMANAGER_SECRETS_DIR), so it never appears
+# in the environment or in `docker inspect`. Any receiver that takes Alertmanager's
+# webhook JSON works: a chat bridge, an incident tool, a ticketing hook.
+#
+# Same route as alertmanager.yml; only the receiver differs.
+
+route:
+  receiver: webhook
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity="critical"']
+      receiver: webhook
+      repeat_interval: 1h
+
+inhibit_rules:
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: [alertname, instance]
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/webhook_url
+        send_resolved: true
+        max_alerts: 50

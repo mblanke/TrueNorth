@@ -80,7 +80,8 @@ def test_the_dockerfile_keeps_app_on_the_python_path():
 def test_compose_builds_the_worker_somewhere():
     names = {(f.name, s) for f, s, _ in WORKER_BUILDS}
     assert ("compose.dev.yml", "worker-scenario") in names
-    assert ("compose.prod.yml", "worker-scenario") in names
+    # compose.prod.yml runs the released image by digest; compose.build.yml builds it.
+    assert ("compose.build.yml", "worker-scenario") in names
 
 
 @pytest.mark.parametrize(("compose", "service", "build"), WORKER_BUILDS, ids=lambda v: getattr(v, "name", v))

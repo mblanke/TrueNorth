@@ -6,5 +6,8 @@
   hosts: platform
   gather_facts: true
   roles:
+    # Release mode: read the manifest first, so git mode fetches its git_sha.
+    - role: tn_release
+      tags: [app]
     - role: tn_app_source
       tags: [app]

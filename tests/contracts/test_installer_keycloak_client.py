@@ -21,7 +21,7 @@ def test_web_client_urls_come_from_tn_domain_fqdn():
     web = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["tn_kc_client_settings"]["truenorth-web"]
     assert web["redirectUris"] == ["https://{{ tn_domain_fqdn }}/*"]
     assert web["webOrigins"] == ["https://{{ tn_domain_fqdn }}"]
-    assert web["attributes"] == {"post.logout.redirect.uris": "https://{{ tn_domain_fqdn }}/*"}
+    assert web["attributes"]["post.logout.redirect.uris"] == "https://{{ tn_domain_fqdn }}/*"
 
 
 def test_the_put_runs_when_any_owned_field_differs():

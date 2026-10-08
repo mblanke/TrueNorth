@@ -87,7 +87,8 @@ jq -r '.packages[] | "\(.name) \(.versionInfo)"' sbom-api.spdx.json | sort | hea
 
 ## Installing by digest: `release-manifest.json`
 
-The installer change is a separate work package. This is the interface it consumes:
+The installer consumes it (`install/roles/tn_release`; install/README.md "Images"):
+`ansible-playbook site.yml -e tn_release_version=v1.2.3`. This is the interface:
 
 ```json
 {
@@ -113,9 +114,11 @@ Rules for consumers:
   migrations match these images. Fetch the app source at that commit, not at a branch.
 - Order is unchanged: datastores, then `alembic upgrade head` in the **api** image, then
   the rest (the installer's `50-stack-up` already does this).
-- `compose.prod.yml` still has `build:` sections and ignores `IMAGE_TAG`. The installer
-  package has to render or override `image: <ref>` per service, and must not build on the
-  target.
+- `compose.prod.yml` has no `build:` sections: it runs `${TN_IMAGE_API}`,
+  `${TN_IMAGE_WORKER}`, `${TN_IMAGE_WEB}` and `${TN_IMAGE_AI_ORCHESTRATOR}`, which the
+  installer renders from `ref`, and pins every third-party image by digest.
+  `compose.build.yml` adds the builds back for a lab. The `scenario-engine` image is
+  published but not run by compose (the api mounts the engine from the source at `git_sha`).
 
 ## Pins
 

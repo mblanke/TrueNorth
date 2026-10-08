@@ -23,6 +23,8 @@ tn_generated_secrets:
   # The confidential `truenorth-api` Keycloak client. The realm file ships the
   # placeholder CHANGE_ME_IN_PRODUCTION; roles/tn_keycloak replaces it with this.
   - { name: keycloak_api_client_secret, value: "{{ vault_keycloak_api_client_secret | default('') }}" }
+  # truenorth-smoke, the only client with the password grant (disabled outside 95-smoke-test).
+  - { name: keycloak_smoke_client_secret, value: "{{ vault_keycloak_smoke_client_secret | default('') }}" }
   # OpenSearch security plugin: `admin` (the API, workers and telemetry bootstrap) and
   # `kibanaserver` (OpenSearch Dashboards). roles/tn_tls hashes them into internal_users.yml.
   # Bearer token the api and workers present to the AI orchestrator (and Prometheus,

@@ -112,6 +112,12 @@ REGISTRATION_GROUP_ROLE_MAP={}
 REGISTRATION_DEFAULT_PROGRESSION=x
 JWT_SECRET=x
 CSRF_SECRET=x
+# Required by compose.prod.yml (no defaults); never pulled, only postgres/minio start.
+PROVISIONER_BACKEND=mock
+TN_IMAGE_API=drill.invalid/api:unused
+TN_IMAGE_WORKER=drill.invalid/worker:unused
+TN_IMAGE_WEB=drill.invalid/web:unused
+TN_IMAGE_AI_ORCHESTRATOR=drill.invalid/ai-orchestrator:unused
 EOF
 
 cat >"${WORK}/drill.override.yml" <<EOF

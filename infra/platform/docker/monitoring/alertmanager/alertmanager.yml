@@ -1,0 +1,29 @@
+# TrueNorth Range — Alertmanager, DEFAULT configuration: alerts go NOWHERE.
+#
+# Every alert in ../prometheus/alerts.yml is routed to the `null` receiver, which has no
+# notifier. Alertmanager's UI still lists what is firing, but no one is told. A platform
+# Students use must have a receiver: set the installer's vault_alertmanager_webhook_url
+# (install/README.md "Alerting"), which selects alertmanager.webhook.yml instead. Both
+# files share the route below; keep them in step (tests/contracts/test_runtime_hardening.py).
+#
+# Checked with: amtool check-config (install/README.md "Alerting").
+
+route:
+  receiver: "null"
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity="critical"']
+      receiver: "null"
+      repeat_interval: 1h
+
+# A critical alert silences the warning of the same name and instance.
+inhibit_rules:
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: [alertname, instance]
+
+receivers:
+  - name: "null"

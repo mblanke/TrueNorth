@@ -69,6 +69,8 @@
         {%- set extra = tn_kc_client_settings[c.clientId] | default({}) -%}
         {%- if c.clientId == tn_keycloak_api_client -%}
           {%- set extra = extra | combine({'secret': tn_secrets['keycloak_api_client_secret']}) -%}
+        {%- elif c.clientId == tn_kc_smoke_client -%}
+          {%- set extra = extra | combine({'secret': tn_secrets['keycloak_smoke_client_secret']}) -%}
         {%- endif -%}
         {%- set _ = out.append(c | combine(extra)) -%}
       {%- endfor -%}
@@ -92,14 +94,35 @@
     url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}"
     method: PUT
     headers: "{{ tn_kc_headers }}"
-    body:
-      realm: "{{ tn_keycloak_realm }}"
-      enabled: true
-      sslRequired: external
+    body: "{{ {'realm': tn_keycloak_realm, 'enabled': true, 'sslRequired': 'external'} | combine(tn_kc_realm_settings) }}"
     body_format: json
     status_code: [204]
 
-# ── Clients: this deployment's URLs and secret, every run ─────────────
+# ── Clients: this deployment's URLs and secrets, every run ────────────
+# An install whose realm predates the smoke client gets it here (disabled).
+- name: Keycloak — does the smoke-test client exist?
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients?clientId={{ tn_kc_smoke_client }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_smoke_existing
+
+- name: Keycloak — create the smoke-test client, disabled
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: >-
+      {{ {'clientId': tn_kc_smoke_client, 'protocol': 'openid-connect',
+          'name': 'TrueNorth installer smoke test',
+          'secret': tn_secrets['keycloak_smoke_client_secret']}
+         | combine(tn_kc_client_settings[tn_kc_smoke_client]) }}
+    body_format: json
+    status_code: [201, 409]
+  when: tn_kc_smoke_existing.json | length == 0
+  no_log: true
+
+# The api client stays at index 1: the secret tasks below read it from there.
 - name: Keycloak — read the clients
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/clients?clientId={{ item }}"
@@ -109,13 +132,17 @@
   loop:
     - "{{ tn_keycloak_web_client }}"
     - "{{ tn_keycloak_api_client }}"
+    - truenorth-cli
+    - "{{ tn_kc_smoke_client }}"
   loop_control:
     label: "{{ item }}"
 
+# Every field tn_kc_client_settings names (URLs, grants, PKCE, enabled), when any differs.
 - name: Keycloak — set the clients' redirect URIs, web origins and post-logout URIs
   vars:
     _want: "{{ tn_kc_client_settings[item.item] | default({}) }}"
     _have: "{{ item.json[0] }}"
+    _scalars: "{{ _want | dict2items | rejectattr('key', 'in', ['redirectUris', 'webOrigins', 'attributes']) | items2dict }}"
   ansible.builtin.uri:
     url: "{{ tn_kc_realm_url }}/clients/{{ _have.id }}"
     method: PUT
@@ -131,6 +158,7 @@
     - (_want.redirectUris | default(_have.redirectUris)) | sort != (_have.redirectUris | default([])) | sort
       or (_want.webOrigins | default(_have.webOrigins)) | sort != (_have.webOrigins | default([])) | sort
       or (_have.attributes | default({})) | combine(_want.attributes | default({})) != (_have.attributes | default({}))
+      or _have | combine(_scalars) != _have
   changed_when: true
 
 - name: Keycloak — read the api client's secret
@@ -152,6 +180,28 @@
     body_format: json
     status_code: [204]
   when: tn_kc_api_secret.json.value | default('') != tn_secrets['keycloak_api_client_secret']
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — read the smoke-test client's secret
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ tn_kc_clients.results[3].json[0].id }}/client-secret"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_smoke_secret
+  no_log: true
+
+- name: Keycloak — set the smoke-test client's secret
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ tn_kc_clients.results[3].json[0].id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body:
+      clientId: "{{ tn_kc_smoke_client }}"
+      secret: "{{ tn_secrets['keycloak_smoke_client_secret'] }}"
+    body_format: json
+    status_code: [204]
+  when: tn_kc_smoke_secret.json.value | default('') != tn_secrets['keycloak_smoke_client_secret']
   changed_when: true
   no_log: true
 
@@ -402,6 +452,7 @@
     state: present
     recreate: always
     build: never
+    pull: never
     wait: true
     wait_timeout: 300
   when: tn_kc_env is changed

@@ -1,0 +1,136 @@
+---
+# Which application images this install runs: deploy by digest.
+#
+#   release (default): release-manifest.json of tn_release_version (docs/release.md),
+#     checked against the release's SHA256SUMS, names each service's image@sha256. The
+#     env file gets those refs (TN_IMAGE_*), the target pulls (or loads) exactly them, and
+#     in git mode the app source is fetched at the manifest's git_sha: the compose file and
+#     the migrations that match the images.
+#   build: compose.build.yml builds local tags from the checkout. Lab only.
+#
+# Sets tn_images (service -> ref), tn_deployed_version, and in release mode
+# tn_release_git_sha. Included by 20-fetch-app and by tn_config, so every play that
+# renders the env file or starts the stack agrees on the images.
+
+- name: Release — the image source is one we know
+  ansible.builtin.assert:
+    that: tn_image_source in ['release', 'build']
+    fail_msg: "tn_image_source must be release or build (got {{ tn_image_source }})"
+    quiet: true
+
+- name: Release — build mode runs local tags (lab only)
+  ansible.builtin.set_fact:
+    tn_images: >-
+      {{ dict(tn_release_services.keys() | zip(tn_release_services.keys()
+              | map('regex_replace', '^(.*)$', 'truenorth-\1:local'))) }}
+    tn_deployed_version: "{{ tn_app_git_version }}"
+  when: tn_image_source == 'build'
+
+- name: Release — read the manifest and deploy by digest
+  when: tn_image_source == 'release'
+  block:
+    - name: Release — a release is pinned
+      ansible.builtin.assert:
+        that: tn_release_version | length > 0
+        fail_msg: |
+          tn_image_source is release, but tn_release_version is empty. Set it to the
+          release tag to install (e.g. -e tn_release_version=v1.2.3; docs/release.md).
+
+          Until the first release exists, a lab can build from the checkout instead:
+            -e tn_image_source=build
+        quiet: true
+
+    - name: Release — where the release files are, on the control node
+      ansible.builtin.set_fact:
+        tn_release_files: >-
+          {{ tn_release_dir if tn_release_dir | length > 0
+             else tn_release_cache_dir ~ '/' ~ tn_release_version }}
+
+    - name: Release — download directory
+      ansible.builtin.file:
+        path: "{{ tn_release_files }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      become: false
+      run_once: true
+      when: tn_release_dir | length == 0
+
+    # Fetched once per version (a published release's assets never change).
+    - name: Release — download the manifest and its checksums from the GitHub release
+      ansible.builtin.get_url:
+        url: "https://github.com/{{ tn_release_repo }}/releases/download/{{ tn_release_version }}/{{ item }}"
+        dest: "{{ tn_release_files }}/{{ item }}"
+        mode: "0644"
+      loop: [release-manifest.json, SHA256SUMS]
+      delegate_to: localhost
+      become: false
+      run_once: true
+      when: tn_release_dir | length == 0
+
+    - name: Release — checksum the manifest
+      ansible.builtin.stat:
+        path: "{{ tn_release_files }}/release-manifest.json"
+        checksum_algorithm: sha256
+      delegate_to: localhost
+      become: false
+      register: tn_release_stat
+
+    - name: Release — the manifest is the one SHA256SUMS lists
+      ansible.builtin.assert:
+        that:
+          - tn_release_stat.stat.exists
+          - (tn_release_stat.stat.checksum ~ '  release-manifest.json')
+            in lookup('ansible.builtin.file', tn_release_files ~ '/SHA256SUMS').splitlines()
+        fail_msg: >-
+          {{ tn_release_files }}/release-manifest.json is missing or does not match the
+          release's SHA256SUMS. Download both from the same release
+          (gh release download {{ tn_release_version }} -R {{ tn_release_repo }}
+          -p release-manifest.json -p SHA256SUMS) and do not edit them.
+        quiet: true
+
+    - name: Release — parse it
+      ansible.builtin.set_fact:
+        tn_release_manifest: "{{ lookup('ansible.builtin.file', tn_release_files ~ '/release-manifest.json') | from_json }}"
+
+    - name: Release — it describes the release asked for
+      ansible.builtin.assert:
+        that:
+          - tn_release_manifest.schema_version | default(0) == 1
+          - tn_release_manifest.version | default('') == tn_release_version
+          - tn_release_manifest.git_sha | default('') is match('^[0-9a-f]{40}$')
+        fail_msg: >-
+          release-manifest.json says schema_version={{ tn_release_manifest.schema_version | default('?') }},
+          version={{ tn_release_manifest.version | default('?') }}; this installer reads
+          schema 1 of {{ tn_release_version }}.
+        quiet: true
+
+    - name: Release — every service is pinned by digest
+      vars:
+        _img: "{{ tn_release_manifest.images[item] | default({}) }}"
+      ansible.builtin.assert:
+        that:
+          - _img.ref | default('') is match('^[^@\s]+@sha256:[0-9a-f]{64}$')
+          - _img.ref | default('') == (_img.image | default('')) ~ '@' ~ (_img.digest | default(''))
+        fail_msg: "release-manifest.json: images.{{ item }} has no image@sha256 ref ({{ _img }})"
+        quiet: true
+      loop: "{{ tn_release_services.keys() | list }}"
+
+    - name: Release — the images, the commit and the version
+      ansible.builtin.set_fact:
+        tn_images: >-
+          {{ dict(tn_release_services.keys()
+                  | zip(tn_release_services.keys() | map('extract', tn_release_manifest.images) | map(attribute='ref'))) }}
+        tn_release_git_sha: "{{ tn_release_manifest.git_sha }}"
+        tn_deployed_version: "{{ tn_release_version }}"
+
+    # The compose file and migrations must be the ones these images were built with.
+    # (-e tn_app_git_version wins over this; tn_app_source then refuses the mismatch.)
+    - name: Release — fetch the app source at the release's commit
+      ansible.builtin.set_fact:
+        tn_app_git_version: "{{ tn_release_git_sha }}"
+      when: tn_app_source_mode == 'git'
+
+- name: Release — report
+  ansible.builtin.debug:
+    msg: "{{ tn_image_source }} {{ tn_deployed_version }}: {{ tn_images }}"
