@@ -1,0 +1,95 @@
+# Helm is a supported install target for v1.0.0. This installs the chart into a kind
+# cluster with production settings (TN_ENV=production, read-only roots, NetworkPolicies,
+# the migration hook) and proves it comes up: infra/k8s/kind/smoke.sh.
+# Third-party actions are pinned to full commit SHAs (docs/release.md "Pins").
+name: helm-kind
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-kind-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helm-kind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v4.3.0
+
+      - name: Lint and render the chart
+        run: |
+          set -euo pipefail
+          helm lint infra/k8s/helm/truenorth-range
+          args=(-f infra/k8s/kind/values-kind.yaml --set-string secrets.minioAccessKey=tn-ci)
+          for key in databasePassword redisPassword minioSecretKey csrfSecret secretsKey \
+                     aiServiceToken metricsScrapeToken; do
+            args+=(--set-string "secrets.$key=$(openssl rand -hex 24)")
+          done
+          helm template tn infra/k8s/helm/truenorth-range -n truenorth "${args[@]}" > /dev/null
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # The five release images, built as ci.yml's build-docker builds them (same
+      # contexts; the worker gets scenario-engine as a named context), read from its
+      # layer cache, loaded into the runner's Docker and then into kind.
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: control-plane/api
+          build-args: TN_VERSION=ci-${{ github.sha }}
+          load: true
+          tags: tn-local/api:ci
+          cache-from: type=gha,scope=api
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: control-plane/worker
+          build-contexts: scenario_engine=scenario-engine
+          build-args: TN_VERSION=ci-${{ github.sha }}
+          load: true
+          tags: tn-local/worker:ci
+          cache-from: type=gha,scope=worker
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: control-plane/web
+          build-args: TN_VERSION=ci-${{ github.sha }}
+          load: true
+          tags: tn-local/web:ci
+          cache-from: type=gha,scope=web
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: scenario-engine
+          build-args: TN_VERSION=ci-${{ github.sha }}
+          load: true
+          tags: tn-local/scenario-engine:ci
+          cache-from: type=gha,scope=scenario-engine
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ai-orchestrator
+          build-args: TN_VERSION=ci-${{ github.sha }}
+          load: true
+          tags: tn-local/ai-orchestrator:ci
+          cache-from: type=gha,scope=ai-orchestrator
+
+      # kind v0.33.0's default node image; kindnet enforces NetworkPolicy, so the
+      # chart's policies are live in this test.
+      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          version: v0.33.0
+          cluster_name: tn-helm-smoke
+          wait: 120s
+
+      - name: Install, migrate, roll out, /health/ready, helm test, uninstall
+        env:
+          KIND_CLUSTER: tn-helm-smoke
+          SMOKE_TIMEOUT: 12m
+        run: bash infra/k8s/kind/smoke.sh

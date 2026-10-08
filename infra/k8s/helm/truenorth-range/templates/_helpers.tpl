@@ -77,57 +77,130 @@ Service account name
 {{- end }}
 
 {{/*
-Image helper — accepts (dict "image" .Values.<svc>.image "global" .Values.global "appVersion" .Chart.AppVersion)
+Image reference — call with (dict "name" "api" "root" $), name a key of .Values.images.
+Pinned by digest when images.<name>.digest is set (the release manifest's `digest`,
+see infra/k8s/README.md); otherwise repository:tag, tag defaulting to v<appVersion>.
 */}}
 {{- define "truenorth-range.image" -}}
-{{- $registry := .image.registry | default .global.imageRegistry | default "" -}}
-{{- $tag := .image.tag | default .appVersion -}}
-{{- if $registry -}}
-{{- printf "%s/%s:%s" $registry .image.repository $tag -}}
+{{- $img := index .root.Values.images .name -}}
+{{- if not $img -}}
+{{- fail (printf "images.%s is not defined" .name) -}}
+{{- end -}}
+{{- $repo := required (printf "images.%s.repository is required" .name) $img.repository -}}
+{{- if $img.digest -}}
+{{- if not (regexMatch "^sha256:[a-f0-9]{64}$" $img.digest) -}}
+{{- fail (printf "images.%s.digest must be sha256:<64 hex>, got %q" .name $img.digest) -}}
+{{- end -}}
+{{- printf "%s@%s" $repo $img.digest -}}
 {{- else -}}
-{{- printf "%s:%s" .image.repository $tag -}}
+{{- printf "%s:%s" $repo ($img.tag | default (printf "v%s" .root.Chart.AppVersion)) -}}
 {{- end -}}
 {{- end }}
 
+{{- define "truenorth-range.imagePullPolicy" -}}
+{{- (index .root.Values.images .name).pullPolicy | default "IfNotPresent" -}}
+{{- end }}
+
 {{/*
-Database URL helper
+The Secret every component reads: secrets.existingSecret, else the chart's own.
+*/}}
+{{- define "truenorth-range.secretName" -}}
+{{- .Values.secrets.existingSecret | default (printf "%s-secret" (include "truenorth-range.fullname" .)) -}}
+{{- end }}
+
+{{/*
+Database / Redis URLs. The passwords are expanded by the kubelet from DATABASE_PASSWORD
+and REDIS_PASSWORD (the Secret, via envFrom or an explicit env entry declared first), so
+they must be URL-safe (openssl rand -hex 32). psycopg 3 is the only driver in the images.
 */}}
 {{- define "truenorth-range.databaseUrl" -}}
-{{- $host := .Values.config.databaseHost | default (printf "%s-postgresql" (include "truenorth-range.fullname" .)) -}}
-{{- printf "postgresql://%s:$(DATABASE_PASSWORD)@%s:%s/%s" .Values.config.databaseUser $host .Values.config.databasePort .Values.config.databaseName -}}
+{{- $c := .Values.config.database -}}
+{{- printf "postgresql+psycopg://%s:$(DATABASE_PASSWORD)@%s:%v/%s" $c.user (required "config.database.host is required (the chart does not run PostgreSQL)" $c.host) $c.port $c.name -}}
 {{- end }}
 
-{{/*
-Redis URL helper
-*/}}
+{{- define "truenorth-range.redisUrlForDb" -}}
+{{- $c := .root.Values.config.redis -}}
+{{- printf "%s://:$(REDIS_PASSWORD)@%s:%v/%v" (ternary "rediss" "redis" ($c.tls | default false)) (required "config.redis.host is required (the chart does not run Redis)" $c.host) $c.port .db -}}
+{{- end }}
+
 {{- define "truenorth-range.redisUrl" -}}
-{{- $host := .Values.config.redisHost | default (printf "%s-redis-master" (include "truenorth-range.fullname" .)) -}}
-{{- printf "redis://:%s@%s:%s/%s" "$(REDIS_PASSWORD)" $host .Values.config.redisPort .Values.config.redisDB -}}
+{{- include "truenorth-range.redisUrlForDb" (dict "root" . "db" .Values.config.redis.db) -}}
 {{- end }}
 
 {{/*
-MinIO endpoint helper
+Public origin (https://<ingress.host>), used for CORS, LTI and calendar-feed URLs.
 */}}
-{{- define "truenorth-range.minioEndpoint" -}}
-{{- .Values.config.minioEndpoint | default (printf "%s-minio:9000" (include "truenorth-range.fullname" .)) -}}
+{{- define "truenorth-range.publicOrigin" -}}
+{{- .Values.config.publicOrigin | default (printf "https://%s" .Values.ingress.host) -}}
 {{- end }}
 
 {{/*
-Keycloak URL helper
+Pod-level security context. fsGroup = the image's uid so emptyDir volumes are writable.
+Call with (dict "root" $ "uid" 10001).
 */}}
-{{- define "truenorth-range.keycloakUrl" -}}
-{{- .Values.config.keycloakUrl | default (printf "http://%s-keycloak:80" (include "truenorth-range.fullname" .)) -}}
+{{- define "truenorth-range.podSecurityContext" -}}
+runAsNonRoot: true
+runAsUser: {{ .uid }}
+runAsGroup: {{ .uid }}
+fsGroup: {{ .uid }}
+seccompProfile:
+  type: RuntimeDefault
+{{- with .root.Values.podSecurityContext }}
+{{ toYaml . }}
+{{- end }}
 {{- end }}
 
 {{/*
-Prometheus annotations
+Container-level security context. Call with (dict "uid" 10001).
 */}}
-{{- define "truenorth-range.prometheusAnnotations" -}}
-{{- if .Values.monitoring.prometheus.enabled }}
-prometheus.io/scrape: "true"
-prometheus.io/port: {{ .port | quote }}
-prometheus.io/path: {{ .Values.monitoring.prometheus.path | default "/metrics" }}
+{{- define "truenorth-range.containerSecurityContext" -}}
+runAsNonRoot: true
+runAsUser: {{ .uid }}
+runAsGroup: {{ .uid }}
+readOnlyRootFilesystem: true
+allowPrivilegeEscalation: false
+privileged: false
+capabilities:
+  drop:
+    - ALL
+seccompProfile:
+  type: RuntimeDefault
 {{- end }}
+
+{{/*
+Writable scratch for a read-only root filesystem: /tmp and the image user's $HOME
+(pip/ansible/reportlab caches). Volumes and mounts; call with the root context.
+*/}}
+{{- define "truenorth-range.scratchVolumes" -}}
+- name: tmp
+  emptyDir:
+    sizeLimit: {{ .Values.scratch.tmpSizeLimit }}
+- name: home
+  emptyDir:
+    sizeLimit: {{ .Values.scratch.homeSizeLimit }}
+{{- end }}
+
+{{- define "truenorth-range.scratchVolumeMounts" -}}
+- name: tmp
+  mountPath: /tmp
+- name: home
+  mountPath: /home/app
+{{- end }}
+
+{{/*
+Celery liveness: the node answers a ping. The node name is the worker's -n (<node>@%h,
+%h = the pod hostname), as in infra/platform/docker/compose.prod.yml.
+*/}}
+{{- define "truenorth-range.celeryLiveness" -}}
+exec:
+  command:
+    - sh
+    - -c
+    - celery -A worker.celery_app inspect ping --timeout 10 -d {{ .node }}@$HOSTNAME | grep -q pong
+initialDelaySeconds: 60
+periodSeconds: 60
+timeoutSeconds: 30
+failureThreshold: 3
 {{- end }}
 
 {{/*
@@ -159,4 +232,28 @@ OPENSEARCH_VERIFY_SSL: the mounted CA bundle, else opensearch.verifySSL.
 {{- else -}}
 {{- .Values.opensearch.verifySSL | toString -}}
 {{- end -}}
+{{- end }}
+
+{{/*
+Egress rules when networkPolicy.egress.enabled: DNS, this release's own pods, and the
+operator's list (networkPolicy.egress.to: NetworkPolicyEgressRule objects).
+*/}}
+{{- define "truenorth-range.egressRules" -}}
+- to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+  ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+- to:
+    - podSelector:
+        matchLabels:
+          {{- include "truenorth-range.selectorLabels" . | nindent 10 }}
+{{- with .Values.networkPolicy.egress.to }}
+{{ toYaml . }}
+{{- end }}
 {{- end }}

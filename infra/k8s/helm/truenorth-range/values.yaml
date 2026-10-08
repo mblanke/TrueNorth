@@ -1,25 +1,86 @@
 # =============================================================================
 # TrueNorth Range — Helm Values
 # =============================================================================
+# Installing: infra/k8s/README.md. A render fails, naming the setting, until every
+# required value below is set: there are no default passwords or keys.
+
+global:
+  imagePullSecrets: []
+
+# The release version the pods report (TN_VERSION). Empty: v<Chart appVersion>.
+# infra/k8s/scripts/values_from_manifest.py sets it from release-manifest.json.
+version: ""
 
 # ---------------------------------------------------------------------------
-# Global
+# Images — one per release image (docs/release.md). Pin by digest: `digest` wins over
+# `tag`. Generate this block from a release's release-manifest.json with
+#   python3 infra/k8s/scripts/values_from_manifest.py release-manifest.json > images.yaml
+# The worker image also runs Celery beat and Flower; the scenario-engine image only
+# feeds the api's scenario-engine directory (it is a library, not a service).
 # ---------------------------------------------------------------------------
-global:
-  imageRegistry: ""
-  imagePullSecrets: []
-  storageClass: ""
+images:
+  api:
+    repository: ghcr.io/mblanke/truenorth-api
+    digest: ""
+    tag: ""          # empty: v<appVersion>
+    pullPolicy: IfNotPresent
+  worker:
+    repository: ghcr.io/mblanke/truenorth-worker
+    digest: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  web:
+    repository: ghcr.io/mblanke/truenorth-web
+    digest: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  scenarioEngine:
+    repository: ghcr.io/mblanke/truenorth-scenario-engine
+    digest: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  aiOrchestrator:
+    repository: ghcr.io/mblanke/truenorth-ai-orchestrator
+    digest: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+
+# Extra pod-level securityContext fields merged into every pod (e.g. supplementalGroups).
+# runAsNonRoot, the image uid (10001; web 101), fsGroup and seccomp RuntimeDefault are
+# always set; every container also drops ALL capabilities, disallows privilege
+# escalation and runs on a read-only root filesystem with emptyDir scratch.
+podSecurityContext: {}
+
+# emptyDir size limits for /tmp and the image user's $HOME in the Python pods.
+scratch:
+  tmpSizeLimit: 1Gi
+  homeSizeLimit: 256Mi
+
+# ---------------------------------------------------------------------------
+# Migrations — `alembic upgrade head` as a pre-install/pre-upgrade hook Job, once per
+# release change, before any pod rolls (never as an init container: replicas raced).
+# ---------------------------------------------------------------------------
+migration:
+  enabled: true
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 # ---------------------------------------------------------------------------
 # API — FastAPI Control-Plane
 # ---------------------------------------------------------------------------
 api:
   enabled: true
-  image:
-    repository: truenorth-range/api
-    tag: ""  # defaults to appVersion
-    pullPolicy: IfNotPresent
   replicaCount: 3
+  # uvicorn processes per pod; scale with replicas rather than this.
+  uvicornWorkers: 2
   resources:
     requests:
       cpu: 500m
@@ -27,6 +88,14 @@ api:
     limits:
       cpu: "2"
       memory: 4Gi
+  # The init container that copies the scenario engine into the pod.
+  initResources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
   autoscaling:
     enabled: true
     minReplicas: 3
@@ -37,31 +106,26 @@ api:
     type: ClusterIP
     port: 8080
   podDisruptionBudget:
-    minAvailable: 2
+    enabled: true
+    maxUnavailable: 1
   nodeSelector: {}
   tolerations: []
   affinity: {}
   podAntiAffinity: true
   extraEnv: []
-  migration:
-    enabled: true
-    image:
-      repository: truenorth-range/api
-      tag: ""
-    command: ["alembic", "upgrade", "head"]
 
 # ---------------------------------------------------------------------------
 # Worker — Provision (queue: provision, destroy)
 # ---------------------------------------------------------------------------
 workerProvision:
   enabled: true
-  image:
-    repository: truenorth-range/worker
-    tag: ""
-    pullPolicy: IfNotPresent
   replicaCount: 2
   concurrency: 4
   queues: "provision,destroy"
+  terminationGracePeriodSeconds: 600
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
   resources:
     requests:
       cpu: "1"
@@ -84,13 +148,13 @@ workerProvision:
 # ---------------------------------------------------------------------------
 workerScenario:
   enabled: true
-  image:
-    repository: truenorth-range/worker
-    tag: ""
-    pullPolicy: IfNotPresent
   replicaCount: 2
   concurrency: 8
   queues: "scenario,default"
+  terminationGracePeriodSeconds: 300
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
   resources:
     requests:
       cpu: 500m
@@ -113,13 +177,14 @@ workerScenario:
 # ---------------------------------------------------------------------------
 workerTelemetry:
   enabled: true
-  image:
-    repository: truenorth-range/worker
-    tag: ""
-    pullPolicy: IfNotPresent
   replicaCount: 2
   concurrency: 4
   queues: "telemetry"
+  maxTasksPerChild: 2000
+  terminationGracePeriodSeconds: 120
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
   resources:
     requests:
       cpu: 500m
@@ -139,11 +204,22 @@ workerTelemetry:
 # ---------------------------------------------------------------------------
 aiOrchestrator:
   enabled: true
-  image:
-    repository: truenorth-range/ai-orchestrator
-    tag: ""
-    pullPolicy: IfNotPresent
   replicaCount: 2
+  # Redis database for its cache (compose.prod.yml uses 1; the platform uses config.redis.db).
+  redisDb: 1
+  # Non-secret settings (ai-orchestrator/app). Keys go in secrets.openaiApiKey /
+  # secrets.anthropicApiKey. The model endpoint is site-specific: set OPENAI_BASE_URL.
+  env:
+    AI_MODEL_BACKEND: openai
+    OPENAI_BASE_URL: ""
+    OPENAI_DEFAULT_MODEL: agent
+    OPENAI_TIMEOUT_S: "600"
+    AI_HEAVY_MODEL: agent
+    AI_GENERAL_MODEL: agent
+    AI_CODE_MODEL: coder-fast
+    AI_EMBED_BACKEND: openai
+    AI_EMBED_MODEL: embed
+    MAX_LLM_CONCURRENCY: "4"
   resources:
     requests:
       cpu: "1"
@@ -165,7 +241,6 @@ aiOrchestrator:
     enabled: false
     resourceKey: nvidia.com/gpu
     resourceValue: "1"
-  ollamaNodes: "http://ollama-0.ollama:11434,http://ollama-1.ollama:11434"
   extraEnv: []
 
 # ---------------------------------------------------------------------------
@@ -173,17 +248,13 @@ aiOrchestrator:
 # ---------------------------------------------------------------------------
 web:
   enabled: true
-  image:
-    repository: truenorth-range/web
-    tag: ""
-    pullPolicy: IfNotPresent
   replicaCount: 2
   # Browser-facing OIDC settings, written to the SPA's assets/config.json when the
   # container starts (TN_KEYCLOAK_* env). Empty = the image default: Keycloak under
-  # /auth on the app's own host, realm truenorth, client truenorth-web. This chart's
-  # ingress does not route /auth, so set `url` to Keycloak's public base URL, e.g.
-  # https://keycloak.example.com. Its origin is added to the web CSP. There is no
-  # setting that disables authentication.
+  # /auth on the app's own host, realm truenorth, client truenorth-web; that works when
+  # ingress.keycloak routes /auth to an in-cluster Keycloak. Otherwise set `url` to
+  # Keycloak's public base URL, e.g. https://keycloak.example.com; its origin is added
+  # to the web CSP. There is no setting that disables authentication.
   keycloak:
     url: ""
     realm: ""
@@ -213,23 +284,35 @@ web:
   service:
     type: ClusterIP
     port: 80
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  nginx:
-    workerProcesses: auto
-    workerConnections: 1024
 
 # ---------------------------------------------------------------------------
-# Flower — Celery Monitoring
+# Celery beat — the periodic-task scheduler (worker image). Always one replica.
+# ---------------------------------------------------------------------------
+beat:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  nodeSelector: {}
+  tolerations: []
+
+# ---------------------------------------------------------------------------
+# Flower — Celery monitoring (worker image). Off by default; never on the ingress and
+# admitted by no NetworkPolicy rule: `kubectl port-forward svc/<release>-flower 5555`.
+# Enabling it requires secrets.flowerBasicAuth.
 # ---------------------------------------------------------------------------
 flower:
-  enabled: true
-  image:
-    repository: truenorth-range/flower
-    tag: ""
-    pullPolicy: IfNotPresent
-  replicaCount: 1
+  enabled: false
   resources:
     requests:
       cpu: 100m
@@ -238,34 +321,44 @@ flower:
       cpu: 500m
       memory: 512Mi
   service:
-    type: ClusterIP
     port: 5555
-  basicAuth:
-    enabled: true
-    username: admin
-    password: changeme
   nodeSelector: {}
   tolerations: []
-  affinity: {}
 
 # ---------------------------------------------------------------------------
-# Ingress
+# Ingress — the web app at /, the API at /api (rewritten to /, as the compose edge
+# does) and /ws, and Keycloak at /auth when it runs in this namespace. Nothing else is
+# published: not the AI orchestrator, not Flower. Written for ingress-nginx.
 # ---------------------------------------------------------------------------
 ingress:
   enabled: true
   className: nginx
+  # The public host name. Set yours; this default is the one the Keycloak realm
+  # (infra/keycloak/realm-truenorth.json) lists as a truenorth-web origin.
+  host: range.truenorth.local
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/limit-rps: "100"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-  host: range.truenorth.local
+  # Added to the API Ingress only.
+  apiAnnotations: {}
   tls:
     enabled: true
     secretName: truenorth-range-tls
+  # Route /auth to a Keycloak Service in this namespace (serving under /auth).
+  keycloak:
+    enabled: false
+    serviceName: ""
+    servicePort: 8080
+
+# ---------------------------------------------------------------------------
+# helm test
+# ---------------------------------------------------------------------------
+tests:
+  image: curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
 
 # ---------------------------------------------------------------------------
 # Service Account
@@ -275,217 +368,124 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# ---------------------------------------------------------------------------
-# Monitoring
-# ---------------------------------------------------------------------------
-monitoring:
-  prometheus:
-    enabled: true
-    scrapeInterval: 30s
-    path: /metrics
+# Metrics: GET /metrics on the api (:8080) needs `Authorization: Bearer
+# <METRICS_SCRAPE_TOKEN>`, so scrape it with a ServiceMonitor/scrape config carrying the
+# token (networkPolicy.metricsNamespaceSelector admits Prometheus), not pod annotations.
 
 # ---------------------------------------------------------------------------
-# Config — Non-sensitive environment values
+# Config — non-secret settings (the ConfigMap). The datastores are not part of this
+# chart: point these at your PostgreSQL, Redis, MinIO, OpenSearch and Keycloak.
 # ---------------------------------------------------------------------------
 config:
-  databaseHost: ""          # auto-set when postgresql.enabled
-  databasePort: "5432"
-  databaseName: truenorth
-  databaseUser: truenorth
-  redisHost: ""             # auto-set when redis.enabled
-  redisPort: "6379"
-  redisDB: "0"
-  opensearchUrl: "https://opensearch.truenorth.local:9200"
-  minioEndpoint: ""         # auto-set when minio.enabled
-  minioPort: "9000"
-  minioBucket: truenorth-range
-  minioUseSSL: "false"
-  keycloakUrl: ""           # auto-set when keycloak.enabled
-  keycloakRealm: truenorth
-  provisionerBackend: terraform
+  # app/settings.py refuses to start in production on unsafe settings.
+  tnEnv: production
+  logFormat: json
   logLevel: INFO
-  # Peers whose X-Forwarded-For the API believes: your ingress controller's pod CIDR
-  # (e.g. "10.244.0.0/16"). Empty keeps the API default (loopback + 172.16.0.0/12).
+  database:
+    host: ""                # required, e.g. truenorth-pg-rw (or a PgBouncer)
+    port: 5432
+    name: truenorth
+    user: truenorth
+  redis:
+    host: ""                # required
+    port: 6379
+    db: 0
+    tls: false              # true: rediss://
+  minio:
+    endpoint: ""            # required, with scheme: https://minio.example.com:9000
+    bucket: truenorth-range
+  keycloak:
+    # Required: Keycloak as the API reaches it, including /auth if it serves there.
+    url: ""
+    realm: truenorth
+    # Required: the audience the API's tokens must carry (docs/identity.md).
+    audience: ""
+    issuer: ""
+    # For /ad-sync and the bootstrap admin (password: secrets.keycloakAdminPassword).
+    adminUser: ""
+  # Required: CIDRs whose X-Forwarded-For the API believes — the ingress controller's
+  # pods (app/client_address.py), e.g. "10.244.0.0/16".
   trustedProxyCidrs: ""
+  # Public origin; empty: https://<ingress.host>. Used for CORS, LTI and calendar feeds.
+  publicOrigin: ""
+  corsOrigins: ""
+  schedulerFeedBaseUrl: ""
+  # worker/provisioners registry key: vsphere_api, mock, terraform, ...
+  provisionerBackend: vsphere_api
+  # Any other non-secret variable for the api, workers and beat (VSPHERE_*, LRS_URL,
+  # LMS_BACKEND, LDAP_*, REGISTRATION_*, ...), as in compose.prod.yml.
+  extraEnv: {}
 
 # ---------------------------------------------------------------------------
-# Secrets — Sensitive values (base64-encoded at render time)
+# Secrets — no defaults. Each is required (the render fails naming it) unless
+# existingSecret is set; known defaults and short keys are refused. Generate with
+# `openssl rand -hex 32` (URL-safe: the database and Redis passwords go into URLs).
 # ---------------------------------------------------------------------------
 secrets:
-  databasePassword: changeme
-  redisPassword: changeme
-  minioAccessKey: minioadmin
-  minioSecretKey: minioadmin
-  apiSecretKey: change-me-to-a-random-secret
-  # TN_SECRETS_KEY: >= 32 random chars (openssl rand -hex 32). Never change it while
-  # credentials are stored; to rotate set "new,old". Back it up with the database.
-  secretsKey: change-me-to-at-least-32-random-characters
-  keycloakAdminPassword: changeme
-
-
-# ---------------------------------------------------------------------------
-# Scenario Engine — Event injection and validation service
-# ---------------------------------------------------------------------------
-scenarioEngine:
-  enabled: true
-  image:
-    repository: truenorth-range/scenario-engine
-    tag: ""
-    pullPolicy: IfNotPresent
-  replicaCount: 2
-  resources:
-    requests:
-      cpu: 500m
-      memory: 512Mi
-    limits:
-      cpu: "2"
-      memory: 2Gi
-  service:
-    type: ClusterIP
-    port: 8082
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  extraEnv: []
+  # An existing Secret with these keys instead (the chart then creates none):
+  #   DATABASE_PASSWORD REDIS_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY CSRF_SECRET
+  #   TN_SECRETS_KEY AI_SERVICE_TOKEN METRICS_SCRAPE_TOKEN OPENSEARCH_USER OPENSEARCH_PASS
+  # optional: KEYCLOAK_ADMIN_PASSWORD KEYCLOAK_CLIENT_SECRET OPENAI_API_KEY
+  #   ANTHROPIC_API_KEY; FLOWER_BASIC_AUTH when flower.enabled.
+  existingSecret: ""
+  databasePassword: ""
+  redisPassword: ""
+  minioAccessKey: ""
+  minioSecretKey: ""
+  # >= 32 characters each.
+  csrfSecret: ""
+  # TN_SECRETS_KEY seals stored credentials. Never change it while credentials are
+  # stored; to rotate set "new,old". Back it up with the database.
+  secretsKey: ""
+  # Shared by the api, the workers and the AI orchestrator.
+  aiServiceToken: ""
+  # Prometheus presents it as a bearer token on GET /metrics.
+  metricsScrapeToken: ""
+  opensearchPassword: ""
+  keycloakAdminPassword: ""
+  # The confidential API client's secret, for operators' tooling; the pods do not read it.
+  keycloakClientSecret: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  # user:password, when flower.enabled.
+  flowerBasicAuth: ""
+  # Any other secret variable (VSPHERE_PASSWORD, LRS_AUTH, SMTP_PASSWORD, ...).
+  extraEnv: {}
 
 # ---------------------------------------------------------------------------
-# PostgreSQL (Bitnami sub-chart)
+# OpenSearch (external — not bundled). The cluster runs its security plugin: every
+# client authenticates (basic auth; password in secrets.opensearchPassword) and
+# verifies the cluster's TLS certificate.
 # ---------------------------------------------------------------------------
-postgresql:
-  enabled: true
-  auth:
-    username: truenorth
-    password: changeme
-    database: truenorth
-  primary:
-    persistence:
-      enabled: true
-      size: 50Gi
-    extendedConfiguration: |
-      max_connections = 500
-      shared_buffers = 2GB
-      effective_cache_size = 6GB
-      maintenance_work_mem = 512MB
-      checkpoint_completion_target = 0.9
-      wal_buffers = 64MB
-      default_statistics_target = 100
-      random_page_cost = 1.1
-      effective_io_concurrency = 200
-      work_mem = 8MB
-      huge_pages = off
-      min_wal_size = 1GB
-      max_wal_size = 4GB
-    resources:
-      requests:
-        cpu: "1"
-        memory: 4Gi
-      limits:
-        cpu: "4"
-        memory: 8Gi
-  image:
-    tag: "16"
-  pgpool:
-    enabled: false
-  pgbouncer:
-    enabled: true
-    poolMode: transaction
-    maxClientConn: 1000
-    defaultPoolSize: 40
-
-# ---------------------------------------------------------------------------
-# Redis (Bitnami sub-chart)
-# ---------------------------------------------------------------------------
-redis:
-  enabled: true
-  auth:
-    enabled: true
-    password: changeme
-  master:
-    persistence:
-      enabled: true
-      size: 10Gi
-    resources:
-      requests:
-        cpu: 250m
-        memory: 512Mi
-      limits:
-        cpu: "1"
-        memory: 1Gi
-    configuration: |
-      maxmemory 512mb
-      maxmemory-policy allkeys-lru
-  replica:
-    replicaCount: 2
-    persistence:
-      enabled: true
-      size: 10Gi
-
-# ---------------------------------------------------------------------------
-# MinIO (Bitnami sub-chart)
-# ---------------------------------------------------------------------------
-minio:
-  enabled: true
-  auth:
-    rootUser: minioadmin
-    rootPassword: minioadmin
-  persistence:
-    enabled: true
-    size: 10Gi
-  resources:
-    requests:
-      cpu: 250m
-      memory: 512Mi
-    limits:
-      cpu: "1"
-      memory: 2Gi
-  defaultBuckets: truenorth-range
-
-# ---------------------------------------------------------------------------
-# Keycloak (Bitnami sub-chart)
-# ---------------------------------------------------------------------------
-keycloak:
-  enabled: true
-  auth:
-    adminUser: admin
-    adminPassword: changeme
-  postgresql:
-    enabled: false
-  externalDatabase:
-    host: ""
-    port: 5432
-    user: keycloak
-    password: changeme
-    database: keycloak
-  resources:
-    requests:
-      cpu: 500m
-      memory: 1Gi
-    limits:
-      cpu: "2"
-      memory: 2Gi
-
-# ---------------------------------------------------------------------------
-# OpenSearch (external — not bundled)
-# ---------------------------------------------------------------------------
-# The URL is config.opensearchUrl. The cluster runs its security plugin: every client
-# authenticates (basic auth) and verifies the cluster's TLS certificate.
 opensearch:
-  external: true
-  url: "https://opensearch.truenorth.local:9200"
+  # Required; https:// unless securityDisabled.
+  url: ""
   username: admin
-  # Required (the release fails to render without it); no default on purpose.
-  password: ""
   # A Secret with key ca.pem: the CA the cluster's certificate chains to, mounted at
   # /etc/truenorth/opensearch/ca.pem and used as OPENSEARCH_VERIFY_SSL. Empty: the
   # image's system trust store, with verification per verifySSL.
   caSecret: ""
   verifySSL: true
   # LAB/DEV OVERRIDE ONLY: a cluster without the security plugin (no credentials sent;
-  # use an http opensearchUrl). Never in production.
+  # an http url is allowed). Never in production.
   securityDisabled: false
 
 # ---------------------------------------------------------------------------
-# Network Policies
+# Network Policies. Ingress is always restricted: api and web admit the ingress
+# controller and this release's pods; the AI orchestrator admits only the api and the
+# workers; workers, beat, the migration Job and Flower admit nothing.
 # ---------------------------------------------------------------------------
 networkPolicy:
   enabled: true
+  # Where the ingress controller runs.
+  ingressControllerNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: ingress-nginx
+  # Where Prometheus runs (admitted to the api's :8080). Empty: none.
+  metricsNamespaceSelector: {}
+  egress:
+    # Off by default: the external endpoints are site-specific. When on, pods may reach
+    # cluster DNS, this release's pods and the rules in `to` (NetworkPolicyEgressRule
+    # objects: the datastores, Keycloak, OpenSearch, vCenter, the model endpoint).
+    enabled: false
+    to: []

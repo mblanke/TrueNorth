@@ -92,8 +92,11 @@ def test_installer_defaults_to_security_on_with_generated_passwords():
 
 
 def test_helm_requires_opensearch_credentials():
-    values = yaml.safe_load((HELM / "values.yaml").read_text())["opensearch"]
-    assert values["password"] == "" and values["securityDisabled"] is False and values["verifySSL"] is True
+    all_values = yaml.safe_load((HELM / "values.yaml").read_text())
+    values = all_values["opensearch"]
+    assert values["securityDisabled"] is False and values["verifySSL"] is True
+    # The password lives with the other secrets (or secrets.existingSecret); no default.
+    assert all_values["secrets"]["opensearchPassword"] == ""
     secret = (HELM / "templates/secret.yaml").read_text()
-    assert 'required "opensearch.password is required' in secret
+    assert 'required "secrets.opensearchPassword is required' in secret
     assert "OPENSEARCH_VERIFY_SSL" in (HELM / "templates/configmap.yaml").read_text()
