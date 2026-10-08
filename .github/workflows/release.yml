@@ -1,0 +1,248 @@
+# ------------------------------------------------------------------
+# TrueNorth Range — Release (tag v*)
+# ------------------------------------------------------------------
+# Builds the five service images from the tagged commit, pushes each to GHCR BY DIGEST,
+# scans the pushed digest with Trivy (blocking on fixable HIGH/CRITICAL), writes an SBOM
+# per image, and only then gives the digest the version tag. The GitHub release carries
+# release-manifest.json (service -> digest), the SBOMs, the scan reports and SHA256SUMS.
+# The installer pulls images by the digests in release-manifest.json; nothing here
+# deploys anything. How to cut and verify a release: docs/release.md.
+#
+# Supply chain (docs/release.md "Pins"): every third-party action is pinned by commit SHA.
+# Trivy's own release channel was compromised on 2026-03-19 (CVE-2026-33634: malicious
+# v0.69.4, hijacked trivy-action/setup-trivy tags), so the Trivy binary is not fetched by
+# the action's installer: it is downloaded here and checked against a SHA-256 taken from
+# the cosign-verified checksums file of v0.74.0.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_PREFIX: ghcr.io/mblanke/truenorth
+  TRIVY_VERSION: "0.74.0"
+  TRIVY_SHA256: "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a"
+
+jobs:
+  version:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::release tags are vX.Y.Z or vX.Y.Z-suffix, got '$TAG'"
+            exit 1
+          fi
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: Image ${{ matrix.service.name }}
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        service:
+          - name: api
+            context: control-plane/api
+          - name: worker
+            context: control-plane/worker
+            build_contexts: scenario_engine=scenario-engine
+          - name: web
+            context: control-plane/web
+          - name: scenario-engine
+            context: scenario-engine
+          - name: ai-orchestrator
+            context: ai-orchestrator
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      IMAGE: ghcr.io/mblanke/truenorth-${{ matrix.service.name }}
+      SERVICE: ${{ matrix.service.name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fresh base image and no layer cache: a release must not inherit stale OS packages
+      # from a cache. Pushed untagged; the version tag is added only after the scan.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ matrix.service.context }}
+          build-contexts: ${{ matrix.service.build_contexts }}
+          build-args: TN_VERSION=${{ env.VERSION }}
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          pull: true
+          no-cache: true
+          provenance: false
+          sbom: false
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Install Trivy (checksum-pinned)
+        run: |
+          set -euo pipefail
+          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$tarball" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${tarball}"
+          echo "${TRIVY_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/trivy-bin"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/trivy-bin" trivy
+          echo "$RUNNER_TEMP/trivy-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/trivy-bin/trivy" --version
+
+      # BLOCKING: any HIGH or CRITICAL vulnerability with a fix available fails the
+      # release, and the digest never gets its version tag.
+      - name: Trivy scan (blocking, fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          skip-setup-trivy: true
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: json
+          output: trivy-${{ matrix.service.name }}.json
+          exit-code: "1"
+      - name: Trivy report (table)
+        if: success() || failure()
+        run: |
+          if [[ -f "trivy-$SERVICE.json" ]]; then
+            trivy convert --format table "trivy-$SERVICE.json"
+          fi
+
+      - name: SBOM (SPDX)
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.service.name }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag the scanned digest with the version
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE@$DIGEST"
+          # The tag must resolve to exactly the digest that was scanned.
+          got=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          if [[ "$got" != "$DIGEST" ]]; then
+            echo "::error::$IMAGE:$VERSION resolves to $got, expected $DIGEST"
+            exit 1
+          fi
+
+      - name: Manifest entry
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p out
+          python3 - <<'EOF'
+          import json, os
+          entry = {
+              "service": os.environ["SERVICE"],
+              "image": os.environ["IMAGE"],
+              "digest": os.environ["DIGEST"],
+              "ref": f'{os.environ["IMAGE"]}@{os.environ["DIGEST"]}',
+              "tag": f'{os.environ["IMAGE"]}:{os.environ["VERSION"]}',
+          }
+          with open(f'out/{os.environ["SERVICE"]}.entry.json', "w") as f:
+              json.dump(entry, f, indent=2)
+          EOF
+          mv "trivy-$SERVICE.json" "sbom-$SERVICE.spdx.json" out/
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: success() || failure()
+        with:
+          name: release-${{ matrix.service.name }}
+          path: |
+            out/
+            trivy-${{ matrix.service.name }}.json
+          if-no-files-found: ignore
+
+  publish:
+    name: GitHub release
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: assets
+          merge-multiple: true
+      - name: release-manifest.json
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd assets/out
+          python3 - <<'EOF'
+          import datetime, glob, json, os
+          services = ["api", "worker", "web", "scenario-engine", "ai-orchestrator"]
+          images = {}
+          for path in sorted(glob.glob("*.entry.json")):
+              with open(path) as f:
+                  e = json.load(f)
+              images[e.pop("service")] = e
+          missing = [s for s in services if s not in images]
+          if missing:
+              raise SystemExit(f"release-manifest: no image for {missing}")
+          manifest = {
+              "schema_version": 1,
+              "version": os.environ["VERSION"],
+              "git_sha": os.environ["GIT_SHA"],
+              "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "images": images,
+          }
+          with open("release-manifest.json", "w") as f:
+              json.dump(manifest, f, indent=2, sort_keys=True)
+              f.write("\n")
+          print(json.dumps(manifest, indent=2, sort_keys=True))
+          EOF
+          rm -f ./*.entry.json
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          prerelease=()
+          if [[ "$VERSION" == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "$VERSION" assets/out/* \
+            --verify-tag --title "TrueNorth $VERSION" --generate-notes "${prerelease[@]}"
