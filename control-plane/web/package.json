@@ -11,7 +11,8 @@
     "test:ci": "ng test --no-watch --code-coverage",
     "lint": "ng lint",
     "gen:api": "node scripts/api-types.mjs --write",
-    "check:api": "node scripts/api-types.mjs"
+    "check:api": "node scripts/api-types.mjs",
+    "check:prod-env": "node scripts/check-prod-env.mjs"
   },
   "dependencies": {
     "@angular/animations": "^21.2.25",
