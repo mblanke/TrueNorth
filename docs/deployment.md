@@ -871,6 +871,7 @@ services:
 | `TRUSTED_PROXY_CIDRS` | `127.0.0.0/8,::1/128,172.16.0.0/12` | Prod | Peers whose `X-Forwarded-For` is believed (comma-separated CIDRs; `none` ignores the header). Set it to your reverse proxies' addresses. Auth-zone IP allowlists, the rate limiter and `NOISE_AGENT_CIDRS` all use the resulting address. The bundled nginx configs overwrite `X-Forwarded-For` with `$remote_addr`; a proxy in front of them must be added to `set_real_ip_from` in `infra/platform/nginx/nginx.conf`. |
 | `NOISE_AGENT_CIDRS` | -- | Recommended | Management network(s) noise agents call from; `/noise/agent/*` answers 403 to anyone else. nginx does not filter this path itself: put an `allow`/`deny` `location ^~ /api/noise/agent/` in front if you want it refused at the edge too. |
 | `METRICS_SCRAPE_TOKEN` | -- | Helm | When set, `/metrics` requires `Authorization: Bearer <token>`. |
+| `SCHEDULER_FEED_BASE_URL` | -- | Prod | Public origin of calendar-feed URLs (`https://range.example`). Unset, the API uses the request's own `Host` and, with auth on, logs a warning at startup; `X-Forwarded-Host` is never used. |
 
 ### Celery Worker
 
