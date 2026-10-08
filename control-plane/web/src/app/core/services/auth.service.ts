@@ -87,10 +87,7 @@ export class AuthService {
    * publishing and exporting quizzes need it; Students get 403. The API enforces it;
    * this only hides the controls.
    */
-  readonly canAuthorCourses = computed(() => this.isInstructor());
-  /** Mirrors `integration:read` in rbac.py: instructors and admins (lists external platforms). */
-  readonly canReadIntegrations = computed(() => this.isInstructor());
-  /** The schedule (calendar, capacity, timeline) is for staff; Students never see it (ADR 0004). */
+  readonly canAuthorCourses = computed(() => this.isInstructor());  /** The schedule (calendar, capacity, timeline) is for staff; Students never see it (ADR 0004). */
   readonly canViewSchedule = computed(() => {
     const role = this.userSignal()?.role;
     return !!role && role !== 'student';

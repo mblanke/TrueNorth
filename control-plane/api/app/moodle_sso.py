@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from . import lti13
 from .auth import CurrentUser
+from .course_publishing.models import PUBLISHED, CoursePublication
 from .models import Course, Enrollment, EnrollmentStatus, ExternalPlatform, User
 from .rbac import Permission, user_has_permission
 from .tenancy import get_owned_or_global, tenant_uuid
@@ -72,6 +73,31 @@ def tenant_moodle(db: Session, user: CurrentUser) -> ExternalPlatform:
     if not platform or not platform.lti_issuer:
         raise NotAvailableError(404, "No Moodle is set up for your unit")
     return platform
+
+
+def course_available(db: Session, user: CurrentUser, course_id: uuid.UUID) -> bool:
+    """Whether "Open in Moodle" can land on this course for the caller's tenant.
+
+    True when the tenant has a usable Moodle (``tenant_moodle``) AND the course is live
+    on it: the ticket's ``course`` claim is looked up in Moodle by ``idnumber``, which only
+    a published release creates (``live_idnumber`` = course id). Without a publication,
+    ``sso.php`` fails with ``ssocoursemissing``. Enrolment is not part of this: an
+    un-enrolled Student gets a clear 403 from ``/integrations/moodle/sso``.
+    """
+    try:
+        platform = tenant_moodle(db, user)
+    except NotAvailableError:
+        return False
+    return (
+        db.query(CoursePublication.id)
+        .filter(
+            CoursePublication.course_id == course_id,
+            CoursePublication.platform_id == platform.id,
+            CoursePublication.state == PUBLISHED,
+        )
+        .first()
+        is not None
+    )
 
 
 def moodle_role(db: Session, user: CurrentUser, course_id: uuid.UUID | None) -> str:

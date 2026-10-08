@@ -3,37 +3,28 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
-import { signal } from '@angular/core';
 import { ApiService } from '@core/services/api.service';
-import { AuthService } from '@core/services/auth.service';
 import { CourseDetailComponent } from './course-detail.component';
 
 const OUTLINE = {
   id: 'c-1', course_code: 'C101', name: 'C101 — Log triage', description: 'Find the beacon',
   difficulty: 'beginner', duration_hours: 4, is_published: true, institution: '', dp_order: 1,
-  term_label: '', provenance: '', status: '', tags: [], modules: [],
+  term_label: '', provenance: '', status: '', tags: [], modules: [], moodle_available: true,
 };
-
-const MOODLE = { id: 'p1', platform_type: 'moodle', is_active: true, lti_issuer: 'https://moodle.test' };
 
 describe('CourseDetailComponent', () => {
   let fixture: ComponentFixture<CourseDetailComponent>;
   let api: jasmine.SpyObj<ApiService>;
   let submitted: HTMLFormElement[];
 
-  function setup(
-    id: string | null = 'c-1',
-    opts: { staff?: boolean; platforms?: unknown } = { staff: true, platforms: of([MOODLE]) },
-  ): void {
+  function setup(id: string | null = 'c-1', outline: object = OUTLINE): void {
     api = jasmine.createSpyObj<ApiService>('ApiService', ['get', 'post']);
-    api.get.and.callFake(((path: string) =>
-      path === '/integrations/platforms' ? opts.platforms ?? of([]) : of(OUTLINE)) as any);
+    api.get.and.returnValue(of(outline) as any);
     TestBed.configureTestingModule({
       imports: [CourseDetailComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
         { provide: ApiService, useValue: api },
-        { provide: AuthService, useValue: { canReadIntegrations: signal(!!opts.staff) } },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap(id ? { id } : {}) } } },
       ],
     });
@@ -59,30 +50,22 @@ describe('CourseDetailComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Log triage');
   });
 
-  it('shows Open in Moodle when the tenant has an active Moodle with an LTI issuer', () => {
+  it('shows Open in Moodle when the outline says the course is live on the tenant Moodle', () => {
     setup();
-    expect(api.get).toHaveBeenCalledWith('/integrations/platforms');
     expect(moodleButton()).toBeDefined();
-  });
-
-  it('hides Open in Moodle when the tenant has no Moodle', () => {
-    setup('c-1', { staff: true, platforms: of([{ ...MOODLE, platform_type: 'offsec' }]) });
-    expect(moodleButton()).toBeUndefined();
-  });
-
-  it('hides Open in Moodle for an inactive or unconfigured Moodle', () => {
-    setup('c-1', { staff: true, platforms: of([{ ...MOODLE, is_active: false }, { ...MOODLE, lti_issuer: null }]) });
-    expect(moodleButton()).toBeUndefined();
-  });
-
-  it('hides Open in Moodle when the platform lookup fails', () => {
-    setup('c-1', { staff: true, platforms: throwError(() => ({ status: 500 })) });
-    expect(moodleButton()).toBeUndefined();
-  });
-
-  it('hides Open in Moodle from a Student, for whom no API says whether a Moodle exists', () => {
-    setup('c-1', { staff: false });
+    // Every role reads the flag from the outline; nothing needs integration:read.
     expect(api.get).not.toHaveBeenCalledWith('/integrations/platforms');
+  });
+
+  it('hides Open in Moodle when the outline says Moodle is not available', () => {
+    setup('c-1', { ...OUTLINE, moodle_available: false });
+    expect(moodleButton()).toBeUndefined();
+  });
+
+  it('hides Open in Moodle when the outline has no flag (older API)', () => {
+    const legacy: Partial<typeof OUTLINE> = { ...OUTLINE };
+    delete legacy.moodle_available;
+    setup('c-1', legacy);
     expect(moodleButton()).toBeUndefined();
   });
 
