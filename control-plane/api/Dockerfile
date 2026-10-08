@@ -2,7 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+# Distro security updates at build time: the base tag lags them, and release.yml blocks
+# on any fixable HIGH/CRITICAL (docs/release.md).
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 # setuptools and wheel are build tooling the base image ships; nothing imports them at
@@ -10,7 +13,18 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip uninstall -y setuptools wheel
 
-COPY . .
+# Allowlist, not `COPY . .`: only what the API runs and migrates with goes in the image,
+# so a stray script or log in this directory cannot ship (2026-10 audit P0-7).
+COPY alembic.ini ./
+COPY alembic ./alembic
+COPY app ./app
+# Release version (release.yml passes the git tag). The API's APP_VERSION constant
+# does not read it yet; TN_VERSION is the interface for that.
+ARG TN_VERSION=dev
+ENV TN_VERSION=${TN_VERSION}
+LABEL org.opencontainers.image.title="truenorth-api" \
+      org.opencontainers.image.version="${TN_VERSION}" \
+      org.opencontainers.image.source="https://github.com/mblanke/TrueNorth"
 # Run as an unprivileged user (Trivy DS-0002). Dependencies and code stay root-owned,
 # so a compromised process cannot rewrite the app it is running.
 RUN useradd --system --uid 10001 --create-home --home-dir /home/app app

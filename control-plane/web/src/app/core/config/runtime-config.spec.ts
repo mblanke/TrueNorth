@@ -51,6 +51,17 @@ describe('runtime config', () => {
     }
   });
 
+  it('takes the Moodle URL, but only an http(s) URL or same-origin path', () => {
+    const e = env();
+    applyRuntimeConfig({ moodleUrl: ' https://lms.example.com/ ' }, e);
+    expect(e.moodleUrl).toBe('https://lms.example.com/');
+    for (const bad of ['javascript:alert(1)', '//evil.example/', '  ', 7]) {
+      const f = env();
+      applyRuntimeConfig({ moodleUrl: bad }, f);
+      expect(f.moodleUrl).toBeUndefined();
+    }
+  });
+
   it('takes admin links, but only http(s) URLs and same-origin paths', () => {
     const e = env();
     applyRuntimeConfig({

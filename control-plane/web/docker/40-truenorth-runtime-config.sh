@@ -10,6 +10,8 @@
 #   TN_ADMIN_MINIO_URL       Admin > Services: MinIO console     (unset: card hidden)
 #   TN_ADMIN_DASHBOARDS_URL  Admin > Services: OpenSearch Dashboards (unset: card hidden)
 #   TN_ADMIN_AI_URL          Admin > Services: AI orchestrator API docs (unset: card hidden)
+#   TN_MOODLE_URL            Learning > LMS previews: the Moodle site's address, used when
+#                            no Moodle platform is registered (unset: no link)
 #
 # The web root is root-owned and read-only to this user, so the file goes to
 # /tmp/truenorth-runtime/config.json; nginx.conf serves /assets/config.json from there
@@ -31,10 +33,11 @@ admin_kc="${TN_ADMIN_KEYCLOAK_URL:-}"
 admin_minio="${TN_ADMIN_MINIO_URL:-}"
 admin_dash="${TN_ADMIN_DASHBOARDS_URL:-}"
 admin_ai="${TN_ADMIN_AI_URL:-}"
+moodle="${TN_MOODLE_URL:-}"
 
-if [ -z "${url}${realm}${client}${admin_kc}${admin_minio}${admin_dash}${admin_ai}" ]; then
+if [ -z "${url}${realm}${client}${admin_kc}${admin_minio}${admin_dash}${admin_ai}${moodle}" ]; then
   rm -f "$target"
-  echo "truenorth: no TN_KEYCLOAK_* / TN_ADMIN_* set; serving the built-in runtime config"
+  echo "truenorth: no TN_KEYCLOAK_* / TN_ADMIN_* / TN_MOODLE_URL set; serving the built-in runtime config"
   exit 0
 fi
 
@@ -55,6 +58,7 @@ check TN_ADMIN_KEYCLOAK_URL "$admin_kc"
 check TN_ADMIN_MINIO_URL "$admin_minio"
 check TN_ADMIN_DASHBOARDS_URL "$admin_dash"
 check TN_ADMIN_AI_URL "$admin_ai"
+check TN_MOODLE_URL "$moodle"
 
 # object NAME KEY VALUE [KEY VALUE ...]: `"NAME":{...}` with the non-empty pairs, or nothing.
 object() {
@@ -73,8 +77,16 @@ object() {
 
 kc="$(object keycloak url "$url" realm "$realm" clientId "$client")"
 links="$(object adminLinks keycloak "$admin_kc" minio "$admin_minio" dashboards "$admin_dash" ai "$admin_ai")"
-sep=""
-[ -z "$kc" ] || [ -z "$links" ] || sep=","
+lms=""
+[ -z "$moodle" ] || lms="\"moodleUrl\":\"$moodle\""
 
-printf '{%s%s%s}\n' "$kc" "$sep" "$links" > "$target"
+# Join the non-empty members with commas.
+body=""
+for part in "$kc" "$links" "$lms"; do
+  [ -n "$part" ] || continue
+  [ -z "$body" ] || body="${body},"
+  body="${body}${part}"
+done
+
+printf '{%s}\n' "$body" > "$target"
 echo "truenorth: runtime config written to $target: $(cat "$target")"

@@ -22,6 +22,11 @@ export interface AppEnvironment {
    * whose link is unset is not shown. Runtime-overridable (TN_ADMIN_* in the container).
    */
   adminLinks: AdminLinks;
+  /**
+   * The Moodle site Learning > LMS previews links to when no Moodle platform is
+   * registered under Integrations. Unset: no link. Runtime-overridable (TN_MOODLE_URL).
+   */
+  moodleUrl?: string;
 }
 
 export interface AdminLinks {

@@ -17756,7 +17756,7 @@
     },
     "/ai/detection-draft": {
       "post": {
-        "description": "Draft a detection rule for a MITRE technique in the requested format.",
+        "description": "Draft a detection rule for a MITRE technique in the requested format.\n\n**Permission: range:update** (was: any signed-in user) \u2014 the same right that saves a\ndetection rule. A Student must not have the model write the detection they are\nassessed on submitting (ADR 0005).",
         "operationId": "detection_draft_ai_detection_draft_post",
         "requestBody": {
           "content": {
@@ -17805,7 +17805,7 @@
     },
     "/ai/scenario-draft": {
       "post": {
-        "description": "Draft an engine-dialect scenario YAML from training objectives.",
+        "description": "Draft an engine-dialect scenario YAML from training objectives.\n\n**Permission: scenario:create** (was: any signed-in user) \u2014 scenario authoring.",
         "operationId": "scenario_draft_ai_scenario_draft_post",
         "requestBody": {
           "content": {
@@ -20037,7 +20037,7 @@
     },
     "/courses": {
       "get": {
-        "description": "List courses with optional filters.\n\n`tags` is repeatable and ANDs \u2014 `?tags=DP1&tags=delivers:none` is \"DP1 courses that\ndeliver no objective\". Tags are derived at import from `course_meta`\n(`programme_ingest.catalogue_tags`), never hand-authored.\n\nRetired courses are hidden by default: they are spine-generated stubs that authored\ncontent has superseded, kept only so their scenario/range wiring survives.",
+        "description": "List courses with optional filters.\n\n`tags` is repeatable and ANDs \u2014 `?tags=DP1&tags=delivers:none` is \"DP1 courses that\ndeliver no objective\". Tags are derived at import from `course_meta`\n(`programme_ingest.catalogue_tags`), never hand-authored.\n\nRetired courses are hidden by default: they are spine-generated stubs that authored\ncontent has superseded, kept only so their scenario/range wiring survives.\n\nScope: the caller's tenant plus global courses. Without ``course:author`` only\npublished courses are listed, whatever ``published_only`` says; authors may filter.",
         "operationId": "list_courses_courses_get",
         "parameters": [
           {
@@ -20365,7 +20365,7 @@
         ]
       },
       "get": {
-        "description": "Get a single course with its modules.",
+        "description": "Get a single course with its modules: own tenant or global; a draft is 404\nwithout ``course:author``.",
         "operationId": "get_course_courses__course_id__get",
         "parameters": [
           {
@@ -20642,7 +20642,7 @@
     },
     "/courses/{course_id}/outline": {
       "get": {
-        "description": "A course with everything needed to actually read it.\n\n`CourseOut` returns modules but not their content, so the course page could only\never list module titles. This walks the teach -> check -> assess rows so the page\ncan show what each module teaches, the quiz that checks it, the lab that assesses\nit, and the performance objective it satisfies.\n\n``moodle_available`` says whether \"Open in Moodle\" can work for the caller: their\ntenant has an active Moodle with an LTI issuer and this course is published to it.",
+        "description": "A course with everything needed to actually read it.\n\n`CourseOut` returns modules but not their content, so the course page could only\never list module titles. This walks the teach -> check -> assess rows so the page\ncan show what each module teaches, the quiz that checks it, the lab that assesses\nit, and the performance objective it satisfies.\n\nOwn tenant or global; a draft is 404 without ``course:author``.\n\n``moodle_available`` says whether \"Open in Moodle\" can work for the caller: their\ntenant has an active Moodle with an LTI issuer and this course is published to it.",
         "operationId": "course_outline_courses__course_id__outline_get",
         "parameters": [
           {
@@ -20756,6 +20756,7 @@
     },
     "/curricula": {
       "get": {
+        "description": "**Permission: course:author** (was: any signed-in user).",
         "operationId": "list_curricula_curricula_get",
         "responses": {
           "200": {
@@ -20784,6 +20785,7 @@
         ]
       },
       "post": {
+        "description": "**Permission: course:author** (was: any signed-in user).",
         "operationId": "create_curriculum_curricula_post",
         "requestBody": {
           "content": {
@@ -20830,6 +20832,7 @@
     },
     "/curricula/{curriculum_id}": {
       "delete": {
+        "description": "**Permission: course:author** (was: any signed-in user).",
         "operationId": "delete_curriculum_curricula__curriculum_id__delete",
         "parameters": [
           {
@@ -20869,6 +20872,7 @@
         ]
       },
       "get": {
+        "description": "**Permission: course:author** (was: any signed-in user).",
         "operationId": "get_curriculum_curricula__curriculum_id__get",
         "parameters": [
           {
@@ -20917,7 +20921,7 @@
     },
     "/curricula/{curriculum_id}/documents": {
       "post": {
-        "description": "Upload one or more courseware files; ingestion runs in the background.",
+        "description": "Upload one or more courseware files; ingestion runs in the background.\n\n**Permission: course:author** (was: any signed-in user).",
         "operationId": "upload_documents_curricula__curriculum_id__documents_post",
         "parameters": [
           {
@@ -21035,7 +21039,7 @@
     },
     "/curricula/{curriculum_id}/ingest": {
       "post": {
-        "description": "Re-run ingestion for any documents that are pending or errored.",
+        "description": "Re-run ingestion for any documents that are pending or errored.\n\n**Permission: course:author** (was: any signed-in user).",
         "operationId": "reingest_curricula__curriculum_id__ingest_post",
         "parameters": [
           {
@@ -21084,6 +21088,7 @@
     },
     "/curricula/{curriculum_id}/search": {
       "post": {
+        "description": "Retrieve the chunks of one curriculum closest to ``query``.\n\n**Permission: course:author** (was: any signed-in user). Tenant-scoped twice: the\ncurriculum must be the caller's (``_get_owned``), and the RAG index is per curriculum,\nso hits can only come from that curriculum's own documents.",
         "operationId": "search_curriculum_curricula__curriculum_id__search_post",
         "parameters": [
           {
@@ -21146,7 +21151,7 @@
     },
     "/curricula/{curriculum_id}/urls": {
       "post": {
-        "description": "Register web pages as curriculum sources; fetched during ingestion.",
+        "description": "Register web pages as curriculum sources; fetched during ingestion.\n\n**Permission: course:author** (was: any signed-in user).",
         "operationId": "register_urls_curricula__curriculum_id__urls_post",
         "parameters": [
           {
@@ -26082,7 +26087,7 @@
     },
     "/learning-paths": {
       "get": {
-        "description": "List the tenant's learning paths.",
+        "description": "List learning paths: the tenant's plus global ones; published only without\n``course:author``.",
         "operationId": "list_learning_paths_learning_paths_get",
         "responses": {
           "200": {
@@ -26198,7 +26203,7 @@
         ]
       },
       "get": {
-        "description": "Get a single learning path.",
+        "description": "Get a single learning path: own tenant or global; a draft is 404 without\n``course:author``.",
         "operationId": "get_learning_path_learning_paths__lp_id__get",
         "parameters": [
           {

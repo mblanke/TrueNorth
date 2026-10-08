@@ -386,6 +386,9 @@ services:
       TN_ADMIN_MINIO_URL: "${TN_ADMIN_MINIO_URL:-http://localhost:9001}"
       TN_ADMIN_DASHBOARDS_URL: "${TN_ADMIN_DASHBOARDS_URL:-http://localhost:5601}"
       TN_ADMIN_AI_URL: "${TN_ADMIN_AI_URL:-http://localhost:6000/docs}"
+      # Learning > LMS previews links here unless a Moodle platform is registered;
+      # compose.moodle.yml publishes Moodle on this port.
+      TN_MOODLE_URL: "${TN_MOODLE_URL:-http://localhost:8083/}"
     ports:
       - "4200:8080"  # web's nginx runs unprivileged on 8080
     depends_on:

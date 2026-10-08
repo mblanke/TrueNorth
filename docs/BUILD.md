@@ -82,6 +82,10 @@ flowchart LR
 
 ### ci.yml — Main CI Pipeline
 
+> **Illustrative, not the live file.** The workflows that run are in `.github/workflows/`
+> (lanes: `RESUME.md`). Releases are `release.yml`: images by digest, a blocking Trivy
+> scan, and `release-manifest.json` (`docs/release.md`). No workflow deploys.
+
 ```yaml
 name: CI
 on:
@@ -173,9 +177,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Pip audit
         run: pip-audit --requirement control-plane/api/requirements.txt
+      # Never @master or a tag: Trivy's release channel was compromised on 2026-03-19
+      # (CVE-2026-33634). Pin the action by commit SHA and install a checksum-verified
+      # Trivy yourself, as ci.yml and release.yml do (docs/release.md "Pins").
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          skip-setup-trivy: true
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL

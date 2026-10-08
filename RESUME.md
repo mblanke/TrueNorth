@@ -1,23 +1,68 @@
-# Session resume — 2026-08-19
+# Resume — 2026-10-08
 
-Read this after restarting tmux. Everything below is committed and pushed
-(`origin/feat/aar-pdf-designer-xapi`).
+Read this first after a restart. It describes the current state. History is in
+`git log` and `docs/hardening/`. Product state, module by module: `docs/current-state.md`.
+Releasing: `docs/release.md`.
 
-## The box was rebooted at the end of this session
+## Where the code is
 
-Driver episode is closed: NVIDIA is back on **580.173.02** across kernel module,
-DKMS and userspace, with **no apt holds** (unattended-upgrades can resume normally).
-DKMS is built for kernel 6.8.0-138, which is what boots.
+- **`main` on GitHub (`mblanke/TrueNorth`) is the line.** It is the default branch, CI
+  runs on PRs into it, and releases are tags on it. Local `main` and `github/main` have
+  diverged before, so check `git rev-list --left-right --count main...github/main` before
+  branching "from main". `feat/aar-pdf-designer-xapi` is an old line, not the base.
+- main holds the **stage-4 base**. The section modules live under
+  `control-plane/api/app/<module>/`: scheduler + capacity, range leases and range ops,
+  lab sessions, network inventory, noise, greyspace, detections, scenario runs, course
+  releases/publishing, LMS, wiki/support tickets/notifications. The hardening R-series
+  (#55–#68) is merged, and so are the later PRs up to #96 except the open ones below.
+- **Held / open PRs** (2026-10-08): #90 (sealed credentials, non-root images; this
+  branch builds on it), #94 (installer fixes, lab plane), #97 (detection hardening),
+  #92 (session coordinator). #3–#51 predate the re-land on main. Check each against main
+  before acting on it, and do not merge them as they are.
 
-If anything GPU-related looks wrong after the reboot, check these three agree:
-```bash
-grep -oE '[0-9]+\.[0-9]+\.[0-9]+' /proc/driver/nvidia/version | head -1   # loaded
-modinfo nvidia | awk '/^version:/{print $2}'                              # on disk
-ls /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.*.*.* | sed 's/.*so\.//'      # userspace
-nvidia-smi -L
-```
+## The gate and the CI lanes
 
-## First command after a reboot
+`bash scripts/dod.sh` is Definition of Done (CLAUDE.md). On a Mac you need a per-worktree
+venv (`uv venv .venv --python 3.11`, then
+`uv pip install --python .venv/bin/python -r requirements-test.txt "ruff==0.16.3"`).
+Capture the exit code: piping into `tail` hides failures.
+
+`ci.yml`, on PRs into main and on push to main:
+
+| Job | What | Blocking |
+|---|---|---|
+| lint-python | ruff ratchet (`scripts/ruff-gate.sh`), `ruff format --check` report | ratchet yes, format no |
+| test-python | `pytest tests/ --ignore=tests/integration` with PostgreSQL 16 + OpenSearch services; fails if any PostgreSQL test skipped | yes |
+| mosa | MOSA ratchet, OpenAPI / task-contract / table-mirror drift | yes |
+| supply-chain | pip-audit, npm audit (prod deps), repo SBOM | yes |
+| lint-angular, build-angular | eslint, Karma (ChromeHeadless), generated API types match, prod build | yes |
+| build-docker | five images built and Trivy-scanned (pinned v0.74.0) | fixable CRITICAL yes; HIGH reported |
+| helm-lint, keycloak-realm | chart lint; realm imports into the pinned Keycloak | yes |
+| integration | itest stack (`scripts/itest.sh`), `tests/integration`; zero passed = fail | yes |
+| e2e | Playwright (lockfile, `npm ci`) on itest + keycloak + web | yes |
+| load-smoke | k6, every scenario at 1 VU for 30 s (`tests/load/README.md`) | **no** (yet) |
+| moodle, vsphere-sim, greyspace | disposable Moodle publish, vcsim provisioner, Greyspace T0 stack | yes |
+
+Other workflows: `release.yml` (tag `v*`: images by digest, Trivy gate, SBOMs,
+`release-manifest.json`), `lab.yml` (nightly live vSphere on a self-hosted runner),
+`packer-build.yml` (manual), `terraform-plan.yml` (Proxmox PRs). `deploy-dev.yml` and
+`deploy-prod.yml` were deleted on 2026-10-08 (they could not work; see
+`docs/release.md`). **Nothing in CI deploys.** The installer (`install/`) deploys.
+
+## How to release
+
+Tag a green commit of main `vX.Y.Z` and push the tag. Then verify the release assets
+(`SHA256SUMS`, the digests in `release-manifest.json`, the Trivy reports and SBOMs) as in
+`docs/release.md`. A green gate, or a published release, is not approval to deploy.
+
+## Box operations (Taz AI box; last verified 2026-08-19)
+
+The rest of this file is about the GPU/LLM development box, not the product. It has not
+been re-verified since 2026-08-19. NVIDIA was on **580.173.02** (kernel module, DKMS and
+userspace), with no apt holds. If GPU behaviour looks wrong, compare
+`/proc/driver/nvidia/version`, `modinfo nvidia` and `nvidia-smi -L`.
+
+### First command after a reboot
 
 ```bash
 /opt/llm-stack/taz-status.sh              # what is actually running
@@ -47,7 +92,7 @@ curl -s localhost:9090/api/v1/targets | head -c 200
 Note the API is **not** published on the LAN (it maps `8080/tcp -> 127.0.0.1:8081` and is
 reached via nginx at `:4200/api/`). A probe of `:8000` fails by design, not by fault.
 
-## The two modes
+### The two modes
 
 | You want | Run | Then |
 |---|---|---|
@@ -60,68 +105,20 @@ clear message if GLM is not up, rather than silently degrading to a weaker model
 Scripts in `/opt/llm-stack/`: `to-fleet.sh`, `to-glm.sh`, `taz-status.sh`,
 `apply-deferred.sh` (already run), `_helpers.sh`.
 
-## What was done this session
+## Still open (product)
 
-**Security**
-- Cross-tenant IDOR swept across all routers (~46 lookups). New `app/tenancy.py`
-  (`get_owned` / `owned_or_404`), plus a static guard test so it cannot regress.
-- `scheduling.py` had **no authentication at all** — all ten `/schedule` endpoints were
-  open. Auth now enforced at router level.
-- Data services no longer published on the LAN. Before: `GET /ranges` and `/tenants`
-  returned 200 from `133.1.14.240` with no token (dev runs `AUTH_DISABLED=true`), and
-  OpenSearch listed its indices. Now `9200`/`8081`/`6000` are loopback-only; `4200`
-  stays published because nginx proxies `/api/` internally.
-- Live LiteLLM master key removed from `.claude/settings.local.json` (never in git).
-
-**AI environment**
-- NVIDIA driver mismatch repaired; `nvidia-persistenced` restarted (dead since the
-  2026-07-25 unattended upgrade) and pinned to boot.
-- GLM-5.2 now has an API key and a systemd unit with `Restart=on-failure`.
-- Codex was completely broken (`wire_api = "chat"` removed in codex-cli 0.144.1) and is
-  now wired to Claude Code over MCP, running `coder-fast` — a different model from GLM.
-- Fleet verified: 4 models answering concurrently in 2s total wall-clock.
-
-**Repo**
-- `make migrate` pointed at a stale 2-revision alembic tree; now targets the live
-  12-revision tree under `control-plane/api/`.
-- Removed duplicated dead trees (`scenario-engine/{injectors,validators,scoring}`).
-- README CI/coverage badges were unbacked; replaced with the real number.
-- `pyproject.toml` deps reconciled with `requirements.txt`; `httpx` pins aligned so a
-  combined install resolves.
-- QSP crosswalk: NICE mappings reconciled, and a false `component_version: v2.1.0` claim
-  corrected to `SP800-181r1` (the ids in use are SP 800-181 rev 1).
-
-**Test baseline: 603 passed, 5 xfailed, 0 skipped.**
-
-The old "27 skipped — needs external services" line was wrong, and the wrongness was the
-point: the services were up the whole time. The integration suite was gated on an
-`INTEGRATION_TEST=1` flag nobody set, and behind that gate it had drifted completely off
-the API contract — posting to `/telemetry/events` (the route is
-`/telemetry/{range_id}/events`), creating ranges with a null `template_id` the schema
-requires, and polling for a range state `provisioned` that is not in `RangeState`. It is
-now gated on whether the API actually answers, so drift surfaces the day it appears.
-
-The 5 xfails are real gaps, named in the tests, not hidden:
-
-- 4 × no scenario-level execution API (`POST /scenarios/execute` and the execution
-  results/timeline endpoints do not exist; scenarios run via `POST /exercises/{id}/start`).
-- 1 × **snapshot restore cannot work on any backend.** `worker/tasks.py:912` calls
-  `provisioner.restore()`, and no provisioner implements it — mock, vsphere, hyperv,
-  proxmox and terraform all define `snapshot()` and none define `restore()`. The
-  retrying task also stamps `failed` over whatever terminal state the range had already
-  reached, so a failed restore can clobber a successful destroy.
-
-## Still open
-
-1. **Content is the real bottleneck** — ~2,600 build hours, ~57% gated on cleared humans
-   and purchased courseware. No tooling changes that.
-2. **DCWF codes** for the four Red Analyst rows (only a NICE mapping was available;
-   rows carry a `DCWF-TODO` marker and a test asserts it stays).
-3. **NICE v2.1.0 re-map** if the programme must cite that version — no authoritative
-   components file was reachable, and inventing ids was not acceptable.
-4. `scenario-engine/{runner,template_engine}` have zero importers and no packaged
-   counterpart — possibly dead, not safe to delete blind.
-5. vSphere work is unreachable from this box (separate LAN).
+1. **Installing by digest.** The installer still fetches source and
+   `compose.prod.yml` still `build:`s, ignoring `IMAGE_TAG`. Consuming
+   `release-manifest.json` is the installer work package (interface: `docs/release.md`).
+2. **The API does not report its version.** `APP_VERSION = "0.1.0"` is hard-coded in
+   `control-plane/api/app/main.py`. Images carry `TN_VERSION` for it to read.
+3. **k6 smoke is non-blocking.** The load scripts predate the current API
+   (`tests/load/README.md` "CI smoke").
+4. **Live vSphere evidence** needs the self-hosted lab runner and its credentials
+   (`lab.yml`, `docs/runbooks/lab-runner.md`). The Taz box cannot reach that LAN.
+5. **Content is the real bottleneck:** about 2,600 build hours, about 57% of them gated
+   on cleared humans and purchased courseware. The four Red Analyst crosswalk rows still
+   carry `DCWF-TODO`.
 
 ## Gotchas that cost time — do not relearn them
 

@@ -41,7 +41,9 @@ generates it at start-up into `/tmp/truenorth-runtime/config.json`, which nginx 
 at that path, from `TN_KEYCLOAK_URL`, `TN_KEYCLOAK_REALM`, `TN_KEYCLOAK_CLIENT_ID` and
 the Admin > Services links `TN_ADMIN_KEYCLOAK_URL` (default `<keycloak url>/admin/`),
 `TN_ADMIN_MINIO_URL`, `TN_ADMIN_DASHBOARDS_URL`, `TN_ADMIN_AI_URL` (cards hidden when
-unset) (`docker/40-truenorth-runtime-config.sh`). Unset values keep the build defaults.
+unset), and `TN_MOODLE_URL`, the Moodle site Learning > LMS previews links to when no
+Moodle platform is registered (`docker/40-truenorth-runtime-config.sh`). Unset values
+keep the build defaults.
 Only those fields can be overridden: there is no runtime switch for `authDisabled`.
 
 - `compose.dev.yml`: `TN_KEYCLOAK_URL=http://localhost:8180` (sign in with a dev-realm user).

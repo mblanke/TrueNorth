@@ -175,7 +175,8 @@ export const routes: Routes = [
         { label: 'Courses', path: 'courses' },
         { label: 'My progress', path: 'progress' },
         { label: 'Competency', path: 'competency' },
-        { label: 'Curriculum', path: 'curriculum' },
+        // The Curriculum Forge is authoring: the API needs course:author on every call.
+        { label: 'Curriculum', path: 'curriculum', instructorOnly: true },
         { label: 'LMS & readiness previews', path: 'previews' },
         { label: 'Admin', path: 'admin', instructorOnly: true },
       ],
@@ -198,6 +199,7 @@ export const routes: Routes = [
       },
       {
         path: 'curriculum',
+        canActivate: [instructorGuard],
         loadComponent: () =>
           import('./features/curriculum-forge/curriculum-forge.component').then(m => m.CurriculumForgeComponent),
         title: 'Curriculum - TrueNorth Range',

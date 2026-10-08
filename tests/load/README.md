@@ -55,6 +55,8 @@ tests/load/
 │   ├── data.js                 # Test data generators (ranges, templates, etc.)
 │   └── checks.js               # Reusable check/assertion functions
 ├── scenarios/
+│   ├── baseline.js             # Light constant load, strict thresholds
+│   ├── ci-gate.js              # < 30 s read-only gate
 │   ├── smoke.js                # Smoke test — 10 VUs, 1 min
 │   ├── load.js                 # Standard load — 200 VUs, 10 min
 │   ├── stress.js               # Stress test — 1,200 VUs, 15 min
@@ -66,6 +68,56 @@ tests/load/
 ├── run-all.ps1                 # PowerShell runner script
 └── README.md                   # This file
 ```
+
+---
+
+## CI smoke (`load-smoke` job in `.github/workflows/ci.yml`)
+
+Every scenario in `scenarios/` runs at **1 VU for 30 s** (`--vus 1 --duration 30s`, which
+replaces each script's own `scenarios`/`stages`) against the itest stack: the API on
+`http://127.0.0.1:18081`, mock provisioner, `AUTH_DISABLED`, schema from
+`alembic upgrade head` (`scripts/itest.sh up`). k6 is `grafana/k6` v1.8.1, pinned by
+digest. Each run has a 240 s wall-clock limit because `setup()` is not bounded by
+`--duration`.
+
+It shows that the scripts still run against the current API, and it records the
+scenario's thresholds at trivial load. **It is not a capacity test.** One VU for 30 s says
+nothing about 1,200 users.
+
+**Non-blocking for now** (`continue-on-error: true`). These scripts predate the current
+API, and some calls no longer match it (for example `GET /telemetry`, which is not in
+`docs/interfaces/openapi.json`). A failing scenario is a `::warning::` and the job is
+yellow. `build/k6/summary.txt` (k6 exit code per scenario; 99 means thresholds crossed)
+and `<scenario>.json` (`--summary-export`) are uploaded as the `k6-smoke` artifact.
+
+Thresholds each scenario applies (from the script; the CI run uses them as they are):
+
+| Scenario | Thresholds |
+|---|---|
+| `baseline` | `http_req_duration` p50<200, p95<400, p99<800 ms; `http_req_failed` <0.5%; `checks` >99% |
+| `ci-gate` | `http_req_duration` p95<400, p99<1000 ms; `http_req_failed` <1%; `checks` >99% |
+| `smoke`, `load` | default (below) |
+| `soak` | default, with `http_req_duration` p95<600, p99<2000 ms |
+| `spike` | default, with `http_req_duration` p95<1500, p99<3000 ms |
+| `stress` | stress (below) |
+| `batch-provision` | stress, plus `batch_provision_duration` p95<10 s and `provisions_enqueued` count>=500. **This always fails at 1 VU/30 s**, because the count is unreachable at that load |
+| `websocket` | `ws_connect_duration` p95<2000 ms; `ws_message_latency` p95<500 ms; `ws_errors` <5% |
+
+**Making it blocking.** Fix or retire the calls that do not match the API. Then make
+`ci-gate` and `baseline` blocking: drop `continue-on-error` and run the rest in a
+separate non-blocking step. Leave `batch-provision`'s count threshold out of the smoke
+run (`--no-thresholds`, or an env-driven threshold) instead of lowering it in the script.
+
+Locally, against your own itest stack:
+
+```bash
+bash scripts/itest.sh up
+docker run --rm --network host -v "$PWD/tests/load:/load:ro" grafana/k6:1.8.1 \
+  run --vus 1 --duration 30s -e BASE_URL=http://127.0.0.1:18081 /load/scenarios/ci-gate.js
+bash scripts/itest.sh down
+```
+
+(`--network host` needs Linux, or Docker Desktop with host networking enabled.)
 
 ---
 
