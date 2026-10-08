@@ -1,7 +1,7 @@
 """seal the LTI tool private key and the noise plan keys
 
 Revision ID: b7c8d9e0f1a3
-Revises: f4b5c6d7e8a9
+Revises: e4f5a6b7c8d9
 Create Date: 2026-10-08 12:00:00.000000
 
 The two secrets f4b5c6d7e8a9 left as stored: `lti_tool_keys.private_key_pem` (signs every
@@ -19,7 +19,7 @@ from alembic import op
 from app import secretbox
 
 revision: str = "b7c8d9e0f1a3"
-down_revision: str | None = "f4b5c6d7e8a9"
+down_revision: str | None = "e4f5a6b7c8d9"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
