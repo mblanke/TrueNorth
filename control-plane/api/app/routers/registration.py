@@ -317,6 +317,29 @@ def _resolve_tenant(db: Session, req: RegistrationRequest, approver: CurrentUser
     return target
 
 
+def _check_adoptable(existing: User, approver: CurrentUser, target_tenant: uuid.UUID) -> None:
+    """An approval may take over an existing account only if the approver could have made it.
+
+    Approving rewrites the row's role, tenant and Keycloak subject. Before (PR #112
+    review), a tenant B admin could approve a request bearing tenant A's admin's email
+    and so adopt that account: move it into B, re-role it and bind it to the
+    requester's identity. Now the row must already be in the target tenant and hold a
+    role the approver could grant (grant_refusal); otherwise 409, and nothing changes.
+    """
+    if existing.tenant_id is None or str(existing.tenant_id) != str(target_tenant):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"An account for {existing.email} already exists in another tenant; "
+            "it cannot be adopted by this approval",
+        )
+    if grant_refusal(approver, existing.role) is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"An account for {existing.email} already exists with the '{existing.role.value}' role, "
+            "which you cannot grant; an administrator must resolve it",
+        )
+
+
 def _enroll_for(
     db: Session,
     *,
@@ -389,6 +412,8 @@ def _approve_one(
     #
     # 1. Same Keycloak subject — this identity already has an account.
     user = db.query(User).filter(User.keycloak_id == req.keycloak_id).first()
+    if user is not None:
+        _check_adoptable(user, approver, target_tenant)
 
     if user is None:
         # 2. Adopt a pre-provisioned row (CSV roster / local account) rather than
@@ -402,6 +427,7 @@ def _approve_one(
                 f"A user with email {req.email} already exists from source '{existing.source}'",
             )
         if existing is not None:
+            _check_adoptable(existing, approver, target_tenant)
             user = existing
             user.keycloak_id = req.keycloak_id
         else:

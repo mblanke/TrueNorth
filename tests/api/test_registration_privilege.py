@@ -201,6 +201,66 @@ def test_unset_platform_tenant_single_tenant_admin_is_still_the_operator(client,
     assert client.post("/tenants", json={"name": "Third", "slug": "third"}).status_code == 403
 
 
+# ── Adoption: approval may take over only an account the approver could have made ──
+def _local_account(db, tenant_id, role: UserRole, email: str) -> User:
+    row = User(id=uuid.uuid4(), keycloak_id=f"local-{uuid.uuid4().hex[:8]}", email=email,
+               display_name=email, role=role, tenant_id=tenant_id, source="local")
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _pending_for(db, tenant_id, email: str) -> RegistrationRequest:
+    req = _pending(db, tenant_id)
+    req.email = email
+    db.flush()
+    return req
+
+
+def test_admin_of_b_cannot_adopt_tenant_a_admin_by_email(client, db_session, two_tenants_operator_elsewhere):
+    """The hijack: B's admin approves a request carrying A's admin's email into B."""
+    a, b, _ = two_tenants_operator_elsewhere
+    victim = _local_account(db_session, a.id, UserRole.admin, "boss@alpha.example")
+    kc_before = victim.keycloak_id
+    req = _pending_for(db_session, b.id, "boss@alpha.example")
+    act_as(real_user(db_session, UserRole.admin, b.id))
+
+    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "student", "tenant_id": str(b.id)})
+
+    assert r.status_code == 409, r.text
+    assert "another tenant" in r.json()["detail"]
+    db_session.refresh(victim)
+    assert (victim.tenant_id, victim.role, victim.keycloak_id) == (a.id, UserRole.admin, kc_before)
+    db_session.refresh(req)
+    assert req.status == RegistrationStatus.pending
+
+
+def test_instructor_cannot_adopt_an_admin_account_in_own_tenant(client, db_session, tenant_a):
+    admin_row = _local_account(db_session, tenant_a.id, UserRole.admin, "chief@alpha.example")
+    req = _pending_for(db_session, tenant_a.id, "chief@alpha.example")
+    act_as(real_user(db_session, UserRole.instructor, tenant_a.id))
+
+    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "student", "tenant_id": str(tenant_a.id)})
+
+    assert r.status_code == 409, r.text
+    assert "cannot grant" in r.json()["detail"]
+    db_session.refresh(admin_row)
+    assert admin_row.role == UserRole.admin
+
+
+def test_roster_student_in_the_target_tenant_is_still_adopted(client, db_session, tenant_a):
+    roster = _local_account(db_session, tenant_a.id, UserRole.student, "cadet@alpha.example")
+    roster.source = "csv_import"
+    req = _pending_for(db_session, tenant_a.id, "cadet@alpha.example")
+    act_as(real_user(db_session, UserRole.instructor, tenant_a.id))
+
+    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "student", "tenant_id": str(tenant_a.id)})
+
+    assert r.status_code == 200, r.text
+    db_session.refresh(roster)
+    assert roster.keycloak_id == req.keycloak_id and roster.source == "ad"
+
+
 def test_production_refuses_a_platform_tenant_id_that_is_not_a_uuid(monkeypatch):
     from app.settings import production_problems
 
