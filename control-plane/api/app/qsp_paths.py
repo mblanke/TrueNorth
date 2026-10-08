@@ -262,12 +262,20 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
     # avoids both hazards of building a stub alongside it: renaming the authored course
     # and overwriting its provenance, and creating a second `ordinal=0` claimant that
     # every resolver would prefer, silently shadowing the authored module.
+    #
+    # Only this tenant's courses count. The spine (POs) is platform-global, so a bare
+    # po_id lookup found every tenant's modules: one tenant's generation returned another
+    # tenant's authored course onto its own paths, or renamed another tenant's stub.
     authored: Course | None = None
     stub_mod: CourseModule | None = None
     for candidate in (
-        db.query(CourseModule).filter_by(po_id=po.id).order_by(CourseModule.ordinal).all()
+        db.query(CourseModule)
+        .join(Course, Course.id == CourseModule.course_id)
+        .filter(CourseModule.po_id == po.id, Course.tenant_id == tenant_id)
+        .order_by(CourseModule.ordinal)
+        .all()
     ):
-        cand_course = db.query(Course).filter_by(id=candidate.course_id).one_or_none()
+        cand_course = db.query(Course).filter_by(id=candidate.course_id, tenant_id=tenant_id).one_or_none()
         if cand_course is None:
             continue
         cand_meta = course_meta_of(cand_course)
@@ -279,7 +287,7 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
     if authored is not None:
         return authored
     if stub_mod is not None:
-        course = db.query(Course).filter_by(id=stub_mod.course_id).one()
+        course = db.query(Course).filter_by(id=stub_mod.course_id, tenant_id=tenant_id).one()
         course.name = display_name  # refresh title on re-run
         course.course_meta = meta
         course.duration_hours = max(1, round((po.duration_min or 0) / 60))
@@ -341,7 +349,11 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
         ordinal += 1
 
     # assess: link the PO's assessment scenario if one exists (by po_code in the name)
-    scenario = db.query(Scenario).filter(Scenario.name.ilike(f"%{po.po_code}%")).first()
+    scenario = (
+        db.query(Scenario)
+        .filter(Scenario.name.ilike(f"%{po.po_code}%"), Scenario.tenant_id == tenant_id)
+        .first()
+    )
     db.add(ModuleContent(module_id=module.id, ordinal=ordinal, content_kind="assess",
                          scenario_id=scenario.id if scenario else None,
                          external_ref=json.dumps({"po_code": po.po_code})))
@@ -351,7 +363,9 @@ def _po_course(db: Session, po: PerformanceObjective, qual: Qualification, tenan
 
 def _get_or_create_path(db: Session, name: str, description: str, course_ids: list[str],
                         prereq: dict, tenant_id: str | None) -> tuple[LearningPath, bool]:
-    lp = db.query(LearningPath).filter_by(name=name).one_or_none()
+    # By name within the tenant: by name alone, one tenant's generation rewrote the
+    # course list of another tenant's path with the same name.
+    lp = db.query(LearningPath).filter_by(name=name, tenant_id=tenant_id).one_or_none()
     created = lp is None
     if created:
         lp = LearningPath(name=name, tenant_id=tenant_id)
@@ -674,9 +688,13 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
     provision later; scenarios are structural stubs. No LLM.
     """
     stats = {"scenarios": 0, "ranges": 0, "exercises": 0, "objectives": 0, "wired_modules": 0}
+    # Every lookup below is within the caller's tenant. Until 2026-10-08 none was: any
+    # instructor's run deleted every tenant's "* Assessment Range", rewrote other tenants'
+    # scenarios found by name and scaffolded exercises for other tenants' modules.
 
     # 1) retire the earlier shared env-ranges + their exercises (superseded by per-PO ranges)
-    for old in db.query(Range).filter(Range.name.like("% Assessment Range")).all():
+    for old in db.query(Range).filter(Range.name.like("% Assessment Range"), Range.tenant_id == tenant_id).all():
+        # tenant-safe: exercises on a range of this tenant, selected just above.
         for ex in db.query(Exercise).filter_by(range_id=old.id).all():
             db.query(Objective).filter_by(exercise_id=ex.id).delete()
             db.delete(ex)
@@ -686,9 +704,10 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
 
     def _range_for_po(po: PerformanceObjective) -> Range:
         """One placeholder Range per PO, carrying a generated topology diagram."""
+        # tenant-safe: the spine (qualification of a PO) is platform-global by design.
         qual = db.query(Qualification).filter_by(id=po.qualification_id).one()
         tmpl_name = f"{qual.qsp_code} {po.po_code} Range"
-        template = db.query(Template).filter_by(name=tmpl_name).one_or_none()
+        template = db.query(Template).filter_by(name=tmpl_name, tenant_id=tenant_id).one_or_none()
         if template is None:
             template = Template(
                 name=tmpl_name, tenant_id=tenant_id, is_public=False,
@@ -697,7 +716,7 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
             db.add(template)
             db.flush()
         diagram = range_topology.build_diagram(po)
-        rng = db.query(Range).filter_by(name=tmpl_name).one_or_none()
+        rng = db.query(Range).filter_by(name=tmpl_name, tenant_id=tenant_id).one_or_none()
         if rng is None:
             rng = Range(
                 name=tmpl_name, template_id=template.id, tenant_id=tenant_id,
@@ -711,7 +730,12 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
         return rng
 
     # 2) per PO-course (module carries po_id), create scenario + exercise + objectives
-    modules = db.query(CourseModule).filter(CourseModule.po_id.isnot(None)).all()
+    modules = (
+        db.query(CourseModule)
+        .join(Course, Course.id == CourseModule.course_id)
+        .filter(CourseModule.po_id.isnot(None), Course.tenant_id == tenant_id)
+        .all()
+    )
     for module in modules:
         po = db.query(PerformanceObjective).filter_by(id=module.po_id).one_or_none()
         if po is None:
@@ -725,7 +749,7 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
             continue
 
         scen_name = f"{po.po_code}: {po.title}"
-        scenario = db.query(Scenario).filter_by(name=scen_name).one_or_none()
+        scenario = db.query(Scenario).filter_by(name=scen_name, tenant_id=tenant_id).one_or_none()
         if scenario is None:
             scenario = Scenario(name=scen_name, yaml=_scenario_yaml(po, crit), tenant_id=tenant_id)
             db.add(scenario)
@@ -761,9 +785,10 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
             stats["wired_modules"] += 1
 
         rng = _range_for_po(po)
+        # tenant-safe: the spine (qualification of a PO) is platform-global by design.
         qual = db.query(Qualification).filter_by(id=po.qualification_id).one()
         ex_name = f"{course_code(po, qual)} — {po.title}"
-        exercise = db.query(Exercise).filter_by(scenario_id=scenario.id).one_or_none()
+        exercise = db.query(Exercise).filter_by(scenario_id=scenario.id, tenant_id=tenant_id).one_or_none()
         if exercise is None:
             exercise = Exercise(
                 name=ex_name, range_id=rng.id, scenario_id=scenario.id,

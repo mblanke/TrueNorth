@@ -168,6 +168,7 @@ def _commit_holding(db: Session, pub: CoursePublication, *, release_lease: bool 
 def _category(db: Session, release: CourseRelease) -> dict[str, str]:
     from ..models import Course
 
+    # tenant-safe: the release's own course, and its qualification (the platform-global spine).
     course = db.get(Course, release.course_id)
     qual = db.get(Qualification, course.qualification_id) if course and course.qualification_id else None
     if qual is not None:
@@ -224,6 +225,7 @@ def _same_course(db: Session, pub: CoursePublication):
 def _newer_than(db: Session, pub: CoursePublication, release: CourseRelease) -> bool:
     """Whether a later release of this course is already published on this Moodle."""
     for other in _same_course(db, pub).filter(CoursePublication.state == PUBLISHED).all():
+        # tenant-safe: releases of pub's own course (request() checked it is the tenant's).
         other_release = db.get(CourseRelease, other.release_id)
         if other_release is not None and other_release.version > release.version:
             return True
@@ -237,6 +239,7 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
     whether it is retried by hand or resumed at startup, so Moodle never rolls back."""
     if pub.state in (PUBLISHED, SUPERSEDED):
         return pub
+    # tenant-safe: pub's own release and platform, both checked same-tenant by request().
     release = db.get(CourseRelease, pub.release_id)
     if release is None or release.state != ACCEPTED or _newer_than(db, pub, release):
         pub.state = SUPERSEDED
@@ -249,7 +252,7 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
             "this publication is already running, or another release of this course is being published to"
             " this Moodle; it runs after that one"
         )
-    platform = db.get(ExternalPlatform, pub.platform_id)
+    platform = db.get(ExternalPlatform, pub.platform_id)  # tenant-safe: see the release above
     pub.attempts += 1
     pub.error = ""
     warnings: list[str] = []
@@ -311,6 +314,7 @@ def run(db: Session, pub: CoursePublication, *, backend: BaseMoodleBackend | Non
         sort_keys=True,
     )
     for older in _same_course(db, pub).all():
+        # tenant-safe: releases of pub's own course (request() checked it is the tenant's).
         older_release = db.get(CourseRelease, older.release_id)
         if older.state != SUPERSEDED and older_release is not None and older_release.version < release.version:
             older.state = SUPERSEDED
@@ -340,7 +344,7 @@ def _fail(db: Session, pub: CoursePublication, error: str) -> CoursePublication:
 def retry(db: Session, pub: CoursePublication) -> CoursePublication:
     if pub.state == PUBLISHED:
         raise PublishRefusedError("already published")
-    release = db.get(CourseRelease, pub.release_id)
+    release = db.get(CourseRelease, pub.release_id)  # tenant-safe: pub's own release
     if pub.state == SUPERSEDED or release is None or release.state != ACCEPTED:
         raise PublishRefusedError("a later release of this course has been accepted; publish that one")
     pub.state = REQUESTED
@@ -378,7 +382,7 @@ def waiting(db: Session, course_id: uuid.UUID, platform_id: uuid.UUID) -> Course
     )
 
     def version(p: CoursePublication) -> int:
-        release = db.get(CourseRelease, p.release_id)
+        release = db.get(CourseRelease, p.release_id)  # tenant-safe: p's own release
         return release.version if release is not None else 0
 
     return max(pubs, key=version, default=None)

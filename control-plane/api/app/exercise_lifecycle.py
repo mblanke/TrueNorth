@@ -28,6 +28,7 @@ def create_for_booking(
     db.add(ex)
     db.flush()
     # As POST /exercises: the scenario's objectives are what the exercise is scored on.
+    # tenant-safe: the booking's scenario, checked against its tenant when it was booked.
     sc = db.get(Scenario, scenario_id)
     points = scenario_objectives.materialise(db, ex.id, sc.yaml if sc else None)
     if points:

@@ -214,6 +214,7 @@ def flush_outbox(db: Session) -> int:
     resent = db.info.pop(RESENT, set())
     try:
         for session_id in db.info.pop(OUTBOX, []):
+            # tenant-safe: ids this transaction queued itself (_hold), never caller input.
             session = db.get(LabSession, session_id)
             if session is None:
                 continue
@@ -425,6 +426,7 @@ def release_for_student(
     if enrollment.status in (EnrollmentStatus.withdrawn, EnrollmentStatus.failed):
         raise LabRefusedError("your enrollment in this course is closed", 403)
     pin = pin_enrollment(db, enrollment)
+    # tenant-safe: a release of the course fetched with Course.tenant_id == tenant_id above.
     release = db.get(CourseRelease, pin.release_id) if pin else active_release(db, course_id)
     if release is None:
         raise LabRefusedError("this course has no accepted release", 404)
@@ -561,6 +563,7 @@ def _start(
 
 
 def _profile(db: Session, session: LabSession) -> dict[str, Any]:
+    # tenant-safe: the session's own release, set at launch from its tenant's course.
     return release_profile(db, db.get(CourseRelease, session.release_id), session.activity_id)
 
 
@@ -579,6 +582,7 @@ def advance(db: Session, session: LabSession) -> LabSession:
     """One step forward from whatever the session is waiting on. Callers hold its lease
     (claim) and send the queued tasks after commit (flush_outbox)."""
     now = _now()
+    # tenant-safe: the session's own range, created by this module in its tenant.
     rng = db.get(Range, session.range_id) if session.range_id else None
     state = session.state
     if session.pending and session.pending != "[]":
@@ -644,6 +648,7 @@ def _advance_provisioning(db: Session, session: LabSession, rng: Range | None, n
 
 
 def _advance_baselining(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
+    # tenant-safe: the session's own baseline snapshot, taken by this module.
     snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
     if snap is not None and snap.snapshot_state == "ready":
         _set_state(session, READY)
@@ -663,6 +668,7 @@ def _advance_baselining(db: Session, session: LabSession, rng: Range | None, now
 def _advance_resetting(db: Session, session: LabSession, rng: Range | None, now: datetime) -> None:
     profile = _profile(db, session)
     if profile["reset"]["mode"] == "snapshot":
+        # tenant-safe: the session's own baseline snapshot, taken by this module.
         snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
         if rng is None or rng.state == RangeState.failed:
             return _fail(db, session, "the reset did not complete; the lab has been shut down")
@@ -717,6 +723,7 @@ def _fail(db: Session, session: LabSession, error: str) -> None:
     session.error = error[:2000]
     session.end_reason = session.end_reason or "failed"
     logger.warning("lab session %s failed: %s", session.id, error)
+    # tenant-safe: the session's own range, created by this module in its tenant.
     rng = db.get(Range, session.range_id) if session.range_id else None
     if rng is not None and rng.state != RangeState.destroyed:
         if rng.state != RangeState.destroying:
@@ -746,9 +753,10 @@ def touch(db: Session, session: LabSession) -> LabSession:
 def reset(db: Session, session: LabSession) -> LabSession:
     if session.state not in (READY, ACTIVE):
         raise LabRefusedError(f"the lab is {session.state}; it can be reset once it is ready")
-    rng = db.get(Range, session.range_id)
+    rng = db.get(Range, session.range_id)  # tenant-safe: the session's own range
     profile = _profile(db, session)
     if profile["reset"]["mode"] == "snapshot":
+        # tenant-safe: the session's own baseline snapshot, taken by this module.
         snap = db.get(RangeSnapshot, session.baseline_snapshot_id) if session.baseline_snapshot_id else None
         if snap is None or snap.snapshot_state != "ready":
             raise LabRefusedError("this lab has no reset point")
@@ -787,6 +795,7 @@ def end(db: Session, session: LabSession, *, reason: str = "completed") -> LabSe
         return session
     session.ended_at = _now()
     session.end_reason = reason
+    # tenant-safe: the session's own range, created by this module in its tenant.
     rng = db.get(Range, session.range_id) if session.range_id else None
     if rng is None:
         _release_networks(db, session)
@@ -896,6 +905,7 @@ def console(db: Session, session: LabSession, node: str | None = None) -> dict[s
     target = node or (allowed[0] if allowed else None)
     if target not in allowed:
         raise LabRefusedError(f"no console on {target}", 403)
+    # tenant-safe: the session's own range, created by this module in its tenant.
     vm = probes.vm_for(target, _vms(db.get(Range, session.range_id)), range_id=session.range_id)
     if vm is None:
         raise LabRefusedError(f"{target} has no VM yet")
