@@ -20642,7 +20642,7 @@
     },
     "/courses/{course_id}/outline": {
       "get": {
-        "description": "A course with everything needed to actually read it.\n\n`CourseOut` returns modules but not their content, so the course page could only\never list module titles. This walks the teach -> check -> assess rows so the page\ncan show what each module teaches, the quiz that checks it, the lab that assesses\nit, and the performance objective it satisfies.",
+        "description": "A course with everything needed to actually read it.\n\n`CourseOut` returns modules but not their content, so the course page could only\never list module titles. This walks the teach -> check -> assess rows so the page\ncan show what each module teaches, the quiz that checks it, the lab that assesses\nit, and the performance objective it satisfies.\n\n``moodle_available`` says whether \"Open in Moodle\" can work for the caller: their\ntenant has an active Moodle with an LTI issuer and this course is published to it.",
         "operationId": "course_outline_courses__course_id__outline_get",
         "parameters": [
           {
@@ -20976,7 +20976,7 @@
     },
     "/curricula/{curriculum_id}/generate-course": {
       "post": {
-        "description": "Draft a course (with modules and quiz placeholders) from the ingested curriculum.",
+        "description": "Draft a course (with modules and quiz placeholders) from the ingested curriculum.\n\n**Permission: course:author** (was: any signed-in user). It writes a Course and its\nmodules, which is authoring, and spends AI-orchestrator time.",
         "operationId": "generate_course_curricula__curriculum_id__generate_course_post",
         "parameters": [
           {
@@ -23983,7 +23983,7 @@
     },
     "/health": {
       "get": {
-        "description": "Quick health check - liveness + dependency flags.",
+        "description": "Health with dependency flags. 503 (``status: \"unavailable\"``) when the database is down.\n\nRedis is reported but does not fail this check; ``/health/ready`` fails on either.\nProbes: ``/health/live`` for liveness, ``/health/ready`` for readiness.",
         "operationId": "health_check_health_get",
         "responses": {
           "200": {
@@ -23995,6 +23995,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "The database is unreachable"
           }
         },
         "summary": "Health Check",
@@ -24023,9 +24033,29 @@
         ]
       }
     },
+    "/health/live": {
+      "get": {
+        "description": "Liveness probe: 200 while the process serves requests. Touches no dependency.",
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/health/ready": {
       "get": {
-        "description": "Readiness probe - checks DB + Redis connectivity.",
+        "description": "Readiness probe: DB and Redis (and OpenSearch when OPENSEARCH_URL is set). 503 if any is down.",
         "operationId": "readiness_health_ready_get",
         "responses": {
           "200": {
@@ -24942,7 +24972,7 @@
         ]
       },
       "post": {
-        "description": "Register an external learning platform (Moodle, Immersive Labs, OffSec).\n\n**Permission: integration:write**",
+        "description": "Register an external learning platform (Moodle, Immersive Labs, OffSec).\n\n**Permission: integration:write**\n\n409: another tenant already registered this ``lti_issuer``.",
         "operationId": "register_platform_integrations_platforms_post",
         "requestBody": {
           "content": {
@@ -25076,7 +25106,7 @@
         ]
       },
       "patch": {
-        "description": "Update a registered platform.",
+        "description": "Update a registered platform.\n\n403: changing a Moodle platform's ``lti_issuer`` (the site its sign-in tickets are\naddressed to) needs a platform administrator. 409: another tenant already registered\nthat issuer.",
         "operationId": "update_platform_integrations_platforms__platform_id__patch",
         "parameters": [
           {
@@ -33382,7 +33412,7 @@
     },
     "/scenarios/execute": {
       "post": {
-        "description": "Run a scenario's timeline against a ready range.  **Permission: exercise:start**\n\n202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.\n422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is\ndown (the execution is recorded ``failed``).",
+        "description": "Run a scenario's timeline against a ready range.  **Permission: scenario:update + exercise:start**\n\n202: queued. 403: not staff. 404: scenario or range not in your tenant. 409: the range\nis not ready, or it belongs to a Student's lab session. 422: the YAML is not a mapping\nor its timeline is not a list. 503: the worker broker is down (the execution is\nrecorded ``failed``).",
         "operationId": "execute_scenario_scenarios_execute_post",
         "requestBody": {
           "content": {
@@ -33478,7 +33508,7 @@
     },
     "/scenarios/executions/{execution_id}/timeline": {
       "get": {
-        "description": "Each timeline event with its recorded outcome (``pending`` until the worker reaches it).",
+        "description": "Each timeline event with its recorded outcome (``pending`` until the worker reaches it).\n\nStaff (``scenario:update``) see the whole entry. Anyone else sees only ``seq``, ``t``\nand ``status`` of recorded events: the action, detail and technique are the answer\nkey (ADR 0005 \u00a75), and a pending event's ``action`` comes straight from the playbook.",
         "operationId": "get_execution_timeline_scenarios_executions__execution_id__timeline_get",
         "parameters": [
           {

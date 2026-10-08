@@ -250,7 +250,7 @@ class TestGenerateAndRender:
             async def __aexit__(self, *a):
                 return False
 
-            async def post(self, url, json=None):
+            async def post(self, url, json=None, headers=None):
                 return _Resp()
 
         monkeypatch.setattr(httpx, "AsyncClient", _Client)

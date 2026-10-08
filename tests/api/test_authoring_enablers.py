@@ -228,7 +228,7 @@ class TestAarAiEnhance:
             async def __aexit__(self, *a):
                 return False
 
-            async def post(self, url, json=None):
+            async def post(self, url, json=None, headers=None):
                 captured["url"] = url
                 captured["json"] = json
                 return _Resp()

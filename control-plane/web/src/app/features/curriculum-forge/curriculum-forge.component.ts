@@ -14,6 +14,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subscription, interval } from 'rxjs';
 
 import { ApiService } from '@core/services/api.service';
+import { AuthService } from '@core/services/auth.service';
 import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 
 @Component({
@@ -159,6 +160,8 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
               </div>
             }
 
+            <!-- Quiz authoring needs course:author; the API returns 403 to Students. -->
+            @if (canAuthor()) {
             <h2 class="panel-title mt"><mat-icon>quiz</mat-icon> Generate quiz</h2>
             <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
               <mat-label>Topic</mat-label>
@@ -183,6 +186,7 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
               <mat-icon>{{ generatingQuiz() ? 'hourglass_top' : 'auto_fix_high' }}</mat-icon>
               {{ generatingQuiz() ? 'Writing questions…' : 'Generate quiz with AI' }}
             </button>
+            }
 
             <h2 class="panel-title mt"><mat-icon>radar</mat-icon> Generate range</h2>
             <p class="muted small">Turn learning objectives into a deployable exercise that measures them.</p>
@@ -209,24 +213,34 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
               </div>
               <div class="quiz-actions">
                 @if (!q.is_published) {
-                  <button mat-button color="primary" (click)="publish(q)">
-                    <mat-icon>publish</mat-icon> Publish
-                  </button>
+                  @if (canAuthor()) {
+                    <button mat-button color="primary" (click)="publish(q)">
+                      <mat-icon>publish</mat-icon> Publish
+                    </button>
+                  }
                 } @else {
                   <a mat-button color="primary" [routerLink]="['/quiz-player']" [queryParams]="{ quiz: q.id }">
                     <mat-icon>play_arrow</mat-icon> Take
                   </a>
                 }
-                <a mat-button [href]="exportUrl(q.id, 'gift')" target="_blank">
-                  <mat-icon>download</mat-icon> GIFT
-                </a>
-                <a mat-button [href]="exportUrl(q.id, 'moodlexml')" target="_blank">
-                  <mat-icon>download</mat-icon> Moodle XML
-                </a>
+                @if (canAuthor()) {
+                  <!-- Exports contain the answer key: course:author only. -->
+                  <a mat-button [href]="exportUrl(q.id, 'gift')" target="_blank">
+                    <mat-icon>download</mat-icon> GIFT
+                  </a>
+                  <a mat-button [href]="exportUrl(q.id, 'moodlexml')" target="_blank">
+                    <mat-icon>download</mat-icon> Moodle XML
+                  </a>
+                }
               </div>
             </mat-card>
           }
-          @empty { <p class="muted">No quizzes for this curriculum yet — generate one above.</p> }
+          @empty {
+            <p class="muted">
+              @if (canAuthor()) { No quizzes for this curriculum yet — generate one above. }
+              @else { No published quizzes for this curriculum yet. }
+            </p>
+          }
         </div>
       }
     </div>
@@ -290,6 +304,9 @@ import { EnterStaggerDirective, HoverLiftDirective } from '../../shared/motion';
 export class CurriculumForgeComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private snack = inject(MatSnackBar);
+  private auth = inject(AuthService);
+  /** Quiz generate/publish/export need course:author (see AuthService). */
+  readonly canAuthor = this.auth.canAuthorCourses;
 
   curricula = signal<any[]>([]);
   selected = signal<any | null>(null);

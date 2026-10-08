@@ -700,7 +700,7 @@ def force_release_range_lease(
         f"released {holder} (expired: {expired}); reason: {body.reason}",
     )
     db.commit()
-    logger.warning("range %s: lease tombstone force-released by %s: %s", rng.id, user.email or user.id, body.reason)
+    logger.warning("range %s: lease tombstone force-released by user %s: %s", rng.id, user.id, body.reason)
     return ops.ForceReleaseOut(
         range_id=rng.id, released_holder=holder, was_expired=expired, warning=ops.FORCE_RELEASE_WARNING
     )

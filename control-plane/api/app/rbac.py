@@ -328,8 +328,8 @@ def require_tenant_access(tenant_id_param: str = "tenant_id") -> Callable[..., A
         db: Session = Depends(get_db),
         **kwargs: Any,
     ) -> CurrentUser:
-        # Admins skip tenant isolation
-        if user.role == UserRole.admin:
+        # Only the platform operator skips tenant isolation: admins are per tenant.
+        if is_platform_admin(user):
             return user
 
         # Resolve the target tenant_id from path params via FastAPI injection
@@ -350,7 +350,7 @@ def require_range_access() -> Callable[..., Any]:
     """FastAPI dependency — ensures the user has access to the range's tenant.
 
     Expects a ``range_id`` path parameter.  Looks up the range in the DB and
-    verifies the user's ``tenant_id`` matches (admins bypass).
+    verifies the user's ``tenant_id`` matches (the platform administrator bypasses).
 
     Usage::
 
@@ -366,9 +366,10 @@ def require_range_access() -> Callable[..., Any]:
         user: CurrentUser = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> CurrentUser:
-        if user.role == UserRole.admin:
+        if is_platform_admin(user):  # admins are per tenant; only the operator crosses
             return user
 
+        # tenant-safe: the range's tenant is compared with the caller's just below.
         rng = db.query(Range).filter(Range.id == range_id).first()
         if rng is None:
             raise HTTPException(status_code=404, detail="Range not found")

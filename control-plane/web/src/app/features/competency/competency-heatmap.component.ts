@@ -1,7 +1,9 @@
 import {
-  Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, effect, inject,
+  Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, effect, inject, signal,
 } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { ApiService, CompetencyHeatmap } from '@core/services/api.service';
+import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -9,22 +11,13 @@ import { FormsModule } from '@angular/forms';
 import { ThemeService } from '@core/services/theme.service';
 import { tnChartColors } from '../../shared/charts/echarts-theme';
 
-/**
- * NICE Framework competency categories (SP 800-181r1)
- * Used as Y-axis for the heatmap
- */
-const NICE_CATEGORIES = [
-  'Analyze', 'Collect & Operate', 'Investigate', 'Operate & Maintain',
-  'Oversee & Govern', 'Protect & Defend', 'Securely Provision',
-];
-
 const PROFICIENCY_LEVELS = ['Novice', 'Beginner', 'Intermediate', 'Advanced', 'Expert'];
 
 type HeatmapData = CompetencyHeatmap;
 
 @Component({
   selector: 'tn-competency-heatmap',
-  imports: [MatCardModule, MatSelectModule, MatFormFieldModule, FormsModule],
+  imports: [MatButtonModule, MatCardModule, MatSelectModule, MatFormFieldModule, FormsModule],
   template: `
     <mat-card>
       <mat-card-header>
@@ -44,14 +37,35 @@ type HeatmapData = CompetencyHeatmap;
             </mat-select>
           </mat-form-field>
         </div>
-        <div #chartContainer class="chart-container"></div>
+        @switch (status()) {
+          @case ('loading') {
+            <p class="heatmap-state" role="status">Loading competency data…</p>
+          }
+          @case ('error') {
+            <div class="heatmap-state heatmap-error" role="alert">
+              <p>Competency data could not be loaded.</p>
+              <button mat-stroked-button type="button" (click)="renderChart()">Retry</button>
+            </div>
+          }
+          @case ('empty') {
+            <p class="heatmap-state heatmap-empty" role="status">
+              No competency assessments recorded yet.
+            </p>
+          }
+        }
+        <!-- Kept in the DOM so ECharts has a stable host; hidden unless real data is plotted. -->
+        <div #chartContainer class="chart-container" [class.chart-hidden]="status() !== 'ready'"
+             [attr.aria-hidden]="status() !== 'ready'"></div>
       </mat-card-content>
     </mat-card>
   `,
   styles: [`
     :host { display: block; }
     .chart-container { width: 100%; height: 500px; }
+    .chart-container.chart-hidden { visibility: hidden; height: 0; }
     .heatmap-controls { display: flex; gap: 16px; margin-bottom: 8px; }
+    .heatmap-state { padding: 32px 0; text-align: center; color: var(--text-muted); }
+    .heatmap-error p { margin: 0 0 12px; }
   `],
 })
 export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
@@ -61,6 +75,11 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
   @Input() tenantId?: string;
 
   viewMode = 'team';
+  /** What the card is showing. Only 'ready' plots numbers, and only ones the API returned. */
+  readonly status = signal<'loading' | 'ready' | 'empty' | 'error'>('loading');
+  private resizeObserver?: ResizeObserver;
+  private dataSub?: Subscription;
+  private destroyed = false;
   private chartInstance: any = null;
   private lastData: HeatmapData | null = null;
   private readonly theme = inject(ThemeService);
@@ -77,26 +96,53 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
   async ngAfterViewInit() {
     // Dynamic import to avoid loading ECharts in the initial bundle
     const echarts = await import('echarts');
+    // The component can be destroyed while ECharts loads.
+    if (this.destroyed) return;
     this.chartInstance = echarts.init(this.chartContainer.nativeElement);
     this.renderChart();
 
     // Handle resize
-    const observer = new ResizeObserver(() => this.chartInstance?.resize());
-    observer.observe(this.chartContainer.nativeElement);
+    this.resizeObserver = new ResizeObserver(() => this.chartInstance?.resize());
+    this.resizeObserver.observe(this.chartContainer.nativeElement);
   }
 
   ngOnDestroy() {
+    this.destroyed = true;
+    this.dataSub?.unsubscribe();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = undefined;
     this.chartInstance?.dispose();
+    this.chartInstance = null;
   }
 
   renderChart() {
     if (!this.chartInstance) return;
 
-    // Fetch data from API or use sample data
-    this.api.getCompetencyHeatmap(this.viewMode).subscribe({
-      next: data => this.updateChart(data),
-      error: () => this.updateChart(this.sampleData()),
+    this.dataSub?.unsubscribe();
+    this.status.set('loading');
+    // A failed request is an error, never plausible numbers: no sample-data fallback.
+    this.dataSub = this.api.getCompetencyHeatmap(this.viewMode).subscribe({
+      next: data => {
+        if (!data?.values?.length || !data.work_roles?.length || !data.categories?.length) {
+          this.clearChart();
+          this.status.set('empty');
+          return;
+        }
+        this.updateChart(data);
+        this.status.set('ready');
+        // The container was hidden at height 0 while loading; size the chart to it now.
+        queueMicrotask(() => this.chartInstance?.resize());
+      },
+      error: () => {
+        this.clearChart();
+        this.status.set('error');
+      },
     });
+  }
+
+  private clearChart() {
+    this.lastData = null;
+    this.chartInstance?.clear();
   }
 
   private updateChart(data: HeatmapData) {
@@ -164,19 +210,5 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
     };
 
     this.chartInstance.setOption(option, true);
-  }
-
-  private sampleData(): HeatmapData {
-    const roles = [
-      'SOC Analyst', 'Incident Resp.', 'Threat Hunter',
-      'Vuln Analyst', 'Pen Tester', 'Forensic Analyst',
-    ];
-    const values: number[][] = [];
-    for (let x = 0; x < roles.length; x++) {
-      for (let y = 0; y < NICE_CATEGORIES.length; y++) {
-        values.push([x, y, Math.floor(Math.random() * 80 + 10)]);
-      }
-    }
-    return { categories: NICE_CATEGORIES, work_roles: roles, values };
   }
 }

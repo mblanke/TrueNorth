@@ -27,8 +27,9 @@ from ..models import (
     LTINonce,
     User,
 )
+from ..moodle_backends import supported_moodle_types
 from ..platforms import get_platform_adapter
-from ..rbac import Permission, require_permission, user_has_permission
+from ..rbac import Permission, is_platform_admin, require_permission, user_has_permission
 from ..schemas import (
     ExternalActivityOut,
     ExternalPlatformIn,
@@ -50,6 +51,34 @@ router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 # Platform records decide which issuer may sign users in over LTI (its JWKS URL is the
 # trust anchor), so registering or editing one is an admin act, not a user one.
+#
+# lti_issuer is also the audience of the Moodle sign-in and sync tickets this API signs
+# with the one tool key every tenant shares (moodle_sso, moodle_backends.local_truenorth),
+# and the key LTI launches are matched on (lti13.find_platform). So one issuer belongs to
+# one tenant, and re-pointing an existing Moodle at another site is the platform
+# operator's call, not a tenant admin's.
+
+
+def _same_issuer(value: str) -> list[str]:
+    v = value.rstrip("/")
+    return [v, v + "/"]
+
+
+def _check_issuer(db: Session, user: CurrentUser, issuer: str | None) -> None:
+    """409 if another tenant already registered this issuer."""
+    if not issuer:
+        return
+    # tenant-safe: a cross-tenant existence check by design; it returns no row's data.
+    taken = (
+        db.query(ExternalPlatform.id)
+        .filter(
+            ExternalPlatform.lti_issuer.in_(_same_issuer(issuer)),
+            ExternalPlatform.tenant_id != tenant_uuid(user),
+        )
+        .first()
+    )
+    if taken:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This issuer is registered to another unit")
 
 
 @router.post("/platforms", response_model=ExternalPlatformOut, status_code=status.HTTP_201_CREATED)
@@ -61,7 +90,10 @@ def register_platform(
     """Register an external learning platform (Moodle, Immersive Labs, OffSec).
 
     **Permission: integration:write**
+
+    409: another tenant already registered this ``lti_issuer``.
     """
+    _check_issuer(db, user, body.lti_issuer)
     platform = ExternalPlatform(
         name=body.name,
         slug=body.slug,
@@ -117,11 +149,25 @@ def update_platform(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
 ):
-    """Update a registered platform."""
+    """Update a registered platform.
+
+    403: changing a Moodle platform's ``lti_issuer`` (the site its sign-in tickets are
+    addressed to) needs a platform administrator. 409: another tenant already registered
+    that issuer.
+    """
     p = get_owned(db, ExternalPlatform, platform_id, user)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    changes = body.model_dump(exclude_unset=True)
+    if "lti_issuer" in changes and (changes["lti_issuer"] or "").rstrip("/") != (p.lti_issuer or "").rstrip("/"):
+        # A Moodle-farm platform (one the moodle_backends registry can publish to) is
+        # addressed by its issuer in the tickets this API signs.
+        if p.platform_type in supported_moodle_types() and p.lti_issuer and not is_platform_admin(user):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "Only a platform administrator can re-point a Moodle at another site"
+            )
+        _check_issuer(db, user, changes["lti_issuer"])
+    for field, value in changes.items():
         setattr(p, field, value)
     db.commit()
     db.refresh(p)
@@ -385,7 +431,7 @@ def _jit_user(db: Session, platform, claims: dict) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
-    logger.info("JIT-provisioned LTI user %s from %s", email, platform.name)
+    logger.info("JIT-provisioned LTI user %s from %s", user.id, platform.name)  # id, never the email
     return user
 
 
@@ -477,7 +523,7 @@ def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
             "data": settings.get("data", ""),
             "exp": int(_time.time()) + 1800,
         },
-        key.private_key_pem,
+        lti13.signing_pem(key),
         algorithm="RS256",
         headers={"kid": key.kid},
     )

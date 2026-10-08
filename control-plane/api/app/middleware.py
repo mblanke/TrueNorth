@@ -53,7 +53,10 @@ _UUID_RE = re.compile(
 _CSRF_COOKIE = "truenorth_csrf"
 _CSRF_HEADER = "x-csrf-token"
 _CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-_CSRF_SECRET = os.getenv("CSRF_SECRET", secrets.token_hex(32))
+# Empty counts as unset (compose passes ${CSRF_SECRET} through as ""), which would sign with
+# an empty key. The per-process fallback is development only: TN_ENV=production refuses to
+# start without CSRF_SECRET (app/settings.py), since workers would not share a random key.
+_CSRF_SECRET = os.getenv("CSRF_SECRET", "").strip() or secrets.token_hex(32)
 _CSRF_TOKEN_TTL = 86400  # 1 day
 
 
@@ -187,8 +190,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         tenant = getattr(request.state, "tenant_id", None)
         if tenant:
             return f"rl:tenant:{tenant}:{bucket}"
-        forwarded = request.headers.get("x-forwarded-for")
-        ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+        from .client_address import client_ip
+
+        # X-Forwarded-For only from a trusted proxy: otherwise every request could name a
+        # fresh address and never reach a limit.
+        ip = client_ip(request) or "unknown"
         return f"rl:ip:{ip}:{bucket}"
 
     async def _check_rate_limit(self, key: str, limit: int, now: float) -> tuple[bool, int, int]:

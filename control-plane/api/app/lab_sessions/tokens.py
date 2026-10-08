@@ -40,7 +40,7 @@ def mint(db: Session, session_id: uuid.UUID, user_id: uuid.UUID, expires_at: dat
         "iat": now,
         "exp": min(until, now + MAX_SECONDS),
     }
-    return jwt.encode(claims, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid})
+    return jwt.encode(claims, lti13.signing_pem(key), algorithm="RS256", headers={"kid": key.kid})
 
 
 def verify(db: Session, token: str, session_id: uuid.UUID) -> dict:

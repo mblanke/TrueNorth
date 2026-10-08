@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import curriculum_ingest, object_store
+from ..ai_orchestrator_client import orchestrator_headers
 from ..auth import CurrentUser, get_current_user
 from ..db import SessionLocal, get_db
 from ..models import (
@@ -33,6 +34,7 @@ from ..models import (
     ModuleContentType,
     Quiz,
 )
+from ..rbac import Permission, require_permission
 
 AI_ORCHESTRATOR_URL = os.getenv("AI_ORCHESTRATOR_URL", "http://ai-orchestrator:6000")
 
@@ -299,9 +301,12 @@ async def generate_course(
     curriculum_id: uuid.UUID,
     body: CourseGenerateIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission(Permission.COURSE_AUTHOR)),
 ):
-    """Draft a course (with modules and quiz placeholders) from the ingested curriculum."""
+    """Draft a course (with modules and quiz placeholders) from the ingested curriculum.
+
+    **Permission: course:author** (was: any signed-in user). It writes a Course and its
+    modules, which is authoring, and spends AI-orchestrator time."""
     curriculum = _get_owned(curriculum_id, db, user)
     if curriculum.status != CurriculumStatus.ready:
         raise HTTPException(409, "Curriculum is not ready — ingest documents first.")
@@ -329,7 +334,9 @@ async def generate_course(
     }
     async with httpx.AsyncClient(timeout=330) as client:
         try:
-            resp = await client.post(f"{AI_ORCHESTRATOR_URL}/ai/course-generate", json=payload)
+            resp = await client.post(
+                f"{AI_ORCHESTRATOR_URL}/ai/course-generate", json=payload, headers=orchestrator_headers()
+            )
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             raise HTTPException(502, "AI orchestrator failed to generate the course.") from e

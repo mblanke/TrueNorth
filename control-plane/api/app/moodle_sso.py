@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from . import lti13
 from .auth import CurrentUser
+from .course_publishing.models import PUBLISHED, CoursePublication
 from .models import Course, Enrollment, EnrollmentStatus, ExternalPlatform, User
 from .rbac import Permission, user_has_permission
 from .tenancy import get_owned_or_global, tenant_uuid
@@ -74,6 +75,31 @@ def tenant_moodle(db: Session, user: CurrentUser) -> ExternalPlatform:
     return platform
 
 
+def course_available(db: Session, user: CurrentUser, course_id: uuid.UUID) -> bool:
+    """Whether "Open in Moodle" can land on this course for the caller's tenant.
+
+    True when the tenant has a usable Moodle (``tenant_moodle``) AND the course is live
+    on it: the ticket's ``course`` claim is looked up in Moodle by ``idnumber``, which only
+    a published release creates (``live_idnumber`` = course id). Without a publication,
+    ``sso.php`` fails with ``ssocoursemissing``. Enrolment is not part of this: an
+    un-enrolled Student gets a clear 403 from ``/integrations/moodle/sso``.
+    """
+    try:
+        platform = tenant_moodle(db, user)
+    except NotAvailableError:
+        return False
+    return (
+        db.query(CoursePublication.id)
+        .filter(
+            CoursePublication.course_id == course_id,
+            CoursePublication.platform_id == platform.id,
+            CoursePublication.state == PUBLISHED,
+        )
+        .first()
+        is not None
+    )
+
+
 def moodle_role(db: Session, user: CurrentUser, course_id: uuid.UUID | None) -> str:
     """'teacher' for staff, 'student' for someone actively enrolled; else refuse."""
     if course_id is None:
@@ -99,7 +125,7 @@ def mint_ticket(db: Session, user: CurrentUser, course_id: uuid.UUID | None = No
     """The form the browser POSTs to Moodle: ``action`` and a one-minute ``token``."""
     platform = tenant_moodle(db, user)
     role = moodle_role(db, user, course_id)
-    person = db.get(User, uuid.UUID(str(user.id)))
+    person = db.get(User, uuid.UUID(str(user.id)))  # tenant-safe: the caller's own row
     first = (person.first_name if person else None) or ""
     last = (person.last_name if person else None) or ""
     if not first and not last:
@@ -111,6 +137,9 @@ def mint_ticket(db: Session, user: CurrentUser, course_id: uuid.UUID | None = No
         "iss": ISSUER,
         "typ": "sso",
         "aud": audience,
+        # local_truenorth refuses a ticket whose tid is not the tenant it serves: one tool
+        # key signs for every tenant, so the audience alone cannot bind it.
+        "tid": str(platform.tenant_id),
         "sub": str(user.id),
         "email": user.email,
         "given_name": first or user.email,
@@ -123,5 +152,5 @@ def mint_ticket(db: Session, user: CurrentUser, course_id: uuid.UUID | None = No
     if course_id is not None:
         claims["course"] = str(course_id)
     key = lti13.get_tool_key(db)
-    token = jwt.encode(claims, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid})
+    token = jwt.encode(claims, lti13.signing_pem(key), algorithm="RS256", headers={"kid": key.kid})
     return MoodleSsoOut(action=audience + SSO_PATH, token=token)

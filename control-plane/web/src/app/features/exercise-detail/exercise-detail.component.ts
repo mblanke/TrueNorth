@@ -97,6 +97,10 @@ const NODE_ICON: Record<string, string> = {
             }
             @if (d.state === 'completed' && auth.isInstructor()) {
               <button mat-stroked-button (click)="genAar()"><mat-icon>description</mat-icon> Generate AAR</button>
+              <!-- /scoring is instructor-guarded, so the link follows the same rule as Generate. -->
+              <a mat-stroked-button [routerLink]="['/scoring']" [queryParams]="{ exercise: d.exercise_id }">
+                <mat-icon>visibility</mat-icon> View AAR
+              </a>
             }
           </div>
         </header>

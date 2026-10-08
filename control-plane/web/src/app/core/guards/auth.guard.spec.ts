@@ -37,9 +37,10 @@ describe('auth guards', () => {
     router = TestBed.inject(Router);
   });
 
-  function run(guard: typeof authGuard): Promise<boolean | UrlTree> {
+  function run(guard: typeof authGuard, url?: string): Promise<boolean | UrlTree> {
+    const state = (url === undefined ? {} : { url }) as RouterStateSnapshot;
     const result = TestBed.runInInjectionContext(() =>
-      guard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot),
+      guard({} as ActivatedRouteSnapshot, state),
     ) as Observable<boolean | UrlTree>;
     return firstValueFrom(result);
   }
@@ -57,6 +58,29 @@ describe('auth guards', () => {
 
     it('sends an anonymous visitor to /login', async () => {
       expect(path(await run(authGuard))).toBe('/login');
+    });
+
+    it('passes the attempted URL to /login as returnUrl', async () => {
+      const result = await run(authGuard, '/scoring?exercise=ex1');
+      expect(result instanceof UrlTree).toBeTrue();
+      const tree = result as UrlTree;
+      expect(tree.root.children['primary']?.segments.map(s => s.path)).toEqual(['login']);
+      expect(tree.queryParams).toEqual({ returnUrl: '/scoring?exercise=ex1' });
+    });
+
+    it('adds no returnUrl for the root', async () => {
+      expect(path(await run(authGuard, '/'))).toBe('/login');
+    });
+
+    for (const unsafe of ['//evil.test/x', '/\\evil.test', 'https://evil.test/']) {
+      it(`drops an unsafe attempted URL (${unsafe})`, async () => {
+        expect(path(await run(authGuard, unsafe))).toBe('/login');
+      });
+    }
+
+    it('does not add returnUrl when redirecting to /register', async () => {
+      auth.next = { role: null, state: 'unregistered' };
+      expect(path(await run(authGuard, '/labs/l1'))).toBe('/register');
     });
 
     it('sends an identity with no account to /register', async () => {

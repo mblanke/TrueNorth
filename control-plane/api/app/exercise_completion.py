@@ -44,7 +44,9 @@ class Participant:
 
 
 def lock(db: Session, exercise_id: uuid.UUID) -> Exercise | None:
-    """The exercise row, locked for this transaction (a no-op on SQLite)."""
+    """The exercise row, locked for this transaction (a no-op on SQLite). Callers pass an
+    exercise they already hold (get_owned, or the clock's own sweep)."""
+    # tenant-safe: re-reads an exercise the caller already fetched, to lock it.
     return db.query(Exercise).filter(Exercise.id == exercise_id).with_for_update().one_or_none()
 
 

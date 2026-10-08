@@ -20,6 +20,8 @@ import jwt
 import pytest
 from app import lti13, moodle_sso
 from app.auth import CurrentUser, get_current_user
+from app.course_publishing.models import FAILED, PUBLISHED, REQUESTED, CoursePublication
+from app.course_releases.models import CourseRelease, CourseReleaseBlob
 from app.main import app as fastapi_app
 from app.models import (
     Course,
@@ -209,7 +211,7 @@ class TestTheTicket:
         assert first["jti"] != second["jti"]
         assert first["iss"] == "truenorth"
         assert first["typ"] == "sso"  # never accepted by the plugin as a sync call
-        assert "tid" not in first
+        assert first["tid"] == DEV_TENANT  # ticket.php refuses any tenant but the node's own
 
     def test_names_fall_back_to_the_display_name(self, client, db_session):
         _moodle(db_session)
@@ -222,3 +224,73 @@ class TestTheTicket:
         _moodle(db_session)
         with acting_as(_user(db_session)):
             assert client.post("/integrations/moodle/sso", json={"course_id": "nope"}).status_code == 422
+
+
+def _publish(
+    db, course: Course, platform: ExternalPlatform, state: str = PUBLISHED, version: int = 1
+) -> CoursePublication:
+    """A release of ``course`` delivered to ``platform`` (the live course's idnumber = course id)."""
+    sha = uuid.uuid4().hex * 2
+    db.add(CourseReleaseBlob(sha256=sha, size=1, data=b"x"))
+    digest = uuid.uuid4().hex
+    rel = CourseRelease(
+        tenant_id=course.tenant_id, course_id=course.id, catalogue_code="C", arc2_code="A", run_id="r",
+        slug="s", title="t", version=version, release_digest=digest, learner_digest=digest,
+        platform_digest=digest, instructor_digest=digest, blob_sha256=sha, meta="{}",
+    )
+    db.add(rel)
+    db.flush()
+    pub = CoursePublication(
+        tenant_id=course.tenant_id, release_id=rel.id, course_id=course.id, platform_id=platform.id,
+        stage_idnumber=f"stage-{rel.id}", live_idnumber=str(course.id), state=state,
+    )
+    db.add(pub)
+    db.flush()
+    return pub
+
+
+class TestMoodleAvailableOnTheOutline:
+    """``GET /courses/{id}/outline`` tells every role whether "Open in Moodle" can work.
+
+    ``/integrations/platforms`` needs ``integration:read``, which Students lack, so the
+    course page reads this flag instead. It is true only when the tenant has a usable
+    Moodle (as ``/integrations/moodle/sso`` picks it) and the course is published there:
+    the SSO ticket's ``course`` claim is resolved in Moodle by that idnumber.
+    """
+
+    def _flag(self, client, person: User, course: Course) -> bool:
+        with acting_as(person):
+            resp = client.get(f"/courses/{course.id}/outline")
+        assert resp.status_code == 200, resp.text
+        return resp.json()["moodle_available"]
+
+    @pytest.mark.parametrize("role", [UserRole.student, UserRole.instructor, UserRole.observer])
+    def test_true_when_the_course_is_published_to_the_tenants_moodle(self, client, db_session, role):
+        course = _course(db_session)
+        _publish(db_session, course, _moodle(db_session))
+        assert self._flag(client, _user(db_session, role=role), course) is True
+
+    def test_false_without_a_moodle(self, client, db_session):
+        assert self._flag(client, _user(db_session), _course(db_session)) is False
+
+    def test_false_when_the_course_is_not_published(self, client, db_session):
+        _moodle(db_session)
+        assert self._flag(client, _user(db_session), _course(db_session)) is False
+
+    @pytest.mark.parametrize("state", [FAILED, REQUESTED])
+    def test_false_while_the_publication_is_not_live(self, client, db_session, state):
+        course = _course(db_session)
+        _publish(db_session, course, _moodle(db_session), state=state)
+        assert self._flag(client, _user(db_session), course) is False
+
+    def test_false_when_the_moodle_is_inactive_or_has_no_issuer(self, client, db_session):
+        course = _course(db_session)
+        _publish(db_session, course, _moodle(db_session, active=False))
+        _publish(db_session, course, _moodle(db_session, issuer=None), version=2)
+        assert self._flag(client, _user(db_session), course) is False
+
+    def test_a_publication_to_another_tenants_moodle_does_not_count(self, client, db_session):
+        course = _course(db_session)
+        _moodle(db_session)  # this tenant's Moodle, which SSO would address
+        _publish(db_session, course, _moodle(db_session, OTHER_TENANT, issuer="http://moodle.other.test"))
+        assert self._flag(client, _user(db_session), course) is False

@@ -18,6 +18,7 @@ are enrolled in (decided 2026-10-06), with no capacity and no other people.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import uuid
@@ -128,13 +129,31 @@ def to_ics(e: ScheduledEvent) -> ics.IcsEvent:
 
 def feed_url(request: Request, token: str) -> str:
     """The subscription URL. ``SCHEDULER_FEED_BASE_URL`` sets the public origin: Outlook
-    on the web fetches from Microsoft's cloud, so it must be reachable from there."""
+    on the web fetches from Microsoft's cloud, so it must be reachable from there.
+
+    Unset (development), the request's own ``Host`` is used. ``X-Forwarded-Host`` never
+    is: nginx passes a client's through, so it would let a caller choose the host a
+    bearer-token URL points at."""
     base = os.getenv("SCHEDULER_FEED_BASE_URL", "").rstrip("/")
     if not base:
         proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+        host = request.headers.get("host") or request.url.netloc
         base = f"{proto}://{host}"
     return f"{base}/api/v1/schedule/feed/{token}.ics"
+
+
+def warn_if_unconfigured() -> bool:
+    """Log a warning at startup when a deployment with auth on has no feed origin set.
+    Returns whether it warned."""
+    if os.getenv("SCHEDULER_FEED_BASE_URL", "").strip():
+        return False
+    if os.getenv("AUTH_DISABLED", "false").lower() == "true":
+        return False  # development
+    logging.getLogger("truenorth.scheduler").warning(
+        "SCHEDULER_FEED_BASE_URL is not set: calendar-feed URLs will use each request's Host "
+        "header. Set it to the public origin (https://range.example) in production."
+    )
+    return True
 
 
 def webcal(url: str) -> str:

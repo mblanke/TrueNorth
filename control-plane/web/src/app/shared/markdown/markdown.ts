@@ -12,16 +12,35 @@ import { marked } from 'marked';
  * classes to dress itself up as a staff "Internal note".
  * Links leave in a new tab with `rel="noopener noreferrer"` so a linked page cannot
  * reach back through `window.opener`.
+ * Images (and any other `src`) load only from this origin: a remote `<img>` is a beacon
+ * that tells its author who read the page, when, and from which address. `srcset` and
+ * `poster` are dropped for the same reason.
  */
 let hooked = false;
 
 /** A same-site path: `/wiki/x`, not `//evil.com` or `/\\evil.com` (browsers read both as off-site). */
 export const isAppPath = (href: string): boolean => /^\/(?![/\\])/.test(href);
 
+/** Whether `url` (absolute or relative) resolves to this app's own origin over http(s). */
+export function isSameOrigin(url: string): boolean {
+  if (!url.trim()) return false;
+  try {
+    const resolved = new URL(url, window.location.href);
+    return /^https?:$/.test(resolved.protocol) && resolved.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 function ensureHooks(): void {
   if (hooked) return;
   hooked = true;
   DOMPurify.addHook('afterSanitizeAttributes', node => {
+    if (node.hasAttribute('src') && !isSameOrigin(node.getAttribute('src') ?? '')) {
+      node.removeAttribute('src');
+    }
+    node.removeAttribute('srcset');
+    node.removeAttribute('poster');
     if (node.tagName === 'A' && node.getAttribute('href')) {
       const href = node.getAttribute('href') ?? '';
       if (!href.startsWith('#') && !isAppPath(href)) {

@@ -18,8 +18,23 @@ from pathlib import Path
 import pytest
 
 API = Path(__file__).resolve().parents[2] / "control-plane/api"
-ROUTERS = API / "app/routers"
+APP = API / "app"
 sys.path.insert(0, str(API))
+
+
+def _sources() -> list[Path]:
+    """Every API module, not only routers: section services (lab_sessions, course
+    publishing, the QSP generators) take ids from requests and other rows too. Until
+    2026-10-08 only app/routers/*.py was scanned, and 39 unexamined lookups sat outside
+    it; tracing them found three real leaks (qsp_paths generation, course-content PO
+    claims, learning-path enrollment). Model and migration files hold no queries."""
+    return sorted(
+        f for f in APP.rglob("*.py") if f.name != "models.py" and "alembic" not in f.relative_to(APP).parts
+    )
+
+
+def _name(f: Path) -> str:
+    return f.relative_to(APP).as_posix()
 
 
 def _tenanted_models() -> set[str]:
@@ -51,7 +66,7 @@ BY_ID = re.compile(r"\.id\s*(==|\.in_)|filter_by\([^)]*\bid\s*=")
 def _findings():
     tenanted = _tenanted_models()
     out = []
-    for f in sorted(ROUTERS.glob("*.py")):
+    for f in _sources():
         # Explicit encoding: Path.read_text() defaults to the platform codec, so on
         # Windows this guard died with UnicodeDecodeError on the first non-ASCII byte
         # in a router rather than reporting findings. Sources are UTF-8 everywhere.
@@ -71,12 +86,30 @@ def _findings():
             before = "\n".join(src.splitlines()[max(0, line - 5) : line])
             if "tenant-safe:" in before:
                 continue
-            out.append(f"{f.name}:{line} query({model}) by id with no tenant predicate")
+            out.append(f"{_name(f)}:{line} query({model}) by id with no tenant predicate")
     return out
 
 
+# Known unscoped by-id lookups (both detectors), per module under app/. A ratchet: a
+# count may go down (lower it here), never up, and a module not listed must have none.
+#
+# Reviewed 2026-10-08 (security sweep M4), when the scan widened from routers to app/**:
+# 39 hits. Real leaks, fixed with tests: qsp_paths.py (generate_learning_paths and
+# generate_exercises matched modules, scenarios, ranges, templates, exercises and paths
+# across tenants), course_content_ingest.py (_claim_po superseded other tenants'
+# modules), enrollment.py (a learning path, and its courses, from another tenant), and
+# rbac.require_range_access/require_tenant_access (any tenant's admin bypassed them;
+# now only the platform admin). The rest follow a row's own foreign keys from a parent
+# the caller already holds (a lab session's range, a publication's release) and are
+# waived in place. The ratchet is empty.
+SOURCE_BASELINE: dict[str, int] = {}
+
+
 def test_no_unscoped_by_id_lookups_on_tenant_models():
-    findings = _findings()
+    counts: dict[str, int] = {}
+    for hit in _findings():
+        counts[hit.split(":", 1)[0]] = counts.get(hit.split(":", 1)[0], 0) + 1
+    findings = [h for h in _findings() if counts[h.split(":", 1)[0]] > SOURCE_BASELINE.get(h.split(":", 1)[0], 0)]
     assert not findings, (
         "Unscoped by-id lookups on tenant-owned models — these return another "
         "tenant's row with a 200 and a well-formed body:\n  "
@@ -130,14 +163,16 @@ DB_GET = re.compile(r"db\.get\((\w+)\s*,")
 #   compared on the next line, signed lab/deep-link token, or ids from a handler that
 #   passed get_owned); waived in place.
 # - quizzes.py (1): the quiz of an attempt fetched by the caller's user_id; waived.
-# The ratchet is empty: every router must now have none.
+# The ratchet is empty: every router must now have none. Since 2026-10-08 the scan covers
+# every module under app/ (keys are paths relative to it, e.g. "routers/hypervisors.py");
+# see SOURCE_BASELINE for that review.
 DB_GET_BASELINE: dict[str, int] = {}
 
 
 def _db_get_findings() -> dict[str, list[str]]:
     tenanted = _tenanted_models()
     out: dict[str, list[str]] = {}
-    for f in sorted(ROUTERS.glob("*.py")):
+    for f in _sources():
         src = f.read_text(encoding="utf-8")
         lines = src.splitlines()
         for m in DB_GET.finditer(src):
@@ -146,7 +181,7 @@ def _db_get_findings() -> dict[str, list[str]]:
             line = src[: m.start()].count("\n") + 1
             if "tenant-safe:" in "\n".join(lines[max(0, line - 5) : line]):
                 continue
-            out.setdefault(f.name, []).append(f"{f.name}:{line} db.get({m.group(1)}, ...)")
+            out.setdefault(_name(f), []).append(f"{_name(f)}:{line} db.get({m.group(1)}, ...)")
     return out
 
 
@@ -174,8 +209,32 @@ def test_no_new_unscoped_db_get_on_tenant_models():
 )
 def test_platform_routers_have_no_unscoped_db_get(router):
     """These routers were fixed or reviewed outright; they carry no baseline."""
-    assert router not in DB_GET_BASELINE
-    assert not _db_get_findings().get(router), _db_get_findings()[router]
+    key = f"routers/{router}"
+    assert (APP / key).is_file(), key
+    assert key not in DB_GET_BASELINE
+    assert not _db_get_findings().get(key), _db_get_findings()[key]
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "lab_sessions/service.py", "course_publishing/service.py", "course_publishing/runner.py",
+        "course_releases/service.py", "course_content_ingest.py", "qsp_paths.py", "enrollment.py",
+        "range_lifecycle.py", "rbac.py",
+    ],
+)
+def test_reviewed_service_modules_carry_no_baseline(module):
+    """Traced in the 2026-10-08 sweep: fixed or waived in place, never baselined."""
+    assert (APP / module).is_file(), module
+    assert module not in SOURCE_BASELINE and module not in DB_GET_BASELINE
+    assert not [h for h in _findings() if h.startswith(module + ":")]
+    assert not _db_get_findings().get(module)
+
+
+def test_the_scan_covers_service_modules_and_skips_models():
+    names = {_name(f) for f in _sources()}
+    assert {"routers/ranges.py", "lab_sessions/service.py", "qsp_paths.py"} <= names
+    assert not any(n.endswith("models.py") or n.startswith("alembic/") for n in names)
 
 
 def test_the_db_get_detector_fires():

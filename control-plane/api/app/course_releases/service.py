@@ -71,7 +71,7 @@ def create_candidate(
             raise ReleaseRefusedError("another upload of these bytes was stored at the same moment; upload again") from exc
     # Serialise uploads for one course (the course row lock) so two at once cannot both
     # take the next version; the unique (course, version) constraint backs it up.
-    db.query(Course).filter(Course.id == course.id).with_for_update().one()
+    db.query(Course).filter(Course.id == course.id).with_for_update().one()  # tenant-safe: lock only
     version = (db.query(func.max(CourseRelease.version)).filter(CourseRelease.course_id == course.id).scalar() or 0) + 1
     release = CourseRelease(
         tenant_id=tenant_id,
@@ -127,6 +127,7 @@ def accept(
     if release.state != CANDIDATE:
         raise ReleaseRefusedError(f"release is {release.state}; only a candidate can be accepted")
     # One acceptance per course at a time: lock the course row, then re-read what is live.
+    # tenant-safe: locks the release's own course row; nothing is read from it.
     db.query(Course).filter(Course.id == release.course_id).with_for_update().one()
     db.refresh(release)
     if release.state != CANDIDATE:
@@ -193,7 +194,7 @@ def pin_enrollment(db: Session, enrollment: Enrollment) -> EnrollmentReleasePin 
 
 def pinned_release(db: Session, enrollment_id: uuid.UUID) -> CourseRelease | None:
     pin = db.get(EnrollmentReleasePin, enrollment_id)
-    return db.get(CourseRelease, pin.release_id) if pin else None
+    return db.get(CourseRelease, pin.release_id) if pin else None  # tenant-safe: the pin's own release
 
 
 def course_status(db: Session, course: Course) -> dict[str, Any]:

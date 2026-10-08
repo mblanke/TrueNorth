@@ -191,32 +191,55 @@ def _path(db, course_ids) -> LearningPath:
 def test_path_courses_keep_their_stored_order(db_session, tenant):
     a, b, c = (_course(db_session, modules=0, name=n) for n in ("A", "B", "C"))
     path = _path(db_session, [c.id, a.id, b.id])
-    assert [x.name for x in courses_for_learning_path(db_session, path.id)] == ["C", "A", "B"]
+    assert [x.name for x in courses_for_learning_path(db_session, path.id, tenant_id=TENANT)] == ["C", "A", "B"]
 
 
 def test_path_skips_malformed_and_missing_ids(db_session, tenant, caplog):
     a = _course(db_session, modules=0, name="A")
     path = _path(db_session, json.dumps(["not-a-uuid", str(uuid.uuid4()), str(a.id), None, 7]))
     with caplog.at_level("WARNING", logger=enrollment_mod.logger.name):
-        courses = courses_for_learning_path(db_session, path.id)
+        courses = courses_for_learning_path(db_session, path.id, tenant_id=TENANT)
     assert [x.id for x in courses] == [a.id]
     assert "malformed course id" in caplog.text
-    assert "missing course" in caplog.text
+    assert "missing or foreign course" in caplog.text
 
 
 @pytest.mark.parametrize("raw", ["{not json", '{"a": 1}', '"just a string"'])
 def test_path_with_unusable_course_ids_resolves_to_nothing(db_session, tenant, raw):
     path = _path(db_session, raw)
-    assert courses_for_learning_path(db_session, path.id) == []
+    assert courses_for_learning_path(db_session, path.id, tenant_id=TENANT) == []
 
 
 def test_path_with_empty_course_ids(db_session, tenant):
     path = _path(db_session, "")
-    assert courses_for_learning_path(db_session, path.id) == []
+    assert courses_for_learning_path(db_session, path.id, tenant_id=TENANT) == []
 
 
 def test_unknown_path_resolves_to_nothing(db_session):
-    assert courses_for_learning_path(db_session, uuid.uuid4()) == []
+    assert courses_for_learning_path(db_session, uuid.uuid4(), tenant_id=TENANT) == []
+
+
+def test_another_tenants_path_and_courses_are_never_enrolled(db_session, student):
+    """Security sweep M4: registration passes a path id the applicant chose, and a path's
+    course list is JSON with no foreign key."""
+    other = uuid.UUID("00000000-0000-0000-0000-00000000e0b2")
+    db_session.add(Tenant(id=other, name="other", slug="other-e0b2"))
+    db_session.flush()
+    mine = _course(db_session, modules=1, name="Mine")
+    theirs = Course(id=uuid.uuid4(), name="Theirs", tenant_id=other)
+    shared = Course(id=uuid.uuid4(), name="Shared", tenant_id=None)
+    db_session.add_all([theirs, shared])
+    db_session.flush()
+
+    foreign_path = LearningPath(name="Their path", tenant_id=other, course_ids=json.dumps([str(theirs.id)]))
+    db_session.add(foreign_path)
+    db_session.flush()
+    assert ensure_path_enrollment(db_session, user_id=student.id, learning_path_id=foreign_path.id, tenant_id=TENANT) == []
+
+    mixed = _path(db_session, [mine.id, theirs.id, shared.id])
+    enrolled = ensure_path_enrollment(db_session, user_id=student.id, learning_path_id=mixed.id, tenant_id=TENANT)
+    assert [e.course_id for e in enrolled] == [mine.id, shared.id]
+    assert db_session.query(Enrollment).filter(Enrollment.course_id == theirs.id).count() == 0
 
 
 def test_path_enrollment_enrolls_every_course_and_is_idempotent(db_session, student):

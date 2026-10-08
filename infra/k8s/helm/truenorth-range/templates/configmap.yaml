@@ -23,3 +23,6 @@ data:
   OLLAMA_NODES: {{ .Values.aiOrchestrator.ollamaNodes | quote }}
   PROVISIONER_BACKEND: {{ .Values.config.provisionerBackend | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  {{- with .Values.config.trustedProxyCidrs }}
+  TRUSTED_PROXY_CIDRS: {{ . | quote }}
+  {{- end }}

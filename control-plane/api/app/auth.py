@@ -186,11 +186,10 @@ async def get_current_user(
 
 
 def client_ip(request: Request) -> str | None:
-    """Best-effort client address, honouring the proxy header nginx sets."""
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else None
+    """The client's address; X-Forwarded-For only from a trusted proxy (app.client_address)."""
+    from .client_address import client_ip as _client_ip
+
+    return _client_ip(request)
 
 
 def require_role(*roles: UserRole):

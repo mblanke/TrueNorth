@@ -1306,6 +1306,9 @@ export interface paths {
          *     ever list module titles. This walks the teach -> check -> assess rows so the page
          *     can show what each module teaches, the quiz that checks it, the lab that assesses
          *     it, and the performance objective it satisfies.
+         *
+         *     ``moodle_available`` says whether "Open in Moodle" can work for the caller: their
+         *     tenant has an active Moodle with an LTI issuer and this course is published to it.
          */
         get: operations["course_outline_courses__course_id__outline_get"];
         put?: never;
@@ -1406,6 +1409,9 @@ export interface paths {
         /**
          * Generate Course
          * @description Draft a course (with modules and quiz placeholders) from the ingested curriculum.
+         *
+         *     **Permission: course:author** (was: any signed-in user). It writes a Course and its
+         *     modules, which is authoring, and spends AI-orchestrator time.
          */
         post: operations["generate_course_curricula__curriculum_id__generate_course_post"];
         delete?: never;
@@ -2356,7 +2362,10 @@ export interface paths {
         };
         /**
          * Health Check
-         * @description Quick health check - liveness + dependency flags.
+         * @description Health with dependency flags. 503 (``status: "unavailable"``) when the database is down.
+         *
+         *     Redis is reported but does not fail this check; ``/health/ready`` fails on either.
+         *     Probes: ``/health/live`` for liveness, ``/health/ready`` for readiness.
          */
         get: operations["health_check_health_get"];
         put?: never;
@@ -2387,6 +2396,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liveness probe
+         * @description Liveness probe: 200 while the process serves requests. Touches no dependency.
+         */
+        get: operations["liveness_health_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/ready": {
         parameters: {
             query?: never;
@@ -2396,7 +2425,7 @@ export interface paths {
         };
         /**
          * Readiness probe
-         * @description Readiness probe - checks DB + Redis connectivity.
+         * @description Readiness probe: DB and Redis (and OpenSearch when OPENSEARCH_URL is set). 503 if any is down.
          */
         get: operations["readiness_health_ready_get"];
         put?: never;
@@ -2673,6 +2702,8 @@ export interface paths {
          * @description Register an external learning platform (Moodle, Immersive Labs, OffSec).
          *
          *     **Permission: integration:write**
+         *
+         *     409: another tenant already registered this ``lti_issuer``.
          */
         post: operations["register_platform_integrations_platforms_post"];
         delete?: never;
@@ -2709,6 +2740,10 @@ export interface paths {
         /**
          * Update Platform
          * @description Update a registered platform.
+         *
+         *     403: changing a Moodle platform's ``lti_issuer`` (the site its sign-in tickets are
+         *     addressed to) needs a platform administrator. 409: another tenant already registered
+         *     that issuer.
          */
         patch: operations["update_platform_integrations_platforms__platform_id__patch"];
         trace?: never;
@@ -5547,11 +5582,12 @@ export interface paths {
         put?: never;
         /**
          * Execute Scenario
-         * @description Run a scenario's timeline against a ready range.  **Permission: exercise:start**
+         * @description Run a scenario's timeline against a ready range.  **Permission: scenario:update + exercise:start**
          *
-         *     202: queued. 404: scenario or range not in your tenant. 409: the range is not ready.
-         *     422: the YAML is not a mapping or its timeline is not a list. 503: the worker broker is
-         *     down (the execution is recorded ``failed``).
+         *     202: queued. 403: not staff. 404: scenario or range not in your tenant. 409: the range
+         *     is not ready, or it belongs to a Student's lab session. 422: the YAML is not a mapping
+         *     or its timeline is not a list. 503: the worker broker is down (the execution is
+         *     recorded ``failed``).
          */
         post: operations["execute_scenario_scenarios_execute_post"];
         delete?: never;
@@ -5590,6 +5626,10 @@ export interface paths {
         /**
          * Get Execution Timeline
          * @description Each timeline event with its recorded outcome (``pending`` until the worker reaches it).
+         *
+         *     Staff (``scenario:update``) see the whole entry. Anyone else sees only ``seq``, ``t``
+         *     and ``status`` of recorded events: the action, detail and technique are the answer
+         *     key (ADR 0005 §5), and a pending event's ``action`` comes straight from the playbook.
          */
         get: operations["get_execution_timeline_scenarios_executions__execution_id__timeline_get"];
         put?: never;
@@ -18400,9 +18440,38 @@ export interface operations {
                     "application/json": components["schemas"]["HealthOut"];
                 };
             };
+            /** @description The database is unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthOut"];
+                };
+            };
         };
     };
     deep_health_health_deep_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    liveness_health_live_get: {
         parameters: {
             query?: never;
             header?: never;

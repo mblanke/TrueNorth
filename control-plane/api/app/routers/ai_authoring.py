@@ -16,6 +16,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from ..ai_orchestrator_client import orchestrator_headers
 from ..auth import CurrentUser, get_current_user
 
 logger = logging.getLogger("truenorth.api.ai_authoring")
@@ -45,7 +46,7 @@ async def _proxy(path: str, payload: dict) -> dict:
     """
     async with httpx.AsyncClient(timeout=330) as client:
         try:
-            resp = await client.post(f"{AI_ORCHESTRATOR_URL}{path}", json=payload)
+            resp = await client.post(f"{AI_ORCHESTRATOR_URL}{path}", json=payload, headers=orchestrator_headers())
             resp.raise_for_status()
             return resp.json()
         except httpx.HTTPStatusError as exc:

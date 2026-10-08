@@ -11,74 +11,38 @@
 #   - 4 weekly backups (Sundays)
 #   - 12 monthly backups (1st of month)
 #
-# Environment variables:
-#   BACKUP_DIR       — Root backup directory (default: /opt/truenorth/backups)
+# Environment variables (backup.sh's are passed through — COMPOSE_FILE, ENV_FILE,
+# BACKUP_ESCROW_PUBKEY / BACKUP_ESCROW, ... see docs/runbooks/backup-restore.md):
+#   BACKUP_DIR       — Root backup directory (default: /srv/truenorth/backups)
 #   S3_BUCKET        — Remote S3 bucket for offsite copies (optional)
-#   WEBHOOK_URL      — Notification webhook for failures (Slack/Teams/Discord)
+#   BACKUP_WEBHOOK_URL / WEBHOOK_URL — optional extra alert channel. Failures
+#                      always alert on stderr and syslog without it.
 #   DAILY_KEEP       — Number of daily backups to keep (default: 7)
 #   WEEKLY_KEEP      — Number of weekly backups to keep (default: 4)
 #   MONTHLY_KEEP     — Number of monthly backups to keep (default: 12)
 #
+# Exits non-zero whenever backup.sh does (1 = failed, 3 = no secrets escrow).
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACKUP_DIR="${BACKUP_DIR:-/opt/truenorth/backups}"
+# shellcheck source=scripts/backup/lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+BACKUP_DIR="${BACKUP_DIR:-/srv/truenorth/backups}"
 S3_BUCKET="${S3_BUCKET:-}"
-WEBHOOK_URL="${WEBHOOK_URL:-}"
 DAILY_KEEP="${DAILY_KEEP:-7}"
 WEEKLY_KEEP="${WEEKLY_KEEP:-4}"
 MONTHLY_KEEP="${MONTHLY_KEEP:-12}"
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-log() {
-    local level="$1"; shift
-    printf '[%s] [%s] %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")" "$level" "$*"
-}
-
 send_notification() {
     local status="$1"
     local message="$2"
-
-    if [[ -z "${WEBHOOK_URL}" ]]; then
-        return 0
+    if [[ "${status}" == "failure" ]]; then
+        alert "${message}"
+    else
+        log "INFO" "${message}"
     fi
-
-    local color="good"
-    [[ "${status}" == "failure" ]] && color="danger"
-
-    local payload
-    payload=$(cat <<EOF
-{
-    "text": "TrueNorth Range Backup ${status^^}",
-    "attachments": [{
-        "color": "${color}",
-        "fields": [{
-            "title": "Status",
-            "value": "${status}",
-            "short": true
-        }, {
-            "title": "Host",
-            "value": "$(hostname)",
-            "short": true
-        }, {
-            "title": "Details",
-            "value": "${message}",
-            "short": false
-        }, {
-            "title": "Timestamp",
-            "value": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-            "short": true
-        }]
-    }]
-}
-EOF
-)
-
-    curl -sf -X POST -H "Content-Type: application/json" \
-        -d "${payload}" "${WEBHOOK_URL}" > /dev/null 2>&1 || \
-        log "WARN" "Failed to send notification webhook"
 }
 
 # ── Determine backup type ───────────────────────────────────────────────────
@@ -101,11 +65,14 @@ mkdir -p "${TYPE_DIR}"
 # ── Run backup ───────────────────────────────────────────────────────────────
 BACKUP_START=$(date +%s)
 
-if ! BACKUP_DIR="${TYPE_DIR}" bash "${SCRIPT_DIR}/backup.sh" 2>&1; then
+# Age-based pruning inside backup.sh is off here: this wrapper rotates by count per
+# type, and a 30-day age limit would silently delete every monthly backup.
+BACKUP_RC=0
+BACKUP_DIR="${TYPE_DIR}" BACKUP_RETENTION_DAYS=0 bash "${SCRIPT_DIR}/backup.sh" || BACKUP_RC=$?
+if (( BACKUP_RC != 0 && BACKUP_RC != 3 )); then
     DURATION=$(( $(date +%s) - BACKUP_START ))
-    log "ERROR" "Backup failed after ${DURATION}s"
-    send_notification "failure" "Backup type: ${BACKUP_TYPE}. Failed after ${DURATION}s."
-    exit 1
+    send_notification "failure" "Backup type: ${BACKUP_TYPE}. Failed (exit ${BACKUP_RC}) after ${DURATION}s."
+    exit "${BACKUP_RC}"
 fi
 
 DURATION=$(( $(date +%s) - BACKUP_START ))
@@ -117,9 +84,11 @@ LATEST_BACKUP=$(find "${TYPE_DIR}" -maxdepth 1 -type d -name "truenorth-backup-*
 # ── Upload to S3 if configured ──────────────────────────────────────────────
 if [[ -n "${S3_BUCKET}" && -n "${LATEST_BACKUP}" ]]; then
     log "INFO" "Uploading to S3: ${S3_BUCKET}/${BACKUP_TYPE}/..."
-    if ! bash "${SCRIPT_DIR}/s3-backup.sh" "${LATEST_BACKUP}" "${S3_BUCKET}/${BACKUP_TYPE}" 2>&1; then
+    # S3_ENCRYPT=1 GPG-encrypts the archive (GPG_RECIPIENT) before it leaves the host.
+    if ! bash "${SCRIPT_DIR}/s3-backup.sh" "${LATEST_BACKUP}" "${S3_BUCKET}/${BACKUP_TYPE}" ${S3_ENCRYPT:+--encrypt} 2>&1; then
         log "WARN" "S3 upload failed — local backup is intact"
         send_notification "failure" "Local backup succeeded but S3 upload failed (${BACKUP_TYPE})."
+        OFFSITE_FAILED=1
     fi
 fi
 
@@ -159,5 +128,10 @@ TOTAL_SIZE=$(du -sh "${BACKUP_DIR}" 2>/dev/null | cut -f1)
 SUMMARY="Type: ${BACKUP_TYPE} | Duration: ${DURATION}s | Daily: ${DAILY_COUNT}/${DAILY_KEEP} | Weekly: ${WEEKLY_COUNT}/${WEEKLY_KEEP} | Monthly: ${MONTHLY_COUNT}/${MONTHLY_KEEP} | Total: ${TOTAL_SIZE}"
 log "INFO" "${SUMMARY}"
 
-send_notification "success" "${SUMMARY}"
 log "INFO" "=== Cron backup complete ==="
+if (( BACKUP_RC != 0 )); then
+    exit "${BACKUP_RC}"   # 3: data backed up, secrets not escrowed (already alerted)
+fi
+if (( ${OFFSITE_FAILED:-0} )); then
+    exit 4
+fi
