@@ -23,4 +23,6 @@ export const environment: AppEnvironment = {
     dashboards: 'http://localhost:5601',
     ai: 'http://localhost:6000/docs',
   },
+  // infra/platform/docker/compose.moodle.yml publishes Moodle here.
+  moodleUrl: 'http://localhost:8083/',
 };

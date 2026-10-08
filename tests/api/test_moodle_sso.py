@@ -89,7 +89,10 @@ def _moodle(db, tenant=DEV_TENANT, issuer=MOODLE, active=True) -> ExternalPlatfo
 
 
 def _course(db, tenant=DEV_TENANT) -> Course:
-    c = Course(id=uuid.uuid4(), name="C101", tenant_id=uuid.UUID(tenant) if tenant else None)
+    # Published: drafts are hidden from non-authors (404), and Students read the outline.
+    c = Course(
+        id=uuid.uuid4(), name="C101", tenant_id=uuid.UUID(tenant) if tenant else None, is_published=True
+    )
     db.add(c)
     db.flush()
     return c

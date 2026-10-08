@@ -1,19 +1,52 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { Observable, of, throwError } from 'rxjs';
 
-import { LearningPreviewComponent } from './learning-preview.component';
+import { environment } from '@env/environment';
+import { AuthService } from '@core/services/auth.service';
+import { CourseStudioApiService, LearningPlatform } from '@core/services/course-studio-api.service';
+import { LearningPreviewComponent, registeredMoodleUrl } from './learning-preview.component';
+
+const platform = (over: Partial<LearningPlatform>): LearningPlatform =>
+  ({
+    id: 'p1', name: 'Unit Moodle', slug: 'moodle', platform_type: 'moodle',
+    base_url: 'https://moodle.unit.example/', auth_type: 'lti13', is_active: true, tenant_id: 't1',
+    ...over,
+  }) as LearningPlatform;
 
 describe('LearningPreviewComponent', () => {
   let harness: RouterTestingHarness;
+  let instructor: ReturnType<typeof signal<boolean>>;
+  let platforms: jasmine.Spy<() => Observable<LearningPlatform[]>>;
 
-  beforeEach(async () => {
+  async function setUp(routeData: Record<string, string> = {}): Promise<void> {
     await TestBed.configureTestingModule({
       imports: [NoopAnimationsModule],
-      providers: [provideRouter([{ path: 'preview', component: LearningPreviewComponent }])],
+      providers: [
+        provideRouter(
+          [{ path: 'preview', component: LearningPreviewComponent, data: routeData }],
+          withComponentInputBinding(),
+        ),
+        { provide: AuthService, useValue: { isInstructor: instructor } },
+        { provide: CourseStudioApiService, useValue: { platforms } },
+      ],
     }).compileComponents();
     harness = await RouterTestingHarness.create();
+  }
+
+  // The runtime config writes this before bootstrap; the dev build defaults it. Each test
+  // starts with none so that "nothing configured" is what it says.
+  const configuredMoodle = environment.moodleUrl;
+  afterEach(() => (environment.moodleUrl = configuredMoodle));
+
+  beforeEach(async () => {
+    environment.moodleUrl = undefined;
+    instructor = signal(false);
+    platforms = jasmine.createSpy('platforms').and.returnValue(of([]));
+    await setUp();
   });
 
   async function open(url: string): Promise<{ cmp: LearningPreviewComponent; el: HTMLElement }> {
@@ -48,9 +81,67 @@ describe('LearningPreviewComponent', () => {
     expect(cmp.view()).toBe('moodle');
     expect(el.querySelector('iframe')).toBeNull();
     expect(el.querySelector('article h2')?.textContent).toContain('Moodle test LMS');
-    const external = el.querySelector<HTMLAnchorElement>('a[target="_blank"]')!;
-    expect(external.getAttribute('rel')).toContain('noopener');
     expect(current(el)).toEqual(['Moodle']);
+  });
+
+  it('never links to a hard-coded localhost Moodle; with nothing configured it says so', async () => {
+    const { cmp, el } = await open('/preview?view=moodle');
+    expect(cmp.moodleLink()).toBeUndefined();
+    expect(el.querySelector('a[target="_blank"]')).toBeNull();
+    expect(el.querySelector('.unconfigured')?.textContent).toContain('No Moodle site is registered');
+    expect(el.innerHTML).not.toContain('localhost:8083');
+    // A Student cannot read integrations, so the page does not ask.
+    expect(platforms).not.toHaveBeenCalled();
+  });
+
+  it('links to the registered Moodle platform for instructors', async () => {
+    TestBed.resetTestingModule();
+    instructor.set(true);
+    platforms.and.returnValue(of([platform({ platform_type: 'offsec', base_url: 'https://offsec.example/' }), platform({})]));
+    await setUp();
+    const { cmp, el } = await open('/preview?view=moodle');
+    expect(platforms).toHaveBeenCalled();
+    expect(cmp.moodleLink()).toBe('https://moodle.unit.example/');
+    const external = el.querySelector<HTMLAnchorElement>('a[target="_blank"]')!;
+    expect(external.getAttribute('href')).toBe('https://moodle.unit.example/');
+    expect(external.getAttribute('rel')).toContain('noopener');
+  });
+
+  it('falls back to the moodleUrl input when no platform is registered or the lookup fails', async () => {
+    TestBed.resetTestingModule();
+    instructor.set(true);
+    platforms.and.returnValue(throwError(() => new Error('403')));
+    await setUp({ moodleUrl: 'https://lms.range.example/' });
+    const { cmp, el } = await open('/preview?view=moodle');
+    expect(cmp.moodleLink()).toBe('https://lms.range.example/');
+    expect(el.querySelector<HTMLAnchorElement>('a[target="_blank"]')!.getAttribute('href'))
+      .toBe('https://lms.range.example/');
+  });
+
+  it('uses the runtime-configured Moodle URL (TN_MOODLE_URL) for everyone, Students included', async () => {
+    environment.moodleUrl = 'https://moodle.range.example/';
+    const { cmp, el } = await open('/preview?view=moodle');
+    expect(platforms).not.toHaveBeenCalled();
+    expect(cmp.moodleLink()).toBe('https://moodle.range.example/');
+    expect(el.querySelector<HTMLAnchorElement>('a[target="_blank"]')!.getAttribute('href'))
+      .toBe('https://moodle.range.example/');
+  });
+
+  it('prefers the registered platform over the runtime config', async () => {
+    TestBed.resetTestingModule();
+    environment.moodleUrl = 'https://moodle.range.example/';
+    instructor.set(true);
+    platforms.and.returnValue(of([platform({})]));
+    await setUp();
+    const { cmp } = await open('/preview?view=moodle');
+    expect(cmp.moodleLink()).toBe('https://moodle.unit.example/');
+  });
+
+  it('only accepts active Moodle platforms with an http(s) base URL', () => {
+    expect(registeredMoodleUrl([])).toBeUndefined();
+    expect(registeredMoodleUrl([platform({ is_active: false })])).toBeUndefined();
+    expect(registeredMoodleUrl([platform({ base_url: 'javascript:alert(1)' })])).toBeUndefined();
+    expect(registeredMoodleUrl([platform({ base_url: ' http://moodle:8080 ' })])).toBe('http://moodle:8080');
   });
 
   it('falls back to development for an unknown view', async () => {

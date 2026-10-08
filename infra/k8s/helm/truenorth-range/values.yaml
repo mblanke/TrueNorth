@@ -195,6 +195,9 @@ web:
     minio: ""
     dashboards: ""
     ai: ""
+  # Learning > LMS previews: the Moodle address when no Moodle platform is registered
+  # under Integrations (TN_MOODLE_URL). Empty: no link.
+  moodleUrl: ""
   resources:
     requests:
       cpu: 100m
