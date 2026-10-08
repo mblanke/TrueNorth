@@ -29,6 +29,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -63,6 +64,9 @@ from ..tenancy import get_owned
 logger = logging.getLogger("truenorth.api.noise")
 
 router = APIRouter(prefix="/noise", tags=["noise"])
+
+# An agent node id as the deploy worker accepts it (worker/noise_tasks.py NODE_ID).
+NOISE_NODE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 POLL_SECONDS = 60
 LOST_AFTER = timedelta(seconds=POLL_SECONDS * 5)
@@ -604,6 +608,9 @@ def deploy(range_id: str, body: DeployIn, db: Session = Depends(get_db), user: C
             "set noise.mgmt.controller_url in the template (or NOISE_CONTROLLER_URL) to the API's https URL "
             "as reached from the management network",
         )
+    if bad := [n["node"] for n in linux if not NOISE_NODE_ID.match(str(n["node"]))]:
+        # The worker refuses these too (worker/noise_tasks.py): they become Ansible inventory lines.
+        raise HTTPException(422, f"{len(bad)} agent node id(s) are not [a-z0-9][a-z0-9-]{{0,62}}; rename them in the template")
     if unreserved := [n["node"] for n in linux if not n["mgmt_ip"]]:
         # Its NICs were built before addresses were reserved (or the template's agents
         # changed since): nobody knows which address each agent is really on.
