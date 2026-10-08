@@ -379,6 +379,7 @@ services:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       postgres:
         condition: service_healthy
@@ -558,6 +559,8 @@ services:
         --max-tasks-per-child=2000
         --without-heartbeat
     environment: *worker-env
+    volumes:
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       redis:
         condition: service_healthy
@@ -685,6 +688,19 @@ services:
       context: ../../../control-plane/web
       dockerfile: Dockerfile
     restart: always
+    environment:
+      # Written to the SPA's assets/config.json at start-up
+      # (control-plane/web/docker/40-truenorth-runtime-config.sh). Keycloak is served
+      # under https://${DOMAIN}/auth (KC_HTTP_RELATIVE_PATH above), so the relative
+      # default is right unless Keycloak moves to its own host.
+      TN_KEYCLOAK_URL: "${TN_KEYCLOAK_URL:-/auth}"
+      TN_KEYCLOAK_REALM: "${KEYCLOAK_REALM:-truenorth}"
+      # Admin > Services cards. Keycloak defaults to <TN_KEYCLOAK_URL>/admin/; MinIO and
+      # OpenSearch Dashboards are not published by this file, so their cards stay
+      # hidden unless an operator exposes them and sets these.
+      TN_ADMIN_MINIO_URL: "${TN_ADMIN_MINIO_URL:-}"
+      TN_ADMIN_DASHBOARDS_URL: "${TN_ADMIN_DASHBOARDS_URL:-}"
+      TN_ADMIN_AI_URL: "${TN_ADMIN_AI_URL:-}"
     depends_on:
       api:
         condition: service_healthy

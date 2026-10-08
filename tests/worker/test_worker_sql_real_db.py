@@ -317,6 +317,36 @@ class TestExercisesAndObjectives:
             assert db_ops.execution_context(db, str(x.id))[2] == "running"
         assert {r.status for r in world.db.scalars(select(InjectRecord))} == {"fired", "skipped"}
 
+    def test_exercise_run_lease_and_claims_on_the_api_schema(self, world):
+        """claim_event moves the cursor only for the lease holder of a running exercise;
+        the API's resume (app/scenario_runs/runs.py) swaps the lease and carries the cursor."""
+        from app.scenario_runs import ExerciseRun
+        from app.scenario_runs import runs as api_runs
+
+        ex = world.exercise
+        ex.state = m.ExerciseState.running
+        lease = api_runs.begin(world.db, ex.id)
+        world.db.commit()
+        eid = str(ex.id)
+        with tasks._db_session() as db:
+            run_id, held, resume_from = db_ops.exercise_run(db, eid)
+            assert (held, resume_from) == (lease, 0)
+            assert db_ops.claim_event(db, eid, lease, 0) == 1
+            assert db_ops.claim_event(db, eid, "not-the-lease", 1) == 0
+        ex.state = m.ExerciseState.paused
+        world.db.commit()
+        with tasks._db_session() as db:
+            assert db_ops.claim_event(db, eid, lease, 1) == 0  # paused: nothing may fire
+        ex.state = m.ExerciseState.running
+        new = api_runs.resume(world.db, ex.id, ex.started_at)
+        world.db.commit()
+        with tasks._db_session() as db:
+            assert db_ops.claim_event(db, eid, lease, 1) == 0  # handed on
+            assert db_ops.exercise_run(db, eid) == (run_id, new, 1)
+            assert db_ops.claim_event(db, eid, new, 1) == 1
+        world.db.expire_all()
+        assert world.db.get(ExerciseRun, ex.id).next_seq == 2
+
 
 # -- a real exercise stays live; the clock closes it (ADR 0005 §6) ---------------------
 def _detection(ex, ref, points, query="event_type:email"):
@@ -764,6 +794,8 @@ PG_CALLS = {
         db, ID, "failed", only_from=("pending", "running"), error="e"
     ),
     "recorded_seqs": lambda db: db_ops.recorded_seqs(db, "run-1"),
+    "exercise_run": lambda db: db_ops.exercise_run(db, ID),
+    "claim_event": lambda db: db_ops.claim_event(db, ID, "lease-1", 0),
     "record_inject": lambda db: db_ops.record_inject(
         db, exercise_id=ID, run_id="run-1", seq=0, t="0:00", action="simulated_execution", status="fired"
     ),

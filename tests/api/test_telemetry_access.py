@@ -139,6 +139,45 @@ class TestSearch:
         assert resp.status_code == 404
 
 
+class TestSearchANeverIngestedRange:
+    """Through the real OpenSearch backend: a range with no events yet has no index."""
+
+    @pytest.fixture
+    def opensearch(self, monkeypatch):
+        from app.search_backends import OpenSearchBackend
+
+        b = OpenSearchBackend(url="http://mock-os:9200")
+        monkeypatch.setattr(app_main, "get_search_backend", lambda: b)
+        return b
+
+    def test_index_not_found_is_an_empty_page_not_502(self, client, db_session, opensearch, respx_mock):
+        import httpx
+
+        r = _range(db_session, DEV_TENANT)
+        respx_mock.post(f"http://mock-os:9200/range-{r.id}/_search").mock(
+            return_value=httpx.Response(
+                404,
+                json={"error": {"type": "index_not_found_exception", "reason": "no such index"}, "status": 404},
+            )
+        )
+        with acting_as(UserRole.student):
+            resp = client.get(f"/telemetry/{r.id}/search", params={"q": "*"})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["hits"]["hits"] == []
+        assert resp.json()["hits"]["total"]["value"] == 0
+
+    def test_a_backend_outage_is_still_502(self, client, db_session, opensearch, respx_mock):
+        import httpx
+
+        r = _range(db_session, DEV_TENANT)
+        respx_mock.post(f"http://mock-os:9200/range-{r.id}/_search").mock(
+            return_value=httpx.Response(503, json={"error": {"type": "cluster_block_exception"}})
+        )
+        with acting_as(UserRole.student):
+            resp = client.get(f"/telemetry/{r.id}/search", params={"q": "*"})
+        assert resp.status_code == 502
+
+
 class TestMitreTagging:
     def _ingest(self, client, db_session, backend, events):
         r = _range(db_session, DEV_TENANT)

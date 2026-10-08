@@ -68,14 +68,20 @@ not an assessment. Scenario executions never score: their objectives are `unasse
 - `run_scenario_v2` starts only a `pending`/`running` exercise; a late or duplicate
   delivery to a paused, completed or cancelled exercise returns `skipped` and writes
   nothing.
-- Before each event it re-reads the state; if an instructor paused, completed or cancelled
-  the exercise it stops firing (`halted`). There is no resume: a paused exercise's
-  remaining events are not fired by this run.
+- Before each event it claims it (`exercise_runs.next_seq`), which succeeds only while the
+  exercise is `running` and the task holds the run's lease; if an instructor paused,
+  completed or cancelled the exercise it stops firing (`halted`).
+- `POST /exercises/{id}/resume` (paused only; 409 otherwise) moves the exercise back to
+  `running`, issues a new lease and dispatches `run_scenario_v2` again. In the same
+  statement it sets `resume_from = next_seq`, so the new task continues the same run
+  after the last event the old one claimed, and the old task, if still alive, stops at its
+  next event (`halted`, state `superseded`). Every event fires once across a pause.
 - It completes only a `running` exercise and cancels (after the last retry) only a
   `pending`/`running` one, so it cannot overwrite a newer terminal state.
-- `run_id` is the Celery task id, stable across retries: a retry skips the events its run
-  already recorded. A replay (`POST /exercises/{id}/run`) is a new run; earlier records
-  are kept.
+- `run_id` (`exercise_runs.run_id`, issued by start and replay, kept by resume) is stable
+  across retries and resumes: they skip the events the run already recorded. A replay
+  (`POST /exercises/{id}/run`) is a new run; earlier records are kept. A message
+  dispatched without a lease (before `exercise_runs`) uses the Celery task id, as before.
 
 ## Deployment
 

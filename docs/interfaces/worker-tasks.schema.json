@@ -336,7 +336,7 @@
     },
     "worker.tasks.run_scenario_v2": {
       "args": {
-        "maxItems": 2,
+        "maxItems": 3,
         "minItems": 2,
         "prefixItems": [
           {
@@ -348,11 +348,16 @@
             "description": "validated scenario YAML as JSON",
             "title": "scenario_definition",
             "type": "object"
+          },
+          {
+            "description": "exercise_runs.lease issued by start, replay or resume; only its holder fires events",
+            "title": "lease",
+            "type": "string"
           }
         ],
         "type": "array"
       },
-      "description": "",
+      "description": "Run (or, after a resume, continue) an exercise's timeline.",
       "queue": "scenario"
     },
     "worker.tasks.snapshot_range": {

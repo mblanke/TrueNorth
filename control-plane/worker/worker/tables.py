@@ -123,6 +123,18 @@ courses = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+exercise_runs = sa.Table(
+    "exercise_runs",
+    metadata,
+    sa.Column("exercise_id", GUID(), primary_key=True),
+    sa.Column("run_id", sa.String(64), nullable=False),
+    sa.Column("lease", sa.String(64), nullable=False),
+    sa.Column("next_seq", sa.Integer(), nullable=False),
+    sa.Column("resume_from", sa.Integer(), nullable=False),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 exercises = sa.Table(
     "exercises",
     metadata,
@@ -442,6 +454,7 @@ __all__ = [
     "competency_assertions",
     "competency_auto_assessments",
     "courses",
+    "exercise_runs",
     "exercises",
     "forged_exercises",
     "golden_images",

@@ -13,6 +13,7 @@ GET    /exercises                           EXERCISE_READ
 GET    /exercises/{id}                      EXERCISE_READ
 POST   /exercises/{id}/start               EXERCISE_START
 POST   /exercises/{id}/pause               EXERCISE_PAUSE
+POST   /exercises/{id}/resume              EXERCISE_PAUSE
 POST   /exercises/{id}/complete            EXERCISE_COMPLETE
 GET    /exercises/{id}/objectives           EXERCISE_READ
 GET    /exercises/{id}/injects              EXERCISE_READ
@@ -39,6 +40,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import scenario_objectives
+from ..aar_html import RESPONSE_HEADERS as AAR_PAGE_HEADERS
 from ..aar_html import pdf_text
 from ..aar_html import render_html as render_aar_html
 from ..aar_report import build_report as build_aar_report
@@ -58,6 +60,7 @@ from ..models import (
 )
 from ..rbac import Permission, require_permission
 from ..scenario_runs import InjectRecord
+from ..scenario_runs import runs as scenario_run_leases
 from ..scenario_runs.schemas import InjectRecordOut
 from ..schemas import (
     AAROut,
@@ -214,13 +217,14 @@ async def start_exercise(
         raise HTTPException(409, f"Exercise is {ex.state.value}, expected pending")
     ex.state = ExerciseState.running
     ex.started_at = datetime.now(UTC)
+    lease = scenario_run_leases.begin(db, ex.id)
     db.commit()
     db.refresh(ex)
     _audit(db, user, "start", "exercise", str(ex.id))
     db.commit()
     # Dispatch the scenario runner (mock mode walks the timeline + auto-achieves objectives).
     definition = _scenario_definition(db, ex, user)
-    _dispatch_task("run_scenario_v2", str(ex.id), definition)
+    _dispatch_task("run_scenario_v2", str(ex.id), definition, lease)
     if background_tasks is not None:
         emit_lifecycle(
             background_tasks,
@@ -312,12 +316,13 @@ def run_exercise(
     # start the exercise + dispatch the scenario runner
     ex.state = ExerciseState.running
     ex.started_at = datetime.now(UTC)
+    lease = scenario_run_leases.begin(db, ex.id)
     db.commit()
     db.refresh(ex)
     _audit(db, user, "run", "exercise", str(ex.id))
     db.commit()
     definition = _scenario_definition(db, ex, user)
-    _dispatch_task("run_scenario_v2", str(ex.id), definition)
+    _dispatch_task("run_scenario_v2", str(ex.id), definition, lease)
     return ex
 
 
@@ -348,6 +353,37 @@ async def pause_exercise(
             activity_name=ex.name,
             context_extensions={"pause": True},
         )
+    return ex
+
+
+@router.post("/{exercise_id}/resume", response_model=ExerciseOut)
+def resume_exercise(
+    exercise_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.EXERCISE_PAUSE)),
+) -> Exercise:
+    """Resume a paused exercise.  **Permission: exercise:pause**
+
+    The scenario run continues from the next event it has not fired: a new worker task
+    takes over the run (app/scenario_runs/runs.py), so no inject fires twice. Only a
+    paused exercise can be resumed (409 otherwise, e.g. once completed or cancelled).
+    """
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    # Conditional, so two resumes (or a resume racing a complete) cannot both win.
+    moved = (
+        db.query(Exercise)
+        .filter(Exercise.id == ex.id, Exercise.state == ExerciseState.paused)
+        .update({Exercise.state: ExerciseState.running}, synchronize_session=False)
+    )
+    if not moved:  # nothing was written
+        db.refresh(ex)
+        raise HTTPException(409, f"Exercise is {ex.state.value}, expected paused")
+    lease = scenario_run_leases.resume(db, ex.id, ex.started_at)
+    db.commit()
+    db.refresh(ex)
+    _audit(db, user, "resume", "exercise", str(ex.id))
+    db.commit()
+    _dispatch_task("run_scenario_v2", str(ex.id), _scenario_definition(db, ex, user), lease)
     return ex
 
 
@@ -545,7 +581,7 @@ def get_aar_html(
     or before this renderer existed get the full page and are escaped the same way.
     """
     aar = _owned_aar(db, exercise_id, user)
-    return HTMLResponse(content=render_aar_html(_report_data(aar)))
+    return HTMLResponse(content=render_aar_html(_report_data(aar)), headers=AAR_PAGE_HEADERS)
 
 
 @router.get("/{exercise_id}/aar/pdf")
