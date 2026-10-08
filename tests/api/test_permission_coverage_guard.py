@@ -122,6 +122,7 @@ SIGN_IN_ONLY: dict[str, str] = {
     "GET /golden-images/resolve": "catalogue: resolves an OS alias to a golden image",
     "GET /golden-images/alias-map": "catalogue: OS alias table",
     "GET /injectors": "catalogue: the scenario engine's injector registry (code metadata, no tenant data)",
+    "GET /software-catalogue": "catalogue: deploy-time software install specs from content/catalogue (no tenant data)",
 }
 
 # Sign-in-only today, fixed on another branch. Not checked for staleness, so this file
