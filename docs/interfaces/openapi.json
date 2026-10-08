@@ -5242,6 +5242,57 @@
         "title": "FleetNodeCreateIn",
         "type": "object"
       },
+      "ForceReleaseIn": {
+        "description": "A deliberate act: the caller repeats the range's id and says why.",
+        "properties": {
+          "confirm_range_id": {
+            "format": "uuid",
+            "title": "Confirm Range Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 10,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm_range_id",
+          "reason"
+        ],
+        "title": "ForceReleaseIn",
+        "type": "object"
+      },
+      "ForceReleaseOut": {
+        "properties": {
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "released_holder": {
+            "title": "Released Holder",
+            "type": "string"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "string"
+          },
+          "was_expired": {
+            "title": "Was Expired",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "range_id",
+          "released_holder",
+          "was_expired",
+          "warning"
+        ],
+        "title": "ForceReleaseOut",
+        "type": "object"
+      },
       "ForgeIndicatorIn": {
         "properties": {
           "description": {
@@ -6762,6 +6813,100 @@
         "title": "InstructorInjectIn",
         "type": "object"
       },
+      "JobView": {
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Agent"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "title": "JobView",
+        "type": "object"
+      },
       "KitDefinitionIn": {
         "properties": {
           "description": {
@@ -7805,6 +7950,28 @@
           }
         },
         "title": "NetworkSummaryOut",
+        "type": "object"
+      },
+      "NewRun": {
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request": {
+            "maxLength": 4000,
+            "minLength": 3,
+            "title": "Request",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "request"
+        ],
+        "title": "NewRun",
         "type": "object"
       },
       "NoiseActivityOut": {
@@ -11260,6 +11427,32 @@
         "title": "RegistrationSuggestions",
         "type": "object"
       },
+      "Reply": {
+        "properties": {
+          "action": {
+            "pattern": "^(accept|feedback)$",
+            "title": "Action",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "Reply",
+        "type": "object"
+      },
       "ReportIn": {
         "properties": {
           "results": {
@@ -11303,6 +11496,353 @@
           }
         },
         "title": "RosterIn",
+        "type": "object"
+      },
+      "RunDetail": {
+        "properties": {
+          "actions_blocking": {
+            "title": "Actions Blocking",
+            "type": "integer"
+          },
+          "actions_open": {
+            "title": "Actions Open",
+            "type": "integer"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "files": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "findings": {
+            "items": {},
+            "title": "Findings",
+            "type": "array"
+          },
+          "gates": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Gates",
+            "type": "object"
+          },
+          "human_actions": {
+            "items": {},
+            "title": "Human Actions",
+            "type": "array"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lab": {
+            "additionalProperties": true,
+            "title": "Lab",
+            "type": "object"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "modules": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Modules",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectives": {
+            "items": {},
+            "title": "Objectives",
+            "type": "array"
+          },
+          "outline": {
+            "title": "Outline"
+          },
+          "package_ready": {
+            "title": "Package Ready",
+            "type": "boolean"
+          },
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "phase_text": {
+            "title": "Phase Text",
+            "type": "string"
+          },
+          "qa": {
+            "additionalProperties": true,
+            "title": "Qa",
+            "type": "object"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageView"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "phase",
+          "phase_text",
+          "stages",
+          "gates",
+          "qa",
+          "actions_open",
+          "actions_blocking",
+          "messages",
+          "objectives",
+          "modules",
+          "pages",
+          "lab",
+          "findings",
+          "human_actions",
+          "files",
+          "package_ready"
+        ],
+        "title": "RunDetail",
+        "type": "object"
+      },
+      "RunFile": {
+        "properties": {
+          "instructor_only": {
+            "title": "Instructor Only",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "text",
+          "instructor_only"
+        ],
+        "title": "RunFile",
+        "type": "object"
+      },
+      "RunList": {
+        "properties": {
+          "runner_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runner Seen"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "RunList",
+        "type": "object"
+      },
+      "RunSummary": {
+        "properties": {
+          "actions_blocking": {
+            "title": "Actions Blocking",
+            "type": "integer"
+          },
+          "actions_open": {
+            "title": "Actions Open",
+            "type": "integer"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "gates": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Gates",
+            "type": "object"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "phase_text": {
+            "title": "Phase Text",
+            "type": "string"
+          },
+          "qa": {
+            "additionalProperties": true,
+            "title": "Qa",
+            "type": "object"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageView"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "phase",
+          "phase_text",
+          "stages",
+          "gates",
+          "qa",
+          "actions_open",
+          "actions_blocking"
+        ],
+        "title": "RunSummary",
         "type": "object"
       },
       "ScenarioDraftIn": {
@@ -12180,6 +12720,32 @@
           "name"
         ],
         "title": "SnapshotRequest",
+        "type": "object"
+      },
+      "StageView": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "stop_reason": {
+            "title": "Stop Reason"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "state"
+        ],
+        "title": "StageView",
         "type": "object"
       },
       "StorageApplianceIn": {
@@ -16992,6 +17558,332 @@
         "summary": "Scenario Draft",
         "tags": [
           "ai-authoring"
+        ]
+      }
+    },
+    "/arc2/runs": {
+      "get": {
+        "operationId": "list_runs_arc2_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Runs",
+        "tags": [
+          "ARC\u00b2 Course Studio"
+        ]
+      },
+      "post": {
+        "description": "Send: create a project and queue stage 1. The run stops at the outline for review.",
+        "operationId": "create_run_arc2_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Run",
+        "tags": [
+          "ARC\u00b2 Course Studio"
+        ]
+      }
+    },
+    "/arc2/runs/{slug}": {
+      "get": {
+        "operationId": "get_run_arc2_runs__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Run",
+        "tags": [
+          "ARC\u00b2 Course Studio"
+        ]
+      }
+    },
+    "/arc2/runs/{slug}/file": {
+      "get": {
+        "operationId": "get_file_arc2_runs__slug__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 300,
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunFile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get File",
+        "tags": [
+          "ARC\u00b2 Course Studio"
+        ]
+      }
+    },
+    "/arc2/runs/{slug}/package.zip": {
+      "get": {
+        "operationId": "package_zip_arc2_runs__slug__package_zip_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Package Zip",
+        "tags": [
+          "ARC\u00b2 Course Studio"
+        ]
+      }
+    },
+    "/arc2/runs/{slug}/reply": {
+      "post": {
+        "description": "Accept the pending review, or send feedback; the runner resumes /arc2 with it.",
+        "operationId": "reply_arc2_runs__slug__reply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reply"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reply",
+        "tags": [
+          "ARC\u00b2 Course Studio"
+        ]
+      }
+    },
+    "/arc2/runs/{slug}/retry": {
+      "post": {
+        "description": "Queue the last job again when it failed (for example the runner could not sign in).",
+        "operationId": "retry_arc2_runs__slug__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry",
+        "tags": [
+          "ARC\u00b2 Course Studio"
         ]
       }
     },
@@ -30795,6 +31687,65 @@
         ]
       }
     },
+    "/ranges/{range_id}/lease/force-release": {
+      "post": {
+        "description": "DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted\non at once instead of when that operation's worker finishes (a hung worker can hold it\nfor about 1 h 55 min).\n\nOnly after checking vCenter: if that worker is still running, its in-flight work\n(clones, port groups, a teardown) continues beside whatever runs on the range next,\nand what it builds is no longer discarded. Only a tombstone (``abandoned:...``) is\nreleased: a live task's lease is refused with 409. ``confirm_range_id`` must repeat\nthe range's id; ``reason`` is recorded in the audit log.\n**Permission: range:lease_force_release** (admin only)",
+        "operationId": "force_release_range_lease_ranges__range_id__lease_force_release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForceReleaseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForceReleaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Force Release Range Lease",
+        "tags": [
+          "ranges"
+        ]
+      }
+    },
     "/ranges/{range_id}/network-reservations": {
       "get": {
         "description": "Addresses and VLANs this range holds on shared networks (app/network_inventory/).\n**Permission: range:read**",
@@ -30961,7 +31912,7 @@
     },
     "/ranges/{range_id}/operations/{operation_id}/abandon": {
       "post": {
-        "description": "Give up on an in-flight operation that will not finish (a lost task, a dead worker).\n\nCheck the hypervisor first: the API cannot see whether work is still running there.\nThe range goes to ``failed``, from where it can be destroyed or provisioned again.\n**Permission: range:destroy**",
+        "description": "Give up on an in-flight operation that will not finish (a lost task, a dead worker).\n\nCheck the hypervisor first: the API cannot see whether work is still running there.\nThe range goes to ``failed``, from where it can be destroyed or provisioned again. The\nlease held by the operation's task becomes a short tombstone: a worker still running\nthat task stops acting on the range and keeps it blocked only until its in-flight\nhypervisor work ends; a dead worker's range is free within ``RANGE_LEASE_SECONDS``.\n**Permission: range:destroy**",
         "operationId": "abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post",
         "parameters": [
           {

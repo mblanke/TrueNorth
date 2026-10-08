@@ -220,7 +220,7 @@ Permissions follow the pattern `resource:action`:
 
 | Category | Permissions |
 |----------|------------|
-| **Range** | `range:create`, `range:read`, `range:update`, `range:delete`, `range:provision`, `range:destroy`, `range:batch_provision` |
+| **Range** | `range:create`, `range:read`, `range:update`, `range:delete`, `range:provision`, `range:destroy`, `range:batch_provision`, `range:lease_force_release` |
 | **Template** | `template:create`, `template:read`, `template:update`, `template:delete` |
 | **Scenario** | `scenario:create`, `scenario:read`, `scenario:update`, `scenario:delete` |
 | **Exercise** | `exercise:create`, `exercise:read`, `exercise:update`, `exercise:delete`, `exercise:control` |
@@ -247,6 +247,7 @@ Complete role-to-permission mapping as defined in `rbac.py`:
 | `range:provision` | X | X | | | X |
 | `range:destroy` | X | X | | | X |
 | `range:batch_provision` | X | | | | X |
+| `range:lease_force_release` | X | | | | |
 | `template:create` | X | X | | | |
 | `template:read` | X | X | X | X | X |
 | `template:update` | X | X | | | |

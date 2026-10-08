@@ -224,7 +224,10 @@ def test_the_task_time_limit_ends_a_task_before_the_broker_redelivers_it():
     visibility = app.conf.broker_transport_options["visibility_timeout"]
     for task in (tasks.provision_range, tasks.destroy_range, tasks.snapshot_range, tasks.restore_snapshot):
         assert task.soft_time_limit < task.time_limit < visibility, task.name
-        assert task.time_limit < fencing.LEASE_SECONDS, task.name
+        # After the soft limit nothing renews the lease: the kept lease outlives the hard limit.
+        assert task.time_limit - task.soft_time_limit < fencing.KEPT_LEASE_SECONDS, task.name
+    # A running task renews its lease several times per lease: a dead worker's expires in minutes.
+    assert fencing.LEASE_SECONDS <= 300 and fencing.LEASE_HEARTBEAT_SECONDS * 3 <= fencing.LEASE_SECONDS
     # Only range tasks: a health check over every range must not be cut off at 55 minutes.
     assert tasks.health_check_ranges.soft_time_limit is None
 

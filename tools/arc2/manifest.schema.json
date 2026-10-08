@@ -315,7 +315,14 @@
               "critical": {"type": "boolean"},
               "critical_event_id": {"oneOf": [{"type": "null"}, {"$ref": "#/definitions/ce_id"}]},
               "description": {"$ref": "#/definitions/nonempty"},
-              "author_required": {"type": "boolean"}
+              "author_required": {"type": "boolean"},
+              "capture": {
+                "description": "A synthetic teaching capture: tools/arc2/pcapgen.py renders pcap from spec; check re-renders it.",
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["spec", "pcap", "summary"],
+                "properties": {"spec": {"$ref": "#/definitions/path"}, "pcap": {"$ref": "#/definitions/path"}, "summary": {"$ref": "#/definitions/path"}}
+              }
             },
             "if": {"properties": {"critical": {"const": true}}},
             "then": {"properties": {"critical_event_id": {"$ref": "#/definitions/ce_id"}}}
@@ -548,7 +555,12 @@
           "category": {"enum": ["standards", "security", "infra", "content", "package", "qa"]},
           "text": {"$ref": "#/definitions/nonempty"},
           "blocks_promotion": {"type": "boolean"},
-          "status": {"enum": ["open", "done"]}
+          "status": {"enum": ["open", "done"]},
+          "ask": {
+            "description": "decide: a judgement only an authority can make; supply: material only a person can provide (real data, local facts); confirm: something an agent drafted that a person approves.",
+            "enum": ["decide", "supply", "confirm"]
+          },
+          "who": {"description": "The role that must act: Standards, cleared author, instructor, range ops, curriculum review.", "$ref": "#/definitions/nonempty"}
         }
       }
     }

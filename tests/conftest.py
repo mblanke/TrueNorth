@@ -29,6 +29,8 @@ os.environ.setdefault("RANGE_OP_REDISPATCH_SECONDS", "0")  # tests call redispat
 from app.db import Base, get_db
 from app.main import app as fastapi_app
 
+TESTS_DIR = Path(__file__).resolve().parent
+
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: mark test as slow-running")
@@ -47,15 +49,96 @@ def engine():
     return eng
 
 
+# Foreign keys are enforced in ``db_session`` the way PostgreSQL enforces them. SQLite
+# ignores them unless asked, and that hid an insert-order fault: with no relationship()
+# between two mappers the unit of work orders their inserts by class name, not by the
+# key, and PostgreSQL refused a release whose blob was flushed with it (course_releases).
+# These modules still insert rows that reference rows they never create (a random tenant
+# id, a platform id that is not registered), so they run without enforcement. The list
+# only shrinks: fix a module's fixtures and take it off. "Acting user" below means a
+# CurrentUser with a random id that has no users row, so its audit_logs row dangles.
+SQLITE_FK_EXEMPT = {
+    "api/test_adaptive_learning.py": "assessments and recommendations for users never created",
+    "api/test_aar_report.py": "templates in tenants never created",
+    "api/test_answer_key_redaction.py": "objectives for exercises never created",
+    "api/test_detection_rules.py": "rules in tenants never created",
+    "api/test_detections.py": "objectives for exercises never created",
+    "api/test_developmental_path_binding.py": "enrollments for users never created",
+    "api/test_greyspace.py": "templates in a second tenant never created; acting user",
+    "api/test_hypervisors_vsphere.py": "connections in tenants never created",
+    "api/test_integration.py": "ranges and templates in tenants never created",
+    "api/test_integrations_authz.py": "users and platforms in tenants never created",
+    "api/test_lti13.py": "platforms and users in tenants never created",
+    "api/test_moodle_sso.py": "platforms and courses in tenants never created",
+    "api/test_noise.py": "templates in tenants never created; acting user",
+    "api/test_objective_ack.py": "exercises on ranges and scenarios never created",
+    "api/test_onboarding_flow.py": "creates the dev tenant and admin itself (clashes with the seed)",
+    "api/test_platform_tenancy.py": "OUs, users, storage and auth zones in tenants never created",
+    "api/test_qsp_curriculum_map.py": "enrollments for users never created",
+    "api/test_qsp_tenant_isolation.py": "templates and golden images in tenants never created",
+    "api/test_range_delete.py": "ranges in tenants never created",
+    "api/test_range_description.py": "templates in tenants never created",
+    "api/test_registration_flow.py": "creates the dev tenant itself (clashes with the seed)",
+    "api/test_scenario_runs.py": "scenarios, templates and executions referencing rows never created",
+    "api/test_snapshot_endpoints.py": "ranges in tenants never created",
+    "api/test_support_notifications.py": "users in tenants never created",
+    "api/test_telemetry_access.py": "templates in tenants never created",
+    "api/test_tenancy_followup.py": "users, exercises and assessments in tenants never created",
+    "api/test_tenant_isolation.py": "ranges in tenants never created",
+    "api/test_threat_intel.py": "feeds in tenants never created",
+    "api/test_tickets.py": "acting user",
+    "api/test_token_validation.py": "platforms in tenants never created",
+    "api/test_wiki.py": "acting user",
+    "scheduler/test_scheduler_access.py": "events for instructors never created; acting user",
+    "scheduler/test_scheduler_auto_create.py": "ranges and scenarios never created; acting user",
+    "scheduler/test_scheduler_calendar_sync.py": "events for instructors never created",
+    "scheduler/test_scheduler_capacity.py": "events, templates and instructors never created; acting user",
+    "scheduler/test_scheduler_clock.py": "ranges in tenants never created",
+    "scheduler/test_scheduler_feed.py": "events for instructors never created",
+    "scheduler/test_scheduler_lifecycle.py": "events for instructors never created; ranges",
+    "scheduler/test_scheduler_range_ops.py": "ranges in tenants never created",
+    "scheduler/test_scheduler_students.py": "courses in tenants never created",
+}
+DEV_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")  # app.auth's AUTH_DISABLED user and tenant
+
+
+def _seed_dev_principal(session: Session) -> None:
+    """The tenant and admin AUTH_DISABLED acts as. app.main seeds them at startup, but into
+    the app's own engine, not this one; with keys enforced, every row they own needs them."""
+    from app.models import Tenant, User, UserRole
+
+    session.add(Tenant(id=DEV_ID, name="Default Org", slug="default"))
+    session.flush()
+    session.add(
+        User(
+            id=DEV_ID,
+            email="admin@truenorth.local",
+            display_name="Dev Admin",
+            role=UserRole.admin,
+            tenant_id=DEV_ID,
+            keycloak_id="dev-admin",
+        )
+    )
+    session.flush()
+
+
 @pytest.fixture
-def db_session(engine) -> Generator[Session, None, None]:
-    """Yield a DB session, rolled back after each test."""
+def db_session(engine, request) -> Generator[Session, None, None]:
+    """Yield a DB session, rolled back after each test. Like the API's (app.db.SessionLocal)
+    it does not autoflush, so a test sees the write order production sends."""
+    enforce = Path(request.path).resolve().relative_to(TESTS_DIR).as_posix() not in SQLITE_FK_EXEMPT
     connection = engine.connect()
+    # Outside a transaction, or SQLite ignores the pragma. The pool shares this one
+    # connection, so switch it back off for the next test.
+    connection.connection.dbapi_connection.execute(f"PRAGMA foreign_keys={'ON' if enforce else 'OFF'}")
     transaction = connection.begin()
-    session = sessionmaker(bind=connection)()
+    session = sessionmaker(bind=connection, autoflush=False)()
+    if enforce:
+        _seed_dev_principal(session)
     yield session
     session.close()
     transaction.rollback()
+    connection.connection.dbapi_connection.execute("PRAGMA foreign_keys=OFF")
     connection.close()
 
 

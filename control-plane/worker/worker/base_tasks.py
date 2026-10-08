@@ -26,6 +26,15 @@ def _get_backend(backend: str | None = None):
     return get_provisioner(resolved)
 
 
+def db_connect_args(url: str) -> dict:
+    """Driver arguments for a task's database engine: on PostgreSQL a connect timeout
+    (``DB_CONNECT_TIMEOUT_SECONDS``, default 10), so an unreachable database fails a
+    lease renewal (worker/fencing.py) in seconds instead of the OS's minutes."""
+    if url.startswith("postgresql"):
+        return {"connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "10"))}
+    return {}
+
+
 class ReliableTask(Task):
     """Base task with exponential backoff + jitter on retries."""
 

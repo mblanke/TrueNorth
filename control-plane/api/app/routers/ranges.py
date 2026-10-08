@@ -22,6 +22,7 @@ POST   /ranges/{range_id}/start      RANGE_PROVISION
 GET    /ranges/{range_id}/operations RANGE_READ
 GET    /ranges/{range_id}/operations/{operation_id}            RANGE_READ
 POST   /ranges/{range_id}/operations/{operation_id}/abandon    RANGE_DESTROY
+POST   /ranges/{range_id}/lease/force-release                   RANGE_LEASE_FORCE_RELEASE (admin)
 GET    /ranges/{range_id}/network-reservations                  RANGE_READ
 POST   /ranges/batch-provision       RANGE_BATCH_PROVISION
 =================================  ==========================
@@ -655,15 +656,51 @@ def abandon_range_operation(
     """Give up on an in-flight operation that will not finish (a lost task, a dead worker).
 
     Check the hypervisor first: the API cannot see whether work is still running there.
-    The range goes to ``failed``, from where it can be destroyed or provisioned again.
+    The range goes to ``failed``, from where it can be destroyed or provisioned again. The
+    lease held by the operation's task becomes a short tombstone: a worker still running
+    that task stops acting on the range and keeps it blocked only until its in-flight
+    hypervisor work ends; a dead worker's range is free within ``RANGE_LEASE_SECONDS``.
     **Permission: range:destroy**"""
     _changeable_range(db, range_id, user)
     rng = ops._locked_range(db, range_id, user)  # the range first, as a destroy locks it: no deadlock
     op = _operation(db, rng, operation_id, lock=True)
-    ops.abandon(db, rng, op, user)
-    _audit(db, user, "abandon_operation", "range", str(rng.id), f"operation {op.id}")
+    fenced = ops.abandon(db, rng, op, user)
+    detail = f"operation {op.id}" + ("; worker lease fenced (tombstone)" if fenced else "")
+    _audit(db, user, "abandon_operation", "range", str(rng.id), detail)
     db.commit()
     return op
+
+
+@router.post("/{range_id}/lease/force-release", response_model=ops.ForceReleaseOut)
+def force_release_range_lease(
+    body: ops.ForceReleaseIn,
+    range_id: uuid.UUID = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.RANGE_LEASE_FORCE_RELEASE)),
+) -> ops.ForceReleaseOut:
+    """DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted
+    on at once instead of when that operation's worker finishes (a hung worker can hold it
+    for about 1 h 55 min).
+
+    Only after checking vCenter: if that worker is still running, its in-flight work
+    (clones, port groups, a teardown) continues beside whatever runs on the range next,
+    and what it builds is no longer discarded. Only a tombstone (``abandoned:...``) is
+    released: a live task's lease is refused with 409. ``confirm_range_id`` must repeat
+    the range's id; ``reason`` is recorded in the audit log.
+    **Permission: range:lease_force_release** (admin only)"""
+    if body.confirm_range_id != range_id:
+        raise HTTPException(422, "confirm_range_id must repeat the range's id")
+    rng = ops._locked_range(db, range_id, user)  # tenant-scoped; the range row first, as abandon locks it
+    holder, expired = ops.force_release_tombstone(db, rng)
+    _audit(
+        db, user, "force_release_lease", "range", str(rng.id),
+        f"released {holder} (expired: {expired}); reason: {body.reason}",
+    )
+    db.commit()
+    logger.warning("range %s: lease tombstone force-released by %s: %s", rng.id, user.email or user.id, body.reason)
+    return ops.ForceReleaseOut(
+        range_id=rng.id, released_holder=holder, was_expired=expired, warning=ops.FORCE_RELEASE_WARNING
+    )
 
 
 @router.get("/{range_id}/network-reservations", response_model=list[NetworkReservationOut])

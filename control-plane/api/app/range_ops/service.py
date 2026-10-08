@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
@@ -131,14 +131,38 @@ def recorded_vms(rng: Range) -> int:
     return len(vms) if isinstance(vms, list) else 0
 
 
-def worker_acting(db: Session, range_id: uuid.UUID) -> bool:
-    """A worker task holds the range's lease (worker/fencing.py): it is acting on it."""
+ABANDONED = "abandoned:"  # worker/fencing.py's tombstone prefix
+# The longest a live but hung worker can keep its tombstone: it renews it until the soft
+# time limit (worker/fencing.py SOFT_TIME_LIMIT, 55 min), then keeps it unrenewed for
+# KEPT_LEASE_SECONDS (1 h). Force-release (``force_release_tombstone``) is the way out.
+TOMBSTONE_WORST_CASE = "about 1 h 55 min (a hung worker: its 55 min time limit, then 1 h kept)"
+
+
+def lease_seconds() -> float:
+    """worker/fencing.py's LEASE_SECONDS (same variable): how long an abandoned
+    operation's tombstone blocks the range unless its worker, still alive, renews it."""
+    return float(os.getenv("RANGE_LEASE_SECONDS", "180") or 180)
+
+
+def _db_later(db: Session, seconds: float):
+    """Now plus ``seconds`` in database time (PostgreSQL), as the worker writes lease
+    expiry; SQLite (tests) has no interval arithmetic, so there the process clock."""
+    if db.get_bind().dialect.name == "postgresql":
+        return func.now() + timedelta(seconds=seconds)
+    return _now() + timedelta(seconds=seconds)
+
+
+def worker_acting(db: Session, range_id: uuid.UUID) -> str | None:
+    """The holder of the range's unexpired lease (worker/fencing.py), if a worker task is
+    acting on it or an abandoned one may still be finishing (``abandoned:...``)."""
     from ..range_leases import RangeLease
 
-    return (
-        db.query(RangeLease.range_id).filter(RangeLease.range_id == range_id, RangeLease.expires_at > _now()).first()
-        is not None
+    row = (
+        db.query(RangeLease.holder)
+        .filter(RangeLease.range_id == range_id, RangeLease.expires_at > func.now())  # database time
+        .first()
     )
+    return row[0] if row else None
 
 
 def refuse_while_in_flight(db: Session, rng: Range, what: str) -> None:
@@ -178,10 +202,21 @@ def _check(db: Session, rng: Range, action: str) -> None:
     if action == "provision" and vms:
         raise HTTPException(409, f"The range still has {vms} VMs from an earlier build; destroy it first")
     in_flight = db.query(RangeOperation).filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT))
-    if action != "destroy" and worker_acting(db, rng.id):
+    if action != "destroy" and (holder := worker_acting(db, rng.id)):
         # An abandoned or superseded task may still be running: its result would be taken
         # for the new operation's, and the new task skipped (worker/fencing.py).
-        raise HTTPException(409, f"Cannot {action}: a worker is still acting on this range; try again later")
+        if holder.startswith(ABANDONED):
+            why = (
+                "the abandoned operation's worker may still be finishing on the hypervisor. If it is dead this "
+                f"clears within {lease_seconds():.0f} s; if alive, when its work ends, at worst "
+                f"{TOMBSTONE_WORST_CASE}; an admin can force-release it"
+            )
+        else:
+            why = (
+                f"a dead worker's lease expires within {lease_seconds():.0f} s; abandoning its operation hands "
+                "the range back once the worker, if alive, has stopped"
+            )
+        raise HTTPException(409, f"Cannot {action}: a worker is still acting on this range; try again later ({why}).")
     if action == "destroy":
         for op in in_flight:
             op.status, op.finished_at = "superseded", _now()
@@ -351,21 +386,130 @@ def reconcile(db: Session, rng: Range) -> None:
     db.flush()
 
 
-def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> None:
+def fence_lease(db: Session, range_id: uuid.UUID, action: str, *, legacy: bool = False) -> bool:
+    """Fence out the task holding the range's lease for ``action``: rename the lease to a
+    tombstone, ``abandoned:<holder>``, expiring ``lease_seconds()`` from now. Does not
+    commit. Returns whether there was such a lease.
+
+    Not deleted: the task may still be running, with vCenter work in flight that a new
+    build would collide with (VM names, port groups) or a teardown that would remove a new
+    build's port groups. The tombstone keeps the range blocked; the task, if alive, is
+    fenced (it starts nothing more and writes nothing, worker/fencing.py) and renews the
+    tombstone until its work ends, then deletes it. A dead one renews nothing, and the
+    range is free within ``lease_seconds()``.
+
+    Only ``<action>:...`` holders: another action's lease (a restore, a superseded build
+    under a destroy) is left alone. ``legacy`` also fences a holder without an action
+    (written before holders carried one); the caller passes it only when the abandoned
+    operation is the range's only one in flight, so that lease can only be its task's."""
+    from sqlalchemy import literal, or_
+
+    from ..range_leases import RangeLease
+
+    mine = RangeLease.holder.like(f"{action}:%")
+    if legacy:
+        mine = or_(mine, ~RangeLease.holder.like("%:%"))
+    renamed = (
+        db.query(RangeLease)
+        .filter(RangeLease.range_id == range_id, mine)
+        .update(
+            {
+                RangeLease.holder: literal(ABANDONED).concat(RangeLease.holder),
+                RangeLease.expires_at: _db_later(db, lease_seconds()),
+            },
+            synchronize_session=False,
+        )
+    )
+    return bool(renamed)
+
+
+def abandon(db: Session, rng: Range, op: RangeOperation, user: CurrentUser) -> bool:
     """An operator's decision that an in-flight operation will not finish. Does not commit.
 
     The range goes to ``failed`` (from where it can be destroyed or provisioned again) and
-    the operation records who gave up on it. Not automatic: the API cannot see whether the
-    hypervisor is still working.
+    the operation records who gave up on it. In the same transaction the lease held by the
+    operation's task becomes a short tombstone (``fence_lease``): a dead worker's range
+    is free within ``lease_seconds()`` instead of the lease's full life, and a worker that
+    is in fact alive is fenced out and keeps the range blocked only until its in-flight
+    hypervisor work ends. Not automatic: the API cannot see whether the hypervisor is still
+    working. Returns whether a lease was fenced.
     """
     reconcile(db, rng)  # it may have finished since anyone looked
     if op.status not in IN_FLIGHT:
         raise HTTPException(409, f"Operation is already {op.status}")
+    only_op = (
+        db.query(RangeOperation.id)
+        .filter(RangeOperation.range_id == rng.id, RangeOperation.status.in_(IN_FLIGHT), RangeOperation.id != op.id)
+        .first()
+        is None
+    )
+    released = fence_lease(db, rng.id, op.action, legacy=only_op)
     op.status, op.finished_at = "failed", _now()
-    op.error = {"code": "abandoned", "message": f"Abandoned by {user.email or user.id}"}
+    message = f"Abandoned by {user.email or user.id}"
+    if released:
+        message += (
+            f"; the worker's lease on the range was fenced: the range is blocked for up to {lease_seconds():.0f} s, "
+            f"or while that worker is still finishing (at worst {TOMBSTONE_WORST_CASE})"
+        )
+    op.error = {"code": "abandoned", "message": message}
     if rng.state == ACTIONS[op.action].in_progress:
         rng.state = RangeState.failed
         rng.error_message = f"{op.action} abandoned by an operator; check the hypervisor for the VMs' real state"
+    return released
+
+
+# ── force-releasing an abandoned operation's tombstone ───────────────
+
+
+FORCE_RELEASE_WARNING = (
+    "Force-released an abandoned operation's lease tombstone. If that operation's worker is in fact still "
+    "running, its in-flight hypervisor work (clones, port groups, a teardown) continues beside whatever runs on "
+    "this range next, and what it builds is no longer discarded: check vCenter's recent tasks for this range "
+    "and destroy it before building it again."
+)
+
+
+class ForceReleaseIn(BaseModel):
+    """A deliberate act: the caller repeats the range's id and says why."""
+
+    confirm_range_id: uuid.UUID
+    reason: str = Field(min_length=10, max_length=500)
+
+
+class ForceReleaseOut(BaseModel):
+    range_id: uuid.UUID
+    released_holder: str
+    was_expired: bool
+    warning: str
+
+
+def force_release_tombstone(db: Session, rng: Range) -> tuple[str, bool]:
+    """Delete the range's lease if it is an abandoned operation's tombstone. Does not
+    commit; the caller has row-locked the range (the lock order of accept and abandon).
+    Returns (holder, whether it had expired already).
+
+    Only a tombstone: a live lease belongs to a task that is still the range's (abandon
+    its operation first; a dead worker's lease expires on its own). The tombstone of a
+    hung worker can otherwise block the range for ``TOMBSTONE_WORST_CASE``."""
+    from ..range_leases import RangeLease
+
+    lease = (
+        db.query(RangeLease).filter(RangeLease.range_id == rng.id).with_for_update().populate_existing().first()
+    )
+    if lease is None:
+        raise HTTPException(404, "This range has no lease to release")
+    if not lease.holder.startswith(ABANDONED):
+        raise HTTPException(
+            409,
+            "This lease is held by a task that is still the range's, not an abandoned operation's tombstone. "
+            "Abandon its operation first; a dead worker's lease expires on its own.",
+        )
+    expired = _aware(lease.expires_at) <= _now()
+    holder = lease.holder
+    db.delete(lease)
+    db.flush()
+    logger.warning("range %s: tombstone %s force-released", rng.id, holder)
+    return holder, expired
 
 
 # ── the API process's re-send loop ────────────────────────────────────

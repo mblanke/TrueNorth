@@ -433,6 +433,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/arc2/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_arc2_runs_get"];
+        put?: never;
+        /**
+         * Create Run
+         * @description Send: create a project and queue stage 1. The run stops at the outline for review.
+         */
+        post: operations["create_run_arc2_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arc2/runs/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_arc2_runs__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arc2/runs/{slug}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get File */
+        get: operations["get_file_arc2_runs__slug__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arc2/runs/{slug}/package.zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Package Zip */
+        get: operations["package_zip_arc2_runs__slug__package_zip_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arc2/runs/{slug}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply
+         * @description Accept the pending review, or send feedback; the runner resumes /arc2 with it.
+         */
+        post: operations["reply_arc2_runs__slug__reply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arc2/runs/{slug}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry
+         * @description Queue the last job again when it failed (for example the runner could not sign in).
+         */
+        post: operations["retry_arc2_runs__slug__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-log": {
         parameters: {
             query?: never;
@@ -4952,6 +5064,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ranges/{range_id}/lease/force-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Force Release Range Lease
+         * @description DANGEROUS. Delete an abandoned operation's lease tombstone, so the range can be acted
+         *     on at once instead of when that operation's worker finishes (a hung worker can hold it
+         *     for about 1 h 55 min).
+         *
+         *     Only after checking vCenter: if that worker is still running, its in-flight work
+         *     (clones, port groups, a teardown) continues beside whatever runs on the range next,
+         *     and what it builds is no longer discarded. Only a tombstone (``abandoned:...``) is
+         *     released: a live task's lease is refused with 409. ``confirm_range_id`` must repeat
+         *     the range's id; ``reason`` is recorded in the audit log.
+         *     **Permission: range:lease_force_release** (admin only)
+         */
+        post: operations["force_release_range_lease_ranges__range_id__lease_force_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ranges/{range_id}/network-reservations": {
         parameters: {
             query?: never;
@@ -5024,7 +5165,10 @@ export interface paths {
          * @description Give up on an in-flight operation that will not finish (a lost task, a dead worker).
          *
          *     Check the hypervisor first: the API cannot see whether work is still running there.
-         *     The range goes to ``failed``, from where it can be destroyed or provisioned again.
+         *     The range goes to ``failed``, from where it can be destroyed or provisioned again. The
+         *     lease held by the operation's task becomes a short tombstone: a worker still running
+         *     that task stops acting on the range and keeps it blocked only until its in-flight
+         *     hypervisor work ends; a dead worker's range is free within ``RANGE_LEASE_SECONDS``.
          *     **Permission: range:destroy**
          */
         post: operations["abandon_range_operation_ranges__range_id__operations__operation_id__abandon_post"];
@@ -9044,6 +9188,33 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * ForceReleaseIn
+         * @description A deliberate act: the caller repeats the range's id and says why.
+         */
+        ForceReleaseIn: {
+            /**
+             * Confirm Range Id
+             * Format: uuid
+             */
+            confirm_range_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /** ForceReleaseOut */
+        ForceReleaseOut: {
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Released Holder */
+            released_holder: string;
+            /** Warning */
+            warning: string;
+            /** Was Expired */
+            was_expired: boolean;
+        };
         /** ForgeIndicatorIn */
         ForgeIndicatorIn: {
             /** Description */
@@ -9685,6 +9856,25 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** JobView */
+        JobView: {
+            /** Action */
+            action?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Current Agent */
+            current_agent?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /** State */
+            state?: string | null;
+        };
         /** KitDefinitionIn */
         KitDefinitionIn: {
             /** Description */
@@ -10128,6 +10318,13 @@ export interface components {
              * @default 0
              */
             total_devices?: number;
+        };
+        /** NewRun */
+        NewRun: {
+            /** Name */
+            name: string;
+            /** Request */
+            request: string;
         };
         /**
          * NoiseActivityOut
@@ -11413,6 +11610,13 @@ export interface components {
             /** Tenant Name */
             tenant_name?: string | null;
         };
+        /** Reply */
+        Reply: {
+            /** Action */
+            action: string;
+            /** Text */
+            text?: string | null;
+        };
         /** ReportIn */
         ReportIn: {
             /** Results */
@@ -11440,6 +11644,122 @@ export interface components {
              * @default false
              */
             replace?: boolean;
+        };
+        /** RunDetail */
+        RunDetail: {
+            /** Actions Blocking */
+            actions_blocking: number;
+            /** Actions Open */
+            actions_open: number;
+            /** Code */
+            code?: string | null;
+            /** Files */
+            files: {
+                [key: string]: unknown;
+            }[];
+            /** Findings */
+            findings: unknown[];
+            /** Gates */
+            gates: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /** Human Actions */
+            human_actions: unknown[];
+            job?: components["schemas"]["JobView"] | null;
+            /** Lab */
+            lab: {
+                [key: string]: unknown;
+            };
+            /** Messages */
+            messages: {
+                [key: string]: unknown;
+            }[];
+            /** Modules */
+            modules: {
+                [key: string]: unknown;
+            }[];
+            /** Name */
+            name: string;
+            /** Objectives */
+            objectives: unknown[];
+            /** Outline */
+            outline?: unknown;
+            /** Package Ready */
+            package_ready: boolean;
+            /** Pages */
+            pages: string[];
+            /** Phase */
+            phase: string;
+            /** Phase Text */
+            phase_text: string;
+            /** Qa */
+            qa: {
+                [key: string]: unknown;
+            };
+            /** Request */
+            request?: string | null;
+            /** Slug */
+            slug: string;
+            /** Stages */
+            stages: components["schemas"]["StageView"][];
+            /** Title */
+            title?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** RunFile */
+        RunFile: {
+            /** Instructor Only */
+            instructor_only: boolean;
+            /** Path */
+            path: string;
+            /** Text */
+            text: string;
+        };
+        /** RunList */
+        RunList: {
+            /** Runner Seen */
+            runner_seen?: string | null;
+            /** Runs */
+            runs: components["schemas"]["RunSummary"][];
+        };
+        /** RunSummary */
+        RunSummary: {
+            /** Actions Blocking */
+            actions_blocking: number;
+            /** Actions Open */
+            actions_open: number;
+            /** Code */
+            code?: string | null;
+            /** Gates */
+            gates: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            job?: components["schemas"]["JobView"] | null;
+            /** Name */
+            name: string;
+            /** Phase */
+            phase: string;
+            /** Phase Text */
+            phase_text: string;
+            /** Qa */
+            qa: {
+                [key: string]: unknown;
+            };
+            /** Request */
+            request?: string | null;
+            /** Slug */
+            slug: string;
+            /** Stages */
+            stages: components["schemas"]["StageView"][];
+            /** Title */
+            title?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** ScenarioDraftIn */
         ScenarioDraftIn: {
@@ -11810,6 +12130,17 @@ export interface components {
              * @default false
              */
             vmstate?: boolean;
+        };
+        /** StageView */
+        StageView: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** State */
+            state: string;
+            /** Stop Reason */
+            stop_reason?: unknown;
         };
         /** StorageApplianceIn */
         StorageApplianceIn: {
@@ -14123,6 +14454,220 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_arc2_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunList"];
+                };
+            };
+        };
+    };
+    create_run_arc2_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewRun"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_arc2_runs__slug__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_file_arc2_runs__slug__file_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    package_zip_arc2_runs__slug__package_zip_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_arc2_runs__slug__reply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_arc2_runs__slug__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetail"];
                 };
             };
             /** @description Validation Error */
@@ -22636,6 +23181,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    force_release_range_lease_ranges__range_id__lease_force_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForceReleaseIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForceReleaseOut"];
+                };
             };
             /** @description Validation Error */
             422: {

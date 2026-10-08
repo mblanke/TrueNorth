@@ -25,9 +25,9 @@ from datetime import UTC, datetime
 from celery import group
 
 from . import db_ops, greyspace, range_alloc, secretbox
-from .base_tasks import ReliableTask, _get_backend
+from .base_tasks import ReliableTask, _get_backend, db_connect_args
 from .celery_app import app
-from .fencing import FINAL_ERRORS, fenced, run_async
+from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async, snapshot_back_to_ready
 from .fencing import last_attempt as _last_attempt
 from .provisioners import discard_built
 
@@ -63,7 +63,7 @@ def _db_session():
     from sqlalchemy.orm import Session, sessionmaker
     from sqlalchemy.pool import NullPool
 
-    eng = create_engine(DATABASE_URL, poolclass=NullPool, echo=False)
+    eng = create_engine(DATABASE_URL, poolclass=NullPool, echo=False, connect_args=db_connect_args(DATABASE_URL))
     factory = sessionmaker(bind=eng, class_=Session, expire_on_commit=False)
     session = factory()
     try:
@@ -93,7 +93,7 @@ def _update_range_state(
     ``clear_error`` drops a stale error_message, for a success after a failed attempt.
     """
     with _db_session() as db:
-        return db_ops.update_range_state(
+        return guarded_range_update(  # in a fenced task, only while it holds the lease (fencing.py)
             db, range_id, new_state, error=error, output=output, only_from=only_from, clear_error=clear_error
         )
 
@@ -247,12 +247,12 @@ def destroy_range(self, range_id: str):
         if result.status == "failed":
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
-        _update_range_state(range_id, "destroyed", only_from=("destroying",))
-        range_alloc.release_after_destroy(_db_session, range_id)  # its VLANs and addresses
-        _notify_api("range", {"id": range_id, "state": "destroyed"})
-        greyspace.after_destroy(range_id)  # Greyspace back to configured (ADR 0007); never raises
-        logger.info(f"[destroy] Range {range_id} destroyed ({result.resources_removed} resources)")
-        return {"status": "destroyed", "range_id": range_id}
+        if recorded := _update_range_state(range_id, "destroyed", only_from=("destroying",)):  # 0: abandoned/moved on
+            range_alloc.release_after_destroy(_db_session, range_id)  # its VLANs and addresses
+            _notify_api("range", {"id": range_id, "state": "destroyed"})
+            greyspace.after_destroy(range_id)  # Greyspace back to configured (ADR 0007); never raises
+        logger.info(f"[destroy] Range {range_id} torn down ({result.resources_removed} resources), recorded={recorded}")
+        return {"status": "destroyed" if recorded else "destroyed_unrecorded", "range_id": range_id}
 
     except Exception as e:
         if isinstance(e, FINAL_ERRORS) or _last_attempt(self):  # a retry must still find it destroying
@@ -548,7 +548,7 @@ def snapshot_range(self, range_id: str, snapshot_id: str):
 
 
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.restore_snapshot")
-@fenced("restore", None)  # the range's lease only: never alongside a build, teardown or another restore
+@fenced("restore", None, on_lost=snapshot_back_to_ready)  # the lease only: never beside a build or teardown
 def restore_snapshot(self, range_id: str, snapshot_id: str):
     """Restore a range from a snapshot."""
     logger.info(f"[restore] Restoring range {range_id} from snapshot {snapshot_id}")

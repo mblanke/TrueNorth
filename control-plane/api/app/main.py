@@ -268,6 +268,7 @@ from .routers import (
     admin_router,
     ai_authoring_router,
     ai_config_router,
+    arc2_studio_router,
     auth_zones_router,
     certifications_router,
     collective_exercises_router,
@@ -350,6 +351,8 @@ app.include_router(lti_router)
 app.include_router(hypervisors_router)
 app.include_router(golden_images_router)
 app.include_router(ai_config_router)
+# ARC² Course Studio; answers 404 unless ARC2_STUDIO_ENABLED is set.
+app.include_router(arc2_studio_router)
 app.include_router(directory_router)
 app.include_router(ad_sync_router)
 app.include_router(auth_zones_router)
