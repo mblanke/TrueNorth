@@ -82,6 +82,12 @@ export class AuthService {
     const role = this.userSignal()?.role;
     return role === 'student' || role === 'admin' || role === 'instructor';
   });
+  /**
+   * Mirrors `course:author` in rbac.py: instructors and admins. Generating, editing,
+   * publishing and exporting quizzes need it; Students get 403. The API enforces it;
+   * this only hides the controls.
+   */
+  readonly canAuthorCourses = computed(() => this.isInstructor());
   /** The schedule (calendar, capacity, timeline) is for staff; Students never see it (ADR 0004). */
   readonly canViewSchedule = computed(() => {
     const role = this.userSignal()?.role;
