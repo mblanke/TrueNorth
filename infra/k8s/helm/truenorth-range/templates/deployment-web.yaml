@@ -47,7 +47,7 @@ spec:
           imagePullPolicy: {{ .Values.web.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
               protocol: TCP
           {{- with .Values.web.keycloak }}
           # Read by docker/40-truenorth-runtime-config.sh into assets/config.json.

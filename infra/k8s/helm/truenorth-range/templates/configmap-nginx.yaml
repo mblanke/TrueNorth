@@ -17,7 +17,7 @@ metadata:
 data:
   default.conf: |
     server {
-        listen 80;
+        listen 8080;  # the web image runs nginx unprivileged
         server_name _;
 
         root /usr/share/nginx/html;
@@ -42,6 +42,18 @@ data:
             expires 1y;
             add_header Cache-Control "public, immutable";
             try_files $uri =404;
+        }
+
+        # SPA runtime config, written by the image's entrypoint into /tmp from the
+        # TN_* env (deployment-web.yaml); the built-in copy when none is set. No
+        # add_header here: it would drop the server-level security headers. The SPA
+        # fetches it with cache: no-store.
+        location = /assets/config.json {
+            root /tmp/truenorth-runtime;
+            try_files /config.json @builtin_config;
+        }
+        location @builtin_config {
+            root /usr/share/nginx/html;
         }
 
         # Angular SPA routing — serve index.html for all non-file routes

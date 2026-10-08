@@ -1,7 +1,9 @@
 # =============================================================================
 # TrueNorth Range — Nginx Reverse Proxy
 # =============================================================================
-FROM nginx:1.25-alpine
+# 1.25-alpine is Alpine 3.19 (end of life). The master stays root: it binds 80/443, and
+# its workers already drop to the nginx user.
+FROM nginx:1.30-alpine
 
 LABEL maintainer="TrueNorth Range DevOps"
 LABEL description="Production reverse proxy for TrueNorth Range platform"
