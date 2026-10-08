@@ -58,11 +58,14 @@ def upgrade() -> None:
         if table is None or name not in existing:
             continue
         present = {(tuple(fk["constrained_columns"]), fk["referred_table"]) for fk in inspector.get_foreign_keys(name)}
+        have_columns = {c["name"] for c in inspector.get_columns(name)}
         for fkc in table.foreign_key_constraints:
             columns = [c.name for c in fkc.columns]
             target = fkc.elements[0].column.table.name
             if target not in existing or (tuple(columns), target) in present:
                 continue
+            if not set(columns) <= have_columns:
+                continue  # a later revision adds the column, with its key (b0c1d2e3f4a5 LATER_COLUMNS)
             op.create_foreign_key(
                 f"{name}_{'_'.join(columns)}_fkey",  # the name Postgres gives create_all()'s keys
                 name,
@@ -72,7 +75,48 @@ def upgrade() -> None:
             )
 
 
+# The tables that exist when b0c1d2e3f4a5 runs on an empty database: the initial schema
+# (3731bf01ced3, frozen) plus the ones b0c1d2e3f4a5 creates. A key from an ORM-only table
+# to anything else is one b0c1d2e3f4a5 defers on Postgres and this revision adds.
+INITIAL_SCHEMA_TABLES: tuple[str, ...] = (
+    "tenants",
+    "users",
+    "teams",
+    "team_memberships",
+    "templates",
+    "scenarios",
+    "ranges",
+    "exercises",
+    "objectives",
+    "after_action_reports",
+    "audit_logs",
+)
+
+
 def downgrade() -> None:
-    # Nothing to undo safely: on most databases these keys predate this revision,
-    # having come from create_all(), and dropping them would remove real constraints.
-    pass
+    """Drop the keys b0c1d2e3f4a5 defers on Postgres, returning the schema to what the
+    chain builds at a3b4c5d6e7f8.
+
+    That is the previous revision's schema whichever way the database was built, so on a
+    database ``create_all()`` made, the keys are dropped too (the columns and their data
+    stay). SQLite is skipped, as in the upgrade: b0c1d2e3f4a5 keeps every key there.
+    """
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        return
+    orm_only = _orm_only_tables()
+    available_at_b0c1 = set(INITIAL_SCHEMA_TABLES) | set(orm_only)
+    inspector = sa.inspect(bind)
+    existing = set(inspector.get_table_names())
+    for name in orm_only:
+        table = Base.metadata.tables.get(name)
+        if table is None or name not in existing:
+            continue
+        deferred = {
+            (tuple(c.name for c in fkc.columns), fkc.elements[0].column.table.name)
+            for fkc in table.foreign_key_constraints
+            if fkc.elements[0].column.table.name not in available_at_b0c1
+        }
+        for fk in inspector.get_foreign_keys(name):
+            if fk.get("name") and (tuple(fk["constrained_columns"]), fk["referred_table"]) in deferred:
+                op.drop_constraint(fk["name"], name, type_="foreignkey")

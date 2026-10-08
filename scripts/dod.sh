@@ -69,6 +69,7 @@ if [[ "${DOD_WEB:-0}" == "1" ]]; then
   pushd control-plane/web >/dev/null
   run npx ng lint
   run npx ng build --configuration=production
+  run npm run check:prod-env
   run npx ng test --watch=false --browsers=ChromeHeadless
   popd >/dev/null
 else

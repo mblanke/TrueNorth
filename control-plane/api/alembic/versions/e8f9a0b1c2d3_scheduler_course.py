@@ -27,9 +27,20 @@ def _has_course_id() -> bool:
 
 def upgrade() -> None:
     if not _has_course_id():
-        op.add_column("scheduled_events", sa.Column("course_id", GUID(), sa.ForeignKey("courses.id"), nullable=True))
+        # Batch mode: SQLite cannot add a column with a foreign key in place.
+        with op.batch_alter_table("scheduled_events") as batch:
+            batch.add_column(
+                sa.Column(
+                    "course_id",
+                    GUID(),
+                    sa.ForeignKey("courses.id", name="scheduled_events_course_id_fkey"),
+                    nullable=True,
+                )
+            )
 
 
 def downgrade() -> None:
     if _has_course_id():
-        op.drop_column("scheduled_events", "course_id")
+        # SQLite cannot drop a column with a foreign key in place; batch mode rebuilds the table.
+        with op.batch_alter_table("scheduled_events") as batch:
+            batch.drop_column("course_id")

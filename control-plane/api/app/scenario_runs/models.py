@@ -44,7 +44,8 @@ class InjectRecord(TimestampMixin, Base):
     )
     range_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
-    # One run of a timeline (the Celery task id, the same across its retries): a retry
+    # One run of a timeline (``exercise_runs.run_id``, or the Celery task id for a run
+    # dispatched without a lease; the same across retries and resumes): a retry or resume
     # skips the events its run already recorded; a replay is a new run.
     run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="timeline")  # timeline | instructor
@@ -57,6 +58,30 @@ class InjectRecord(TimestampMixin, Base):
     mitre_technique: Mapped[str | None] = mapped_column(String(32), nullable=True)
     telemetry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     telemetry_shipped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class ExerciseRun(TimestampMixin, Base):
+    """The current run of an exercise's timeline, so a paused run can be resumed.
+
+    ``run_id`` names the run in ``inject_records`` (start and replay make a new one; resume
+    keeps it). ``lease`` is the token of the one worker task allowed to fire events: start,
+    replay and resume each issue a new one, so a task from before a pause that is still
+    alive stops at its next event. Before firing event ``i`` a task claims it by moving
+    ``next_seq`` to ``i + 1``, only while it holds the lease and the exercise is running.
+    Resume sets ``resume_from = next_seq`` in the same statement that swaps the lease, so
+    the continuation starts after every event the earlier task claimed, fired or not yet
+    recorded, and no event is fired twice.
+    """
+
+    __tablename__ = "exercise_runs"
+
+    exercise_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("exercises.id", ondelete="CASCADE"), primary_key=True
+    )
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    lease: Mapped[str] = mapped_column(String(64), nullable=False)
+    next_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    resume_from: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class ScenarioExecution(TimestampMixin, Base):

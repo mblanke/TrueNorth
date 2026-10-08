@@ -172,6 +172,33 @@ class TestSecurityHeaders:
         resp = mw_client.get("/items")
         assert resp.headers["content-security-policy"] == "default-src 'self'"
 
+    def test_route_may_set_its_own_csp_but_not_drop_the_rest(self):
+        """A route that sends its own CSP / X-Frame-Options keeps them; everything else is
+        still forced, and routes that send none get the defaults."""
+        from fastapi.responses import HTMLResponse
+
+        app = _make_app(redis_client=None)
+
+        @app.get("/page")
+        def page():
+            return HTMLResponse(
+                "<p>x</p>",
+                headers={
+                    "Content-Security-Policy": "default-src 'none'",
+                    "X-Frame-Options": "SAMEORIGIN",
+                    "X-Content-Type-Options": "sniff-me",
+                },
+            )
+
+        c = TestClient(app)
+        resp = c.get("/page")
+        assert resp.headers["content-security-policy"] == "default-src 'none'"
+        assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+        assert resp.headers["x-content-type-options"] == "nosniff"
+        other = c.get("/items")
+        assert other.headers["content-security-policy"] == "default-src 'self'"
+        assert other.headers["x-frame-options"] == "DENY"
+
 
 # ── Request ID ─────────────────────────────────────────────────────────
 

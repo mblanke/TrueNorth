@@ -11,6 +11,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
+import { adminServiceLinks, type ServiceLink } from '@core/config/runtime-config';
 import { NotificationService } from '@core/services/notification.service';
 import { Tenant, HealthResponse } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
@@ -200,23 +201,18 @@ interface AuditEntry {
         <mat-tab label="Services">
           <div class="tab-content">
             <h2 class="mt-2">External Services</h2>
+            <!-- Links come from the runtime config (TN_ADMIN_* on the web container);
+                 a console without a configured URL is not shown. -->
             <div class="card-grid" tnEnterStagger>
-              <mat-card class="tn-stagger-item" tnHoverLift>
-                <mat-card-header><mat-card-title>Keycloak</mat-card-title></mat-card-header>
-                <mat-card-actions><a mat-button href="http://localhost:8180" target="_blank">Open <mat-icon>open_in_new</mat-icon></a></mat-card-actions>
-              </mat-card>
-              <mat-card class="tn-stagger-item" tnHoverLift>
-                <mat-card-header><mat-card-title>MinIO Console</mat-card-title></mat-card-header>
-                <mat-card-actions><a mat-button href="http://localhost:9001" target="_blank">Open <mat-icon>open_in_new</mat-icon></a></mat-card-actions>
-              </mat-card>
-              <mat-card class="tn-stagger-item" tnHoverLift>
-                <mat-card-header><mat-card-title>OpenSearch Dashboards</mat-card-title></mat-card-header>
-                <mat-card-actions><a mat-button href="http://localhost:5602" target="_blank">Open <mat-icon>open_in_new</mat-icon></a></mat-card-actions>
-              </mat-card>
-              <mat-card class="tn-stagger-item" tnHoverLift>
-                <mat-card-header><mat-card-title>AI Orchestrator</mat-card-title></mat-card-header>
-                <mat-card-actions><a mat-button href="http://localhost:6000/docs" target="_blank">Open <mat-icon>open_in_new</mat-icon></a></mat-card-actions>
-              </mat-card>
+              @for (link of serviceLinks; track link.name) {
+                <mat-card class="tn-stagger-item" tnHoverLift>
+                  <mat-card-header><mat-card-title>{{ link.name }}</mat-card-title></mat-card-header>
+                  <mat-card-actions>
+                    <a mat-button [href]="link.url" target="_blank" rel="noopener noreferrer"
+                       [attr.aria-label]="'Open ' + link.name + ' (new tab)'">Open <mat-icon aria-hidden="true">open_in_new</mat-icon></a>
+                  </mat-card-actions>
+                </mat-card>
+              }
             </div>
           </div>
         </mat-tab>
@@ -246,6 +242,7 @@ export class AdminComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
 
+  readonly serviceLinks: ServiceLink[] = adminServiceLinks();
   health = signal<HealthResponse | null>(null);
   tenants = signal<Tenant[]>([]);
   auditLog = signal<AuditEntry[]>([]);
