@@ -14,6 +14,7 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '@core/services/api.service';
 import { ThemeService } from '@core/services/theme.service';
 import { AuthService } from '@core/services/auth.service';
+import { NotificationService } from '@core/services/notification.service';
 import { tnChartColors, tnCartesianBase } from '../../shared/charts/echarts-theme';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { CompetencyHeatmapComponent } from './competency-heatmap.component';
@@ -219,6 +220,7 @@ interface SkillGap {
 })
 export class CompetencyComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
+  private notify = inject(NotificationService);
 
   @ViewChild('fwChart') fwChart?: ElementRef<HTMLDivElement>;
   @ViewChild('profChart') profChart?: ElementRef<HTMLDivElement>;
@@ -376,8 +378,8 @@ export class CompetencyComponent implements OnInit, OnDestroy {
 
   importNice() {
     this.api.post('/competency/frameworks/import-nice', {}).subscribe({
-      next: () => { alert('NICE framework imported!'); this.loadFramework(); },
-      error: (err: any) => alert(err.error?.detail || 'Import failed'),
+      next: () => { this.notify.success('NICE framework imported'); this.loadFramework(); },
+      error: (err: any) => this.notify.error(err.error?.detail || 'Import failed'),
     });
   }
 }
