@@ -281,7 +281,9 @@ class TestReviewFindings:
         obj.achieved, obj.evidence = True, '{"source": "student_detection"}'
         db_session.commit()
         with acting_as(UserRole.instructor):
-            client.post(f"/exercises/{ex.id}/run")
+            assert client.post(f"/exercises/{ex.id}/run").status_code == 409  # sweep M3: never by accident
+            assert _obj(db_session, ex).achieved is True
+            client.post(f"/exercises/{ex.id}/run", params={"reset": "true"})
         obj = _obj(db_session, ex)
         assert (obj.achieved, obj.evidence) == (False, None)
 

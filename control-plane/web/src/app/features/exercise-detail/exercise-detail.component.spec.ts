@@ -56,6 +56,15 @@ describe('ExerciseDetailComponent detections', () => {
   const submitButtons = (el: HTMLElement) =>
     Array.from(el.querySelectorAll('button')).filter(b => b.textContent?.includes('Submit detection'));
 
+  it('offers Run / replay to staff only (sweep M3: a replay clears everyone)', async () => {
+    const runButton = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Provision & Run'));
+    expect(runButton(await render('student', 'completed'))).toBeUndefined();
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    expect(runButton(await render('instructor', 'completed'))).toBeDefined();
+  });
+
   it('offers a Student one detection action, on the detection objective only', async () => {
     const el = await render('student');
     expect(api.listDetections).toHaveBeenCalledWith('ex1');

@@ -353,8 +353,10 @@ export class ApiService {
   startExercise(id: string): Observable<Exercise> {
     return this.http.post<Exercise>(`${this.base}/exercises/${id}/start`, {});
   }
-  runExercise(id: string): Observable<Exercise> {
-    return this.http.post<Exercise>(`${this.base}/exercises/${id}/run`, {});
+  /** `reset` replays a completed or cancelled exercise, clearing every objective (staff only). */
+  runExercise(id: string, reset = false): Observable<Exercise> {
+    const params = reset ? new HttpParams().set('reset', 'true') : undefined;
+    return this.http.post<Exercise>(`${this.base}/exercises/${id}/run`, {}, { params });
   }
   pauseExercise(id: string): Observable<Exercise> {
     return this.http.post<Exercise>(`${this.base}/exercises/${id}/pause`, {});

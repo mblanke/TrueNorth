@@ -89,7 +89,8 @@ const NODE_ICON: Record<string, string> = {
             </div>
           </div>
           <div class="run-box">
-            @if (auth.canSubmitDetections()) {
+            @if (auth.isInstructor()) {
+              <!-- Staff run and replay a team exercise; a replay clears every objective (sweep M3). -->
               <button mat-flat-button color="primary" (click)="run()" [disabled]="running || d.state==='running'">
                 <mat-icon>{{ d.state === 'completed' ? 'replay' : 'play_arrow' }}</mat-icon>
                 {{ d.state === 'running' ? 'Running…' : 'Provision & Run (simulated)' }}
@@ -442,8 +443,12 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   }
 
   run(): void {
+    const replay = this.detail?.state === 'completed' || this.detail?.state === 'cancelled';
+    if (replay && !confirm('Replay this exercise? Every objective and the score are cleared.')) {
+      return;
+    }
     this.running = true;
-    this.api.runExercise(this.id).subscribe({
+    this.api.runExercise(this.id, replay).subscribe({
       next: () => {
         this.snack.open('Simulated run started — provisioning + executing timeline…', '', { duration: 3000 });
         this.startPolling();

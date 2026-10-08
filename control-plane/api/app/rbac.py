@@ -59,8 +59,8 @@ class Permission(str, Enum):
     EXERCISE_PAUSE = "exercise:pause"
     # A Student's detection, judged by the server against the objective's answer key (ADR 0005)
     DETECTION_SUBMIT = "detection:submit"
-    # Awarding an objective by hand. Deliberately separate from EXERCISE_COMPLETE, which
-    # Students hold: a Student must never be able to award themselves points (ADR 0005 §4).
+    # Awarding an objective by hand. Deliberately separate from EXERCISE_COMPLETE: a
+    # Student must never be able to award themselves points (ADR 0005 §4).
     OBJECTIVE_ACK = "objective:ack"
 
     # User management
@@ -234,14 +234,15 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.TICKET_CREATE,
         Permission.TICKET_WORK,
     },
-    # Student (trainee): consume ranges, run exercises
+    # Student (trainee): take part in exercises. Not exercise:start / exercise:complete
+    # (security sweep M3): a team exercise is run and closed by staff, and /run on a
+    # completed one reset every participant's objectives. A Student's own lab has its own
+    # lifecycle (app/lab_sessions), which does not use these.
     UserRole.student: {
         Permission.RANGE_READ,
         Permission.TEMPLATE_READ,
         Permission.SCENARIO_READ,
         Permission.EXERCISE_READ,
-        Permission.EXERCISE_START,
-        Permission.EXERCISE_COMPLETE,
         Permission.DETECTION_SUBMIT,
         Permission.AAR_READ,
         Permission.WIKI_READ,

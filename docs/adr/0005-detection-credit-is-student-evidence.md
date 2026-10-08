@@ -161,8 +161,10 @@ Left as they are:
 
 - Mock runs still auto-achieve every objective. A mock range has no telemetry, so it is a
   simulation, not a graded exercise.
-- Students keep `exercise:start` and `exercise:complete` (PR #58 kept completion
-  deliberately), so a Student can still replay or close a team exercise.
+- ~~Students keep `exercise:start` and `exercise:complete`~~ Reversed by the security
+  sweep (M3, 2026-10-08): Students hold neither, so they cannot run, close or replay a
+  team exercise, and `/run` on a completed or cancelled exercise needs `reset=true`
+  (a replay clears every objective). Lab sessions have their own lifecycle.
 - The answer key is read from the scenario at submission time, so editing a running
   exercise's scenario changes its key.
 - There is no Student-to-exercise relation, so any Student in the tenant may submit on a

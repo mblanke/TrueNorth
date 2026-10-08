@@ -23487,7 +23487,7 @@
     },
     "/exercises/{exercise_id}/run": {
       "post": {
-        "description": "One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**",
+        "description": "One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**\n\nA completed or cancelled exercise is replayed only with ``reset=true``: replay wipes\neveryone's objectives and score, so it is never a side effect of pressing Run (409).",
         "operationId": "run_exercise_exercises__exercise_id__run_post",
         "parameters": [
           {
@@ -23498,6 +23498,18 @@
               "format": "uuid",
               "title": "Exercise Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "replay a completed or cancelled exercise: clears every objective and the score",
+            "in": "query",
+            "name": "reset",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "replay a completed or cancelled exercise: clears every objective and the score",
+              "title": "Reset",
+              "type": "boolean"
             }
           }
         ],

@@ -287,11 +287,17 @@ def scenario_detail(
 @router.post("/{exercise_id}/run", response_model=ExerciseOut)
 def run_exercise(
     exercise_id: uuid.UUID = Path(...),
+    reset: bool = Query(False, description="replay a completed or cancelled exercise: clears every objective and the score"),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_START)),
 ) -> Exercise:
-    """One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**"""
+    """One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**
+
+    A completed or cancelled exercise is replayed only with ``reset=true``: replay wipes
+    everyone's objectives and score, so it is never a side effect of pressing Run (409)."""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    if ex.state in (ExerciseState.completed, ExerciseState.cancelled) and not reset:
+        raise HTTPException(409, f"Exercise is {ex.state.value}; replaying it clears every objective (reset=true)")
     # Replay: reset a finished/cancelled exercise back to pending before re-running.
     if ex.state in (ExerciseState.completed, ExerciseState.cancelled):
         for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():

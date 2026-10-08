@@ -2221,6 +2221,9 @@ export interface paths {
         /**
          * Run Exercise
          * @description One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**
+         *
+         *     A completed or cancelled exercise is replayed only with ``reset=true``: replay wipes
+         *     everyone's objectives and score, so it is never a side effect of pressing Run (409).
          */
         post: operations["run_exercise_exercises__exercise_id__run_post"];
         delete?: never;
@@ -18165,7 +18168,10 @@ export interface operations {
     };
     run_exercise_exercises__exercise_id__run_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description replay a completed or cancelled exercise: clears every objective and the score */
+                reset?: boolean;
+            };
             header?: never;
             path: {
                 exercise_id: string;
