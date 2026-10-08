@@ -143,6 +143,9 @@ def list_injectors() -> list[str]:
 
 
 INJECT_PREFIX = "inject."
+# Where inject telemetry carries its labels. The API's detection grammar refuses it
+# (control-plane/api/app/search_backends/detection_query.py, same constant; a test pins both).
+GROUND_TRUTH_FIELD = "tn_ground_truth"
 
 
 def canonical_action(action: str) -> str:
@@ -171,35 +174,36 @@ def injector_profile(action: str) -> dict[str, Any] | None:
 def inject_telemetry(action: str, raw: dict[str, Any], ctx: RangeContext, *, execution_mode: str) -> list[dict]:
     """Telemetry for one executed inject: the injector's own events, else one summary event.
 
-    Fields are flat so a range index can be searched by ``exercise_id`` / ``inject_action``
-    without a mapping. ``truenorth_simulated`` says the record is synthetic: a simulated
-    inject must never be mistaken for activity observed on a host.
+    Every platform label (which exercise and inject, the technique, the target, that the
+    record is synthetic) goes under ``GROUND_TRUTH_FIELD``, never beside the observable
+    fields. That object is stored but not indexed (``telemetry/pipelines/bootstrap.py``) and
+    the detection grammar refuses it, so a Student cannot earn detection credit by querying
+    the labels instead of the attack (ADR 0005, security sweep H4). Before 2026-10-08 the
+    labels were flat (``inject_action``, ``exercise_id``, ``truenorth_simulated``,
+    ``event.module: truenorth.inject``, ``threat.technique.id``) and searchable by anyone.
+
+    A summary event is nothing but labels: it records that the inject ran.
     """
     own = raw.get("telemetry")
     events = [dict(e) for e in own if isinstance(e, dict)] if isinstance(own, list) else []
+    summary = {
+        "module": "truenorth.inject",
+        "action": action,
+        "message": f"inject {action} ({execution_mode})",
+        "technique_id": raw.get("technique_id") or raw.get("technique"),
+        "target": raw.get("target") or raw.get("target_host") or raw.get("target_dc"),
+    }
     if not events:
-        technique = raw.get("technique_id") or raw.get("technique")
-        events = [
-            {
-                "event.kind": "event",
-                "event.module": "truenorth.inject",
-                "event.action": action,
-                "message": f"inject {action} ({execution_mode})",
-                "threat.technique.id": technique,
-                "inject_target": raw.get("target") or raw.get("target_host") or raw.get("target_dc"),
-            }
-        ]
+        events = [{"event.kind": "event"}]
     for e in events:
         e.setdefault("@timestamp", datetime.now(UTC).isoformat())
-        e.update(
-            {
-                "range_id": ctx.range_id,
-                "tenant_id": ctx.tenant_id,
-                "exercise_id": ctx.exercise_id,
-                "inject_action": action,
-                "truenorth_simulated": execution_mode != "live",
-            }
-        )
+        e.update({"range_id": ctx.range_id, "tenant_id": ctx.tenant_id})
+        e[GROUND_TRUTH_FIELD] = {
+            **summary,
+            "exercise_id": ctx.exercise_id,
+            "inject_action": action,
+            "simulated": execution_mode != "live",
+        }
     return events
 
 
@@ -310,4 +314,5 @@ __all__ = [
     "injector_profile",
     "inject_telemetry",
     "run_inject",
+    "GROUND_TRUTH_FIELD",
 ]

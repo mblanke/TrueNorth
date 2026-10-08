@@ -51,9 +51,10 @@ type Tone = 'ok' | 'warn' | 'err';
     @if (open() && canSubmitNow()) {
       <form class="det-form" (ngSubmit)="submit()">
         <mat-form-field appearance="outline" subscriptSizing="dynamic" class="det-field">
-          <mat-label>Lucene query</mat-label>
+          <mat-label>Detection query</mat-label>
           <textarea matInput name="query" rows="3" maxlength="2000" required [(ngModel)]="query"
             [disabled]="busy()" placeholder='process.name:"powershell.exe" AND ...'></textarea>
+          <mat-hint>field:value terms with AND / OR / NOT, * wildcards, field:&gt;N, field:(a OR b)</mat-hint>
         </mat-form-field>
         <button mat-flat-button color="primary" type="submit"
           [disabled]="busy() || !query.trim() || attemptsLeft() === 0">

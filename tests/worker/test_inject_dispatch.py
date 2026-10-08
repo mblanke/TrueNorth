@@ -139,8 +139,10 @@ class TestDispatchInject:
         assert rec["telemetry_shipped"] is True
         [[range_arg, events]] = _ingest_sends(no_real_broker)
         assert range_arg == rid
-        assert events[0]["exercise_id"] == eid and events[0]["inject_action"] == "simulated_execution"
-        assert events[0]["truenorth_simulated"] is True  # synthetic, never mistaken for host activity
+        labels = events[0]["tn_ground_truth"]  # labels kept apart from observables (sweep H4)
+        assert labels["exercise_id"] == eid and labels["inject_action"] == "simulated_execution"
+        assert labels["simulated"] is True  # synthetic, never mistaken for host activity
+        assert "exercise_id" not in events[0] and "inject_action" not in events[0]
         assert (
             "exercise",
             {"id": eid, "event": "inject", "action": "simulated_execution", "status": "fired", "seq": 0, "t": "0:00"},

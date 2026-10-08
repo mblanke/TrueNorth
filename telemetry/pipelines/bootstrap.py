@@ -130,6 +130,10 @@ RANGE_TEMPLATE: dict[str, Any] = {
             "properties": {
                 "@timestamp": {"type": "date"},
                 "truenorth": {"properties": {"ingested_at": {"type": "date_nanos"}}},
+                # Inject labels (scenario_engine GROUND_TRUTH_FIELD): kept in _source for
+                # staff, never indexed, so no query (a Student's detection above all) can
+                # match on them. Answer keys are written on observable fields (ADR 0005).
+                "tn_ground_truth": {"type": "object", "enabled": False},
             },
         },
     },

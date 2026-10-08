@@ -16,8 +16,10 @@ registry), `control-plane/api/app/scenario_runs/` (the tables).
    raises. `inject.<name>` and `<name>` are the same action (authored scenarios use the
    prefix, the engine examples do not; `canonical_action` is the one adapter).
 4. The injector's telemetry is sent to `ingest_telemetry_batch` (telemetry queue), which
-   indexes it in `range-<range_id>`. Each event carries `exercise_id`, `inject_action`
-   and `truenorth_simulated`.
+   indexes it in `range-<range_id>`. Each event carries its labels (`exercise_id`,
+   `inject_action`, `simulated`, `module`, `action`, `technique_id`, `target`) under
+   `tn_ground_truth`, which the range template stores but does not index: Students cannot
+   query or see them, and answer keys cannot use them (ADR 0005, sweep H4).
 5. The outcome is written to `inject_records` and pushed over `notify_api`.
 
 Read it back: `GET /exercises/{id}/injects`, `GET /scenarios/executions/{id}/timeline`,

@@ -8670,7 +8670,7 @@ export interface components {
         DetectionIn: {
             /**
              * Query
-             * @description Lucene query string
+             * @description Detection query: field:value terms with AND/OR/NOT, wildcards, field:>N ranges and field:(a OR b); no free text, no platform label fields
              */
             query: string;
         };

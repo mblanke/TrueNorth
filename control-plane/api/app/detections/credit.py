@@ -6,7 +6,9 @@ make up the attack. A Student's query is credited when, inside the exercise wind
     on_target = |Student ∩ ground truth| >= threshold          (min_hits, at least 1)
     on_target / |Student| >= min_precision                      (default 0.5)
 
-The precision floor is what stops ``*`` passing. The window is server time
+The precision floor is what stops ``*`` passing. The Student's query is parsed by the
+closed detection grammar (``search_backends/detection_query.py``): every term names an
+observable field, never a ground-truth label, or it is refused before any attempt is used. The window is server time
 (``truenorth.ingested_at``, stamped at ingest), so neither the inject's telemetry from
 before the exercise nor an earlier exercise on the same range counts, and no sender can
 place an event inside it.
@@ -22,6 +24,7 @@ from typing import Any
 import yaml
 
 from ..search_backends import BaseSearchBackend
+from ..search_backends.detection_query import parse_detection, references_labels
 from .names import QUERY, canonical_validator
 from .templating import render, unresolved
 
@@ -108,6 +111,10 @@ def answer_key(validator: str, validator_params: str | None, ref_id: str, scenar
     query = render(query, variables)
     if names := unresolved(query):
         raise NotScorable(f"the answer key has undefined variables: {', '.join(names)}")
+    if references_labels(query):
+        # Inject labels live under tn_ground_truth, stored but not indexed, so a key on them
+        # can never match; and Students may not query them. Keys name observable fields.
+        raise NotScorable("the answer key queries platform labels, not observable telemetry")
     try:
         min_precision = float(params.get("min_precision", DEFAULT_MIN_PRECISION))
     except (TypeError, ValueError) as exc:
@@ -128,18 +135,31 @@ def _lucene(query: str) -> dict:
     return {"query_string": {"query": query}}
 
 
+def student_query(query: str) -> str:
+    """The submitted detection, parsed by the closed detection grammar and re-serialised.
+
+    Raises ``QueryError`` (the API's 422, no attempt used) for anything outside the grammar,
+    free text included, and for any ground-truth label field: querying the labels the
+    platform stamps on inject telemetry used to match exactly the attack and earn credit.
+    """
+    return parse_detection(query).lucene()
+
+
 async def judge(
-    backend: BaseSearchBackend, range_id: Any, key: AnswerKey, student_query: str, start: datetime, end: datetime
+    backend: BaseSearchBackend, range_id: Any, key: AnswerKey, student: str, start: datetime, end: datetime
 ) -> Judgement:
     """Count the Student's matches and how many of them are the attack, inside the window.
 
-    Raises ``SearchBackendError`` if the store cannot answer.
+    ``student`` is the Student's detection as submitted; only its ``student_query`` form
+    reaches the store. Raises ``QueryError`` outside the grammar and ``SearchBackendError``
+    if the store cannot answer.
     """
     index = range_index(range_id)
     window = _window(start, end)
-    mine = await backend.match(index, {"bool": {"filter": [_lucene(student_query), window]}})
+    mine_q = _lucene(student_query(student))
+    mine = await backend.match(index, {"bool": {"filter": [mine_q, window]}})
     hits = await backend.match(
-        index, {"bool": {"filter": [_lucene(student_query), _lucene(key.query), window]}}, size=EVIDENCE_IDS
+        index, {"bool": {"filter": [mine_q, _lucene(key.query), window]}}, size=EVIDENCE_IDS
     )
     precision = hits.total / mine.total if mine.total else 0.0
     return Judgement(

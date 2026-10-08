@@ -379,7 +379,7 @@ export class ApiService {
   }
 
   // ── Detections (ADR 0005) ────────────────────────────────
-  /** Submit a Lucene detection for an objective; credited only if it finds the attack. */
+  /** Submit a detection (the server's closed detection grammar) for an objective; credited only if it finds the attack. */
   submitDetection(exerciseId: string, refId: string, query: string): Observable<Detection> {
     const body: components['schemas']['DetectionIn'] = { query };
     return this.http.post<Detection>(

@@ -168,6 +168,40 @@ Left as they are:
 - There is no Student-to-exercise relation, so any Student in the tenant may submit on a
   running exercise.
 
+## Changes after the security sweep (2026-10-08, H4)
+
+Inject telemetry was stamped with flat labels (`inject_action`, `exercise_id`,
+`truenorth_simulated`, `event.module: truenorth.inject`, `threat.technique.id`,
+`inject_target`) and a Student's detection ran as raw Lucene `query_string`. A Student
+who queried `inject_action:<action>` matched exactly the inject's events, at full
+precision, and was credited without detecting anything.
+
+- **The Student's query is a closed grammar** (`app/search_backends/detection_query.py`):
+  `field:value`, quoted values, wildcards anywhere in a value, `field:*`, numeric
+  `field:>N`, `field:(a OR b)`, and `AND` / `OR` / `NOT` / parentheses. Every term names a
+  field (no free text, which searched every field); no regex, fuzzy, proximity, boosts or
+  `_`-prefixed fields; no ground-truth label field (`tn_ground_truth.*`, `inject_*`,
+  `truenorth*`, `exercise_id`, `threat.technique.*`, `threat.tactic.*`, `event.module`
+  values matching `truenorth*`). Outside it: 422, before an attempt is reserved. The parsed
+  query is re-serialised with every value escaped, so the store sees only what was checked.
+  Every shipped answer key is expressible in it (a test parses them all).
+- **The labels moved out of the observable fields.** The scenario engine writes them under
+  one object, `tn_ground_truth` (`exercise_id`, `inject_action`, `simulated`, `module`,
+  `action`, `message`, `technique_id`, `target`). The `range-*` template maps it
+  `enabled: false`: kept in `_source` for staff, never indexed, so no query matches it, a
+  Student's least of all. A summary event (an injector with no telemetry of its own) is
+  now only `@timestamp`, `event.kind`, `range_id`, `tenant_id` and the labels.
+- **Answer keys are written on observable fields.** A key that names a label is
+  `NotScorable` (409 on submit), because it can never match. No shipped key did.
+- **Telemetry search hides the labels from non-staff.** `GET /telemetry/{range}/search`
+  refuses label field terms (422) and strips labels from each hit's `_source` for callers
+  without `scenario:update`.
+
+Residual: indices created before this change keep the old flat labels (searchable by
+staff; refused and hidden for everyone else), and their documents fall outside any new
+exercise window. An index that existed before the template change maps
+`tn_ground_truth` dynamically until it is recreated; the grammar still refuses it.
+
 ## Open questions
 
 - **TODO (security sweep M3, 2026-10-08, owner decision):** detection submissions are

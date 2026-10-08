@@ -39,6 +39,7 @@ from ..detections.models import (
 from ..models import AuditLog, Exercise, ExerciseState, Objective, Scenario, UserRole
 from ..rbac import Permission, require_permission, user_has_permission
 from ..search_backends import BaseSearchBackend, SearchBackendError, SearchQueryError, get_search_backend
+from ..search_backends.query import QueryError
 from ..tenancy import get_owned
 from ..xapi import emit_lifecycle
 
@@ -53,7 +54,12 @@ def search_backend() -> BaseSearchBackend:
 
 
 class DetectionIn(BaseModel):
-    query: str = Field(min_length=1, max_length=credit.MAX_QUERY_LENGTH, description="Lucene query string")
+    query: str = Field(
+        min_length=1,
+        max_length=credit.MAX_QUERY_LENGTH,
+        description="Detection query: field:value terms with AND/OR/NOT, wildcards, "
+        "field:>N ranges and field:(a OR b); no free text, no platform label fields",
+    )
 
 
 class DetectionOut(BaseModel):
@@ -141,6 +147,11 @@ async def submit_detection(
         key = credit.answer_key(obj.validator, obj.validator_params, obj.ref_id, scenario.yaml if scenario else None)
     except credit.NotScorable as exc:
         raise HTTPException(409, f"Objective cannot be credited by a detection: {exc}") from exc
+
+    try:
+        credit.student_query(body.query)  # the closed detection grammar; labels refused
+    except QueryError as exc:
+        raise HTTPException(422, f"Your query is outside the detection language (no attempt used): {exc}") from exc
 
     user_id = uuid.UUID(user.id)
     start = ex.started_at if ex.started_at.tzinfo else ex.started_at.replace(tzinfo=UTC)

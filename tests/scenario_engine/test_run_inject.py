@@ -21,11 +21,19 @@ def test_params_reach_the_injector():
 def test_a_summary_telemetry_event_is_labelled_simulated_and_scoped():
     res = engine.run_inject("simulated_execution", {"technique": "T1059", "target": "ws-07"}, CTX)
     [event] = res.telemetry
-    assert event["exercise_id"] == "ex-1" and event["range_id"] == "r-1" and event["tenant_id"] == "t-1"
-    assert event["inject_action"] == "simulated_execution" and event["event.action"] == "simulated_execution"
-    assert event["truenorth_simulated"] is True
-    assert event["threat.technique.id"] == "T1059" and event["inject_target"] == "ws-07"
-    assert "@timestamp" in event
+    assert event["range_id"] == "r-1" and event["tenant_id"] == "t-1" and "@timestamp" in event
+    labels = event[engine.GROUND_TRUTH_FIELD]
+    assert labels["exercise_id"] == "ex-1" and labels["inject_action"] == "simulated_execution"
+    assert labels["action"] == "simulated_execution" and labels["module"] == "truenorth.inject"
+    assert labels["simulated"] is True
+    assert labels["technique_id"] == "T1059" and labels["target"] == "ws-07"
+
+
+def test_no_label_sits_beside_the_observable_fields():
+    """Security sweep H4: a Student querying inject_action / exercise_id / event.module /
+    threat.technique.id matched exactly the inject and was credited without detecting it."""
+    [event] = engine.run_inject("simulated_execution", {"technique": "T1059", "target": "ws-07"}, CTX).telemetry
+    assert set(event) == {"@timestamp", "event.kind", "range_id", "tenant_id", engine.GROUND_TRUTH_FIELD}
 
 
 def test_every_registered_injector_declares_its_contract():
@@ -44,7 +52,7 @@ def test_host_touching_injectors_are_skipped_without_hosts(action):
 def test_the_authored_inject_prefix_names_the_same_injector():
     res = engine.run_inject("inject.simulated_execution", {"technique": "T1003"}, CTX)
     assert res.success and res.action == "simulated_execution"
-    assert res.telemetry[0]["inject_action"] == "simulated_execution"
+    assert res.telemetry[0][engine.GROUND_TRUTH_FIELD]["inject_action"] == "simulated_execution"
     assert engine.injector_profile("inject.dns_spike") == engine.injector_profile("dns_spike")
 
 
@@ -89,4 +97,4 @@ def test_an_injectors_own_telemetry_is_kept_and_scoped(monkeypatch):
     monkeypatch.setitem(engine._INJECTOR_REGISTRY, "own_test", Own)
     res = engine.run_inject("own_test", {}, CTX)
     assert [e["message"] for e in res.telemetry] == ["a", "b"]
-    assert all(e["exercise_id"] == "ex-1" for e in res.telemetry)
+    assert all(e[engine.GROUND_TRUTH_FIELD]["exercise_id"] == "ex-1" for e in res.telemetry)

@@ -34,6 +34,7 @@ from . import (  # noqa: F401 — network_inventory, noise, range_leases, range_
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
+from .detections.redaction import sees_answer_key
 from .greyspace import models as _greyspace_models  # noqa: F401 — registers range_greyspace
 from .log_format import configure_logging
 from .models import Range, Tenant, User, UserRole
@@ -41,6 +42,7 @@ from .rbac import Permission, require_permission
 from .scheduler import clock as scheduler_clock
 from .schemas import HealthOut
 from .search_backends import get_search_backend
+from .search_backends.detection_query import hide_labels, is_label
 from .search_backends.query import MAX_QUERY_LENGTH, QueryError, parse_query
 from .settings import app_version, check_startup, docs_urls, env_flag
 from .telemetry_mitre import tag_event
@@ -610,8 +612,13 @@ async def search_telemetry(
     """
     get_owned(db, Range, range_id, user, not_found="Range not found")
     try:
-        parse_query(q)
+        parsed = parse_query(q)
     except QueryError as exc:
         raise HTTPException(422, f"Invalid search query: {exc}") from exc
+    staff = sees_answer_key(user)
+    if not staff and any(is_label(t.field, t.value) for t in parsed.terms):
+        # Inject labels say which events are the attack (ADR 0005, sweep H4).
+        raise HTTPException(422, "Invalid search query: platform label fields are not searchable")
     index = f"range-{range_id}"
-    return await get_search_backend().search(index, q, size)
+    result = await get_search_backend().search(index, q, size)
+    return result if staff else hide_labels(result)

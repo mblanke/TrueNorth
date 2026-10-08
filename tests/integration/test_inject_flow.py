@@ -110,16 +110,23 @@ class TestInjectFlow:
     def test_fired_inject_telemetry_is_searchable(self, api_client, inject_env):
         """The telemetry went through ingest_telemetry_batch into the range's index."""
         eid, rid = inject_env["exercise_id"], inject_env["range_id"]
-        query = f'exercise_id:"{eid}" AND inject_action:simulated_execution'
+        # The labels live under tn_ground_truth, stored but not indexed (sweep H4): search
+        # everything and pick the inject's events out of _source (staff see the labels).
+        query = "*"
         deadline = time.time() + SEARCH_TIMEOUT
         docs: list = []
         while time.time() < deadline:
-            resp = api_client.get(f"/telemetry/{rid}/search", params={"q": query, "size": 10})
+            resp = api_client.get(f"/telemetry/{rid}/search", params={"q": query, "size": 100})
             if resp.status_code == 200:
                 hits = resp.json()
                 docs = hits.get("hits", hits) if isinstance(hits, dict) else hits
                 if isinstance(docs, dict):
                     docs = docs.get("hits", [])
+                docs = [
+                    d for d in docs
+                    if (d.get("_source", {}).get("tn_ground_truth") or {}).get("exercise_id") == eid
+                    and d["_source"]["tn_ground_truth"].get("inject_action") == "simulated_execution"
+                ]
                 if docs:
                     break
             time.sleep(POLL_INTERVAL)
