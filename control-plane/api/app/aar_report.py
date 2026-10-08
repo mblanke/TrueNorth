@@ -39,6 +39,7 @@ _AUDIT_EVENTS = {
     "start": "Exercise started",
     "run": "Exercise run started",
     "pause": "Exercise paused",
+    "resume": "Exercise resumed",
     "complete": "Exercise completed",
 }
 

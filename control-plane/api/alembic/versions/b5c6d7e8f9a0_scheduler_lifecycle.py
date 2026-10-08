@@ -30,14 +30,24 @@ def upgrade() -> None:
         # SQLite stores the enum as VARCHAR; Postgres needs the new label.
         op.execute("ALTER TYPE eventstate ADD VALUE IF NOT EXISTS 'provisioning' AFTER 'scheduled'")
     have = {c["name"] for c in sa.inspect(bind).get_columns("scheduled_events")}
-    for name in COLUMNS:
-        if name not in have:
-            op.add_column("scheduled_events", sa.Column(name, GUID(), sa.ForeignKey("users.id"), nullable=True))
+    missing = [name for name in COLUMNS if name not in have]
+    if not missing:
+        return
+    # Batch mode: SQLite cannot add a column with a foreign key in place.
+    with op.batch_alter_table("scheduled_events") as batch:
+        for name in missing:
+            batch.add_column(
+                sa.Column(name, GUID(), sa.ForeignKey("users.id", name=f"scheduled_events_{name}_fkey"), nullable=True)
+            )
 
 
 def downgrade() -> None:
     # Postgres cannot drop an enum label; `provisioning` stays.
     have = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("scheduled_events")}
-    for name in COLUMNS:
-        if name in have:
-            op.drop_column("scheduled_events", name)
+    gone = [name for name in COLUMNS if name in have]
+    if not gone:
+        return
+    # SQLite cannot drop a column with a foreign key in place; batch mode rebuilds the table.
+    with op.batch_alter_table("scheduled_events") as batch:
+        for name in gone:
+            batch.drop_column(name)
