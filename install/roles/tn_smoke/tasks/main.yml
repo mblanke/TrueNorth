@@ -11,6 +11,11 @@
     name: tn_config
     tasks_from: secrets
 
+# tn_kc_internal, tn_kc_realm_url, tn_kc_smoke_client: one definition, tn_keycloak's.
+- name: Smoke — Keycloak endpoints and client names
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../tn_keycloak/defaults/main.yml"
+
 - name: Smoke — container health
   ansible.builtin.shell:
     executable: /bin/bash
@@ -90,25 +95,83 @@
 # ══════════════════════════════════════════════════════════════════════
 # The claim contract — where the installer and the application meet
 # ══════════════════════════════════════════════════════════════════════
-- name: Smoke — obtain a token for the bootstrap admin's AD account
-  ansible.builtin.uri:
-    url: "https://{{ tn_domain_fqdn }}/auth/realms/{{ tn_keycloak_realm }}/protocol/openid-connect/token"
-    method: POST
-    body_format: form-urlencoded
-    body:
-      grant_type: password
-      client_id: "{{ tn_keycloak_api_client }}"
-      # truenorth-api is confidential: without its secret Keycloak answers 401 and the
-      # whole claim check used to skip itself.
-      client_secret: "{{ tn_secrets['keycloak_api_client_secret'] }}"
-      username: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn) }}"
-      password: "{{ tn_smoke_password | default('') }}"
-      scope: "openid profile email"
-    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
-    status_code: [200] # a 400/401 is a failed check, not a skipped one
-  register: tn_smoke_token
-  no_log: true
+# The password grant is off on every user-facing client. The token comes from the
+# dedicated truenorth-smoke client (roles/tn_keycloak), which is disabled except for the
+# few seconds below: enabled, one token request, disabled again whatever happened.
+- name: Smoke — token through the smoke-test client
   when: tn_smoke_password | default('') | length > 0
+  block:
+    - name: Smoke — Keycloak admin token (loopback)
+      ansible.builtin.uri:
+        url: "{{ tn_kc_internal }}/realms/master/protocol/openid-connect/token"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: password
+          client_id: admin-cli
+          username: "{{ vault_keycloak_admin_user | default('admin') }}"
+          password: "{{ vault_keycloak_admin_password }}"
+        status_code: 200
+      register: tn_smoke_admin
+      no_log: true
+
+    - name: Smoke — find the smoke-test client
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/clients?clientId={{ tn_kc_smoke_client }}"
+        headers:
+          Authorization: "Bearer {{ tn_smoke_admin.json.access_token }}"
+        status_code: 200
+      register: tn_smoke_client
+      no_log: true
+
+    - name: Smoke — the smoke-test client exists (run playbooks/60-keycloak.yml first)
+      ansible.builtin.assert:
+        that: tn_smoke_client.json | length == 1
+        quiet: true
+
+    - name: Smoke — enable the smoke-test client
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/clients/{{ tn_smoke_client.json[0].id }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ tn_smoke_admin.json.access_token }}"
+        body: {clientId: "{{ tn_kc_smoke_client }}", enabled: true}
+        body_format: json
+        status_code: [204]
+      changed_when: false # disabled again below
+      no_log: true
+
+    - name: Smoke — obtain a token for the bootstrap admin's AD account
+      ansible.builtin.uri:
+        url: "https://{{ tn_domain_fqdn }}/auth/realms/{{ tn_keycloak_realm }}/protocol/openid-connect/token"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          grant_type: password
+          client_id: "{{ tn_kc_smoke_client }}"
+          # Confidential: without its secret Keycloak answers 401.
+          client_secret: "{{ tn_secrets['keycloak_smoke_client_secret'] }}"
+          username: "{{ tn_smoke_username | default(tn_bootstrap_admin_upn) }}"
+          password: "{{ tn_smoke_password | default('') }}"
+          scope: "openid profile email"
+        validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
+        status_code: [200] # a 400/401 is a failed check, not a skipped one
+      register: tn_smoke_token
+      no_log: true
+
+  always:
+    - name: Smoke — disable the smoke-test client again
+      ansible.builtin.uri:
+        url: "{{ tn_kc_realm_url }}/clients/{{ tn_smoke_client.json[0].id }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ tn_smoke_admin.json.access_token }}"
+        body: {clientId: "{{ tn_kc_smoke_client }}", enabled: false}
+        body_format: json
+        status_code: [204]
+      changed_when: false
+      when: tn_smoke_client.json[0].id is defined
+      no_log: true
 
 - name: Smoke — decode the access token claims
   ansible.builtin.set_fact:

@@ -9,18 +9,58 @@ tn_kc_components_url: "{{ tn_kc_realm_url }}/components"
 tn_kc_provider_type: org.keycloak.storage.UserStorageProvider
 tn_kc_mapper_type: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
 
+# Token, session and password rules, enforced on every run (an install that imported the
+# realm before these existed gets them too). The same values as
+# infra/keycloak/realm-truenorth.json; tests/contracts/test_keycloak_hardening.py keeps
+# the two in step.
+tn_kc_realm_settings:
+  accessTokenLifespan: 300 # 5 min; the SPA refreshes silently
+  accessTokenLifespanForImplicitFlow: 300
+  ssoSessionIdleTimeout: 1800 # 30 min idle signs a browser out
+  ssoSessionMaxLifespan: 36000 # 10 h: one training day, then sign in again
+  offlineSessionIdleTimeout: 604800 # 7 d
+  offlineSessionMaxLifespanEnabled: true
+  offlineSessionMaxLifespan: 604800 # 7 d, however often it is used
+  # Local accounts only: AD-federated users' passwords are AD's (READ_ONLY federation).
+  passwordPolicy: "length(12) and notUsername(undefined) and passwordHistory(5)"
+
+# The smoke test's own confidential client (roles/tn_smoke): the only one with the
+# password grant. Created disabled; 95-smoke-test enables it for its one token request
+# and disables it again, so the password grant is off whenever no smoke test is running.
+tn_kc_smoke_client: truenorth-smoke
+
 # What this deployment's clients must say, enforced on every run (not only at import).
 # infra/keycloak/realm-truenorth.json is a development realm: its web client knows only
 # localhost and example hosts, and the api client's secret is CHANGE_ME_IN_PRODUCTION.
 tn_kc_client_settings:
-  # This host only: the realm file's dev/itest/example origins are replaced. The other
-  # client attributes (PKCE S256) stay: Keycloak sets only the attributes sent.
+  # This host only: the realm file's dev/itest/example origins are replaced. Other
+  # attributes stay: Keycloak sets only the attributes sent.
   truenorth-web:
     redirectUris: ["https://{{ tn_domain_fqdn }}/*"]
     webOrigins: ["https://{{ tn_domain_fqdn }}"]
+    directAccessGrantsEnabled: false
     attributes:
       post.logout.redirect.uris: "https://{{ tn_domain_fqdn }}/*"
+      pkce.code.challenge.method: S256
+  # No password grant: users sign in through the SPA (authorization code + PKCE).
   truenorth-api:
+    redirectUris: []
+    webOrigins: []
+    directAccessGrantsEnabled: false
+    attributes:
+      access.token.lifespan: "300"
+  # Device flow only; the out-of-band redirect (urn:ietf:wg:oauth:2.0:oob) is gone.
+  truenorth-cli:
+    redirectUris: []
+    webOrigins: []
+    directAccessGrantsEnabled: false
+    attributes:
+      pkce.code.challenge.method: S256
+  truenorth-smoke:
+    enabled: false
+    publicClient: false
+    standardFlowEnabled: false
+    directAccessGrantsEnabled: true
     redirectUris: []
     webOrigins: []
 
