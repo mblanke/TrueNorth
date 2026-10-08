@@ -82,3 +82,53 @@ def test_every_mapped_technique_is_a_valid_attack_id(mitre):
         assert event_type == event_type.lower()
         assert techniques
         assert all(mitre.TECHNIQUE_ID.match(t) for t in techniques), event_type
+        # ... and one the ATT&CK catalogue knows as a live technique today.
+        assert all(mitre.load().current(t) == t for t in techniques), event_type
+
+
+# -- the ATT&CK catalogue decides what is a technique (content/mitre) ------------------------
+@pytest.mark.parametrize(
+    ("event", "expected", "unknown"),
+    [
+        # Well-formed, never issued: not tagged, kept aside for a human; event_type decides.
+        ({"event_type": "process_exec", "mitre_technique": "T9999"}, ["T1059"], ["T9999"]),
+        ({"mitre_technique": ["T1071", "T9999"]}, ["T1071"], ["T9999"]),
+        ({"technique_id": "t1059.999", "event_type": "network_scan"}, ["T1046"], ["T1059.999"]),
+        # Revoked: tagged as the technique MITRE replaced it with.
+        ({"mitre_technique": "T1086"}, ["T1059.001"], None),
+        ({"technique_id": "T1086", "event_type": "dns_query"}, ["T1059.001"], None),
+        # Deprecated but never revoked: still a known id.
+        ({"mitre_technique": "T1064"}, ["T1064"], None),
+    ],
+)
+def test_only_ids_the_catalogue_knows_are_tagged(mitre, event, expected, unknown):
+    tagged = mitre.tag_event(dict(event))
+    assert tagged["mitre_technique"] == expected
+    assert tagged.get("mitre_technique_unknown") == unknown
+
+
+def test_an_event_naming_only_unknown_ids_loses_the_tag_but_keeps_the_ids(mitre):
+    tagged = mitre.tag_event({"mitre_technique": ["T9999", "T9998"], "event_type": "range_metrics"})
+    assert "mitre_technique" not in tagged
+    assert tagged["mitre_technique_unknown"] == ["T9998", "T9999"]
+
+
+def test_telemetry_is_never_refused_when_the_catalogue_is_unreadable(mitre, monkeypatch):
+    monkeypatch.setattr(mitre, "_catalogue", lambda: None)  # what _catalogue() gives on failure
+    tagged = mitre.tag_event({"mitre_technique": ["T9999", "T1086"]})
+    assert tagged["mitre_technique"] == ["T1086", "T9999"]  # form alone, as before the catalogue
+    assert "mitre_technique_unknown" not in tagged
+
+
+def test_an_unreadable_catalogue_is_logged_and_falls_back(mitre, monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv("TN_ATTACK_CATALOGUE", str(tmp_path / "missing.json"))
+    mitre.load.cache_clear()
+    mitre._catalogue.cache_clear()
+    try:
+        with caplog.at_level("WARNING"):
+            assert mitre._catalogue() is None
+        assert "falls back to id format only" in caplog.text
+    finally:
+        monkeypatch.delenv("TN_ATTACK_CATALOGUE")
+        mitre.load.cache_clear()
+        mitre._catalogue.cache_clear()

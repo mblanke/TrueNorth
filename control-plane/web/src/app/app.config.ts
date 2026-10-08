@@ -7,7 +7,12 @@ import { routes } from './app.routes';
 import { authInterceptorProvider } from './core/interceptors/auth.interceptor';
 import { provideTrueNorthKeycloak } from './core/auth/keycloak-init';
 
-export const appConfig: ApplicationConfig = {
+/**
+ * A function, not a constant: provideTrueNorthKeycloak() reads the Keycloak endpoint
+ * when it is called, and main.ts must apply the runtime config (assets/config.json)
+ * before that happens.
+ */
+export const buildAppConfig = (): ApplicationConfig => ({
   providers: [
     // Angular 21 bootstraps zoneless by default; the app is written for zone.js.
     provideZoneChangeDetection(),
@@ -19,4 +24,4 @@ export const appConfig: ApplicationConfig = {
     provideTrueNorthKeycloak(),
     authInterceptorProvider,
   ],
-};
+});

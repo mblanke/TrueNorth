@@ -167,6 +167,41 @@ class TestGenerateAndRender:
         ):
             assert needle in page, needle
 
+    def test_html_response_has_its_own_csp_that_allows_its_style_block(self, client, db_session):
+        """Opened directly, the page must render styled: the global ``default-src 'self'``
+        blocks inline ``<style>``, so this response carries a policy that allows exactly
+        that block (by hash), still forbids script, and may only be framed by the app."""
+        import base64
+        import hashlib
+        import re
+
+        ex = _world(db_session)
+        client.post(f"/exercises/{ex.id}/aar/generate")
+        resp = client.get(f"/exercises/{ex.id}/aar/html")
+        csp = resp.headers["content-security-policy"]
+        assert csp != "default-src 'self'"
+        directives = {d.split()[0]: d.split()[1:] for d in (p.strip() for p in csp.split(";")) if d}
+        assert directives["default-src"] == ["'none'"]
+        assert directives["script-src"] == ["'none'"]
+        assert directives["frame-ancestors"] == ["'self'"]
+        assert "'unsafe-inline'" not in csp
+        styles = re.findall(r"<style>(.*?)</style>", resp.text, re.S)
+        assert len(styles) == 1
+        digest = base64.b64encode(hashlib.sha256(styles[0].encode()).digest()).decode()
+        assert directives["style-src"] == [f"'sha256-{digest}'"]
+        assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+        # the rest of the global hardening is still applied
+        assert resp.headers["x-content-type-options"] == "nosniff"
+
+    def test_other_routes_keep_the_global_csp(self, client, db_session):
+        ex = _world(db_session)
+        client.post(f"/exercises/{ex.id}/aar/generate")
+        for path in (f"/exercises/{ex.id}/aar", f"/exercises/{ex.id}/aar/pdf"):
+            resp = client.get(path)
+            assert resp.status_code == 200, path
+            assert resp.headers["content-security-policy"] == "default-src 'self'", path
+            assert resp.headers["x-frame-options"] == "DENY", path
+
     def test_values_are_escaped(self, client, db_session):
         ex = _world(db_session, name='<script>alert("x")</script>')
         client.post(f"/exercises/{ex.id}/aar/generate")

@@ -3,6 +3,6 @@
 Importing this package registers its tables on ``Base.metadata``.
 """
 
-from .models import EXECUTION_STATES, INJECT_STATUSES, InjectRecord, ScenarioExecution
+from .models import EXECUTION_STATES, INJECT_STATUSES, ExerciseRun, InjectRecord, ScenarioExecution
 
-__all__ = ["EXECUTION_STATES", "INJECT_STATUSES", "InjectRecord", "ScenarioExecution"]
+__all__ = ["EXECUTION_STATES", "INJECT_STATUSES", "ExerciseRun", "InjectRecord", "ScenarioExecution"]

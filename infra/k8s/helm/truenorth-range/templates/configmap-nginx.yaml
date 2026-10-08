@@ -1,4 +1,13 @@
 {{- if .Values.web.enabled -}}
+{{- /* An absolute web.keycloak.url puts Keycloak on another origin: the SPA's silent
+       check-sso iframe and token calls must be allowed to reach it. */ -}}
+{{- $kcOrigin := "" -}}
+{{- with (.Values.web.keycloak | default dict).url -}}
+{{- $u := urlParse . -}}
+{{- if and $u.scheme $u.host -}}
+{{- $kcOrigin = printf " %s://%s" $u.scheme $u.host -}}
+{{- end -}}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,7 +17,7 @@ metadata:
 data:
   default.conf: |
     server {
-        listen 80;
+        listen 8080;  # the web image runs nginx unprivileged
         server_name _;
 
         root /usr/share/nginx/html;
@@ -26,13 +35,25 @@ data:
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-XSS-Protection "1; mode=block" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss: ws:;" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss: ws:{{ $kcOrigin }}; frame-src 'self'{{ $kcOrigin }};" always;
 
         # Cache static assets
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";
             try_files $uri =404;
+        }
+
+        # SPA runtime config, written by the image's entrypoint into /tmp from the
+        # TN_* env (deployment-web.yaml); the built-in copy when none is set. No
+        # add_header here: it would drop the server-level security headers. The SPA
+        # fetches it with cache: no-store.
+        location = /assets/config.json {
+            root /tmp/truenorth-runtime;
+            try_files /config.json @builtin_config;
+        }
+        location @builtin_config {
+            root /usr/share/nginx/html;
         }
 
         # Angular SPA routing — serve index.html for all non-file routes

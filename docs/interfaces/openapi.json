@@ -23419,6 +23419,55 @@
         ]
       }
     },
+    "/exercises/{exercise_id}/resume": {
+      "post": {
+        "description": "Resume a paused exercise.  **Permission: exercise:pause**\n\nThe scenario run continues from the next event it has not fired: a new worker task\ntakes over the run (app/scenario_runs/runs.py), so no inject fires twice. Only a\npaused exercise can be resumed (409 otherwise, e.g. once completed or cancelled).",
+        "operationId": "resume_exercise_exercises__exercise_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resume Exercise",
+        "tags": [
+          "exercises"
+        ]
+      }
+    },
     "/exercises/{exercise_id}/run": {
       "post": {
         "description": "One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**",

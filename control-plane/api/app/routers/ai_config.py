@@ -40,6 +40,7 @@ from ..schemas import (
     AIModelRouteOut,
     AIModelRouteUpdate,
 )
+from ..secretbox import seal, unseal
 
 logger = logging.getLogger("truenorth.api.ai_config")
 
@@ -70,7 +71,7 @@ def create_backend(payload: AIBackendConfigIn, db: Session = Depends(get_db)):
         name=payload.name,
         backend_type=payload.backend_type,
         base_url=payload.base_url,
-        api_key_encrypted=payload.api_key,
+        api_key_encrypted=seal(payload.api_key),  # app/secretbox.py: never stored as typed
         is_primary=payload.is_primary,
         max_concurrent=payload.max_concurrent,
         timeout_seconds=payload.timeout_seconds,
@@ -93,7 +94,7 @@ def update_backend(backend_id: uuid.UUID, payload: AIBackendConfigUpdate, db: Se
     backend = _backend(db, backend_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "api_key":
-            backend.api_key_encrypted = value
+            backend.api_key_encrypted = seal(value)
         else:
             setattr(backend, field, value)
     db.commit()
@@ -234,11 +235,12 @@ def discover_fleet_nodes(backend_id: uuid.UUID, db: Session = Depends(get_db)):
     # serve models at the backend base_url, Ollama per LAN node. Unknown types
     # are probed as Ollama nodes, as before.
     engine = get_ai_engine(backend.backend_type, default="ollama")
+    api_key = unseal(backend.api_key_encrypted)  # app/secretbox.py
     scan_results = []
     for known in KNOWN_OLLAMA_NODES:
         probe = engine.probe(
             base_url=backend.base_url,
-            api_key=backend.api_key_encrypted,
+            api_key=api_key,
             host=known["host"],
             port=known["port"],
         )
@@ -368,6 +370,9 @@ def test_generate(
 
     # Unknown backend types answer from the mock, as they always have.
     engine = get_ai_engine(primary.backend_type, default="mock")
+    # Outside the try: a missing or wrong TN_SECRETS_KEY is a 503 naming the key
+    # (app/secretbox.py), not an "engine error" answer.
+    api_key = unseal(primary.api_key_encrypted)
     t0 = time.time()
     try:
         target_url = primary.base_url
@@ -384,7 +389,7 @@ def test_generate(
         result = engine.generate(
             prompt,
             base_url=target_url,
-            api_key=primary.api_key_encrypted,
+            api_key=api_key,
             timeout=primary.timeout_seconds,
             model=model,
         )

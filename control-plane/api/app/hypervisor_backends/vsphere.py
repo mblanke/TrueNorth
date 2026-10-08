@@ -9,6 +9,7 @@ import httpx
 
 from ..models import HypervisorConnection, HypervisorNode
 from ..schemas import HypervisorTestResult
+from ..secretbox import unseal
 from .base import BaseHypervisorBackend
 
 
@@ -26,13 +27,13 @@ def check_connection(conn: HypervisorConnection, db) -> HypervisorTestResult:
     """Test a vSphere connection via the vCenter Automation REST API."""
     scheme = "https" if conn.verify_ssl else "https"
     base = f"{scheme}://{conn.host}"
+    # Outside the try: a missing or wrong TN_SECRETS_KEY is our fault, not the vCenter's,
+    # and must not mark the connection inactive (it surfaces as a 503 naming the key).
+    password = unseal(conn.password_encrypted) or ""
     try:
         with httpx.Client(verify=conn.verify_ssl, timeout=10) as client:
             # Create a session
-            r = client.post(
-                f"{base}/api/session",
-                auth=(conn.username, conn.password_encrypted or ""),
-            )
+            r = client.post(f"{base}/api/session", auth=(conn.username, password))
             r.raise_for_status()
             token = r.json()
 
@@ -87,9 +88,10 @@ def discover(conn_id, conn: HypervisorConnection, db) -> dict:
     0, which would read as an idle host. Host capacity needs pyVmomi or the VI/JSON API.
     """
     base = f"https://{conn.host}"
+    password = unseal(conn.password_encrypted) or ""  # outside the try, as in check_connection
     try:
         with httpx.Client(verify=conn.verify_ssl, timeout=15) as client:
-            r = client.post(f"{base}/api/session", auth=(conn.username, conn.password_encrypted or ""))
+            r = client.post(f"{base}/api/session", auth=(conn.username, password))
             r.raise_for_status()
             token = r.json()
             headers = {"vmware-api-session-id": token}

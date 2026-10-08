@@ -36,6 +36,9 @@ vault_minio_secret_key: "" # generated on target if empty
 vault_jwt_secret: "" # generated on target if empty
 vault_csrf_secret: "" # generated on target if empty
 vault_keycloak_api_client_secret: "" # generated on target if empty
+# Seals stored hypervisor/AI credentials. >= 32 random chars; never change it once set
+# (to rotate, set "new,old" and restart). Back it up with the database.
+vault_secrets_key: "" # generated on target if empty
 vault_lrs_admin_user: lrsadmin
 vault_lrs_admin_password: "" # generated on target if empty
 vault_lrs_api_key: "" # generated on target if empty

@@ -201,6 +201,8 @@ services:
       # Use PgBouncer for connection pooling
       DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
       REDIS_URL: redis://redis:6379/0
+      # DEV ONLY, public. Seals stored credentials (app/secretbox.py); the workers share it.
+      TN_SECRETS_KEY: dev-only-not-secret-truenorth-secrets-key
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
@@ -238,6 +240,7 @@ services:
     volumes:
       - ../../../scenario-engine:/opt/scenario-engine:ro
       - ../../../content/catalogue:/app/content/catalogue:ro  # GET /software-catalogue
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       postgres:
         condition: service_healthy
@@ -265,6 +268,7 @@ services:
     environment: &worker-env
       DATABASE_URL: postgresql+psycopg://forge:forge@pgbouncer:5432/forge
       REDIS_URL: redis://redis:6379/0
+      TN_SECRETS_KEY: dev-only-not-secret-truenorth-secrets-key  # the api's (DEV ONLY)
       OPENSEARCH_URL: http://opensearch:9200
       PROVISIONER_BACKEND: mock
       LRS_URL: http://lrs:8080
@@ -314,6 +318,8 @@ services:
     restart: unless-stopped
     command: celery -A worker.celery_app worker -Q telemetry -c 4 --loglevel=info -n telemetry@%h
     environment: *worker-env
+    volumes:
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       redis:
         condition: service_healthy
@@ -369,8 +375,19 @@ services:
       context: ../../../control-plane/web
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      # The image is the production build: sign-in is real, against the dev realm
+      # (infra/keycloak/realm-truenorth.json users). The browser reaches Keycloak
+      # directly on its published port; /auth on this nginx strips the prefix and the
+      # port, which start-dev Keycloak does not expect. Written to assets/config.json
+      # at start-up (control-plane/web/docker/40-truenorth-runtime-config.sh).
+      TN_KEYCLOAK_URL: "${TN_KEYCLOAK_URL:-http://localhost:8180}"
+      # Admin > Services links: the consoles this file publishes on loopback.
+      TN_ADMIN_MINIO_URL: "${TN_ADMIN_MINIO_URL:-http://localhost:9001}"
+      TN_ADMIN_DASHBOARDS_URL: "${TN_ADMIN_DASHBOARDS_URL:-http://localhost:5601}"
+      TN_ADMIN_AI_URL: "${TN_ADMIN_AI_URL:-http://localhost:6000/docs}"
     ports:
-      - "4200:80"
+      - "4200:8080"  # web's nginx runs unprivileged on 8080
     depends_on:
       api:
         condition: service_started

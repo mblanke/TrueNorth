@@ -372,6 +372,8 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      # Seals stored credentials (app/secretbox.py); the workers need the same value.
+      TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
       # TLS + basic auth (the security plugin); the CA is mounted below. The lab
       # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
       OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
@@ -437,6 +439,7 @@ services:
       # GET /software-catalogue (Range Designer autocomplete) reads the same file the
       # provisioning worker installs from.
       - ../../../content/catalogue:/app/content/catalogue:ro
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
       # The internal CA OpenSearch's certificate chains to (OPENSEARCH_VERIFY_SSL).
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
     depends_on:
@@ -492,6 +495,8 @@ services:
     environment: &worker-env
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      # Unseals the hypervisor login the API stored (worker/secretbox.py). Same value as the api.
+      TN_SECRETS_KEY: ${TN_SECRETS_KEY:?set TN_SECRETS_KEY (see .env.production.example)}
       # TLS + basic auth (the security plugin); the CA is mounted below. The lab
       # override (OPENSEARCH_DISABLE_SECURITY=true) sets an http URL and an empty user.
       OPENSEARCH_URL: ${OPENSEARCH_URL:-https://opensearch:9200}
@@ -643,6 +648,7 @@ services:
     environment: *worker-env
     volumes:
       - ${OPENSEARCH_CERTS_DIR:-./opensearch/certs}/ca.pem:/etc/truenorth/opensearch-ca.pem:ro
+      - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       redis:
         condition: service_healthy
@@ -766,18 +772,31 @@ services:
   #  WEB FRONTEND (Angular SPA behind nginx)
   # ================================================================
   # Required: nginx/conf.d/upstream.conf declares `upstream web_frontend
-  # { server web:80; }`. Without this service nginx aborts at config load with
+  # { server web:8080; }`. Without this service nginx aborts at config load with
   # "host not found in upstream" and the entire stack fails to start.
   web:
     build:
       context: ../../../control-plane/web
       dockerfile: Dockerfile
     restart: always
+    environment:
+      # Written to the SPA's assets/config.json at start-up
+      # (control-plane/web/docker/40-truenorth-runtime-config.sh). Keycloak is served
+      # under https://${DOMAIN}/auth (KC_HTTP_RELATIVE_PATH above), so the relative
+      # default is right unless Keycloak moves to its own host.
+      TN_KEYCLOAK_URL: "${TN_KEYCLOAK_URL:-/auth}"
+      TN_KEYCLOAK_REALM: "${KEYCLOAK_REALM:-truenorth}"
+      # Admin > Services cards. Keycloak defaults to <TN_KEYCLOAK_URL>/admin/; MinIO and
+      # OpenSearch Dashboards are not published by this file, so their cards stay
+      # hidden unless an operator exposes them and sets these.
+      TN_ADMIN_MINIO_URL: "${TN_ADMIN_MINIO_URL:-}"
+      TN_ADMIN_DASHBOARDS_URL: "${TN_ADMIN_DASHBOARDS_URL:-}"
+      TN_ADMIN_AI_URL: "${TN_ADMIN_AI_URL:-}"
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -856,7 +875,7 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
-      # upstream.conf resolves `web:80` at config load; without this nginx
+      # upstream.conf resolves `web:8080` at config load; without this nginx
       # can start before the name exists and abort on "host not found".
       web:
         condition: service_healthy
