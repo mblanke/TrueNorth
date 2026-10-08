@@ -21,6 +21,10 @@ all:
           # Nothing resolves tn-staging.corp.tnrange.lab for the host itself (no AD DNS).
           tn_manage_etc_hosts: true
           tn_image_source: release
+          # Ubuntu 24.04, so 00-docker installs and holds the pinned Docker
+          # (tn_install_docker defaults true). If an earlier hand install left a
+          # docker.list for Docker's repository, it stops and names the file: remove it,
+          # or set tn_install_docker: false here to keep the Docker already there.
           # Open WebUI's OpenAI-compatible API is under /api (key: Settings > Account >
           # API keys, into vault_openai_api_key). Its model ids are what /api/models lists.
           tn_ai_base_url: https://ai.guapo613.beer/api

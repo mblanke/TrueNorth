@@ -228,10 +228,36 @@ tn_ai_embed_model: embed
 # certificate is in install/files/tls/, then re-run playbooks/40-tls.yml.
 tn_tls_mode: selfsigned
 
+# ── Container runtime (roles/tn_docker, playbooks/00-docker.yml) ──────
+# true: the installer installs Docker Engine from Docker's apt repository (key checked
+# against its pinned fingerprint) at the versions below, holds the packages so
+# unattended-upgrades cannot move them, writes /etc/docker/daemon.json, installs chrony
+# and adds ansible_user to the docker group. false: the role does nothing; Docker must
+# already be installed and preflight's version floor still applies. Default: true only
+# on Ubuntu 24.04, the platform OS. Set false on a host whose Docker you manage yourself,
+# or air-gapped with no reachable Docker apt mirror (install/README.md "Prerequisites").
+tn_install_docker: "{{ ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == '24.04' }}"
+# Upstream versions, as Docker's noble repository names them without the epoch and the
+# "-1~ubuntu.24.04~noble" suffix. To bump: list what the repository has
+#   apt-cache madison docker-ce docker-compose-plugin containerd.io docker-buildx-plugin
+# set the new versions here, re-run playbooks/00-docker.yml (it moves the held packages
+# and re-holds them; the daemon restarts, and so does the stack), then the whole
+# site.yml. Checked 2026-10-08: the newest stable in noble.
+tn_docker_version: "29.9.0" # docker-ce and docker-ce-cli
+tn_compose_version: "5.6.0" # docker-compose-plugin
+tn_containerd_version: "2.3.6" # containerd.io
+tn_buildx_version: "0.38.0" # docker-buildx-plugin
+# Write the log rotation and containerd image store keys into /etc/docker/daemon.json,
+# merged over whatever else the file holds (the previous file is kept as a backup).
+# false: leave daemon.json alone; then enable the containerd image store yourself for
+# air-gapped installs.
+tn_docker_manage_daemon_json: true
+
 # ── Preflight thresholds ──────────────────────────────────────────────
 tn_min_free_gb: 200
 tn_min_docker_version: "24.0.0"
-tn_min_compose_version: "2.20.0"
+# 2.24: scripts/backup/drill.sh uses the compose `!reset` tag.
+tn_min_compose_version: "2.24.0"
 
 # ── Backups (scripts/backup; docs/runbooks/backup-restore.md) ─────────
 # The secrets escrow is REQUIRED; the install stops without one of:

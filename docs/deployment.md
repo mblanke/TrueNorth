@@ -8,7 +8,8 @@
 
 **For a vSphere deployment, do not follow this guide by hand — use
 [`install/`](../install/README.md).** It is an Ansible package that takes the
-platform host from "Docker installed, `/srv/truenorth` empty" to a running,
+platform host from bare Ubuntu 24.04 with `/srv/truenorth` empty (it installs a pinned
+Docker; `tn_install_docker`) to a running,
 AD-federated TrueNorth, and it handles several things that are easy to get
 wrong manually:
 

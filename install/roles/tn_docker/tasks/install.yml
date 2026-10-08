@@ -1,0 +1,278 @@
+---
+# Docker Engine from Docker's apt repository, pinned and held. Idempotent: a second run
+# changes nothing. Under --check on a host without Docker, the steps that need the
+# packages present are skipped (preflight then stops at "docker present", as it would).
+
+- name: Docker — the target is Ubuntu
+  ansible.builtin.assert:
+    that: ansible_facts['distribution'] == 'Ubuntu'
+    fail_msg: >-
+      tn_install_docker=true needs Ubuntu (Docker's apt repository for
+      {{ ansible_facts['distribution_release'] }}); this host is
+      {{ ansible_facts['distribution'] }}. Install Docker yourself and set
+      tn_install_docker=false.
+    quiet: true
+
+# A second source for the same repository with a different Signed-By makes apt refuse
+# to read its sources at all ("Conflicting values set for option Signed-By"), so this
+# is checked before the first apt task.
+- name: Docker — other apt sources for Docker's repository
+  ansible.builtin.find:
+    paths: /etc/apt/sources.list.d
+    patterns: ["*.list", "*.sources"]
+    contains: "{{ tn_docker_apt_repo_url | regex_escape }}"
+    read_whole_file: true
+  register: tn_docker_other_sources
+
+- name: Docker — this role is the only source for Docker's repository
+  vars:
+    _others: "{{ tn_docker_other_sources.files | map(attribute='path') | reject('equalto', tn_docker_apt_source) | list }}"
+  ansible.builtin.assert:
+    that: _others | length == 0
+    fail_msg: >-
+      {{ _others | join(', ') }} already points at {{ tn_docker_apt_repo_url }}. Remove it
+      (this role then manages the repository as {{ tn_docker_apt_source }}), or set
+      tn_install_docker=false to keep managing Docker yourself.
+    quiet: true
+
+- name: Docker — prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gnupg # the key fingerprint check below
+      - python3-apt # package_facts below
+    state: present
+  become: true
+
+- name: Docker — installed packages
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Docker — note whether the engine is already installed
+  ansible.builtin.set_fact:
+    # Under --check nothing is installed, so tasks that need the packages are skipped.
+    tn_docker_dry_run: "{{ ansible_check_mode and 'docker-ce' not in ansible_facts.packages }}"
+
+- name: Docker — no Ubuntu-packaged Docker in the way
+  vars:
+    _found: "{{ tn_docker_conflicting_packages | select('in', ansible_facts.packages) | list }}"
+  ansible.builtin.assert:
+    that: _found | length == 0
+    fail_msg: >-
+      {{ _found | join(', ') }} installed: Ubuntu's Docker packaging, which docker-ce
+      replaces by removing it (and stopping whatever runs on it). Remove it deliberately
+      (`sudo apt-get remove {{ _found | join(' ') }}`; /var/lib/docker is kept), or keep it
+      and set tn_install_docker=false.
+    quiet: true
+
+- name: Docker — apt keyring directory
+  ansible.builtin.file:
+    path: "{{ tn_docker_apt_keyring | dirname }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+# Downloaded once (get_url does not re-fetch an existing file), then checked on every
+# run: exactly one primary key, with Docker's published fingerprint. Anything else is
+# deleted before apt can trust it.
+- name: Docker — signing key, fingerprint verified
+  block:
+    - name: Docker — fetch the signing key
+      ansible.builtin.get_url:
+        url: "{{ tn_docker_apt_key_url }}"
+        dest: "{{ tn_docker_apt_keyring }}"
+        mode: "0644"
+      become: true
+      register: tn_docker_key_file
+
+    - name: Docker — read the key's fingerprint
+      ansible.builtin.command:
+        argv: [gpg, --batch, --show-keys, --with-colons, "{{ tn_docker_apt_keyring }}"]
+      register: tn_docker_key
+      changed_when: false
+      check_mode: false
+      when: not (ansible_check_mode and tn_docker_key_file is changed)
+
+    - name: Docker — the key is Docker's, fingerprint {{ tn_docker_apt_key_fingerprint }}
+      ansible.builtin.assert:
+        that:
+          - tn_docker_key.stdout_lines | select('match', '^pub:') | list | length == 1
+          - (tn_docker_key.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == tn_docker_apt_key_fingerprint
+        fail_msg: "{{ tn_docker_apt_keyring }} is not Docker's release key {{ tn_docker_apt_key_fingerprint }}."
+        quiet: true
+      when: tn_docker_key is not skipped
+  rescue:
+    - name: Docker — remove the unverified key
+      ansible.builtin.file:
+        path: "{{ tn_docker_apt_keyring }}"
+        state: absent
+      become: true
+
+    - name: Docker — stop on an unverified key
+      ansible.builtin.fail:
+        msg: >-
+          Docker's apt signing key could not be fetched or verified
+          ({{ ansible_failed_result.msg | default('see above') }}); the key file was
+          removed and no Docker package was installed or changed.
+          Air-gapped: set tn_docker_apt_repo_url to a mirror, or tn_install_docker=false
+          and preinstall Docker.
+
+- name: Docker — package architecture
+  ansible.builtin.command: dpkg --print-architecture
+  register: tn_docker_arch
+  changed_when: false
+  check_mode: false
+
+- name: Docker — apt source
+  ansible.builtin.copy:
+    dest: "{{ tn_docker_apt_source }}"
+    mode: "0644"
+    content: |
+      # Managed by the TrueNorth installer (roles/tn_docker).
+      Types: deb
+      URIs: {{ tn_docker_apt_repo_url }}
+      Suites: {{ ansible_facts['distribution_release'] }}
+      Components: stable
+      Architectures: {{ tn_docker_arch.stdout | trim }}
+      Signed-By: {{ tn_docker_apt_keyring }}
+  become: true
+  register: tn_docker_source
+
+# apt-get rather than update_cache, for the reason in roles/tn_base: an unrelated broken
+# source must not fail the install.
+- name: Docker — refresh the package index # noqa command-instead-of-module
+  ansible.builtin.command: apt-get update
+  become: true
+  changed_when: false
+
+# install_recommends=false: docker-ce recommends docker-ce-rootless-extras and pigz,
+# neither used here, and an unpinned extra is a package that moves on its own.
+- name: Docker — engine, CLI, containerd, buildx and compose at the pinned versions
+  ansible.builtin.apt:
+    name: "{{ tn_docker_packages.items() | map('join', '=') | map('regex_replace', '$', '-*') | list }}"
+    state: present
+    install_recommends: false
+    # The packages are held (below); a version bump has to move them anyway.
+    allow_change_held_packages: true
+    allow_downgrade: false
+  become: true
+  when: not (ansible_check_mode and tn_docker_source is changed)
+
+- name: Docker — hold the packages (unattended-upgrades must not move them)
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: "{{ tn_docker_packages.keys() | list }}"
+  become: true
+  when: not (tn_docker_dry_run | bool)
+
+- name: Docker — containerd and the engine enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [containerd, docker]
+  become: true
+  when: not (tn_docker_dry_run | bool)
+
+# ── /etc/docker/daemon.json ───────────────────────────────────────────
+# The role's keys are merged over the file's: an operator's other settings (a registry
+# mirror, data-root) survive, the previous file is kept as a timestamped backup, and the
+# daemon restarts only when the content changes.
+- name: Docker — daemon.json
+  when: tn_docker_manage_daemon_json | bool
+  block:
+    - name: Docker — /etc/docker
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Docker — existing daemon.json
+      ansible.builtin.stat:
+        path: /etc/docker/daemon.json
+      register: tn_docker_daemon_json_stat
+
+    - name: Docker — read the existing daemon.json
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: tn_docker_daemon_json_current
+      become: true
+      when: tn_docker_daemon_json_stat.stat.exists
+
+    - name: Docker — log rotation and the containerd image store in daemon.json
+      vars:
+        _current: >-
+          {{ (tn_docker_daemon_json_current.content | b64decode | default('{}', true) | from_json)
+             if tn_docker_daemon_json_stat.stat.exists else {} }}
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+        backup: true
+        content: "{{ _current | combine(tn_docker_daemon_settings, recursive=true) | to_nice_json(indent=2) }}\n"
+      become: true
+      notify: Restart docker
+
+# ── Time ──────────────────────────────────────────────────────────────
+# OIDC token validation and Kerberos fail on clock skew; preflight asserts the clock is
+# synchronised. chrony replaces systemd-timesyncd. Air-gapped: point /etc/chrony/sources.d
+# at a reachable time source (the DC), or preflight's NTP check fails.
+- name: Docker — chrony
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+  become: true
+
+- name: Docker — chrony enabled and running
+  ansible.builtin.systemd_service:
+    name: chrony
+    enabled: true
+    state: started
+  become: true
+  when: not (ansible_check_mode and 'chrony' not in ansible_facts.packages)
+
+# A freshly started chrony takes a few polls to synchronise; give it up to a minute so
+# preflight's NTP check does not race it. Not fatal here: preflight decides.
+- name: Docker — wait for the clock to synchronise
+  ansible.builtin.command: chronyc waitsync 12 0 0 5
+  register: tn_docker_chrony_sync
+  changed_when: false
+  failed_when: false
+
+# ── The install user drives docker without sudo ───────────────────────
+- name: Docker — add to the docker group the install user {{ ansible_user }}
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+  become: true
+  when: not (tn_docker_dry_run | bool)
+
+# The new group applies only to a new login; drop the persistent SSH connection
+# (ControlPersist) so every later play gets one.
+- name: Docker — reconnect so the group membership applies
+  ansible.builtin.meta: reset_connection
+
+- name: Docker — apply a daemon.json change now
+  ansible.builtin.meta: flush_handlers
+
+- name: Docker — the engine is on the containerd image store
+  when:
+    - tn_docker_manage_daemon_json | bool
+    - not ansible_check_mode
+  block:
+    - name: Docker — read the image store driver
+      ansible.builtin.command: docker info --format '{{ "{{" }}json .DriverStatus{{ "}}" }}'
+      register: tn_docker_driver
+      changed_when: false
+      become: true
+
+    - name: Docker — assert the containerd image store
+      ansible.builtin.assert:
+        that: "'io.containerd.snapshotter' in tn_docker_driver.stdout"
+        fail_msg: >-
+          Docker is not using the containerd image store ({{ tn_docker_driver.stdout }}),
+          although daemon.json enables it. Check `journalctl -u docker` and
+          /etc/docker/daemon.json.
+        quiet: true

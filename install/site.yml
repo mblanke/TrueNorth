@@ -3,8 +3,9 @@
 #
 #   ansible-playbook site.yml
 #
-# Takes TN-MGMT01 from "Docker installed, /srv/truenorth empty" to a running,
-# AD-federated TrueNorth with a working trainee registration path.
+# Takes TN-MGMT01 from a bare Ubuntu 24.04 host with /srv/truenorth empty to a
+# running, AD-federated TrueNorth with a working trainee registration path. Docker is
+# installed by 00-docker (tn_install_docker; preinstall it and set that false elsewhere).
 #
 # Every stage is idempotent and independently re-runnable — running site.yml a
 # second time should report zero changed tasks, and that clean second run is the
@@ -14,6 +15,7 @@
 # deployment repo. Ansible starts here, at the Ubuntu management VM, because
 # that is the first host in the stack it can actually manage.
 
+- import_playbook: playbooks/00-docker.yml
 - import_playbook: playbooks/00-preflight.yml
 - import_playbook: playbooks/10-base.yml
 - import_playbook: playbooks/20-fetch-app.yml
