@@ -39,6 +39,7 @@ from ..schemas import (
     HypervisorSummaryOut,
     HypervisorTestResult,
 )
+from ..secretbox import seal
 from ..tenancy import get_owned, tenant_uuid
 
 # Router-level authentication is read-level, so the host inventory and summary can feed the
@@ -75,8 +76,8 @@ def create_connection(
         host=payload.host,
         port=payload.port,
         username=payload.username,
-        password_encrypted=payload.password,
-        api_token=payload.api_token,
+        password_encrypted=seal(payload.password),  # app/secretbox.py: never stored as typed
+        api_token=seal(payload.api_token),
         verify_ssl=payload.verify_ssl,
         is_primary=payload.is_primary,
         datacenter=payload.datacenter,
@@ -104,7 +105,9 @@ def update_connection(
     conn = _conn(db, conn_id, user)
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "password":
-            conn.password_encrypted = value
+            conn.password_encrypted = seal(value)
+        elif field == "api_token":
+            conn.api_token = seal(value)
         else:
             setattr(conn, field, value)
     db.commit()

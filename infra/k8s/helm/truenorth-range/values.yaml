@@ -294,6 +294,9 @@ secrets:
   minioAccessKey: minioadmin
   minioSecretKey: minioadmin
   apiSecretKey: change-me-to-a-random-secret
+  # TN_SECRETS_KEY: >= 32 random chars (openssl rand -hex 32). Never change it while
+  # credentials are stored; to rotate set "new,old". Back it up with the database.
+  secretsKey: change-me-to-at-least-32-random-characters
   keycloakAdminPassword: changeme
 
 
