@@ -1,0 +1,53 @@
+name: Backup drill
+
+# Proves scripts/backup/backup.sh + restore.sh against the production compose file:
+# seed -> backup -> wipe (down -v) -> restore -> identical row counts per database,
+# identical buckets/object count, escrow decrypts. scripts/backup/drill.sh does the
+# work; it runs in its own compose project and tears it down.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/backup/**"
+      - "infra/platform/docker/compose.prod.yml"
+      - "infra/platform/docker/postgres-init/**"
+      - ".github/workflows/backup-drill.yml"
+  schedule:
+    - cron: "41 3 * * *"   # nightly, 03:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: shellcheck -x scripts/backup/*.sh
+
+      - name: Tool versions
+        run: |
+          docker compose version
+          openssl version
+
+      - name: Run drill
+        env:
+          DRILL_PROJECT: tn-drill-ci-${{ github.run_id }}
+          DRILL_REPORT: ${{ runner.temp }}/backup-drill-report.txt
+        run: bash scripts/backup/drill.sh
+
+      - name: Upload drill report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-drill-report
+          path: ${{ runner.temp }}/backup-drill-report.txt
+          if-no-files-found: ignore

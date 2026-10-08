@@ -1,123 +1,232 @@
 #!/usr/bin/env bash
 # =============================================================================
-# TrueNorth Range — Full Platform Backup (Bash)
+# TrueNorth Range — platform backup
+# =============================================================================
+# Produces BACKUP_DIR/truenorth-backup-<UTC timestamp>/ containing:
+#
+#   postgres/globals.sql        roles (pg_dumpall --globals-only)
+#   postgres/<db>.dump          pg_dump -Fc of EVERY non-template database on
+#                               the server (app, keycloak, lrs, ... discovered)
+#   minio/<bucket>/...          mc mirror of every bucket
+#   secrets/env.enc + env.key.enc
+#                               the env file (holds TN_SECRETS_KEY and every
+#                               credential a restore needs), AES-256 encrypted to
+#                               the escrow RSA public key. Never stored in plain text.
+#   manifest.json, SHA256SUMS
+#
+# Not backed up, on purpose (docs/runbooks/backup-restore.md):
+#   Redis      — Celery broker, cache and rate-limit counters. Restoring a stale
+#                queue would replay provisioning tasks.
+#   OpenSearch — telemetry. Snapshotted only when OPENSEARCH_SNAPSHOT_REPO names
+#                a repository the operator registered (prod compose sets no
+#                path.repo); otherwise recorded as "not backed up" in the manifest.
+#
+# Usage: backup.sh            (all settings from the environment)
+#
+# Environment (see also lib.sh):
+#   BACKUP_DIR               default /srv/truenorth/backups
+#   BACKUP_RETENTION_DAYS    prune complete backups older than N days; 0 = never.
+#                            Falls back to RETENTION_DAYS, default 30. The newest
+#                            backup is never pruned.
+#   BACKUP_ESCROW_PUBKEY     RSA public key (PEM) the env file is encrypted to.
+#   BACKUP_ESCROW            set to "out-of-band" to attest that TN_SECRETS_KEY
+#                            is escrowed elsewhere (then no key file is needed).
+#   OPENSEARCH_SNAPSHOT_REPO optional, see above. OPENSEARCH_URL (inside the
+#                            opensearch container, default http://localhost:9200)
+#                            and OPENSEARCH_SNAPSHOT_AUTH (user:pass, read from the
+#                            env file) when the security plugin is on.
+#   OPENSSL                  default: openssl
+#
+# Exit codes: 0 ok; 1 failed (no backup kept); 3 data backed up but secrets NOT
+# escrowed (configure BACKUP_ESCROW_PUBKEY or BACKUP_ESCROW=out-of-band).
+# Every failure also raises an alert (stderr + syslog, webhook if configured).
 # =============================================================================
 set -euo pipefail
 IFS=$'\n\t'
+umask 077
 
-# ── Defaults ─────────────────────────────────────────────────────────────────
-BACKUP_DIR="${BACKUP_DIR:-./backups}"
-RETENTION_DAYS="${RETENTION_DAYS:-30}"
-# There is no docker-compose.yml at the repo root — the stacks live under
-# infra/platform/docker/. The old default silently pointed at a file that has
-# never existed, so every `docker compose` call here failed.
-COMPOSE_FILE="${COMPOSE_FILE:-infra/platform/docker/compose.prod.yml}"
-ENV_FILE="${ENV_FILE:-infra/platform/docker/.env.production}"
+# shellcheck source=scripts/backup/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
+BACKUP_DIR="${BACKUP_DIR:-/srv/truenorth/backups}"
+BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-${RETENTION_DAYS:-30}}"
+BACKUP_ESCROW_PUBKEY="${BACKUP_ESCROW_PUBKEY:-}"
+BACKUP_ESCROW="${BACKUP_ESCROW:-}"
+OPENSEARCH_SNAPSHOT_REPO="${OPENSEARCH_SNAPSHOT_REPO:-}"
+OPENSEARCH_URL="${OPENSEARCH_URL:-http://localhost:9200}"
+OPENSSL="${OPENSSL:-openssl}"
+
+TIMESTAMP="$(date -u +"%Y%m%dT%H%M%SZ")"
 BACKUP_NAME="truenorth-backup-${TIMESTAMP}"
-BACKUP_PATH="${BACKUP_DIR}/${BACKUP_NAME}"
-MANIFEST="${BACKUP_PATH}/SHA256SUMS.txt"
-COMPLETED=()
+FINAL_PATH="${BACKUP_DIR}/${BACKUP_NAME}"
+WORK_PATH="${BACKUP_DIR}/.partial-${BACKUP_NAME}"
+LOCK_DIR="${BACKUP_DIR}/.lock"
+CURRENT_STEP="setup"
+EXIT_CODE=0
+LOCKED=0
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-log() {
-    local level="$1"; shift
-    printf '[%s] [%s] %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")" "$level" "$*"
+# shellcheck disable=SC2329  # invoked by the EXIT trap
+on_exit() {
+    local rc=$?
+    if (( rc != 0 )) && [[ "${CURRENT_STEP}" != "done" ]]; then
+        alert "backup FAILED at step '${CURRENT_STEP}' (exit ${rc}); partial output removed"
+        rm -rf "${WORK_PATH}"
+    fi
+    if (( LOCKED )); then
+        rmdir "${LOCK_DIR}" 2>/dev/null || true
+    fi
 }
+trap on_exit EXIT
 
-cleanup_on_error() {
-    log "ERROR" "Backup FAILED at step: ${CURRENT_STEP:-unknown}"
-    log "WARN"  "Completed before failure: ${COMPLETED[*]:-none}"
-    exit 1
-}
-trap cleanup_on_error ERR
+compose_init
+mkdir -p "${BACKUP_DIR}"
+chmod 700 "${BACKUP_DIR}"
+# One backup at a time (mkdir is atomic; flock is not on every platform).
+if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
+    CURRENT_STEP="lock"
+    die "another backup holds ${LOCK_DIR}; remove it if no backup is running"
+fi
+LOCKED=1
+mkdir -p "${WORK_PATH}/postgres" "${WORK_PATH}/minio" "${WORK_PATH}/secrets"
+log "INFO" "Backup ${BACKUP_NAME} → ${BACKUP_DIR}"
 
-# ── Setup ────────────────────────────────────────────────────────────────────
-log "INFO" "Starting TrueNorth Range backup → ${BACKUP_PATH}"
-mkdir -p "${BACKUP_PATH}"
+PG_USER="$(env_get POSTGRES_USER)"
+PG_DB="$(env_get POSTGRES_DB)"
+[[ -n "${PG_USER}" && -n "${PG_DB}" ]] || die "POSTGRES_USER / POSTGRES_DB missing from ${ENV_FILE}"
 
-# ── 1. PostgreSQL ────────────────────────────────────────────────────────────
-CURRENT_STEP="PostgreSQL"
-log "INFO" "Backing up PostgreSQL..."
-docker exec truenorth-postgres \
-    pg_dump -U truenorth -d truenorth_range --clean --if-exists \
-    | gzip > "${BACKUP_PATH}/postgresql.sql.gz"
-COMPLETED+=("PostgreSQL")
-log "INFO" "PostgreSQL backup complete"
+# ── 1. PostgreSQL: globals + every database ──────────────────────────────────
+CURRENT_STEP="postgres"
+service_cid postgres >/dev/null
+dc exec -T postgres pg_dumpall -U "${PG_USER}" --globals-only >"${WORK_PATH}/postgres/globals.sql"
 
-# ── 2. Redis ─────────────────────────────────────────────────────────────────
-CURRENT_STEP="Redis"
-log "INFO" "Backing up Redis..."
-docker exec truenorth-redis redis-cli BGSAVE > /dev/null
-sleep 3
-docker cp truenorth-redis:/data/dump.rdb "${BACKUP_PATH}/redis-dump.rdb"
-COMPLETED+=("Redis")
-log "INFO" "Redis backup complete"
+# (A read loop, not mapfile: the scripts also run under macOS's bash 3.2.)
+DATABASES=()
+while IFS= read -r db; do
+    [[ -n "$db" ]] && DATABASES+=("$db")
+done < <(dc exec -T postgres psql -U "${PG_USER}" -d "${PG_DB}" -v ON_ERROR_STOP=1 -Atc \
+    "select datname from pg_database where not datistemplate and datallowconn order by 1" | tr -d '\r')
+(( ${#DATABASES[@]} > 0 )) || die "no databases found on the postgres server"
 
-# ── 3. MinIO ─────────────────────────────────────────────────────────────────
-CURRENT_STEP="MinIO"
-log "INFO" "Backing up MinIO..."
-MINIO_DIR="${BACKUP_PATH}/minio"
-mkdir -p "${MINIO_DIR}"
-docker run --rm --network host \
-    -v "${MINIO_DIR}:/backup" \
-    minio/mc:latest sh -c \
-    'mc alias set src http://minio:9000 minioadmin minioadmin && mc mirror src/ /backup/'
-COMPLETED+=("MinIO")
-log "INFO" "MinIO backup complete"
-
-# ── 4. OpenSearch ────────────────────────────────────────────────────────────
-CURRENT_STEP="OpenSearch"
-log "INFO" "Backing up OpenSearch via snapshot API..."
-# Register repo (idempotent)
-docker exec truenorth-opensearch curl -s -X PUT \
-    "http://localhost:9200/_snapshot/truenorth_backup" \
-    -H "Content-Type: application/json" \
-    -d '{"type":"fs","settings":{"location":"/mnt/snapshots"}}' > /dev/null
-
-SNAP_NAME="snap-${TIMESTAMP}"
-docker exec truenorth-opensearch curl -s -X PUT \
-    "http://localhost:9200/_snapshot/truenorth_backup/${SNAP_NAME}?wait_for_completion=true" > /dev/null
-
-OS_DIR="${BACKUP_PATH}/opensearch-snapshots"
-mkdir -p "${OS_DIR}"
-docker cp truenorth-opensearch:/mnt/snapshots/. "${OS_DIR}"
-COMPLETED+=("OpenSearch")
-log "INFO" "OpenSearch backup complete"
-
-# ── 5. Configs ───────────────────────────────────────────────────────────────
-CURRENT_STEP="Configs"
-log "INFO" "Backing up configuration files..."
-CFG_DIR="${BACKUP_PATH}/configs"
-mkdir -p "${CFG_DIR}"
-
-for f in "${COMPOSE_FILE}" "infra/platform/docker/compose.dev.yml" "${ENV_FILE}" ".env.example"; do
-    [[ -f "$f" ]] && cp "$f" "${CFG_DIR}/"
+DB_JSON=""
+for db in "${DATABASES[@]}"; do
+    [[ -n "$db" ]] || continue
+    CURRENT_STEP="postgres:${db}"
+    out="${WORK_PATH}/postgres/${db}.dump"
+    dc exec -T postgres pg_dump -U "${PG_USER}" -Fc -d "${db}" >"${out}" </dev/null
+    # A dump pg_restore cannot list is not a backup.
+    dc exec -T postgres pg_restore --list <"${out}" >/dev/null
+    size="$(wc -c <"${out}" | tr -d ' ')"
+    log "INFO" "  postgres ${db}: ${size} bytes"
+    DB_JSON+="${DB_JSON:+,}{\"name\":$(json_str "$db"),\"file\":$(json_str "postgres/${db}.dump"),\"bytes\":${size}}"
 done
 
-# Nginx configs
-[[ -d "infra/platform/nginx" ]] && cp -r "infra/platform/nginx" "${CFG_DIR}/nginx"
+# ── 2. MinIO: every bucket ───────────────────────────────────────────────────
+CURRENT_STEP="minio"
+mc_run "${WORK_PATH}/minio" mirror --quiet --preserve tn /backup >/dev/null </dev/null
+# mirror writes no directory for an empty bucket; record every bucket explicitly
+# so restore re-creates it.
+while IFS= read -r bucket; do
+    bucket="${bucket%/}"
+    [[ -n "$bucket" && "$bucket" != */* && "$bucket" != .* ]] || continue
+    mkdir -p "${WORK_PATH}/minio/${bucket}"
+done < <(mc_run "${WORK_PATH}/minio" ls tn </dev/null | awk '{print $NF}')
+SRC_OBJECTS="$(mc_run "${WORK_PATH}/minio" ls --recursive tn | grep -c . || true)"
+BAK_OBJECTS="$(find "${WORK_PATH}/minio" -type f | grep -c . || true)"
+BUCKETS="$(find "${WORK_PATH}/minio" -mindepth 1 -maxdepth 1 -type d | grep -c . || true)"
+if (( BAK_OBJECTS < SRC_OBJECTS )); then
+    die "MinIO mirror incomplete: ${BAK_OBJECTS} files for ${SRC_OBJECTS} objects"
+fi
+log "INFO" "  minio: ${BUCKETS} buckets, ${BAK_OBJECTS} objects"
 
-# Terraform state
-[[ -f "infra/terraform/terraform.tfstate" ]] && cp "infra/terraform/terraform.tfstate" "${CFG_DIR}/"
+# ── 3. OpenSearch (optional) ─────────────────────────────────────────────────
+CURRENT_STEP="opensearch"
+if [[ -n "${OPENSEARCH_SNAPSHOT_REPO}" ]]; then
+    snap="tn-$(printf '%s' "${TIMESTAMP}" | tr '[:upper:]' '[:lower:]')"
+    auth="$(env_get OPENSEARCH_SNAPSHOT_AUTH)"
+    curl_auth=(-s)
+    if [[ -n "$auth" ]]; then curl_auth=(-u "$auth"); fi
+    dc exec -T opensearch curl -sfk "${curl_auth[@]}" -X PUT \
+        "${OPENSEARCH_URL}/_snapshot/${OPENSEARCH_SNAPSHOT_REPO}/${snap}?wait_for_completion=true" >/dev/null
+    OS_JSON="{\"status\":\"snapshot\",\"repository\":$(json_str "${OPENSEARCH_SNAPSHOT_REPO}"),\"snapshot\":$(json_str "$snap")}"
+    log "INFO" "  opensearch: snapshot ${snap} in repository ${OPENSEARCH_SNAPSHOT_REPO}"
+else
+    OS_JSON='{"status":"not-backed-up","reason":"no OPENSEARCH_SNAPSHOT_REPO registered; telemetry is not part of this backup"}'
+    log "WARN" "  opensearch: not backed up (OPENSEARCH_SNAPSHOT_REPO unset)"
+fi
 
-COMPLETED+=("Configs")
-log "INFO" "Config backup complete"
+# ── 4. Secrets escrow (TN_SECRETS_KEY and every credential) ──────────────────
+CURRENT_STEP="escrow"
+if [[ -n "${BACKUP_ESCROW_PUBKEY}" ]]; then
+    [[ -r "${BACKUP_ESCROW_PUBKEY}" ]] || die "BACKUP_ESCROW_PUBKEY not readable: ${BACKUP_ESCROW_PUBKEY}"
+    # Hybrid: a fresh 256-bit data key encrypts the env file; the escrow RSA key
+    # wraps the data key. Neither the env file nor the data key touches disk in clear.
+    TN_ESCROW_DATA_KEY="$("${OPENSSL}" rand -hex 32)"
+    export TN_ESCROW_DATA_KEY
+    "${OPENSSL}" enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt \
+        -pass env:TN_ESCROW_DATA_KEY -in "${ENV_FILE}" -out "${WORK_PATH}/secrets/env.enc"
+    printf '%s' "${TN_ESCROW_DATA_KEY}" | "${OPENSSL}" pkeyutl -encrypt -pubin \
+        -inkey "${BACKUP_ESCROW_PUBKEY}" -pkeyopt rsa_padding_mode:oaep \
+        -pkeyopt rsa_oaep_md:sha256 -out "${WORK_PATH}/secrets/env.key.enc"
+    unset TN_ESCROW_DATA_KEY
+    fp="$("${OPENSSL}" pkey -pubin -in "${BACKUP_ESCROW_PUBKEY}" -outform DER | "${OPENSSL}" dgst -sha256 -r | cut -d' ' -f1)"
+    ESCROW_JSON="{\"status\":\"encrypted\",\"files\":[\"secrets/env.enc\",\"secrets/env.key.enc\"],\"recipient_sha256\":\"${fp}\"}"
+    if [[ -z "$(env_get TN_SECRETS_KEY)" ]]; then
+        log "WARN" "  escrow: ${ENV_FILE} has no TN_SECRETS_KEY (fine before PR #90 lands)"
+    fi
+    log "INFO" "  escrow: env file encrypted to key ${fp:0:16}…"
+elif [[ "${BACKUP_ESCROW}" == "out-of-band" ]]; then
+    rmdir "${WORK_PATH}/secrets"
+    ESCROW_JSON='{"status":"out-of-band","note":"operator attests TN_SECRETS_KEY and the env file are escrowed outside this backup"}'
+    log "INFO" "  escrow: out-of-band (BACKUP_ESCROW=out-of-band)"
+else
+    rmdir "${WORK_PATH}/secrets"
+    ESCROW_JSON='{"status":"missing"}'
+    EXIT_CODE=3
+    log "WARN" "  escrow: NOT escrowed — set BACKUP_ESCROW_PUBKEY or BACKUP_ESCROW=out-of-band"
+fi
 
-# ── 6. SHA-256 Manifest ─────────────────────────────────────────────────────
-CURRENT_STEP="Checksums"
-log "INFO" "Generating SHA-256 checksums..."
-(cd "${BACKUP_PATH}" && find . -type f ! -name "SHA256SUMS.txt" -exec sha256sum {} \;) > "${MANIFEST}"
-log "INFO" "Manifest written: ${MANIFEST}"
+# ── 5. Manifest + checksums ──────────────────────────────────────────────────
+CURRENT_STEP="manifest"
+GIT_REV="$(git -C "${TN_BACKUP_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+PROJECT="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$(service_cid postgres)")"
+PG_VERSION="$(dc exec -T postgres psql -U "${PG_USER}" -d "${PG_DB}" -Atc 'show server_version' | tr -d '\r')"
+cat >"${WORK_PATH}/manifest.json" <<EOF
+{
+  "format": "truenorth-backup/2",
+  "name": $(json_str "${BACKUP_NAME}"),
+  "created_utc": $(json_str "${TIMESTAMP}"),
+  "host": $(json_str "$(hostname)"),
+  "compose_project": $(json_str "${PROJECT}"),
+  "source_git_rev": $(json_str "${GIT_REV}"),
+  "postgres": {"server_version": $(json_str "${PG_VERSION}"), "globals": "postgres/globals.sql", "databases": [${DB_JSON}]},
+  "minio": {"buckets": ${BUCKETS}, "objects": ${BAK_OBJECTS}, "dir": "minio"},
+  "opensearch": ${OS_JSON},
+  "redis": {"status": "not-backed-up", "reason": "transient broker/cache; restoring would replay tasks"},
+  "escrow": ${ESCROW_JSON}
+}
+EOF
+(cd "${WORK_PATH}" && sha256_file_list >SHA256SUMS)
+(cd "${WORK_PATH}" && sha256_check)
 
-# ── 7. Retention cleanup ────────────────────────────────────────────────────
-CURRENT_STEP="Retention"
-log "INFO" "Cleaning backups older than ${RETENTION_DAYS} days..."
-find "${BACKUP_DIR}" -maxdepth 1 -type d -name "truenorth-backup-*" -mtime "+${RETENTION_DAYS}" -exec rm -rf {} +
+CURRENT_STEP="finalize"
+mv "${WORK_PATH}" "${FINAL_PATH}"
 
-# ── Done ─────────────────────────────────────────────────────────────────────
-TOTAL_SIZE=$(du -sh "${BACKUP_PATH}" | cut -f1)
-log "INFO" "Backup complete. Size: ${TOTAL_SIZE}"
-log "INFO" "Components backed up: ${COMPLETED[*]}"
-log "INFO" "Backup location: ${BACKUP_PATH}"
+# ── 6. Retention (only after a successful backup) ────────────────────────────
+CURRENT_STEP="retention"
+if [[ "${BACKUP_RETENTION_DAYS}" =~ ^[0-9]+$ ]] && (( BACKUP_RETENTION_DAYS > 0 )); then
+    while IFS= read -r old; do
+        [[ "$old" == "${FINAL_PATH}" ]] && continue
+        log "INFO" "  pruning $(basename "$old") (older than ${BACKUP_RETENTION_DAYS}d)"
+        rm -rf "$old"
+    done < <(find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name 'truenorth-backup-*' \
+                -mtime "+${BACKUP_RETENTION_DAYS}")
+fi
+# Leftovers of runs that were killed hard (SIGKILL skips the trap).
+find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name '.partial-*' -mtime +1 -exec rm -rf {} +
+
+CURRENT_STEP="done"
+log "INFO" "Backup complete: ${FINAL_PATH} ($(du -sh "${FINAL_PATH}" | cut -f1))"
+if (( EXIT_CODE == 3 )); then
+    alert "backup ${BACKUP_NAME} completed WITHOUT secrets escrow; TN_SECRETS_KEY is not recoverable from it"
+fi
+exit "${EXIT_CODE}"
