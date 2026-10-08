@@ -17,4 +17,10 @@ export const environment: AppEnvironment = {
     clientId: 'truenorth-web',
   },
   authDisabled: true,
+  // The consoles compose.dev.yml publishes on loopback.
+  adminLinks: {
+    minio: 'http://localhost:9001',
+    dashboards: 'http://localhost:5601',
+    ai: 'http://localhost:6000/docs',
+  },
 };

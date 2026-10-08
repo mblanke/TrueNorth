@@ -378,6 +378,10 @@ services:
       # port, which start-dev Keycloak does not expect. Written to assets/config.json
       # at start-up (control-plane/web/docker/40-truenorth-runtime-config.sh).
       TN_KEYCLOAK_URL: "${TN_KEYCLOAK_URL:-http://localhost:8180}"
+      # Admin > Services links: the consoles this file publishes on loopback.
+      TN_ADMIN_MINIO_URL: "${TN_ADMIN_MINIO_URL:-http://localhost:9001}"
+      TN_ADMIN_DASHBOARDS_URL: "${TN_ADMIN_DASHBOARDS_URL:-http://localhost:5601}"
+      TN_ADMIN_AI_URL: "${TN_ADMIN_AI_URL:-http://localhost:6000/docs}"
     ports:
       - "4200:8080"  # web's nginx runs unprivileged on 8080
     depends_on:

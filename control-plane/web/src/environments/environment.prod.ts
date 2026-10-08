@@ -21,4 +21,6 @@ export const environment: AppEnvironment = {
     clientId: 'truenorth-web',
   },
   authDisabled: false,
+  // Only the Keycloak console (derived from keycloak.url) unless TN_ADMIN_* are set.
+  adminLinks: {},
 };

@@ -692,6 +692,12 @@ services:
       # default is right unless Keycloak moves to its own host.
       TN_KEYCLOAK_URL: "${TN_KEYCLOAK_URL:-/auth}"
       TN_KEYCLOAK_REALM: "${KEYCLOAK_REALM:-truenorth}"
+      # Admin > Services cards. Keycloak defaults to <TN_KEYCLOAK_URL>/admin/; MinIO and
+      # OpenSearch Dashboards are not published by this file, so their cards stay
+      # hidden unless an operator exposes them and sets these.
+      TN_ADMIN_MINIO_URL: "${TN_ADMIN_MINIO_URL:-}"
+      TN_ADMIN_DASHBOARDS_URL: "${TN_ADMIN_DASHBOARDS_URL:-}"
+      TN_ADMIN_AI_URL: "${TN_ADMIN_AI_URL:-}"
     depends_on:
       api:
         condition: service_healthy

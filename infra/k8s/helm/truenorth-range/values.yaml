@@ -188,6 +188,13 @@ web:
     url: ""
     realm: ""
     clientId: ""
+  # Admin > Services links. keycloak defaults to <keycloak url>/admin/; the minio,
+  # dashboards and ai cards are hidden unless set.
+  adminLinks:
+    keycloak: ""
+    minio: ""
+    dashboards: ""
+    ai: ""
   resources:
     requests:
       cpu: 100m

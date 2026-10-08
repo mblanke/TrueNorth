@@ -1,6 +1,6 @@
 import type { AppEnvironment } from '@env/app-environment';
 import { environment as prodEnvironment } from '@env/environment.prod';
-import { RUNTIME_CONFIG_URL, applyRuntimeConfig, loadRuntimeConfig } from './runtime-config';
+import { RUNTIME_CONFIG_URL, adminServiceLinks, applyRuntimeConfig, loadRuntimeConfig } from './runtime-config';
 
 function env(): AppEnvironment {
   return {
@@ -8,6 +8,7 @@ function env(): AppEnvironment {
     apiUrl: '/api',
     keycloak: { url: '/auth', realm: 'truenorth', clientId: 'truenorth-web' },
     authDisabled: false,
+    adminLinks: {},
   };
 }
 
@@ -50,6 +51,20 @@ describe('runtime config', () => {
     }
   });
 
+  it('takes admin links, but only http(s) URLs and same-origin paths', () => {
+    const e = env();
+    applyRuntimeConfig({
+      adminLinks: {
+        minio: 'https://minio.example.com',
+        dashboards: 'javascript:alert(1)',
+        ai: '//evil.example/docs',
+        keycloak: '/auth/admin/master/console/',
+        other: 'https://x.example',
+      },
+    }, e);
+    expect(e.adminLinks).toEqual({ minio: 'https://minio.example.com', keycloak: '/auth/admin/master/console/' });
+  });
+
   it('loads assets/config.json without caching', async () => {
     const e = env();
     const fetchFn = jasmine.createSpy('fetch').and.callFake(respond(200, { keycloak: { url: 'http://localhost:18180' } }));
@@ -72,5 +87,25 @@ describe('runtime config', () => {
     await loadRuntimeConfig(() => Promise.resolve(new Response('not json', { status: 200 })), garbled);
     expect(garbled).toEqual(env());
     expect(console.warn).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('admin service links', () => {
+  it('production defaults: only the Keycloak console, derived from the Keycloak URL', () => {
+    expect(adminServiceLinks(env())).toEqual([{ name: 'Keycloak', url: '/auth/admin/' }]);
+    expect(adminServiceLinks(prodEnvironment)).toEqual([{ name: 'Keycloak', url: '/auth/admin/' }]);
+  });
+
+  it('follows a runtime Keycloak URL and shows configured consoles in order', () => {
+    const e = env();
+    applyRuntimeConfig({
+      keycloak: { url: 'https://sso.example.com/' },
+      adminLinks: { dashboards: 'https://dash.example.com', ai: '/ai/docs' },
+    }, e);
+    expect(adminServiceLinks(e)).toEqual([
+      { name: 'Keycloak', url: 'https://sso.example.com/admin/' },
+      { name: 'OpenSearch Dashboards', url: 'https://dash.example.com' },
+      { name: 'AI Orchestrator', url: '/ai/docs' },
+    ]);
   });
 });

@@ -17,4 +17,16 @@ export interface AppEnvironment {
     clientId: string;
   };
   authDisabled: boolean;
+  /**
+   * Admin > Services consoles. `keycloak` defaults to `<keycloak.url>/admin/`; a card
+   * whose link is unset is not shown. Runtime-overridable (TN_ADMIN_* in the container).
+   */
+  adminLinks: AdminLinks;
+}
+
+export interface AdminLinks {
+  keycloak?: string;
+  minio?: string;
+  dashboards?: string;
+  ai?: string;
 }

@@ -13,8 +13,7 @@
 // production configuration, and environment.prod.ts says `authDisabled: false`.
 // Bundle checks (dist/truenorth-range-web/browser): no `authDisabled` set to true in any
 // emitted script, at least one set to false (proof the property survived minification,
-// so the first check means something), and no environment object with the dev-only
-// Keycloak URL.
+// so the first check means something), and no trace of the dev-only Keycloak URL.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +22,14 @@ const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const project = 'truenorth-range-web';
 const sourceOnly = process.argv.includes('--source');
 const errors = [];
+// Keycloak, MinIO console, OpenSearch Dashboards (5601, and the old wrong 5602), AI docs.
+const DEV_ONLY_URLS = [
+  'http://localhost:8180',
+  'http://localhost:9001',
+  'http://localhost:5601',
+  'http://localhost:5602',
+  'http://localhost:6000',
+];
 
 // ── Source ────────────────────────────────────────────────────────────
 const angular = JSON.parse(readFileSync(join(webRoot, 'angular.json'), 'utf8'));
@@ -79,10 +86,12 @@ if (!sourceOnly) {
           falseHits += 1;
         }
       }
-      // environment.ts's `keycloak: { url: 'http://localhost:8180' }`. Matched as a `url:`
-      // property, not the bare string: admin.component.ts links to it in a template.
-      if (/\burl\s*:\s*["'`]http:\/\/localhost:8180/.test(text)) {
-        errors.push(`${rel}: production bundle contains the development Keycloak URL (environment.ts was bundled)`);
+      // environment.ts's Keycloak URL and dev console links. Nothing else in the app may
+      // name them: admin links come from the runtime config.
+      for (const devUrl of DEV_ONLY_URLS) {
+        if (text.includes(devUrl)) {
+          errors.push(`${rel}: production bundle contains the development URL ${devUrl}`);
+        }
       }
     }
     if (scripts.length === 0) {
