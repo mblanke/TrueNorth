@@ -27,6 +27,7 @@ from ..models import (
     LTINonce,
     User,
 )
+from ..moodle_backends import supported_moodle_types
 from ..platforms import get_platform_adapter
 from ..rbac import Permission, is_platform_admin, require_permission, user_has_permission
 from ..schemas import (
@@ -159,7 +160,9 @@ def update_platform(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
     changes = body.model_dump(exclude_unset=True)
     if "lti_issuer" in changes and (changes["lti_issuer"] or "").rstrip("/") != (p.lti_issuer or "").rstrip("/"):
-        if p.platform_type == "moodle" and p.lti_issuer and not is_platform_admin(user):
+        # A Moodle-farm platform (one the moodle_backends registry can publish to) is
+        # addressed by its issuer in the tickets this API signs.
+        if p.platform_type in supported_moodle_types() and p.lti_issuer and not is_platform_admin(user):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, "Only a platform administrator can re-point a Moodle at another site"
             )
