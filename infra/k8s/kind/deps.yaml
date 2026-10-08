@@ -1,0 +1,106 @@
+# Throwaway datastores for the kind smoke test (infra/k8s/kind/smoke.sh) — NOT for
+# production: no persistence, single replicas, OpenSearch without its security plugin.
+# The chart does not run datastores; production points config.* at real ones.
+# Passwords come from the `tn-deps` Secret the smoke script creates.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels: {app: postgres}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: postgres}}
+  template:
+    metadata: {labels: {app: postgres}}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297
+          env:
+            - {name: POSTGRES_USER, value: truenorth}
+            - {name: POSTGRES_DB, value: truenorth}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: tn-deps, key: DATABASE_PASSWORD}}
+          ports: [{containerPort: 5432}]
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "truenorth", "-d", "truenorth"]}
+            periodSeconds: 3
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: postgres}
+spec:
+  selector: {app: postgres}
+  ports: [{port: 5432, targetPort: 5432}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels: {app: redis}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: redis}}
+  template:
+    metadata: {labels: {app: redis}}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4.6-alpine@sha256:3b73847e72874be07e6657b129a94761662b79bc0f679273757d4218573b2a98
+          command: ["sh", "-c", "exec redis-server --save '' --appendonly no --requirepass \"$REDIS_PASSWORD\""]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom: {secretKeyRef: {name: tn-deps, key: REDIS_PASSWORD}}
+          ports: [{containerPort: 6379}]
+          readinessProbe:
+            exec: {command: ["sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]}
+            periodSeconds: 3
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: redis}
+spec:
+  selector: {app: redis}
+  ports: [{port: 6379, targetPort: 6379}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch
+  labels: {app: opensearch}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: opensearch}}
+  template:
+    metadata: {labels: {app: opensearch}}
+    spec:
+      containers:
+        - name: opensearch
+          image: opensearchproject/opensearch:2.19.3@sha256:e96cc6ae1500a073d973c0906f30f7cf4d9c461f32f855f9242a2da933660cdd
+          env:
+            # single-node also skips the bootstrap checks (vm.max_map_count on the runner).
+            - {name: discovery.type, value: single-node}
+            - {name: DISABLE_SECURITY_PLUGIN, value: "true"}
+            - {name: DISABLE_INSTALL_DEMO_CONFIG, value: "true"}
+            - {name: OPENSEARCH_JAVA_OPTS, value: "-Xms512m -Xmx512m"}
+          ports: [{containerPort: 9200}]
+          readinessProbe:
+            httpGet: {path: /_cluster/health, port: 9200}
+            periodSeconds: 5
+            failureThreshold: 60
+          resources:
+            requests: {cpu: 100m, memory: 1Gi}
+            limits: {cpu: "1", memory: 1536Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: opensearch}
+spec:
+  selector: {app: opensearch}
+  ports: [{port: 9200, targetPort: 9200}]

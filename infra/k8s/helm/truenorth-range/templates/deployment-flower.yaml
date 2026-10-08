@@ -1,4 +1,7 @@
 {{- if .Values.flower.enabled -}}
+{{- /* Celery monitoring. Off by default and never on the ingress; its NetworkPolicy
+       admits nothing, so reach it with `kubectl port-forward svc/<release>-flower 5555`.
+       Runs from the worker image, as compose.prod.yml does. */ -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,23 +9,25 @@ metadata:
   labels:
     {{- include "truenorth-range.componentLabels" (dict "context" . "component" "flower") | nindent 4 }}
 spec:
-  replicas: {{ .Values.flower.replicaCount }}
+  replicas: 1
   selector:
     matchLabels:
       {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "flower") | nindent 6 }}
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "flower") | nindent 8 }}
     spec:
       serviceAccountName: {{ include "truenorth-range.serviceAccountName" . }}
+      automountServiceAccountToken: false
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      securityContext:
+        {{- include "truenorth-range.podSecurityContext" (dict "root" . "uid" 10001) | nindent 8 }}
       {{- with .Values.flower.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -31,40 +36,41 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.flower.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      volumes:
+        {{- include "truenorth-range.scratchVolumes" . | nindent 8 }}
       containers:
         - name: flower
-          image: {{ include "truenorth-range.image" (dict "image" .Values.flower.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
-          imagePullPolicy: {{ .Values.flower.image.pullPolicy }}
+          image: {{ include "truenorth-range.image" (dict "name" "worker" "root" .) }}
+          imagePullPolicy: {{ include "truenorth-range.imagePullPolicy" (dict "name" "worker" "root" .) }}
           command:
-            - celery
-            - -A
-            - worker.celery_app
-            - flower
-            - --port=5555
-            {{- if .Values.flower.basicAuth.enabled }}
-            - --basic-auth={{ .Values.flower.basicAuth.username }}:{{ .Values.flower.basicAuth.password }}
-            {{- end }}
+            - sh
+            - -c
+            - exec celery -A worker.celery_app flower --port=5555 --basic_auth="$FLOWER_BASIC_AUTH"
           ports:
             - name: http
               containerPort: 5555
               protocol: TCP
-          envFrom:
-            - configMapRef:
-                name: {{ include "truenorth-range.fullname" . }}-config
-            - secretRef:
-                name: {{ include "truenorth-range.fullname" . }}-secret
+          securityContext:
+            {{- include "truenorth-range.containerSecurityContext" (dict "uid" 10001) | nindent 12 }}
           env:
-            - name: CELERY_BROKER_URL
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "truenorth-range.secretName" . }}
+                  key: REDIS_PASSWORD
+            - name: REDIS_URL
               value: {{ include "truenorth-range.redisUrl" . | quote }}
+            - name: FLOWER_BASIC_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "truenorth-range.secretName" . }}
+                  key: FLOWER_BASIC_AUTH
+          volumeMounts:
+            {{- include "truenorth-range.scratchVolumeMounts" . | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /healthcheck
               port: http
-            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
           livenessProbe:

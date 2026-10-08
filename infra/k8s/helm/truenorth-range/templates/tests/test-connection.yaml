@@ -1,28 +1,40 @@
+{{- /* `helm test <release>`: the api is ready (database, Redis and OpenSearch answer)
+       and the web app serves. The AI orchestrator is not probed: its NetworkPolicy
+       admits only the api and the workers. */ -}}
 apiVersion: v1
 kind: Pod
 metadata:
   name: "{{ include "truenorth-range.fullname" . }}-test-connection"
   labels:
-    {{- include "truenorth-range.labels" . | nindent 4 }}
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "test") | nindent 4 }}
   annotations:
     "helm.sh/hook": test
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    {{- include "truenorth-range.podSecurityContext" (dict "root" . "uid" 100) | nindent 4 }}
   containers:
-    - name: test-api
-      image: curlimages/curl:8.5.0
+    - name: test
+      image: {{ .Values.tests.image }}
+      securityContext:
+        {{- include "truenorth-range.containerSecurityContext" (dict "uid" 100) | nindent 8 }}
       command:
         - sh
         - -c
         - |
-          echo "Testing API health endpoint..."
-          curl -sf http://{{ include "truenorth-range.fullname" . }}-api:{{ .Values.api.service.port }}/health || exit 1
-          echo ""
-          echo "Testing AI Orchestrator health endpoint..."
-          curl -sf http://{{ include "truenorth-range.fullname" . }}-ai-orchestrator:{{ .Values.aiOrchestrator.service.port }}/health || exit 1
-          echo ""
-          echo "Testing Web frontend..."
-          curl -sf http://{{ include "truenorth-range.fullname" . }}-web:{{ .Values.web.service.port }}/ || exit 1
-          echo ""
-          echo "All health checks passed!"
+          set -e
+          api="http://{{ include "truenorth-range.fullname" . }}-api:{{ .Values.api.service.port }}"
+          web="http://{{ include "truenorth-range.fullname" . }}-web:{{ .Values.web.service.port }}"
+          echo "api /health/ready"; curl -fsS --max-time 10 "$api/health/ready"; echo
+          echo "web /nginx-health"; curl -fsS --max-time 10 "$web/nginx-health"
+          echo "web /"; curl -fsS --max-time 10 -o /dev/null "$web/"
+          echo "all checks passed"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

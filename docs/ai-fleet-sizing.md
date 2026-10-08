@@ -15,7 +15,7 @@ participants are served by the API, DB, OpenSearch, and provisioned ranges — t
 never touch the GPU. So the engine is sized for a handful of concurrent
 generation jobs, not the platform's peak user count.
 
-## The machine — Dell R7725 AI node (`eqt6r2d-u14`, 133.1.14.240)
+## The machine — Dell R7725 AI node (site host set in `${LLM_BASE_URL}`)
 
 | | |
 |---|---|
@@ -29,7 +29,8 @@ generation jobs, not the platform's peak user count.
 The local stack lives at `/data/ai-stack/` (vLLM 0.19.1 venv):
 
 - **vLLM** serves one model per GPU; **LiteLLM** (`:4000`, OpenAI-compatible,
-  master key `sk-r7725-local`) is the single front door with named aliases.
+  master key `${LLM_API_KEY}`, held on the box, never committed) is the single
+  front door with named aliases.
 - **pgvector** (in the `litellm-postgres` container) backs the stack's own RAG.
 - Launch scripts: `/data/ai-stack/scripts/start-vllm-gpu*.sh`, `start-litellm.sh`.
 
@@ -60,8 +61,8 @@ LiteLLM — one integration point, no Ollama:
 
 ```
 AI_MODEL_BACKEND=openai
-OPENAI_BASE_URL=http://133.1.14.240:4000/v1   # or host.docker.internal:4000 in compose
-OPENAI_API_KEY=sk-r7725-local
+OPENAI_BASE_URL=${LLM_BASE_URL}   # e.g. http://llm.example.internal:4000/v1, or host.docker.internal:4000 in compose
+OPENAI_API_KEY=${LLM_API_KEY}     # the LiteLLM master key; set in .env, never committed
 ```
 
 Per-task model selection maps to LiteLLM aliases via env (no code change to swap
@@ -86,7 +87,7 @@ works), so embeddings are best-effort but recommended for semantic retrieval.
 ## Connectivity: air-gapped
 
 "Air-gapped" here means **no external LLM provider** — all inference is local
-(LiteLLM/vLLM on this box). `OPENAI_BASE_URL` points at `133.1.14.240:4000`, the
+(LiteLLM/vLLM on this box). `OPENAI_BASE_URL` points at the AI node's `:4000`, the
 LAN LiteLLM, not the internet; `ANTHROPIC_API_KEY` is blank and unused.
 
 ## Cutover to Qwen (gated)

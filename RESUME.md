@@ -10,15 +10,16 @@ Releasing: `docs/release.md`.
   runs on PRs into it, and releases are tags on it. Local `main` and `github/main` have
   diverged before, so check `git rev-list --left-right --count main...github/main` before
   branching "from main". `feat/aar-pdf-designer-xapi` is an old line, not the base.
-- main holds the **stage-4 base**. The section modules live under
+- **All 17 modules are at stage 4; v1.0.0 release hardening is in progress**
+  (`CHANGELOG.md`). The section modules live under
   `control-plane/api/app/<module>/`: scheduler + capacity, range leases and range ops,
   lab sessions, network inventory, noise, greyspace, detections, scenario runs, course
   releases/publishing, LMS, wiki/support tickets/notifications. The hardening R-series
-  (#55–#68) is merged, and so are the later PRs up to #96 except the open ones below.
-- **Held / open PRs** (2026-10-08): #90 (sealed credentials, non-root images; this
-  branch builds on it), #94 (installer fixes, lab plane), #97 (detection hardening),
-  #92 (session coordinator). #3–#51 predate the re-land on main. Check each against main
-  before acting on it, and do not merge them as they are.
+  (#55–#68) is merged, and so is everything up to #107.
+- **Open PRs** (2026-10-08): #108 (Helm chart production-ready, `infra/k8s/`), #109
+  (runtime hardening, deploy by digest), #92 (session coordinator). #3–#51 predate the
+  re-land on main. Check each against main before acting on it, and do not merge them
+  as they are.
 
 ## The gate and the CI lanes
 
@@ -40,7 +41,7 @@ Capture the exit code: piping into `tail` hides failures.
 | helm-lint, keycloak-realm | chart lint; realm imports into the pinned Keycloak | yes |
 | integration | itest stack (`scripts/itest.sh`), `tests/integration`; zero passed = fail | yes |
 | e2e | Playwright (lockfile, `npm ci`) on itest + keycloak + web | yes |
-| load-smoke | k6, every scenario at 1 VU for 30 s (`tests/load/README.md`) | **no** (yet) |
+| load-smoke | k6, every scenario at 1 VU for 30 s (`tests/load/README.md`) | yes (since #107) |
 | moodle, vsphere-sim, greyspace | disposable Moodle publish, vcsim provisioner, Greyspace T0 stack | yes |
 
 Other workflows: `release.yml` (tag `v*`: images by digest, Trivy gate, SBOMs,
@@ -109,14 +110,11 @@ Scripts in `/opt/llm-stack/`: `to-fleet.sh`, `to-glm.sh`, `taz-status.sh`,
 
 1. **Installing by digest.** The installer still fetches source and
    `compose.prod.yml` still `build:`s, ignoring `IMAGE_TAG`. Consuming
-   `release-manifest.json` is the installer work package (interface: `docs/release.md`).
-2. **The API does not report its version.** `APP_VERSION = "0.1.0"` is hard-coded in
-   `control-plane/api/app/main.py`. Images carry `TN_VERSION` for it to read.
-3. **k6 smoke is non-blocking.** The load scripts predate the current API
-   (`tests/load/README.md` "CI smoke").
-4. **Live vSphere evidence** needs the self-hosted lab runner and its credentials
+   `release-manifest.json` is the installer work package (interface: `docs/release.md`;
+   PR #109 in flight).
+2. **Live vSphere evidence** needs the self-hosted lab runner and its credentials
    (`lab.yml`, `docs/runbooks/lab-runner.md`). The Taz box cannot reach that LAN.
-5. **Content is the real bottleneck:** about 2,600 build hours, about 57% of them gated
+3. **Content is the real bottleneck:** about 2,600 build hours, about 57% of them gated
    on cleared humans and purchased courseware. The four Red Analyst crosswalk rows still
    carry `DCWF-TODO`.
 

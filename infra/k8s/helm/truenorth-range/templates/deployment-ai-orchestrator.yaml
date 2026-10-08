@@ -1,4 +1,5 @@
 {{- if .Values.aiOrchestrator.enabled -}}
+{{- $secret := include "truenorth-range.secretName" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,21 +19,18 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
-        {{- if .Values.monitoring.prometheus.enabled }}
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "6000"
-        prometheus.io/path: {{ .Values.monitoring.prometheus.path | default "/metrics" }}
-        {{- end }}
       labels:
         {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "ai-orchestrator") | nindent 8 }}
     spec:
       serviceAccountName: {{ include "truenorth-range.serviceAccountName" . }}
+      automountServiceAccountToken: false
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      securityContext:
+        {{- include "truenorth-range.podSecurityContext" (dict "root" . "uid" 10001) | nindent 8 }}
       {{- with .Values.aiOrchestrator.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -45,55 +43,91 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      volumes:
+        {{- include "truenorth-range.scratchVolumes" . | nindent 8 }}
       containers:
         - name: ai-orchestrator
-          image: {{ include "truenorth-range.image" (dict "image" .Values.aiOrchestrator.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
-          imagePullPolicy: {{ .Values.aiOrchestrator.image.pullPolicy }}
+          image: {{ include "truenorth-range.image" (dict "name" "aiOrchestrator" "root" .) }}
+          imagePullPolicy: {{ include "truenorth-range.imagePullPolicy" (dict "name" "aiOrchestrator" "root" .) }}
           ports:
             - name: http
               containerPort: 6000
               protocol: TCP
-          envFrom:
-            - configMapRef:
-                name: {{ include "truenorth-range.fullname" . }}-config
-            - secretRef:
-                name: {{ include "truenorth-range.fullname" . }}-secret
+          securityContext:
+            {{- include "truenorth-range.containerSecurityContext" (dict "uid" 10001) | nindent 12 }}
+          # Only what the orchestrator uses, not the platform's whole Secret.
           env:
-            - name: OLLAMA_NODES
-              value: {{ .Values.aiOrchestrator.ollamaNodes | quote }}
-            - name: DATABASE_URL
-              value: {{ include "truenorth-range.databaseUrl" . | quote }}
+            - name: TN_ENV
+              value: {{ .Values.config.tnEnv | quote }}
+            - name: TN_VERSION
+              value: {{ .Values.version | default (printf "v%s" .Chart.AppVersion) | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.config.logFormat | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            # Every route but /health needs it; production refuses to start without one.
+            - name: AI_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: AI_SERVICE_TOKEN
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: REDIS_PASSWORD
             - name: REDIS_URL
-              value: {{ include "truenorth-range.redisUrl" . | quote }}
+              value: {{ include "truenorth-range.redisUrlForDb" (dict "root" . "db" .Values.aiOrchestrator.redisDb) | quote }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+            {{- range $k, $v := .Values.aiOrchestrator.env }}
+            {{- if ne (toString $v) "" }}
+            - name: {{ $k }}
+              value: {{ $v | toString | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.aiOrchestrator.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 15
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 5
+          volumeMounts:
+            {{- include "truenorth-range.scratchVolumeMounts" . | nindent 12 }}
+          # The orchestrator has one public route, /health (app/main.py PUBLIC_PATHS).
           startupProbe:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 10
             periodSeconds: 5
-            failureThreshold: 30
+            timeoutSeconds: 3
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- $res := deepCopy .Values.aiOrchestrator.resources }}
+          {{- if .Values.aiOrchestrator.gpu.enabled }}
+          {{- /* A GPU is requested as a limit; Kubernetes sets the request equal. */}}
+          {{- $_ := set $res.limits .Values.aiOrchestrator.gpu.resourceKey (.Values.aiOrchestrator.gpu.resourceValue | toString) }}
+          {{- end }}
           resources:
-            {{- toYaml .Values.aiOrchestrator.resources | nindent 12 }}
-            {{- if .Values.aiOrchestrator.gpu.enabled }}
-            {{ .Values.aiOrchestrator.gpu.resourceKey }}: {{ .Values.aiOrchestrator.gpu.resourceValue | quote }}
-            {{- end }}
+            {{- toYaml $res | nindent 12 }}
 {{- end }}

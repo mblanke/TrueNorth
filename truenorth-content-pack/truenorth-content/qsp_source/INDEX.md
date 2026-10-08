@@ -13,6 +13,8 @@ matching QSP here (Chapter 2 POs, Chapter 4 EOs, Annex D/E assessment plan) for 
 standards, critical events, and durations. Do not paraphrase criteria loosely — implement them.
 
 HANDLING: CAF training documents. Keep on the accredited in-enclave host only; do not move off-box.
+The files listed here are NOT in the repository (gitignored since v1.0.0); place them in this
+directory on the accredited host.
 
 ## Approval letters (approval_letters/)
 Signed QS/QSP approval letters for provenance/audit:

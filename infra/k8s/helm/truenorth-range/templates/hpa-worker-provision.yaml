@@ -1,27 +1,37 @@
-{{- if and .Values.workerProvision.enabled .Values.workerProvision.autoscaling.enabled -}}
+{{- /* HorizontalPodAutoscalers for the Celery workers that autoscale (provision and
+       scenario; telemetry too if enabled). A Deployment with autoscaling.enabled renders
+       no `replicas`, so an enabled flag without an HPA here would leave it at one pod. */ -}}
+{{- range $c := list (dict "key" "workerProvision" "component" "worker-provision") (dict "key" "workerScenario" "component" "worker-scenario") (dict "key" "workerTelemetry" "component" "worker-telemetry") }}
+{{- $v := index $.Values $c.key }}
+{{- if and $v.enabled ($v.autoscaling).enabled }}
+{{- if gt (int $v.autoscaling.minReplicas) (int $v.autoscaling.maxReplicas) }}
+{{- fail (printf "%s.autoscaling.minReplicas is greater than maxReplicas" $c.key) }}
+{{- end }}
+---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "truenorth-range.fullname" . }}-worker-provision
+  name: {{ include "truenorth-range.fullname" $ }}-{{ $c.component }}
   labels:
-    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "worker-provision") | nindent 4 }}
+    {{- include "truenorth-range.componentLabels" (dict "context" $ "component" $c.component) | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "truenorth-range.fullname" . }}-worker-provision
-  minReplicas: {{ .Values.workerProvision.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.workerProvision.autoscaling.maxReplicas }}
+    name: {{ include "truenorth-range.fullname" $ }}-{{ $c.component }}
+  minReplicas: {{ $v.autoscaling.minReplicas }}
+  maxReplicas: {{ $v.autoscaling.maxReplicas }}
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: {{ .Values.workerProvision.autoscaling.targetCPUUtilizationPercentage }}
+          averageUtilization: {{ $v.autoscaling.targetCPUUtilizationPercentage }}
   behavior:
+    # Scale down slowly: each removal costs a warm shutdown of a busy worker.
     scaleDown:
-      stabilizationWindowSeconds: 300
+      stabilizationWindowSeconds: 600
       policies:
         - type: Pods
           value: 1
@@ -32,4 +42,5 @@ spec:
         - type: Pods
           value: 2
           periodSeconds: 60
+{{- end }}
 {{- end }}

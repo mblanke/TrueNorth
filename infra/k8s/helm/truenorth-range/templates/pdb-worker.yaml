@@ -1,41 +1,19 @@
-{{- if .Values.workerProvision.enabled -}}
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: {{ include "truenorth-range.fullname" . }}-worker-provision
-  labels:
-    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "worker-provision") | nindent 4 }}
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "worker-provision") | nindent 6 }}
-{{- end }}
+{{- /* Worker PodDisruptionBudgets: one pod per queue group at a time. A drained worker
+       gets terminationGracePeriodSeconds to finish its task (Celery warm shutdown). */ -}}
+{{- range $c := list (dict "key" "workerProvision" "component" "worker-provision") (dict "key" "workerScenario" "component" "worker-scenario") (dict "key" "workerTelemetry" "component" "worker-telemetry") }}
+{{- $v := index $.Values $c.key }}
+{{- if and $v.enabled $v.podDisruptionBudget.enabled }}
 ---
-{{ if .Values.workerScenario.enabled -}}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "truenorth-range.fullname" . }}-worker-scenario
+  name: {{ include "truenorth-range.fullname" $ }}-{{ $c.component }}
   labels:
-    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "worker-scenario") | nindent 4 }}
+    {{- include "truenorth-range.componentLabels" (dict "context" $ "component" $c.component) | nindent 4 }}
 spec:
-  minAvailable: 1
+  maxUnavailable: {{ $v.podDisruptionBudget.maxUnavailable }}
   selector:
     matchLabels:
-      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "worker-scenario") | nindent 6 }}
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" $ "component" $c.component) | nindent 6 }}
 {{- end }}
----
-{{ if .Values.workerTelemetry.enabled -}}
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: {{ include "truenorth-range.fullname" . }}-worker-telemetry
-  labels:
-    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "worker-telemetry") | nindent 4 }}
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "worker-telemetry") | nindent 6 }}
 {{- end }}

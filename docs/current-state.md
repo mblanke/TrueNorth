@@ -1,6 +1,8 @@
 # TrueNorth — Current State
 
-**2026-10-08, measured on `github/main` (`6d7b530`: #90, #97, #99 and #101 merged).**
+**2026-10-08, measured on `github/main` (`6d7b530`: #90, #97, #99 and #101 merged);
+status lines updated at `83d7d43` (#107).** All 17 modules are at stage 4; v1.0.0
+release hardening is in progress (`CHANGELOG.md`).
 This replaces the 2026-08-18 reconstruction. That document's defects are fixed: the
 duplicate Alembic tree is gone, the dead injector tree is gone, ranges are tenant-scoped,
 and CI is real. Trust order is unchanged: code > configuration > running services >
@@ -27,9 +29,8 @@ tests > docs. Labels: `IMPLEMENTED` `PARTIAL` `UNTESTED` `PLANNED`.
 
 Tags `v*` publish five images by digest, gated by Trivy (fixable HIGH/CRITICAL), with
 SBOMs and `release-manifest.json` (`docs/release.md`). **Not done:** the installer does
-not consume the manifest yet (`compose.prod.yml` still builds on the target), and the
-API reports a hard-coded `APP_VERSION = "0.1.0"` instead of `TN_VERSION`. No workflow
-deploys. The old deploy workflows were deleted because they could not work.
+not consume the manifest yet (`compose.prod.yml` still builds on the target). The API
+reports `TN_VERSION` (#103). No workflow deploys. The old deploy workflows were deleted because they could not work.
 
 ## Tests
 
@@ -43,8 +44,6 @@ from CI runs, not from this count.
 
 ## Open
 
-1. Installer: install by digest from `release-manifest.json`.
-2. API: read `TN_VERSION`.
-3. k6 smoke non-blocking; the load scripts predate the API (`tests/load/README.md`).
-4. Live vSphere lab evidence pending (credentials, self-hosted runner).
-5. Content authoring remains the binding constraint (about 2,600 build hours).
+1. Installer: install by digest from `release-manifest.json` (PR #109).
+2. Live vSphere lab evidence pending (credentials, self-hosted runner).
+3. Content authoring remains the binding constraint (about 2,600 build hours).

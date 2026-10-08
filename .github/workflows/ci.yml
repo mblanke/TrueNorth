@@ -436,16 +436,15 @@ jobs:
         run: bash scripts/itest.sh down
 
   # k6 smoke: every scenario in tests/load/scenarios at 1 VU for 30 s against the itest
-  # stack (API on 127.0.0.1:18081, mock provisioner, AUTH_DISABLED). It proves the load
-  # scripts still run against the current API and records each scenario's thresholds; it
-  # is not a capacity test. NON-BLOCKING for now (continue-on-error): the scripts predate
-  # the current API and some endpoints they call have moved. Thresholds and the plan to
-  # make it blocking: tests/load/README.md "CI smoke".
+  # stack (API on 127.0.0.1:18081, mock provisioner, AUTH_DISABLED), with PROFILE=smoke:
+  # smoke thresholds (no failed request, read p95 < 1 s, write p95 < 2 s, every check)
+  # and requests paced under the API's per-client rate limits. Blocking: a scenario that
+  # crosses a threshold, or no longer runs against the current API, fails the job. It is
+  # not a capacity test. tests/load/README.md "CI smoke".
   load-smoke:
     runs-on: ubuntu-latest
     needs: lint-python
     timeout-minutes: 40
-    continue-on-error: true
     env:
       # grafana/k6 v1.8.1, by digest.
       K6_IMAGE: grafana/k6@sha256:23f2279054c3e01535455c4d92914a625df12aeb631ea0e3ea7a43f96bcbc843
@@ -464,13 +463,13 @@ jobs:
             code=0
             timeout 240 docker run --rm --network host \
               -v "$PWD/tests/load:/load:ro" -v "$PWD/build/k6:/out" \
-              "$K6_IMAGE" run --quiet --vus 1 --duration 30s \
+              "$K6_IMAGE" run --quiet --vus 1 --duration 30s -e PROFILE=smoke \
               -e BASE_URL=http://127.0.0.1:18081 -e WS_URL=ws://127.0.0.1:18081 \
               --summary-export "/out/$s.json" "/load/scenarios/$s.js" || code=$?
             echo "::endgroup::"
             printf '%-18s %s\n' "$s" "$code" >> build/k6/summary.txt
             if [[ $code -ne 0 ]]; then
-              echo "::warning::k6 $s exited $code (99 = thresholds crossed)"
+              echo "::error::k6 $s exited $code (99 = thresholds crossed)"
               rc=1
             fi
           done
