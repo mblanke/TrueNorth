@@ -28,7 +28,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import engine_bridge
+from .. import engine_bridge, safe_yaml
 from ..auth import CurrentUser
 from ..db import get_db
 from ..detections.redaction import redact_scenario_yaml, sees_answer_key
@@ -59,6 +59,19 @@ def _audit(db: Session, user: CurrentUser, action: str, rtype: str, rid: str) ->
     )
 
 
+def _parse_scenario_yaml(text: str) -> dict:
+    """Parse a stored scenario without aliases or oversize input (app/safe_yaml.py, M4);
+    422 unless it is a mapping. Create and update used yaml.safe_load, which expands a
+    billion-laughs alias bomb."""
+    try:
+        parsed = safe_yaml.load(text)
+    except pyyaml.YAMLError as e:
+        raise HTTPException(422, f"Invalid YAML: {e}") from e
+    if not isinstance(parsed, dict):
+        raise HTTPException(422, "Scenario YAML must be a mapping")
+    return parsed
+
+
 @router.post("/validate")
 def validate_scenario(
     body: YamlValidateIn,
@@ -82,12 +95,7 @@ def create_scenario(
     user: CurrentUser = Depends(require_permission(Permission.SCENARIO_CREATE)),
 ) -> Scenario:
     """Create a new scenario.  **Permission: scenario:create**"""
-    try:
-        parsed = pyyaml.safe_load(body.yaml)
-        if not isinstance(parsed, dict):
-            raise HTTPException(422, "Scenario YAML must be a mapping")
-    except pyyaml.YAMLError as e:
-        raise HTTPException(422, f"Invalid YAML: {e}") from e
+    _parse_scenario_yaml(body.yaml)
     sc = Scenario(
         name=body.name,
         version=body.version,
@@ -147,12 +155,7 @@ def update_scenario(
         raise HTTPException(403, "Not authorized")
     update_data = body.model_dump(exclude_unset=True)
     if "yaml" in update_data:  # a rename or visibility change carries no yaml
-        try:
-            parsed = pyyaml.safe_load(body.yaml)
-            if not isinstance(parsed, dict):
-                raise HTTPException(422, "Scenario YAML must be a mapping")
-        except pyyaml.YAMLError as e:
-            raise HTTPException(422, f"Invalid YAML: {e}") from e
+        _parse_scenario_yaml(body.yaml)
     for key, value in update_data.items():
         setattr(sc, key, value)
     db.commit()

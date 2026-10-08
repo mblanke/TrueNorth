@@ -8,6 +8,8 @@ validator and serialised back as ``normalized``.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 import yaml
 from _shared import act_as, real_tenant, real_user
@@ -56,3 +58,24 @@ def test_arc2_run_files_share_the_loader():
     from app.routers import arc2_studio
 
     assert not hasattr(arc2_studio, "_NoAliasLoader")  # one implementation, in app/safe_yaml.py
+
+
+def test_scenario_create_and_update_refuse_an_alias_bomb_with_422(client, db_session):
+    """Create and update parsed with yaml.safe_load (PR #112 review: M4 gap)."""
+    from app.models import Scenario
+
+    t = real_tenant(db_session, "yaml-sc")
+    act_as(real_user(db_session, UserRole.admin, t.id))
+
+    r = client.post("/scenarios", json={"name": "bomb", "version": "1", "yaml": LAUGHS})
+    assert r.status_code == 422, r.text
+    assert "aliases" in r.json()["detail"]
+    assert db_session.query(Scenario).filter(Scenario.name == "bomb").count() == 0
+
+    ok = client.post("/scenarios", json={"name": "fine", "version": "1", "yaml": "name: fine\ntimeline: []\n"})
+    assert ok.status_code == 201, ok.text
+    sid = ok.json()["id"]
+    r = client.put(f"/scenarios/{sid}", json={"yaml": LAUGHS})
+    assert r.status_code == 422, r.text
+    assert "aliases" in r.json()["detail"]
+    assert db_session.get(Scenario, uuid.UUID(sid)).yaml == "name: fine\ntimeline: []\n"
