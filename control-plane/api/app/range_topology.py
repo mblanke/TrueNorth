@@ -347,8 +347,10 @@ def build_template_diagram(template_yaml: str) -> dict:
     """
     import yaml as pyyaml
 
+    from . import safe_yaml
+
     try:
-        doc = pyyaml.safe_load(template_yaml)
+        doc = safe_yaml.load(template_yaml)
     except pyyaml.YAMLError as exc:
         raise ValueError(f"template YAML did not parse: {exc}") from exc
     if not isinstance(doc, dict):
@@ -418,8 +420,10 @@ def template_demand(template_yaml: str | None) -> TemplateDemand | None:
     """
     import yaml as pyyaml
 
+    from . import safe_yaml
+
     try:
-        doc = pyyaml.safe_load(template_yaml or "")
+        doc = safe_yaml.load(template_yaml or "")
     except pyyaml.YAMLError:
         return None
     if not isinstance(doc, dict) or ("assets" not in doc and "nodes" not in doc):

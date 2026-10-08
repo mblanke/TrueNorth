@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+from .. import safe_yaml
 from ..auth import CurrentUser
 from ..rbac import Permission, user_has_permission
 
@@ -50,7 +51,7 @@ def redact_scenario(doc: dict[str, Any]) -> dict[str, Any]:
 def redact_scenario_yaml(text: str | None) -> str:
     """The briefing as YAML; a document that does not parse is withheld entirely."""
     try:
-        doc = yaml.safe_load(text or "")
+        doc = safe_yaml.load(text or "")
     except yaml.YAMLError:
         return ""
     if not isinstance(doc, dict):

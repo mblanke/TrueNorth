@@ -25,6 +25,7 @@ from typing import Any
 
 import yaml
 
+from .. import safe_yaml
 from ..course_content_ingest import parse_course_content
 from . import lab_profile
 
@@ -268,7 +269,7 @@ def _check_lab_profile(bundle: Bundle) -> dict[str, Any] | None:
     if not rel or rel not in bundle.files["platform"]:
         raise BundleError(f"range activities {sorted(ranged)} need a lab profile in the platform part")
     try:
-        doc = yaml.safe_load(bundle.files["platform"][rel])
+        doc = safe_yaml.load(bundle.files["platform"][rel])
     except yaml.YAMLError as exc:
         raise BundleError(f"{rel}: {exc}") from exc
     # The image catalogue is checked against the tenant's golden images when a lab is

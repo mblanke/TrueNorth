@@ -398,7 +398,7 @@ def save_range_topology(
     """
     import yaml as pyyaml
 
-    from .. import range_topology
+    from .. import range_topology, safe_yaml
     from ..models import RangeObjectiveMap
 
     rng = _changeable_range(db, range_id, user)
@@ -436,7 +436,7 @@ def save_range_topology(
     parsed: dict = {}
     if current is not None:
         try:
-            loaded = pyyaml.safe_load(current.yaml or "")
+            loaded = safe_yaml.load(current.yaml or "")
             parsed = loaded if isinstance(loaded, dict) else {}
         except pyyaml.YAMLError:
             parsed = {}

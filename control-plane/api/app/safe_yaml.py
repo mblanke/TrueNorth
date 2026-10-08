@@ -6,8 +6,11 @@ or serialised (the "billion laughs"). ``NoAliasLoader`` refuses any alias, and `
 also caps the input size. Content in this platform (scenarios, templates, run files)
 never needs aliases.
 
-Shared by ``routers/arc2_studio.py`` (run files) and ``engine_bridge.validate_yaml``
-(the scenario/template validation endpoints), security sweep M4.
+Every YAML parse in ``app/`` goes through ``load`` (security sweep M4);
+``tests/api/test_safe_yaml_everywhere.py`` fails on a direct ``yaml.safe_load``/``yaml.load``.
+Both refusals subclass ``yaml.YAMLError``, so a caller's existing ``except yaml.YAMLError``
+still applies; a write path that tolerates unparseable YAML catches ``YamlRefusedError``
+to refuse these anyway.
 """
 
 from __future__ import annotations
@@ -19,22 +22,26 @@ import yaml
 MAX_YAML_BYTES = 1024 * 1024
 
 
+class YamlRefusedError(yaml.YAMLError):
+    """Refused by policy (an alias, or over the size cap) rather than a syntax error."""
+
+
+class YamlTooLargeError(YamlRefusedError):
+    """The document is over the size cap."""
+
+
 class NoAliasLoader(yaml.SafeLoader):
     """SafeLoader without anchors/aliases."""
 
     def compose_node(self, parent, index):
         if self.check_event(yaml.AliasEvent):
-            raise yaml.YAMLError("YAML aliases are not accepted")
+            raise YamlRefusedError("YAML aliases are not accepted")
         return super().compose_node(parent, index)
 
 
-class YamlTooLargeError(yaml.YAMLError):
-    """The document is over the size cap."""
-
-
 def load(text: str | bytes, max_bytes: int = MAX_YAML_BYTES) -> Any:
-    """Parse ``text`` with ``NoAliasLoader``. Raises ``yaml.YAMLError`` (``YamlTooLargeError``
-    over ``max_bytes``)."""
+    """Parse ``text`` with ``NoAliasLoader``. Raises ``yaml.YAMLError``: ``YamlRefusedError``
+    for an alias, ``YamlTooLargeError`` (a ``YamlRefusedError``) over ``max_bytes``."""
     size = len(text.encode("utf-8")) if isinstance(text, str) else len(text)
     if size > max_bytes:
         raise YamlTooLargeError(f"document is larger than {max_bytes} bytes")

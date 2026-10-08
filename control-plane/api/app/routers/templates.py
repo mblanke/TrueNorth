@@ -26,7 +26,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from .. import engine_bridge, range_topology, windows_roles
+from .. import engine_bridge, range_topology, safe_yaml, windows_roles
 from ..auth import CurrentUser
 from ..db import get_db
 from ..delete_guard import commit_delete, refuse_if
@@ -48,13 +48,18 @@ class YamlValidateIn(BaseModel):
 def _refuse_network_placement(text: str | None) -> None:
     """A template a person writes may not pin VMs to a hypervisor network (port_group):
     that is how a lab session isolates a student's lab, and how a crafted template could
-    reach another student's or the management network."""
+    reach another student's or the management network.
+
+    Also 422 for a template every later reader would refuse: YAML aliases (a "billion
+    laughs") or a document over safe_yaml's size cap."""
     import yaml as pyyaml
 
     from ..range_topology import network_placement_keys
 
     try:
-        doc = pyyaml.safe_load(text or "")
+        doc = safe_yaml.load(text or "")
+    except safe_yaml.YamlRefusedError as exc:
+        raise HTTPException(422, f"template YAML refused: {exc}") from exc
     except pyyaml.YAMLError:
         return  # not YAML at all: validation reports it, nothing can be placed
     keys = network_placement_keys(doc)

@@ -17,7 +17,7 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import scenario_objectives
+from .. import safe_yaml, scenario_objectives
 from ..ai_orchestrator_client import orchestrator_headers
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
@@ -199,7 +199,7 @@ async def generate_exercise(
 
     # Parse the generated YAML to extract name
     try:
-        parsed = yaml.safe_load(scenario_yaml)
+        parsed = safe_yaml.load(scenario_yaml)
     except yaml.YAMLError as e:
         raise HTTPException(502, f"AI generated invalid YAML: {e}") from e
     if not isinstance(parsed, dict):
