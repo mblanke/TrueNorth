@@ -123,5 +123,5 @@ def mint_ticket(db: Session, user: CurrentUser, course_id: uuid.UUID | None = No
     if course_id is not None:
         claims["course"] = str(course_id)
     key = lti13.get_tool_key(db)
-    token = jwt.encode(claims, key.private_key_pem, algorithm="RS256", headers={"kid": key.kid})
+    token = jwt.encode(claims, lti13.signing_pem(key), algorithm="RS256", headers={"kid": key.kid})
     return MoodleSsoOut(action=audience + SSO_PATH, token=token)

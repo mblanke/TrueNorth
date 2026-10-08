@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
 from ..models import GUID, TimestampMixin
+from ..sealed_column import SealedText
 
 
 class NoiseProfile(TimestampMixin, Base):
@@ -46,7 +47,8 @@ class NoiseProfile(TimestampMixin, Base):
     targets: Mapped[dict] = mapped_column(JSON, default=dict)
     # Signs every action handed to an agent. Never leaves the controller, so a stolen
     # agent token cannot mint ground truth for activity that was never planned.
-    plan_key: Mapped[str] = mapped_column(String(64), default=lambda: secrets.token_hex(32))
+    # Sealed at rest (app/sealed_column.py); code reads and writes the plain key.
+    plan_key: Mapped[str] = mapped_column(SealedText, default=lambda: secrets.token_hex(32))
 
 
 class NoisePersona(TimestampMixin, Base):

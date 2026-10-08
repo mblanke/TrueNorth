@@ -385,7 +385,7 @@ def _jit_user(db: Session, platform, claims: dict) -> User:
     db.add(user)
     db.commit()
     db.refresh(user)
-    logger.info("JIT-provisioned LTI user %s from %s", email, platform.name)
+    logger.info("JIT-provisioned LTI user %s from %s", user.id, platform.name)  # id, never the email
     return user
 
 
@@ -477,7 +477,7 @@ def _deep_link_picker(db: Session, platform, claims: dict) -> HTMLResponse:
             "data": settings.get("data", ""),
             "exp": int(_time.time()) + 1800,
         },
-        key.private_key_pem,
+        lti13.signing_pem(key),
         algorithm="RS256",
         headers={"kid": key.kid},
     )
