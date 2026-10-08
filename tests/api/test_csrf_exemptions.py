@@ -66,4 +66,5 @@ def test_every_other_post_still_needs_the_csrf_token(prod_app):
 
 
 def test_the_exemption_is_exact_paths_only():
-    assert CSRF_EXEMPT_PATHS == {"/lti/login", "/lti/launch", "/lti/deeplink/finish", "/noise/agent/report"}
+    expected = {"/lti/login", "/lti/launch", "/lti/deeplink/finish", "/noise/agent/report"}
+    assert set(CSRF_EXEMPT_PATHS) == expected
