@@ -142,7 +142,12 @@ def _sign(key: str, node: str, a: dict) -> str:
 def _audit(db: Session, user: CurrentUser, action: str, range_id: uuid.UUID, detail: str = "") -> None:
     db.add(
         AuditLog(
-            user_id=uuid.UUID(user.id), action=action, resource_type="range", resource_id=str(range_id), detail=detail
+            user_id=uuid.UUID(user.id),
+            tenant_id=uuid.UUID(user.tenant_id),  # or the tenant's audit view never shows it
+            action=action,
+            resource_type="range",
+            resource_id=str(range_id),
+            detail=detail,
         )
     )
 

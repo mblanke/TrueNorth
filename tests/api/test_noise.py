@@ -196,6 +196,15 @@ class TestWhiteCell:
         body = client.get(f"/noise/ranges/{rng.id}").json()
         assert body["configured"] is False and body["enabled"] is False and body["effective_level"] == 0
 
+    def test_audit_rows_carry_the_tenant(self, client, rng, db_session):
+        """Without tenant_id the tenant's own audit view (scoped by tenant) never shows them."""
+        from app.models import AuditLog
+
+        _setup(client, rng)
+        rows = db_session.query(AuditLog).filter(AuditLog.action.like("noise_%")).all()
+        assert {r.action for r in rows} >= {"noise_profile_update", "noise_agents_register", "noise_roster_generate"}
+        assert {str(r.tenant_id) for r in rows} == {DEV_TENANT}
+
     def test_preset_sets_level(self, client, rng):
         body = client.put(f"/noise/ranges/{rng.id}", json={"preset": "busy", "enabled": True}).json()
         assert body["level"] == dial.PRESETS["busy"] and body["effective_level"] == dial.PRESETS["busy"]
