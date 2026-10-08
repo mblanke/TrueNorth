@@ -24557,7 +24557,7 @@
         ]
       },
       "post": {
-        "description": "Register an external learning platform (Moodle, Immersive Labs, OffSec).\n\n**Permission: integration:write**",
+        "description": "Register an external learning platform (Moodle, Immersive Labs, OffSec).\n\n**Permission: integration:write**\n\n409: another tenant already registered this ``lti_issuer``.",
         "operationId": "register_platform_integrations_platforms_post",
         "requestBody": {
           "content": {
@@ -24691,7 +24691,7 @@
         ]
       },
       "patch": {
-        "description": "Update a registered platform.",
+        "description": "Update a registered platform.\n\n403: changing a Moodle platform's ``lti_issuer`` (the site its sign-in tickets are\naddressed to) needs a platform administrator. 409: another tenant already registered\nthat issuer.",
         "operationId": "update_platform_integrations_platforms__platform_id__patch",
         "parameters": [
           {

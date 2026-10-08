@@ -111,6 +111,9 @@ def mint_ticket(db: Session, user: CurrentUser, course_id: uuid.UUID | None = No
         "iss": ISSUER,
         "typ": "sso",
         "aud": audience,
+        # local_truenorth refuses a ticket whose tid is not the tenant it serves: one tool
+        # key signs for every tenant, so the audience alone cannot bind it.
+        "tid": str(platform.tenant_id),
         "sub": str(user.id),
         "email": user.email,
         "given_name": first or user.email,

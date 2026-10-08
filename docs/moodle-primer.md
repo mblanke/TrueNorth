@@ -126,7 +126,9 @@ Courses reach Moodle as **releases** (`app/course_releases`, ARC² bundles), pub
   Anything an instructor adds in Moodle is never touched.
 - **Auth:** a ticket with `typ` = "sync", signed with the LTI tool key, bound to the body,
   and naming the tenant (`tid`); a node refuses tickets for any tenant but its own
-  (`TN_TENANT_ID`). An SSO ticket is rejected here and vice versa.
+  (`TN_TENANT_ID`). An SSO ticket is rejected here and vice versa. Sign-in (`typ` = "sso")
+  tickets carry `tid` too and are refused the same way, so a node without `TN_TENANT_ID`
+  accepts no tickets at all.
 - **CI:** `tests/integration/test_moodle_publish.py` runs this against a disposable Moodle
   (`infra/platform/docker/compose.moodle-test.yml`, the `moodle` job in CI).
 

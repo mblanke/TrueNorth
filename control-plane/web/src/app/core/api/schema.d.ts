@@ -2639,6 +2639,8 @@ export interface paths {
          * @description Register an external learning platform (Moodle, Immersive Labs, OffSec).
          *
          *     **Permission: integration:write**
+         *
+         *     409: another tenant already registered this ``lti_issuer``.
          */
         post: operations["register_platform_integrations_platforms_post"];
         delete?: never;
@@ -2675,6 +2677,10 @@ export interface paths {
         /**
          * Update Platform
          * @description Update a registered platform.
+         *
+         *     403: changing a Moodle platform's ``lti_issuer`` (the site its sign-in tickets are
+         *     addressed to) needs a platform administrator. 409: another tenant already registered
+         *     that issuer.
          */
         patch: operations["update_platform_integrations_platforms__platform_id__patch"];
         trace?: never;
