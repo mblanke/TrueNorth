@@ -3,7 +3,8 @@
 A release is a git tag `vX.Y.Z` (or `vX.Y.Z-suffix`, published as a pre-release) on a
 commit of `main` that CI passed. Pushing the tag runs `.github/workflows/release.yml`. It
 publishes images and evidence. **It deploys nothing.** Installation is done by the
-installer (`install/`), from the release manifest.
+installer (`install/`), from the release manifest. The workflow refuses a tag whose commit
+is not on `main` (`git merge-base --is-ancestor`), before anything is built or signed.
 
 The old `deploy-dev.yml` and `deploy-prod.yml` were deleted on 2026-10-08. They could not
 have worked: dev triggered on a `develop` branch that does not exist, prod retagged a
@@ -19,22 +20,54 @@ For each of the five services, `api`, `worker`, `web`, `scenario-engine` and
 1. builds from the tagged commit with a fresh base image (`pull: true`) and no layer
    cache, with `TN_VERSION=<tag>` as a build arg. The tag becomes the `TN_VERSION` env var
    and the `org.opencontainers.image.version` label. The `revision` label holds the commit.
+   BuildKit attaches **SLSA provenance** (`mode=max`) and an SBOM as attestations.
 2. pushes the image to `ghcr.io/mblanke/truenorth-<service>` **by digest only**. Nothing is
    tagged yet.
 3. scans that digest with Trivy. **Blocking:** any HIGH or CRITICAL vulnerability with a
    fix available fails the release.
 4. writes an SPDX SBOM of that digest with syft (`anchore/sbom-action`).
-5. only then tags the digest `:<tag>`, and checks that the tag resolves to the digest it
+5. **signs the scanned digest** with cosign keyless and attaches the SPDX SBOM as a signed
+   attestation (`cosign attest --type spdxjson`), then verifies both against the signer
+   identity ("Signatures", below).
+6. only then tags the digest `:<tag>`, and checks that the tag resolves to the digest it
    scanned.
 
-The `publish` job then creates the GitHub release with these assets:
+The `publish` job then signs `release-manifest.json` and `SHA256SUMS` and creates the GitHub
+release with these assets:
 
 | Asset | What |
 |---|---|
 | `release-manifest.json` | the interface for installers: service → image digest (below) |
+| `release-manifest.json.sigstore.json` | its Sigstore bundle: certificate, signature, transparency-log proof |
 | `sbom-<service>.spdx.json` | SBOM per image |
 | `trivy-<service>.json` | the scan that gated the image (fixable HIGH/CRITICAL; empty when clean) |
-| `SHA256SUMS` | SHA-256 of every asset above |
+| `SHA256SUMS` | SHA-256 of every asset above (the manifest's bundle included) |
+| `SHA256SUMS.sigstore.json` | the Sigstore bundle of `SHA256SUMS` |
+
+## Signatures
+
+Every signature is cosign **keyless**: GitHub's OIDC token proves which workflow ran, Fulcio
+issues a short-lived certificate naming it, and Rekor logs the signature publicly. There is
+no signing key to steal or rotate. A valid signature must name exactly:
+
+| | |
+|---|---|
+| certificate identity | `https://github.com/mblanke/TrueNorth/.github/workflows/release.yml@refs/tags/<tag>` |
+| OIDC issuer | `https://token.actions.githubusercontent.com` |
+
+The installer (`install/roles/tn_release`) verifies `release-manifest.json` against that
+identity, for the tag being installed, **before** it trusts any digest in it, with a cosign
+binary it pins and checks by SHA-256 (`tn_cosign_version`, `tn_cosign_sha256`; the same
+release as the workflow's `COSIGN_VERSION`/`COSIGN_SHA256`). A manifest that does not
+verify stops `20-fetch-app`. `-e tn_release_verify_signature=false` exists only for a
+release made before signing, and says so loudly.
+
+**Air-gapped.** The bundle carries the certificate, the signature and the Rekor inclusion
+proof, so verification needs no Rekor or Fulcio access, only Sigstore's trust root. Copy a
+`trusted_root.json` to the control node with the release files (on a connected machine
+`cosign` caches it under `~/.sigstore/root/`; or fetch it from Sigstore's TUF repository) and
+pass `-e tn_release_trusted_root=<file>`: the installer then verifies with `--offline`.
+*Not yet exercised against a real release: the first signed tag is the test.*
 
 If any image fails its build or scan, no release is created. Digests of images that
 passed may already be in GHCR, untagged. They are harmless and are not in any manifest.
@@ -63,7 +96,17 @@ The application does not report the tag yet. `control-plane/api/app/main.py` har
 V=v1.2.3
 mkdir -p "rel-$V" && cd "rel-$V"
 gh release download "$V" -R mblanke/TrueNorth
+ID="https://github.com/mblanke/TrueNorth/.github/workflows/release.yml@refs/tags/$V"
+ISS=https://token.actions.githubusercontent.com
+for f in release-manifest.json SHA256SUMS; do       # signed by release.yml at this tag
+  cosign verify-blob --bundle "$f.sigstore.json" --certificate-identity "$ID" --certificate-oidc-issuer "$ISS" "$f"
+done
 sha256sum -c SHA256SUMS                              # assets intact
+# Each image: signature and SBOM attestation
+jq -r '.images[].ref' release-manifest.json | while read -r ref; do
+  cosign verify "$ref" --certificate-identity "$ID" --certificate-oidc-issuer "$ISS" >/dev/null && echo "signed  $ref"
+  cosign verify-attestation --type spdxjson "$ref" --certificate-identity "$ID" --certificate-oidc-issuer "$ISS" >/dev/null
+done
 
 # Every tag still points at the digest the manifest records (and that was scanned).
 jq -r '.images | to_entries[] | "\(.value.tag) \(.value.digest)"' release-manifest.json |
@@ -109,7 +152,8 @@ Rules for consumers:
 
 - Pull and run **`ref`** (image@digest). Never `tag`: a tag can be moved, a digest cannot.
 - Check `schema_version`. Fields may be added, and a breaking change bumps it.
-- Check the file against `SHA256SUMS` from the same release before using it.
+- Verify its Sigstore bundle against the release workflow's identity ("Signatures"), then
+  check it against `SHA256SUMS` from the same release, before using it.
 - `git_sha` is the commit whose `infra/platform/docker/compose.prod.yml` and Alembic
   migrations match these images. Fetch the app source at that commit, not at a branch.
 - Order is unchanged: datastores, then `alembic upgrade head` in the **api** image, then
@@ -124,6 +168,7 @@ Rules for consumers:
 
 | What | Pinned to | How it was verified |
 |---|---|---|
+| cosign binary | v3.1.3, linux-amd64 SHA-256 `4629c757…f7f71` (`release.yml`; the installer pins the same release for linux/darwin amd64/arm64) | `cosign_checksums.txt` of v3.1.3 verified 2026-10-08 with `cosign verify-blob --bundle cosign_checksums.txt.sigstore.json --certificate-identity keyless@projectsigstore.iam.gserviceaccount.com --certificate-oidc-issuer https://accounts.google.com`; each binary's hash matches its line |
 | Trivy binary | v0.74.0, Linux-64bit tarball SHA-256 `2ae6fe3e…8be4371a` (in `ci.yml` and `release.yml`) | `trivy_0.74.0_checksums.txt` verified with cosign against `aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.74.0` (OIDC issuer token.actions.githubusercontent.com); the tarball hash matches its line |
 | `aquasecurity/trivy-action` | `ed142fd0673e97e23eac54620cfb913e5ce36c25` (v0.36.0, 2026-04-22) | `gh api repos/aquasecurity/trivy-action/git/ref/tags/v0.36.0` → annotated tag `a9c7b0f…`, signature verified, target `ed142fd…`; the commit's signature is verified. Run with `skip-setup-trivy: true`, so the action's installer is not used |
 | `anchore/sbom-action` | `3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` (v0.24.2; it pins syft v1.51.1) | tag resolved via the GitHub API; commit signature verified. v0.24.3 (2026-10-02) was too new |
