@@ -65,7 +65,6 @@ CURRENT_STEP="setup"
 EXIT_CODE=0
 LOCKED=0
 
-# shellcheck disable=SC2329  # invoked by the EXIT trap
 on_exit() {
     local rc=$?
     if (( rc != 0 )) && [[ "${CURRENT_STEP}" != "done" ]]; then
@@ -226,7 +225,9 @@ find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d -name '.partial-*' -mtime +
 
 CURRENT_STEP="done"
 log "INFO" "Backup complete: ${FINAL_PATH} ($(du -sh "${FINAL_PATH}" | cut -f1))"
+# Exit only on the non-zero path. An unconditional `exit` as the last statement makes
+# ShellCheck 0.9-0.11 report the EXIT-trap handler above as unreachable (SC2317/SC2329).
 if (( EXIT_CODE == 3 )); then
     alert "backup ${BACKUP_NAME} completed WITHOUT secrets escrow; TN_SECRETS_KEY is not recoverable from it"
+    exit 3
 fi
-exit "${EXIT_CODE}"

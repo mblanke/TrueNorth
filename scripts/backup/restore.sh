@@ -98,8 +98,8 @@ if (( DO_PG )); then
     # CREATE ROLE of a role that already exists (the bootstrap superuser, roles the
     # init script made) is turned into a no-op; the ALTER ROLE that follows still
     # applies the backup's attributes. Everything else must succeed.
-    # shellcheck disable=SC2016  # $tn$ is SQL dollar quoting, not a shell expansion
-    sed -E 's/^CREATE ROLE (.+);$/DO $tn$ BEGIN CREATE ROLE \1; EXCEPTION WHEN duplicate_object THEN NULL; END $tn$;/' \
+    # \$tn\$ is SQL dollar quoting, escaped from the shell.
+    sed -E "s/^CREATE ROLE (.+);\$/DO \$tn\$ BEGIN CREATE ROLE \\1; EXCEPTION WHEN duplicate_object THEN NULL; END \$tn\$;/" \
         "${BACKUP_PATH}/postgres/globals.sql" | psql_admin -f - >/dev/null
 
     for dump in "${BACKUP_PATH}"/postgres/*.dump; do

@@ -30,8 +30,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned: the runner's apt shellcheck (0.9 on ubuntu-24.04) and newer releases
+      # disagree on some checks. Locally: the same docker command.
       - name: shellcheck
-        run: shellcheck -x scripts/backup/*.sh
+        run: >-
+          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0
+          -x scripts/backup/backup.sh scripts/backup/cron-backup.sh scripts/backup/drill.sh
+          scripts/backup/escrow-open.sh scripts/backup/lib.sh scripts/backup/restore.sh
+          scripts/backup/s3-backup.sh
 
       - name: Tool versions
         run: |
