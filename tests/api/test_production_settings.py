@@ -26,6 +26,7 @@ GOOD = {
     "AUTH_DISABLED": "false",
     "AUTH_BACKEND": "keycloak_oidc",
     "KEYCLOAK_AUDIENCE": "truenorth-api",
+    "KEYCLOAK_ISSUER": "https://sso.example.mil/realms/truenorth",
     "CSRF_SECRET": "c" * 48,
     "TN_SECRETS_KEY": "k" * 48,
     "DATABASE_URL": "postgresql+psycopg://tn:Xq7-long-db-password@pgbouncer:5432/tn",
@@ -70,6 +71,7 @@ def test_an_empty_production_environment_names_every_problem(monkeypatch):
         ("AUTH_DISABLED", "true", "AUTH_DISABLED"),
         ("AUTH_BACKEND", "disabled", "AUTH_BACKEND"),
         ("KEYCLOAK_AUDIENCE", "", "KEYCLOAK_AUDIENCE"),
+        ("KEYCLOAK_ISSUER", "", "KEYCLOAK_ISSUER"),  # security sweep (low): iss must be checked
         ("CSRF_SECRET", "", "CSRF_SECRET"),
         ("CSRF_SECRET", "short", "CSRF_SECRET"),
         ("TN_SECRETS_KEY", "", "TN_SECRETS_KEY"),

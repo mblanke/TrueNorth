@@ -1,5 +1,7 @@
 """Tests for TrueNorth Range security middleware."""
 
+import base64
+import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,7 +11,16 @@ from app.middleware import (
     RateLimitMiddleware,
     RequestIDMiddleware,
     SecurityHeadersMiddleware,
+    _match_route_limit,
 )
+
+
+def _bearer(sub: str) -> str:
+    """An (unsigned) JWT-shaped bearer token naming ``sub``; the limiter only buckets on it."""
+    def part(obj):
+        return base64.urlsafe_b64encode(json.dumps(obj).encode()).decode().rstrip("=")
+
+    return f"Bearer {part({'alg': 'none'})}.{part({'sub': sub})}.sig"
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.testclient import TestClient
@@ -116,12 +127,40 @@ class TestRateLimit:
         from app.middleware import RateLimitMiddleware
 
         request = SimpleNamespace(
-            state=SimpleNamespace(tenant_id="t-1"), headers={}, client=None
+            state=SimpleNamespace(), headers={"authorization": _bearer("user-1")}, client=SimpleNamespace(host="10.0.0.9")
         )
         a = RateLimitMiddleware._client_key(request, "POST:/ranges")
         b = RateLimitMiddleware._client_key(request, "GET:")
         assert a != b
-        assert "t-1" in a and "t-1" in b
+        assert a.startswith("rl:user:") and "10.0.0.9" in a
+
+    def test_two_users_behind_one_address_get_their_own_counters(self):
+        """request.state.tenant_id was never set, so everyone behind one NAT shared one key."""
+        from types import SimpleNamespace
+
+        from app.middleware import RateLimitMiddleware
+
+        def key(sub):
+            req = SimpleNamespace(state=SimpleNamespace(), headers={"authorization": _bearer(sub)},
+                                  client=SimpleNamespace(host="10.0.0.9"))
+            return RateLimitMiddleware._client_key(req, "GET:"), RateLimitMiddleware._ip_key(req, "GET:")
+
+        (a, ip_a), (b, ip_b) = key("alice"), key("bob")
+        assert a != b and ip_a == ip_b  # own budgets, one shared per-address aggregate
+
+    @pytest.mark.parametrize(
+        ("method", "path", "bucket"),
+        [
+            ("POST", "/ai/scenario-draft", "POST:ai"),
+            ("POST", "/exercise-forge", "POST:exercise-forge"),
+            ("POST", "/quizzes/generate", "POST:quiz-generate"),
+            ("POST", "/curricula/abc/search", "POST:curriculum-ai"),
+            ("POST", "/exercises/e1/objectives/o1/detections", "POST:detections"),
+        ],
+    )
+    def test_ai_and_detection_routes_have_their_own_limits(self, method, path, bucket):
+        limit, got = _match_route_limit(method, path, 100)
+        assert got == bucket and limit <= 30
 
     def test_client_key_falls_back_to_ip_and_still_scopes(self):
         from types import SimpleNamespace

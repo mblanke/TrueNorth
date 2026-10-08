@@ -107,6 +107,8 @@ def production_problems() -> list[str]:
         problems.append("AUTH_BACKEND=disabled turns off authentication")
     if backend == "keycloak_oidc" and not env("KEYCLOAK_AUDIENCE", "").strip():
         problems.append("KEYCLOAK_AUDIENCE is not set (tokens from any client in the realm would be accepted)")
+    if backend == "keycloak_oidc" and not env("KEYCLOAK_ISSUER", "").strip():
+        problems.append("KEYCLOAK_ISSUER is not set (a token's iss would not be checked)")
     if backend == "generic_oidc" and not env("OIDC_AUDIENCE", "").strip():
         problems.append("OIDC_AUDIENCE is not set (tokens issued to any audience would be accepted)")
 

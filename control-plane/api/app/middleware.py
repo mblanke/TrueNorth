@@ -151,6 +151,21 @@ _DEFAULT_ROUTE_LIMITS: dict[tuple[str, str], int] = {
 
 _UNLIMITED_PATHS: list[str] = ["/health"]
 
+# Expensive or abusable routes, matched before the prefixes above (security sweep, low):
+# every AI call costs GPU time on the shared fleet, and detection submissions run two
+# searches each against the event store.
+_PATTERN_LIMITS: list[tuple[str, re.Pattern[str], int, str]] = [
+    ("POST", re.compile(r"^/ai/"), 20, "POST:ai"),
+    ("POST", re.compile(r"^/exercise-forge(/|$)"), 10, "POST:exercise-forge"),
+    ("POST", re.compile(r"^/quizzes/generate$"), 10, "POST:quiz-generate"),
+    ("POST", re.compile(r"^/curricula/[^/]+/(search|generate-course)$"), 30, "POST:curriculum-ai"),
+    ("POST", re.compile(r"^/exercises/[^/]+/objectives/[^/]+/detections$"), 30, "POST:detections"),
+]
+# A client is a user (the token's subject) at an address. Every user behind one address
+# together may use this many times their per-user limit, so rotating the (unverified)
+# subject buys no more than that.
+_IP_AGGREGATE_MULTIPLIER = 10
+
 
 def _match_route_limit(method: str, path: str, default: int) -> tuple[int, str]:
     """Return the (rate-limit, bucket) for a given method+path.
@@ -163,10 +178,32 @@ def _match_route_limit(method: str, path: str, default: int) -> tuple[int, str]:
     200/min GET budget — used to make `POST /ranges` return 429, and the 5/min on
     `batch-provision` was tripped by any five requests of any kind.
     """
+    for m, pattern, limit, bucket in _PATTERN_LIMITS:
+        if method == m and pattern.match(path):
+            return limit, bucket
     for (m, prefix), limit in _DEFAULT_ROUTE_LIMITS.items():
         if method == m and (prefix == "" or path.startswith(prefix)):
             return limit, f"{m}:{prefix}"
     return default, "default"
+
+
+def _token_subject(authorization: str) -> str | None:
+    """A short hash of the bearer JWT's ``sub``, read WITHOUT verification: for bucketing
+    the rate limit only, never for any decision about who the caller is."""
+    import base64
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or token.count(".") != 2:
+        return None
+    payload = token.split(".")[1]
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    except (ValueError, TypeError):
+        return None
+    sub = claims.get("sub") if isinstance(claims, dict) else None
+    if not isinstance(sub, str) or not sub:
+        return None
+    return hashlib.sha256(sub.encode()).hexdigest()[:16]
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -189,22 +226,36 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     # ----- helpers ----------------------------------------------------------
 
     @staticmethod
+    def _client_ip(request: Request) -> str:
+        from .client_address import client_ip
+
+        # X-Forwarded-For only from a trusted proxy: otherwise every request could name a
+        # fresh address and never reach a limit.
+        return client_ip(request) or "unknown"
+
+    @staticmethod
     def _client_key(request: Request, bucket: str = "default") -> str:
-        """Key by tenant_id (if authenticated) else client IP, per rate-limit bucket.
+        """Key by the caller's token subject and address, else the address alone, per bucket.
+
+        Until 2026-10-08 this keyed on ``request.state.tenant_id``, which nothing ever set,
+        so every client was keyed by address only: a classroom behind one NAT shared one
+        budget. The subject is read from the bearer token without verifying it (this runs
+        before authentication); a forged subject only buys a fresh per-user counter, and
+        the per-address aggregate (``_ip_key``) still applies.
 
         `bucket` scopes the counter to the route whose limit is being applied — without
         it the configured per-route numbers are all enforced against one shared tally.
         See `_match_route_limit`.
         """
-        tenant = getattr(request.state, "tenant_id", None)
-        if tenant:
-            return f"rl:tenant:{tenant}:{bucket}"
-        from .client_address import client_ip
-
-        # X-Forwarded-For only from a trusted proxy: otherwise every request could name a
-        # fresh address and never reach a limit.
-        ip = client_ip(request) or "unknown"
+        ip = RateLimitMiddleware._client_ip(request)
+        sub = _token_subject(request.headers.get("authorization", ""))
+        if sub:
+            return f"rl:user:{sub}:{ip}:{bucket}"
         return f"rl:ip:{ip}:{bucket}"
+
+    @staticmethod
+    def _ip_key(request: Request, bucket: str = "default") -> str:
+        return f"rl:ipall:{RateLimitMiddleware._client_ip(request)}:{bucket}"
 
     async def _check_rate_limit(self, key: str, limit: int, now: float) -> tuple[bool, int, int]:
         """
@@ -249,6 +300,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         try:
             allowed, remaining, reset_at = await self._check_rate_limit(key, limit, now)
+            if allowed and key.startswith("rl:user:"):
+                allowed, _, reset_at = await self._check_rate_limit(
+                    self._ip_key(request, bucket), limit * _IP_AGGREGATE_MULTIPLIER, now
+                )
+                if not allowed:
+                    remaining = 0
         except Exception:
             # Redis down → degrade gracefully, allow the request
             logger.warning("Rate-limiter Redis error; allowing request", exc_info=True)
