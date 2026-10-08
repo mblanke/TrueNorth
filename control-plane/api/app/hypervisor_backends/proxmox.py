@@ -7,6 +7,7 @@ from typing import Any
 
 from ..models import HypervisorConnection, HypervisorNode
 from ..schemas import HypervisorTestResult
+from ..secretbox import unseal
 from .base import BaseHypervisorBackend
 
 
@@ -36,7 +37,7 @@ def _client_for(conn: HypervisorConnection, timeout: int) -> Any:
     return proxmox_client(
         conn.host,
         user=conn.username,
-        password=conn.password_encrypted or "",
+        password=unseal(conn.password_encrypted) or "",
         verify_ssl=conn.verify_ssl,
         port=conn.port,
         timeout=timeout,

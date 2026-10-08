@@ -300,12 +300,19 @@ RUN npm ci
 COPY . .
 RUN npm run build -- --configuration=production
 
-# Stage 2: Serve with Nginx
-FROM nginx:1.25-alpine
+# Stage 2: Serve with Nginx, as the unprivileged nginx user (so on 8080, pid in /tmp)
+FROM nginx:1.30-alpine
+RUN sed -i -e '/^user /d' -e 's,^pid .*,pid /tmp/nginx.pid;,' /etc/nginx/nginx.conf \
+    && chown -R nginx:nginx /var/cache/nginx
 COPY --from=builder /app/dist/truenorth-frontend/browser/ /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+USER nginx
+EXPOSE 8080
 ```
+
+The authoritative file is `control-plane/web/Dockerfile`. The api, worker,
+ai-orchestrator and scenario-engine images run as uid 10001 (`app`), with code and
+dependencies root-owned.
 
 ### Local Build Commands
 

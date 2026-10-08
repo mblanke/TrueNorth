@@ -21,6 +21,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 UNREACHABLE_REDIS = "redis://127.0.0.1:1/15"
 os.environ["REDIS_URL"] = UNREACHABLE_REDIS
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("TN_SECRETS_KEY", "test-only-secrets-key-0123456789abcdef")  # app/secretbox.py
 os.environ.setdefault("COURSE_PUBLISH_RESUME", "false")
 os.environ.setdefault("LAB_SESSIONS_SWEEP", "false")
 os.environ.setdefault("RANGE_OP_REDISPATCH_SECONDS", "0")  # tests call redispatch_pending themselves
