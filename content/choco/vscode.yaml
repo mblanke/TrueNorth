@@ -1,0 +1,24 @@
+# Visual Studio Code, x64 SYSTEM installer (VSCodeSetup-x64, not the per-user one).
+# Replaces the community "vscode" -> "vscode.install" pair; the latter downloads the
+# installer from update.code.visualstudio.com at install time.
+# sha256: computed 2026-10-03 from the versioned URL below (it redirects to
+# VSCodeSetup-x64-1.140.0.exe); matches the community vscode.install 1.140.0 package.
+# Update: change the version in `version` and in the URL, blank `sha256` and rebuild
+# with --write-back (or take it from the community vscode.install package).
+name: vscode
+version: "1.140.0"
+revision: 1
+title: Visual Studio Code (TrueNorth offline)
+authors: Microsoft
+type: exe
+# Inno Setup. No "run after install"; Explorer menus, file associations and PATH on.
+silent_args: /verysilent /suppressmsgboxes /norestart /mergetasks=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles,addtopath
+valid_exit_codes: [0, 1641, 3010]
+software_name: Microsoft Visual Studio Code
+installers:
+  - arch: x64
+    url: https://update.code.visualstudio.com/1.140.0/win32-x64/stable
+    file: VSCodeSetup-x64-1.140.0.exe
+    sha256: f2580caea258d6d6be9342717973eff4624d5e05439e77daab2dcecf68c8b2f1
+uninstall:
+  silent_args: /verysilent /suppressmsgboxes /norestart

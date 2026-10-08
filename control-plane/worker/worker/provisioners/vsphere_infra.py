@@ -332,10 +332,27 @@ def nic_device_changes(devices, refs: list[dict]) -> list:
     return changes
 
 
+def disk_grow_changes(devices, disk_gb: int) -> list:
+    """Grow the first virtual disk to ``disk_gb`` (never shrink); empty when it is big enough."""
+    disk = next((d for d in devices if isinstance(d, vim.vm.device.VirtualDisk)), None)
+    want_kb = int(disk_gb or 0) * 1024 * 1024
+    if disk is None or not want_kb or int(disk.capacityInKB or 0) >= want_kb:
+        return []
+    disk.capacityInKB = want_kb
+    if getattr(disk, "capacityInBytes", None):
+        disk.capacityInBytes = want_kb * 1024
+    return [vim.vm.device.VirtualDeviceSpec(operation=vim.vm.device.VirtualDeviceSpec.Operation.edit, device=disk)]
+
+
 def hardware_spec(vm_def: dict, devices, refs: list[dict]) -> object:
-    """CPU, memory and NICs in one ConfigSpec (for a clone or a reconfigure)."""
+    """CPU, memory and NICs in one ConfigSpec (for a clone or a reconfigure). A VM with
+    Windows Server roles also gets its system disk grown to the roles' floor (render.py);
+    the role install then extends C: into it (vsphere_roles.py)."""
     cores, mem, _ = vm_needs(vm_def)
-    return vim.vm.ConfigSpec(numCPUs=cores, memoryMB=mem, deviceChange=nic_device_changes(devices, refs))
+    changes = nic_device_changes(devices, refs)
+    if vm_def.get("roles"):
+        changes += disk_grow_changes(devices, vm_def.get("disk_gb") or 0)
+    return vim.vm.ConfigSpec(numCPUs=cores, memoryMB=mem, deviceChange=changes)
 
 
 # --------------------------------------------------------------------------- #

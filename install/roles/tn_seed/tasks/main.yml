@@ -11,9 +11,8 @@
 
 - name: Seed — verify reference data landed
   ansible.builtin.uri:
-    url: "http://localhost:8081/{{ item.path }}"
-    headers:
-      Host: "{{ tn_domain_fqdn }}"
+    url: "https://{{ tn_domain_fqdn }}/api/{{ item.path }}"
+    validate_certs: "{{ tn_tls_mode != 'selfsigned' }}"
     status_code: [200, 401, 403]
     timeout: 15
   register: tn_seed_checks
@@ -59,17 +58,21 @@
       -e TN_TENANT_NAME={{ tn_tenant_name | quote }}
       -e TN_TENANT_SLUG={{ tn_tenant_slug }}
       -e TN_BOOTSTRAP_ADMIN_UPN={{ tn_bootstrap_admin_upn }}
-      -e KEYCLOAK_ADMIN_USER={{ vault_keycloak_admin_user | default('admin') }}
-      -e KEYCLOAK_ADMIN_PASSWORD={{ vault_keycloak_admin_password | quote }}
+      -e KEYCLOAK_ADMIN_USER -e KEYCLOAK_ADMIN_PASSWORD
       api python -m app.bootstrap_admin
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  # Passed through from this environment (`-e NAME` with no value), so the password is
+  # never on a command line and the task's output can be shown when it fails.
+  environment:
+    KEYCLOAK_ADMIN_USER: "{{ vault_keycloak_admin_user | default('admin') }}"
+    KEYCLOAK_ADMIN_PASSWORD: "{{ vault_keycloak_admin_password }}"
   register: tn_bootstrap
-  changed_when: "'created' in tn_bootstrap.stdout"
-  no_log: true
+  # app.bootstrap_admin logs to stderr.
+  changed_when: "'created' in (tn_bootstrap.stdout ~ tn_bootstrap.stderr)"
 
 - name: Seed — report bootstrap result
   ansible.builtin.debug:
-    msg: "{{ tn_bootstrap.stdout_lines | default(['(no output)']) }}"
+    msg: "{{ (tn_bootstrap.stdout_lines + tn_bootstrap.stderr_lines) | default(['(no output)'], true) }}"
 
 - name: Seed — optional demo content
   ansible.builtin.debug:

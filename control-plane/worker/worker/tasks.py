@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 
 from celery import group
 
-from . import ai_client, db_ops, greyspace, range_alloc, secretbox
+from . import ai_client, db_ops, greyspace, range_alloc, secretbox, windows_roles
 from .base_tasks import ReliableTask, _get_backend, db_connect_args
 from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async, snapshot_back_to_ready
@@ -164,7 +164,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
             with _db_session() as db2:
                 resolver = golden_image_resolver(db2, hv)
                 creds = _hypervisor_creds(db2, hv)
-            rendered = render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt)
+            rendered = windows_roles.require_buildable(render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt))
             template = {
                 **template,
                 "name": rendered["range_name"],

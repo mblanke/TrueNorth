@@ -1,0 +1,36 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Runs INSIDE a throwaway {{ tn_prefetch_family }} container on TN-BUILD01. Downloads
+# (never installs) every catalogue entry's packages through the depot's apt-cacher-ng,
+# exactly as a range guest will ask for them (vsphere_guest.linux_commands): same
+# upstream hostnames, same proxy, --no-install-recommends. A minimal container has fewer
+# packages than tmpl-ubuntu-2404 / the Rocky template, so its dependency closure is a
+# superset of what a guest needs.
+# One line per entry on stdout:  TNRESULT <ok|fail> <name>
+PROXY='{{ tn_depot_apt_proxy_url }}'
+{% if tn_prefetch_family == 'apt' %}
+export DEBIAN_FRONTEND=noninteractive
+APT="apt-get -q -o Acquire::http::Proxy=$PROXY -o Acquire::https::Proxy=$PROXY"
+$APT update >&2 || { echo "TNRESULT fail apt-update"; exit 0; }
+{% for e in tn_prefetch_entries %}
+if $APT install -y --download-only --no-install-recommends {{ e.value.linux.apt | map('quote') | join(' ') }} >&2; then
+  echo "TNRESULT ok {{ e.key }}"; else echo "TNRESULT fail {{ e.key }}"; fi
+{% endfor %}
+{% else %}
+# Rocky: the stock repos use an HTTPS mirrorlist, which a forward proxy can only tunnel
+# (and apt-cacher-ng refuses tunnels). Use the HTTP baseurl on dl.rockylinux.org - the
+# Rocky template must be built with the same change, or its guests miss the cache.
+sed -i -e 's|^mirrorlist=|#mirrorlist=|' \
+       -e 's|^#baseurl=http://dl.rockylinux.org|baseurl=http://dl.rockylinux.org|' /etc/yum.repos.d/*.repo
+{% if tn_prefetch_rocky_epel | bool %}
+dnf -y -q --setopt=proxy=$PROXY install epel-release >&2 \
+  && sed -i -e 's|^metalink=|#metalink=|' \
+            -e 's|^#baseurl=https://download.example/pub/epel|baseurl=http://dl.fedoraproject.org/pub/epel|' \
+            /etc/yum.repos.d/epel*.repo
+{% endif %}
+dnf -y -q --setopt=proxy=$PROXY makecache >&2 || { echo "TNRESULT fail dnf-makecache"; exit 0; }
+{% for e in tn_prefetch_entries %}
+if dnf -y -q --setopt=proxy=$PROXY install --downloadonly {{ e.value.linux.dnf | map('quote') | join(' ') }} >&2; then
+  echo "TNRESULT ok {{ e.key }}"; else echo "TNRESULT fail {{ e.key }}"; fi
+{% endfor %}
+{% endif %}

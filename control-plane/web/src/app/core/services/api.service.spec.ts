@@ -45,6 +45,22 @@ describe('ApiService', () => {
     httpMock.verify();          // no outstanding requests
   });
 
+  // ── GET /api/templates/windows-roles ───────────────────────────────
+  it('getWindowsRoles() reads the role catalogue the designer grid is built from', () => {
+    const specs = { vcpu: 2, ram_mb: 4096, disk_gb: 60 };
+    service.getWindowsRoles().subscribe((cat) => {
+      expect(cat.groups).toEqual(['Identity']);
+      expect(cat.roles[0].id).toBe('ad-ds');
+    });
+    const req = httpMock.expectOne(`${base}/templates/windows-roles`);
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      groups: ['Identity'], base: specs,
+      roles: [{ id: 'ad-ds', label: 'Active Directory', group: 'Identity', min: specs, recommended: specs,
+                method: 'feature', images: [], requires: [], conflicts: [], aliases: ['active_directory'], notes: '' }],
+    });
+  });
+
   // ── GET /api/ranges ────────────────────────────────────────────────
   it('getRanges() should make GET /api/ranges', () => {
     const mockRanges: Partial<Range>[] = [

@@ -65,3 +65,10 @@ build/vcsim/
 build/greyspace/
 tests/e2e/playwright-report/
 tests/e2e/test-results/
+
+# Site-specific CA certificates and TLS material the installer reads (install/files/README.txt)
+install/files/*.cer
+install/files/*.crt
+install/files/*.pem
+install/files/tls/*
+!install/files/tls/.gitkeep

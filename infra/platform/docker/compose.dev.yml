@@ -239,6 +239,7 @@ services:
       SCENARIO_ENGINE_DIR: /opt/scenario-engine
     volumes:
       - ../../../scenario-engine:/opt/scenario-engine:ro
+      - ../../../content/catalogue:/app/content/catalogue:ro  # GET /software-catalogue
       - ../../../content/mitre:/app/content/mitre:ro  # attack_catalogue.py (ATT&CK id checks)
     depends_on:
       postgres:

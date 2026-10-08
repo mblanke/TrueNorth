@@ -1,12 +1,35 @@
 ---
-# Keycloak is reached over the container network from the platform host. Going
-# via the public URL would depend on nginx and TLS being correct first, which
-# makes a TLS problem look like an identity problem.
-tn_kc_internal: "http://localhost:8080/auth"
+# Keycloak is reached on the host's loopback (compose.prod.yml publishes
+# 127.0.0.1:KEYCLOAK_ADMIN_PORT), not via nginx: going through the public URL would
+# depend on nginx and TLS being right first, making a TLS problem look like an identity
+# problem.
+tn_kc_internal: "http://127.0.0.1:{{ tn_keycloak_admin_port }}/auth"
 tn_kc_realm_url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}"
 tn_kc_components_url: "{{ tn_kc_realm_url }}/components"
 tn_kc_provider_type: org.keycloak.storage.UserStorageProvider
 tn_kc_mapper_type: org.keycloak.storage.ldap.mappers.LDAPStorageMapper
+
+# What this deployment's clients must say, enforced on every run (not only at import).
+# infra/keycloak/realm-truenorth.json is a development realm: its web client knows only
+# localhost and example hosts, and the api client's secret is CHANGE_ME_IN_PRODUCTION.
+tn_kc_client_settings:
+  # This host only: the realm file's dev/itest/example origins are replaced. The other
+  # client attributes (PKCE S256) stay: Keycloak sets only the attributes sent.
+  truenorth-web:
+    redirectUris: ["https://{{ tn_domain_fqdn }}/*"]
+    webOrigins: ["https://{{ tn_domain_fqdn }}"]
+    attributes:
+      post.logout.redirect.uris: "https://{{ tn_domain_fqdn }}/*"
+  truenorth-api:
+    redirectUris: []
+    webOrigins: []
+
+# The development realm's sample accounts (admin@truenorth.local / admin and friends).
+# Never imported here, and removed if an earlier install imported them.
+tn_kc_sample_users:
+  - admin@truenorth.local
+  - instructor@truenorth.local
+  - trainee@truenorth.local
 
 # AD user federation. editMode READ_ONLY on purpose: Active Directory is the
 # system of record for identity, and TrueNorth never writes back to it.
@@ -113,3 +136,14 @@ tn_kc_protocol_mappers:
       jsonType.label: "String"
       access.token.claim: "true"
       id.token.claim: "true"
+
+  # Puts the API client in the access token's `aud`. The API (TN_ENV=production) only
+  # accepts tokens whose aud includes KEYCLOAK_AUDIENCE, which the installer sets to
+  # this client: without the mapper every user would be locked out (docs/identity.md).
+  - name: truenorth-api-audience
+    protocol: openid-connect
+    protocolMapper: oidc-audience-mapper
+    config:
+      included.client.audience: "{{ tn_keycloak_api_client }}"
+      access.token.claim: "true"
+      id.token.claim: "false"

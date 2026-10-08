@@ -28,6 +28,7 @@ from worker import pfsense_config, render, vlan_pool
 from worker.provisioners import vsphere_api as mod
 from worker.provisioners import vsphere_guest as guest_mod
 from worker.provisioners import vsphere_infra as infra
+from worker.provisioners import vsphere_roles as roles_mod
 
 RANGE_ID = "abcdef12-3456-7890-abcd-ef1234567890"
 R8 = RANGE_ID[:8]
@@ -1129,7 +1130,10 @@ class TestDeployTimeSoftware:
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(SW_TEMPLATE), {}))
         assert result.status == "ok", result.errors
 
-        win = [s for s in vc.guest_ops.started if s[0] == f"{R8}-dc01"]
+        on_dc = [s for s in vc.guest_ops.started if s[0] == f"{R8}-dc01"]
+        # `iis` is a Windows Server role: its feature install runs first (TestWindowsRoles).
+        assert on_dc[0][2] == roles_mod.POWERSHELL
+        win = [s for s in on_dc if s[2] != roles_mod.POWERSHELL]
         assert win == [
             (f"{R8}-dc01", "Administrator", r"C:\ProgramData\chocolatey\bin\choco.exe",
              f"install 7zip -y --no-progress {FEED}"),
@@ -1208,7 +1212,8 @@ class TestDeployTimeSoftware:
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(SW_TEMPLATE), {}))
         assert result.status == "ok", result.errors
         assert any("VSPHERE_RANGE_UPLINK_NETWORK is not set" in w for w in result.warnings)
-        assert vc.guest_ops.started == []
+        # Only the `iis` role's feature install (it needs no depot); no software.
+        assert [s[2] for s in vc.guest_ops.started] == [roles_mod.POWERSHELL]
         assert _vm_out(result, "dc01")["software"]["status"] == "skipped"
         web = vc.vms[_vm_out(result, "web01")["vm_id"]]
         assert "users" not in _userdata(web)  # no install user was ever created
@@ -1217,7 +1222,7 @@ class TestDeployTimeSoftware:
         result = _run(_prov(uplink).provision(RANGE_ID, _rendered(SW_TEMPLATE), {}))
         assert result.status == "ok", result.errors
         assert any("TN_DEPOT_URL is not set" in w for w in result.warnings)
-        assert uplink.guest_ops.started == []
+        assert [s[2] for s in uplink.guest_ops.started] == [roles_mod.POWERSHELL]  # the iis role only
 
     def test_windows_waits_for_sysprep_to_finish(self, depot, monkeypatch):
         vc = depot
@@ -1248,7 +1253,68 @@ class TestDeployTimeSoftware:
         tpl = {**SW_TEMPLATE, "nodes": [SW_TEMPLATE["nodes"][0], SW_TEMPLATE["nodes"][2]]}
         result = _run(_prov(vc).provision(RANGE_ID, _rendered(tpl), {}))
         assert result.status == "ok", result.errors
-        assert polls["n"] == 1  # no login attempt while customization was still running
+        # No login attempt while customization was still running: one by the iis role
+        # install once it had finished, one by the software install after it.
+        assert polls["n"] == 2
+
+
+# --------------------------------------------------------------------------- #
+# Windows Server roles over guest operations (vsphere_roles.py)
+# --------------------------------------------------------------------------- #
+
+WS22 = "windows-server-2022"
+ROLE_TEMPLATE = {**TEMPLATE, "nodes": [
+    TEMPLATE["nodes"][0],
+    {"id": "files", "os": WS22, "vlan": "victim_network", "services": ["smb", "dfs", "rdp"]},
+    {"id": "dc01", "os": WS22, "vlan": "victim_network", "services": ["active_directory", "dns"],
+     "ad_forest": "corp.range.local"},
+    {"id": "exch", "os": WS22, "vlan": "victim_network", "services": ["exchange", "owa"]},
+]}
+
+
+def _scripts(vc, vm_name: str) -> list[str]:
+    return [base64.b64decode(s[3].rsplit(" ", 1)[1]).decode("utf-16-le")
+            for s in vc.guest_ops.started if s[0] == vm_name and s[2] == roles_mod.POWERSHELL]
+
+
+class TestWindowsRoles:
+    def test_roles_install_as_the_sysprep_administrator_with_no_depot(self, vc):
+        vc.guest_ops.exit_codes = {}  # every script exits 0: no reboot is asked for
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ROLE_TEMPLATE), {}))
+        files = _vm_out(result, "files")
+        assert files["roles"] == {"file": {"status": "ok", "detail": "installed"}}
+        (script,) = _scripts(vc, f"{R8}-files")
+        assert "Install-WindowsFeature -Name FS-FileServer,FS-DFS-Namespace,FS-DFS-Replication" in script
+        assert {s[1] for s in vc.guest_ops.started} == {"Administrator"}
+        # The login worked, so it was the password Sysprep set; it is gone from the result.
+        dumped = json.dumps(result.__dict__, default=str)
+        assert all(p not in dumped for p in vc.guest_ops.passwords_seen if p)
+
+    def test_a_forest_promotion_that_fails_makes_the_range_partial(self, vc):
+        # Install-ADDSForest must exit 3010 (reboot pending); the fake guest exits 0.
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ROLE_TEMPLATE), {}))
+        assert result.status == "partial"
+        dc = _vm_out(result, "dc01")["roles"]
+        assert dc["ad-ds"]["status"] == "failed" and dc["dns"]["status"] == "ok"
+        features, forest = _scripts(vc, f"{R8}-dc01")
+        assert "Install-WindowsFeature -Name AD-Domain-Services,DNS," in features
+        assert "Install-ADDSForest -DomainName 'corp.range.local' -DomainNetbiosName 'CORP'" in forest
+        assert f"VM {R8}-dc01: role ad-ds failed" in " ".join(result.errors)
+        assert len(result.vms) == 4  # every VM is still there
+
+    def test_an_unregistered_role_image_builds_the_bare_os_and_says_so(self, vc):
+        result = _run(_prov(vc).provision(RANGE_ID, _rendered(ROLE_TEMPLATE), {}))
+        exch = _vm_out(result, "exch")
+        assert exch["roles"]["exchange"]["status"] == "skipped"
+        assert "srv2022-exchange2019" in exch["roles"]["exchange"]["detail"]
+        assert not _scripts(vc, f"{R8}-exch")  # an image role has no guest work
+        clone = vc.templates["tmpl-win2022"].clone_specs
+        assert any(name == f"{R8}-exch" for _, name, _ in clone)
+
+    def test_role_sizing_floor_reaches_the_clone_spec(self, vc):
+        _run(_prov(vc).provision(RANGE_ID, _rendered(ROLE_TEMPLATE), {}))
+        spec = next(s for _, name, s in vc.templates["tmpl-win2022"].clone_specs if name == f"{R8}-exch")
+        assert (spec.config.numCPUs, spec.config.memoryMB) == (4, 16384)
 
 
 # --------------------------------------------------------------------------- #

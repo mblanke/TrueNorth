@@ -12,6 +12,11 @@
 # invokes ${KEYCLOAK_HOME}/bin/kcadm.sh — a path that only exists INSIDE the
 # container — and which is not idempotent for the partial updates needed here.
 
+- name: Keycloak — load the secret map
+  ansible.builtin.include_role:
+    name: tn_config
+    tasks_from: secrets
+
 - name: Keycloak — obtain an admin token
   ansible.builtin.uri:
     url: "{{ tn_kc_internal }}/realms/master/protocol/openid-connect/token"
@@ -44,15 +49,41 @@
     status_code: [200, 404]
   register: tn_kc_realm
 
-- name: Keycloak — import the realm definition
+# Read on the TARGET: the checkout lives there, not on the control node (a `file`
+# lookup would read the control node's disk).
+- name: Keycloak — read the realm definition
+  ansible.builtin.slurp:
+    src: "{{ tn_app_dir }}/infra/keycloak/realm-truenorth.json"
+  register: tn_kc_realm_file
+  when: tn_kc_realm.status == 404
+
+# Imported without its sample users, and with this deployment's client settings and
+# secret already in place, so there is no moment when admin/admin or the placeholder
+# secret exists. The same settings are enforced below on every run.
+- name: Keycloak — import the realm definition, without its development defaults
+  vars:
+    _doc: "{{ tn_kc_realm_file.content | b64decode | from_json }}"
+    _clients: >-
+      {%- set out = [] -%}
+      {%- for c in _doc.clients | default([]) -%}
+        {%- set extra = tn_kc_client_settings[c.clientId] | default({}) -%}
+        {%- if c.clientId == tn_keycloak_api_client -%}
+          {%- set extra = extra | combine({'secret': tn_secrets['keycloak_api_client_secret']}) -%}
+        {%- endif -%}
+        {%- set _ = out.append(c | combine(extra)) -%}
+      {%- endfor -%}
+      {{ out }}
   ansible.builtin.uri:
     url: "{{ tn_kc_internal }}/admin/realms"
     method: POST
     headers: "{{ tn_kc_headers }}"
-    body: "{{ lookup('file', tn_app_dir + '/infra/keycloak/realm-truenorth.json') }}"
+    body: >-
+      {{ _doc | dict2items | rejectattr('key', 'in', ['users', 'clients']) | items2dict
+         | combine({'clients': _clients}) }}
     body_format: json
     status_code: [201, 409]
   when: tn_kc_realm.status == 404
+  no_log: true
 
 # Only the fields we own are updated on re-run. A full PUT of the realm file
 # would wipe the federation component created below, every time.
@@ -67,6 +98,82 @@
       sslRequired: external
     body_format: json
     status_code: [204]
+
+# ── Clients: this deployment's URLs and secret, every run ─────────────
+- name: Keycloak — read the clients
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients?clientId={{ item }}"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_clients
+  loop:
+    - "{{ tn_keycloak_web_client }}"
+    - "{{ tn_keycloak_api_client }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Keycloak — set the clients' redirect URIs, web origins and post-logout URIs
+  vars:
+    _want: "{{ tn_kc_client_settings[item.item] | default({}) }}"
+    _have: "{{ item.json[0] }}"
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ _have.id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ {'clientId': _have.clientId} | combine(_want) }}"
+    body_format: json
+    status_code: [204]
+  loop: "{{ tn_kc_clients.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.json | length > 0
+    - (_want.redirectUris | default(_have.redirectUris)) | sort != (_have.redirectUris | default([])) | sort
+      or (_want.webOrigins | default(_have.webOrigins)) | sort != (_have.webOrigins | default([])) | sort
+      or (_have.attributes | default({})) | combine(_want.attributes | default({})) != (_have.attributes | default({}))
+  changed_when: true
+
+- name: Keycloak — read the api client's secret
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ tn_kc_clients.results[1].json[0].id }}/client-secret"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_api_secret
+  no_log: true
+
+- name: Keycloak — replace the api client's secret (the realm file ships a placeholder)
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/clients/{{ tn_kc_clients.results[1].json[0].id }}"
+    method: PUT
+    headers: "{{ tn_kc_headers }}"
+    body:
+      clientId: "{{ tn_keycloak_api_client }}"
+      secret: "{{ tn_secrets['keycloak_api_client_secret'] }}"
+    body_format: json
+    status_code: [204]
+  when: tn_kc_api_secret.json.value | default('') != tn_secrets['keycloak_api_client_secret']
+  changed_when: true
+  no_log: true
+
+- name: Keycloak — look for the development realm's sample users
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users?username={{ item | urlencode }}&exact=true"
+    headers: "{{ tn_kc_headers }}"
+    status_code: 200
+  register: tn_kc_samples
+  loop: "{{ tn_kc_sample_users }}"
+
+- name: Keycloak — remove them (admin/admin must not exist here)
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/users/{{ item.json[0].id }}"
+    method: DELETE
+    headers: "{{ tn_kc_headers }}"
+    status_code: [204]
+  loop: "{{ tn_kc_samples.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.json | length > 0 and not item.json[0].federationLink | default(false)
+  changed_when: true
 
 # ── LDAP user federation ──────────────────────────────────────────────
 - name: Keycloak — look for an existing AD federation component
@@ -138,14 +245,14 @@
 # `truenorth-web` and `truenorth-api` cannot drift apart.
 - name: Keycloak — existing client scopes
   ansible.builtin.uri:
-    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/client-scopes"
+    url: "{{ tn_kc_realm_url }}/client-scopes"
     headers: "{{ tn_kc_headers }}"
     status_code: 200
   register: tn_kc_scopes
 
 - name: Keycloak — create the truenorth-identity client scope
   ansible.builtin.uri:
-    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/client-scopes"
+    url: "{{ tn_kc_realm_url }}/client-scopes"
     method: POST
     headers: "{{ tn_kc_headers }}"
     body:
@@ -164,7 +271,7 @@
 
 - name: Keycloak — re-read client scopes
   ansible.builtin.uri:
-    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/client-scopes"
+    url: "{{ tn_kc_realm_url }}/client-scopes"
     headers: "{{ tn_kc_headers }}"
     status_code: 200
   register: tn_kc_scopes2
@@ -174,17 +281,27 @@
     tn_kc_scope_id: >-
       {{ (tn_kc_scopes2.json | selectattr('name', 'equalto', 'truenorth-identity') | first).id }}
 
-- name: Keycloak — resolve client ids
+# The scope's mappers are set when it is created; a scope an earlier install made gets
+# any mapper added since (the API audience) here, every run.
+- name: Keycloak — identity scope's mappers
   ansible.builtin.uri:
-    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/clients?clientId={{ item }}"
+    url: "{{ tn_kc_realm_url }}/client-scopes/{{ tn_kc_scope_id }}/protocol-mappers/models"
     headers: "{{ tn_kc_headers }}"
     status_code: 200
-  register: tn_kc_clients
-  loop:
-    - "{{ tn_keycloak_web_client }}"
-    - "{{ tn_keycloak_api_client }}"
+  register: tn_kc_scope_mappers
+
+- name: Keycloak — add missing identity scope mappers
+  ansible.builtin.uri:
+    url: "{{ tn_kc_realm_url }}/client-scopes/{{ tn_kc_scope_id }}/protocol-mappers/models"
+    method: POST
+    headers: "{{ tn_kc_headers }}"
+    body: "{{ item }}"
+    body_format: json
+    status_code: [201, 409]
+  loop: "{{ tn_kc_protocol_mappers }}"
   loop_control:
-    label: "{{ item }}"
+    label: "{{ item.name }}"
+  when: item.name not in (tn_kc_scope_mappers.json | map(attribute='name') | list)
 
 - name: Keycloak — attach the identity scope as a default scope
   ansible.builtin.uri:
@@ -210,12 +327,22 @@
   ansible.builtin.debug:
     msg: "AD sync: {{ tn_kc_sync.json | default({}) }}"
 
-- name: Keycloak — count federated users
+# Counted by federationLink: local accounts must not make a federation that imported
+# nobody look like one that works.
+- name: Keycloak — list users with their federation link
   ansible.builtin.uri:
-    url: "{{ tn_kc_internal }}/admin/realms/{{ tn_keycloak_realm }}/users/count"
+    url: "{{ tn_kc_realm_url }}/users?briefRepresentation=false&max=5000"
     headers: "{{ tn_kc_headers }}"
     status_code: 200
-  register: tn_kc_user_count
+  register: tn_kc_users
+  no_log: true
+
+- name: Keycloak — count users federated from AD
+  ansible.builtin.set_fact:
+    tn_kc_user_count:
+      json: >-
+        {{ tn_kc_users.json | selectattr('federationLink', 'defined')
+           | selectattr('federationLink', 'equalto', tn_keycloak_ldap_component_id) | list | length }}
 
 # A federation that imports zero users is the classic silent failure: every
 # object is configured, the bind works, and the search base is wrong.
@@ -247,21 +374,34 @@
          else 'MISSING: ' ~ (_missing | join(', ')) ~
               ' — role suggestion will be blank for those cohorts.' }}
 
-# The API needs this to drive /ad-sync. Written back into the env file so a
-# later `docker compose up` picks it up.
-- name: Keycloak — persist the component id into the environment
+# The API needs this to drive /ad-sync. Recorded in the state directory, which
+# roles/tn_config renders into the env file on every run (so re-runs agree), and
+# patched into the env file now for this run.
+- name: Keycloak — record the component id
+  ansible.builtin.copy:
+    dest: "{{ tn_state_dir }}/keycloak_ldap_component_id"
+    content: "{{ tn_keycloak_ldap_component_id }}"
+    mode: "0644"
+
+- name: Keycloak — put the component id in the environment
   ansible.builtin.lineinfile:
     path: "{{ tn_env_file }}"
     regexp: "^KEYCLOAK_LDAP_COMPONENT_ID="
     line: "KEYCLOAK_LDAP_COMPONENT_ID={{ tn_keycloak_ldap_component_id }}"
     mode: "0600"
+  register: tn_kc_env
 
-- name: Keycloak — restart the API so it picks up the component id
+# Recreate, not restart: a restarted container keeps the environment it was created
+# with. Only when the value actually changed, so a clean re-run changes nothing.
+- name: Keycloak — recreate the API with the component id
   community.docker.docker_compose_v2:
     project_src: "{{ tn_app_dir }}/infra/platform/docker"
     files: [compose.prod.yml]
     env_files: ["{{ tn_env_file }}"]
     services: [api]
-    state: restarted
+    state: present
+    recreate: always
+    build: never
     wait: true
     wait_timeout: 300
+  when: tn_kc_env is changed

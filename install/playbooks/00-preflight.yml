@@ -5,6 +5,9 @@
 - name: "Preflight"
   hosts: platform
   gather_facts: true
+  # Every task here only reads, so it runs for real under --check too: a check-mode
+  # preflight that skipped its commands would report nothing.
+  check_mode: false
   roles:
     - role: tn_preflight
       tags: [preflight]

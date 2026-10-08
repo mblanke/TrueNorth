@@ -4,26 +4,27 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 import httpx
 
+from ..search_backends import connection
 from .base import BaseVectorStore
 
 logger = logging.getLogger("truenorth.api.vector")
-
-OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://opensearch:9200").rstrip("/")
 
 _SOURCE = ["text", "filename", "chunk_ordinal"]
 
 
 class OpenSearchVectorStore(BaseVectorStore):
-    def __init__(self, url: str = OPENSEARCH_URL) -> None:
-        self.url = url.rstrip("/")
+    """The same store, URL, credentials and TLS settings as the search backend
+    (search_backends/connection.py)."""
+
+    def __init__(self, url: str | None = None) -> None:
+        self.url = (url or connection.opensearch_url()).rstrip("/")
 
     async def index_dim(self, index: str) -> int | None:
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            async with httpx.AsyncClient(**connection.client_kwargs(15)) as client:
                 resp = await client.get(f"{self.url}/{index}/_mapping")
             if resp.status_code != 200:
                 return None
@@ -51,7 +52,7 @@ class OpenSearchVectorStore(BaseVectorStore):
                 }
             },
         }
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(**connection.client_kwargs(15)) as client:
             resp = await client.put(f"{self.url}/{index}", json=mapping)
         if resp.status_code < 300:
             return True
@@ -67,7 +68,7 @@ class OpenSearchVectorStore(BaseVectorStore):
         for doc in docs:
             lines.append(json.dumps({"index": {"_index": index}}))
             lines.append(json.dumps(doc))
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(**connection.client_kwargs(60)) as client:
             resp = await client.post(
                 f"{self.url}/_bulk",
                 content="\n".join(lines) + "\n",
@@ -83,7 +84,7 @@ class OpenSearchVectorStore(BaseVectorStore):
         else:
             query = {"match": {"text": {"query": text}}}
         body = {"size": k, "query": query, "_source": _SOURCE}
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(**connection.client_kwargs(30)) as client:
             resp = await client.post(f"{self.url}/{index}/_search", json=body)
             if resp.status_code == 404:
                 return []
@@ -100,5 +101,5 @@ class OpenSearchVectorStore(BaseVectorStore):
         ]
 
     async def delete_index(self, index: str) -> None:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(**connection.client_kwargs(15)) as client:
             await client.delete(f"{self.url}/{index}")

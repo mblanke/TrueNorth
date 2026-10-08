@@ -1,10 +1,10 @@
 ---
 # ansible-galaxy collection install -r requirements.yml
 collections:
-  - name: community.docker # docker_compose_v2
-    version: ">=3.4.0"
-  - name: community.crypto # self-signed TLS, certificate inspection
-    version: ">=2.16.0"
+  - name: community.docker # docker_compose_v2 (3.6+) with wait/wait_timeout (3.10+)
+    version: ">=3.10.0"
+  - name: community.crypto # self-signed TLS; x509_certificate_convert (2.19+)
+    version: ">=2.19.0"
   - name: community.general
     version: ">=8.0.0"
   - name: ansible.posix # sysctl, synchronize

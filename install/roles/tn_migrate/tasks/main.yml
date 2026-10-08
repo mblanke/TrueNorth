@@ -52,7 +52,7 @@
         * Drop and rebuild, if the data is disposable, then re-run this play.
 
         * Accept the current schema as the head and stamp it:
-            ansible-playbook playbooks/50-migrate.yml -e tn_allow_alembic_stamp=true
+            ansible-playbook playbooks/50-stack-up.yml -e tn_allow_alembic_stamp=true
           Only do this if you know the schema was created by the same version of
           the code you are deploying.
   when:
@@ -118,7 +118,7 @@
     files: [compose.prod.yml]
     env_files: ["{{ tn_env_file }}"]
     state: present
-    build: always
+    build: never # built (and migrated with) in roles/tn_compose
     wait: true
     wait_timeout: 900
 
@@ -127,6 +127,7 @@
 # what their healthchecks actually say.
 - name: Migrate — wait for every healthchecked service to report healthy
   ansible.builtin.shell:
+    executable: /bin/bash
     cmd: |
       set -euo pipefail
       docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }} ps --format json \

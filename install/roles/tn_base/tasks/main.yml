@@ -1,24 +1,86 @@
 ---
 # Host preparation. Everything here is idempotent and safe to re-run.
 
+# The index is refreshed with apt-get rather than the apt module's update_cache, which
+# fails the whole install when ANY configured source does, including ones this
+# installer does not use (on TN-MGMT01: a HashiCorp source with a rotated signing key).
+# apt-get exits non-zero on real failures; a broken unrelated source is a warning,
+# reported below.
+- name: Base — refresh the package index  # noqa command-instead-of-module (see above)
+  ansible.builtin.command: apt-get update
+  become: true
+  register: tn_apt_update
+  changed_when: false
+
+- name: Base — report sources apt could not use
+  ansible.builtin.debug:
+    msg: "{{ tn_apt_update.stdout_lines | select('match', '^(W|Err):') | list }}"
+  when: tn_apt_update.stdout_lines | select('match', '^(W|Err):') | list | length > 0
+
 - name: Base — packages the installer and the stack rely on
   ansible.builtin.apt:
     name:
       - ca-certificates
       - curl
       - jq
-      - ldap-utils # the preflight LDAPS bind
-      - python3-psycopg2 # community.postgresql
+      - dnsutils # dig, for the AD DNS checks
+      - git # ansible.builtin.git (tn_app_source, git mode)
+      - ldap-utils # the LDAPS bind check in 40-tls
+      - python3-cryptography # community.crypto (self-signed TLS, CA conversion)
+      - python3-bcrypt # OpenSearch internal_users.yml password hashes (tn_tls)
       - acl # become_user on a non-root target
     state: present
-    update_cache: true
-    cache_valid_time: 3600
   become: true
+
+# Resolve corp.tnrange.lab through AD (tn_dns_servers). A global systemd-resolved
+# server is listed first in /run/systemd/resolve/resolv.conf, which is what Docker hands
+# containers, so Keycloak resolves the DC as the host does. The DC forwards other names.
+- name: Base — systemd-resolved drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Base — resolve the AD domain through its DNS
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/90-truenorth-ad.conf
+    mode: "0644"
+    content: |
+      # Managed by the TrueNorth installer (roles/tn_base).
+      [Resolve]
+      DNS={{ tn_dns_servers | join(' ') }}
+      Domains={{ tn_domain }}
+  become: true
+  register: tn_resolved_conf
+
+- name: Base — apply the resolver change
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: restarted
+  become: true
+  when: tn_resolved_conf is changed
+
+- name: Base — the host now resolves the DC
+  ansible.builtin.command: "getent hosts {{ tn_dc_host }}"
+  register: tn_dc_resolves
+  changed_when: false
+  retries: 5
+  delay: 2
+  until: tn_dc_resolves.rc == 0
 
 # OpenSearch sets bootstrap.memory_lock=true and mmaps its indices. The Ubuntu
 # default (65530) is far below what it needs, and the container exits during
 # startup with a message that does not point at the host.
+- name: Base — current vm.max_map_count
+  ansible.builtin.command: sysctl -n vm.max_map_count
+  register: tn_map_count
+  changed_when: false
+  check_mode: false
+
+# Raise only: a host already set higher (TN-MGMT01 runs 1048576) must not be lowered.
 - name: Base — raise vm.max_map_count for OpenSearch
+  when: tn_map_count.stdout | int < 262144
   ansible.posix.sysctl:
     name: vm.max_map_count
     value: "262144"

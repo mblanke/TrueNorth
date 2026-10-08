@@ -47,6 +47,10 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with (include "truenorth-range.opensearchCaVolumes" .) }}
+      volumes:
+        {{- . | trim | nindent 8 }}
+      {{- end }}
       containers:
         - name: worker-provision
           image: {{ include "truenorth-range.image" (dict "image" .Values.workerProvision.image "global" .Values.global "appVersion" .Chart.AppVersion) }}
@@ -76,6 +80,10 @@ spec:
             {{- with .Values.workerProvision.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- with (include "truenorth-range.opensearchCaVolumeMounts" .) }}
+          volumeMounts:
+            {{- . | trim | nindent 12 }}
+          {{- end }}
           livenessProbe:
             exec:
               command:

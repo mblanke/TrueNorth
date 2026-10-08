@@ -417,6 +417,9 @@ def save_range_topology(
     template = out["template"]
     if not template["nodes"]:
         raise HTTPException(422, {"message": "Diagram has no VMs to provision", "warnings": out["warnings"]})
+    if out["errors"]:
+        raise HTTPException(422, {"message": "Windows Server roles need fixing before this can be saved",
+                                  "errors": out["errors"], "warnings": out["warnings"]})
 
     # The template the range points at now. Read-only here (keys and PO links are
     # copied from it); it is written only if it passes the ownership test below.

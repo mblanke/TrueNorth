@@ -32,7 +32,9 @@ ansible-galaxy collection install -r requirements.yml
 ```
 
 On the **platform host** (TN-MGMT01): Ubuntu 24.04, Docker ≥ 24, Compose ≥ 2.20,
-and your SSH key in `~tnadmin/.ssh/authorized_keys`.
+and your SSH key in `~tnadmin/.ssh/authorized_keys` (the inventory expects
+`~/.ssh/id_ed25519_lab` on the control node). In `git` mode it also needs HTTPS out to
+github.com; without it, use `local` mode (below). Preflight checks both.
 
 From the deployment repo you need `certs/corp-root-ca.cer` — copy it to
 `install/files/`. Keycloak cannot bind to AD over LDAPS without trusting that
@@ -71,17 +73,17 @@ is always safe on its own.
 
 | Playbook | What it does |
 |---|---|
-| `00-preflight` | OS, Docker/Compose versions, disk, NTP, forward+reverse DNS, vCenter reachability, and a **real LDAPS bind** as the Keycloak service account. Read-only; fails loudly with the fix in the message. |
+| `00-preflight` | OS, Docker/Compose versions, disk, NTP, forward+reverse DNS, vCenter and LDAPS reachability, the app repository. Read-only, and runs for real under `--check`; fails loudly with the fix in the message. |
 | `10-base` | Packages, `vm.max_map_count` (OpenSearch will not start without it), the `/srv/truenorth` tree with the uids each image runs as. |
 | `20-fetch-app` | Clones the app at a pinned ref. Supports `local` and `tarball` modes for air-gapped installs. Records the deployed commit. |
 | `30-config` | Renders `.env.production`, generating any secret the vault left blank **once** and persisting it on the target. |
-| `40-tls` | Installs the AD CS root CA into the host trust store *and* Keycloak's truststore; places the certificate nginx serves. |
-| `50-stack-up` | Datastores → **alembic** → everything else. See "The migration hazard" below. |
-| `60-keycloak` | Realm, AD user federation over LDAPS, and the token claim mappers. **This is the join between the installer and the application** — see below. |
+| `40-tls` | Installs the AD CS root CA (DER or PEM, normalised to PEM) into the host trust store *and* Keycloak's truststore, then does a **real LDAPS bind** as the Keycloak service account against that CA; places the certificate nginx serves. |
+| `50-stack-up` | Builds the images, then datastores → **alembic** (with the new image) → everything else. See "The migration hazard" below. |
+| `60-keycloak` | Realm (imported without the development realm's sample users, with this host's redirect URIs and a generated `truenorth-api` secret, all enforced on every run), AD user federation over LDAPS, and the token claim mappers. **This is the join between the installer and the application** — see below. |
 | `70-telemetry` | OpenSearch index templates, ISM policies, ingest pipelines. |
 | `80-seed` | Verifies reference data actually seeded, creates the tenant and the bootstrap administrator. |
 | `90-vsphere` | Provider wiring, and detects the unassigned vCenter role. |
-| `95-smoke-test` | Container health, API health, and the AD claim-contract check. |
+| `95-smoke-test` | Container health, API health, and the AD claim-contract check (pass `-e tn_smoke_username=<upn> -e tn_smoke_password=<password>`; without them it is skipped and says so). |
 | `99-validate` | Final report, including accepted warnings. |
 
 ## Three things worth understanding before you run it
@@ -139,6 +141,86 @@ up perfectly healthy and range provisioning fails days later with a 403.
 re-run that playbook. Set `tn_fail_on_missing_vsphere_privs=true` once you
 expect it to be granted.
 
+## Networks and exposure
+
+| Network | Internal | Who is on it |
+|---|---|---|
+| `tn-frontend` | no | nginx (80/443), api, keycloak, web |
+| `tn-backend` | **yes**: no route off the host | datastores, workers, everything that talks to them |
+| `tn-egress` | no; nothing publishes a port on it | `worker-provision` (vCenter) and `ai-orchestrator` (the LLM endpoint), the two services that must leave the host |
+| `tn-monitoring` | yes | exporters, Prometheus, Grafana, Flower |
+
+- Keycloak's port is also published on `127.0.0.1:8180` (`tn_keycloak_admin_port`),
+  for this installer's Admin REST calls only. Users reach it through nginx (`/auth/`).
+- OpenSearch publishes no port; it is only on `tn-backend`, and it still requires TLS and
+  a password (next section).
+
+## Production settings
+
+The env file sets `TN_ENV=production`: the API and the AI orchestrator refuse to start
+with a missing or unsafe setting, and name every one. The installer supplies them:
+`CSRF_SECRET`, `TN_SECRETS_KEY`, `AI_SERVICE_TOKEN` and `METRICS_SCRAPE_TOKEN` are
+generated (32 characters, the production floor) unless the vault sets them;
+`KEYCLOAK_AUDIENCE` is the API client, which `60-keycloak` puts in every access token
+through an audience mapper on the `truenorth-identity` scope (also on an existing
+install); `TN_VERSION` is `tn_app_git_version`; `SCHEDULER_FEED_BASE_URL` is
+`https://<tn_domain_fqdn>`; `TRUSTED_PROXY_CIDRS` is `tn_trusted_proxy_cidrs`
+(loopback and Docker's bridge pool, where nginx sits). Prometheus reads the two bearer
+tokens from `/srv/truenorth/config/prometheus/` (`PROMETHEUS_SECRETS_DIR`). The api's
+healthcheck is `/health/ready`.
+
+## OpenSearch
+
+The security plugin is **on**. `40-tls` (`roles/tn_tls/tasks/opensearch.yml`) makes:
+
+| What | Where | Used by |
+|---|---|---|
+| Internal CA (key) | `/srv/truenorth/tls/opensearch-ca/ca-key.pem`, root 0600 | signing only; never mounted |
+| CA certificate | `/srv/truenorth/tls/opensearch/ca.pem` | OpenSearch, Dashboards, and every client (`/etc/truenorth/opensearch-ca.pem` in the api and worker containers) |
+| Node certificate `CN=opensearch` | `…/opensearch/node.pem`, `node-key.pem` (PKCS#8, uid 1000) | TLS on HTTP and transport (`plugins.security.nodes_dn`) |
+| Admin certificate `CN=tn-opensearch-admin` | `…/opensearch/admin.pem`, `admin-key.pem` | `securityadmin.sh` (`plugins.security.authcz.admin_dn`) |
+| `internal_users.yml` | `/srv/truenorth/config/opensearch/internal_users.yml`, uid 1000 0600 | `admin` and `kibanaserver`, bcrypt hashes |
+
+The two passwords are `vault_opensearch_admin_password` and
+`vault_opensearch_dashboards_password`; left empty, they are generated on the target and
+kept under `/srv/truenorth/config/secrets/` like every other secret. The env file then
+carries `OPENSEARCH_URL=https://opensearch:9200`, `OPENSEARCH_USER=admin`,
+`OPENSEARCH_PASS`, `OPENSEARCH_VERIFY_SSL=/etc/truenorth/opensearch-ca.pem`, and
+Dashboards logs in as `kibanaserver` (`OPENSEARCH_DASHBOARDS_PASS`) with full certificate
+verification. No demo certificates or demo users are installed
+(`DISABLE_INSTALL_DEMO_CONFIG=true`).
+
+The security index is created from these files the **first** time OpenSearch starts.
+Changing a password afterwards: set the new one in the vault (or the secrets file),
+re-run `40-tls` and `30-config`, then load it into the running cluster and restart the
+clients:
+
+```bash
+cd /srv/truenorth/app/infra/platform/docker
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production exec opensearch \
+  plugins/opensearch-security/tools/securityadmin.sh -f /usr/share/opensearch/config/opensearch-security/internal_users.yml \
+  -t internalusers -icl -nhnv -cacert config/certs/ca.pem -cert config/certs/admin.pem -key config/certs/admin-key.pem
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production up -d
+```
+
+**Lab/dev override only:** `-e tn_opensearch_disable_security=true` renders
+`OPENSEARCH_DISABLE_SECURITY=true`, `OPENSEARCH_URL=http://opensearch:9200` and an empty
+`OPENSEARCH_USER`: no authentication, plain http on `tn-backend`. Never on a platform
+Students use. The dev and integration compose files (`compose.dev.yml`, `compose.itest.yml`)
+run OpenSearch this way.
+
+## Backups
+
+`30-config` schedules `scripts/backup/cron-backup.sh` nightly (02:17). It dumps the
+application, Keycloak and LRS databases, Redis and MinIO, plus the compose and nginx
+configuration, under `/srv/truenorth/backups`. Restore with
+`scripts/backup/restore.sh <backup-dir>` (same `COMPOSE_FILE`/`ENV_FILE` as
+`config/backup.env`).
+
+Not in the backup set: **secrets** (`/srv/truenorth/config/secrets/`, or your vault), which
+must be kept offline separately, and OpenSearch telemetry (no snapshot repository is
+configured; scores and outcomes are in PostgreSQL).
+
 ## Air-gapped installs
 
 ```bash
@@ -157,10 +239,11 @@ actually change:
 
 | Variable | Default | Note |
 |---|---|---|
-| `tn_app_git_repo` | `git.guapo613.beer/soadmin/truenorth` | |
-| `tn_app_git_version` | `main` | **Pin a tag or SHA.** A branch makes re-runs non-deterministic. |
+| `tn_app_git_repo` | `github.com/mblanke/TrueNorth` (public) | |
+| `tn_app_git_version` | a pinned SHA of `main` | **Pin a tag or SHA.** A branch makes re-runs non-deterministic. |
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
-| `tn_tls_mode` | `provided` | or `selfsigned` for a lab |
+| `tn_tls_mode` | `selfsigned` | `provided` once the AD CS certificate is in `files/tls/` |
+| `tn_opensearch_disable_security` | `false` | Lab/dev override only: OpenSearch without auth or TLS ("OpenSearch" above). |
 | `tn_provisioner_backend` | `vsphere_api` | **Not** `vsphere` — that is not a registry key and raises `ValueError`. |
 | `tn_seed_demo_data` | `false` | Demo tenants have no place in a range holding CAF curriculum. |
 | `tn_default_progression` | `DP1` | Developmental progression a new trainee joins (DP1 → DP2). |

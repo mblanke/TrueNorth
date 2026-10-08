@@ -1,0 +1,20 @@
+# PowerShell 7, x64 MSI from the GitHub release. Replaces the community
+# "powershell-core" wrapper (downloads from github.com at install time).
+# sha256: computed 2026-10-03; matches the community powershell-core 7.6.6 package.
+# Update: change the version in `version` and in the URL; the release page lists the
+# hashes ("SHA256 Hashes of the release artifacts").
+name: powershell-core
+version: "7.6.6"
+revision: 1
+title: PowerShell 7 (TrueNorth offline)
+authors: Microsoft
+type: msi
+silent_args: /qn /norestart ADD_PATH=1 REGISTER_MANIFEST=1
+valid_exit_codes: [0, 1641, 3010]
+software_name: PowerShell 7
+installers:
+  - arch: x64
+    url: https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/PowerShell-7.6.6-win-x64.msi
+    sha256: 958838ff55091e1c8705d89efed0cc7e8245a3a6ef6c0ccfae20015227108ad8
+uninstall:
+  silent_args: /qn /norestart

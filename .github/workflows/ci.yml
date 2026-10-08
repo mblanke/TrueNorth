@@ -18,6 +18,7 @@ env:
 jobs:
   lint-python:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -37,6 +38,9 @@ jobs:
   test-python:
     runs-on: ubuntu-latest
     needs: lint-python
+    # The suite takes ~5 min with both services. On 2026-10-08 (PR #94) the apt step below
+    # stalled for 4 h 47 min and the job ran until GitHub's 6 h limit; bound it.
+    timeout-minutes: 30
     # PostgreSQL for the tests whose claim SQLite cannot prove: row locks, partial unique
     # indexes under concurrency, the real migration chain (tests/conftest.py
     # postgres_engine). Without TEST_POSTGRES_ADMIN_URL they skip.
@@ -72,9 +76,16 @@ jobs:
       # bubblewrap, so the Course Studio runner's Linux sandbox is tested end to end
       # (tests/arc2/test_arc2_confinement.py). Ubuntu 24.04 blocks unprivileged user
       # namespaces by default; allow them on this throwaway runner.
-      - run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq bubblewrap
+      # Normally ~10 s. Bounded: a stalled mirror or a held dpkg lock (unattended-upgrades
+      # on a fresh runner) otherwise waits indefinitely; it did for 4 h 47 min on PR #94.
+      - name: Install bubblewrap
+        timeout-minutes: 5
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=120"
+          sudo -E apt-get $APT_OPTS update -qq
+          sudo -E apt-get $APT_OPTS install -y -qq bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - run: pytest tests/ --tb=short -q -rs --ignore=tests/integration --junitxml=build/test-python/junit.xml
         env:
@@ -126,6 +137,7 @@ jobs:
   # docs/adr/0002-interface-versioning.md, docs/adr/0003-mosa-ratchet.md
   mosa:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -148,6 +160,7 @@ jobs:
   # evidence. ADR 0003.
   supply-chain:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -185,6 +198,7 @@ jobs:
 
   lint-angular:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -204,6 +218,7 @@ jobs:
 
   build-angular:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: lint-angular
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -227,6 +242,7 @@ jobs:
 
   build-docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [test-python, build-angular]
     strategy:
       matrix:
@@ -299,15 +315,38 @@ jobs:
 
   helm-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
       - run: helm lint infra/k8s/helm/truenorth-range
 
+  # The TN-MGMT01 installer (install/): it parses, and ansible-lint's production profile
+  # passes. Runs without a target host; the playbooks themselves are run by an operator.
+  lint-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "ansible-core==2.21.4" "ansible-lint==26.9.0"
+      - run: ansible-galaxy collection install -r requirements.yml
+      - run: ansible-playbook site.yml --syntax-check
+      - run: ansible-lint --offline
+      # Module arguments against each module's own spec: lint accepted `dest:` where the
+      # module takes `dest_path:`, and the install stopped there on TN-MGMT01.
+      - run: python ../scripts/check_ansible_module_args.py
+
   # The realm file is imported by the dev stack and POSTed by the installer; neither
   # reports a parse failure loudly. Import it into the Keycloak image we pin.
   keycloak-realm:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: bash scripts/check_keycloak_realm.sh

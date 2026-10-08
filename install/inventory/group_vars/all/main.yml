@@ -8,10 +8,13 @@
 # THIS IS THE BLOCKER RECORDED THROUGHOUT THE DEPLOYMENT REPO
 # ("TrueNorth app Git URL — required at M4 install"). Now answered.
 tn_app_source_mode: git # git | local | tarball
-tn_app_git_repo: "https://git.guapo613.beer/soadmin/truenorth.git"
-# Pin a tag or commit SHA. A bare branch name makes re-runs non-deterministic:
-# the same playbook would deploy different code on different days.
-tn_app_git_version: "main"
+# mblanke/TrueNorth is public: no credentials on the host. (The old default,
+# git.guapo613.beer/soadmin/truenorth, has no `main` branch.) TN-MGMT01 needs HTTPS out
+# to github.com for this; preflight checks it. Without it, use `local` mode.
+tn_app_git_repo: "https://github.com/mblanke/TrueNorth.git"
+# Pin a commit SHA. A branch name makes re-runs non-deterministic: the same playbook
+# would deploy different code on different days. 083aeb7 is main on 2026-10-05.
+tn_app_git_version: "083aeb750bbf8ff1c25c6efb0ac03489e708af99"
 tn_app_local_path: "" # air-gapped: rsync a checkout from the control node
 tn_app_tarball: "" # air-gapped: a release archive
 
@@ -27,9 +30,30 @@ tn_state_dir: "{{ tn_data_root }}/state"
 tn_env_file: "{{ tn_config_dir }}/.env.production"
 tn_compose_file: "{{ tn_app_dir }}/infra/platform/docker/compose.prod.yml"
 
+# Peers whose X-Forwarded-For the API believes (TRUSTED_PROXY_CIDRS): loopback and the
+# Docker bridge pool the compose networks (and so nginx) are allocated from. Narrow it
+# to the tn-frontend/tn-backend subnets if this host has other Docker networks.
+tn_trusted_proxy_cidrs: "127.0.0.0/8,172.16.0.0/12"
+
+# ── OpenSearch ────────────────────────────────────────────────────────
+# Security plugin on: roles/tn_tls makes an internal CA, the node and admin
+# certificates, and internal_users.yml (bcrypt hashes of the generated passwords).
+tn_opensearch_certs_dir: "{{ tn_tls_dir }}/opensearch" # mounted into the opensearch container
+tn_opensearch_ca_dir: "{{ tn_tls_dir }}/opensearch-ca" # the CA key: never mounted
+tn_opensearch_internal_users: "{{ tn_config_dir }}/opensearch/internal_users.yml"
+# LAB/DEV OVERRIDE ONLY. true = no security plugin: no auth, plain http on tn-backend.
+# Never on a platform students use (install/README.md, "OpenSearch").
+tn_opensearch_disable_security: false
+
 # ── Identity: Active Directory on TN-DC01 ─────────────────────────────
 tn_domain: corp.tnrange.lab
 tn_dc_host: tn-dc01.corp.tnrange.lab
+tn_dc_ip: 10.30.30.10
+# TN-MGMT01 must resolve corp.tnrange.lab through AD's DNS on TN-DC01 (which forwards
+# everything else). It was built pointing at the router, 192.168.1.1, which knows nothing
+# of the domain. roles/tn_base sets this through a systemd-resolved drop-in, which Docker
+# also reads, so Keycloak's LDAPS federation resolves the DC too.
+tn_dns_servers: ["{{ tn_dc_ip }}"]
 tn_ldap_port: 636
 tn_ldap_base_dn: "DC=corp,DC=tnrange,DC=lab"
 tn_ldap_users_dn: "OU=Users,OU=TrueNorth,DC=corp,DC=tnrange,DC=lab"
@@ -47,6 +71,11 @@ tn_domain_fqdn: tn-mgmt01.corp.tnrange.lab
 # ── Keycloak ──────────────────────────────────────────────────────────
 tn_keycloak_realm: truenorth
 tn_keycloak_base: "https://{{ tn_domain_fqdn }}/auth"
+# Tokens are checked against this issuer (KEYCLOAK_ISSUER in the API).
+tn_keycloak_issuer: "{{ tn_keycloak_base }}/realms/{{ tn_keycloak_realm }}"
+# Keycloak's port on the host's loopback only, for the installer's Admin REST calls
+# (compose.prod.yml publishes 127.0.0.1:KEYCLOAK_ADMIN_PORT).
+tn_keycloak_admin_port: 8180
 tn_keycloak_web_client: truenorth-web
 tn_keycloak_api_client: truenorth-api
 # AD security groups. These are the groups the Keycloak group mapper exposes as
@@ -85,9 +114,49 @@ tn_vcenter_host: 192.168.1.10
 tn_vcenter_user: "svc-truenorth@vsphere.local"
 tn_vsphere_datacenter: DC-Lab
 tn_vsphere_cluster: CL-Lab
+# Only used with tn_vsphere_placement: cluster; otherwise each host's local datastore.
 tn_vsphere_datastore: esx04-local
-tn_vsphere_network: dPG-TN-MGMT
+# Fallback for a range VM with no VLAN (single-NIC smoke test only). Empty: such a
+# VM fails. It must never be the management network: the provisioner refuses range
+# VMs on tn_vsphere_mgmt_network (it was dPG-TN-MGMT here).
+tn_vsphere_network: ""
+# Range VMs are refused on these networks (comma-separated).
+tn_vsphere_mgmt_network: dPG-TN-MGMT
 tn_vsphere_verify_ssl: false
+# Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
+tn_vsphere_content_library: ""
+tn_vsphere_concurrency: 4
+tn_vsphere_tools_timeout: 120
+tn_vsphere_snapshot_timeout: 1800
+# Range networks: per-range port groups on VLANs reserved for ranges, trunked on vDS-10G.
+tn_vsphere_range_switch_mode: vds
+tn_vsphere_range_dvs: vDS-10G
+tn_vsphere_range_vswitch: vSwitch1
+tn_vsphere_vlan_pool: "100-199"
+# spread | per-range-host | cluster. Hosts have 16 threads, so a big range must spread.
+tn_vsphere_placement: spread
+tn_vsphere_range_folder: truenorth/ranges
+tn_vsphere_max_vcpu_per_thread: 4
+# esx01 runs the VCSA: keep range VMs off it.
+tn_vsphere_exclude_hosts:
+  - esx01.truenorth.lab
+# Depot uplink (install/lab/README.md). Empty network: ranges stay fully isolated and
+# node `services` are not installed. Set to dPG-TN-SVC (and tn_depot_url) once that
+# port group, TN-DEPOT01 and the pfSense template's WAN rules exist.
+tn_vsphere_range_uplink_network: ""
+tn_vsphere_range_uplink_pool: "10.30.32.100-10.30.32.199"
+tn_vsphere_range_uplink_gateway: 10.30.32.1
+tn_vsphere_range_uplink_prefix: 24
+# No new provisioning work after this many seconds (Celery visibility timeout is 3600).
+tn_vsphere_provision_budget: 3300
+# TN-DEPOT01 as range guests see it, e.g. http://10.30.32.10. Empty: no depot installs.
+tn_depot_url: ""
+# Empty feed: <tn_depot_url>:8081/repository/chocolatey/. The apt/dnf forward proxy
+# must be set when the depot is (http://10.30.32.10:3142): empty falls back to
+# tn_depot_url, port 80, where nothing listens.
+tn_depot_choco_feed: ""
+tn_depot_apt_proxy: ""
+tn_software_install_timeout: 1800
 # Report rather than fail when the provisioning role is unassigned — see
 # roles/tn_vsphere. Flip to true once the role has been granted.
 tn_fail_on_missing_vsphere_privs: false
@@ -103,7 +172,9 @@ tn_ai_base_url: "http://133.1.14.240:4000/v1"
 # There is deliberately no `adcs` mode: nothing on TN-DC01 today (no WinRM
 # listener, no CES/CEP web enrolment) lets Ansible drive certreq. Claiming
 # otherwise would be a mode that never works.
-tn_tls_mode: provided
+# Self-signed for the first bring-up (2026-10-05); switch to `provided` once the AD CS
+# certificate is in install/files/tls/, then re-run playbooks/40-tls.yml.
+tn_tls_mode: selfsigned
 
 # ── Preflight thresholds ──────────────────────────────────────────────
 tn_min_free_gb: 200

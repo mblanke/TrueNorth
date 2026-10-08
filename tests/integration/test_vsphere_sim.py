@@ -360,6 +360,33 @@ def test_a_missing_vm_is_reported_not_counted(env, si):
         vim.VirtualMachine("vm-999999", si._stub).runtime  # noqa: B018 -- the simulator agrees it is gone
 
 
+def test_a_windows_server_role_sizes_the_clone_and_grows_its_disk(env, si, range_id, monkeypatch):
+    """An image role (Exchange): the role image is cloned (here the seeded template stands
+    in for it), sized to the role's floor, its system disk grown, read back from vcsim.
+    Image roles need no guest operations, which vcsim cannot run anyway. Cluster placement:
+    vcsim's hosts have under 3 GiB free, less than any role's floor."""
+    monkeypatch.setattr(mod, "VSPHERE_PLACEMENT", "cluster")
+    monkeypatch.setattr(mod, "VSPHERE_DATASTORE", "LocalDS_0")
+    tpl = {"name": "sim-roles", "network": {"vlans": [{"id": 10, "name": "lan", "cidr": "10.10.10.0/24"}]},
+           "nodes": [{"id": "exch", "os": "windows-server-2022", "vlan": "lan", "services": ["exchange", "owa"],
+                      "specs": {"cores": 1, "memory_mb": 512, "disk_gb": 1}}]}
+    asked: list[str] = []
+    out = render.render_topology(tpl, range_id, lambda alias: asked.append(alias) or TEMPLATE_VM)
+    assert out["role_errors"] == [] and asked[0] == "srv2022-exchange2019"
+    template = {"name": "sim-roles", "vms": out["vm_definitions"], "networks": out["network_definitions"]}
+    prov = mod.VsphereAPIProvisioner()
+    built = _run(prov.provision(range_id, template, _reserve(prov, range_id, template)))
+    assert built.status == "ok", built.errors
+    (vm_out,) = built.vms
+    assert vm_out["roles"] == {"exchange": {"status": "ok", "detail": "in role image"}}
+    vm = vim.VirtualMachine(vm_out["vm_id"], si._stub)
+    assert (vm.config.hardware.numCPU, vm.config.hardware.memoryMB) == (4, 16384)
+    disk = next(d for d in vm.config.hardware.device if isinstance(d, vim.vm.device.VirtualDisk))
+    assert disk.capacityInKB >= 200 * 1024 * 1024
+    assert _run(mod.VsphereAPIProvisioner().destroy(range_id, {"vms": built.vms, "networks": built.networks})
+                ).status == "ok"
+
+
 def test_a_noise_agent_gets_its_management_nic(env, si, range_id, monkeypatch):
     """The background-noise management NIC, on a port group made here for the test."""
     dvs = _named(si, vim.DistributedVirtualSwitch, DVS)

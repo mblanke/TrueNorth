@@ -9,8 +9,15 @@ rule_files:
 
 scrape_configs:
   # ── Control-Plane API (FastAPI) ──────────────────────────────
+  # Bearer tokens from files (Prometheus does not expand env vars): the api's
+  # METRICS_SCRAPE_TOKEN and the orchestrator's AI_SERVICE_TOKEN. The installer writes
+  # them to PROMETHEUS_SECRETS_DIR; secrets-dev/ holds placeholders for stacks that set
+  # neither token (both services then leave /metrics open).
   - job_name: "truenorth-api"
     metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/metrics_scrape_token
     static_configs:
       - targets: ["api:8080"]
         labels:
@@ -19,6 +26,9 @@ scrape_configs:
   # ── AI Orchestrator ──────────────────────────────────────────
   - job_name: "ai-orchestrator"
     metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/ai_service_token
     static_configs:
       - targets: ["ai-orchestrator:6000"]
         labels:

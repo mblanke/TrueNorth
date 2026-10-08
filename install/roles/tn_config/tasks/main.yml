@@ -12,61 +12,22 @@
 #     commit. (infra/platform/docker/.env.production was once tracked; it is now
 #     git-ignored, but the checkout is still no place for secrets.)
 
-- name: Config — generate and persist any secret left empty in the vault
-  ansible.builtin.shell:
-    cmd: |
-      set -euo pipefail
-      f="{{ tn_config_dir }}/secrets/{{ item.name }}"
-      if [ ! -s "$f" ]; then
-        umask 077
-        printf '%s' "$(head -c 32 /dev/urandom | base64 | tr -d '=+/' | cut -c1-32)" > "$f"
-      fi
-    creates: "{{ tn_config_dir }}/secrets/{{ item.name }}"
-  loop: "{{ tn_generated_secrets }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when: item.value | default('') | length == 0
-  no_log: true
+- name: Config — load the secret map
+  ansible.builtin.include_tasks: secrets.yml
 
-- name: Config — read persisted secrets back
+# Written by roles/tn_keycloak once the AD federation component exists. Rendered from
+# here so every re-run writes the same env file (a later play patching the file would
+# be undone by the next run of this one).
+- name: Config — read the recorded Keycloak LDAP component id
   ansible.builtin.slurp:
-    src: "{{ tn_config_dir }}/secrets/{{ item.name }}"
-  register: tn_secret_files
-  loop: "{{ tn_generated_secrets }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when: item.value | default('') | length == 0
-  no_log: true
+    src: "{{ tn_state_dir }}/keycloak_ldap_component_id"
+  register: tn_kc_component_state
+  failed_when: false
 
-- name: Config — assemble the effective secret map
+- name: Config — use it
   ansible.builtin.set_fact:
-    tn_secrets: >-
-      {{ tn_secrets | default({}) | combine({
-           item.item.name: (item.item.value
-                            if (item.item.value | default('') | length > 0)
-                            else (item.content | b64decode))
-         }) }}
-  loop: "{{ tn_secret_files.results }}"
-  loop_control:
-    label: "{{ item.item.name }}"
-  when: item.content is defined
-  no_log: true
-
-- name: Config — carry through secrets that came from the vault
-  ansible.builtin.set_fact:
-    tn_secrets: >-
-      {{ tn_secrets | default({}) | combine({item.name: item.value}) }}
-  loop: "{{ tn_generated_secrets }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when: item.value | default('') | length > 0
-  no_log: true
-
-# LRS_AUTH is base64("key:secret") — the API sends it as a Basic credential.
-- name: Config — derive the LRS basic-auth header value
-  ansible.builtin.set_fact:
-    tn_lrs_auth: "{{ (tn_secrets['lrs_api_key'] ~ ':' ~ tn_secrets['lrs_api_secret']) | b64encode }}"
-  no_log: true
+    tn_keycloak_ldap_component_id: "{{ tn_kc_component_state.content | b64decode | trim }}"
+  when: tn_kc_component_state.content is defined
 
 - name: Config — render .env.production
   ansible.builtin.template:
@@ -74,6 +35,26 @@
     dest: "{{ tn_env_file }}"
     mode: "0600"
     owner: "{{ ansible_user }}"
+  no_log: true
+
+# Prometheus reads bearer tokens from files (monitoring/prometheus/prometheus.yml).
+# It runs as nobody (65534).
+- name: Config — Prometheus scrape-token directory
+  ansible.builtin.file:
+    path: "{{ tn_config_dir }}/prometheus"
+    state: directory
+    owner: "65534"
+    group: "65534"
+    mode: "0750"
+
+- name: Config — Prometheus scrape tokens
+  ansible.builtin.copy:
+    dest: "{{ tn_config_dir }}/prometheus/{{ item }}"
+    content: "{{ tn_secrets[item] }}"
+    owner: "65534"
+    group: "65534"
+    mode: "0400"
+  loop: [metrics_scrape_token, ai_service_token]
   no_log: true
 
 # compose.prod.yml binds its named volumes to $TN_DATA_ROOT/... . Docker reads

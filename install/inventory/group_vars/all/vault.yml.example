@@ -35,6 +35,7 @@ vault_minio_secret_key: "" # generated on target if empty
 # ── Application secrets ───────────────────────────────────────────────
 vault_jwt_secret: "" # generated on target if empty
 vault_csrf_secret: "" # generated on target if empty
+vault_keycloak_api_client_secret: "" # generated on target if empty
 # Seals stored hypervisor/AI credentials. >= 32 random chars; never change it once set
 # (to rotate, set "new,old" and restart). Back it up with the database.
 vault_secrets_key: "" # generated on target if empty
@@ -48,6 +49,10 @@ vault_grafana_admin_user: admin
 vault_grafana_admin_password: "" # generated on target if empty
 vault_flower_user: admin
 vault_flower_password: "" # generated on target if empty
+vault_ai_service_token: "" # generated on target if empty (>= 32 chars)
+vault_metrics_scrape_token: "" # generated on target if empty
+vault_opensearch_admin_password: "" # generated on target if empty
+vault_opensearch_dashboards_password: "" # generated on target if empty
 
 # ── AI backend ────────────────────────────────────────────────────────
 # The LiteLLM master key. Empty is acceptable if the endpoint is unauthenticated

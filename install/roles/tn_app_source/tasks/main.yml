@@ -38,11 +38,13 @@
   when: tn_app_source_mode == 'git'
   register: tn_git
 
+# delete: a file removed from the source must go from the host too. A migration left
+# behind from an older checkout is a second alembic head, and `upgrade head` refuses.
 - name: App source — copy a local checkout (air-gapped)
   ansible.posix.synchronize:
     src: "{{ tn_app_local_path | regex_replace('/?$', '/') }}"
     dest: "{{ tn_app_dir }}/"
-    delete: false
+    delete: true
     rsync_opts:
       - "--exclude=.git"
       - "--exclude=node_modules"
@@ -50,20 +52,55 @@
       - "--exclude=__pycache__"
   when: tn_app_source_mode == 'local'
 
-- name: App source — unpack a release tarball (air-gapped)
-  ansible.builtin.unarchive:
-    src: "{{ tn_app_tarball }}"
-    dest: "{{ tn_app_dir }}"
-    extra_opts: ["--strip-components=1"]
-    creates: "{{ tn_app_dir }}/infra/platform/docker/compose.prod.yml"
+# Re-extracted whenever the tarball differs from the one last deployed, into an emptied
+# directory (an upgrade must not keep files the new release dropped).
+- name: App source — checksum the release tarball
+  ansible.builtin.stat:
+    path: "{{ tn_app_tarball }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: tn_tarball
   when: tn_app_source_mode == 'tarball'
+
+- name: App source — the tarball deployed last time
+  ansible.builtin.slurp:
+    src: "{{ tn_state_dir }}/app.json"
+  register: tn_app_prev
+  failed_when: false
+  when: tn_app_source_mode == 'tarball'
+
+- name: App source — unpack a release tarball (air-gapped)
+  when:
+    - tn_app_source_mode == 'tarball'
+    - (tn_app_prev.content | default('e30=') | b64decode | from_json).tarball_sha256 | default('')
+      != tn_tarball.stat.checksum
+  block:
+    - name: App source — empty the application directory
+      ansible.builtin.command:
+        argv: [find, "{{ tn_app_dir }}", -mindepth, "1", -delete]
+      changed_when: true
+
+    - name: App source — extract
+      ansible.builtin.unarchive:
+        src: "{{ tn_app_tarball }}"
+        dest: "{{ tn_app_dir }}"
+        extra_opts: ["--strip-components=1"]
 
 - name: App source — the checkout looks like TrueNorth
   ansible.builtin.stat:
     path: "{{ tn_compose_file }}"
   register: tn_compose_stat
 
+- name: App source — check mode stops being meaningful here
+  ansible.builtin.debug:
+    msg: >-
+      --check does not clone or copy the application, so the stages after this one
+      have nothing to inspect. Everything up to here is what a real run would change.
+  when: ansible_check_mode and not tn_compose_stat.stat.exists
+
 - name: App source — assert the expected layout
+  when: not (ansible_check_mode and not tn_compose_stat.stat.exists)
   ansible.builtin.assert:
     that: tn_compose_stat.stat.exists
     fail_msg: >-
@@ -78,6 +115,19 @@
   register: tn_commit
   changed_when: false
   failed_when: false
+  check_mode: false
+  when: tn_app_source_mode == 'git'
+
+# local mode does not copy .git: read the commit from the source checkout instead.
+- name: App source — resolve the commit of the local checkout  # noqa command-instead-of-module
+  ansible.builtin.command: git -C {{ tn_app_local_path }} rev-parse HEAD
+  delegate_to: localhost
+  become: false
+  register: tn_commit_local
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: tn_app_source_mode == 'local'
 
 # Written so 99-validate can report exactly what is deployed, and so a re-run is
 # diffable rather than a mystery.
@@ -90,6 +140,7 @@
         "source_mode": "{{ tn_app_source_mode }}",
         "repo": "{{ tn_app_git_repo if tn_app_source_mode == 'git' else '' }}",
         "ref": "{{ tn_app_git_version if tn_app_source_mode == 'git' else '' }}",
-        "commit": "{{ tn_commit.stdout | default('unknown') }}",
+        "commit": "{{ (tn_commit.stdout if tn_app_source_mode == 'git' else tn_commit_local.stdout | default('')) | default('unknown', true) }}",
+        "tarball_sha256": "{{ tn_tarball.stat.checksum | default('') if tn_app_source_mode == 'tarball' else '' }}",
         "path": "{{ tn_app_dir }}"
       }

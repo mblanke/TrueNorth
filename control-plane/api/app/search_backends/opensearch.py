@@ -2,22 +2,23 @@
 
 Works with OpenSearch 2.x and Elasticsearch 7/8 (compatible APIs).
 
-Configuration (env vars):
-    OPENSEARCH_URL  — base URL  (default: http://opensearch:9200)
-    OPENSEARCH_USER — HTTP basic auth username (optional)
-    OPENSEARCH_PASS — HTTP basic auth password (optional)
+Configuration (env vars, read in connection.py):
+    OPENSEARCH_URL         — base URL  (default: http://opensearch:9200)
+    OPENSEARCH_USER        — HTTP basic auth username (optional)
+    OPENSEARCH_PASS        — HTTP basic auth password (optional)
+    OPENSEARCH_VERIFY_SSL  — true | false | CA bundle path (default true)
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import UTC, datetime
 
 import httpx
 from fastapi import HTTPException
 
+from . import connection
 from .base import BaseSearchBackend, SearchBackendError, SearchMatch, SearchQueryError
 from .query import ParsedQuery, QueryError, parse_query
 
@@ -96,7 +97,7 @@ def stamp_ingested(event: dict, now: str) -> dict:
 
 def configured() -> bool:
     """Was an OpenSearch endpoint set explicitly? Readiness only requires it then (app/health.py)."""
-    return bool(os.getenv("OPENSEARCH_URL", "").strip())
+    return connection.url_configured()
 
 
 class OpenSearchBackend(BaseSearchBackend):
@@ -108,16 +109,12 @@ class OpenSearchBackend(BaseSearchBackend):
         username: str | None = None,
         password: str | None = None,
     ) -> None:
-        self._url = (url or os.getenv("OPENSEARCH_URL", "http://opensearch:9200")).rstrip("/")
-        _user = username or os.getenv("OPENSEARCH_USER", "")
-        _pass = password or os.getenv("OPENSEARCH_PASS", "")
-        self._auth: tuple[str, str] | None = (_user, _pass) if _user else None
+        self._url = (url or connection.opensearch_url()).rstrip("/")
+        self._auth: tuple[str, str] | None = (username, password or "") if username else connection.credentials()
 
     def _client_kwargs(self) -> dict:
-        kwargs: dict = {"timeout": 10.0}
-        if self._auth:
-            kwargs["auth"] = self._auth
-        return kwargs
+        # Basic auth and TLS verification (OPENSEARCH_VERIFY_SSL): search_backends/connection.py
+        return connection.client_kwargs(10.0, self._auth)
 
     # ------------------------------------------------------------------
     # BaseSearchBackend implementation
@@ -203,8 +200,8 @@ class OpenSearchBackend(BaseSearchBackend):
 
     async def health_check(self) -> bool:
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
+            async with httpx.AsyncClient(**connection.client_kwargs(3.0, self._auth)) as client:
                 resp = await client.get(f"{self._url}/_cluster/health")
-                return resp.status_code < 500
+                return resp.status_code < 400  # 401/403: wrong credentials is not healthy
         except Exception:
             return False

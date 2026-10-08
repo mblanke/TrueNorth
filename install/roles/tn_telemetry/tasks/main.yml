@@ -14,7 +14,8 @@
       -v {{ tn_app_dir }}:/opt/truenorth:ro
       -w /opt/truenorth
       api python -m telemetry.pipelines.bootstrap
-      --opensearch-url http://opensearch:9200
+    # URL, credentials and CA come from the api service (OPENSEARCH_URL / _USER / _PASS /
+    # _VERIFY_SSL and the CA mount), as for the API itself.
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
   register: tn_os_bootstrap
   changed_when: true
@@ -26,7 +27,10 @@
   ansible.builtin.command:
     cmd: >-
       docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
-      exec -T opensearch curl -sf localhost:9200/_cat/templates?h=name
+      exec -T opensearch sh -c 'if [ "$DISABLE_SECURITY_PLUGIN" = true ];
+      then curl -sf "http://localhost:9200/_cat/templates?h=name";
+      else curl -sf --cacert config/certs/ca.pem -u "$OPENSEARCH_USER:$OPENSEARCH_PASS"
+      "https://localhost:9200/_cat/templates?h=name"; fi'
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
   register: tn_os_templates
   changed_when: false

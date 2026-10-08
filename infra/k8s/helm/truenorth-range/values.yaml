@@ -467,11 +467,22 @@ keycloak:
 # ---------------------------------------------------------------------------
 # OpenSearch (external — not bundled)
 # ---------------------------------------------------------------------------
+# The URL is config.opensearchUrl. The cluster runs its security plugin: every client
+# authenticates (basic auth) and verifies the cluster's TLS certificate.
 opensearch:
   external: true
   url: "https://opensearch.truenorth.local:9200"
   username: admin
-  password: changeme
+  # Required (the release fails to render without it); no default on purpose.
+  password: ""
+  # A Secret with key ca.pem: the CA the cluster's certificate chains to, mounted at
+  # /etc/truenorth/opensearch/ca.pem and used as OPENSEARCH_VERIFY_SSL. Empty: the
+  # image's system trust store, with verification per verifySSL.
+  caSecret: ""
+  verifySSL: true
+  # LAB/DEV OVERRIDE ONLY: a cluster without the security plugin (no credentials sent;
+  # use an http opensearchUrl). Never in production.
+  securityDisabled: false
 
 # ---------------------------------------------------------------------------
 # Network Policies
