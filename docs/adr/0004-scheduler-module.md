@@ -391,7 +391,9 @@ What users need:
   - Reminders go to Instructors and Students, by email.
   - Admins are per tenant, so platform-wide settings need a platform administrator:
     an admin of the operator tenant named by `PLATFORM_TENANT_ID`. Unset means a
-    single-tenant install, where every admin is the operator. Slice 9.
+    single-tenant install, where every admin is the operator. Slice 9. (2026-10-08,
+    PR #112 review: unset fails closed once a second tenant exists; nobody is the
+    operator until it is set.)
 
 - 2026-10-07 — ADR 0006 (CapacityService) built: `app/capacity/` gives host supply
   under the overcommit policy and the ranges running now, and

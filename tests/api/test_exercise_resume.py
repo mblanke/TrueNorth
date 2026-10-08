@@ -181,7 +181,8 @@ class TestPauseResumeRun:
         client.post(f"/exercises/{ex.id}/start")
         worker(_run_sends(no_real_broker)[0])
         assert _state(db_session, ex) == ExerciseState.completed
-        assert client.post(f"/exercises/{ex.id}/run").status_code == 200
+        assert client.post(f"/exercises/{ex.id}/run").status_code == 409  # replay needs reset=true (sweep M3)
+        assert client.post(f"/exercises/{ex.id}/run", params={"reset": "true"}).status_code == 200
         worker(_run_sends(no_real_broker)[1])
         records = _timeline_records(db_session, ex)
         assert [seq for seq, _ in records] == [0, 0, 1, 1, 2, 2]

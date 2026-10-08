@@ -34,7 +34,7 @@ describe('QuizPlayerComponent', () => {
     ],
   };
   const RESULT = {
-    passed: true, pct: 100, score: 3, max_score: 3,
+    passed: true, pct: 100, score: 3, max_score: 3, key_revealed: true,
     results: [
       { question_id: 'qa', correct: true, points_earned: 1, points_possible: 1, explanation: 'SSH is 22/tcp' },
       { question_id: 'qb', correct: true, points_earned: 2, points_possible: 2, explanation: null },
@@ -167,6 +167,20 @@ describe('QuizPlayerComponent', () => {
     expect(el.querySelectorAll('.review-row.ok').length).toBe(2);
     expect(el.textContent).toContain('SSH is 22/tcp');
     expect(el.querySelector('tn-lottie')).not.toBeNull();
+  });
+
+  it('shows only the score while the key is withheld', () => {
+    setup();
+    api.submitQuizAttempt.and.returnValue(of({
+      ...RESULT, passed: false, pct: 33, score: 1, key_revealed: false,
+      results: RESULT.results.map(r => ({ ...r, correct: null, points_earned: null, explanation: '' })),
+    }));
+    component.start();
+    component.submit();
+    fixture.detectChanges();
+    expect(el.querySelector('.score')?.textContent).toContain('33%');
+    expect(el.querySelectorAll('.review-row').length).toBe(0);
+    expect(el.querySelector('.key-withheld')?.textContent).toContain('after your final attempt');
   });
 
   it('shows "Not yet" for a failed result', () => {

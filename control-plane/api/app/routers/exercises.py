@@ -287,11 +287,17 @@ def scenario_detail(
 @router.post("/{exercise_id}/run", response_model=ExerciseOut)
 def run_exercise(
     exercise_id: uuid.UUID = Path(...),
+    reset: bool = Query(False, description="replay a completed or cancelled exercise: clears every objective and the score"),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_START)),
 ) -> Exercise:
-    """One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**"""
+    """One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**
+
+    A completed or cancelled exercise is replayed only with ``reset=true``: replay wipes
+    everyone's objectives and score, so it is never a side effect of pressing Run (409)."""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    if ex.state in (ExerciseState.completed, ExerciseState.cancelled) and not reset:
+        raise HTTPException(409, f"Exercise is {ex.state.value}; replaying it clears every objective (reset=true)")
     # Replay: reset a finished/cancelled exercise back to pending before re-running.
     if ex.state in (ExerciseState.completed, ExerciseState.cancelled):
         for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():
@@ -450,16 +456,28 @@ def list_injects(
     exercise_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_READ)),
-) -> list[InjectRecord]:
+) -> list[InjectRecord] | list[InjectRecordOut]:
     """What each inject did (timeline and instructor), oldest first, every run kept.
-    **Permission: exercise:read**"""
+    **Permission: exercise:read**
+
+    Users without scenario:update (Students) get only when and whether each inject ran:
+    action, detail, MITRE technique, mode and telemetry counts are the answer key (ADR 0005)."""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    return (
+    rows = (
         db.query(InjectRecord)
         .filter(InjectRecord.exercise_id == ex.id)
         .order_by(InjectRecord.created_at, InjectRecord.seq)
         .all()
     )
+    if sees_answer_key(user):
+        return rows
+    return [
+        InjectRecordOut(
+            id=r.id, source=r.source, run_id=r.run_id, seq=r.seq, t=r.t, action="", status=r.status,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
 
 
 @router.post("/{exercise_id}/objectives/{ref_id}/ack", response_model=ObjectiveOut)

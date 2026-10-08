@@ -45,7 +45,7 @@ from ..models import (
     User,
     UserRole,
 )
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, grant_refusal, is_platform_admin, require_permission
 from ..schemas import (
     AuthMeOut,
     RegistrationApproveIn,
@@ -256,12 +256,13 @@ def withdraw_registration(
 def _visible(db: Session, user: CurrentUser):
     """Requests this approver may see.
 
-    Admins see everything. An instructor sees requests suggested into their own
-    tenant, plus unassigned ones — otherwise a request whose AD groups map to no
-    tenant would be invisible to everyone but an admin and would sit forever.
+    The platform administrator sees everything. Anyone else — a tenant's admin
+    included, since admins are per tenant — sees requests suggested into their own
+    tenant, plus unassigned ones; otherwise a request whose AD groups map to no
+    tenant would be invisible to everyone but the operator and would sit forever.
     """
     q = db.query(RegistrationRequest)
-    if user.role == UserRole.admin:
+    if is_platform_admin(user, db):
         return q
     return q.filter(
         (RegistrationRequest.suggested_tenant_id == uuid.UUID(user.tenant_id))
@@ -306,14 +307,37 @@ def get_request(
 def _resolve_tenant(db: Session, req: RegistrationRequest, approver: CurrentUser, chosen: uuid.UUID | None) -> uuid.UUID:
     """Decide which tenant the new user lands in, and whether that is permitted."""
     target = chosen or req.suggested_tenant_id or uuid.UUID(approver.tenant_id)
-    if approver.role != UserRole.admin and str(target) != approver.tenant_id:
+    if not is_platform_admin(approver, db) and str(target) != approver.tenant_id:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "Approving into another tenant requires an administrator",
+            "Approving into another tenant requires the platform administrator",
         )
     if db.query(Tenant).filter(Tenant.id == target).first() is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Tenant {target} does not exist")
     return target
+
+
+def _check_adoptable(existing: User, approver: CurrentUser, target_tenant: uuid.UUID) -> None:
+    """An approval may take over an existing account only if the approver could have made it.
+
+    Approving rewrites the row's role, tenant and Keycloak subject. Before (PR #112
+    review), a tenant B admin could approve a request bearing tenant A's admin's email
+    and so adopt that account: move it into B, re-role it and bind it to the
+    requester's identity. Now the row must already be in the target tenant and hold a
+    role the approver could grant (grant_refusal); otherwise 409, and nothing changes.
+    """
+    if existing.tenant_id is None or str(existing.tenant_id) != str(target_tenant):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"An account for {existing.email} already exists in another tenant; "
+            "it cannot be adopted by this approval",
+        )
+    if grant_refusal(approver, existing.role) is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"An account for {existing.email} already exists with the '{existing.role.value}' role, "
+            "which you cannot grant; an administrator must resolve it",
+        )
 
 
 def _enroll_for(
@@ -375,6 +399,11 @@ def _approve_one(
             f"Request is already {req.status.value}",
         )
 
+    granted_role = UserRole(role)
+    refusal = grant_refusal(approver, granted_role)
+    if refusal:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, refusal)
+
     target_tenant = _resolve_tenant(db, req, approver, tenant_id)
 
     # Resolve the target row deterministically rather than by catching an
@@ -383,6 +412,8 @@ def _approve_one(
     #
     # 1. Same Keycloak subject — this identity already has an account.
     user = db.query(User).filter(User.keycloak_id == req.keycloak_id).first()
+    if user is not None:
+        _check_adoptable(user, approver, target_tenant)
 
     if user is None:
         # 2. Adopt a pre-provisioned row (CSV roster / local account) rather than
@@ -396,6 +427,7 @@ def _approve_one(
                 f"A user with email {req.email} already exists from source '{existing.source}'",
             )
         if existing is not None:
+            _check_adoptable(existing, approver, target_tenant)
             user = existing
             user.keycloak_id = req.keycloak_id
         else:
@@ -409,7 +441,7 @@ def _approve_one(
 
     user.source = "ad"
 
-    user.role = UserRole(role)
+    user.role = granted_role
     user.tenant_id = target_tenant
     user.first_name = req.first_name
     user.last_name = req.last_name
@@ -509,6 +541,10 @@ def bulk_approve(
     not leave a half-applied approval behind. A single commit at the end keeps
     the whole batch in one transaction rather than issuing thirty of them.
     """
+    # Refuse the whole batch up front: the role is the same for every row.
+    refusal = grant_refusal(user, UserRole(body.role))
+    if refusal:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, refusal)
     results: list[RegistrationBulkResultItem] = []
     for rid in body.request_ids:
         req = _visible(db, user).filter(RegistrationRequest.id == rid).first()

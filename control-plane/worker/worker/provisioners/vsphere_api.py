@@ -410,7 +410,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
             self.use_credentials(credentials)
 
     def use_credentials(self, creds: dict) -> None:
-        """Take endpoint and login from a HypervisorConnection row (worker.tasks._hypervisor_creds)."""
+        """Take endpoint and login from a HypervisorConnection row (worker.db_ops.hypervisor_creds)."""
         host = str(creds.get("host") or "").strip()
         if host:
             self._base_url = (host if "://" in host else f"https://{host}").rstrip("/")

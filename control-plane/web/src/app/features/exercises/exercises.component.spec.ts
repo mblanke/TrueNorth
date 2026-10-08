@@ -5,6 +5,8 @@ import { provideRouter } from '@angular/router';
 import { EXERCISE_POLL_MS, ExercisesComponent } from './exercises.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
+import { signal } from '@angular/core';
 import { Exercise, Range, Scenario } from '@core/models';
 
 describe('ExercisesComponent', () => {
@@ -56,6 +58,7 @@ describe('ExercisesComponent', () => {
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
+        { provide: AuthService, useValue: { isInstructor: signal(true) } },
       ],
     }).compileComponents();
 

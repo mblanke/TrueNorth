@@ -13,6 +13,7 @@ Read at call time, not import time, so tests can change the environment.
 from __future__ import annotations
 
 import os
+import uuid
 from urllib.parse import urlsplit
 
 ENVIRONMENTS = ("development", "test", "production")
@@ -107,6 +108,8 @@ def production_problems() -> list[str]:
         problems.append("AUTH_BACKEND=disabled turns off authentication")
     if backend == "keycloak_oidc" and not env("KEYCLOAK_AUDIENCE", "").strip():
         problems.append("KEYCLOAK_AUDIENCE is not set (tokens from any client in the realm would be accepted)")
+    if backend == "keycloak_oidc" and not env("KEYCLOAK_ISSUER", "").strip():
+        problems.append("KEYCLOAK_ISSUER is not set (a token's iss would not be checked)")
     if backend == "generic_oidc" and not env("OIDC_AUDIENCE", "").strip():
         problems.append("OIDC_AUDIENCE is not set (tokens issued to any audience would be accepted)")
 
@@ -139,6 +142,15 @@ def production_problems() -> list[str]:
 
     if _truthy(env("SEED_DEV_DATA", "false")):
         problems.append("SEED_DEV_DATA=true would create the hardcoded development admin")
+
+    # Unset is allowed (a single-tenant install; app/rbac.py fails closed once a second
+    # tenant exists, and startup logs it). Set, it must be a tenant id, not a slug.
+    platform = env("PLATFORM_TENANT_ID", "").strip()
+    if platform:
+        try:
+            uuid.UUID(platform)
+        except ValueError:
+            problems.append("PLATFORM_TENANT_ID is not a tenant id (UUID)")
     return problems
 
 

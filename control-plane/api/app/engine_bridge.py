@@ -71,9 +71,12 @@ def validate_yaml(schema_name: str, yaml_text: str) -> dict[str, Any]:
     import yaml as pyyaml
     from jsonschema import Draft7Validator
 
+    from . import safe_yaml
+
     schema = load_schema(schema_name)
     try:
-        parsed = pyyaml.safe_load(yaml_text)
+        # No aliases (a "billion laughs" document expands to gigabytes) and a size cap.
+        parsed = safe_yaml.load(yaml_text)
     except pyyaml.YAMLError as exc:
         return {"valid": False, "errors": [{"path": "", "message": f"Invalid YAML: {exc}"}], "normalized": None}
     if not isinstance(parsed, dict):

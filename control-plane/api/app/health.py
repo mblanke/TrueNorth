@@ -11,6 +11,7 @@ Tiers (served from app/main.py):
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from dataclasses import asdict, dataclass, field
@@ -18,6 +19,17 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from fastapi import APIRouter
+
+logger = logging.getLogger("truenorth.health")
+
+# The probes are unauthenticated. An exception's text names hosts, ports, users and DSN
+# fragments, so it goes to the log and the response carries only this (security sweep, low).
+CHECK_FAILED = "check failed; see the API log"
+
+
+def _failed(exc: BaseException) -> str:
+    logger.warning("health check failed: %s: %s", type(exc).__name__, exc)
+    return CHECK_FAILED
 
 # -- Status Enum -----------------------------------------------------------
 
@@ -133,7 +145,7 @@ class HealthChecker:
                 name="database",
                 status=HealthStatus.UNHEALTHY,
                 latency_ms=round(elapsed, 2),
-                message=str(exc),
+                message=_failed(exc),
             )
 
     async def _check_redis(self) -> ComponentHealth:
@@ -158,7 +170,7 @@ class HealthChecker:
                 name="redis",
                 status=HealthStatus.UNHEALTHY,
                 latency_ms=round(elapsed, 2),
-                message=str(exc),
+                message=_failed(exc),
             )
 
     async def _check_opensearch(self) -> ComponentHealth:
@@ -196,7 +208,7 @@ class HealthChecker:
                 name="opensearch",
                 status=HealthStatus.UNHEALTHY,
                 latency_ms=round(elapsed, 2),
-                message=str(exc),
+                message=_failed(exc),
             )
 
     async def _check_minio(self) -> ComponentHealth:
@@ -223,7 +235,7 @@ class HealthChecker:
                 name="minio",
                 status=HealthStatus.UNHEALTHY,
                 latency_ms=round(elapsed, 2),
-                message=str(exc),
+                message=_failed(exc),
             )
 
     async def _check_celery(self) -> ComponentHealth:
@@ -250,7 +262,7 @@ class HealthChecker:
                 name="celery",
                 status=HealthStatus.UNHEALTHY,
                 latency_ms=round(elapsed, 2),
-                message=str(exc),
+                message=_failed(exc),
             )
 
     async def _check_ai_orchestrator(self) -> ComponentHealth:
@@ -275,7 +287,7 @@ class HealthChecker:
                 name="ai_orchestrator",
                 status=HealthStatus.DEGRADED,
                 latency_ms=round(elapsed, 2),
-                message=f"AI service unavailable: {exc}",
+                message=f"AI service unavailable: {_failed(exc)}",
             )
 
     async def _check_keycloak(self) -> ComponentHealth:
@@ -301,7 +313,7 @@ class HealthChecker:
                 name="keycloak",
                 status=HealthStatus.UNHEALTHY,
                 latency_ms=round(elapsed, 2),
-                message=str(exc),
+                message=_failed(exc),
             )
 
     # -- Helpers -----------------------------------------------------------
@@ -319,7 +331,7 @@ class HealthChecker:
                         name="unknown",
                         status=HealthStatus.UNHEALTHY,
                         latency_ms=0.0,
-                        message=str(r),
+                        message=_failed(r),
                     )
                 )
             else:

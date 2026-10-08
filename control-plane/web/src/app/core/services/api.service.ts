@@ -353,8 +353,10 @@ export class ApiService {
   startExercise(id: string): Observable<Exercise> {
     return this.http.post<Exercise>(`${this.base}/exercises/${id}/start`, {});
   }
-  runExercise(id: string): Observable<Exercise> {
-    return this.http.post<Exercise>(`${this.base}/exercises/${id}/run`, {});
+  /** `reset` replays a completed or cancelled exercise, clearing every objective (staff only). */
+  runExercise(id: string, reset = false): Observable<Exercise> {
+    const params = reset ? new HttpParams().set('reset', 'true') : undefined;
+    return this.http.post<Exercise>(`${this.base}/exercises/${id}/run`, {}, { params });
   }
   pauseExercise(id: string): Observable<Exercise> {
     return this.http.post<Exercise>(`${this.base}/exercises/${id}/pause`, {});
@@ -379,7 +381,7 @@ export class ApiService {
   }
 
   // ── Detections (ADR 0005) ────────────────────────────────
-  /** Submit a Lucene detection for an objective; credited only if it finds the attack. */
+  /** Submit a detection (the server's closed detection grammar) for an objective; credited only if it finds the attack. */
   submitDetection(exerciseId: string, refId: string, query: string): Observable<Detection> {
     const body: components['schemas']['DetectionIn'] = { query };
     return this.http.post<Detection>(

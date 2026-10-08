@@ -27,20 +27,75 @@ import logging
 import os
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from ..auth import CurrentUser
+from ..db import get_db
 from ..hypervisor_backends.proxmox import proxmox_client
-from ..rbac import Permission, require_permission
+from ..models import Range
+from ..rbac import Permission, is_platform_admin, is_single_tenant, platform_tenant_id, require_permission
+from ..tenancy import tenant_uuid
 
 logger = logging.getLogger("truenorth.api.proxmox")
+
+
+def _tenant_owns_vm(db: Session, user: CurrentUser, vmid: int) -> bool:
+    """Is ``vmid`` a VM of one of the caller's tenant's ranges (its provisioner_output)?"""
+    import json
+
+    rows = db.query(Range.provisioner_output).filter(
+        Range.tenant_id == tenant_uuid(user), Range.provisioner_output.isnot(None), Range.deleted_at.is_(None)
+    )
+    for (raw,) in rows:
+        try:
+            vms = (json.loads(raw) or {}).get("vms") or []
+        except (ValueError, AttributeError):
+            continue
+        if any(isinstance(vm, dict) and str(vm.get("vmid")) == str(vmid) for vm in vms):
+            return True
+    return False
+
+
+def proxmox_scope(
+    request: Request,
+    user: CurrentUser = Depends(require_permission(Permission.INFRA_CONTROL)),
+    db: Session = Depends(get_db),
+) -> CurrentUser:
+    """infra:control, and then (security sweep M6, 2026-10-08):
+
+    - a route on one VM (``/vms/{node}/{vmid}/...``): the VM must belong to a range of the
+      caller's tenant, else 404; the platform administrator may act on any;
+    - a cluster-wide route (discovery, clone, create, tasks): the platform administrator,
+      or anyone with infra:control on a single-tenant install (PLATFORM_TENANT_ID unset
+      and at most one tenant exists).
+
+    Before, a range_ops user of one tenant could power off, snapshot, destroy or open a
+    console on another tenant's VMs on the shared cluster.
+    """
+    if is_platform_admin(user, db):
+        return user
+    vmid = request.path_params.get("vmid")
+    if vmid is None:
+        if not platform_tenant_id() and is_single_tenant(db):
+            return user
+        raise HTTPException(403, "Cluster-wide Proxmox operations are for the platform administrator")
+    try:
+        owned = _tenant_owns_vm(db, user, int(vmid))
+    except ValueError:
+        owned = False
+    if not owned:
+        raise HTTPException(404, "VM not found")
+    return user
+
 
 # Router-level authentication. Direct hypervisor control: VM power, snapshots, clone, console tickets.
 # Read and control are not split here — there is no use case for browsing a
 # hypervisor's node list that does not also imply operating it.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/proxmox", tags=["proxmox"], dependencies=[Depends(require_permission(Permission.INFRA_CONTROL))])
+router = APIRouter(prefix="/proxmox", tags=["proxmox"], dependencies=[Depends(proxmox_scope)])
 
 # ── Config ──────────────────────────────────────────────────────────────
 # No hosts are assumed: until PROXMOX_HOSTS points at reachable nodes,

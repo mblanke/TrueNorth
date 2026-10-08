@@ -281,7 +281,9 @@ class TestReviewFindings:
         obj.achieved, obj.evidence = True, '{"source": "student_detection"}'
         db_session.commit()
         with acting_as(UserRole.instructor):
-            client.post(f"/exercises/{ex.id}/run")
+            assert client.post(f"/exercises/{ex.id}/run").status_code == 409  # sweep M3: never by accident
+            assert _obj(db_session, ex).achieved is True
+            client.post(f"/exercises/{ex.id}/run", params={"reset": "true"})
         obj = _obj(db_session, ex)
         assert (obj.achieved, obj.evidence) == (False, None)
 
@@ -289,17 +291,18 @@ class TestReviewFindings:
         # M5: the Student's typo is not an outage, and costs no attempt.
         class Refuses(FakeStore):
             async def match(self, index, query, size=0):
-                raise SearchQueryError("Failed to parse query [url.domain:(]")
+                raise SearchQueryError("Failed to parse query [bytes_out:>1]")
 
+        # In the detection grammar, but the store refuses it (e.g. a range on a keyword field).
         fastapi_app.dependency_overrides[search_backend] = lambda: Refuses()
         ex = _exercise(db_session)
         try:
             with acting_as(UserRole.student):
-                resp = _submit(client, ex, "url.domain:(")
+                resp = _submit(client, ex, "bytes_out:>1")
                 assert resp.status_code == 422 and "Failed to parse" in resp.json()["detail"]
                 for _ in range(19):
-                    _submit(client, ex, "url.domain:(")
-                assert _submit(client, ex, "url.domain:(").status_code == 429  # free, but not unlimited
+                    _submit(client, ex, "bytes_out:>1")
+                assert _submit(client, ex, "bytes_out:>1").status_code == 429  # free, but not unlimited
         finally:
             fastapi_app.dependency_overrides.pop(search_backend, None)
 

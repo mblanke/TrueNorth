@@ -84,9 +84,14 @@ def authorize(channel: str, user: CurrentUser, db: Session) -> bool:
     """May ``user`` open ``channel``? Closed unless listed here.
 
     * ``range.<id>`` / ``exercise.<id>``: a range / exercise of the user's tenant;
+    * ``exercise.<id>.staff``: as ``exercise.<id>``, for users who may see the answer key
+      (scenario:update) — full instructor-inject events go there;
     * ``tenant.<id>``: the user's own tenant;
     * ``system.*``: admins.
     """
+    if channel.startswith("exercise.") and channel.endswith(STAFF_SUFFIX):
+        raw = channel[len("exercise.") : -len(STAFF_SUFFIX)]
+        return user_has_permission(user, Permission.SCENARIO_UPDATE) and _owned(db, Exercise, raw, user)
     if channel.startswith("range."):
         raw = channel[len("range.") :]
         if not _owned(db, Range, raw, user):
@@ -104,6 +109,27 @@ def authorize(channel: str, user: CurrentUser, db: Session) -> bool:
     if channel.startswith("system."):
         return user.role == UserRole.admin
     return False
+
+
+STAFF_SUFFIX = ".staff"
+
+
+def staff_channel(exercise_id: uuid.UUID | str) -> str:
+    """The exercise's staff-only channel (see ``authorize``)."""
+    return f"exercise.{exercise_id}{STAFF_SUFFIX}"
+
+
+def participant_inject_event(event: dict) -> dict:
+    """What ``exercise.<id>`` (every tenant user, Students included) may see of an
+    instructor inject: that one happened, and the narrative text of a ``custom`` one,
+    which is written for the participants. Never the type or params: those say what the
+    Students are meant to detect."""
+    narrative = event.get("inject_type") == "custom"
+    return {
+        "injected_at": event.get("injected_at"),
+        "narrative": narrative,
+        "description": event.get("description") if narrative else None,
+    }
 
 
 def room_allowed(room_id: str, user: CurrentUser, db: Session) -> bool:

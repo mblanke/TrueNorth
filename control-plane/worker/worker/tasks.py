@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 
 from celery import group
 
-from . import ai_client, db_ops, greyspace, range_alloc, secretbox, windows_roles
+from . import ai_client, db_ops, greyspace, range_alloc, windows_roles
 from .base_tasks import ReliableTask, _get_backend, db_connect_args
 from .celery_app import app
 from .fencing import FINAL_ERRORS, fenced, guarded_range_update, run_async, snapshot_back_to_ready
@@ -114,18 +114,6 @@ def _notify_api(channel: str, message: dict):
 
 
 # -- Provisioning -------------------------------------------------------
-def _hypervisor_creds(db, hypervisor_type: str) -> dict:
-    """Look up the primary/active hypervisor connection's endpoint+creds (empty → env fallback)."""
-    row = db_ops.hypervisor_connection(db, hypervisor_type)
-    if row is None:
-        return {}
-    return {
-        "host": row[0], "port": row[1], "username": row[2],
-        "password": secretbox.unseal(row[3]) or "", "api_token": secretbox.unseal(row[4]) or "",  # sealed by the API
-        "verify_ssl": bool(row[5]), "datacenter": row[6] or "",
-    }
-
-
 @app.task(base=ReliableTask, bind=True, name="worker.tasks.provision_range")
 @fenced("provision", "provisioning")  # only a range its sender moved to provisioning; one copy at a time
 def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
@@ -163,7 +151,7 @@ def provision_range(self, range_id: str, noise_mgmt: dict | None = None):
             hv = "proxmox" if "proxmox" in backend else "vsphere"
             with _db_session() as db2:
                 resolver = golden_image_resolver(db2, hv)
-                creds = _hypervisor_creds(db2, hv)
+                creds = db_ops.hypervisor_creds(db2, hv, range_id)  # the range's own tenant's connection
             rendered = windows_roles.require_buildable(render_topology(template, range_id, resolver, noise_mgmt=noise_mgmt))
             template = {
                 **template,

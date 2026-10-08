@@ -34,6 +34,7 @@ from . import (  # noqa: F401 — network_inventory, noise, range_leases, range_
 from .auth import CurrentUser, get_current_user
 from .auth_backends import get_auth_backend
 from .db import Base, engine, get_db
+from .detections.redaction import sees_answer_key
 from .greyspace import models as _greyspace_models  # noqa: F401 — registers range_greyspace
 from .log_format import configure_logging
 from .models import Range, Tenant, User, UserRole
@@ -41,8 +42,10 @@ from .rbac import Permission, require_permission
 from .scheduler import clock as scheduler_clock
 from .schemas import HealthOut
 from .search_backends import get_search_backend
+from .search_backends.detection_query import hide_labels, is_label
 from .search_backends.query import MAX_QUERY_LENGTH, QueryError, parse_query
 from .settings import app_version, check_startup, docs_urls, env_flag
+from .telemetry_access import readable_telemetry_range
 from .telemetry_mitre import tag_event
 from .tenancy import get_owned
 from .versioning import SERVER_PREFIX, VersionPrefixMiddleware
@@ -75,6 +78,7 @@ async def lifespan(app: FastAPI):
     if env_flag("DB_AUTO_CREATE"):
         Base.metadata.create_all(bind=engine)
     _seed_dev_data(dev_account=env_flag("SEED_DEV_DATA"))
+    _warn_platform_tenant()
     # Build the auth backend now so a bad AUTH_BACKEND / OIDC_* setting stops the
     # process at boot instead of turning every authenticated request into a 500.
     logger.info("Auth backend: %s", type(get_auth_backend()).__name__)
@@ -136,6 +140,26 @@ async def lifespan(app: FastAPI):
 def _env_flag(name: str) -> bool:
     """On unless set to a false-ish value, so development keeps its defaults."""
     return os.getenv(name, "true").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _warn_platform_tenant() -> None:
+    """Say so at boot when several tenants exist and PLATFORM_TENANT_ID is unset.
+
+    Not a refusal: app/rbac.py already fails closed (no admin is the platform
+    administrator then), and refusing to start would take a running multi-tenant install
+    down on upgrade. A single-tenant install needs no setting and gets no warning.
+    """
+    from .db import SessionLocal
+    from .rbac import platform_tenant_problem
+
+    db = SessionLocal()
+    try:
+        if problem := platform_tenant_problem(db):
+            logger.error(problem)
+    except Exception:
+        logger.debug("Platform tenant check skipped", exc_info=True)  # e.g. no schema yet
+    finally:
+        db.close()
 
 
 def _seed_dev_data(dev_account: bool = True) -> None:
@@ -602,16 +626,25 @@ async def search_telemetry(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+    """Search a range's telemetry (404 for a range the caller may not read).
+
+    Staff (telemetry:read) read their tenant's ranges; a Student reads only their own lab
+    session's range and the range of a running exercise they take part in
+    (app/telemetry_access.py).
 
     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
     A query outside it is a 422.
     """
-    get_owned(db, Range, range_id, user, not_found="Range not found")
+    readable_telemetry_range(db, range_id, user)
     try:
-        parse_query(q)
+        parsed = parse_query(q)
     except QueryError as exc:
         raise HTTPException(422, f"Invalid search query: {exc}") from exc
+    staff = sees_answer_key(user)
+    if not staff and any(is_label(t.field, t.value) for t in parsed.terms):
+        # Inject labels say which events are the attack (ADR 0005, sweep H4).
+        raise HTTPException(422, "Invalid search query: platform label fields are not searchable")
     index = f"range-{range_id}"
-    return await get_search_backend().search(index, q, size)
+    result = await get_search_backend().search(index, q, size)
+    return result if staff else hide_labels(result)

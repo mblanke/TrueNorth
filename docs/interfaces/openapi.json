@@ -769,6 +769,18 @@
             "title": "Attempt Id",
             "type": "string"
           },
+          "key_revealed": {
+            "default": false,
+            "description": "correct_options/explanation are filled only on the final attempt",
+            "title": "Key Revealed",
+            "type": "boolean"
+          },
+          "late": {
+            "default": false,
+            "description": "submitted after the time limit: answers were not marked",
+            "title": "Late",
+            "type": "boolean"
+          },
           "max_score": {
             "title": "Max Score",
             "type": "integer"
@@ -3371,7 +3383,7 @@
       "DetectionIn": {
         "properties": {
           "query": {
-            "description": "Lucene query string",
+            "description": "Detection query: field:value terms with AND/OR/NOT, wildcards, field:>N ranges and field:(a OR b); no free text, no platform label fields",
             "maxLength": 2000,
             "minLength": 1,
             "title": "Query",
@@ -6283,7 +6295,7 @@
             "type": "string"
           },
           "verify_ssl": {
-            "default": false,
+            "default": true,
             "title": "Verify Ssl",
             "type": "boolean"
           }
@@ -10143,8 +10155,16 @@
       "QuestionResultOut": {
         "properties": {
           "correct": {
-            "title": "Correct",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null until the key is revealed (the final attempt)",
+            "title": "Correct"
           },
           "correct_options": {
             "items": {
@@ -10158,8 +10178,16 @@
             "type": "string"
           },
           "points_earned": {
-            "title": "Points Earned",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null until the key is revealed: it would say `correct`",
+            "title": "Points Earned"
           },
           "points_possible": {
             "title": "Points Possible",
@@ -10180,11 +10208,9 @@
         },
         "required": [
           "question_id",
-          "correct",
           "selected",
           "correct_options",
           "explanation",
-          "points_earned",
           "points_possible"
         ],
         "title": "QuestionResultOut",
@@ -23119,7 +23145,7 @@
     },
     "/exercises/{exercise_id}/injects": {
       "get": {
-        "description": "What each inject did (timeline and instructor), oldest first, every run kept.\n**Permission: exercise:read**",
+        "description": "What each inject did (timeline and instructor), oldest first, every run kept.\n**Permission: exercise:read**\n\nUsers without scenario:update (Students) get only when and whether each inject ran:\naction, detail, MITRE technique, mode and telemetry counts are the answer key (ADR 0005).",
         "operationId": "list_injects_exercises__exercise_id__injects_get",
         "parameters": [
           {
@@ -23475,7 +23501,7 @@
     },
     "/exercises/{exercise_id}/run": {
       "post": {
-        "description": "One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**",
+        "description": "One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**\n\nA completed or cancelled exercise is replayed only with ``reset=true``: replay wipes\neveryone's objectives and score, so it is never a side effect of pressing Run (409).",
         "operationId": "run_exercise_exercises__exercise_id__run_post",
         "parameters": [
           {
@@ -23486,6 +23512,18 @@
               "format": "uuid",
               "title": "Exercise Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "replay a completed or cancelled exercise: clears every objective and the score",
+            "in": "query",
+            "name": "reset",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "replay a completed or cancelled exercise: clears every objective and the score",
+              "title": "Reset",
+              "type": "boolean"
             }
           }
         ],
@@ -25170,7 +25208,7 @@
     },
     "/integrations/platforms/{platform_id}/test": {
       "post": {
-        "description": "Test connectivity to an external platform.",
+        "description": "Test connectivity to an external platform.\n\nThe probe goes through app.net_guard (http(s) only, internal addresses refused unless\nINTEGRATION_ALLOW_PRIVATE_URLS is on, pinned, no redirects) and a failure reads as one\nfixed message per outcome. Before (PR #112 review), it fetched the stored base_url\nunguarded and returned the exception text: an SSRF and a port/host oracle.",
         "operationId": "test_connectivity_integrations_platforms__platform_id__test_post",
         "parameters": [
           {
@@ -26455,7 +26493,7 @@
     },
     "/lti/launch": {
       "post": {
-        "description": "LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app.",
+        "description": "LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app.\n\nThe browser must carry the state cookie set at /lti/login (login CSRF), unless\nLTI_REQUIRE_STATE_COOKIE=false.",
         "operationId": "lti_launch_lti_launch_post",
         "requestBody": {
           "content": {
@@ -35468,7 +35506,7 @@
     },
     "/telemetry/{range_id}/search": {
       "get": {
-        "description": "Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).\n\n``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch\n``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.\nA query outside it is a 422.",
+        "description": "Search a range's telemetry (404 for a range the caller may not read).\n\nStaff (telemetry:read) read their tenant's ranges; a Student reads only their own lab\nsession's range and the range of a running exercise they take part in\n(app/telemetry_access.py).\n\n``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch\n``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.\nA query outside it is a 422.",
         "operationId": "search_telemetry_telemetry__range_id__search_get",
         "parameters": [
           {
@@ -35972,7 +36010,7 @@
     },
     "/tenants": {
       "get": {
-        "description": "List all tenants.  **Permission: tenant:read**",
+        "description": "List tenants: every tenant for the platform administrator, otherwise the caller's own.\n**Permission: tenant:read**",
         "operationId": "list_tenants_tenants_get",
         "responses": {
           "200": {
@@ -36001,7 +36039,7 @@
         ]
       },
       "post": {
-        "description": "Create a new tenant.  **Permission: tenant:create**",
+        "description": "Create a new tenant.  **Permission: tenant:create**, platform administrator only",
         "operationId": "create_tenant_tenants_post",
         "requestBody": {
           "content": {
@@ -36048,7 +36086,7 @@
     },
     "/tenants/{tenant_id}": {
       "put": {
-        "description": "Update a tenant.  **Permission: tenant:update**",
+        "description": "Update a tenant: the caller's own, or any for the platform administrator.\n**Permission: tenant:update**",
         "operationId": "update_tenant_tenants__tenant_id__put",
         "parameters": [
           {

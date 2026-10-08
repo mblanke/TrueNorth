@@ -2083,6 +2083,9 @@ export interface paths {
          * List Injects
          * @description What each inject did (timeline and instructor), oldest first, every run kept.
          *     **Permission: exercise:read**
+         *
+         *     Users without scenario:update (Students) get only when and whether each inject ran:
+         *     action, detail, MITRE technique, mode and telemetry counts are the answer key (ADR 0005).
          */
         get: operations["list_injects_exercises__exercise_id__injects_get"];
         put?: never;
@@ -2218,6 +2221,9 @@ export interface paths {
         /**
          * Run Exercise
          * @description One-click: provision the range (mock, if needed) then start the run. **Permission: exercise:start**
+         *
+         *     A completed or cancelled exercise is replayed only with ``reset=true``: replay wipes
+         *     everyone's objectives and score, so it is never a side effect of pressing Run (409).
          */
         post: operations["run_exercise_exercises__exercise_id__run_post"];
         delete?: never;
@@ -2797,6 +2803,11 @@ export interface paths {
         /**
          * Test Connectivity
          * @description Test connectivity to an external platform.
+         *
+         *     The probe goes through app.net_guard (http(s) only, internal addresses refused unless
+         *     INTEGRATION_ALLOW_PRIVATE_URLS is on, pinned, no redirects) and a failure reads as one
+         *     fixed message per outcome. Before (PR #112 review), it fetched the stored base_url
+         *     unguarded and returned the exception text: an SSRF and a port/host oracle.
          */
         post: operations["test_connectivity_integrations_platforms__platform_id__test_post"];
         delete?: never;
@@ -3237,6 +3248,9 @@ export interface paths {
         /**
          * Lti Launch
          * @description LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app.
+         *
+         *     The browser must carry the state cookie set at /lti/login (login CSRF), unless
+         *     LTI_REQUIRE_STATE_COOKIE=false.
          */
         post: operations["lti_launch_lti_launch_post"];
         delete?: never;
@@ -6287,7 +6301,11 @@ export interface paths {
         };
         /**
          * Search Telemetry
-         * @description Search a range's telemetry. The range must belong to the caller's tenant (404 otherwise).
+         * @description Search a range's telemetry (404 for a range the caller may not read).
+         *
+         *     Staff (telemetry:read) read their tenant's ranges; a Student reads only their own lab
+         *     session's range and the range of a running exercise they take part in
+         *     (app/telemetry_access.py).
          *
          *     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
          *     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
@@ -6459,13 +6477,14 @@ export interface paths {
         };
         /**
          * List Tenants
-         * @description List all tenants.  **Permission: tenant:read**
+         * @description List tenants: every tenant for the platform administrator, otherwise the caller's own.
+         *     **Permission: tenant:read**
          */
         get: operations["list_tenants_tenants_get"];
         put?: never;
         /**
          * Create Tenant
-         * @description Create a new tenant.  **Permission: tenant:create**
+         * @description Create a new tenant.  **Permission: tenant:create**, platform administrator only
          */
         post: operations["create_tenant_tenants_post"];
         delete?: never;
@@ -6484,7 +6503,8 @@ export interface paths {
         get?: never;
         /**
          * Update Tenant
-         * @description Update a tenant.  **Permission: tenant:update**
+         * @description Update a tenant: the caller's own, or any for the platform administrator.
+         *     **Permission: tenant:update**
          */
         put: operations["update_tenant_tenants__tenant_id__put"];
         post?: never;
@@ -7488,6 +7508,18 @@ export interface components {
              * Format: uuid
              */
             attempt_id: string;
+            /**
+             * Key Revealed
+             * @description correct_options/explanation are filled only on the final attempt
+             * @default false
+             */
+            key_revealed?: boolean;
+            /**
+             * Late
+             * @description submitted after the time limit: answers were not marked
+             * @default false
+             */
+            late?: boolean;
             /** Max Score */
             max_score: number;
             /** Passed */
@@ -8665,7 +8697,7 @@ export interface components {
         DetectionIn: {
             /**
              * Query
-             * @description Lucene query string
+             * @description Detection query: field:value terms with AND/OR/NOT, wildcards, field:>N ranges and field:(a OR b); no free text, no platform label fields
              */
             query: string;
         };
@@ -9792,7 +9824,7 @@ export interface components {
             username: string;
             /**
              * Verify Ssl
-             * @default false
+             * @default true
              */
             verify_ssl?: boolean;
         };
@@ -11342,14 +11374,20 @@ export interface components {
         };
         /** QuestionResultOut */
         QuestionResultOut: {
-            /** Correct */
-            correct: boolean;
+            /**
+             * Correct
+             * @description null until the key is revealed (the final attempt)
+             */
+            correct?: boolean | null;
             /** Correct Options */
             correct_options: number[];
             /** Explanation */
             explanation: string;
-            /** Points Earned */
-            points_earned: number;
+            /**
+             * Points Earned
+             * @description null until the key is revealed: it would say `correct`
+             */
+            points_earned?: number | null;
             /** Points Possible */
             points_possible: number;
             /**
@@ -18144,7 +18182,10 @@ export interface operations {
     };
     run_exercise_exercises__exercise_id__run_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description replay a completed or cancelled exercise: clears every objective and the score */
+                reset?: boolean;
+            };
             header?: never;
             path: {
                 exercise_id: string;

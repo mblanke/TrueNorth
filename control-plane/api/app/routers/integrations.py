@@ -6,15 +6,20 @@ and custom LTI/API platforms. Handles external activity sync and LTI 1.3 flows.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import hmac
 import logging
+import os
 import uuid
 from datetime import datetime
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .. import moodle_sso
+from .. import moodle_sso, net_guard
 from ..auth import CurrentUser, get_current_user
 from ..course_publishing.models import CoursePublication
 from ..db import get_db
@@ -162,7 +167,7 @@ def update_platform(
     if "lti_issuer" in changes and (changes["lti_issuer"] or "").rstrip("/") != (p.lti_issuer or "").rstrip("/"):
         # A Moodle-farm platform (one the moodle_backends registry can publish to) is
         # addressed by its issuer in the tickets this API signs.
-        if p.platform_type in supported_moodle_types() and p.lti_issuer and not is_platform_admin(user):
+        if p.platform_type in supported_moodle_types() and p.lti_issuer and not is_platform_admin(user, db):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, "Only a platform administrator can re-point a Moodle at another site"
             )
@@ -210,21 +215,30 @@ async def test_connectivity(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.INTEGRATION_WRITE)),
 ):
-    """Test connectivity to an external platform."""
-    import httpx
+    """Test connectivity to an external platform.
 
+    The probe goes through app.net_guard (http(s) only, internal addresses refused unless
+    INTEGRATION_ALLOW_PRIVATE_URLS is on, pinned, no redirects) and a failure reads as one
+    fixed message per outcome. Before (PR #112 review), it fetched the stored base_url
+    unguarded and returned the exception text: an SSRF and a port/host oracle.
+    """
     p = get_owned(db, ExternalPlatform, platform_id, user)
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform not found")
 
+    url = get_platform_adapter(p.platform_type).health_url(p.base_url or "")
+    allow_private = os.getenv("INTEGRATION_ALLOW_PRIVATE_URLS", "false").strip().lower() in ("1", "true", "yes", "on")
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(get_platform_adapter(p.platform_type).health_url(p.base_url))
-            reachable = resp.status_code < 500
-    except Exception as e:
-        return {"platform_id": str(p.id), "reachable": False, "error": str(e)}
+        code = await asyncio.to_thread(net_guard.probe, url, allow_private=allow_private, timeout=10.0)
+    except net_guard.DestinationRefusedError:
+        return {"platform_id": str(p.id), "reachable": False, "error": PROBE_REFUSED}
+    except net_guard.GuardError:
+        return {"platform_id": str(p.id), "reachable": False, "error": PROBE_UNREACHABLE}
+    return {"platform_id": str(p.id), "reachable": code < 500, "status_code": code}
 
-    return {"platform_id": str(p.id), "reachable": reachable, "status_code": resp.status_code}
+
+PROBE_REFUSED = "The platform URL must be http(s) and point at an allowed address"
+PROBE_UNREACHABLE = "The platform could not be reached"
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -396,22 +410,67 @@ async def lti_oidc_login(request: Request, db: Session = Depends(get_db)):
         )
     except ValueError as exc:
         raise HTTPException(403, str(exc)) from exc
-    return RedirectResponse(redirect_url, status_code=302)
+    response = RedirectResponse(redirect_url, status_code=302)
+    if _state_cookie_required():
+        # Login CSRF: the launch must come back to the browser that started it. The LMS
+        # posts /lti/launch cross-site, so SameSite=None (and therefore Secure).
+        state = parse_qs(urlsplit(redirect_url).query).get("state", [""])[0]
+        response.set_cookie(
+            lti_state_cookie_name(state), state, max_age=600, httponly=True, secure=True, samesite="none", path="/"
+        )
+    return response
+
+
+# Security sweep (low), 2026-10-08: an id_token + state obtained for the attacker's own LMS
+# account could be posted from the attacker's page into a victim's browser, signing the
+# victim in to TrueNorth as the attacker (login CSRF). The state is now also a cookie set
+# on the browser that began the login, and the launch must carry both. Set
+# LTI_REQUIRE_STATE_COOKIE=false only where the tool runs in an iframe whose browsers block
+# third-party cookies; then this protection is off.
+#
+# One cookie per launch, named for a short hash of its state, so two launches begun in two
+# tabs do not overwrite each other's cookie (PR #112 review). Each lives 10 minutes and is
+# cleared when its launch succeeds. Caveat: the cookie is Secure, so the tool must be
+# served over https; plain-http deployments must turn the check off.
+LTI_STATE_COOKIE = "tn_lti_state"
+
+
+def lti_state_cookie_name(state: str) -> str:
+    digest = hashlib.sha256(state.encode("utf-8", "surrogatepass")).hexdigest()[:16]
+    return f"{LTI_STATE_COOKIE}_{digest}"
+
+
+def _state_cookie_matches(request: Request, state: str) -> bool:
+    """The browser holds this launch's state cookie. Compared as bytes: compare_digest
+    raises TypeError on non-ASCII str, which was a 500."""
+    cookie = request.cookies.get(lti_state_cookie_name(state), "")
+    return bool(state) and hmac.compare_digest(cookie.encode("utf-8", "surrogatepass"), state.encode("utf-8", "surrogatepass"))
+
+
+def _state_cookie_required() -> bool:
+    return os.getenv("LTI_REQUIRE_STATE_COOKIE", "true").strip().lower() not in ("0", "false", "no", "off")
 
 
 def _jit_user(db: Session, platform, claims: dict) -> User:
-    """Find-or-create a TrueNorth user from LTI launch claims."""
+    """Find-or-create a TrueNorth user from LTI launch claims.
+
+    The platform's subject is what identifies a returning user (``lti:<platform>:<sub>``).
+    The email claim is asserted by the platform, not verified by us, so it links an
+    existing account only inside the platform's own tenant (never across tenants: email is
+    globally unique, so that would be impersonation) and only a Student's: an LMS naming an
+    instructor's or admin's address does not become them (security sweep, low).
+    """
     sub = str(claims.get("sub", ""))
     email = str(claims.get("email") or f"lti-{sub}@{platform.slug}.local").lower()
     name = str(claims.get("name") or claims.get("given_name") or email.split("@")[0])
     lti_kc_id = f"lti:{platform.id}:{sub}"
 
-    # The email claim is asserted by the platform, not verified by us. Matching it
-    # across tenants would let any registered platform sign in as any user anywhere —
-    # including an admin — by naming their address. So: match only inside the
-    # platform's own tenant, and refuse (rather than impersonate or duplicate; email
-    # is globally unique) when the address belongs to someone in a different tenant.
-    user = db.query(User).filter((User.keycloak_id == lti_kc_id) | (User.email == email)).first()
+    user = db.query(User).filter(User.keycloak_id == lti_kc_id).first()
+    if user is None:
+        user = db.query(User).filter(User.email == email).first()
+        if user is not None and str(user.tenant_id) == str(platform.tenant_id) and user.role != UserRole.student:
+            logger.warning("LTI launch from %s asserted a staff account's email; refused", platform.name)
+            raise HTTPException(403, "Staff accounts are not signed in through the learning platform.")
     if user:
         if str(user.tenant_id) != str(platform.tenant_id):
             logger.warning(
@@ -437,11 +496,18 @@ def _jit_user(db: Session, platform, claims: dict) -> User:
 
 @lti_router.post("/launch")
 async def lti_launch(
+    request: Request,
     id_token: str = Form(...),
     state: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    """LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app."""
+    """LTI 1.3 resource-link launch: verify id_token, JIT user, redirect into the app.
+
+    The browser must carry the state cookie set at /lti/login (login CSRF), unless
+    LTI_REQUIRE_STATE_COOKIE=false."""
+    cookie_required = _state_cookie_required()
+    if cookie_required and not _state_cookie_matches(request, state):
+        raise HTTPException(401, "LTI launch validation failed: this browser did not start the login")
     try:
         platform, claims = await lti13.validate_launch(db, id_token, state)
     except Exception as exc:
@@ -451,8 +517,15 @@ async def lti_launch(
     user = _jit_user(db, platform, claims)
 
     if message_type == "LtiDeepLinkingRequest":
-        return _deep_link_picker(db, platform, claims)
+        response = _deep_link_picker(db, platform, claims)
+    else:
+        response = _resource_link_redirect(db, platform, user, claims)
+    if cookie_required:  # this launch is spent; another tab's cookie is left alone
+        response.delete_cookie(lti_state_cookie_name(state), path="/", secure=True, httponly=True, samesite="none")
+    return response
 
+
+def _resource_link_redirect(db: Session, platform, user: User, claims: dict) -> RedirectResponse:
     kind, rid = lti13.parse_resource_target(claims)
     lti13.record_launch(db, platform, user.id, claims, kind, rid)
 

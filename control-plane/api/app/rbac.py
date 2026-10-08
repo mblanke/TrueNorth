@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .auth import CurrentUser, get_current_user
 from .db import get_db
-from .models import Range, UserRole
+from .models import Range, Tenant, UserRole
 
 
 # ── Permission Enum ────────────────────────────────────────────────────
@@ -59,8 +59,8 @@ class Permission(str, Enum):
     EXERCISE_PAUSE = "exercise:pause"
     # A Student's detection, judged by the server against the objective's answer key (ADR 0005)
     DETECTION_SUBMIT = "detection:submit"
-    # Awarding an objective by hand. Deliberately separate from EXERCISE_COMPLETE, which
-    # Students hold: a Student must never be able to award themselves points (ADR 0005 §4).
+    # Awarding an objective by hand. Deliberately separate from EXERCISE_COMPLETE: a
+    # Student must never be able to award themselves points (ADR 0005 §4).
     OBJECTIVE_ACK = "objective:ack"
 
     # User management
@@ -234,14 +234,15 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.TICKET_CREATE,
         Permission.TICKET_WORK,
     },
-    # Student (trainee): consume ranges, run exercises
+    # Student (trainee): take part in exercises. Not exercise:start / exercise:complete
+    # (security sweep M3): a team exercise is run and closed by staff, and /run on a
+    # completed one reset every participant's objectives. A Student's own lab has its own
+    # lifecycle (app/lab_sessions), which does not use these.
     UserRole.student: {
         Permission.RANGE_READ,
         Permission.TEMPLATE_READ,
         Permission.SCENARIO_READ,
         Permission.EXERCISE_READ,
-        Permission.EXERCISE_START,
-        Permission.EXERCISE_COMPLETE,
         Permission.DETECTION_SUBMIT,
         Permission.AAR_READ,
         Permission.WIKI_READ,
@@ -329,7 +330,7 @@ def require_tenant_access(tenant_id_param: str = "tenant_id") -> Callable[..., A
         **kwargs: Any,
     ) -> CurrentUser:
         # Only the platform operator skips tenant isolation: admins are per tenant.
-        if is_platform_admin(user):
+        if is_platform_admin(user, db):
             return user
 
         # Resolve the target tenant_id from path params via FastAPI injection
@@ -366,7 +367,7 @@ def require_range_access() -> Callable[..., Any]:
         user: CurrentUser = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> CurrentUser:
-        if is_platform_admin(user):  # admins are per tenant; only the operator crosses
+        if is_platform_admin(user, db):  # admins are per tenant; only the operator crosses
             return user
 
         # tenant-safe: the range's tenant is compared with the caller's just below.
@@ -384,25 +385,53 @@ def require_range_access() -> Callable[..., Any]:
 
 
 # ── Platform administration ────────────────────────────────────────────
-def is_platform_admin(user: CurrentUser) -> bool:
+def platform_tenant_id() -> str:
+    """PLATFORM_TENANT_ID, the operator's own tenant; empty when unset."""
+    return os.getenv("PLATFORM_TENANT_ID", "").strip()
+
+
+def is_single_tenant(db: Session) -> bool:
+    """At most one tenant exists. Two rows at most are read, so this stays cheap."""
+    return len(db.query(Tenant.id).limit(2).all()) <= 1
+
+
+def is_platform_admin(user: CurrentUser, db: Session) -> bool:
     """An admin of the operator's own tenant, set by PLATFORM_TENANT_ID.
 
     Admins are per tenant. Settings that hold for every tenant at once (the shared
     cluster's over-capacity policy, running the scheduler clock by hand) belong to the
-    platform operator, not to any one tenant's admin. Unset: a single-tenant install,
-    where every admin is the operator.
+    platform operator, not to any one tenant's admin.
+
+    Unset, this fails closed: an admin is the operator only while the platform has at
+    most one tenant (a single-tenant install). Once a second tenant exists nobody is the
+    platform administrator until PLATFORM_TENANT_ID names the operator's tenant. Before
+    (review of PR #112), unset meant every tenant's admin was the operator, and nothing
+    that ships set it.
     """
     if user.role != UserRole.admin:
         return False
-    platform = os.getenv("PLATFORM_TENANT_ID", "").strip()
-    return not platform or str(user.tenant_id) == platform
+    platform = platform_tenant_id()
+    if platform:
+        return str(user.tenant_id) == platform
+    return is_single_tenant(db)
+
+
+def platform_tenant_problem(db: Session) -> str | None:
+    """Why the platform administrator is unassigned, or None. Logged at startup."""
+    if platform_tenant_id() or is_single_tenant(db):
+        return None
+    return (
+        "PLATFORM_TENANT_ID is not set and more than one tenant exists: no administrator is the "
+        "platform administrator (creating tenants, cross-tenant approval and platform-wide "
+        "settings are refused). Set it to the operator's tenant id."
+    )
 
 
 def require_platform_admin() -> Callable[..., Any]:
     """FastAPI dependency: the caller must be a platform administrator."""
 
-    def _check(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if not is_platform_admin(user):
+    def _check(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)) -> CurrentUser:
+        if not is_platform_admin(user, db):
             raise HTTPException(403, "Only a platform administrator can change this: it applies to every tenant")
         return user
 
@@ -418,3 +447,24 @@ def user_has_permission(user: CurrentUser, permission: Permission) -> bool:
 def user_permissions(user: CurrentUser) -> set[Permission]:
     """Return the full permission set for a user's role."""
     return ROLE_PERMISSIONS.get(user.role, set())
+
+
+# Roles that carry authority over other people or the platform. Only an administrator
+# grants them, whatever the permission arithmetic says.
+STAFF_GRANTED_BY_ADMIN_ONLY = frozenset({UserRole.admin, UserRole.instructor, UserRole.range_ops})
+
+
+def grant_refusal(granter: CurrentUser, role: UserRole) -> str | None:
+    """Why ``granter`` may not give someone ``role``, or None when they may.
+
+    Two rules, both required: the granted role's permissions must be a subset of the
+    granter's own (nobody hands out authority they do not hold), and the staff roles
+    (admin, instructor, range_ops) are granted by an administrator only. Before this, an
+    instructor holding registration:approve could approve a request as ``admin``.
+    """
+    if role in STAFF_GRANTED_BY_ADMIN_ONLY and granter.role != UserRole.admin:
+        return f"Only an administrator can grant the '{role.value}' role"
+    granted = ROLE_PERMISSIONS.get(role, set())
+    if not granted <= ROLE_PERMISSIONS.get(granter.role, set()):
+        return f"The '{role.value}' role carries permissions you do not hold"
+    return None

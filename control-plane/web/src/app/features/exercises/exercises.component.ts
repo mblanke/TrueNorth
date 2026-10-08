@@ -15,6 +15,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
 import { ExerciseSummary, RangeSummary, ScenarioSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
@@ -127,7 +128,7 @@ export const EXERCISE_POLL_MS = 5000;
           <th mat-header-cell *matHeaderCellDef>Actions</th>
           <td mat-cell *matCellDef="let e">
             <a mat-button [routerLink]="['/exercises', e.id]">Open</a>
-            @if (e.state === 'pending') {
+            @if (e.state === 'pending' && auth.isInstructor()) {
               <button mat-icon-button (click)="startEdit(e)" matTooltip="Rename" aria-label="Rename exercise" [disabled]="saving">
                 <mat-icon>edit</mat-icon>
               </button>
@@ -135,7 +136,7 @@ export const EXERCISE_POLL_MS = 5000;
                 <mat-icon>play_arrow</mat-icon>
               </button>
             }
-            @if (e.state === 'running') {
+            @if (e.state === 'running' && auth.isInstructor()) {
               <button mat-icon-button (click)="pause(e.id)" matTooltip="Pause" aria-label="Pause exercise">
                 <mat-icon>pause</mat-icon>
               </button>
@@ -143,7 +144,7 @@ export const EXERCISE_POLL_MS = 5000;
                 <mat-icon>stop</mat-icon>
               </button>
             }
-            @if (e.state === 'paused') {
+            @if (e.state === 'paused' && auth.isInstructor()) {
               <button mat-icon-button color="primary" (click)="start(e.id)" matTooltip="Resume" aria-label="Resume exercise">
                 <mat-icon>play_arrow</mat-icon>
               </button>
@@ -212,6 +213,8 @@ export class ExercisesComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
   private destroyRef = inject(DestroyRef);
+  /** Start, pause and complete are staff actions (exercise:start / complete, sweep M3). */
+  protected auth = inject(AuthService);
 
   exercises = signal<ExerciseSummary[]>([]);
   ranges = signal<RangeSummary[]>([]);

@@ -79,9 +79,11 @@ class TestPermissionMap:
         holders = {role for role, perms in ROLE_PERMISSIONS.items() if Permission.OBJECTIVE_ACK in perms}
         assert holders == {UserRole.admin, UserRole.instructor}
 
-    def test_student_still_completes_exercises(self):
-        """Removing self-award must not take the Student's own completion away."""
-        assert Permission.EXERCISE_COMPLETE in ROLE_PERMISSIONS[UserRole.student]
+    def test_students_neither_start_nor_complete_team_exercises(self):
+        """Security sweep M3 (2026-10-08) reversed PR #58's choice: staff run and close a
+        team exercise; a Student's own lab has its own lifecycle (app/lab_sessions)."""
+        assert Permission.EXERCISE_COMPLETE not in ROLE_PERMISSIONS[UserRole.student]
+        assert Permission.EXERCISE_START not in ROLE_PERMISSIONS[UserRole.student]
 
 
 class TestAcknowledgeObjective:

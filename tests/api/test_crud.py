@@ -41,7 +41,9 @@ class TestTenants:
         assert isinstance(data, list)
         assert len(data) >= 1
 
-    def test_duplicate_slug_fails(self, client):
+    def test_duplicate_slug_fails(self, client, monkeypatch):
+        # Two tenants exist after the first create: name the dev tenant the operator's.
+        monkeypatch.setenv("PLATFORM_TENANT_ID", "00000000-0000-0000-0000-000000000001")
         client.post("/tenants", json={"name": "One", "slug": "dup"})
         resp = client.post("/tenants", json={"name": "Two", "slug": "dup"})
         # Should fail with 409 or 400
