@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 import threading
 import time
 import uuid
@@ -239,15 +240,59 @@ def test_the_soft_limit_is_final_not_retried():
     assert tasks.ReliableTask.dont_autoretry_for == (SoftTimeLimitExceeded, AllocationError)
 
 
-def _soft_limit_after(seconds: float):
-    """Raise SoftTimeLimitExceeded in this (main) thread after ``seconds``, as Celery does."""
+class _CutOffCall:
+    """A hypervisor call, running in its thread, that the soft time limit cuts off.
+
+    Celery raises ``SoftTimeLimitExceeded`` from SIGALRM in the task's (main) thread. These
+    tests used a 0.3 s wall-clock timer for it, which raced the task's own set-up: on a
+    loaded runner the claim took longer, the signal landed before the task body's ``try``,
+    and the range was left as it was (CI: ``'ready' == 'failed'``). Here the call itself
+    sends the signal to the main thread once it is running and the task is blocked
+    waiting for it in the event loop's ``select``, as a task is when its hypervisor call
+    is what takes the time. So the limit lands while the call is in flight, every time,
+    whatever the load. The thread then blocks until the test releases it (``finished``
+    stays clear until then)."""
+
+    def __init__(self):
+        self.release = threading.Event()
+        self.finished = threading.Event()
+
+    @staticmethod
+    def _task_waits_on_the_call(main: int) -> bool:
+        frame = sys._current_frames().get(main)
+        return frame is not None and frame.f_code.co_name == "select" and frame.f_code.co_filename.endswith("selectors.py")
+
+    def _thread(self) -> None:
+        main = threading.main_thread().ident
+        for _ in range(10_000):  # a barrier, not a timing guess: up to 10 s for the task to reach select
+            if self._task_waits_on_the_call(main):
+                break
+            time.sleep(0.001)
+        else:
+            raise AssertionError("the task never waited on its hypervisor call")
+        signal.pthread_kill(main, signal.SIGALRM)
+        self.release.wait(10)
+        self.finished.set()
+
+    async def run(self, *a, **k) -> None:
+        await asyncio.to_thread(self._thread)
+
+
+@contextmanager
+def _soft_limit():
+    """Celery's soft-limit handler, installed for the block; yields the call it cuts off,
+    whose thread is released on the way out."""
 
     def soft_limit(signum, frame):
         raise SoftTimeLimitExceeded()
 
     previous = signal.signal(signal.SIGALRM, soft_limit)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-    return lambda: (signal.setitimer(signal.ITIMER_REAL, 0), signal.signal(signal.SIGALRM, previous))
+    call = _CutOffCall()
+    try:
+        yield call
+    finally:
+        signal.signal(signal.SIGALRM, previous)
+        call.release.set()
 
 
 def test_after_the_soft_limit_the_calls_cleanup_runs_without_waiting_for_its_thread():
@@ -255,42 +300,37 @@ def test_after_the_soft_limit_the_calls_cleanup_runs_without_waiting_for_its_thr
     task's cleanup past the hard limit; abandoning the coroutine skipped its finally."""
     cleaned = []
 
-    async def call():
-        try:
-            await asyncio.to_thread(time.sleep, 3)
-        finally:
-            cleaned.append("finally")
+    with _soft_limit() as stuck:
 
-    restore = _soft_limit_after(0.3)
-    started = time.monotonic()
-    try:
+        async def call():
+            try:
+                await stuck.run()
+            finally:
+                cleaned.append("finally")
+
         with pytest.raises(SoftTimeLimitExceeded):
             fencing.run_async(call())
-    finally:
-        restore()
+        assert not stuck.finished.is_set(), "it waited for the hypervisor thread"
     assert cleaned == ["finally"]
-    assert time.monotonic() - started < 1.5, "it waited for the hypervisor thread"
 
 
 def test_after_the_soft_limit_the_range_is_failed_and_stays_leased(db, requeued):
     """The hypervisor call can outlive the task in a thread; releasing the lease would let
     a new destroy run alongside it. The lease is kept (until it expires) instead."""
-
-    class StuckBackend:
-        async def destroy(self, range_id, output):
-            await asyncio.to_thread(time.sleep, 2)
-
     rid = _range(db, "destroying", OUTPUT)
-    restore = _soft_limit_after(0.3)
-    try:
+    with _soft_limit() as stuck:
+
+        class StuckBackend:
+            async def destroy(self, range_id, output):
+                await stuck.run()
+
         with (
             patch.object(tasks, "_get_backend", return_value=StuckBackend()),
             patch.object(tasks, "_last_attempt", return_value=False),  # final because of the limit, not the count
             pytest.raises(SoftTimeLimitExceeded),
         ):
             tasks.destroy_range.run(rid)
-    finally:
-        restore()
+        assert not stuck.finished.is_set(), "the destroy is still running in its thread"
     assert _state(db, rid)[0] == "failed", "final at once: the soft limit is not retried"
     assert _leases(db, rid) == 1, "the lease was released while the destroy may still be running"
     with db.begin() as conn:  # someone asks for the teardown again
@@ -390,18 +430,16 @@ def test_a_restore_cut_off_by_the_soft_limit_marks_the_range_failed(db, monkeypa
             {"i": sid, "r": rid},
         )
 
-    class StuckBackend:
-        async def restore(self, *a, **k):
-            await asyncio.to_thread(time.sleep, 2)
+    with _soft_limit() as stuck:
 
-    restore = _soft_limit_after(0.3)
-    try:
+        class StuckBackend:
+            async def restore(self, *a, **k):
+                await stuck.run()
+
         with (
             patch.object(tasks, "_get_backend", return_value=StuckBackend()),
             patch.object(tasks, "_last_attempt", return_value=False),
             pytest.raises(SoftTimeLimitExceeded),
         ):
             tasks.restore_snapshot.run(rid, sid)
-    finally:
-        restore()
     assert _state(db, rid)[0] == "failed" and _leases(db, rid) == 1
