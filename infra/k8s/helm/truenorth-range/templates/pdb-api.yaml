@@ -1,13 +1,20 @@
-{{- if .Values.api.enabled -}}
+{{- /* PodDisruptionBudgets for the api and web. maxUnavailable, not minAvailable: a
+       minAvailable at or above the replica count (e.g. 2 of 2, or any value with one
+       replica) blocks every node drain. */ -}}
+{{- range $c := list (dict "key" "api" "component" "api") (dict "key" "web" "component" "web") }}
+{{- $v := index $.Values $c.key }}
+{{- if and $v.enabled $v.podDisruptionBudget.enabled }}
+---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "truenorth-range.fullname" . }}-api
+  name: {{ include "truenorth-range.fullname" $ }}-{{ $c.component }}
   labels:
-    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "api") | nindent 4 }}
+    {{- include "truenorth-range.componentLabels" (dict "context" $ "component" $c.component) | nindent 4 }}
 spec:
-  minAvailable: {{ .Values.api.podDisruptionBudget.minAvailable }}
+  maxUnavailable: {{ $v.podDisruptionBudget.maxUnavailable }}
   selector:
     matchLabels:
-      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "api") | nindent 6 }}
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" $ "component" $c.component) | nindent 6 }}
+{{- end }}
 {{- end }}

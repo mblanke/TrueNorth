@@ -1,0 +1,82 @@
+{{- if .Values.migration.enabled -}}
+{{- /*
+`alembic upgrade head`, once per install/upgrade, before any api or worker pod rolls.
+A Helm hook, not an init container: three api replicas each migrating at start-up raced
+one another. Hooks run before the release's own Secret, ConfigMap and ServiceAccount
+exist on a first install, so the Job carries its own environment and, unless
+secrets.existingSecret is set, its own hook-scoped copy of the database password.
+A failed migration fails `helm install/upgrade`, and nothing rolls.
+*/ -}}
+{{- $fullname := include "truenorth-range.fullname" . -}}
+{{- if not .Values.secrets.existingSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullname }}-migrate
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "migrate") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+type: Opaque
+data:
+  DATABASE_PASSWORD: {{ required "secrets.databasePassword is required (DATABASE_PASSWORD), or set secrets.existingSecret" .Values.secrets.databasePassword | b64enc | quote }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fullname }}-migrate
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "migrate") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    # Kept after success until ttlSecondsAfterFinished so its log can be read.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ .Values.migration.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      # The namespace's default ServiceAccount: the chart's own does not exist yet
+      # during pre-install. No token is mounted either way.
+      automountServiceAccountToken: false
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "truenorth-range.podSecurityContext" (dict "root" . "uid" 10001) | nindent 8 }}
+      volumes:
+        {{- include "truenorth-range.scratchVolumes" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "truenorth-range.image" (dict "name" "api" "root" .) }}
+          imagePullPolicy: {{ include "truenorth-range.imagePullPolicy" (dict "name" "api" "root" .) }}
+          command: ["alembic", "upgrade", "head"]
+          securityContext:
+            {{- include "truenorth-range.containerSecurityContext" (dict "uid" 10001) | nindent 12 }}
+          env:
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret | default (printf "%s-migrate" $fullname) }}
+                  key: DATABASE_PASSWORD
+            - name: DATABASE_URL
+              value: {{ include "truenorth-range.databaseUrl" . | quote }}
+            - name: TN_ENV
+              value: {{ .Values.config.tnEnv | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.config.logFormat | quote }}
+          volumeMounts:
+            {{- include "truenorth-range.scratchVolumeMounts" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+{{- end }}

@@ -1,3 +1,11 @@
+{{- /* Non-secret settings shared by the api, the Celery workers and beat. The same
+       variables compose.prod.yml sets; secrets are in secret.yaml. */ -}}
+{{- $os := .Values.opensearch -}}
+{{- $osUrl := required "opensearch.url is required (the chart does not run OpenSearch)" $os.url -}}
+{{- if and $osUrl (not $os.securityDisabled) (not (hasPrefix "https://" $osUrl)) -}}
+{{- fail "opensearch.url must be https:// while the OpenSearch security plugin is on (opensearch.securityDisabled is a lab/dev override only)" -}}
+{{- end -}}
+{{- $origin := include "truenorth-range.publicOrigin" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -5,24 +13,42 @@ metadata:
   labels:
     {{- include "truenorth-range.labels" . | nindent 4 }}
 data:
-  DATABASE_HOST: {{ .Values.config.databaseHost | default (printf "%s-postgresql" (include "truenorth-range.fullname" .)) | quote }}
-  DATABASE_PORT: {{ .Values.config.databasePort | quote }}
-  DATABASE_NAME: {{ .Values.config.databaseName | quote }}
-  DATABASE_USER: {{ .Values.config.databaseUser | quote }}
-  REDIS_HOST: {{ .Values.config.redisHost | default (printf "%s-redis-master" (include "truenorth-range.fullname" .)) | quote }}
-  REDIS_PORT: {{ .Values.config.redisPort | quote }}
-  REDIS_DB: {{ .Values.config.redisDB | quote }}
-  OPENSEARCH_URL: {{ .Values.config.opensearchUrl | quote }}
-  OPENSEARCH_VERIFY_SSL: {{ include "truenorth-range.opensearchVerifySSL" . | quote }}
-  MINIO_ENDPOINT: {{ include "truenorth-range.minioEndpoint" . | quote }}
-  MINIO_PORT: {{ .Values.config.minioPort | quote }}
-  MINIO_BUCKET: {{ .Values.config.minioBucket | quote }}
-  MINIO_USE_SSL: {{ .Values.config.minioUseSSL | quote }}
-  KEYCLOAK_URL: {{ include "truenorth-range.keycloakUrl" . | quote }}
-  KEYCLOAK_REALM: {{ .Values.config.keycloakRealm | quote }}
-  OLLAMA_NODES: {{ .Values.aiOrchestrator.ollamaNodes | quote }}
-  PROVISIONER_BACKEND: {{ .Values.config.provisionerBackend | quote }}
+  # app/settings.py: production refuses to start on unsafe settings and names each one.
+  TN_ENV: {{ .Values.config.tnEnv | quote }}
+  TN_VERSION: {{ .Values.version | default (printf "v%s" .Chart.AppVersion) | quote }}
+  LOG_FORMAT: {{ .Values.config.logFormat | quote }}
   LOG_LEVEL: {{ .Values.config.logLevel | quote }}
-  {{- with .Values.config.trustedProxyCidrs }}
-  TRUSTED_PROXY_CIDRS: {{ . | quote }}
+  # Schema ownership is Alembic's (the pre-install/pre-upgrade migration Job).
+  DB_AUTO_CREATE: "false"
+  SEED_DEV_DATA: "false"
+  AUTH_DISABLED: "false"
+  OPENSEARCH_URL: {{ $osUrl | quote }}
+  OPENSEARCH_VERIFY_SSL: {{ include "truenorth-range.opensearchVerifySSL" . | quote }}
+  SEARCH_BACKEND: "opensearch"
+  MINIO_ENDPOINT: {{ required "config.minio.endpoint is required, e.g. https://minio.example.com:9000 (the chart does not run MinIO)" .Values.config.minio.endpoint | quote }}
+  MINIO_BUCKET: {{ .Values.config.minio.bucket | quote }}
+  # Keycloak as the API reaches it (server side), including /auth when it serves there.
+  KEYCLOAK_URL: {{ required "config.keycloak.url is required, e.g. http://keycloak:8080/auth" .Values.config.keycloak.url | quote }}
+  KEYCLOAK_REALM: {{ .Values.config.keycloak.realm | quote }}
+  KEYCLOAK_AUDIENCE: {{ required "config.keycloak.audience is required (docs/identity.md); production refuses to start without it" .Values.config.keycloak.audience | quote }}
+  {{- with .Values.config.keycloak.issuer }}
+  KEYCLOAK_ISSUER: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.keycloak.adminUser }}
+  KEYCLOAK_ADMIN_USER: {{ . | quote }}
+  {{- end }}
+  AI_ORCHESTRATOR_URL: {{ printf "http://%s-ai-orchestrator:%v" (include "truenorth-range.fullname" .) .Values.aiOrchestrator.service.port | quote }}
+  # Peers whose X-Forwarded-For the API believes (app/client_address.py): the ingress
+  # controller's pods. There is no safe default for a cluster's pod CIDR.
+  TRUSTED_PROXY_CIDRS: {{ required "config.trustedProxyCidrs is required: the ingress controller's pod CIDR, e.g. 10.244.0.0/16" .Values.config.trustedProxyCidrs | quote }}
+  SCHEDULER_FEED_BASE_URL: {{ .Values.config.schedulerFeedBaseUrl | default $origin | quote }}
+  CORS_ORIGINS: {{ .Values.config.corsOrigins | default $origin | quote }}
+  LTI_TOOL_BASE_URL: {{ printf "%s/api" $origin | quote }}
+  LTI_WEB_BASE_URL: {{ $origin | quote }}
+  PROVISIONER_BACKEND: {{ .Values.config.provisionerBackend | quote }}
+  # The api reads the scenario engine from here (app/engine_bridge.py); an init
+  # container copies it out of the scenario-engine image (deployment-api.yaml).
+  SCENARIO_ENGINE_DIR: /opt/scenario-engine
+  {{- range $k, $v := .Values.config.extraEnv }}
+  {{ $k }}: {{ $v | toString | quote }}
   {{- end }}

@@ -1,4 +1,10 @@
 {{- if .Values.networkPolicy.enabled -}}
+{{- $np := .Values.networkPolicy -}}
+{{- $egress := $np.egress -}}
+# Ingress is restricted for every component. Egress is restricted only with
+# networkPolicy.egress.enabled: the datastores, Keycloak, OpenSearch, vCenter and the
+# model endpoint live outside the chart at addresses only the operator knows, so the
+# allowed destinations are theirs to list (networkPolicy.egress.to).
 # ---------------------------------------------------------------------------
 # API Network Policy
 # ---------------------------------------------------------------------------
@@ -14,86 +20,27 @@ spec:
       {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "api") | nindent 6 }}
   policyTypes:
     - Ingress
+    {{- if $egress.enabled }}
     - Egress
+  egress:
+    {{- include "truenorth-range.egressRules" . | nindent 4 }}
+    {{- end }}
   ingress:
-    # Allow from ingress controller
+    # The ingress controller, and this release's own pods (workers, the helm test).
     - from:
         - namespaceSelector:
+            {{- toYaml $np.ingressControllerNamespaceSelector | nindent 12 }}
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
+              {{- include "truenorth-range.selectorLabels" . | nindent 14 }}
+        {{- with $np.metricsNamespaceSelector }}
+        # Prometheus (GET /metrics also needs METRICS_SCRAPE_TOKEN).
+        - namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: 8080
-    # Allow from within the namespace (flower, workers, etc.)
-    - from:
-        - podSelector: {}
-      ports:
-        - protocol: TCP
-          port: 8080
-  egress:
-    # PostgreSQL
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: postgresql
-      ports:
-        - protocol: TCP
-          port: 5432
-    # PgBouncer
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: postgresql
-      ports:
-        - protocol: TCP
-          port: 6432
-    # Redis
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: redis
-      ports:
-        - protocol: TCP
-          port: 6379
-    # MinIO
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: minio
-      ports:
-        - protocol: TCP
-          port: 9000
-    # Keycloak
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: keycloak
-      ports:
-        - protocol: TCP
-          port: 8080
-    # AI Orchestrator
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: ai-orchestrator
-      ports:
-        - protocol: TCP
-          port: 6000
-    # OpenSearch (external)
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-      ports:
-        - protocol: TCP
-          port: 9200
-    # DNS
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
 ---
 # ---------------------------------------------------------------------------
 # Worker Network Policy (provision, scenario, telemetry)
@@ -108,7 +55,6 @@ spec:
   podSelector:
     matchLabels:
       {{- include "truenorth-range.selectorLabels" . | nindent 6 }}
-      # Match all worker components via a common label pattern
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
@@ -116,50 +62,17 @@ spec:
           - worker-provision
           - worker-scenario
           - worker-telemetry
+          - beat
+          - migrate
+  # Nothing connects to a worker, beat or the migration Job: no ingress rule, so all
+  # inbound traffic is denied.
   policyTypes:
+    - Ingress
+    {{- if $egress.enabled }}
     - Egress
   egress:
-    # PostgreSQL
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: postgresql
-      ports:
-        - protocol: TCP
-          port: 5432
-        - protocol: TCP
-          port: 6432
-    # Redis
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: redis
-      ports:
-        - protocol: TCP
-          port: 6379
-    # MinIO
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: minio
-      ports:
-        - protocol: TCP
-          port: 9000
-    # OpenSearch (external)
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-      ports:
-        - protocol: TCP
-          port: 9200
-    # DNS
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
+    {{- include "truenorth-range.egressRules" . | nindent 4 }}
+    {{- end }}
 ---
 # ---------------------------------------------------------------------------
 # AI Orchestrator Network Policy
@@ -176,64 +89,29 @@ spec:
       {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "ai-orchestrator") | nindent 6 }}
   policyTypes:
     - Ingress
+    {{- if $egress.enabled }}
     - Egress
+  egress:
+    {{- include "truenorth-range.egressRules" . | nindent 4 }}
+    {{- end }}
   ingress:
-    # Allow from API and ingress controller
+    # Only the api and the Celery workers call the orchestrator (with AI_SERVICE_TOKEN).
+    # Not the ingress controller: it is not published.
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/component: api
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
+              {{- include "truenorth-range.selectorLabels" . | nindent 14 }}
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - api
+                  - worker-provision
+                  - worker-scenario
+                  - worker-telemetry
       ports:
         - protocol: TCP
           port: 6000
-  egress:
-    # Ollama nodes, OpenAI, Anthropic — external HTTPS
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              - 10.0.0.0/8
-              - 172.16.0.0/12
-              - 192.168.0.0/16
-      ports:
-        - protocol: TCP
-          port: 443
-    # Ollama nodes (internal — port 11434)
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-      ports:
-        - protocol: TCP
-          port: 11434
-    # Redis (for cache/state)
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: redis
-      ports:
-        - protocol: TCP
-          port: 6379
-    # PostgreSQL
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: postgresql
-      ports:
-        - protocol: TCP
-          port: 5432
-        - protocol: TCP
-          port: 6432
-    # DNS
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
 ---
 # ---------------------------------------------------------------------------
 # Web (frontend) Network Policy
@@ -250,13 +128,44 @@ spec:
       {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "web") | nindent 6 }}
   policyTypes:
     - Ingress
+    {{- if $egress.enabled }}
+    - Egress
+  egress:
+    {{- include "truenorth-range.egressRules" . | nindent 4 }}
+    {{- end }}
   ingress:
-    # Only allow from ingress controller
+    # The ingress controller, and this release's own pods (the helm test).
     - from:
         - namespaceSelector:
+            {{- toYaml $np.ingressControllerNamespaceSelector | nindent 12 }}
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
+              {{- include "truenorth-range.selectorLabels" . | nindent 14 }}
       ports:
         - protocol: TCP
           port: 8080  # the pod's port (unprivileged nginx); the Service still listens on 80
+{{- if .Values.flower.enabled }}
+---
+# ---------------------------------------------------------------------------
+# Flower: no ingress rule, so nothing in the cluster reaches it. kubectl port-forward
+# (through the kubelet) still works for an operator.
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-flower
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "flower") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "flower") | nindent 6 }}
+  policyTypes:
+    - Ingress
+    {{- if $egress.enabled }}
+    - Egress
+  egress:
+    {{- include "truenorth-range.egressRules" . | nindent 4 }}
+    {{- end }}
+{{- end }}
 {{- end }}

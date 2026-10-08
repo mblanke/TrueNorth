@@ -1,58 +1,103 @@
 {{- if .Values.ingress.enabled -}}
+{{- /*
+What browsers reach: the web app, the API under /api (and its WebSocket under /ws), and
+Keycloak under /auth when it runs in this cluster. Nothing else: the AI orchestrator and
+Flower are internal (networkpolicy.yaml), as on the compose edge.
+
+Two Ingress objects because the API's needs a rewrite the web's must not get: the edge
+nginx strips /api (infra/platform/nginx/conf.d/truenorth.conf, `rewrite ^/api/(.*) /$1`),
+and the API serves its routes at /. Written for ingress-nginx (rewrite-target, use-regex);
+another controller needs its equivalent of these two annotations.
+*/ -}}
+{{- $fullname := include "truenorth-range.fullname" . -}}
+{{- $host := required "ingress.host is required" .Values.ingress.host -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "truenorth-range.fullname" . }}
+  name: {{ $fullname }}-api
   labels:
     {{- include "truenorth-range.labels" . | nindent 4 }}
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+    {{- with .Values.ingress.apiAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
   {{- end }}
   {{- if .Values.ingress.tls.enabled }}
   tls:
     - hosts:
-        - {{ .Values.ingress.host | quote }}
+        - {{ $host | quote }}
       secretName: {{ .Values.ingress.tls.secretName }}
   {{- end }}
   rules:
-    - host: {{ .Values.ingress.host | quote }}
+    - host: {{ $host | quote }}
       http:
         paths:
-          # API — /api prefix
-          - path: /api
-            pathType: Prefix
+          # /api/<rest> -> /<rest>
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
-                name: {{ include "truenorth-range.fullname" . }}-api
+                name: {{ $fullname }}-api
                 port:
                   number: {{ .Values.api.service.port }}
-          # AI Orchestrator — /ai prefix
-          - path: /ai
+          # /ws/<rest> -> /ws/<rest> (the empty first group keeps $2 the whole path)
+          - path: /()(ws/.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ $fullname }}-api
+                port:
+                  number: {{ .Values.api.service.port }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "truenorth-range.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          {{- with .Values.ingress.keycloak }}
+          {{- if .enabled }}
+          # Keycloak in this cluster, serving under /auth (KC_HTTP_RELATIVE_PATH=/auth).
+          - path: /auth
             pathType: Prefix
             backend:
               service:
-                name: {{ include "truenorth-range.fullname" . }}-ai-orchestrator
+                name: {{ required "ingress.keycloak.serviceName is required when ingress.keycloak.enabled" .serviceName }}
                 port:
-                  number: {{ .Values.aiOrchestrator.service.port }}
-          # Flower — /flower prefix
-          - path: /flower
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "truenorth-range.fullname" . }}-flower
-                port:
-                  number: {{ .Values.flower.service.port }}
-          # Web frontend — catch-all (must be last)
+                  number: {{ .servicePort }}
+          {{- end }}
+          {{- end }}
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: {{ include "truenorth-range.fullname" . }}-web
+                name: {{ $fullname }}-web
                 port:
                   number: {{ .Values.web.service.port }}
 {{- end }}

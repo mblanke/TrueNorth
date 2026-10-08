@@ -6,7 +6,8 @@ metadata:
   labels:
     {{- include "truenorth-range.componentLabels" (dict "context" . "component" "flower") | nindent 4 }}
 spec:
-  type: {{ .Values.flower.service.type }}
+  # Never exposed: ClusterIP only, no ingress path (reach it with kubectl port-forward).
+  type: ClusterIP
   ports:
     - port: {{ .Values.flower.service.port }}
       targetPort: http

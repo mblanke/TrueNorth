@@ -1,0 +1,74 @@
+{{- if .Values.beat.enabled -}}
+{{- /* Celery beat (worker/celery_app.py beat_schedule). Exactly one: two schedulers would
+       enqueue every periodic task twice, so replicas is fixed and the strategy is
+       Recreate (the old pod is gone before the new one starts). */ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "truenorth-range.fullname" . }}-beat
+  labels:
+    {{- include "truenorth-range.componentLabels" (dict "context" . "component" "beat") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "beat") | nindent 6 }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "truenorth-range.componentSelectorLabels" (dict "context" . "component" "beat") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "truenorth-range.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "truenorth-range.podSecurityContext" (dict "root" . "uid" 10001) | nindent 8 }}
+      {{- with .Values.beat.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.beat.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        {{- include "truenorth-range.scratchVolumes" . | nindent 8 }}
+      containers:
+        - name: beat
+          image: {{ include "truenorth-range.image" (dict "name" "worker" "root" .) }}
+          imagePullPolicy: {{ include "truenorth-range.imagePullPolicy" (dict "name" "worker" "root" .) }}
+          command:
+            - celery
+            - -A
+            - worker.celery_app
+            - beat
+            - --loglevel={{ .Values.config.logLevel | lower }}
+            # The schedule state file; the root filesystem is read-only.
+            - --schedule=/tmp/celerybeat-schedule
+          securityContext:
+            {{- include "truenorth-range.containerSecurityContext" (dict "uid" 10001) | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "truenorth-range.fullname" . }}-config
+            - secretRef:
+                name: {{ include "truenorth-range.secretName" . }}
+          env:
+            - name: DATABASE_URL
+              value: {{ include "truenorth-range.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "truenorth-range.redisUrl" . | quote }}
+          volumeMounts:
+            {{- include "truenorth-range.scratchVolumeMounts" . | nindent 12 }}
+          # Beat answers no ping; the process exits when it loses the broker for good,
+          # and the kubelet restarts it.
+          resources:
+            {{- toYaml .Values.beat.resources | nindent 12 }}
+{{- end }}
