@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
 from .. import curriculum_ingest
+from ..ai_orchestrator_client import orchestrator_headers
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import (
@@ -301,7 +302,9 @@ async def generate_quiz(
     }
     async with httpx.AsyncClient(timeout=330) as client:
         try:
-            resp = await client.post(f"{AI_ORCHESTRATOR_URL}/ai/quiz-generate", json=payload)
+            resp = await client.post(
+                f"{AI_ORCHESTRATOR_URL}/ai/quiz-generate", json=payload, headers=orchestrator_headers()
+            )
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
             raise HTTPException(502, "AI orchestrator failed to generate the quiz.") from e

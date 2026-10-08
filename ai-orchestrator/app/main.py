@@ -16,19 +16,23 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
+import ipaddress
 import json
 import logging
 import os
 import random
 import re
+import socket
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -104,6 +108,108 @@ OLLAMA_PROXY_URL = os.getenv("OLLAMA_PROXY_URL", "https://ai.guapo613.beer")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "false").lower() in ("1", "true", "yes")
+
+# ── Service authentication ─────────────────────────────────────────────
+# Every route but /health needs this shared secret (``Authorization: Bearer <token>`` or
+# ``X-Service-Token``). The control-plane API sends it (app/ai_orchestrator_client.py).
+# TN_ENV=production refuses to start without one; elsewhere an unset token leaves the
+# service open, with a warning at startup, so a laptop needs no configuration.
+AI_SERVICE_TOKEN = os.getenv("AI_SERVICE_TOKEN", "").strip()
+TN_ENV = os.getenv("TN_ENV", "development").strip().lower() or "development"
+MIN_SERVICE_TOKEN_LENGTH = 32
+PUBLIC_PATHS = frozenset({"/health"})
+
+# Browsers have no business calling this service; CORS is off unless origins are listed.
+# "*" is never honoured.
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip() and o.strip() != "*"]
+
+# Runtime-registered fleet nodes (POST /fleet/nodes). Comma-separated hosts or CIDRs; when
+# set, a node must match one. Link-local, cloud metadata, loopback and unspecified
+# addresses are refused regardless.
+OLLAMA_NODE_ALLOWLIST = [e.strip().lower() for e in os.getenv("OLLAMA_NODE_ALLOWLIST", "").split(",") if e.strip()]
+_METADATA_HOSTS = frozenset({"metadata", "metadata.google.internal", "metadata.azure.com", "instance-data"})
+_METADATA_IPS = frozenset(
+    ipaddress.ip_address(a) for a in ("169.254.169.254", "fd00:ec2::254", "100.100.100.200", "169.254.170.2")
+)
+_MODEL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
+
+
+def startup_problems() -> list[str]:
+    """Settings this process must not run with under TN_ENV=production."""
+    if TN_ENV != "production":
+        return []
+    if not AI_SERVICE_TOKEN:
+        return ["AI_SERVICE_TOKEN is not set: every route would be open"]
+    if len(AI_SERVICE_TOKEN) < MIN_SERVICE_TOKEN_LENGTH:
+        return [f"AI_SERVICE_TOKEN is shorter than {MIN_SERVICE_TOKEN_LENGTH} characters"]
+    return []
+
+
+def _presented_token(request: Request) -> str:
+    auth = request.headers.get("authorization", "")
+    if auth[:7].lower() == "bearer ":
+        return auth[7:].strip()
+    return request.headers.get("x-service-token", "").strip()
+
+
+async def require_service_token(request: Request) -> None:
+    """App-wide dependency: the caller must present AI_SERVICE_TOKEN (constant-time compare)."""
+    if request.url.path in PUBLIC_PATHS:
+        return
+    if not AI_SERVICE_TOKEN:
+        if TN_ENV == "production":  # unreachable after a clean start; never fail open
+            raise HTTPException(503, "Service token not configured")
+        return
+    if not hmac.compare_digest(_presented_token(request).encode(), AI_SERVICE_TOKEN.encode()):
+        raise HTTPException(401, "Missing or invalid service token", headers={"WWW-Authenticate": "Bearer"})
+
+
+def _ip_refused(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return ip in _METADATA_IPS or ip.is_link_local or ip.is_loopback or ip.is_unspecified or ip.is_multicast
+
+
+def _allowlisted(host: str, ips: list) -> bool:
+    for entry in OLLAMA_NODE_ALLOWLIST:
+        if entry == host:
+            return True
+        try:
+            net = ipaddress.ip_network(entry, strict=False)
+        except ValueError:
+            continue
+        if any(ip in net for ip in ips):
+            return True
+    return False
+
+
+def validate_node_url(url: str) -> str:
+    """A fleet node URL safe to send requests to, normalised, or ValueError saying why not."""
+    try:
+        parts = urlsplit(url.strip())
+        host = (parts.hostname or "").lower()
+        parts.port  # noqa: B018 — raises ValueError on a malformed port
+    except ValueError as exc:
+        raise ValueError(f"malformed URL: {exc}") from None
+    if parts.scheme not in ("http", "https"):
+        raise ValueError("scheme must be http or https")
+    if not host:
+        raise ValueError("URL has no host")
+    if parts.username or parts.password:
+        raise ValueError("URL must not carry credentials")
+    if host in _METADATA_HOSTS:
+        raise ValueError("cloud metadata hosts are not allowed")
+    try:
+        ips = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            ips = list({ipaddress.ip_address(ai[4][0].split("%")[0]) for ai in socket.getaddrinfo(host, None)})
+        except (OSError, ValueError):
+            raise ValueError(f"cannot resolve host {host!r}") from None
+    refused = [str(ip) for ip in ips if _ip_refused(ip)]
+    if refused:
+        raise ValueError(f"address not allowed (link-local, metadata, loopback or unspecified): {', '.join(refused)}")
+    if OLLAMA_NODE_ALLOWLIST and not _allowlisted(host, ips):
+        raise ValueError("host is not in OLLAMA_NODE_ALLOWLIST")
+    return f"{parts.scheme}://{parts.netloc}{parts.path.rstrip('/')}"
 
 # Primary backend preference: "ollama", "openai", "anthropic", "mock"
 # Deployment here uses "openai" pointed at the local LiteLLM router (OPENAI_BASE_URL).
@@ -357,6 +463,12 @@ TASK_ROUTES: dict[TaskType, ModelRoute] = {
 async def lifespan(app: FastAPI):
     global _llm_semaphore, _health_task
 
+    problems = startup_problems()
+    if problems:
+        raise RuntimeError("Refusing to start with TN_ENV=production: " + "; ".join(problems))
+    if not AI_SERVICE_TOKEN:
+        logger.warning("AI_SERVICE_TOKEN is not set: every route is open (TN_ENV=%s)", TN_ENV)
+
     _llm_semaphore = asyncio.Semaphore(MAX_LLM_CONCURRENCY)
 
     # One backend per Ollama node (long-lived, connection-pooled client).
@@ -433,14 +545,22 @@ async def _health_check_loop():
 
 
 # ── App ────────────────────────────────────────────────────────────────
-app = FastAPI(title="TrueNorth Range AI Orchestrator", version="0.4.0", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
+_DOCS = {} if TN_ENV != "production" else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+app = FastAPI(
+    title="TrueNorth Range AI Orchestrator",
+    version="0.4.0",
+    lifespan=lifespan,
+    dependencies=[Depends(require_service_token)],
+    **_DOCS,
 )
+
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type", "X-Service-Token"],
+    )
 
 
 # ── Schemas ────────────────────────────────────────────────────────────
@@ -893,6 +1013,7 @@ async def timing_middleware(request: Request, call_next):
 # ── Routes ─────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
+    """Unauthenticated (probes). Node URLs are left out; GET /fleet has them."""
     return {
         "status": "ok",
         "version": "0.4.0",
@@ -902,7 +1023,6 @@ async def health():
         "fleet": {
             name: {
                 "healthy": node.healthy,
-                "url": node.base_url,
                 "models_count": len(node.models),
                 "avg_latency_ms": round(node.avg_latency_ms, 1),
                 "inflight": node._inflight,
@@ -950,14 +1070,22 @@ async def node_models(node_name: str):
 
 @app.post("/fleet/nodes")
 async def add_fleet_node(req: AddNodeRequest):
-    """Register a new Ollama node at runtime (useful for dynamic scaling)."""
+    """Register a new Ollama node at runtime (useful for dynamic scaling).
+
+    The URL must be http(s) and must not point at link-local, cloud-metadata, loopback or
+    unspecified addresses; with OLLAMA_NODE_ALLOWLIST set it must also match an entry.
+    """
     if req.name in FLEET:
         raise HTTPException(409, f"Node '{req.name}' already exists")
-    node = OllamaNode(name=req.name, base_url=req.url)
+    try:
+        url = validate_node_url(req.url)
+    except ValueError as exc:
+        raise HTTPException(422, f"Node URL refused: {exc}") from None
+    node = OllamaNode(name=req.name, base_url=url)
     FLEET[req.name] = node
-    _register_ollama_node(req.name, req.url, 120)
-    logger.info("Runtime node added: %s -> %s", req.name, req.url)
-    return {"status": "added", "name": req.name, "url": req.url}
+    _register_ollama_node(req.name, url, 120)
+    logger.info("Runtime node added: %s -> %s", req.name, url)
+    return {"status": "added", "name": req.name, "url": url}
 
 
 @app.post("/fleet/{node_name}/pull")
@@ -965,6 +1093,8 @@ async def pull_model(node_name: str, model: str):
     """Trigger a model pull on a specific node."""
     if node_name not in FLEET:
         raise HTTPException(404, f"Unknown node: {node_name}")
+    if not _MODEL_NAME.match(model):
+        raise HTTPException(422, "Invalid model name")
     backend = _ollama_backends[node_name]
     try:
         await backend.pull_model(model, timeout=600)

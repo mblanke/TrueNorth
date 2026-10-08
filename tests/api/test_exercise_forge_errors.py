@@ -35,7 +35,7 @@ class _Orchestrator:
     async def __aexit__(self, *a):
         return False
 
-    async def post(self, url, json=None):
+    async def post(self, url, json=None, headers=None):
         request = httpx.Request("POST", url)
         if self.mode == "down":
             raise httpx.ConnectError("refused", request=request)

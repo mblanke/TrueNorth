@@ -14,6 +14,7 @@ import os
 
 from . import db_ops
 from .aar import build_report as build_aar_report
+from .ai_client import orchestrator_headers
 from .base_tasks import ReliableTask
 from .celery_app import app
 from .task_plumbing import db_session as _db_session
@@ -57,6 +58,7 @@ def generate_aar(self, exercise_id: str):
                     resp = client.post(
                         f"{ai_url}/analyze-aar",
                         json=aar_report,
+                        headers=orchestrator_headers(),
                     )
                     if resp.status_code == 200:
                         aar_report["ai_analysis"] = resp.json()
