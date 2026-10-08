@@ -26,6 +26,11 @@ def opensearch_url(default: str = DEFAULT_URL) -> str:
     return os.getenv("OPENSEARCH_URL", default).rstrip("/")
 
 
+def url_configured() -> bool:
+    """Was OPENSEARCH_URL set explicitly (not the built-in default)?"""
+    return bool(os.getenv("OPENSEARCH_URL", "").strip())
+
+
 def verify_setting() -> bool | str:
     """``OPENSEARCH_VERIFY_SSL`` as httpx's ``verify``: True, False or a CA bundle path."""
     raw = os.getenv("OPENSEARCH_VERIFY_SSL", "true").strip()

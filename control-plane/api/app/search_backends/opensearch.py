@@ -97,7 +97,7 @@ def stamp_ingested(event: dict, now: str) -> dict:
 
 def configured() -> bool:
     """Was an OpenSearch endpoint set explicitly? Readiness only requires it then (app/health.py)."""
-    return bool(os.getenv("OPENSEARCH_URL", "").strip())
+    return connection.url_configured()
 
 
 class OpenSearchBackend(BaseSearchBackend):
