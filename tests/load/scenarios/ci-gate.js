@@ -1,65 +1,31 @@
-// k6-ci-gate.js — Lightweight CI pipeline smoke test with strict thresholds.
-// Usage: k6 run tests/load/k6-ci-gate.js --env BASE_URL=http://localhost:8080
-//
-// Designed to run in < 30 seconds with pass/fail thresholds for CI gates.
+// scenarios/ci-gate.js — Read-only gate: the lists every page opens, under 30 s.
+// Usage: k6 run -e BASE_URL=http://localhost:8081 tests/load/scenarios/ci-gate.js
 
-import http from "k6/http";
-import { check, sleep } from "k6";
-import { BASE_URL, headers } from "../config.js";
+import { sleep } from "k6";
+import { thresholds } from "../config.js";
+import { get } from "../helpers/api.js";
+import { health } from "../helpers/flows.js";
 
 export const options = {
   stages: [
-    { duration: "5s",  target: 5 },   // ramp up
-    { duration: "15s", target: 10 },   // steady
-    { duration: "5s",  target: 0 },    // ramp down
+    { duration: "5s", target: 5 }, // ramp up
+    { duration: "15s", target: 10 }, // steady
+    { duration: "5s", target: 0 }, // ramp down
   ],
-  thresholds: {
+  thresholds: thresholds({
     http_req_duration: ["p(95)<400", "p(99)<1000"],
-    http_req_failed:   ["rate<0.01"],
-    checks:            ["rate>0.99"],
-  },
+    http_req_failed: ["rate<0.01"],
+    checks: ["rate>0.99"],
+  }),
+  tags: { testType: "ci-gate" },
 };
 
 export default function () {
-  // Health check
-  const health = http.get(`${BASE_URL}/health`, { headers: headers() });
-  check(health, {
-    "health 200":    (r) => r.status === 200,
-    "health < 200ms": (r) => r.timings.duration < 200,
-  });
-
-  // List ranges
-  const ranges = http.get(`${BASE_URL}/ranges?limit=5`, { headers: headers() });
-  check(ranges, {
-    "ranges 200":    (r) => r.status === 200,
-    "ranges < 400ms": (r) => r.timings.duration < 400,
-  });
-
-  // List templates
-  const templates = http.get(`${BASE_URL}/templates?limit=5`, { headers: headers() });
-  check(templates, {
-    "templates 200":    (r) => r.status === 200,
-    "templates < 400ms": (r) => r.timings.duration < 400,
-  });
-
-  // List scenarios
-  const scenarios = http.get(`${BASE_URL}/scenarios?limit=5`, { headers: headers() });
-  check(scenarios, {
-    "scenarios 200":    (r) => r.status === 200,
-    "scenarios < 400ms": (r) => r.timings.duration < 400,
-  });
-
-  // Threat intel feeds (new V2 endpoint)
-  const feeds = http.get(`${BASE_URL}/threat-intel/feeds`, { headers: headers() });
-  check(feeds, {
-    "feeds 200": (r) => r.status === 200,
-  });
-
-  // Detection rules (new V2 endpoint)
-  const rules = http.get(`${BASE_URL}/detection-rules?limit=5`, { headers: headers() });
-  check(rules, {
-    "rules 200": (r) => r.status === 200,
-  });
-
+  health();
+  get("/ranges?limit=5");
+  get("/templates?limit=5");
+  get("/scenarios?limit=5");
+  get("/threat-intel/feeds");
+  get("/detection-rules?limit=5");
   sleep(0.5);
 }

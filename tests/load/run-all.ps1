@@ -9,16 +9,16 @@
 
 .PARAMETER Scenario
     Run only a specific scenario. Valid values:
-    smoke, load, stress, spike, soak, websocket, batch-provision
+    baseline, ci-gate, smoke, load, stress, spike, soak, websocket, batch-provision
 
 .PARAMETER Force
     Continue running subsequent scenarios even if one fails.
 
 .PARAMETER BaseUrl
-    Override the API base URL (default: http://localhost:8080).
+    Override the API base URL (default: http://localhost:8081, the dev stack's API).
 
 .PARAMETER Token
-    Override the auth token.
+    An access token, for a target that authenticates (none for an AUTH_DISABLED stack).
 
 .EXAMPLE
     .\run-all.ps1
@@ -28,14 +28,15 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet("smoke","load","stress","spike","soak","websocket","batch-provision")]
+    [ValidateSet("baseline","ci-gate","smoke","load","stress","spike","soak","websocket","batch-provision")]
     [string]$Scenario,
 
     [switch]$Force,
 
-    [string]$BaseUrl = "http://localhost:8080",
+    [string]$BaseUrl = "http://localhost:8081",
 
-    [string]$Token = "dev-test-token"
+    # An access token for a target that authenticates; leave empty for an AUTH_DISABLED stack.
+    [string]$Token = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,6 +56,8 @@ if (-not (Get-Command k6 -ErrorAction SilentlyContinue)) {
 
 # Scenario definitions (order matters for default run)
 $allScenarios = [ordered]@{
+    "baseline"        = "scenarios/baseline.js"
+    "ci-gate"         = "scenarios/ci-gate.js"
     "smoke"           = "scenarios/smoke.js"
     "load"            = "scenarios/load.js"
     "stress"          = "scenarios/stress.js"
@@ -102,7 +105,7 @@ foreach ($name in $toRun.Keys) {
 
     $env:BASE_URL   = $BaseUrl
     $env:WS_URL     = $BaseUrl -replace "^http", "ws"
-    $env:AUTH_TOKEN  = $Token
+    if ($Token) { $env:AUTH_TOKEN = $Token } else { Remove-Item Env:AUTH_TOKEN -ErrorAction SilentlyContinue }
 
     # Run k6 with HTML summary output and JSON summary
     & k6 run $scriptPath `

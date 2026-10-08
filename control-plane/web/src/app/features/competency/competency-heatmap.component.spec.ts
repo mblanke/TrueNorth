@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 
 import { ApiService, CompetencyHeatmap } from '@core/services/api.service';
 import { ThemeService } from '@core/services/theme.service';
@@ -9,7 +9,10 @@ import { CompetencyHeatmapComponent } from './competency-heatmap.component';
 
 /**
  * The component dynamically imports ECharts in ngAfterViewInit and only then
- * fetches data, so the tests wait for the API call rather than for zone stability.
+ * fetches data. The tests await that very ngAfterViewInit promise: no polling and
+ * no wall-clock cap. (They used to poll for the API call for at most 2 s, which a
+ * cold ECharts chunk load on a busy CI runner could outlast.) The chunk is loaded
+ * once up front, so no single test pays for it against its own timeout.
  */
 describe('CompetencyHeatmapComponent', () => {
   let fixture: ComponentFixture<CompetencyHeatmapComponent>;
@@ -21,6 +24,10 @@ describe('CompetencyHeatmapComponent', () => {
     work_roles: ['SOC Analyst', 'Threat Hunter'],
     values: [[0, 0, 40], [0, 1, 55], [1, 0, 80], [1, 1, 20]],
   };
+
+  beforeAll(async () => {
+    await import('echarts');
+  }, 60_000);
 
   beforeEach(async () => {
     api = jasmine.createSpyObj('ApiService', ['getCompetencyHeatmap']);
@@ -35,27 +42,31 @@ describe('CompetencyHeatmapComponent', () => {
 
   afterEach(() => fixture?.destroy());
 
-  async function untilCalled(spy: jasmine.Spy, times = 1): Promise<void> {
-    for (let i = 0; i < 200 && spy.calls.count() < times; i++) {
-      await new Promise(r => setTimeout(r, 10));
-    }
-    expect(spy.calls.count()).toBeGreaterThanOrEqual(times);
-  }
-
   function chartOption(): any {
     return (component as any).chartInstance.getOption();
   }
 
-  async function create(): Promise<void> {
+  /**
+   * Render with the API answering `reply`, and resume once the component has asked for
+   * the data (ECharts loaded, chart created). An event, not a poll: the request itself
+   * resolves the wait, and ngAfterViewInit has finished by the time this returns.
+   */
+  async function create(reply: Observable<CompetencyHeatmap>): Promise<void> {
+    let requested!: () => void;
+    const request = new Promise<void>(resolve => (requested = resolve));
+    api.getCompetencyHeatmap.and.callFake(() => {
+      requested();
+      return reply;
+    });
     fixture = TestBed.createComponent(CompetencyHeatmapComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
-    await untilCalled(api.getCompetencyHeatmap);
+    await request;
+    expect(api.getCompetencyHeatmap).toHaveBeenCalledTimes(1);
   }
 
   it('creates, requests the team view and plots the returned roles and categories', async () => {
-    api.getCompetencyHeatmap.and.returnValue(of(DATA));
-    await create();
+    await create(of(DATA));
     expect(component).toBeTruthy();
     expect(api.getCompetencyHeatmap).toHaveBeenCalledWith('team');
     const opt = chartOption();
@@ -65,16 +76,14 @@ describe('CompetencyHeatmapComponent', () => {
   });
 
   it('re-requests with the individual view when the view changes', async () => {
-    api.getCompetencyHeatmap.and.returnValue(of(DATA));
-    await create();
+    await create(of(DATA));
     component.viewMode = 'individual';
     component.renderChart();
     expect(api.getCompetencyHeatmap).toHaveBeenCalledWith('individual');
   });
 
   it('shows an error state, not invented numbers, when the API fails', async () => {
-    api.getCompetencyHeatmap.and.returnValue(throwError(() => ({ status: 500 })));
-    await create();
+    await create(throwError(() => ({ status: 500 })));
     fixture.detectChanges();
     expect(component.status()).toBe('error');
     // Nothing is plotted: no sample series sneaks onto the chart.
@@ -86,8 +95,7 @@ describe('CompetencyHeatmapComponent', () => {
   });
 
   it('retries from the error state', async () => {
-    api.getCompetencyHeatmap.and.returnValue(throwError(() => ({ status: 500 })));
-    await create();
+    await create(throwError(() => ({ status: 500 })));
     fixture.detectChanges();
     api.getCompetencyHeatmap.and.returnValue(of(DATA));
     (fixture.nativeElement.querySelector('[role="alert"] button') as HTMLButtonElement).click();
@@ -97,8 +105,7 @@ describe('CompetencyHeatmapComponent', () => {
   });
 
   it('shows an empty state when there are no assessments', async () => {
-    api.getCompetencyHeatmap.and.returnValue(of({ categories: [], work_roles: [], values: [] }));
-    await create();
+    await create(of({ categories: [], work_roles: [], values: [] }));
     fixture.detectChanges();
     expect(component.status()).toBe('empty');
     expect(fixture.nativeElement.textContent).toContain('No competency assessments recorded yet');
@@ -106,8 +113,7 @@ describe('CompetencyHeatmapComponent', () => {
 
   it('disconnects its ResizeObserver and disposes the chart on destroy', async () => {
     const disconnect = spyOn(ResizeObserver.prototype, 'disconnect').and.callThrough();
-    api.getCompetencyHeatmap.and.returnValue(of(DATA));
-    await create();
+    await create(of(DATA));
     const chart = (component as any).chartInstance;
     const dispose = spyOn(chart, 'dispose').and.callThrough();
     fixture.destroy();
